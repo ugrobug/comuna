@@ -2,8 +2,21 @@
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import Post from '$lib/components/lemmy/post/Post.svelte'
   import { backendPostToPostView } from '$lib/api/backend'
+  import { env } from '$env/dynamic/public'
+  import { page } from '$app/stores'
 
   export let data
+
+  $: siteTitle = env.PUBLIC_SITE_TITLE || 'Comuna'
+  $: rubricName = data.rubric?.name ?? 'Рубрика'
+  $: title = `${rubricName} — ${siteTitle}`
+  $: description =
+    data.rubric?.description ||
+    `Посты и подборки по теме «${rubricName}» на ${siteTitle}.`
+  $: canonicalUrl = new URL(
+    $page.url.pathname,
+    (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '') + '/'
+  ).toString()
 </script>
 
 <div class="flex flex-col gap-6 max-w-3xl">
@@ -77,3 +90,18 @@
     <div class="text-base text-slate-500">В этой рубрике пока нет публикаций.</div>
   {/if}
 </div>
+
+<svelte:head>
+  <title>{title}</title>
+  <meta name="description" content={description} />
+  <meta property="og:title" content={title} />
+  <meta property="og:description" content={description} />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content={canonicalUrl} />
+  {#if data.rubric?.cover_image_url}
+    <meta property="og:image" content={data.rubric.cover_image_url} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content={data.rubric.cover_image_url} />
+  {/if}
+  <link rel="canonical" href={canonicalUrl} />
+</svelte:head>

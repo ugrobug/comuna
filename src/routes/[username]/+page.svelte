@@ -1,6 +1,8 @@
 <script lang="ts">
   import Post from '$lib/components/lemmy/post/Post.svelte'
   import { backendPostToPostView } from '$lib/api/backend'
+  import { env } from '$env/dynamic/public'
+  import { page } from '$app/stores'
 
   export let data
 
@@ -8,6 +10,17 @@
     if (!value && value !== 0) return '—'
     return value.toLocaleString('ru-RU')
   }
+
+  $: siteTitle = env.PUBLIC_SITE_TITLE || 'Comuna'
+  $: authorName = data.author?.title ?? data.author?.username ?? ''
+  $: title = authorName ? `${authorName} — ${siteTitle}` : siteTitle
+  $: description =
+    data.author?.description ||
+    (authorName ? `Посты и материалы из Telegram-канала ${authorName}.` : '')
+  $: canonicalUrl = new URL(
+    $page.url.pathname,
+    (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '') + '/'
+  ).toString()
 </script>
 
 <div class="flex flex-col gap-6 max-w-5xl">
@@ -80,3 +93,15 @@
     <div class="text-base text-slate-500">Пока нет публикаций.</div>
   {/if}
 </div>
+
+<svelte:head>
+  <title>{title}</title>
+  {#if description}
+    <meta name="description" content={description} />
+    <meta property="og:description" content={description} />
+  {/if}
+  <meta property="og:title" content={title} />
+  <meta property="og:type" content="profile" />
+  <meta property="og:url" content={canonicalUrl} />
+  <link rel="canonical" href={canonicalUrl} />
+</svelte:head>

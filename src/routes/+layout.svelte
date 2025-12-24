@@ -32,6 +32,7 @@
   import { LINKED_INSTANCE_URL } from '$lib/instance'
   import { locale } from '$lib/translations'
   import { getDefaultColors } from '$lib/ui/presets'
+  import { env } from '$env/dynamic/public'
 import YandexMetrika from '$lib/components/YandexMetrika.svelte'
 import GoogleAnalytics from '$lib/components/GoogleAnalytics.svelte'
 import PopularPosts from '$lib/components/ui/sidebar/PopularPosts.svelte'
@@ -65,19 +66,19 @@ import StaticBannerRight from '$lib/components/ui/sidebar/StaticBannerRight.svel
   $: isPostFormRoute = $page.url.pathname.includes('/create/post') || $page.url.pathname.includes('/edit/post')
 
   // Получаем текущий URL для канонической ссылки
+  $: siteBaseUrl = (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '')
   $: canonicalUrl = (() => {
-    const baseUrl = 'https://rabotaem.app' // Всегда используем HTTPS версию
-    
-    // Для главной страницы всегда возвращаем URL без trailing слеша
     if ($page.url.pathname === '/' || $page.url.pathname === '') {
-      return baseUrl
+      return siteBaseUrl
     }
-
-    // Для всех остальных страниц используем полный путь
     const path = $page.url.pathname
-    const cleanPath = path.replace(/\/+$/, '') // Убираем trailing слэши
-    return `${baseUrl}${cleanPath}`
+    const cleanPath = path.replace(/\/+$/, '')
+    return `${siteBaseUrl}${cleanPath}`
   })()
+  $: defaultTitle = env.PUBLIC_SITE_TITLE || 'Comuna'
+  $: defaultDescription = env.PUBLIC_SITE_DESCRIPTION || 'Публикуем лучшие посты из Telegram-каналов.'
+  $: siteTitle = $site?.site_view?.site?.name || defaultTitle
+  $: siteDescription = $site?.site_view?.site?.description || defaultDescription
 
   onMount(() => {
     if (browser) {
@@ -105,8 +106,7 @@ import StaticBannerRight from '$lib/components/ui/sidebar/StaticBannerRight.svel
 
 <svelte:head>
 
-  {#if $site?.site_view}
-    <title>{$site?.site_view.site.name}</title>
+  <title>{siteTitle}</title>
     <meta
       name="theme-color"
       content={rgbToHex(
@@ -115,15 +115,7 @@ import StaticBannerRight from '$lib/components/ui/sidebar/StaticBannerRight.svel
           : $theme.colors.slate?.[25] ?? getDefaultColors().slate[25]
       )}
     />
-    
-    <!-- {#if LINKED_INSTANCE_URL}
-      <link rel="icon" href={$site?.site_view?.site.icon} />
-      <meta name="description" content={$site?.site_view?.site.description} />
-    {:else}
-      <meta name="description" content="A sleek client for Lemmy" />
-    {/if} -->
-
-  {/if}
+    <meta name="description" content={siteDescription} />
   <link rel="canonical" href={canonicalUrl} />
   
   <!-- Добавляем мета-тег noindex для страниц inbox -->

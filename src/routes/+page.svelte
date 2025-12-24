@@ -12,7 +12,8 @@
   export let data
 
   // Определяем канонический URL для главной страницы
-  $: canonicalUrl = new URL('/', $page.url.origin).toString();
+  $: siteBaseUrl = (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '')
+  $: canonicalUrl = `${siteBaseUrl}/`
 </script>
 <div class="flex flex-col gap-2 max-w-full w-full min-w-0">
   <header class="flex flex-col gap-4 relative">

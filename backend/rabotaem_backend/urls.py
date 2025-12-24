@@ -3,7 +3,15 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import path
 
-from feeds.views import author_posts, home_feed, post_detail, rubric_posts, rubrics_list, telegram_webhook
+from feeds.views import (
+    author_posts,
+    home_feed,
+    post_detail,
+    rubric_posts,
+    rubrics_list,
+    sitemap_xml,
+    telegram_webhook,
+)
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -12,6 +20,7 @@ urlpatterns = [
     path("api/rubrics/<str:slug>/posts/", rubric_posts, name="rubric-posts"),
     path("api/posts/<int:post_id>/", post_detail, name="post-detail"),
     path("api/home/", home_feed, name="home-feed"),
+    path("sitemap.xml", sitemap_xml, name="sitemap-xml"),
     path("tg/webhook/<str:token>/", telegram_webhook, name="telegram-webhook"),
 ]
 

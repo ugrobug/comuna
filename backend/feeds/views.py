@@ -6,11 +6,13 @@ import urllib.parse
 import urllib.request
 from collections import defaultdict
 from html import escape
+from xml.sax.saxutils import escape as xml_escape
 from django.db.models import F, IntegerField, Value
 from django.db.models.functions import Cast
 
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
 from .models import Author, BotSession, Post, Rubric
@@ -23,6 +25,14 @@ def _media_url(request: HttpRequest, field) -> str | None:
         return request.build_absolute_uri(field.url)
     except Exception:
         return None
+
+
+def _format_lastmod(value) -> str | None:
+    if not value:
+        return None
+    if timezone.is_naive(value):
+        value = timezone.make_aware(value, timezone.utc)
+    return value.astimezone(timezone.utc).date().isoformat()
 
 
 def _build_title(text: str) -> str:
@@ -788,3 +798,52 @@ def home_feed(request: HttpRequest) -> HttpResponse:
             )
 
     return JsonResponse({"ok": True, "posts": serialized_posts})
+
+
+def sitemap_xml(request: HttpRequest) -> HttpResponse:
+    base_url = request.build_absolute_uri("/").rstrip("/")
+    urls: list[str] = []
+
+    def add_url(path: str, lastmod: str | None = None) -> None:
+        loc = f"{base_url}{path}"
+        entry = f"<url><loc>{xml_escape(loc)}</loc>"
+        if lastmod:
+            entry += f"<lastmod>{xml_escape(lastmod)}</lastmod>"
+        entry += "</url>"
+        urls.append(entry)
+
+    static_paths = [
+        "/",
+        "/authors",
+        "/about",
+        "/advertisement",
+        "/rules",
+        "/legal",
+    ]
+    for path in static_paths:
+        add_url(path)
+
+    rubrics = Rubric.objects.filter(is_active=True).order_by("slug")
+    for rubric in rubrics:
+        add_url(f"/rubrics/{rubric.slug}/posts", _format_lastmod(rubric.updated_at))
+
+    authors = Author.objects.filter(is_blocked=False).order_by("username")
+    for author in authors:
+        add_url(f"/{author.username}", _format_lastmod(author.updated_at))
+
+    posts = (
+        Post.objects.filter(is_blocked=False, is_pending=False, author__is_blocked=False)
+        .only("id", "updated_at", "created_at")
+        .order_by("-created_at")[:5000]
+    )
+    for post in posts:
+        lastmod = _format_lastmod(post.updated_at or post.created_at)
+        add_url(f"/b/post/{post.id}", lastmod)
+
+    body = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        + "".join(urls)
+        + "</urlset>"
+    )
+    return HttpResponse(body, content_type="application/xml")
