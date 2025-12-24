@@ -1,5 +1,4 @@
 <script lang="ts">
-  import CommunityLink from '$lib/components/lemmy/community/CommunityLink.svelte'
   import { t } from '$lib/translations'
   import Avatar from '$lib/components/ui/Avatar.svelte'
   import { Badge, Popover, Button } from 'mono-svelte'
@@ -42,7 +41,6 @@
   export let edited: string | undefined = undefined
   export let view: View = 'cozy'
   export let subscribed: SubscribedType | undefined = undefined
-  export let communityUrlOverride: string | undefined = undefined
   export let userUrlOverride: string | undefined = undefined
   export let subscribeUrl: string | undefined = undefined
   export let subscribeLabel: string = 'Подписаться'
@@ -199,20 +197,7 @@
         />
       </a>
       
-      {#if community}
-        <a
-          href="/c/{community.name}@{new URL(community.actor_id).hostname}"
-          class="absolute -bottom-1 -right-2 rounded-full overflow-hidden border-white dark:border-zinc-900 transition-all p-[2px]"
-          data-sveltekit-preload-data="tap"
-        >
-          <Avatar
-            url={community.icon}
-            width={24}
-            alt={community.name}
-            class_="!rounded-full hover:ring-2 hover:ring-primary-900 dark:hover:ring-primary-100 transition-all"
-          />
-        </a>
-      {/if}
+      <!-- rubric icon removed -->
     </div>
 
     <!-- Информация -->
@@ -238,13 +223,7 @@
       
       <div class="flex items-center gap-1 !text-slate-400 dark:!text-zinc-500">
         {#if community}
-          <a 
-            href={communityUrlOverride ?? `/c/${community.name}@${new URL(community.actor_id).hostname}#top`}
-            class="!text-black dark:!text-white hover:underline font-normal"
-            data-sveltekit-preload-data="tap"
-          >
-            {community.title}
-          </a>
+          <span class="!text-black dark:!text-white font-normal">{community.title}</span>
         {/if}
         {#if published}
           <span>{formatCustomDate(published)}</span>
