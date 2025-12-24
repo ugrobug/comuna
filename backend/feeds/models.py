@@ -75,6 +75,8 @@ class BotSession(models.Model):
     rubric = models.ForeignKey(
         "Rubric", on_delete=models.SET_NULL, null=True, blank=True, related_name="bot_sessions"
     )
+    mode_selected = models.BooleanField(default=False)
+    instructions_sent = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -4,6 +4,8 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections import defaultdict
+from html import escape
 from django.db.models import F, IntegerField, Value
 from django.db.models.functions import Cast
 
@@ -32,8 +34,108 @@ def _build_title(text: str) -> str:
     return first_line[:117] + "..."
 
 
-def _extract_content(message: dict) -> str:
+def _extract_plain_text(message: dict) -> str:
     return (message.get("text") or message.get("caption") or "").strip()
+
+
+def _extract_entities(message: dict) -> list[dict]:
+    if message.get("text"):
+        return message.get("entities") or []
+    if message.get("caption"):
+        return message.get("caption_entities") or []
+    return []
+
+
+def _utf16_offset_to_index(text: str, offset: int) -> int:
+    if offset <= 0:
+        return 0
+    units = 0
+    for index, ch in enumerate(text):
+        codepoint = ord(ch)
+        units += 2 if codepoint > 0xFFFF else 1
+        if units > offset:
+            return index + 1
+        if units == offset:
+            return index + 1
+    return len(text)
+
+
+def _entity_tags(entity: dict, segment: str) -> tuple[str, str] | None:
+    entity_type = entity.get("type")
+    if entity_type == "bold":
+        return "<b>", "</b>"
+    if entity_type == "italic":
+        return "<i>", "</i>"
+    if entity_type == "underline":
+        return "<u>", "</u>"
+    if entity_type == "strikethrough":
+        return "<s>", "</s>"
+    if entity_type == "spoiler":
+        return '<span class="tg-spoiler">', "</span>"
+    if entity_type == "code":
+        return "<code>", "</code>"
+    if entity_type == "pre":
+        language = entity.get("language")
+        class_attr = f' class="language-{escape(language)}"' if language else ""
+        return f"<pre><code{class_attr}>", "</code></pre>"
+    if entity_type == "blockquote":
+        return "<blockquote>", "</blockquote>"
+    if entity_type == "text_link":
+        url = entity.get("url") or ""
+        return f'<a href="{escape(url)}" target="_blank" rel="noopener">', "</a>"
+    if entity_type == "url":
+        href = segment.strip()
+        return f'<a href="{escape(href)}" target="_blank" rel="noopener">', "</a>"
+    if entity_type == "mention":
+        username = segment.lstrip("@")
+        return f'<a href="https://t.me/{escape(username)}" target="_blank" rel="noopener">', "</a>"
+    return None
+
+
+def _format_telegram_text(text: str, entities: list[dict]) -> str:
+    if not text:
+        return ""
+    normalized = text.replace("\r\n", "\n")
+    if not entities:
+        return escape(normalized).replace("\n", "<br>")
+
+    start_tags: dict[int, list[tuple[int, str, str]]] = defaultdict(list)
+    end_tags: dict[int, list[tuple[int, str]]] = defaultdict(list)
+
+    for entity in entities:
+        offset = entity.get("offset")
+        length = entity.get("length")
+        if offset is None or length is None:
+            continue
+        start = _utf16_offset_to_index(normalized, offset)
+        end = _utf16_offset_to_index(normalized, offset + length)
+        if start >= end:
+            continue
+        segment = normalized[start:end]
+        tags = _entity_tags(entity, segment)
+        if not tags:
+            continue
+        open_tag, close_tag = tags
+        start_tags[start].append((end, open_tag, close_tag))
+        end_tags[end].append((start, close_tag))
+
+    for index in start_tags:
+        start_tags[index].sort(key=lambda item: item[0], reverse=True)
+    for index in end_tags:
+        end_tags[index].sort(key=lambda item: item[0], reverse=True)
+
+    out: list[str] = []
+    text_len = len(normalized)
+    for index, ch in enumerate(normalized):
+        if index in start_tags:
+            for _, open_tag, _ in start_tags[index]:
+                out.append(open_tag)
+        out.append(escape(ch))
+        if index + 1 in end_tags:
+            for _, close_tag in end_tags[index + 1]:
+                out.append(close_tag)
+
+    return "".join(out).replace("\n", "<br>")
 
 
 def _extract_photo_url(message: dict, token: str) -> str | None:
@@ -128,6 +230,69 @@ def _refresh_author_from_telegram(author: Author, chat_id: int, token: str) -> N
     )
 
 
+def _build_rubric_keyboard() -> list[list[dict]]:
+    rubrics = list(Rubric.objects.filter(is_active=True).order_by("sort_order", "name"))
+    keyboard: list[list[dict]] = []
+    row: list[dict] = []
+    for rubric in rubrics:
+        row.append({"text": rubric.name, "callback_data": f"rubric:{rubric.id}"})
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    return keyboard
+
+
+def _send_setup_options(chat_id: int) -> None:
+    BotSession.objects.update_or_create(
+        telegram_user_id=chat_id, defaults={"instructions_sent": False}
+    )
+    _send_bot_message_with_keyboard(
+        chat_id,
+        "Выберите рубрику и режим публикации:",
+        {
+            "inline_keyboard": [
+                [{"text": "Автопубликация", "callback_data": "mode:auto"}],
+                [{"text": "Согласование", "callback_data": "mode:approval"}],
+            ]
+        },
+    )
+    rubric_keyboard = _build_rubric_keyboard()
+    if rubric_keyboard:
+        _send_bot_message_with_keyboard(
+            chat_id,
+            "Выберите рубрику канала:",
+            {"inline_keyboard": rubric_keyboard},
+        )
+
+
+def _send_setup_instructions(chat_id: int, auto_publish: bool) -> None:
+    publish_line = (
+        "Новые посты будут публиковаться автоматически."
+        if auto_publish
+        else "Новые посты будут отправляться на согласование в боте."
+    )
+    _send_bot_message(
+        chat_id,
+        "Отлично! Теперь:\n"
+        "1) Добавьте бота в админы канала.\n"
+        "2) Дайте права: «Читать сообщения» и «Публиковать сообщения».\n"
+        "3) Для старых постов — пересылайте их сюда, и они появятся на сайте.\n"
+        f"{publish_line}",
+    )
+
+
+def _maybe_send_setup_instructions(chat_id: int) -> None:
+    session = BotSession.objects.filter(telegram_user_id=chat_id).first()
+    if not session or session.instructions_sent:
+        return
+    if session.mode_selected and session.rubric:
+        _send_setup_instructions(chat_id, session.auto_publish)
+        session.instructions_sent = True
+        session.save(update_fields=["instructions_sent", "updated_at"])
+
+
 def _handle_channel_post(message: dict) -> None:
     chat = message.get("chat", {})
     username = chat.get("username")
@@ -154,12 +319,13 @@ def _handle_channel_post(message: dict) -> None:
     if token and chat_id:
         _refresh_author_from_telegram(author, chat_id, token)
 
-    content = _extract_content(message)
+    raw_text = _extract_plain_text(message)
+    content = _format_telegram_text(raw_text, _extract_entities(message))
     image_url = _extract_photo_url(message, token) if token else None
     if image_url:
         img_tag = f'<img src="{image_url}" alt="" />'
-        content = f"{content}\n\n{img_tag}" if content else img_tag
-    title = _build_title(content)
+        content = f"{img_tag}<br><br>{content}" if content else img_tag
+    title = _build_title(raw_text)
     if not title and image_url:
         title = "Фото"
     channel_url = f"https://t.me/{username}"
@@ -222,48 +388,31 @@ def _handle_private_message(message: dict) -> None:
         return
 
     text = (message.get("text") or "").strip()
-    if text in {"/start", "/help", "Помощь"}:
+    if text == "/start":
         _send_bot_message_with_keyboard(
             chat_id,
-            "Как подключить канал:\n"
-            "1) Добавьте бота админом в ваш канал.\n"
-            "2) Дайте права: «Читать сообщения» и «Публиковать сообщения».\n"
-            "3) Опубликуйте новый пост — он появится на сайте.\n\n"
-            "Догрузка истории: пересылайте посты из канала сюда, и они будут добавлены на сайт.\n"
-            "Сайт: https://comuna.ru/authors",
+            "Добро пожаловать! Сначала выберите рубрику и режим публикации.",
             {"keyboard": [["Помощь", "Настройка"]], "resize_keyboard": True},
+        )
+        _send_setup_options(chat_id)
+        return
+
+    if text in {"/help", "Помощь"}:
+        _send_bot_message(
+            chat_id,
+            "Как подключить канал:\n"
+            "1) Выберите рубрику и режим публикации в настройке.\n"
+            "2) Добавьте бота админом в канал.\n"
+            "3) Дайте права: «Читать сообщения» и «Публиковать сообщения».\n"
+            "4) Для старых постов — пересылайте их сюда.\n"
+            "Сайт: https://comuna.ru/authors",
         )
         return
 
     if text == "Настройка":
-        rubrics = list(Rubric.objects.filter(is_active=True).order_by("sort_order", "name"))
-        rubric_keyboard = []
-        row = []
-        for rubric in rubrics:
-            row.append({"text": rubric.name, "callback_data": f"rubric:{rubric.id}"})
-            if len(row) == 2:
-                rubric_keyboard.append(row)
-                row = []
-        if row:
-            rubric_keyboard.append(row)
-
-        _send_bot_message_with_keyboard(
-            chat_id,
-            "Выберите режим публикации:",
-            {
-                "inline_keyboard": [
-                    [{"text": "Автопубликация", "callback_data": "mode:auto"}],
-                    [{"text": "Согласование", "callback_data": "mode:approval"}],
-                ]
-            },
-        )
-        if rubrics:
-            _send_bot_message_with_keyboard(
-                chat_id,
-                "Выберите рубрику канала:",
-                {"inline_keyboard": rubric_keyboard},
-            )
+        _send_setup_options(chat_id)
         return
+
 
     forward_chat = message.get("forward_from_chat")
     forward_message_id = message.get("forward_from_message_id")
@@ -281,6 +430,8 @@ def _handle_private_message(message: dict) -> None:
             "text": message.get("text"),
             "caption": message.get("caption"),
             "photo": message.get("photo"),
+            "entities": message.get("entities"),
+            "caption_entities": message.get("caption_entities"),
         }
         _handle_channel_post(forwarded)
         session = BotSession.objects.filter(telegram_user_id=chat_id).first()
@@ -295,9 +446,7 @@ def _handle_private_message(message: dict) -> None:
                     update_fields=["auto_publish", "admin_chat_id", "rubric", "updated_at"]
                 )
                 if author.rubric:
-                    Post.objects.filter(author=author, rubric__isnull=True).update(
-                        rubric=author.rubric
-                    )
+                    Post.objects.filter(author=author).update(rubric=author.rubric)
                 session.delete()
                 _send_bot_message(
                     chat_id,
@@ -326,13 +475,11 @@ def _handle_callback_query(callback_query: dict) -> None:
         mode = data.split(":", 1)[1]
         auto_publish = mode == "auto"
         BotSession.objects.update_or_create(
-            telegram_user_id=chat_id, defaults={"auto_publish": auto_publish}
+            telegram_user_id=chat_id,
+            defaults={"auto_publish": auto_publish, "mode_selected": True},
         )
         _answer_callback_query(callback_id, "Настройка сохранена")
-        _send_bot_message(
-            chat_id,
-            "Теперь перешлите любой пост из вашего канала, чтобы применить настройку.",
-        )
+        _maybe_send_setup_instructions(chat_id)
         return
 
     if data.startswith("rubric:") and chat_id:
@@ -349,10 +496,7 @@ def _handle_callback_query(callback_query: dict) -> None:
             telegram_user_id=chat_id, defaults={"rubric": rubric}
         )
         _answer_callback_query(callback_id, "Рубрика сохранена")
-        _send_bot_message(
-            chat_id,
-            "Теперь перешлите любой пост из вашего канала, чтобы применить настройку.",
-        )
+        _maybe_send_setup_instructions(chat_id)
         return
 
     if data.startswith("approve:") and chat_id:
