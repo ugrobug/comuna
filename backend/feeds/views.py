@@ -36,6 +36,26 @@ def _extract_content(message: dict) -> str:
     return (message.get("text") or message.get("caption") or "").strip()
 
 
+def _extract_photo_url(message: dict, token: str) -> str | None:
+    photos = message.get("photo") or []
+    if not photos:
+        return None
+    largest = max(
+        photos,
+        key=lambda item: (item.get("file_size", 0), item.get("width", 0) * item.get("height", 0)),
+    )
+    file_id = largest.get("file_id")
+    if not file_id:
+        return None
+    file_info = _fetch_telegram_json("getFile", token, {"file_id": file_id})
+    if not file_info or not file_info.get("ok") or not file_info.get("result"):
+        return None
+    file_path = file_info["result"].get("file_path")
+    if not file_path:
+        return None
+    return f"https://api.telegram.org/file/bot{token}/{file_path}"
+
+
 def _fetch_telegram_json(method: str, token: str, payload: dict) -> dict | None:
     url = f"https://api.telegram.org/bot{token}/{method}"
     data = urllib.parse.urlencode(payload).encode("utf-8")
@@ -135,7 +155,13 @@ def _handle_channel_post(message: dict) -> None:
         _refresh_author_from_telegram(author, chat_id, token)
 
     content = _extract_content(message)
+    image_url = _extract_photo_url(message, token) if token else None
+    if image_url:
+        img_tag = f'<img src="{image_url}" alt="" />'
+        content = f"{content}\n\n{img_tag}" if content else img_tag
     title = _build_title(content)
+    if not title and image_url:
+        title = "Фото"
     channel_url = f"https://t.me/{username}"
     source_url = f"{channel_url}/{message_id}"
 
@@ -236,6 +262,7 @@ def _handle_private_message(message: dict) -> None:
             "message_id": forward_message_id,
             "text": message.get("text"),
             "caption": message.get("caption"),
+            "photo": message.get("photo"),
         }
         _handle_channel_post(forwarded)
         session = BotSession.objects.filter(telegram_user_id=chat_id).first()

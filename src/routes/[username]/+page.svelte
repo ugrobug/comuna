@@ -66,6 +66,8 @@
           post={postView}
           view="cozy"
           actions={true}
+          showReadMore={false}
+          showFullBody={true}
           linkOverride={`/b/post/${backendPost.id}`}
           userUrlOverride={`/${data.author?.username}`}
           communityUrlOverride={backendPost.rubric_slug ? `/rubrics/${backendPost.rubric_slug}/posts` : undefined}

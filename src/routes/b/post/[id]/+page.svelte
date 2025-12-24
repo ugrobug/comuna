@@ -18,6 +18,7 @@
     view="cozy"
     actions={true}
     showReadMore={false}
+    showFullBody={true}
     linkOverride={`/b/post/${data.post.id}`}
     userUrlOverride={data.post.author?.username ? `/${data.post.author.username}` : undefined}
     communityUrlOverride={data.post.rubric_slug ? `/rubrics/${data.post.rubric_slug}/posts` : undefined}

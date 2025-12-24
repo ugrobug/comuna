@@ -34,6 +34,7 @@
   export let hideTitle: boolean = false
   export let linkOverride: string | undefined = undefined
   export let showReadMore: boolean = true
+  export let showFullBody: boolean = false
   export let communityUrlOverride: string | undefined = undefined
   export let userUrlOverride: string | undefined = undefined
   export let subscribeUrl: string | undefined = undefined
@@ -170,6 +171,7 @@
         element="section"
         body={post.post.body}
         {view}
+        {showFullBody}
         class="relative text-slate-600 dark:text-zinc-400"
       />
     </a>

@@ -27,6 +27,7 @@
   export let body: string
   export let view: View = 'cozy'
   export let clickThrough = false
+  export let showFullBody = false
   
   let htmlElement = 'div'
 
@@ -282,6 +283,12 @@
   }
 
   function extractPreviewContent(html: string) {
+    if (showFullBody) {
+      if (isJsonContent(html)) {
+        return convertJsonToHtml(html);
+      }
+      return html;
+    }
     // Проверяем, является ли контент JSON или base64
     if (isJsonContent(html)) {
       try {
@@ -437,8 +444,8 @@
 bg-gradient-to-b text-transparent from-slate-600 via-slate-600
 dark:from-zinc-100 dark:via-zinc-200 dark:to-zinc-400 bg-clip-text z-0
 ${view == 'list' ? `max-h-24` : 'max-h-48'}`
-    : 'text-slate-600 dark:text-zinc-400 max-h-full'} {!hasPreview ? 'set-max-height' : ''} text-base {$$props.class ??
-    ''} {overflows && !hasPreview ? 'has-overflow' : ''}"
+    : 'text-slate-600 dark:text-zinc-400 max-h-full'} {!hasPreview && !showFullBody ? 'set-max-height' : ''} text-base {$$props.class ??
+    ''} {overflows && !hasPreview && !showFullBody ? 'has-overflow' : ''}"
   class:pointer-events-none={!clickThrough}
   bind:this={element}
 >
