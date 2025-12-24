@@ -46,6 +46,13 @@ def _fetch_telegram_json(method: str, token: str, payload: dict) -> dict | None:
         return None
 
 
+def _send_bot_message(chat_id: int, text: str) -> None:
+    token = settings.TELEGRAM_BOT_TOKEN
+    if not token:
+        return
+    _fetch_telegram_json("sendMessage", token, {"chat_id": chat_id, "text": text})
+
+
 def _refresh_author_from_telegram(author: Author, chat_id: int, token: str) -> None:
     chat = _fetch_telegram_json("getChat", token, {"chat_id": chat_id})
     if chat and chat.get("ok") and chat.get("result"):
@@ -132,6 +139,50 @@ def _handle_channel_post(message: dict) -> None:
         post.channel_url = channel_url
         post.raw_data = message
         post.save(update_fields=["title", "content", "source_url", "channel_url", "raw_data", "updated_at"])
+
+
+def _handle_private_message(message: dict) -> None:
+    chat = message.get("chat", {})
+    if chat.get("type") != "private":
+        return
+
+    chat_id = chat.get("id")
+    if not chat_id:
+        return
+
+    text = (message.get("text") or "").strip()
+    if text in {"/start", "/help"}:
+        _send_bot_message(
+            chat_id,
+            "Добавьте бота админом в канал, и новые посты будут публиковаться автоматически.\n"
+            "Чтобы догрузить историю, просто пересылайте посты из вашего канала сюда — они появятся на сайте.",
+        )
+        return
+
+    forward_chat = message.get("forward_from_chat")
+    forward_message_id = message.get("forward_from_message_id")
+    if forward_chat and forward_chat.get("type") == "channel" and forward_message_id:
+        if not forward_chat.get("username"):
+            _send_bot_message(
+                chat_id,
+                "У канала нет публичного username. Сделайте канал публичным и повторите пересылку.",
+            )
+            return
+
+        forwarded = {
+            "chat": forward_chat,
+            "message_id": forward_message_id,
+            "text": message.get("text"),
+            "caption": message.get("caption"),
+        }
+        _handle_channel_post(forwarded)
+        _send_bot_message(chat_id, "Пост добавлен на сайт.")
+        return
+
+    _send_bot_message(
+        chat_id,
+        "Перешлите пост из канала, чтобы добавить его на сайт. Для помощи — /help.",
+    )
 
 
 @csrf_exempt

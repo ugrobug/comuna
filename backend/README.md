@@ -56,6 +56,8 @@ export TELEGRAM_USE_POLLING=1
 
 Polling will disable webhook on startup and consume updates via `getUpdates`.
 
+To import history, forward channel posts to the bot in a private chat.
+
 ## API
 
 - `GET /api/authors/<username>/posts/?limit=20`

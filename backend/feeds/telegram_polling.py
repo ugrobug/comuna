@@ -7,7 +7,7 @@ from typing import Any
 
 from django.conf import settings
 
-from .views import _fetch_telegram_json, _handle_channel_post
+from .views import _fetch_telegram_json, _handle_channel_post, _handle_private_message
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ def _polling_loop(token: str) -> None:
     while True:
         payload: dict[str, Any] = {
             "timeout": 25,
-            "allowed_updates": ["channel_post", "edited_channel_post"],
+            "allowed_updates": ["channel_post", "edited_channel_post", "message"],
         }
         if offset is not None:
             payload["offset"] = offset
@@ -38,6 +38,8 @@ def _polling_loop(token: str) -> None:
                 _handle_channel_post(update["channel_post"])
             elif "edited_channel_post" in update:
                 _handle_channel_post(update["edited_channel_post"])
+            elif "message" in update:
+                _handle_private_message(update["message"])
 
 
 def start_polling_thread() -> None:
