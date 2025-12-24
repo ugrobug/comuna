@@ -177,6 +177,7 @@ def _handle_channel_post(message: dict) -> None:
             "channel_url": channel_url,
             "raw_data": message,
             "is_pending": requires_approval,
+            "rubric": author.rubric,
         },
     )
 
@@ -235,6 +236,17 @@ def _handle_private_message(message: dict) -> None:
         return
 
     if text == "Настройка":
+        rubrics = list(Rubric.objects.filter(is_active=True).order_by("sort_order", "name"))
+        rubric_keyboard = []
+        row = []
+        for rubric in rubrics:
+            row.append({"text": rubric.name, "callback_data": f"rubric:{rubric.id}"})
+            if len(row) == 2:
+                rubric_keyboard.append(row)
+                row = []
+        if row:
+            rubric_keyboard.append(row)
+
         _send_bot_message_with_keyboard(
             chat_id,
             "Выберите режим публикации:",
@@ -245,6 +257,12 @@ def _handle_private_message(message: dict) -> None:
                 ]
             },
         )
+        if rubrics:
+            _send_bot_message_with_keyboard(
+                chat_id,
+                "Выберите рубрику канала:",
+                {"inline_keyboard": rubric_keyboard},
+            )
         return
 
     forward_chat = message.get("forward_from_chat")
@@ -271,7 +289,15 @@ def _handle_private_message(message: dict) -> None:
             if author:
                 author.auto_publish = session.auto_publish
                 author.admin_chat_id = chat_id
-                author.save(update_fields=["auto_publish", "admin_chat_id", "updated_at"])
+                if session.rubric:
+                    author.rubric = session.rubric
+                author.save(
+                    update_fields=["auto_publish", "admin_chat_id", "rubric", "updated_at"]
+                )
+                if author.rubric:
+                    Post.objects.filter(author=author, rubric__isnull=True).update(
+                        rubric=author.rubric
+                    )
                 session.delete()
                 _send_bot_message(
                     chat_id,
@@ -303,6 +329,26 @@ def _handle_callback_query(callback_query: dict) -> None:
             telegram_user_id=chat_id, defaults={"auto_publish": auto_publish}
         )
         _answer_callback_query(callback_id, "Настройка сохранена")
+        _send_bot_message(
+            chat_id,
+            "Теперь перешлите любой пост из вашего канала, чтобы применить настройку.",
+        )
+        return
+
+    if data.startswith("rubric:") and chat_id:
+        try:
+            rubric_id = int(data.split(":", 1)[1])
+        except ValueError:
+            _answer_callback_query(callback_id, "Некорректная рубрика")
+            return
+        rubric = Rubric.objects.filter(id=rubric_id, is_active=True).first()
+        if not rubric:
+            _answer_callback_query(callback_id, "Рубрика не найдена")
+            return
+        BotSession.objects.update_or_create(
+            telegram_user_id=chat_id, defaults={"rubric": rubric}
+        )
+        _answer_callback_query(callback_id, "Рубрика сохранена")
         _send_bot_message(
             chat_id,
             "Теперь перешлите любой пост из вашего канала, чтобы применить настройку.",

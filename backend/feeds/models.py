@@ -10,6 +10,9 @@ class Author(models.Model):
     avatar_url = models.URLField(max_length=255, blank=True)
     description = models.TextField(blank=True)
     subscribers_count = models.PositiveIntegerField(default=0)
+    rubric = models.ForeignKey(
+        "Rubric", on_delete=models.SET_NULL, null=True, blank=True, related_name="authors"
+    )
     auto_publish = models.BooleanField(default=True)
     admin_chat_id = models.BigIntegerField(null=True, blank=True)
     is_blocked = models.BooleanField(default=False)
@@ -69,6 +72,9 @@ class Post(models.Model):
 class BotSession(models.Model):
     telegram_user_id = models.BigIntegerField(unique=True)
     auto_publish = models.BooleanField(default=True)
+    rubric = models.ForeignKey(
+        "Rubric", on_delete=models.SET_NULL, null=True, blank=True, related_name="bot_sessions"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

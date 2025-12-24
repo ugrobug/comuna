@@ -5,8 +5,8 @@ from .models import Author, Post, Rubric
 
 @admin.register(Author)
 class AuthorAdmin(admin.ModelAdmin):
-    list_display = ("username", "title", "auto_publish", "is_blocked", "created_at")
-    list_filter = ("auto_publish", "is_blocked")
+    list_display = ("username", "title", "rubric", "auto_publish", "is_blocked", "created_at")
+    list_filter = ("rubric", "auto_publish", "is_blocked")
     search_fields = ("username", "title")
 
 
