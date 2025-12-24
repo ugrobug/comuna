@@ -10,6 +10,8 @@ class Author(models.Model):
     avatar_url = models.URLField(max_length=255, blank=True)
     description = models.TextField(blank=True)
     subscribers_count = models.PositiveIntegerField(default=0)
+    auto_publish = models.BooleanField(default=True)
+    admin_chat_id = models.BigIntegerField(null=True, blank=True)
     is_blocked = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -50,6 +52,7 @@ class Post(models.Model):
     comments_count = models.PositiveIntegerField(default=0)
     source_url = models.URLField(max_length=255, blank=True)
     channel_url = models.URLField(max_length=255, blank=True)
+    is_pending = models.BooleanField(default=False)
     is_blocked = models.BooleanField(default=False)
     raw_data = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -61,3 +64,13 @@ class Post(models.Model):
 
     def __str__(self) -> str:
         return f"{self.author.username}:{self.message_id}"
+
+
+class BotSession(models.Model):
+    telegram_user_id = models.BigIntegerField(unique=True)
+    auto_publish = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return str(self.telegram_user_id)

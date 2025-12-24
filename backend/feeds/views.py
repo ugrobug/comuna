@@ -11,7 +11,7 @@ from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
-from .models import Author, Post, Rubric
+from .models import Author, BotSession, Post, Rubric
 
 
 def _media_url(request: HttpRequest, field) -> str | None:
@@ -52,6 +52,24 @@ def _send_bot_message(chat_id: int, text: str) -> None:
     if not token:
         return
     _fetch_telegram_json("sendMessage", token, {"chat_id": chat_id, "text": text})
+
+
+def _send_bot_message_with_keyboard(chat_id: int, text: str, keyboard: dict) -> None:
+    token = settings.TELEGRAM_BOT_TOKEN
+    if not token:
+        return
+    payload = {"chat_id": chat_id, "text": text, "reply_markup": json.dumps(keyboard)}
+    _fetch_telegram_json("sendMessage", token, payload)
+
+
+def _answer_callback_query(callback_query_id: str, text: str = "") -> None:
+    token = settings.TELEGRAM_BOT_TOKEN
+    if not token:
+        return
+    payload = {"callback_query_id": callback_query_id}
+    if text:
+        payload["text"] = text
+    _fetch_telegram_json("answerCallbackQuery", token, payload)
 
 
 def _refresh_author_from_telegram(author: Author, chat_id: int, token: str) -> None:
@@ -121,6 +139,8 @@ def _handle_channel_post(message: dict) -> None:
     channel_url = f"https://t.me/{username}"
     source_url = f"{channel_url}/{message_id}"
 
+    requires_approval = not author.auto_publish and author.admin_chat_id
+
     post, created = Post.objects.get_or_create(
         author=author,
         message_id=message_id,
@@ -130,6 +150,7 @@ def _handle_channel_post(message: dict) -> None:
             "source_url": source_url,
             "channel_url": channel_url,
             "raw_data": message,
+            "is_pending": requires_approval,
         },
     )
 
@@ -139,7 +160,29 @@ def _handle_channel_post(message: dict) -> None:
         post.source_url = source_url
         post.channel_url = channel_url
         post.raw_data = message
-        post.save(update_fields=["title", "content", "source_url", "channel_url", "raw_data", "updated_at"])
+        post.save(
+            update_fields=[
+                "title",
+                "content",
+                "source_url",
+                "channel_url",
+                "raw_data",
+                "updated_at",
+            ]
+        )
+    elif requires_approval:
+        _send_bot_message_with_keyboard(
+            author.admin_chat_id,
+            f"Новый пост из канала @{author.username}:\n{title}\n\nОпубликовать?",
+            {
+                "inline_keyboard": [
+                    [
+                        {"text": "Опубликовать", "callback_data": f"approve:{post.id}"},
+                        {"text": "Пропустить", "callback_data": f"reject:{post.id}"},
+                    ]
+                ]
+            },
+        )
 
 
 def _handle_private_message(message: dict) -> None:
@@ -152,14 +195,29 @@ def _handle_private_message(message: dict) -> None:
         return
 
     text = (message.get("text") or "").strip()
-    if text in {"/start", "/help"}:
-        _send_bot_message(
+    if text in {"/start", "/help", "Помощь"}:
+        _send_bot_message_with_keyboard(
             chat_id,
             "Как подключить канал:\n"
             "1) Добавьте бота админом в ваш канал.\n"
             "2) Дайте права: «Читать сообщения» и «Публиковать сообщения».\n"
             "3) Опубликуйте новый пост — он появится на сайте.\n\n"
-            "Догрузка истории: пересылайте посты из канала сюда, и они будут добавлены на сайт.",
+            "Догрузка истории: пересылайте посты из канала сюда, и они будут добавлены на сайт.\n"
+            "Сайт: https://comuna.ru/authors",
+            {"keyboard": [["Помощь", "Настройка"]], "resize_keyboard": True},
+        )
+        return
+
+    if text == "Настройка":
+        _send_bot_message_with_keyboard(
+            chat_id,
+            "Выберите режим публикации:",
+            {
+                "inline_keyboard": [
+                    [{"text": "Автопубликация", "callback_data": "mode:auto"}],
+                    [{"text": "Согласование", "callback_data": "mode:approval"}],
+                ]
+            },
         )
         return
 
@@ -180,13 +238,80 @@ def _handle_private_message(message: dict) -> None:
             "caption": message.get("caption"),
         }
         _handle_channel_post(forwarded)
-        _send_bot_message(chat_id, "Пост добавлен на сайт.")
+        session = BotSession.objects.filter(telegram_user_id=chat_id).first()
+        if session:
+            author = Author.objects.filter(username__iexact=forward_chat.get("username")).first()
+            if author:
+                author.auto_publish = session.auto_publish
+                author.admin_chat_id = chat_id
+                author.save(update_fields=["auto_publish", "admin_chat_id", "updated_at"])
+                session.delete()
+                _send_bot_message(
+                    chat_id,
+                    f"Настройки применены для @{author.username}.",
+                )
+            else:
+                _send_bot_message(chat_id, "Канал пока не найден, попробуйте переслать еще раз.")
+        else:
+            _send_bot_message(chat_id, "Пост добавлен на сайт.")
         return
 
     _send_bot_message(
         chat_id,
         "Перешлите пост из канала, чтобы добавить его на сайт. Для помощи — /help.",
     )
+
+
+def _handle_callback_query(callback_query: dict) -> None:
+    callback_id = callback_query.get("id")
+    data = callback_query.get("data", "")
+    message = callback_query.get("message", {})
+    chat = message.get("chat", {})
+    chat_id = chat.get("id")
+
+    if data.startswith("mode:") and chat_id:
+        mode = data.split(":", 1)[1]
+        auto_publish = mode == "auto"
+        BotSession.objects.update_or_create(
+            telegram_user_id=chat_id, defaults={"auto_publish": auto_publish}
+        )
+        _answer_callback_query(callback_id, "Настройка сохранена")
+        _send_bot_message(
+            chat_id,
+            "Теперь перешлите любой пост из вашего канала, чтобы применить настройку.",
+        )
+        return
+
+    if data.startswith("approve:") and chat_id:
+        try:
+            post_id = int(data.split(":", 1)[1])
+        except ValueError:
+            _answer_callback_query(callback_id, "Некорректный пост")
+            return
+        post = Post.objects.filter(id=post_id, is_pending=True).first()
+        if post:
+            post.is_pending = False
+            post.save(update_fields=["is_pending", "updated_at"])
+            _answer_callback_query(callback_id, "Опубликовано")
+        else:
+            _answer_callback_query(callback_id, "Пост не найден")
+        return
+
+    if data.startswith("reject:") and chat_id:
+        try:
+            post_id = int(data.split(":", 1)[1])
+        except ValueError:
+            _answer_callback_query(callback_id, "Некорректный пост")
+            return
+        post = Post.objects.filter(id=post_id, is_pending=True).first()
+        if post:
+            post.is_pending = False
+            post.is_blocked = True
+            post.save(update_fields=["is_pending", "is_blocked", "updated_at"])
+            _answer_callback_query(callback_id, "Пропущено")
+        else:
+            _answer_callback_query(callback_id, "Пост не найден")
+        return
 
 
 @csrf_exempt
@@ -214,6 +339,10 @@ def telegram_webhook(request: HttpRequest, token: str) -> HttpResponse:
         _handle_channel_post(payload["channel_post"])
     elif "edited_channel_post" in payload:
         _handle_channel_post(payload["edited_channel_post"])
+    elif "message" in payload:
+        _handle_private_message(payload["message"])
+    elif "callback_query" in payload:
+        _handle_callback_query(payload["callback_query"])
 
     return JsonResponse({"ok": True})
 
@@ -234,12 +363,14 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
         limit = 20
 
     posts = (
-        Post.objects.filter(author=author, is_blocked=False)
+        Post.objects.filter(author=author, is_blocked=False, is_pending=False)
         .order_by("-created_at")
         .all()[:limit]
     )
 
-    posts_count = Post.objects.filter(author=author, is_blocked=False).count()
+    posts_count = Post.objects.filter(
+        author=author, is_blocked=False, is_pending=False
+    ).count()
     serialized = []
     for post in posts:
         rubric = post.rubric
@@ -312,7 +443,12 @@ def rubric_posts(request: HttpRequest, slug: str) -> HttpResponse:
         limit = 20
 
     posts = (
-        Post.objects.filter(rubric=rubric, is_blocked=False, author__is_blocked=False)
+        Post.objects.filter(
+            rubric=rubric,
+            is_blocked=False,
+            is_pending=False,
+            author__is_blocked=False,
+        )
         .order_by("-created_at")
         .all()[:limit]
     )
@@ -357,7 +493,7 @@ def rubric_posts(request: HttpRequest, slug: str) -> HttpResponse:
 def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
     try:
         post = Post.objects.select_related("author", "rubric").get(
-            id=post_id, is_blocked=False, author__is_blocked=False
+            id=post_id, is_blocked=False, is_pending=False, author__is_blocked=False
         )
     except Post.DoesNotExist:
         return JsonResponse({"ok": False, "error": "post not found"}, status=404)
@@ -398,7 +534,10 @@ def home_feed(request: HttpRequest) -> HttpResponse:
 
         posts = (
             Post.objects.filter(
-                rubric=rubric, is_blocked=False, author__is_blocked=False
+                rubric=rubric,
+                is_blocked=False,
+                is_pending=False,
+                author__is_blocked=False,
             )
             .annotate(
                 score=Cast(F("rating"), IntegerField())

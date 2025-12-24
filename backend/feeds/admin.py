@@ -5,16 +5,24 @@ from .models import Author, Post, Rubric
 
 @admin.register(Author)
 class AuthorAdmin(admin.ModelAdmin):
-    list_display = ("username", "title", "is_blocked", "created_at")
-    list_filter = ("is_blocked",)
+    list_display = ("username", "title", "auto_publish", "is_blocked", "created_at")
+    list_filter = ("auto_publish", "is_blocked")
     search_fields = ("username", "title")
 
 
 
 @admin.register(Post)
 class PostAdmin(admin.ModelAdmin):
-    list_display = ("title", "author", "rubric", "message_id", "is_blocked", "created_at")
-    list_filter = ("is_blocked", "author", "rubric")
+    list_display = (
+        "title",
+        "author",
+        "rubric",
+        "message_id",
+        "is_pending",
+        "is_blocked",
+        "created_at",
+    )
+    list_filter = ("is_pending", "is_blocked", "author", "rubric")
     search_fields = ("title", "content", "author__username")
     raw_id_fields = ("author", "rubric")
     fields = (
@@ -27,6 +35,7 @@ class PostAdmin(admin.ModelAdmin):
         "comments_count",
         "source_url",
         "channel_url",
+        "is_pending",
         "is_blocked",
         "raw_data",
     )
