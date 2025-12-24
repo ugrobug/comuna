@@ -947,8 +947,11 @@
     // Проверяем HTML формат
     const metaTitleMatch = post.body?.match(/<meta-title>(.*?)<\/meta-title>/s);
     const metaTitle = metaTitleMatch?.[1]?.trim();
-    
-    return metaTitle || stripHtml(post.name);
+    const cleanMetaTitle =
+      metaTitle && metaTitle !== 'undefined' && metaTitle !== 'null' ? metaTitle : '';
+    const fallbackTitle = stripHtml(post.name || post.title || '').trim();
+
+    return cleanMetaTitle || fallbackTitle || 'Пост';
   }
 
   function getMetaDescription(post: any): string {
