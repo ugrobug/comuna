@@ -17,6 +17,8 @@ from django.views.decorators.csrf import csrf_exempt
 
 from .models import Author, BotSession, Post, Rubric
 
+_BOT_ID: int | None = None
+
 
 def _media_url(request: HttpRequest, field) -> str | None:
     if not field:
@@ -179,6 +181,32 @@ def _fetch_telegram_json(method: str, token: str, payload: dict) -> dict | None:
         return None
 
 
+def _get_bot_id(token: str) -> int | None:
+    global _BOT_ID
+    if _BOT_ID:
+        return _BOT_ID
+    response = _fetch_telegram_json("getMe", token, {})
+    if response and response.get("ok") and response.get("result"):
+        bot_id = response["result"].get("id")
+        if isinstance(bot_id, int):
+            _BOT_ID = bot_id
+            return bot_id
+    return None
+
+
+def _is_bot_admin(chat_id: int, token: str) -> bool:
+    bot_id = _get_bot_id(token)
+    if not bot_id:
+        return False
+    response = _fetch_telegram_json(
+        "getChatMember", token, {"chat_id": chat_id, "user_id": bot_id}
+    )
+    if not response or not response.get("ok") or not response.get("result"):
+        return False
+    status = response["result"].get("status")
+    return status in {"administrator", "creator"}
+
+
 def _send_bot_message(chat_id: int, text: str) -> None:
     token = settings.TELEGRAM_BOT_TOKEN
     if not token:
@@ -327,6 +355,8 @@ def _handle_channel_post(message: dict) -> None:
     token = settings.TELEGRAM_BOT_TOKEN
     chat_id = chat.get("id")
     if token and chat_id:
+        if not _is_bot_admin(chat_id, token):
+            return
         _refresh_author_from_telegram(author, chat_id, token)
 
     raw_text = _extract_plain_text(message)
@@ -431,6 +461,16 @@ def _handle_private_message(message: dict) -> None:
             _send_bot_message(
                 chat_id,
                 "У канала нет публичного username. Сделайте канал публичным и повторите пересылку.",
+            )
+            return
+
+        token = settings.TELEGRAM_BOT_TOKEN
+        channel_id = forward_chat.get("id")
+        if token and channel_id and not _is_bot_admin(channel_id, token):
+            _send_bot_message(
+                chat_id,
+                "Бот не является админом этого канала. Добавьте бота в админы и "
+                "дайте права на чтение/публикацию, затем повторите пересылку.",
             )
             return
 
