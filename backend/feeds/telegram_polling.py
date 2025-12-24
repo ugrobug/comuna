@@ -47,10 +47,10 @@ def _polling_loop(token: str) -> None:
                     _handle_channel_post(update["channel_post"])
                 elif "edited_channel_post" in update:
                     _handle_channel_post(update["edited_channel_post"])
-            elif "message" in update:
-                _handle_private_message(update["message"])
-            elif "callback_query" in update:
-                _handle_callback_query(update["callback_query"])
+                elif "message" in update:
+                    _handle_private_message(update["message"])
+                elif "callback_query" in update:
+                    _handle_callback_query(update["callback_query"])
         except Exception as exc:
             print(f"Telegram polling error: {exc}")
             time.sleep(2)
