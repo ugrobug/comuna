@@ -31,7 +31,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "corsheaders",
-    "feeds",
+    "feeds.apps.FeedsConfig",
 ]
 
 MIDDLEWARE = [
@@ -106,6 +106,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
+TELEGRAM_USE_POLLING = os.environ.get("TELEGRAM_USE_POLLING", "0") == "1"
 SITE_BASE_URL = os.environ.get("SITE_BASE_URL", "http://localhost:5173")
 
 CORS_ALLOW_ALL_ORIGINS = DEBUG

@@ -20,7 +20,9 @@ export POSTGRES_USER=rabotaem
 export POSTGRES_PASSWORD=rabotaem
 export POSTGRES_HOST=localhost
 export POSTGRES_PORT=5432
+export TELEGRAM_BOT_TOKEN=your-token
 export TELEGRAM_WEBHOOK_SECRET=your-secret
+export TELEGRAM_USE_POLLING=0
 ```
 
 3. Migrate and run:
@@ -43,6 +45,16 @@ curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook" \
 ```
 
 The backend accepts only channel posts and ignores other update types.
+
+## Telegram polling (IPv6-only)
+
+If webhook is not available, enable polling:
+
+```bash
+export TELEGRAM_USE_POLLING=1
+```
+
+Polling will disable webhook on startup and consume updates via `getUpdates`.
 
 ## API
 
