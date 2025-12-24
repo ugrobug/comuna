@@ -40,7 +40,8 @@ def _fetch_telegram_json(method: str, token: str, payload: dict) -> dict | None:
     url = f"https://api.telegram.org/bot{token}/{method}"
     data = urllib.parse.urlencode(payload).encode("utf-8")
     try:
-        with urllib.request.urlopen(url, data=data, timeout=5) as response:
+        timeout = 30 if method == "getUpdates" else 5
+        with urllib.request.urlopen(url, data=data, timeout=timeout) as response:
             return json.loads(response.read().decode("utf-8"))
     except (urllib.error.URLError, json.JSONDecodeError):
         return None
