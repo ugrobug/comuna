@@ -22,7 +22,7 @@ def _polling_loop(token: str) -> None:
         try:
             payload: dict[str, Any] = {
                 "timeout": 25,
-                "allowed_updates": ["channel_post", "edited_channel_post", "message"],
+                "allowed_updates": '["channel_post","edited_channel_post","message"]',
             }
             if offset is not None:
                 payload["offset"] = offset
