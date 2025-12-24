@@ -4,80 +4,41 @@
 <script lang="ts">
   import { page } from '$app/stores'
   import { env } from '$env/dynamic/public'
-  import Pageination from '$lib/components/ui/Pageination.svelte'
-  import Sort from '$lib/components/lemmy/dropdowns/Sort.svelte'
-  import Location from '$lib/components/lemmy/dropdowns/Location.svelte'
-  import ViewSelect from '$lib/components/lemmy/dropdowns/ViewSelect.svelte'
-  import { searchParam } from '$lib/util.js'
-  import { ChartBar, Icon } from 'svelte-hero-icons'
-  import { site } from '$lib/lemmy.js'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import { t } from '$lib/translations.js'
-  import { userSettings } from '$lib/settings.js'
-  import { browser } from '$app/environment'
-  import VirtualFeed from '$lib/components/lemmy/post/feed/VirtualFeed.svelte'
-  import PostFeed from '$lib/components/lemmy/post/feed/PostFeed.svelte'
+  import Post from '$lib/components/lemmy/post/Post.svelte'
+  import { backendPostToPostView } from '$lib/api/backend'
 
   export let data
 
   // Определяем канонический URL для главной страницы
   $: canonicalUrl = new URL('/', $page.url.origin).toString();
-
-  // Преобразуем null в undefined для совместимости типов
-  $: cursorNext = data.cursor.next === null ? undefined : data.cursor.next;
-  
-  // Создаем новый объект с правильным типом cursor.next
-  $: feedDataFixed = {
-    ...data,
-    type_: data.type,
-    sort: data.sort, // Явно добавляем sort
-    cursor: { next: cursorNext }
-  };
 </script>
 <div class="flex flex-col gap-2 max-w-full w-full min-w-0">
   <header class="flex flex-col gap-4 relative">
     <Header pageHeader>
       {$t('routes.frontpage.title')}
-      <div class="flex items-baseline max-w-[640px] mx-auto gap-2" slot="extended">
-        <Location selected={data.type} changeDefault hideOnHome={false} />
-        <Sort changeDefault selected={data.sort} />
-        <!-- Удаляем или комментируем эту строку -->
-        <!-- <ViewSelect /> -->
-      </div>
     </Header>
   </header>
-  <svelte:component
-    this={$userSettings.infiniteScroll &&
-    browser &&
-    !$userSettings.posts.noVirtualize
-      ? VirtualFeed
-      : PostFeed}
-    posts={data.posts.posts}
-    bind:feedData={feedDataFixed}
-    feedId="main"
-  />
-  <svelte:element
-    this={$userSettings.infiniteScroll && !$userSettings.posts.noVirtualize
-      ? 'noscript'
-      : 'div'}
-    class="mt-auto"
-  >
-    <Pageination
-      cursor={{ next: cursorNext }}
-      on:change={(p) => searchParam($page.url, 'page', p.detail.toString())}
-      on:cursor={(c) => {
-        searchParam($page.url, 'cursor', c.detail)
-      }}
-    >
-      <span class="flex flex-row items-center gap-1">
-        <Icon src={ChartBar} size="16" mini />
-        {$t('routes.frontpage.footer', {
-          // @ts-ignore
-          users: $site?.site_view?.counts?.users_active_day ?? '??',
-        })}
-      </span>
-    </Pageination>
-  </svelte:element>
+  {#if data.posts?.length}
+    <div class="flex flex-col gap-6">
+      {#each data.posts as backendPost (backendPost.id)}
+        {@const postView = backendPostToPostView(backendPost, backendPost.author)}
+        <Post
+          post={postView}
+          view="cozy"
+          actions={true}
+          linkOverride={`/b/post/${backendPost.id}`}
+          userUrlOverride={backendPost.author?.username ? `/${backendPost.author.username}` : undefined}
+          communityUrlOverride={backendPost.rubric_slug ? `/rubrics/${backendPost.rubric_slug}/posts` : undefined}
+          subscribeUrl={backendPost.channel_url ?? backendPost.author?.channel_url}
+          subscribeLabel="Подписаться"
+        />
+      {/each}
+    </div>
+  {:else}
+    <div class="text-base text-slate-500">Пока нет публикаций.</div>
+  {/if}
 </div>
 
 <svelte:head>

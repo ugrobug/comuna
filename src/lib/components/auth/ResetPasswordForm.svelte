@@ -1,18 +1,18 @@
 <script lang="ts">
   import { getClient } from '$lib/lemmy.js'
   import { Button, TextInput } from 'mono-svelte'
-  import { DOMAIN_REGEX_FORMS } from '$lib/util.js'
   import { t } from '$lib/translations'
   import { errorMessage } from '$lib/lemmy/error'
   import ErrorContainer, { clearErrorScope, pushError } from '$lib/components/error/ErrorContainer.svelte'
   import { page } from '$app/stores'
-  import { DEFAULT_INSTANCE_URL, LINKED_INSTANCE_URL } from '$lib/instance.js'
+  import { DEFAULT_INSTANCE_URL } from '$lib/instance.js'
   import { toast } from 'mono-svelte'
 
   export let onBack: () => void
 
+  const instanceURL = DEFAULT_INSTANCE_URL
+
   let resetData = {
-    instance: DEFAULT_INSTANCE_URL,
     email: '',
     loading: false,
   }
@@ -22,9 +22,7 @@
     clearErrorScope($page.route.id)
 
     try {
-      resetData.instance = resetData.instance.trim()
-
-      await getClient(resetData.instance).passwordReset({
+      await getClient(instanceURL).passwordReset({
         email: resetData.email.trim(),
       })
 
@@ -52,20 +50,6 @@
       class="flex-1"
       required
     />
-    {#if !LINKED_INSTANCE_URL}
-      <TextInput
-        id="instance_url"
-        label={$t('form.instance')}
-        placeholder={DEFAULT_INSTANCE_URL}
-        disabled={LINKED_INSTANCE_URL != undefined}
-        bind:value={resetData.instance}
-        class="flex-1"
-        required
-        pattern={DOMAIN_REGEX_FORMS}
-        autocorrect="off"
-        autocapitalize="none"
-      />
-    {/if}
   </div>
 
   <Button

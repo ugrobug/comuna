@@ -77,20 +77,20 @@
 
     try {
       if (signupData.password !== signupData.passwordConfirm) {
-        throw new Error('Passwords do not match');
+        throw new Error('Пароли не совпадают');
       }
 
       // Валидация display name
       if (signupData.displayName) {
         if (signupData.displayName.length > DISPLAY_NAME_MAX_LENGTH) {
-          throw new Error('display_name_too_long');
+          throw new Error('Слишком длинное имя');
         }
         const byteLength = getByteLength(signupData.displayName);
         if (byteLength > DISPLAY_NAME_MAX_BYTES) {
-          throw new Error('display_name_byte_length_exceeded');
+          throw new Error('Слишком длинное имя');
         }
         if (!DISPLAY_NAME_REGEX.test(signupData.displayName)) {
-          throw new Error('display_name_invalid_chars');
+          throw new Error('Недопустимые символы в имени');
         }
       }
 
@@ -185,7 +185,7 @@
 
   <TextInput
     bind:value={signupData.displayName}
-    label={$t('form.displayName')}
+    label="Ваше имя"
     placeholder="Шальная императрица"
     class="w-full"
     required
@@ -198,7 +198,7 @@
     id="email"
     type="email"
     bind:value={signupData.email}
-    label={$t('form.email')}
+    label="Электронная почта"
     class="w-full"
   />
 
@@ -206,7 +206,7 @@
     <TextInput
       id="password"
       bind:value={signupData.password}
-      label={$t('form.password')}
+      label="Пароль"
       type="password"
       minlength={10}
       maxlength={60}
@@ -216,7 +216,7 @@
     <TextInput
       id="password_confirm"
       bind:value={signupData.passwordConfirm}
-      label={$t('form.passwordConfirm')}
+      label="Повторите пароль"
       type="password"
       minlength={10}
       maxlength={60}
@@ -232,6 +232,6 @@
     size="lg"
     submit
   >
-    {$t('account.signup')}
+    Зарегистрироваться
   </Button>
 </form> 

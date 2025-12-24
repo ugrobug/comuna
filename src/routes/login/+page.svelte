@@ -2,13 +2,8 @@
   import { goto } from '$app/navigation'
   import { setUser } from '$lib/auth.js'
   import { Note, toast } from 'mono-svelte'
-  import { DEFAULT_INSTANCE_URL, LINKED_INSTANCE_URL } from '$lib/instance.js'
-  import {
-    getClient,
-    mayBeIncompatible,
-    site,
-    validateInstance,
-  } from '$lib/lemmy.js'
+  import { DEFAULT_INSTANCE_URL } from '$lib/instance.js'
+  import { getClient, mayBeIncompatible, site } from '$lib/lemmy.js'
   import { Button, TextInput } from 'mono-svelte'
   import {
     Icon,
@@ -16,7 +11,6 @@
     QuestionMarkCircle,
     UserCircle,
   } from 'svelte-hero-icons'
-  import { DOMAIN_REGEX_FORMS } from '$lib/util.js'
   import { MINIMUM_VERSION } from '$lib/version.js'
   import { t } from '$lib/translations'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
@@ -29,8 +23,9 @@
 
   export let ref: string = '/'
 
+  const instanceURL = DEFAULT_INSTANCE_URL
+
   let data = {
-    instance: DEFAULT_INSTANCE_URL,
     username: '',
     password: '',
     loading: false,
@@ -42,18 +37,13 @@
     clearErrorScope($page.route.id)
 
     try {
-      data.instance = data.instance.trim()
-      // if (!(await validateInstance(data.instance))) {
-      //   throw new Error('Failed to contact that instance. Is it down?')
-      // }
-
-      const response = await getClient(data.instance).login({
+      const response = await getClient(instanceURL).login({
         username_or_email: data.username.trim(),
         password: data.password,
       })
 
       if (response?.jwt) {
-        const result = await setUser(response.jwt, data.instance, data.username)
+        const result = await setUser(response.jwt, instanceURL, data.username)
 
         if (result) {
           toast({ content: $t('toast.logIn'), type: 'success' })
@@ -118,20 +108,6 @@
         class="flex-1"
         required
       />
-      {#if !LINKED_INSTANCE_URL}
-        <TextInput
-          id="instance_url"
-          label={$t('form.instance')}
-          placeholder={DEFAULT_INSTANCE_URL}
-          disabled={LINKED_INSTANCE_URL != undefined}
-          bind:value={data.instance}
-          class="flex-1"
-          required
-          pattern={DOMAIN_REGEX_FORMS}
-          autocorrect="off"
-          autocapitalize="none"
-        />
-      {/if}
     </div>
     <div class="flex flex-row gap-2">
       <TextInput
@@ -164,12 +140,10 @@
         <Icon src={QuestionMarkCircle} mini size="16" />
         {$t('form.forgotpassword')}
       </Button>
-      {#if !LINKED_INSTANCE_URL}
-        <Button rounding="pill" color="ghost" href="/login/guest">
-          <Icon src={UserCircle} mini size="16" />
-          {$t('account.guest')}
-        </Button>
-      {/if}
+      <Button rounding="pill" color="ghost" href="/login/guest">
+        <Icon src={UserCircle} mini size="16" />
+        {$t('account.guest')}
+      </Button>
     </div>
   </form>
 </div>

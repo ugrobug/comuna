@@ -125,43 +125,43 @@
   </span>
 
   {#if data.site_view.local_site.registration_mode != 'Closed'}
-    <Header>{$t('form.signup.title')}</Header>
+    <Header>Регистрация</Header>
     <TextInput
       bind:value={email}
-      label={$t('form.email')}
+      label="Email"
       required={data.site_view.local_site.require_email_verification}
       type="email"
     />
-    <TextInput bind:value={username} label={$t('form.username')} required />
+    <TextInput bind:value={username} label="Имя пользователя" required />
     <TextInput
       bind:value={password}
-      label={$t('form.password')}
+      label="Пароль"
       required
       type="password"
     />
     <TextInput
       bind:value={passwordVerify}
-      label={$t('form.confirmPassword')}
+      label="Повторите пароль"
       required
       type="password"
     />
     {#if data.site_view.local_site.registration_mode == 'RequireApplication'}
       <Material class="dark:text-yellow-200 text-yellow-800 bg-yellow-500/20">
         <Icon src={ExclamationTriangle} mini size="20" />
-        {$t('form.signup.application.info')}
+        Для регистрации требуется заявка.
       </Material>
       {#if data.site_view.local_site.application_question}
         <Markdown source={data.site_view.local_site.application_question} />
       {/if}
       <MarkdownEditor
-        label={$t('form.signup.application.label')}
+        label="Заявка"
         required
         bind:value={application}
       />
     {/if}
     {#if captchaRequired}
       <div>
-        <div class="block my-1 font-bold text-sm">Captcha</div>
+        <div class="block my-1 font-bold text-sm">Капча</div>
         <div class="flex flex-col gap-4">
           {#await getCaptcha()}
             <Spinner width={32} />
@@ -178,7 +178,7 @@
                 class="flex gap-2 dark:text-yellow-200 text-yellow-800 bg-yellow-500/20"
               >
                 <Icon src={QuestionMarkCircle} mini size="24" />
-                No captcha was returned
+                Капча не получена
               </Material>
             {/if}
           {:catch err}
@@ -197,7 +197,7 @@
         </div>
       </div>
     {/if}
-    <Checkbox bind:checked={nsfw}>{$t('form.profile.showNSFW')}</Checkbox>
+    <Checkbox bind:checked={nsfw}>Показывать NSFW</Checkbox>
     <input type="dn" name="honeypot" bind:value={honeypot} class="hidden" />
     <Button
       submit
@@ -207,19 +207,15 @@
       disabled={submitting}
       class="mt-auto"
     >
-      {$t('form.submit')}
+      Зарегистрироваться
     </Button>
   {:else}
     <div class="my-auto">
       <Placeholder
         icon={XCircle}
-        title={$t('form.signup.closed.title')}
-        description={$t('form.signup.closed.description')}
-      >
-        <Button icon={Plus} href="/signup">
-          {$t('form.signup.closed.anotherInstance')}
-        </Button>
-      </Placeholder>
+        title="Регистрация закрыта"
+        description="Регистрация на этой площадке временно недоступна."
+      />
     </div>
   {/if}
 </form>

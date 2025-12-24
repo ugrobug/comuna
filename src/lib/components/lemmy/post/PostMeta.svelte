@@ -1,47 +1,3 @@
-<script lang="ts" context="module">
-  export interface Tag {
-    content: string
-    color?: string
-    icon?: IconSource
-  }
-
-  export const textToTag: Map<string, Tag> = new Map<string, Tag>([
-    ['OC', { content: 'OC', color: '#03A8F240' }],
-    ['NSFL', { content: 'NSFL', color: '#ff000040' }],
-    ['CW', { content: 'CW', color: '#ff000040' }],
-  ])
-
-  export const parseTags = (
-    title?: string
-  ): { tags: Tag[]; title?: string } => {
-    if (!title) return { tags: [] }
-
-    let extracted: Tag[] = []
-
-    const newTitle = title
-      .toString()
-      .replace(/^(\[.[^\]]+\])|(\[.[^\]]+\])$/g, (match, content) => {
-        const contents = match.split(',').map((part: string) => part.trim())
-
-        contents
-          .map((i) => i.replaceAll(/(\[|\])/g, ''))
-          .forEach((content: string) => {
-            extracted.push(
-              textToTag.get(content) ?? {
-                content: content,
-              }
-            )
-          })
-        return ''
-      })
-
-    return {
-      tags: extracted,
-      title: newTitle,
-    }
-  }
-</script>
-
 <script lang="ts">
   import CommunityLink from '$lib/components/lemmy/community/CommunityLink.svelte'
   import { t } from '$lib/translations'
@@ -58,7 +14,6 @@
     Icon,
     LockClosed,
     RocketLaunch,
-    Tag,
     Trash,
     PaperAirplane,
   } from 'svelte-hero-icons'
@@ -66,7 +21,7 @@
   import ShieldIcon from '../moderation/ShieldIcon.svelte'
   import { userSettings, type View } from '$lib/settings'
   import Markdown from '$lib/components/markdown/Markdown.svelte'
-  import { Pencil, type IconSource } from 'svelte-hero-icons'
+  import { Pencil } from 'svelte-hero-icons'
   import CommunityHeader from '../community/CommunityHeader.svelte'
   import { publishedToDate } from '$lib/components/util/date'
   import { postLink } from './helpers'
@@ -87,6 +42,10 @@
   export let edited: string | undefined = undefined
   export let view: View = 'cozy'
   export let subscribed: SubscribedType | undefined = undefined
+  export let communityUrlOverride: string | undefined = undefined
+  export let userUrlOverride: string | undefined = undefined
+  export let subscribeUrl: string | undefined = undefined
+  export let subscribeLabel: string = 'Подписаться'
 
   // Badges
   export let badges = {
@@ -100,7 +59,6 @@
     admin: false,
   }
 
-  export let tags: Tag[] = []
 
   let popoverOpen = false
   let showLoginModal = false
@@ -228,7 +186,7 @@
     <!-- Аватары -->
     <div class="relative flex-shrink-0">
       <a
-        href="/u/{user?.name}{user?.local === true ? '' : `@${getInstanceFromActorId(user?.actor_id, user?.local)}`}"
+        href={userUrlOverride ?? `/u/${user?.name}${user?.local === true ? '' : `@${getInstanceFromActorId(user?.actor_id, user?.local)}`}`}
         class="block cursor-pointer"
         data-sveltekit-preload-data="tap"
       >
@@ -261,7 +219,7 @@
     <div class="flex flex-col min-w-0 justify-center">
       <div class="flex items-center gap-1">
         <a 
-          href="/u/{user?.name}{user?.local === true ? '' : `@${getInstanceFromActorId(user?.actor_id, user?.local)}`}"
+          href={userUrlOverride ?? `/u/${user?.name}${user?.local === true ? '' : `@${getInstanceFromActorId(user?.actor_id, user?.local)}`}`}
           class="text-base font-normal hover:underline !text-black dark:!text-white"
           data-sveltekit-preload-data="tap"
         >
@@ -281,7 +239,7 @@
       <div class="flex items-center gap-1 !text-slate-400 dark:!text-zinc-500">
         {#if community}
           <a 
-            href="/c/{community.name}@{new URL(community.actor_id).hostname}#top"
+            href={communityUrlOverride ?? `/c/${community.name}@${new URL(community.actor_id).hostname}#top`}
             class="!text-black dark:!text-white hover:underline font-normal"
             data-sveltekit-preload-data="tap"
           >
@@ -302,26 +260,7 @@
 
   <!-- Бейджи -->
   <div class="flex flex-row justify-end items-center gap-2 ml-auto">
-    {#if tags}
-      {#each tags as tag}
-        <a
-          class="hover:brightness-110"
-          href="/search?community={community?.id}&q=[{tag.content}]&type=Posts"
-          style={tag.color ? `--tag-color: ${tag.color};` : ''}
-        >
-          <Badge class="{tag.color ? 'badge-tag-color' : ''} h-8 flex items-center">
-            <svelte:fragment slot="icon">
-              {#if tag.icon}
-                <Icon src={tag.icon} micro size="14" />
-              {:else}
-                <Icon src={Tag} micro size="14" />
-              {/if}
-            </svelte:fragment>
-            {tag.content}
-          </Badge>
-        </a>
-      {/each}
-    {/if}
+    <!-- Tags removed -->
     {#if badges.nsfw}
       <Badge 
         label={$t('post.badges.nsfw')} 
@@ -374,6 +313,21 @@
         />
       {/if}
       {#if community}
+        {#if subscribeUrl}
+          <Button
+            size="sm"
+            color="primary"
+            class="ml-2 max-sm:hidden h-8 !min-h-[2rem]"
+            href={subscribeUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <span class="inline-flex items-center gap-2 text-white">
+              <img src="/img/logos/telegram_logo.svg" alt="Telegram" class="w-4 h-4" />
+              {subscribeLabel}
+            </span>
+          </Button>
+        {:else}
         <Subscribe community={{
           community,
           subscribed: subscribed || 'NotSubscribed',
@@ -422,6 +376,7 @@
             </button>
           </svelte:fragment>
         </Subscribe>
+        {/if}
       {/if}
     </div>
     <slot name="badges" />
@@ -458,4 +413,3 @@
     align-items: center;
   }
 </style>
-

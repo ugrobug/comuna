@@ -42,7 +42,6 @@
   } from 'svelte-hero-icons'
   import Profile from './Profile.svelte'
   import NavButton from './NavButton.svelte'
-  import Logo from '../Logo.svelte'
   import { LINKED_INSTANCE_URL } from '$lib/instance'
   import { t } from '$lib/translations'
   import CommandsWrapper from './commands/CommandsWrapper.svelte'
@@ -65,10 +64,11 @@
 
   const PUBLIC_TELEGRAM_URL = env.PUBLIC_TELEGRAM_URL;
 
-  const PUBLIC_PROJECT_ABOUT = env.PUBLIC_PROJECT_ABOUT;
-  const PUBLIC_PROJECT_ADVRTISEMENT = env.PUBLIC_PROJECT_ADVRTISEMENT;
-  const PUBLIC_PROJECT_AUTHORS = env.PUBLIC_PROJECT_AUTHORS;
-  const PUBLIC_PROJECT_RULES = env.PUBLIC_PROJECT_RULES;
+  const PUBLIC_PROJECT_ABOUT = env.PUBLIC_PROJECT_ABOUT || '/about';
+  const PUBLIC_PROJECT_ADVRTISEMENT =
+    env.PUBLIC_PROJECT_ADVRTISEMENT || '/advertisement';
+  const PUBLIC_PROJECT_AUTHORS = env.PUBLIC_PROJECT_AUTHORS || '/authors';
+  const PUBLIC_PROJECT_RULES = env.PUBLIC_PROJECT_RULES || '/rules';
 
   let topCommunities: Array<{ name: string; icon: string | null; url: string; subscribers: number; }> = [];
   let displayedCommunitiesCount = 20;
@@ -221,20 +221,9 @@
           tabindex="0"
           on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && goToHome()}
         >
-          {#if LINKED_INSTANCE_URL}
-            {#if $site}
-              <Avatar
-                alt={$site.site_view.site.name}
-                url={$site.site_view.site.icon}
-                width={32}
-                circle={false}
-              />
-            {:else}
-              <Spinner width={32} />
-            {/if}
-          {:else}
-            <Logo width={32} />
-          {/if}
+          <span class="text-xl font-medium tracking-tight font-roboto text-slate-900 dark:text-white">
+            Comuna
+          </span>
         </div>
       </div>
       <!-- 2 колонка: админка и модерация -->

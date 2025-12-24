@@ -1,0 +1,35 @@
+<script>
+  import Header from '$lib/components/ui/layout/pages/Header.svelte'
+  import SectionTitle from '$lib/components/ui/SectionTitle.svelte'
+</script>
+
+<div class="flex flex-col gap-6 max-w-3xl">
+  <Header pageHeader>
+    <h1 class="text-2xl font-bold">Авторам</h1>
+  </Header>
+
+  <div class="flex flex-col gap-3 text-base leading-relaxed">
+    <p>
+      Telegram‑каналы почти не попадают в поисковую выдачу. Люди ищут темы в
+      Google и Яндексе, но ваши посты там не видят.
+    </p>
+    <p>
+      Мы решаем это через сайт: публикуем ваши материалы здесь, поисковые системы
+      их индексируют, и новые читатели находят ваш контент. Дальше они переходят
+      по ссылке на канал и подписываются. Это бесплатные подписчики и
+      дополнительный трафик.
+    </p>
+    <p>
+      Важно: мы не принимаем публикации напрямую через сайт — все посты приходят
+      только из вашего Telegram-канала через нашего бота.
+    </p>
+  </div>
+
+  <SectionTitle class="text-lg font-semibold">Как подключиться</SectionTitle>
+  <ol class="list-decimal pl-6 space-y-2 text-base leading-relaxed">
+    <li>Убедитесь, что канал публичный и у него есть @username.</li>
+    <li>Добавьте нашего бота <a href="https://t.me/aiwapressbot" target="_blank" rel="noreferrer">@aiwapressbot</a> в администраторы канала.</li>
+    <li>Публикуйте посты как обычно — они автоматически появятся на сайте.</li>
+    <li>Ваша страница будет доступна по адресу: <code>нашдомен.ру/ник_канала/посты</code>.</li>
+  </ol>
+</div>

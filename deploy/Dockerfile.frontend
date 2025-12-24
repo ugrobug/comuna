@@ -1,0 +1,18 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY . .
+
+ENV ADAPTER=node
+ENV HOST=0.0.0.0
+ENV PORT=3000
+
+RUN npm run build
+
+EXPOSE 3000
+
+CMD ["node", "build/index.js"]

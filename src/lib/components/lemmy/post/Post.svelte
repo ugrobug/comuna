@@ -5,10 +5,7 @@
   import PostActions from '$lib/components/lemmy/post/PostActions.svelte'
   import { userSettings } from '$lib/settings.js'
   import PostLink from '$lib/components/lemmy/post/link/PostLink.svelte'
-  import PostMeta, {
-    parseTags,
-    type Tag,
-  } from '$lib/components/lemmy/post/PostMeta.svelte'
+  import PostMeta from '$lib/components/lemmy/post/PostMeta.svelte'
   import { Badge, Material, toast } from 'mono-svelte'
   import Markdown from '$lib/components/markdown/Markdown.svelte'
   import ExpandableImage from '$lib/components/ui/ExpandableImage.svelte'
@@ -35,17 +32,23 @@
   export let hideCommunity = false
   export let view = $userSettings.view
   export let hideTitle: boolean = false
+  export let linkOverride: string | undefined = undefined
+  export let showReadMore: boolean = true
+  export let communityUrlOverride: string | undefined = undefined
+  export let userUrlOverride: string | undefined = undefined
+  export let subscribeUrl: string | undefined = undefined
+  export let subscribeLabel: string = 'Подписаться'
 
-  $: tags = parseTags(post.post.name)
+  $: postUrl = linkOverride ?? postLink(post.post)
   $: type = mediaType(post.post.url, view)
-  $: rule = getTagRule(tags.tags)
+  $: rule = getTagRule([])
 
   $: hideBody =
     $userSettings.posts.deduplicateEmbed &&
     post.post.embed_description == post.post.body &&
     view != 'compact'
 
-  function getTagRule(tags: Tag[]): 'blur' | 'hide' | undefined {
+  function getTagRule(tags: { content: string }[]): 'blur' | 'hide' | undefined {
     const tagContent = tags.map((t) => t.content.toLowerCase())
 
     let rule: 'blur' | 'hide' | undefined
@@ -104,8 +107,11 @@
     read={post.read}
     style="grid-area: meta;"
     edited={post.post.updated}
-    tags={tags?.tags}
     {view}
+    {communityUrlOverride}
+    {userUrlOverride}
+    {subscribeUrl}
+    {subscribeLabel}
   >
     <slot name="badges" slot="badges" />
   </PostMeta>
@@ -113,7 +119,7 @@
   <!-- Оборачиваем заголовок в ссылку -->
   {#if post.post.name}
     <a 
-      href={postLink(post.post)}
+      href={postUrl}
       class="block no-underline hover:underline"
       style="grid-area: title;"
       data-sveltekit-preload-data="off"
@@ -155,7 +161,7 @@
   <!-- Оборачиваем тело поста в ссылку -->
   {#if post.post.body && !post.post.nsfw && view != 'compact' && !hideBody && rule != 'hide'}
     <a 
-      href={postLink(post.post)}
+      href={postUrl}
       class="block no-underline hover:no-underline"
       style="grid-area: body;"
       data-sveltekit-preload-data="off"
@@ -170,14 +176,16 @@
   {/if}
 
   <!-- Возвращаем отдельную ссылку "читать далее" -->
-  <a
-    href={postLink(post.post)}
-    class="post-read-more text-sm text-accent-500 hover:underline mt-2 block"
-    style="grid-area: read-more;"
-    data-sveltekit-preload-data="off"
-  >
-    Читать далее
-  </a>
+  {#if showReadMore}
+    <a
+      href={postUrl}
+      class="post-read-more text-sm text-accent-500 hover:underline mt-2 block"
+      style="grid-area: read-more;"
+      data-sveltekit-preload-data="off"
+    >
+      Читать далее
+    </a>
+  {/if}
 
   {#if actions}
     <PostActions on:hide {post} style="grid-area: actions;" {view} />

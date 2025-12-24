@@ -31,7 +31,8 @@ const getDefaultProfile = (): Profile => ({
 })
 
 function getFromStorage<T>(key: string): T | undefined {
-  if (typeof localStorage == 'undefined') return undefined
+  if (!browser || typeof localStorage == 'undefined') return undefined
+  if (typeof localStorage.getItem !== 'function') return undefined
   const lc = localStorage.getItem(key)
   if (!lc) return undefined
 
@@ -39,7 +40,8 @@ function getFromStorage<T>(key: string): T | undefined {
 }
 
 function setFromStorage(key: string, item: any, stringify: boolean = true) {
-  if (typeof localStorage == 'undefined') return
+  if (!browser || typeof localStorage == 'undefined') return
+  if (typeof localStorage.setItem !== 'function') return
   return localStorage.setItem(key, stringify ? JSON.stringify(item) : item)
 }
 

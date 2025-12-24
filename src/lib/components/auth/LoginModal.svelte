@@ -2,11 +2,10 @@
   import { setUser } from '$lib/auth.js'
   import { Note, toast } from 'mono-svelte'
   import { t } from '$lib/translations'
-  import { DEFAULT_INSTANCE_URL, LINKED_INSTANCE_URL } from '$lib/instance.js'
+  import { DEFAULT_INSTANCE_URL } from '$lib/instance.js'
   import { getClient, mayBeIncompatible } from '$lib/lemmy.js'
   import { Button, TextInput, Modal } from 'mono-svelte'
-  import { Icon, Identification, QuestionMarkCircle, UserCircle } from 'svelte-hero-icons'
-  import { DOMAIN_REGEX_FORMS } from '$lib/util.js'
+  import { Icon, Identification, QuestionMarkCircle } from 'svelte-hero-icons'
   import { MINIMUM_VERSION } from '$lib/version.js'
   import { errorMessage } from '$lib/lemmy/error'
   import ErrorContainer, { clearErrorScope, pushError } from '$lib/components/error/ErrorContainer.svelte'
@@ -19,8 +18,9 @@
   
   let isSignupMode = false
   let isResetMode = false
+  const instanceURL = DEFAULT_INSTANCE_URL
+
   let loginData = {
-    instance: DEFAULT_INSTANCE_URL,
     username: '',
     password: '',
     loading: false,
@@ -30,7 +30,6 @@
   function handleSuccessfulAuth() {
     open = false
     loginData = {
-      instance: DEFAULT_INSTANCE_URL,
       username: '',
       password: '',
       loading: false,
@@ -43,21 +42,18 @@
     clearErrorScope($page.route.id)
 
     try {
-      loginData.instance = loginData.instance.trim()
-
-      const response = await getClient(loginData.instance).login({
+      const response = await getClient(instanceURL).login({
         username_or_email: loginData.username.trim(),
         password: loginData.password,
       })
 
       if (response?.jwt) {
-        const result = await setUser(response.jwt, loginData.instance, loginData.username)
+        const result = await setUser(response.jwt, instanceURL, loginData.username)
 
         if (result) {
           toast({ content: 'Вы успешно вошли', type: 'success' })
           open = false
           loginData = {
-            instance: DEFAULT_INSTANCE_URL,
             username: '',
             password: '',
             loading: false,
@@ -94,7 +90,6 @@
     isSignupMode = false;
     isResetMode = false;
     loginData = {
-      instance: DEFAULT_INSTANCE_URL,
       username: '',
       password: '',
       loading: false,
@@ -165,24 +160,10 @@
         <TextInput
           id="username"
           bind:value={loginData.username}
-          label="Ваш Email"
+          label="Email или имя пользователя"
           class="flex-1"
           required
         />
-        {#if !LINKED_INSTANCE_URL}
-          <TextInput
-            id="instance_url"
-            label="Инстанс"
-            placeholder={DEFAULT_INSTANCE_URL}
-            disabled={LINKED_INSTANCE_URL != undefined}
-            bind:value={loginData.instance}
-            class="flex-1"
-            required
-            pattern={DOMAIN_REGEX_FORMS}
-            autocorrect="off"
-            autocapitalize="none"
-          />
-        {/if}
       </div>
 
       <TextInput
@@ -228,12 +209,6 @@
         <Icon src={QuestionMarkCircle} mini size="16" />
         Забыли пароль?
       </Button>
-      {#if !LINKED_INSTANCE_URL}
-        <Button rounding="pill" color="ghost" href="/login/guest">
-          <Icon src={UserCircle} mini size="16" />
-          Гостевой вход
-        </Button>
-      {/if}
     </div>
   {/if}
 </Modal> 

@@ -42,13 +42,15 @@
   import LoginModal from '$lib/components/auth/LoginModal.svelte'
   import { env } from '$env/dynamic/public'
   import { createEventDispatcher } from 'svelte'
+  import { buildRubricsUrl } from '$lib/api/backend'
 
   const dispatch = createEventDispatcher()
 
-  const PUBLIC_PROJECT_ABOUT = env.PUBLIC_PROJECT_ABOUT;
-  const PUBLIC_PROJECT_ADVRTISEMENT = env.PUBLIC_PROJECT_ADVRTISEMENT;
-  const PUBLIC_PROJECT_AUTHORS = env.PUBLIC_PROJECT_AUTHORS;
-  const PUBLIC_PROJECT_RULES = env.PUBLIC_PROJECT_RULES;
+  const PUBLIC_PROJECT_ABOUT = env.PUBLIC_PROJECT_ABOUT || '/about';
+  const PUBLIC_PROJECT_ADVRTISEMENT =
+    env.PUBLIC_PROJECT_ADVRTISEMENT || '/advertisement';
+  const PUBLIC_PROJECT_AUTHORS = env.PUBLIC_PROJECT_AUTHORS || '/authors';
+  const PUBLIC_PROJECT_RULES = env.PUBLIC_PROJECT_RULES || '/rules';
 
   let topCommunities: Array<{
     name: string;
@@ -75,6 +77,7 @@
   
   let showFederated = false;
   let loginModalOpen = false;
+  let rubrics: Array<{ name: string; slug: string }> = [];
 
   function handleAuthRequired(e: MouseEvent) {
     if (!$profile?.jwt) {
@@ -118,10 +121,22 @@
     hasMoreCommunities = 10 < federatedCommunities.length;
   }
 
+  async function loadRubrics() {
+    try {
+      const response = await fetch(buildRubricsUrl());
+      if (!response.ok) return;
+      const data = await response.json();
+      rubrics = data.rubrics ?? [];
+    } catch (e) {
+      rubrics = [];
+    }
+  }
+
   onMount(async () => {
     allLocalCommunities = await getTopCommunities();
     topCommunities = allLocalCommunities.slice(0, displayedCommunitiesCount);
     hasMoreCommunities = allLocalCommunities.length > displayedCommunitiesCount || allLocalCommunities.length > 0;
+    loadRubrics();
   });
 
   $: searchParams = new URLSearchParams($page.url.search);
@@ -212,6 +227,31 @@
           {/if}
         </span>
       </SidebarButton>
+    </div>
+  {/if}
+
+  {#if rubrics.length}
+    <div class="flex flex-col gap-2">
+      <span
+        class="px-2 py-1 text-sm font-normal text-slate-500 dark:text-zinc-200"
+      >
+        Рубрики
+      </span>
+      {#each rubrics as rubric}
+        <SidebarButton
+          href={`/rubrics/${rubric.slug}/posts`}
+          on:click={handleNavigation}
+        >
+          <div slot="icon" class="w-7 h-7 rounded-full overflow-hidden bg-slate-100 dark:bg-zinc-800 flex items-center justify-center">
+            {#if rubric.icon_url}
+              <img src={rubric.icon_url} alt={rubric.name} class="w-full h-full object-cover" />
+            {:else}
+              <Icon src={DocumentText} size="20" />
+            {/if}
+          </div>
+          <span slot="label">{rubric.name}</span>
+        </SidebarButton>
+      {/each}
     </div>
   {/if}
 

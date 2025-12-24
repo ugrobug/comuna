@@ -1,0 +1,80 @@
+<script lang="ts">
+  import Post from '$lib/components/lemmy/post/Post.svelte'
+  import { backendPostToPostView } from '$lib/api/backend'
+
+  export let data
+
+  const formatNumber = (value: number | undefined) => {
+    if (!value && value !== 0) return '—'
+    return value.toLocaleString('ru-RU')
+  }
+</script>
+
+<div class="flex flex-col gap-6 max-w-5xl">
+  <section class="flex flex-col gap-6">
+    <div class="flex flex-col lg:flex-row gap-8 items-start">
+      <div class="flex flex-col items-center gap-4 shrink-0">
+        <div class="w-40 h-40 rounded-full overflow-hidden border-4 border-white dark:border-zinc-900 bg-slate-100 dark:bg-zinc-800">
+          {#if data.author?.avatar_url}
+            <img src={data.author.avatar_url} alt={data.author?.title ?? data.author?.username} class="w-full h-full object-cover" />
+          {:else}
+            <div class="w-full h-full flex items-center justify-center text-4xl font-bold text-slate-400 dark:text-zinc-500">
+              {data.author?.title?.[0] ?? data.author?.username?.[0] ?? 'A'}
+            </div>
+          {/if}
+        </div>
+        {#if data.author?.channel_url}
+          <a
+            class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700"
+            href={data.author.channel_url}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <img src="/img/logos/telegram_logo.svg" alt="Telegram" class="w-6 h-6" />
+          </a>
+        {/if}
+      </div>
+
+      <div class="flex flex-col gap-4 max-w-2xl">
+        <div class="text-3xl font-bold text-slate-900 dark:text-zinc-50">
+          {data.author?.title ?? data.author?.username}
+        </div>
+        <div class="flex flex-wrap items-center gap-3 text-sm text-slate-600 dark:text-zinc-400">
+          <span class="px-4 py-2 rounded-full bg-slate-100 dark:bg-zinc-800">
+            {formatNumber(data.author?.subscribers_count)} подписчиков
+          </span>
+          <span class="px-4 py-2 rounded-full bg-slate-100 dark:bg-zinc-800">
+            {formatNumber(data.author?.posts_count)} постов
+          </span>
+        </div>
+        {#if data.author?.description}
+          <p class="text-lg leading-relaxed text-slate-700 dark:text-zinc-300">
+            {data.author.description}
+          </p>
+        {/if}
+      </div>
+    </div>
+  </section>
+
+  <div class="text-lg font-semibold text-slate-900 dark:text-zinc-100">Посты</div>
+
+  {#if data.posts?.length}
+    <div class="flex flex-col gap-6">
+      {#each data.posts as backendPost (backendPost.id)}
+        {@const postView = backendPostToPostView(backendPost, data.author)}
+        <Post
+          post={postView}
+          view="cozy"
+          actions={true}
+          linkOverride={`/b/post/${backendPost.id}`}
+          userUrlOverride={`/${data.author?.username}`}
+          communityUrlOverride={backendPost.rubric_slug ? `/rubrics/${backendPost.rubric_slug}/posts` : undefined}
+          subscribeUrl={backendPost.channel_url ?? data.author?.channel_url}
+          subscribeLabel="Подписаться"
+        />
+      {/each}
+    </div>
+  {:else}
+    <div class="text-base text-slate-500">Пока нет публикаций.</div>
+  {/if}
+</div>

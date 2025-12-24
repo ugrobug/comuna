@@ -23,9 +23,7 @@
     ChevronLeft,
     ChevronRight,
   } from 'svelte-hero-icons'
-  import PostMeta, {
-    parseTags,
-  } from '$lib/components/lemmy/post/PostMeta.svelte'
+  import PostMeta from '$lib/components/lemmy/post/PostMeta.svelte'
   import { Select, removeToast, toast } from 'mono-svelte'
   import type { CommentSortType } from 'lemmy-js-client'
   import { profile } from '$lib/auth.js'
@@ -1124,12 +1122,10 @@
       published={publishedToDate(data.post.post_view.post.published)}
       edited={data.post.post_view.post.updated}
       title={undefined}
-      tags={parseTags(data.post.post_view.post.name).tags}
     />
     <!-- Заголовок для отображения и SEO -->
     <h1 class="text-2xl font-bold text-slate-900 dark:text-zinc-50">
-      {parseTags(data.post.post_view.post.name).title ?? 
-        data.post.post_view.post.name}
+      {data.post.post_view.post.name}
     </h1>
   </header>
   <PostMedia
