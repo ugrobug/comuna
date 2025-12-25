@@ -4,7 +4,7 @@
   import { Button } from 'mono-svelte'
   import { ChevronDown, Icon } from 'svelte-hero-icons'
   import { browser } from '$app/environment'
-  import { onMount } from 'svelte'
+  import { afterUpdate, onMount } from 'svelte'
   import { page } from '$app/stores'
   import { deserializeEditorModel } from '$lib/util'
   
@@ -39,6 +39,134 @@
   let firstImageUrl: string | null = null;
   let firstImageSrcset: string | null = null;
   let hasPreview = false;
+  let lastProcessedBody = '';
+
+  const setupGalleries = () => {
+    if (!browser || !element) return;
+    const galleries = element.querySelectorAll('.post-gallery');
+
+    galleries.forEach((gallery) => {
+      if (gallery.getAttribute('data-gallery-ready') === 'true') {
+        return;
+      }
+      gallery.setAttribute('data-gallery-ready', 'true');
+
+      let grid = gallery.querySelector('.gallery-grid');
+      if (!grid) {
+        const images = Array.from(gallery.querySelectorAll('img'));
+        grid = document.createElement('div');
+        grid.className = 'gallery-grid';
+        images.forEach((img) => {
+          const thumb = document.createElement('button');
+          thumb.type = 'button';
+          thumb.className = 'gallery-thumb';
+          thumb.appendChild(img);
+          grid.appendChild(thumb);
+        });
+        gallery.innerHTML = '';
+        gallery.appendChild(grid);
+      }
+
+      const thumbs = Array.from(grid.querySelectorAll('.gallery-thumb'));
+      if (!thumbs.length) return;
+
+      const imageData = thumbs.map((thumb) => {
+        const img = thumb.querySelector('img');
+        return {
+          src: img?.getAttribute('src') || '',
+          alt: img?.getAttribute('alt') || '',
+          title: img?.getAttribute('title') || '',
+        };
+      });
+
+      let modal: HTMLElement | null = null;
+      let modalImage: HTMLImageElement | null = null;
+      let modalCaption: HTMLElement | null = null;
+      let currentIndex = 0;
+
+      const updateModal = (index: number) => {
+        currentIndex = (index + imageData.length) % imageData.length;
+        const current = imageData[currentIndex];
+        if (modalImage) {
+          modalImage.src = current.src;
+          modalImage.alt = current.alt;
+        }
+        if (modalCaption) {
+          modalCaption.textContent = current.title || current.alt || '';
+        }
+      };
+
+      const closeModal = () => {
+        modal?.remove();
+        modal = null;
+        modalImage = null;
+        modalCaption = null;
+        document.removeEventListener('keydown', onKeydown);
+      };
+
+      const onKeydown = (e: KeyboardEvent) => {
+        if (!modal) return;
+        if (e.key === 'Escape') {
+          closeModal();
+        } else if (e.key === 'ArrowLeft') {
+          updateModal(currentIndex - 1);
+        } else if (e.key === 'ArrowRight') {
+          updateModal(currentIndex + 1);
+        }
+      };
+
+      const openModal = (index: number) => {
+        if (!modal) {
+          modal = document.createElement('div');
+          modal.className = 'gallery-modal';
+          modal.innerHTML = `
+            <div class="gallery-modal-backdrop"></div>
+            <div class="gallery-modal-content">
+              <img class="gallery-modal-image" />
+              <div class="gallery-modal-caption"></div>
+            </div>
+            <button class="gallery-modal-close" aria-label="Закрыть">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M6 18L18 6M6 6l12 12" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+            <button class="gallery-modal-prev" aria-label="Предыдущее">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+            <button class="gallery-modal-next" aria-label="Следующее">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 18l6-6-6-6" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          `;
+
+          document.body.appendChild(modal);
+          modalImage = modal.querySelector('.gallery-modal-image');
+          modalCaption = modal.querySelector('.gallery-modal-caption');
+
+          modal.querySelector('.gallery-modal-backdrop')?.addEventListener('click', closeModal);
+          modal.querySelector('.gallery-modal-close')?.addEventListener('click', closeModal);
+          modal.querySelector('.gallery-modal-prev')?.addEventListener('click', () => updateModal(currentIndex - 1));
+          modal.querySelector('.gallery-modal-next')?.addEventListener('click', () => updateModal(currentIndex + 1));
+
+          if (imageData.length <= 1) {
+            modal.querySelector('.gallery-modal-prev')?.classList.add('hidden');
+            modal.querySelector('.gallery-modal-next')?.classList.add('hidden');
+          }
+
+          document.addEventListener('keydown', onKeydown);
+        }
+
+        updateModal(index);
+      };
+
+      thumbs.forEach((thumb, index) => {
+        thumb.addEventListener('click', () => openModal(index));
+      });
+    });
+  };
 
   function isOverflown(element: Element, body: string = '') {
     if (!element) return
@@ -142,9 +270,9 @@
         return `<div class="post-gallery">
           <div class="gallery-grid">
             ${block.data.images.map((img: any) => 
-              `<div class="gallery-thumb">
+              `<button type="button" class="gallery-thumb">
                 <img src="${img.url}" alt="${img.alt || ''}" title="${img.title || ''}">
-              </div>`
+              </button>`
             ).join('')}
           </div>
         </div>`;
@@ -411,6 +539,20 @@
     processedBody = extractPreviewContent(body);
   }
 
+  onMount(() => {
+    if (browser) {
+      setTimeout(setupGalleries, 0);
+    }
+  });
+
+  afterUpdate(() => {
+    if (!browser) return;
+    if (processedBody !== lastProcessedBody) {
+      lastProcessedBody = processedBody;
+      setTimeout(setupGalleries, 0);
+    }
+  });
+
   // Добавляем preload для первого изображения
   $: if (firstImageUrl && browser) {
     addPreloadLink(firstImageUrl, firstImageSrcset);
@@ -575,6 +717,51 @@ ${view == 'list' ? `max-h-24` : 'max-h-48'}`
     @apply w-full h-full object-cover;
     aspect-ratio: 4/3;
     display: block;
+  }
+
+  :global(.gallery-modal) {
+    @apply fixed inset-0 z-50 flex items-center justify-center;
+  }
+
+  :global(.gallery-modal-backdrop) {
+    @apply absolute inset-0 bg-black/80;
+  }
+
+  :global(.gallery-modal-content) {
+    @apply relative z-10 max-w-[92vw] max-h-[90vh] flex flex-col items-center gap-4;
+  }
+
+  :global(.gallery-modal-image) {
+    @apply max-h-[78vh] max-w-[92vw] object-contain rounded-lg;
+  }
+
+  :global(.gallery-modal-caption) {
+    @apply text-sm text-white/80 text-center;
+  }
+
+  :global(.gallery-modal-close) {
+    @apply fixed top-6 right-6 text-white bg-black/60 p-3 rounded-full 
+    hover:bg-black/80 transition-colors duration-200 z-50 cursor-pointer
+    flex items-center justify-center;
+  }
+
+  :global(.gallery-modal-prev),
+  :global(.gallery-modal-next) {
+    @apply fixed top-1/2 -translate-y-1/2 text-white bg-black/50 p-3 rounded-full
+    hover:bg-black/70 transition-colors duration-200 z-50 cursor-pointer
+    flex items-center justify-center;
+  }
+
+  :global(.gallery-modal-prev) {
+    @apply left-6;
+  }
+
+  :global(.gallery-modal-next) {
+    @apply right-6;
+  }
+
+  :global(.gallery-modal svg) {
+    @apply w-6 h-6;
   }
 
   :global(.post-content ul) {
