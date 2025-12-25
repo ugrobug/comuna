@@ -167,6 +167,7 @@
           element="section"
           body={post.post.body}
           {view}
+          clickThrough={true}
           {showFullBody}
           class="relative text-slate-600 dark:text-zinc-400"
         />
@@ -182,6 +183,7 @@
           element="section"
           body={post.post.body}
           {view}
+          clickThrough={false}
           {showFullBody}
           class="relative text-slate-600 dark:text-zinc-400"
         />

@@ -45,11 +45,12 @@
     if (!browser || !element) return;
     const galleries = element.querySelectorAll('.post-gallery');
 
+    const mode = showFullBody ? 'full' : 'preview';
     galleries.forEach((gallery) => {
-      if (gallery.getAttribute('data-gallery-ready') === 'true') {
+      if (gallery.getAttribute('data-gallery-ready') === mode) {
         return;
       }
-      gallery.setAttribute('data-gallery-ready', 'true');
+      gallery.setAttribute('data-gallery-ready', mode);
 
       const images = Array.from(gallery.querySelectorAll('img'));
       if (!images.length) return;
@@ -61,50 +62,82 @@
         return;
       }
 
-      const slides = images.map((img, index) => {
-        const slide = document.createElement('div');
-        slide.className = `carousel-item${index === 0 ? ' active' : ''}`;
-        slide.appendChild(img);
-        return slide;
-      });
-
-      const track = document.createElement('div');
-      track.className = 'carousel-inner';
-      slides.forEach((slide) => track.appendChild(slide));
-
-      const prev = document.createElement('button');
-      prev.className = 'carousel-control-prev';
-      prev.type = 'button';
-      prev.innerHTML = `
-        <span class="carousel-control-prev-icon" aria-hidden="true"></span>
-        <span class="visually-hidden">Предыдущее</span>
-      `;
-
-      const next = document.createElement('button');
-      next.className = 'carousel-control-next';
-      next.type = 'button';
-      next.innerHTML = `
-        <span class="carousel-control-next-icon" aria-hidden="true"></span>
-        <span class="visually-hidden">Следующее</span>
-      `;
-
-      let currentIndex = 0;
-      const updateCarousel = (newIndex: number) => {
-        slides[currentIndex].classList.remove('active');
-        currentIndex = (newIndex + slides.length) % slides.length;
-        slides[currentIndex].classList.add('active');
+      const getImgAttr = (img: Element, name: string) => {
+        return img.getAttribute(name) || '';
       };
 
-      prev.addEventListener('click', () => updateCarousel(currentIndex - 1));
-      next.addEventListener('click', () => updateCarousel(currentIndex + 1));
+      const mainWrapper = document.createElement('div');
+      mainWrapper.className = 'featured-gallery-main';
+
+      const mainImage = document.createElement('img');
+      const first = images[0];
+      mainImage.src = getImgAttr(first, 'src');
+      const firstSrcset = getImgAttr(first, 'srcset');
+      if (firstSrcset) {
+        mainImage.setAttribute('srcset', firstSrcset);
+      }
+      const firstSizes = getImgAttr(first, 'sizes');
+      if (firstSizes) {
+        mainImage.setAttribute('sizes', firstSizes);
+      }
+      mainImage.alt = getImgAttr(first, 'alt');
+      mainWrapper.appendChild(mainImage);
+
+      const thumbs = document.createElement('div');
+      thumbs.className = 'featured-gallery-thumbs';
+
+      const updateMain = (img: Element, btn: HTMLButtonElement) => {
+        mainImage.src = getImgAttr(img, 'src');
+        const srcset = getImgAttr(img, 'srcset');
+        if (srcset) {
+          mainImage.setAttribute('srcset', srcset);
+        } else {
+          mainImage.removeAttribute('srcset');
+        }
+        const sizes = getImgAttr(img, 'sizes');
+        if (sizes) {
+          mainImage.setAttribute('sizes', sizes);
+        } else {
+          mainImage.removeAttribute('sizes');
+        }
+        mainImage.alt = getImgAttr(img, 'alt');
+        thumbs.querySelectorAll('.featured-gallery-thumb').forEach((item) => {
+          item.classList.remove('active');
+        });
+        btn.classList.add('active');
+      };
+
+      images.forEach((img, index) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'featured-gallery-thumb';
+
+        const thumb = document.createElement('img');
+        thumb.src = getImgAttr(img, 'src');
+        const srcset = getImgAttr(img, 'srcset');
+        if (srcset) {
+          thumb.setAttribute('srcset', srcset);
+        }
+        const sizes = getImgAttr(img, 'sizes');
+        if (sizes) {
+          thumb.setAttribute('sizes', sizes);
+        }
+        thumb.alt = getImgAttr(img, 'alt');
+        thumb.loading = 'lazy';
+
+        btn.appendChild(thumb);
+        btn.addEventListener('click', () => updateMain(img, btn));
+
+        if (index === 0) {
+          btn.classList.add('active');
+        }
+        thumbs.appendChild(btn);
+      });
 
       gallery.innerHTML = '';
-      gallery.classList.add('carousel');
-      gallery.appendChild(track);
-      if (slides.length > 1) {
-        gallery.appendChild(prev);
-        gallery.appendChild(next);
-      }
+      gallery.classList.add('featured-gallery');
+      gallery.appendChild(mainWrapper);
+      gallery.appendChild(thumbs);
     });
   };
 
@@ -458,7 +491,7 @@
       });
 
       return DOMPurify.sanitize(processedHtml, {
-        ALLOWED_TAGS: ['p', 'b', 'i', 'em', 'strong', 'a', 'br', 'ul', 'ol', 'li', 'img', 'figure', 'figcaption', 'blockquote', 'footer'],
+        ALLOWED_TAGS: ['p', 'b', 'i', 'em', 'strong', 'a', 'br', 'ul', 'ol', 'li', 'img', 'figure', 'figcaption', 'blockquote', 'footer', 'div'],
         ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'srcset', 'sizes', 'loading', 'alt', 'width', 'height', 'class']
       });
     }
@@ -485,8 +518,8 @@
     if (!browser) return;
     if (processedBody !== lastProcessedBody) {
       lastProcessedBody = processedBody;
-      setTimeout(setupGalleries, 0);
     }
+    setTimeout(setupGalleries, 0);
   });
 
   // Добавляем preload для первого изображения
@@ -516,14 +549,14 @@
 <svelte:element
   this={htmlElement}
   style={$$props.style ?? ''}
-  class="{!expanded
+  class="post-content {!expanded
     ? ` overflow-hidden
 bg-gradient-to-b text-transparent from-slate-600 via-slate-600
 dark:from-zinc-100 dark:via-zinc-200 dark:to-zinc-400 bg-clip-text z-0
 ${view == 'list' ? `max-h-24` : 'max-h-48'}`
     : 'text-slate-600 dark:text-zinc-400 max-h-full'} {!hasPreview && !showFullBody ? 'set-max-height' : ''} text-base {$$props.class ??
     ''} {overflows && !hasPreview && !showFullBody ? 'has-overflow' : ''}"
-  class:pointer-events-none={!clickThrough}
+  class:pointer-events-none={!showFullBody}
   bind:this={element}
 >
   <!-- {@html sanitizeHtml(expanded ? processedBody : processedBody.slice(0, 1000))} -->
@@ -637,65 +670,48 @@ ${view == 'list' ? `max-h-24` : 'max-h-48'}`
   }
 
   :global(.post-content .post-gallery) {
-    @apply my-4 relative rounded-lg overflow-hidden;
+    @apply my-4;
   }
 
   :global(.post-content .post-gallery img) {
     @apply w-full h-auto block object-cover;
   }
 
-  :global(.post-content .post-gallery.carousel) {
-    @apply bg-slate-100 dark:bg-zinc-800;
+  :global(.post-content .post-gallery.featured-gallery) {
+    @apply flex flex-col gap-3;
   }
 
-  :global(.post-content .carousel-inner) {
-    @apply relative w-full overflow-hidden;
+  :global(.post-content .featured-gallery-main img) {
+    @apply w-full rounded-lg bg-slate-100 dark:bg-zinc-800 object-cover;
+    height: 450px;
   }
 
-  :global(.post-content .carousel-item) {
-    @apply hidden w-full;
+  :global(.post-content .featured-gallery-thumbs) {
+    @apply grid grid-cols-5 gap-2;
   }
 
-  :global(.post-content .carousel-item.active) {
-    @apply block;
+  :global(.post-content .featured-gallery-thumb) {
+    @apply cursor-pointer rounded-lg border-0 bg-transparent p-0;
   }
 
-  :global(.post-content .carousel-control-prev),
-  :global(.post-content .carousel-control-next) {
-    @apply absolute top-1/2 -translate-y-1/2 bg-black/50 text-white rounded-full p-2
-    hover:bg-black/70 transition-colors duration-200;
-    width: 40px;
-    height: 40px;
+  :global(.post-content .featured-gallery-thumb img) {
+    @apply w-full h-20 rounded-lg object-cover bg-slate-100 dark:bg-zinc-800;
   }
 
-  :global(.post-content .carousel-control-prev) {
-    @apply left-3;
+  :global(.post-content .featured-gallery-thumb.active img) {
+    @apply ring-2 ring-blue-500;
   }
 
-  :global(.post-content .carousel-control-next) {
-    @apply right-3;
+  @media (max-width: 768px) {
+    :global(.post-content .featured-gallery-main img) {
+      height: 260px;
+    }
   }
 
-  :global(.post-content .carousel-control-prev-icon),
-  :global(.post-content .carousel-control-next-icon) {
-    display: inline-block;
-    width: 1.2rem;
-    height: 1.2rem;
-    background-size: 100% 100%;
-    background-repeat: no-repeat;
-  }
-
-  :global(.post-content .carousel-control-prev-icon) {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='white' viewBox='0 0 16 16'%3E%3Cpath d='M11.354 1.646a.5.5 0 0 1 0 .708L5.707 8l5.647 5.646a.5.5 0 0 1-.708.708l-6-6a.5.5 0 0 1 0-.708l6-6a.5.5 0 0 1 .708 0z'/%3E%3C/svg%3E");
-  }
-
-  :global(.post-content .carousel-control-next-icon) {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='white' viewBox='0 0 16 16'%3E%3Cpath d='M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E");
-  }
-
-  :global(.post-content .visually-hidden) {
-    @apply absolute w-px h-px p-0 -m-px overflow-hidden whitespace-nowrap border-0;
-    clip: rect(0, 0, 0, 0);
+  @media (max-width: 640px) {
+    :global(.post-content .featured-gallery-thumbs) {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
   }
 
   :global(.post-content ul) {
