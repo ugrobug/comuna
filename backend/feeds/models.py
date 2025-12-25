@@ -77,6 +77,8 @@ class BotSession(models.Model):
     )
     mode_selected = models.BooleanField(default=False)
     instructions_sent = models.BooleanField(default=False)
+    pending_update_post_id = models.IntegerField(null=True, blank=True)
+    pending_update_message = models.JSONField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

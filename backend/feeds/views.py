@@ -288,7 +288,9 @@ def _send_setup_options(chat_id: int) -> None:
     )
     _send_bot_message_with_keyboard(
         chat_id,
-        "Выберите рубрику и режим публикации:",
+        "Будем публиковать все новые посты на сайте или ты хочешь каждый новый пост "
+        "согласовывать в этом боте (удобно, если много постов картинок, видео, "
+        "голосований, не подходящих для внешнего ресурса)",
         {
             "inline_keyboard": [
                 [{"text": "Автопубликация", "callback_data": "mode:auto"}],
@@ -300,7 +302,7 @@ def _send_setup_options(chat_id: int) -> None:
     if rubric_keyboard:
         _send_bot_message_with_keyboard(
             chat_id,
-            "Выберите рубрику канала:",
+            "Выберите тематику канала",
             {"inline_keyboard": rubric_keyboard},
         )
 
@@ -331,7 +333,7 @@ def _maybe_send_setup_instructions(chat_id: int) -> None:
         session.save(update_fields=["instructions_sent", "updated_at"])
 
 
-def _handle_channel_post(message: dict) -> None:
+def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
     chat = message.get("chat", {})
     username = chat.get("username")
     if not username:
@@ -359,6 +361,14 @@ def _handle_channel_post(message: dict) -> None:
             return
         _refresh_author_from_telegram(author, chat_id, token)
 
+    if not author.rubric:
+        if author.admin_chat_id and token:
+            _send_bot_message(
+                author.admin_chat_id,
+                "Перед первой публикацией необходимо выбрать тематику канала.",
+            )
+        return
+
     raw_text = _extract_plain_text(message)
     content = _format_telegram_text(raw_text, _extract_entities(message))
     image_url = _extract_photo_url(message, token) if token else None
@@ -371,7 +381,7 @@ def _handle_channel_post(message: dict) -> None:
     channel_url = f"https://t.me/{username}"
     source_url = f"{channel_url}/{message_id}"
 
-    requires_approval = not author.auto_publish and author.admin_chat_id
+    requires_approval = (not author.auto_publish and author.admin_chat_id) and not force_publish
 
     post, created = Post.objects.get_or_create(
         author=author,
@@ -406,12 +416,12 @@ def _handle_channel_post(message: dict) -> None:
     elif requires_approval:
         _send_bot_message_with_keyboard(
             author.admin_chat_id,
-            f"Новый пост из канала @{author.username}:\n{title}\n\nОпубликовать?",
+            f"Новый пост из канала @{author.username}:\n{title}\n\nОпубликуем?",
             {
                 "inline_keyboard": [
                     [
-                        {"text": "Опубликовать", "callback_data": f"approve:{post.id}"},
-                        {"text": "Пропустить", "callback_data": f"reject:{post.id}"},
+                        {"text": "Публикуем", "callback_data": f"approve:{post.id}"},
+                        {"text": "Этот пропустим", "callback_data": f"reject:{post.id}"},
                     ]
                 ]
             },
@@ -431,7 +441,10 @@ def _handle_private_message(message: dict) -> None:
     if text == "/start":
         _send_bot_message_with_keyboard(
             chat_id,
-            "Добро пожаловать! Сначала выберите рубрику и режим публикации.",
+            "Привет! Это бот Comuna.ru он публикует твои посты на сайте, они "
+            "собирают аудиторию из поисковых систем и ведут ее к тебе в канал. "
+            "Чтобы запустить бота добавь его администратором к себе в канал и "
+            "выбери тематику канала и настройки публикации ниже",
             {"keyboard": [["Помощь", "Настройка"]], "resize_keyboard": True},
         )
         _send_setup_options(chat_id)
@@ -483,27 +496,74 @@ def _handle_private_message(message: dict) -> None:
             "entities": message.get("entities"),
             "caption_entities": message.get("caption_entities"),
         }
-        _handle_channel_post(forwarded)
+
         session = BotSession.objects.filter(telegram_user_id=chat_id).first()
-        if session:
-            author = Author.objects.filter(username__iexact=forward_chat.get("username")).first()
-            if author:
-                author.auto_publish = session.auto_publish
-                author.admin_chat_id = chat_id
-                if session.rubric:
-                    author.rubric = session.rubric
-                author.save(
-                    update_fields=["auto_publish", "admin_chat_id", "rubric", "updated_at"]
-                )
-                if author.rubric:
-                    Post.objects.filter(author=author).update(rubric=author.rubric)
-                session.delete()
-                _send_bot_message(
-                    chat_id,
-                    f"Настройки применены для @{author.username}.",
-                )
-            else:
-                _send_bot_message(chat_id, "Канал пока не найден, попробуйте переслать еще раз.")
+        author = Author.objects.filter(username__iexact=forward_chat.get("username")).first()
+
+        if session and not session.rubric:
+            _send_bot_message(
+                chat_id,
+                "Перед первой публикацией необходимо выбрать тематику канала.",
+            )
+            return
+
+        if not author and session and session.rubric:
+            author, _ = Author.objects.get_or_create(
+                username=forward_chat.get("username"),
+                defaults={
+                    "title": forward_chat.get("title", ""),
+                    "channel_url": f"https://t.me/{forward_chat.get('username')}",
+                },
+            )
+
+        if author and not author.rubric and not (session and session.rubric):
+            _send_bot_message(
+                chat_id,
+                "Перед первой публикацией необходимо выбрать тематику канала.",
+            )
+            return
+
+        if session and author:
+            author.auto_publish = session.auto_publish
+            author.admin_chat_id = chat_id
+            if session.rubric:
+                author.rubric = session.rubric
+            author.save(
+                update_fields=["auto_publish", "admin_chat_id", "rubric", "updated_at"]
+            )
+            if author.rubric:
+                Post.objects.filter(author=author).update(rubric=author.rubric)
+            session.delete()
+
+        existing_post = Post.objects.filter(
+            author__username__iexact=forward_chat.get("username"),
+            message_id=forward_message_id,
+        ).first()
+        if existing_post:
+            BotSession.objects.update_or_create(
+                telegram_user_id=chat_id,
+                defaults={
+                    "pending_update_post_id": existing_post.id,
+                    "pending_update_message": forwarded,
+                },
+            )
+            _send_bot_message_with_keyboard(
+                chat_id,
+                "Этот пост уже был опубликован, вы хотите его обновить?",
+                {
+                    "inline_keyboard": [
+                        [
+                            {"text": "Да", "callback_data": f"update:{existing_post.id}"},
+                            {"text": "Нет", "callback_data": f"skip_update:{existing_post.id}"},
+                        ]
+                    ]
+                },
+            )
+            return
+
+        _handle_channel_post(forwarded)
+        if author and session:
+            _send_bot_message(chat_id, f"Настройки применены для @{author.username}.")
         else:
             _send_bot_message(chat_id, "Пост добавлен на сайт.")
         return
@@ -578,6 +638,38 @@ def _handle_callback_query(callback_query: dict) -> None:
             _answer_callback_query(callback_id, "Пропущено")
         else:
             _answer_callback_query(callback_id, "Пост не найден")
+        return
+
+    if data.startswith("update:") and chat_id:
+        try:
+            post_id = int(data.split(":", 1)[1])
+        except ValueError:
+            _answer_callback_query(callback_id, "Некорректный пост")
+            return
+        session = BotSession.objects.filter(telegram_user_id=chat_id).first()
+        if not session or session.pending_update_post_id != post_id or not session.pending_update_message:
+            _answer_callback_query(callback_id, "Обновление не найдено")
+            return
+        _handle_channel_post(session.pending_update_message, force_publish=True)
+        session.pending_update_post_id = None
+        session.pending_update_message = None
+        session.save(update_fields=["pending_update_post_id", "pending_update_message", "updated_at"])
+        _answer_callback_query(callback_id, "Пост обновлён")
+        _send_bot_message(chat_id, "Пост обновлён на сайте.")
+        return
+
+    if data.startswith("skip_update:") and chat_id:
+        try:
+            post_id = int(data.split(":", 1)[1])
+        except ValueError:
+            _answer_callback_query(callback_id, "Некорректный пост")
+            return
+        session = BotSession.objects.filter(telegram_user_id=chat_id).first()
+        if session and session.pending_update_post_id == post_id:
+            session.pending_update_post_id = None
+            session.pending_update_message = None
+            session.save(update_fields=["pending_update_post_id", "pending_update_message", "updated_at"])
+        _answer_callback_query(callback_id, "Отменено")
         return
 
 
