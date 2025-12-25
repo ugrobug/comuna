@@ -77,7 +77,7 @@
           view="cozy"
           actions={true}
           showReadMore={false}
-          showFullBody={true}
+          showFullBody={false}
           linkOverride={`/b/post/${backendPost.id}`}
           userUrlOverride={backendPost.author?.username ? `/${backendPost.author.username}` : undefined}
           communityUrlOverride={`/rubrics/${data.rubric?.slug ?? backendPost.rubric_slug}/posts`}

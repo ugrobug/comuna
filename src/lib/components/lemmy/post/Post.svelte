@@ -161,20 +161,32 @@
 
   <!-- Оборачиваем тело поста в ссылку -->
   {#if post.post.body && !post.post.nsfw && view != 'compact' && !hideBody && rule != 'hide'}
-    <a 
-      href={postUrl}
-      class="block no-underline hover:no-underline"
-      style="grid-area: body;"
-      data-sveltekit-preload-data="off"
-    >
-      <PostBody
-        element="section"
-        body={post.post.body}
-        {view}
-        {showFullBody}
-        class="relative text-slate-600 dark:text-zinc-400"
-      />
-    </a>
+    {#if showFullBody}
+      <div style="grid-area: body;">
+        <PostBody
+          element="section"
+          body={post.post.body}
+          {view}
+          {showFullBody}
+          class="relative text-slate-600 dark:text-zinc-400"
+        />
+      </div>
+    {:else}
+      <a
+        href={postUrl}
+        class="block no-underline hover:no-underline"
+        style="grid-area: body;"
+        data-sveltekit-preload-data="off"
+      >
+        <PostBody
+          element="section"
+          body={post.post.body}
+          {view}
+          {showFullBody}
+          class="relative text-slate-600 dark:text-zinc-400"
+        />
+      </a>
+    {/if}
   {/if}
 
   <!-- Возвращаем отдельную ссылку "читать далее" -->
