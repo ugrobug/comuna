@@ -175,17 +175,14 @@ def _extract_photo_url(message: dict, token: str) -> str | None:
 def _build_content_with_images(text_html: str, image_urls: list[str]) -> str:
     if not image_urls:
         return text_html
-    preview = f'<img src="{image_urls[0]}" alt="" />'
-    remaining = image_urls[1:]
-    gallery_html = ""
-    if remaining:
-        gallery_imgs = "".join(f'<img src="{url}" alt="" />' for url in remaining)
-        gallery_html = f'<div class="post-gallery">{gallery_imgs}</div>'
-    parts = [preview]
+    if len(image_urls) == 1:
+        media_html = f'<img src="{image_urls[0]}" alt="" />'
+    else:
+        gallery_imgs = "".join(f'<img src="{url}" alt="" />' for url in image_urls)
+        media_html = f'<div class="post-gallery">{gallery_imgs}</div>'
+    parts = [media_html]
     if text_html:
         parts.append(f"<br><br>{text_html}")
-    if gallery_html:
-        parts.append(f"<br><br>{gallery_html}")
     return "".join(parts)
 
 
