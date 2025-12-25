@@ -593,6 +593,7 @@ def _handle_private_message(message: dict) -> None:
             "photo": message.get("photo"),
             "entities": message.get("entities"),
             "caption_entities": message.get("caption_entities"),
+            "media_group_id": message.get("media_group_id"),
         }
 
         session = BotSession.objects.filter(telegram_user_id=chat_id).first()
