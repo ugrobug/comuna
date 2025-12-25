@@ -9,6 +9,11 @@ class Migration(migrations.Migration):
     operations = [
         migrations.AddField(
             model_name="botsession",
+            name="invite_url",
+            field=models.URLField(blank=True, max_length=255),
+        ),
+        migrations.AddField(
+            model_name="botsession",
             name="pending_update_post_id",
             field=models.IntegerField(blank=True, null=True),
         ),

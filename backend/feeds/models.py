@@ -7,6 +7,7 @@ class Author(models.Model):
     username = models.CharField(max_length=64, unique=True)
     title = models.CharField(max_length=255, blank=True)
     channel_url = models.URLField(max_length=255, blank=True)
+    invite_url = models.URLField(max_length=255, blank=True)
     avatar_url = models.URLField(max_length=255, blank=True)
     description = models.TextField(blank=True)
     subscribers_count = models.PositiveIntegerField(default=0)
@@ -75,6 +76,7 @@ class BotSession(models.Model):
     rubric = models.ForeignKey(
         "Rubric", on_delete=models.SET_NULL, null=True, blank=True, related_name="bot_sessions"
     )
+    invite_url = models.URLField(max_length=255, blank=True)
     mode_selected = models.BooleanField(default=False)
     instructions_sent = models.BooleanField(default=False)
     pending_update_post_id = models.IntegerField(null=True, blank=True)

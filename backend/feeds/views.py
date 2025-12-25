@@ -318,7 +318,8 @@ def _send_setup_instructions(chat_id: int, auto_publish: bool) -> None:
         "Отлично! Теперь:\n"
         "1) Добавьте бота в админы канала.\n"
         "2) Дайте права: «Читать сообщения» и «Публиковать сообщения».\n"
-        "3) Для старых постов — пересылайте их сюда, и они появятся на сайте.\n"
+        "3) По желанию добавьте ссылку приглашения на канал.\n"
+        "4) Для старых постов — пересылайте их сюда, и они появятся на сайте.\n"
         f"{publish_line}",
     )
 
@@ -445,7 +446,7 @@ def _handle_private_message(message: dict) -> None:
             "собирают аудиторию из поисковых систем и ведут ее к тебе в канал. "
             "Чтобы запустить бота добавь его администратором к себе в канал и "
             "выбери тематику канала и настройки публикации ниже",
-            {"keyboard": [["Помощь", "Настройка"]], "resize_keyboard": True},
+            {"keyboard": [["Помощь", "Настройка"], ["Ссылка для подписки"]], "resize_keyboard": True},
         )
         _send_setup_options(chat_id)
         return
@@ -457,13 +458,33 @@ def _handle_private_message(message: dict) -> None:
             "1) Выберите рубрику и режим публикации в настройке.\n"
             "2) Добавьте бота админом в канал.\n"
             "3) Дайте права: «Читать сообщения» и «Публиковать сообщения».\n"
-            "4) Для старых постов — пересылайте их сюда.\n"
+            "4) По желанию добавьте ссылку приглашения на канал.\n"
+            "5) Для старых постов — пересылайте их сюда.\n"
             "Сайт: https://comuna.ru/authors",
         )
         return
 
     if text == "Настройка":
         _send_setup_options(chat_id)
+        return
+
+    if text == "Ссылка для подписки":
+        _send_bot_message(
+            chat_id,
+            "Пришлите ссылку приглашения на ваш канал (например, https://t.me/+xxxx). "
+            "Мы будем использовать её в кнопках подписки на сайте.",
+        )
+        BotSession.objects.update_or_create(telegram_user_id=chat_id, defaults={})
+        return
+
+    if text.startswith("https://t.me/") or text.startswith("http://t.me/"):
+        invite_url = text.strip()
+        session = BotSession.objects.filter(telegram_user_id=chat_id).first()
+        if not session:
+            session = BotSession.objects.create(telegram_user_id=chat_id)
+        session.invite_url = invite_url
+        session.save(update_fields=["invite_url", "updated_at"])
+        _send_bot_message(chat_id, "Ссылка сохранена. Мы будем использовать её для кнопок подписки.")
         return
 
 
@@ -528,8 +549,10 @@ def _handle_private_message(message: dict) -> None:
             author.admin_chat_id = chat_id
             if session.rubric:
                 author.rubric = session.rubric
+            if session.invite_url:
+                author.invite_url = session.invite_url
             author.save(
-                update_fields=["auto_publish", "admin_chat_id", "rubric", "updated_at"]
+                update_fields=["auto_publish", "admin_chat_id", "rubric", "invite_url", "updated_at"]
             )
             if author.rubric:
                 Post.objects.filter(author=author).update(rubric=author.rubric)
@@ -730,6 +753,7 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
     posts_count = Post.objects.filter(
         author=author, is_blocked=False, is_pending=False
     ).count()
+    author_channel_url = author.invite_url or author.channel_url
     serialized = []
     for post in posts:
         rubric = post.rubric
@@ -742,12 +766,12 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
                 "rubric_icon_url": _media_url(request, rubric.icon_url) if rubric else None,
                 "content": post.content,
                 "source_url": post.source_url,
-                "channel_url": post.channel_url,
+                "channel_url": author_channel_url or post.channel_url,
                 "created_at": post.created_at.isoformat(),
                 "author": {
                     "username": author.username,
                     "title": author.title,
-                    "channel_url": author.channel_url,
+                    "channel_url": author_channel_url,
                     "avatar_url": author.avatar_url,
                     "description": author.description,
                     "subscribers_count": author.subscribers_count,
@@ -761,7 +785,7 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
             "author": {
                 "username": author.username,
                 "title": author.title,
-                "channel_url": author.channel_url,
+                "channel_url": author_channel_url,
                 "avatar_url": author.avatar_url,
                 "description": author.description,
                 "subscribers_count": author.subscribers_count,
@@ -812,26 +836,28 @@ def rubric_posts(request: HttpRequest, slug: str) -> HttpResponse:
         .all()[:limit]
     )
 
-    serialized = [
-        {
-            "id": post.id,
-            "title": post.title,
-            "rubric": rubric.name,
-            "rubric_slug": rubric.slug,
-            "rubric_icon_url": _media_url(request, rubric.icon_url),
-            "content": post.content,
-            "source_url": post.source_url,
-            "channel_url": post.channel_url,
-            "created_at": post.created_at.isoformat(),
-            "author": {
-                "username": post.author.username,
-                "title": post.author.title,
-                "channel_url": post.author.channel_url,
-                "avatar_url": post.author.avatar_url,
-            },
-        }
-        for post in posts
-    ]
+    serialized = []
+    for post in posts:
+        author_channel_url = post.author.invite_url or post.author.channel_url
+        serialized.append(
+            {
+                "id": post.id,
+                "title": post.title,
+                "rubric": rubric.name,
+                "rubric_slug": rubric.slug,
+                "rubric_icon_url": _media_url(request, rubric.icon_url),
+                "content": post.content,
+                "source_url": post.source_url,
+                "channel_url": author_channel_url or post.channel_url,
+                "created_at": post.created_at.isoformat(),
+                "author": {
+                    "username": post.author.username,
+                    "title": post.author.title,
+                    "channel_url": author_channel_url,
+                    "avatar_url": post.author.avatar_url,
+                },
+            }
+        )
 
     return JsonResponse(
         {
@@ -858,6 +884,7 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
         return JsonResponse({"ok": False, "error": "post not found"}, status=404)
 
     rubric = post.rubric
+    author_channel_url = post.author.invite_url or post.author.channel_url
     return JsonResponse(
         {
             "ok": True,
@@ -869,12 +896,12 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
                 "rubric_icon_url": _media_url(request, rubric.icon_url) if rubric else None,
                 "content": post.content,
                 "source_url": post.source_url,
-                "channel_url": post.channel_url,
+                "channel_url": author_channel_url or post.channel_url,
                 "created_at": post.created_at.isoformat(),
                 "author": {
                     "username": post.author.username,
                     "title": post.author.title,
-                    "channel_url": post.author.channel_url,
+                    "channel_url": author_channel_url,
                     "avatar_url": post.author.avatar_url,
                 },
             },
@@ -906,6 +933,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
         )
 
         for post in posts:
+            author_channel_url = post.author.invite_url or post.author.channel_url
             serialized_posts.append(
                 {
                     "id": post.id,
@@ -915,12 +943,12 @@ def home_feed(request: HttpRequest) -> HttpResponse:
                     "rubric_icon_url": _media_url(request, rubric.icon_url),
                     "content": post.content,
                     "source_url": post.source_url,
-                    "channel_url": post.channel_url,
+                    "channel_url": author_channel_url or post.channel_url,
                     "created_at": post.created_at.isoformat(),
                     "author": {
                         "username": post.author.username,
                         "title": post.author.title,
-                        "channel_url": post.author.channel_url,
+                        "channel_url": author_channel_url,
                         "avatar_url": post.author.avatar_url,
                     },
                     "score": post.rating + post.comments_count * 5,
