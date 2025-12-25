@@ -118,10 +118,6 @@
           <Icon slot="prefix" src={ArrowLeftOnRectangle} size="16" micro />
           Log in
         </Button>
-        <Button href="/signup" size="lg">
-          <Icon slot="prefix" src={Identification} size="16" micro />
-          Sign up
-        </Button>
       </div>
     </div>
   </div>
