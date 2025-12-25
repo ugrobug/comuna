@@ -484,6 +484,7 @@ def _handle_private_message(message: dict) -> None:
             session = BotSession.objects.create(telegram_user_id=chat_id)
         session.invite_url = invite_url
         session.save(update_fields=["invite_url", "updated_at"])
+        Author.objects.filter(admin_chat_id=chat_id).update(invite_url=invite_url)
         _send_bot_message(chat_id, "Ссылка сохранена. Мы будем использовать её для кнопок подписки.")
         return
 
