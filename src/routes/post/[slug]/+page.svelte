@@ -539,148 +539,115 @@
             }
           })
 
-          // Изменяем селектор для галерей
           const galleries = document.querySelectorAll('.post-content .post-gallery')
-          galleries.forEach((gallery, galleryIndex) => {
+          galleries.forEach((gallery) => {
             const images = Array.from(gallery.querySelectorAll('img'))
-            if (images.length > 1) {
-              // Сохраняем количество изображений
-              const imagesCount = images.length
-              
-              // Создаем контейнер для изображений
-              const imageContainer = document.createElement('div')
-              imageContainer.className = 'gallery-images'
-              
-              // Перемещаем все изображения в контейнер и создаем для каждого обертку
-              images.forEach((img, index) => {
-                const wrapper = document.createElement('div')
-                wrapper.className = 'gallery-item'
-                wrapper.classList.add('loaded') // Добавляем класс loaded
-                wrapper.style.cssText = index > 0 ? 'display: none;' : ''
-                
-                // Создаем контейнер для alt-текста для каждого изображения
-                const altText = document.createElement('div')
-                altText.className = 'gallery-alt-text'
-                altText.textContent = img.title || ''
-                
-                // Перемещаем оригинальное изображение (не клонируем)
-                wrapper.appendChild(img)
-                wrapper.appendChild(altText)
-                imageContainer.appendChild(wrapper)
-              })
-              
-              // Очищаем галерею и добавляем новый контейнер
-              gallery.innerHTML = ''
-              gallery.appendChild(imageContainer)
+            if (!images.length) return
 
-              // Добавляем навигационные кнопки
-              const prevBtn = document.createElement('button')
-              prevBtn.className = 'gallery-nav gallery-prev'
-              prevBtn.innerHTML = `<svg class="w-6 h-6" viewBox="0 0 24 24" fill="currentColor"><path d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>`
-              
-              const nextBtn = document.createElement('button')
-              nextBtn.className = 'gallery-nav gallery-next'
-              nextBtn.innerHTML = `<svg class="w-6 h-6" viewBox="0 0 24 24" fill="currentColor"><path d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>`
+            const imageData = images.map((img) => ({
+              src: img.getAttribute('src') || '',
+              alt: img.getAttribute('alt') || '',
+              title: img.getAttribute('title') || '',
+            }))
 
-              const counter = document.createElement('div')
-              counter.className = 'gallery-counter'
-              counter.textContent = `1/${imagesCount}`
+            const grid = document.createElement('div')
+            grid.className = 'gallery-grid'
 
-              gallery.appendChild(prevBtn)
-              gallery.appendChild(nextBtn)
-              gallery.appendChild(counter)
+            let modal: HTMLElement | null = null
+            let modalImage: HTMLImageElement | null = null
+            let modalCaption: HTMLElement | null = null
+            let currentIndex = 0
 
-              let currentIndex = 0
-              let isFullscreen = false
-              let fullscreenModal: HTMLElement | null = null
-
-              const toggleFullscreen = (index: number, isFullscreenUpdate = false) => {
-                if (!isFullscreen) {
-                  // Создаем модальное окно
-                  fullscreenModal = document.createElement('div')
-                  fullscreenModal.className = 'fullscreen-modal'
-                  
-                  // Создаем контейнер для изображений в полноэкранном режиме
-                  const fullscreenContainer = imageContainer.cloneNode(true) as HTMLElement
-                  
-                  // Добавляем кнопку закрытия
-                  const closeBtn = document.createElement('button')
-                  closeBtn.className = 'fullscreen-close'
-                  closeBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 18L18 6M6 6l12 12" stroke-linecap="round" stroke-linejoin="round"/></svg>`
-                  closeBtn.onclick = () => {
-                    fullscreenModal?.remove()
-                    isFullscreen = false
-                    fullscreenModal = null
-                  }
-                  
-                  // Клонируем навигационные элементы
-                  const fullscreenPrevBtn = prevBtn.cloneNode(true) as HTMLElement
-                  fullscreenPrevBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round"/></svg>`
-                  
-                  const fullscreenNextBtn = nextBtn.cloneNode(true) as HTMLElement
-                  fullscreenNextBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6" stroke-linecap="round" stroke-linejoin="round"/></svg>`
-                  
-                  const fullscreenCounter = counter.cloneNode(true) as HTMLElement
-                  
-                  fullscreenPrevBtn.onclick = () => updateGallery(currentIndex - 1, true)
-                  fullscreenNextBtn.onclick = () => updateGallery(currentIndex + 1, true)
-                  
-                  fullscreenModal.appendChild(fullscreenContainer)
-                  fullscreenModal.appendChild(closeBtn)
-                  fullscreenModal.appendChild(fullscreenPrevBtn)
-                  fullscreenModal.appendChild(fullscreenNextBtn)
-                  fullscreenModal.appendChild(fullscreenCounter)
-                  
-                  document.body.appendChild(fullscreenModal)
-                  isFullscreen = true
-                }
-                
-                updateGallery(index, isFullscreenUpdate)
+            const updateModal = (index: number) => {
+              currentIndex = (index + imageData.length) % imageData.length
+              const current = imageData[currentIndex]
+              if (modalImage) {
+                modalImage.src = current.src
+                modalImage.alt = current.alt
               }
-
-              const updateGallery = (newIndex: number, isFullscreenUpdate = false) => {
-                const items = (isFullscreenUpdate && fullscreenModal 
-                  ? fullscreenModal.querySelectorAll('.gallery-item') 
-                  : imageContainer.querySelectorAll('.gallery-item')) as NodeListOf<HTMLElement>
-                
-                items.forEach(item => item.style.display = 'none')
-                currentIndex = (newIndex + items.length) % items.length
-                items[currentIndex].style.display = 'block'
-                
-                const counterElement = isFullscreenUpdate && fullscreenModal
-                  ? fullscreenModal.querySelector('.gallery-counter')
-                  : counter
-                  
-                if (counterElement) {
-                  counterElement.textContent = `${currentIndex + 1}/${items.length}`
-                }
+              if (modalCaption) {
+                modalCaption.textContent = current.title || current.alt || ''
               }
-
-              // Добавляем обработчики событий
-              prevBtn.addEventListener('click', () => updateGallery(currentIndex - 1))
-              nextBtn.addEventListener('click', () => updateGallery(currentIndex + 1))
-              
-              // Добавляем обработчик клика по изображениям
-              const items = imageContainer.querySelectorAll('.gallery-item')
-              items.forEach((item, index) => {
-                item.addEventListener('click', () => toggleFullscreen(index))
-              })
-              
-              // Добавляем обработчик клавиш
-              document.addEventListener('keydown', (e) => {
-                if (isFullscreen) {
-                  if (e.key === 'Escape') {
-                    fullscreenModal?.remove()
-                    isFullscreen = false
-                    fullscreenModal = null
-                  } else if (e.key === 'ArrowLeft') {
-                    updateGallery(currentIndex - 1, true)
-                  } else if (e.key === 'ArrowRight') {
-                    updateGallery(currentIndex + 1, true)
-                  }
-                }
-              })
             }
+
+            const closeModal = () => {
+              modal?.remove()
+              modal = null
+              modalImage = null
+              modalCaption = null
+              document.removeEventListener('keydown', onKeydown)
+            }
+
+            const onKeydown = (e: KeyboardEvent) => {
+              if (!modal) return
+              if (e.key === 'Escape') {
+                closeModal()
+              } else if (e.key === 'ArrowLeft') {
+                updateModal(currentIndex - 1)
+              } else if (e.key === 'ArrowRight') {
+                updateModal(currentIndex + 1)
+              }
+            }
+
+            const openModal = (index: number) => {
+              if (!modal) {
+                modal = document.createElement('div')
+                modal.className = 'gallery-modal'
+                modal.innerHTML = `
+                  <div class="gallery-modal-backdrop"></div>
+                  <div class="gallery-modal-content">
+                    <img class="gallery-modal-image" />
+                    <div class="gallery-modal-caption"></div>
+                  </div>
+                  <button class="gallery-modal-close" aria-label="Закрыть">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M6 18L18 6M6 6l12 12" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <button class="gallery-modal-prev" aria-label="Предыдущее">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                  <button class="gallery-modal-next" aria-label="Следующее">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M9 18l6-6-6-6" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </button>
+                `
+
+                document.body.appendChild(modal)
+                modalImage = modal.querySelector('.gallery-modal-image')
+                modalCaption = modal.querySelector('.gallery-modal-caption')
+
+                const backdrop = modal.querySelector('.gallery-modal-backdrop')
+                backdrop?.addEventListener('click', closeModal)
+                modal.querySelector('.gallery-modal-close')?.addEventListener('click', closeModal)
+                modal.querySelector('.gallery-modal-prev')?.addEventListener('click', () => updateModal(currentIndex - 1))
+                modal.querySelector('.gallery-modal-next')?.addEventListener('click', () => updateModal(currentIndex + 1))
+
+                if (imageData.length <= 1) {
+                  modal.querySelector('.gallery-modal-prev')?.classList.add('hidden')
+                  modal.querySelector('.gallery-modal-next')?.classList.add('hidden')
+                }
+
+                document.addEventListener('keydown', onKeydown)
+              }
+
+              updateModal(index)
+            }
+
+            images.forEach((img, index) => {
+              const thumb = document.createElement('button')
+              thumb.type = 'button'
+              thumb.className = 'gallery-thumb'
+              thumb.appendChild(img)
+              thumb.addEventListener('click', () => openModal(index))
+              grid.appendChild(thumb)
+            })
+
+            gallery.innerHTML = ''
+            gallery.appendChild(grid)
           })
         }, 0)
       }
@@ -729,14 +696,12 @@
             </div>`;
             return imageWrapper;
           case 'gallery':
-            const images = block.data.images.map((img: any, index: number) => 
-              `<div class="gallery-item loaded" ${index > 0 ? 'style="display: none;"' : ''}>
-                <img src="${img.url}" alt="${img.alt || ''}" title="${img.title || ''}">
-                ${img.title ? `<div class="gallery-alt-text">${img.title}</div>` : ''}
-              </div>`
+            const images = block.data.images.map(
+              (img: any) =>
+                `<img src="${img.url}" alt="${img.alt || ''}" title="${img.title || ''}">`
             ).join('');
             return `<div class="post-gallery"${anchorText ? ` id="${anchorText}"` : ''}>
-              <div class="gallery-images">${images}</div>
+              ${images}
             </div>`;
           case 'link':
           case 'customLink':
@@ -1393,102 +1358,71 @@
   }
 
   :global(.post-content .post-gallery) {
-    @apply relative my-4 rounded-lg overflow-hidden;
-    aspect-ratio: 4/3;
-    background: transparent;
+    @apply my-4;
   }
 
-  :global(.post-content .post-gallery .gallery-images) {
-    @apply w-full h-full relative;
+  :global(.post-content .post-gallery .gallery-grid) {
+    @apply grid gap-3;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   }
 
-  :global(.post-content .post-gallery .gallery-item) {
-    @apply w-full h-full absolute top-0 left-0;
+  :global(.post-content .post-gallery .gallery-thumb) {
+    @apply relative overflow-hidden rounded-xl bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700;
   }
 
-  :global(.post-content .post-gallery img) {
+  :global(.post-content .post-gallery .gallery-thumb img) {
     @apply w-full h-full object-cover;
+    aspect-ratio: 4/3;
+    display: block;
   }
 
-  :global(.post-content .post-gallery .gallery-alt-text) {
-    @apply absolute bottom-0 left-0 right-0 bg-black/50 text-white px-4 py-2 text-sm
-    opacity-0 transition-opacity duration-200 z-20;
-    min-height: 2.5rem;
+  :global(.post-content .post-gallery .gallery-thumb:hover) {
+    @apply border-slate-300 dark:border-zinc-600;
   }
 
-  :global(.post-content .post-gallery:hover .gallery-alt-text) {
-    @apply opacity-100;
+  :global(.gallery-modal) {
+    @apply fixed inset-0 z-50 flex items-center justify-center;
   }
 
-  :global(.post-content .post-gallery .gallery-nav) {
-    @apply absolute top-1/2 -translate-y-1/2 bg-black/50 text-white p-2 rounded-full 
-    opacity-0 transition-opacity duration-200 hover:bg-black/70 z-30;
+  :global(.gallery-modal-backdrop) {
+    @apply absolute inset-0 bg-black/80;
   }
 
-  :global(.post-content .post-gallery:hover .gallery-nav) {
-    @apply opacity-100;
+  :global(.gallery-modal-content) {
+    @apply relative z-10 max-w-[92vw] max-h-[90vh] flex flex-col items-center gap-4;
   }
 
-  :global(.post-content .post-gallery .gallery-prev) {
-    @apply left-2;
+  :global(.gallery-modal-image) {
+    @apply max-h-[78vh] max-w-[92vw] object-contain rounded-lg;
   }
 
-  :global(.post-content .post-gallery .gallery-next) {
-    @apply right-2;
+  :global(.gallery-modal-caption) {
+    @apply text-sm text-white/80 text-center;
   }
 
-  :global(.post-content .post-gallery .gallery-counter) {
-    @apply absolute bottom-2 right-2 bg-black/50 text-white px-2 py-1 rounded-full text-sm z-30;
-  }
-
-  :global(.fullscreen-modal) {
-    @apply fixed inset-0 bg-black/90 z-50 flex items-center justify-center;
-  }
-
-  :global(.fullscreen-modal img) {
-    @apply max-h-[90vh] max-w-[90vw] object-contain;
-  }
-
-  :global(.fullscreen-modal .gallery-nav) {
-    @apply fixed top-1/2 -translate-y-1/2 bg-black/50 text-white p-4 rounded-full 
-    hover:bg-black/70 transition-colors duration-200 z-50 opacity-100 cursor-pointer
+  :global(.gallery-modal-close) {
+    @apply fixed top-6 right-6 text-white bg-black/60 p-3 rounded-full 
+    hover:bg-black/80 transition-colors duration-200 z-50 cursor-pointer
     flex items-center justify-center;
-    width: 48px;
-    height: 48px;
   }
 
-  :global(.fullscreen-modal .gallery-prev) {
+  :global(.gallery-modal-prev),
+  :global(.gallery-modal-next) {
+    @apply fixed top-1/2 -translate-y-1/2 text-white bg-black/50 p-3 rounded-full
+    hover:bg-black/70 transition-colors duration-200 z-50 cursor-pointer
+    flex items-center justify-center;
+  }
+
+  :global(.gallery-modal-prev) {
     @apply left-6;
   }
 
-  :global(.fullscreen-modal .gallery-next) {
+  :global(.gallery-modal-next) {
     @apply right-6;
   }
 
-  :global(.fullscreen-modal .gallery-counter) {
-    @apply fixed bottom-6 right-6 bg-black/50 text-white px-4 py-2 rounded-full text-base z-50;
-  }
-
-  :global(.fullscreen-close) {
-    @apply fixed top-6 right-6 text-white bg-black/50 p-4 rounded-full 
-    hover:bg-black/70 transition-colors duration-200 z-50 cursor-pointer
-    flex items-center justify-center;
-    width: 48px;
-    height: 48px;
-  }
-
-  :global(.fullscreen-modal .gallery-alt-text) {
-    @apply fixed bottom-0 left-0 right-0 bg-black/50 text-white px-6 py-4 text-base
-    opacity-100 z-50 text-center;
-  }
-
-  :global(.fullscreen-modal .fullscreen-alt-text) {
-    @apply fixed bottom-0 left-0 right-0 bg-black/50 text-white px-6 py-4 text-base
-    opacity-100 z-50 text-center;
-  }
-
-  :global(.fullscreen-modal svg) {
-    @apply w-8 h-8;
+  :global(.gallery-modal svg) {
+    @apply w-6 h-6;
   }
 
   :global(.post-content .image-wrapper) {

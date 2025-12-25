@@ -140,11 +140,10 @@
         return processImage(block.data.file.url, '', block.data.file.alt || '', block.data.file.title || '', block.data.file.caption || '');
       case 'gallery':
         return `<div class="post-gallery">
-          <div class="gallery-images">
-            ${block.data.images.map((img: any, index: number) => 
-              `<div class="gallery-item" ${index > 0 ? 'style="display: none;"' : ''}>
-                ${processImage(img.url, '', img.alt || '', img.title || '')}
-                ${img.alt ? `<div class="gallery-alt-text">${img.alt}</div>` : ''}
+          <div class="gallery-grid">
+            ${block.data.images.map((img: any) => 
+              `<div class="gallery-thumb">
+                <img src="${img.url}" alt="${img.alt || ''}" title="${img.title || ''}">
               </div>`
             ).join('')}
           </div>
@@ -557,6 +556,25 @@ ${view == 'list' ? `max-h-24` : 'max-h-48'}`
 
   :global(.post-content blockquote footer) {
     @apply mt-2 text-sm text-slate-500 dark:text-zinc-400 not-italic;
+  }
+
+  :global(.post-content .post-gallery) {
+    @apply my-4;
+  }
+
+  :global(.post-content .post-gallery .gallery-grid) {
+    @apply grid gap-2;
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  }
+
+  :global(.post-content .post-gallery .gallery-thumb) {
+    @apply overflow-hidden rounded-lg bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700;
+  }
+
+  :global(.post-content .post-gallery .gallery-thumb img) {
+    @apply w-full h-full object-cover;
+    aspect-ratio: 4/3;
+    display: block;
   }
 
   :global(.post-content ul) {
