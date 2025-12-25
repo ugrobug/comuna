@@ -11,6 +11,7 @@ from feeds.views import (
     rubrics_list,
     sitemap_xml,
     telegram_webhook,
+    top_authors_month,
 )
 
 urlpatterns = [
@@ -20,6 +21,7 @@ urlpatterns = [
     path("api/rubrics/<str:slug>/posts/", rubric_posts, name="rubric-posts"),
     path("api/posts/<int:post_id>/", post_detail, name="post-detail"),
     path("api/home/", home_feed, name="home-feed"),
+    path("api/authors/top-month/", top_authors_month, name="top-authors-month"),
     path("sitemap.xml", sitemap_xml, name="sitemap-xml"),
     path("tg/webhook/<str:token>/", telegram_webhook, name="telegram-webhook"),
 ]

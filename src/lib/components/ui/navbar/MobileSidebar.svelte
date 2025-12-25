@@ -6,8 +6,6 @@
     Identification,
     Inbox,
     UserCircle,
-    UserGroup,
-    GlobeAlt,
     Home,
     Fire,
     Clock,
@@ -17,14 +15,12 @@
     Megaphone,
     DocumentText,
     InformationCircle,
-    ChevronDown,
     PencilSquare,
     ClipboardDocumentList,
   } from 'svelte-hero-icons'
   import { notifications, profile, profileData } from '$lib/auth.js'
   import { userSettings } from '$lib/settings.js'
   import SidebarButton from '$lib/components/ui/sidebar/SidebarButton.svelte'
-  import CommunityList from '$lib/components/ui/sidebar/CommunityList.svelte'
   import ProfileButton from '$lib/components/ui/sidebar/ProfileButton.svelte'
   import { flip } from 'svelte/animate'
   import { expoOut } from 'svelte/easing'
@@ -36,8 +32,6 @@
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
   import { onMount } from 'svelte'
-  import { getTopCommunities, getFederatedCommunities } from '$lib/api/communities'
-  import CommunityIcon from '$lib/components/ui/CommunityIcon.svelte'
   import { Icon } from 'svelte-hero-icons'
   import LoginModal from '$lib/components/auth/LoginModal.svelte'
   import { env } from '$env/dynamic/public'
@@ -52,30 +46,6 @@
   const PUBLIC_PROJECT_AUTHORS = env.PUBLIC_PROJECT_AUTHORS || '/authors';
   const PUBLIC_PROJECT_RULES = env.PUBLIC_PROJECT_RULES || '/rules';
 
-  let topCommunities: Array<{
-    name: string;
-    icon: string | null;
-    url: string;
-    subscribers: number;
-  }> = [];
-  
-  let displayedCommunitiesCount = 20;
-  let hasMoreCommunities = false;
-  let allLocalCommunities: Array<{
-    name: string;
-    icon: string | null;
-    url: string;
-    subscribers: number;
-  }> = [];
-  
-  let federatedCommunities: Array<{
-    name: string;
-    icon: string | null;
-    url: string;
-    subscribers: number;
-  }> = [];
-  
-  let showFederated = false;
   let loginModalOpen = false;
   let rubrics: Array<{ name: string; slug: string }> = [];
 
@@ -90,37 +60,6 @@
     dispatch('close');
   }
   
-  function loadMoreCommunities() {
-    if (!showFederated) {
-      if (displayedCommunitiesCount < allLocalCommunities.length) {
-        topCommunities = allLocalCommunities;
-        displayedCommunitiesCount = allLocalCommunities.length;
-        hasMoreCommunities = true;
-      } else {
-        showFederated = true;
-        loadFederatedCommunities();
-      }
-    } else {
-      const currentFederatedCount = displayedCommunitiesCount - allLocalCommunities.length;
-      const newFederatedCount = currentFederatedCount + 10;
-      
-      const federatedToShow = federatedCommunities.slice(0, newFederatedCount);
-      topCommunities = [...allLocalCommunities, ...federatedToShow];
-      displayedCommunitiesCount = allLocalCommunities.length + newFederatedCount;
-      
-      hasMoreCommunities = newFederatedCount < federatedCommunities.length;
-    }
-  }
-  
-  async function loadFederatedCommunities() {
-    federatedCommunities = await getFederatedCommunities();
-    
-    const federatedToShow = federatedCommunities.slice(0, 10);
-    topCommunities = [...allLocalCommunities, ...federatedToShow];
-    displayedCommunitiesCount = allLocalCommunities.length + 10;
-    hasMoreCommunities = 10 < federatedCommunities.length;
-  }
-
   async function loadRubrics() {
     try {
       const response = await fetch(buildRubricsUrl());
@@ -133,9 +72,6 @@
   }
 
   onMount(async () => {
-    allLocalCommunities = await getTopCommunities();
-    topCommunities = allLocalCommunities.slice(0, displayedCommunitiesCount);
-    hasMoreCommunities = allLocalCommunities.length > displayedCommunitiesCount || allLocalCommunities.length > 0;
     loadRubrics();
   });
 
@@ -254,40 +190,6 @@
       {/each}
     </div>
   {/if}
-
-  <div class="flex flex-col gap-2">
-    {#if $profile?.jwt}
-      <span 
-        class="px-2 py-1 text-sm font-normal text-slate-500 dark:text-zinc-200"
-      >
-        {$t('nav.popular_communities')}
-      </span>
-    {/if}
-    
-    {#each topCommunities as community}
-      <SidebarButton 
-        href={community.url}
-        on:click={handleNavigation}
-      >
-        <div slot="icon" class="w-7 h-7">
-          <CommunityIcon name={community.name} icon={community.icon} />
-        </div>
-        <span slot="label">
-          {community.name}
-        </span>
-      </SidebarButton>
-    {/each}
-    
-    {#if hasMoreCommunities}
-      <SidebarButton 
-        on:click={loadMoreCommunities} 
-        icon={ChevronDown}
-        href="javascript:void(0)"
-      >
-        <span slot="label">Показать все</span>
-      </SidebarButton>
-    {/if}
-  </div>
 
   <div class="flex flex-col gap-2">
     <span

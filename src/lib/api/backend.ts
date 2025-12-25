@@ -25,6 +25,11 @@ export const buildHomeFeedUrl = (): string => {
   return `${getBackendBaseUrl()}/api/home/`
 }
 
+export const buildTopAuthorsMonthUrl = (limit = 5): string => {
+  const params = new URLSearchParams({ limit: String(limit) })
+  return `${getBackendBaseUrl()}/api/authors/top-month/?${params.toString()}`
+}
+
 const stableId = (input: string): number => {
   let hash = 0
   for (let i = 0; i < input.length; i += 1) {

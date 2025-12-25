@@ -5,10 +5,11 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections import defaultdict
+from datetime import timedelta
 from html import escape
 from xml.sax.saxutils import escape as xml_escape
 from django.db import transaction
-from django.db.models import F, IntegerField, Value
+from django.db.models import Count, F, IntegerField, Q, Sum, Value
 from django.db.models.functions import Cast
 
 from django.conf import settings
@@ -1034,6 +1035,49 @@ def home_feed(request: HttpRequest) -> HttpResponse:
             )
 
     return JsonResponse({"ok": True, "posts": serialized_posts})
+
+
+def top_authors_month(request: HttpRequest) -> HttpResponse:
+    limit_raw = request.GET.get("limit", "5")
+    try:
+        limit = min(max(int(limit_raw), 1), 20)
+    except ValueError:
+        limit = 5
+
+    cutoff = timezone.now() - timedelta(days=30)
+    score_expr = Cast(F("posts__rating"), IntegerField()) + Cast(
+        F("posts__comments_count"), IntegerField()
+    ) * Value(5)
+    posts_filter = Q(
+        posts__created_at__gte=cutoff,
+        posts__is_blocked=False,
+        posts__is_pending=False,
+    )
+
+    authors = (
+        Author.objects.filter(is_blocked=False)
+        .annotate(
+            month_score=Sum(score_expr, filter=posts_filter),
+            month_posts=Count("posts", filter=posts_filter),
+        )
+        .filter(month_posts__gt=0)
+        .order_by("-month_score", "-month_posts", "username")[:limit]
+    )
+
+    serialized = []
+    for author in authors:
+        serialized.append(
+            {
+                "username": author.username,
+                "title": author.title,
+                "avatar_url": author.avatar_url,
+                "channel_url": author.invite_url or author.channel_url,
+                "month_score": author.month_score or 0,
+                "month_posts": author.month_posts or 0,
+            }
+        )
+
+    return JsonResponse({"ok": True, "authors": serialized})
 
 
 def sitemap_xml(request: HttpRequest) -> HttpResponse:

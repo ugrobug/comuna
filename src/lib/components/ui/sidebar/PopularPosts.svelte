@@ -1,38 +1,30 @@
 <script lang="ts">
-  import { client } from '$lib/lemmy.js'
-  import type { PostView } from 'lemmy-js-client'
-  import { t } from '$lib/translations'
   import { onMount } from 'svelte'
-  import { postLink } from '$lib/components/lemmy/post/helpers'
   import Avatar from '$lib/components/ui/Avatar.svelte'
-  import { ChatBubbleOvalLeft, Heart, Icon } from 'svelte-hero-icons'
+  import { Trophy, Icon } from 'svelte-hero-icons'
+  import { buildTopAuthorsMonthUrl } from '$lib/api/backend'
 
-  let posts: PostView[] = []
+  type TopAuthor = {
+    username: string
+    title?: string | null
+    avatar_url?: string | null
+    channel_url?: string | null
+    month_score: number
+    month_posts: number
+  }
+
+  let authors: TopAuthor[] = []
   let loading = true
   let error: string | null = null
 
-  // Функция для извлечения первого h1 из HTML
-  function extractFirstH1(html: string | undefined): string {
-    if (!html) return '';
-    
-    const match = html.match(/<h1[^>]*>(.*?)<\/h1>/);
-    if (match && match[1]) {
-      // Удаляем все HTML теги из найденного текста
-      return match[1].replace(/<[^>]*>/g, '');
-    }
-    // Если h1 не найден, возвращаем название поста
-    return '';
-  }
-
-  async function fetchPopularPosts() {
+  async function fetchTopAuthors() {
     try {
-      const response = await client().getPosts({
-        type_: "All",
-        sort: "TopMonth",
-        limit: 5,
-        page: 1
-      })
-      posts = response.posts
+      const response = await fetch(buildTopAuthorsMonthUrl(5))
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+      const data = await response.json()
+      authors = data.authors ?? []
     } catch (e: unknown) {
       error = e instanceof Error ? e.message : 'Неизвестная ошибка'
     } finally {
@@ -40,14 +32,12 @@
     }
   }
 
-  onMount(() => {
-    fetchPopularPosts()
-  })
+  onMount(fetchTopAuthors)
 </script>
 
 <div class="flex flex-col gap-2 bg-white dark:bg-zinc-900 rounded-xl p-4">
   <span class="text-base font-normal text-slate-900 dark:text-zinc-200 mb-2">
-    {$t('nav.recent_posts')}
+    Топ авторов за месяц
   </span>
 
   {#if loading}
@@ -60,36 +50,36 @@
     <div class="text-sm text-red-500">
       {error}
     </div>
+  {:else if authors.length === 0}
+    <div class="text-sm text-slate-500 dark:text-zinc-400">
+      Нет данных за месяц
+    </div>
   {:else}
     <div class="flex flex-col divide-y divide-slate-200 dark:divide-zinc-800">
-      {#each posts as post}
-        <a 
-          href={postLink(post.post)} 
+      {#each authors as author}
+        <a
+          href={`/${author.username}`}
           class="block group py-3 first:pt-1 last:pb-1"
         >
           <div class="flex flex-col gap-2">
             <div class="flex items-center gap-2">
               <Avatar
-                url={post.creator.avatar}
-                alt={post.creator.name}
+                url={author.avatar_url || undefined}
+                alt={author.title || author.username}
                 width={32}
                 class_="w-8 h-8 rounded-full"
               />
               <span class="text-sm font-medium text-slate-900 dark:text-zinc-200">
-                {post.creator.display_name || post.creator.name}
+                {author.title || author.username}
               </span>
-            </div>
-            <div class="text-sm font-normal text-slate-700 dark:text-zinc-200 group-hover:text-slate-900 dark:group-hover:text-zinc-200 line-clamp-3">
-              {extractFirstH1(post.post.body) || post.post.name}
             </div>
             <div class="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-zinc-400">
               <span class="flex items-center gap-1">
-                <Icon src={Heart} solid size="14" class="text-red-500 dark:text-red-400" />
-                {post.counts.score}
+                <Icon src={Trophy} size="14" class="text-amber-500" />
+                {author.month_score}
               </span>
               <span class="flex items-center gap-1">
-                <Icon src={ChatBubbleOvalLeft} size="14" />
-                {post.counts.comments}
+                {author.month_posts} постов
               </span>
             </div>
           </div>
