@@ -7,6 +7,7 @@ import urllib.request
 from collections import defaultdict
 from html import escape
 from xml.sax.saxutils import escape as xml_escape
+from django.db import transaction
 from django.db.models import F, IntegerField, Value
 from django.db.models.functions import Cast
 
@@ -393,34 +394,51 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
     image_url = _extract_photo_url(message, token) if token else None
     gallery_urls = [image_url] if image_url else []
     if media_group_id:
-        existing_group_post = Post.objects.filter(
-            author=author, media_group_id=media_group_id
-        ).first()
-        if existing_group_post:
-            raw_data = existing_group_post.raw_data or {}
-            existing_urls = list(raw_data.get("gallery_urls") or [])
-            if image_url and image_url not in existing_urls:
-                existing_urls.append(image_url)
-            raw_data["gallery_urls"] = existing_urls
-            raw_data["media_group_id"] = media_group_id
-            base_text = raw_data.get("formatted_text") or formatted_text
-            content = _build_content_with_images(base_text, existing_urls)
-            existing_group_post.content = content
-            existing_group_post.raw_data = raw_data
-            existing_group_post.channel_url = f"https://t.me/{username}"
-            existing_group_post.source_url = (
-                f"{existing_group_post.channel_url}/{existing_group_post.message_id}"
+        with transaction.atomic():
+            Author.objects.select_for_update().filter(pk=author.pk)
+            existing_group_post = (
+                Post.objects.select_for_update()
+                .filter(author=author, media_group_id=media_group_id)
+                .first()
             )
-            existing_group_post.save(
-                update_fields=[
-                    "content",
-                    "raw_data",
-                    "channel_url",
-                    "source_url",
-                    "updated_at",
-                ]
-            )
-            return
+            if not existing_group_post:
+                existing_by_message = (
+                    Post.objects.select_for_update()
+                    .filter(author=author, message_id=message_id)
+                    .first()
+                )
+                if existing_by_message and not existing_by_message.media_group_id:
+                    existing_group_post = existing_by_message
+                    existing_group_post.media_group_id = media_group_id
+
+            if existing_group_post:
+                raw_data = existing_group_post.raw_data or {}
+                existing_urls = list(raw_data.get("gallery_urls") or [])
+                if image_url and image_url not in existing_urls:
+                    existing_urls.append(image_url)
+                raw_data["gallery_urls"] = existing_urls
+                raw_data["media_group_id"] = media_group_id
+                if not raw_data.get("formatted_text") and formatted_text:
+                    raw_data["formatted_text"] = formatted_text
+                base_text = raw_data.get("formatted_text") or formatted_text
+                content = _build_content_with_images(base_text, existing_urls)
+                existing_group_post.content = content
+                existing_group_post.raw_data = raw_data
+                existing_group_post.channel_url = f"https://t.me/{username}"
+                existing_group_post.source_url = (
+                    f"{existing_group_post.channel_url}/{existing_group_post.message_id}"
+                )
+                existing_group_post.save(
+                    update_fields=[
+                        "content",
+                        "raw_data",
+                        "channel_url",
+                        "source_url",
+                        "media_group_id",
+                        "updated_at",
+                    ]
+                )
+                return
 
     content = _build_content_with_images(formatted_text, gallery_urls)
     title = _build_title(raw_text)
@@ -432,10 +450,11 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
     requires_approval = (not author.auto_publish and author.admin_chat_id) and not force_publish
 
     raw_data = dict(message)
+    if media_group_id:
+        raw_data["media_group_id"] = media_group_id
     if media_group_id and gallery_urls:
         raw_data["gallery_urls"] = gallery_urls
         raw_data["formatted_text"] = formatted_text
-        raw_data["media_group_id"] = media_group_id
     post, created = Post.objects.get_or_create(
         author=author,
         message_id=message_id,
@@ -457,6 +476,8 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
         post.source_url = source_url
         post.channel_url = channel_url
         post.raw_data = raw_data
+        if media_group_id and not post.media_group_id:
+            post.media_group_id = media_group_id
         post.save(
             update_fields=[
                 "title",
@@ -464,6 +485,7 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
                 "source_url",
                 "channel_url",
                 "raw_data",
+                "media_group_id",
                 "updated_at",
             ]
         )
