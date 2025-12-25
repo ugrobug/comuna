@@ -46,134 +46,65 @@
     const galleries = element.querySelectorAll('.post-gallery');
 
     galleries.forEach((gallery) => {
-      gallery.classList.toggle('is-full', showFullBody);
-      gallery.classList.toggle('is-preview', !showFullBody);
       if (gallery.getAttribute('data-gallery-ready') === 'true') {
         return;
       }
       gallery.setAttribute('data-gallery-ready', 'true');
 
-      let grid = gallery.querySelector('.gallery-grid');
-      if (!grid) {
-        const images = Array.from(gallery.querySelectorAll('img'));
-        grid = document.createElement('div');
-        grid.className = 'gallery-grid';
-        images.forEach((img) => {
-          const thumb = document.createElement('button');
-          thumb.type = 'button';
-          thumb.className = 'gallery-thumb';
-          thumb.appendChild(img);
-          grid.appendChild(thumb);
-        });
+      const images = Array.from(gallery.querySelectorAll('img'));
+      if (!images.length) return;
+
+      if (!showFullBody) {
+        images.slice(1).forEach((img) => img.remove());
         gallery.innerHTML = '';
-        gallery.appendChild(grid);
+        gallery.appendChild(images[0]);
+        return;
       }
 
-      const thumbs = Array.from(grid.querySelectorAll('.gallery-thumb'));
-      if (!thumbs.length) return;
-
-      const imageDataAll = thumbs.map((thumb) => {
-        const img = thumb.querySelector('img');
-        return {
-          src: img?.getAttribute('src') || '',
-          alt: img?.getAttribute('alt') || '',
-          title: img?.getAttribute('title') || '',
-        };
+      const slides = images.map((img, index) => {
+        const slide = document.createElement('div');
+        slide.className = `carousel-item${index === 0 ? ' active' : ''}`;
+        slide.appendChild(img);
+        return slide;
       });
-      const imageData = showFullBody ? imageDataAll : imageDataAll.slice(0, 1);
 
-      if (!showFullBody && thumbs.length > 1) {
-        thumbs.slice(1).forEach((thumb) => thumb.remove());
-      }
-      gallery.setAttribute('data-count', String(imageData.length));
+      const track = document.createElement('div');
+      track.className = 'carousel-inner';
+      slides.forEach((slide) => track.appendChild(slide));
 
-      let modal: HTMLElement | null = null;
-      let modalImage: HTMLImageElement | null = null;
-      let modalCaption: HTMLElement | null = null;
+      const prev = document.createElement('button');
+      prev.className = 'carousel-control-prev';
+      prev.type = 'button';
+      prev.innerHTML = `
+        <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+        <span class="visually-hidden">Предыдущее</span>
+      `;
+
+      const next = document.createElement('button');
+      next.className = 'carousel-control-next';
+      next.type = 'button';
+      next.innerHTML = `
+        <span class="carousel-control-next-icon" aria-hidden="true"></span>
+        <span class="visually-hidden">Следующее</span>
+      `;
+
       let currentIndex = 0;
-
-      const updateModal = (index: number) => {
-        currentIndex = (index + imageData.length) % imageData.length;
-        const current = imageData[currentIndex];
-        if (modalImage) {
-          modalImage.src = current.src;
-          modalImage.alt = current.alt;
-        }
-        if (modalCaption) {
-          modalCaption.textContent = current.title || current.alt || '';
-        }
+      const updateCarousel = (newIndex: number) => {
+        slides[currentIndex].classList.remove('active');
+        currentIndex = (newIndex + slides.length) % slides.length;
+        slides[currentIndex].classList.add('active');
       };
 
-      const closeModal = () => {
-        modal?.remove();
-        modal = null;
-        modalImage = null;
-        modalCaption = null;
-        document.removeEventListener('keydown', onKeydown);
-      };
+      prev.addEventListener('click', () => updateCarousel(currentIndex - 1));
+      next.addEventListener('click', () => updateCarousel(currentIndex + 1));
 
-      const onKeydown = (e: KeyboardEvent) => {
-        if (!modal) return;
-        if (e.key === 'Escape') {
-          closeModal();
-        } else if (e.key === 'ArrowLeft') {
-          updateModal(currentIndex - 1);
-        } else if (e.key === 'ArrowRight') {
-          updateModal(currentIndex + 1);
-        }
-      };
-
-      const openModal = (index: number) => {
-        if (!modal) {
-          modal = document.createElement('div');
-          modal.className = 'gallery-modal';
-          modal.innerHTML = `
-            <div class="gallery-modal-backdrop"></div>
-            <div class="gallery-modal-content">
-              <img class="gallery-modal-image" />
-              <div class="gallery-modal-caption"></div>
-            </div>
-            <button class="gallery-modal-close" aria-label="Закрыть">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M6 18L18 6M6 6l12 12" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </button>
-            <button class="gallery-modal-prev" aria-label="Предыдущее">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </button>
-            <button class="gallery-modal-next" aria-label="Следующее">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M9 18l6-6-6-6" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </button>
-          `;
-
-          document.body.appendChild(modal);
-          modalImage = modal.querySelector('.gallery-modal-image');
-          modalCaption = modal.querySelector('.gallery-modal-caption');
-
-          modal.querySelector('.gallery-modal-backdrop')?.addEventListener('click', closeModal);
-          modal.querySelector('.gallery-modal-close')?.addEventListener('click', closeModal);
-          modal.querySelector('.gallery-modal-prev')?.addEventListener('click', () => updateModal(currentIndex - 1));
-          modal.querySelector('.gallery-modal-next')?.addEventListener('click', () => updateModal(currentIndex + 1));
-
-          if (imageData.length <= 1) {
-            modal.querySelector('.gallery-modal-prev')?.classList.add('hidden');
-            modal.querySelector('.gallery-modal-next')?.classList.add('hidden');
-          }
-
-          document.addEventListener('keydown', onKeydown);
-        }
-
-        updateModal(index);
-      };
-
-      thumbs.forEach((thumb, index) => {
-        if (!showFullBody && index > 0) return;
-        thumb.addEventListener('click', () => openModal(index));
-      });
+      gallery.innerHTML = '';
+      gallery.classList.add('carousel');
+      gallery.appendChild(track);
+      if (slides.length > 1) {
+        gallery.appendChild(prev);
+        gallery.appendChild(next);
+      }
     });
   };
 
@@ -277,13 +208,9 @@
         return processImage(block.data.file.url, '', block.data.file.alt || '', block.data.file.title || '', block.data.file.caption || '');
       case 'gallery':
         return `<div class="post-gallery">
-          <div class="gallery-grid">
-            ${block.data.images.map((img: any) => 
-              `<button type="button" class="gallery-thumb">
-                <img src="${img.url}" alt="${img.alt || ''}" title="${img.title || ''}">
-              </button>`
-            ).join('')}
-          </div>
+          ${block.data.images.map((img: any) => 
+            `<img src="${img.url}" alt="${img.alt || ''}" title="${img.title || ''}">`
+          ).join('')}
         </div>`;
       case 'link':
       case 'customLink':
@@ -710,107 +637,65 @@ ${view == 'list' ? `max-h-24` : 'max-h-48'}`
   }
 
   :global(.post-content .post-gallery) {
-    @apply my-4;
+    @apply my-4 relative rounded-lg overflow-hidden;
   }
 
-  :global(.post-content .post-gallery .gallery-grid) {
-    @apply grid gap-2;
-    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  :global(.post-content .post-gallery img) {
+    @apply w-full h-auto block object-cover;
   }
 
-  :global(.post-content .post-gallery .gallery-thumb) {
-    @apply overflow-hidden rounded-lg bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700;
+  :global(.post-content .post-gallery.carousel) {
+    @apply bg-slate-100 dark:bg-zinc-800;
   }
 
-  :global(.post-content .post-gallery .gallery-thumb img) {
-    @apply w-full h-full object-cover;
-    aspect-ratio: 4/3;
-    display: block;
+  :global(.post-content .carousel-inner) {
+    @apply relative w-full overflow-hidden;
   }
 
-  :global(.post-content .post-gallery.is-full .gallery-grid) {
-    gap: 6px;
-    grid-template-columns: repeat(3, 1fr);
-    grid-auto-rows: 140px;
+  :global(.post-content .carousel-item) {
+    @apply hidden w-full;
   }
 
-  :global(.post-content .post-gallery.is-full[data-count='1'] .gallery-grid) {
-    grid-template-columns: 1fr;
-    grid-auto-rows: 320px;
+  :global(.post-content .carousel-item.active) {
+    @apply block;
   }
 
-  :global(.post-content .post-gallery.is-full[data-count='2'] .gallery-grid) {
-    grid-template-columns: repeat(2, 1fr);
-    grid-auto-rows: 220px;
+  :global(.post-content .carousel-control-prev),
+  :global(.post-content .carousel-control-next) {
+    @apply absolute top-1/2 -translate-y-1/2 bg-black/50 text-white rounded-full p-2
+    hover:bg-black/70 transition-colors duration-200;
+    width: 40px;
+    height: 40px;
   }
 
-  :global(.post-content .post-gallery.is-full[data-count='3'] .gallery-grid) {
-    grid-template-columns: repeat(2, 1fr);
-    grid-auto-rows: 160px;
+  :global(.post-content .carousel-control-prev) {
+    @apply left-3;
   }
 
-  :global(.post-content .post-gallery.is-full[data-count='3'] .gallery-thumb:nth-child(1)) {
-    grid-row: span 2;
+  :global(.post-content .carousel-control-next) {
+    @apply right-3;
   }
 
-  :global(.post-content .post-gallery.is-full[data-count='4'] .gallery-grid) {
-    grid-template-columns: repeat(2, 1fr);
-    grid-auto-rows: 160px;
+  :global(.post-content .carousel-control-prev-icon),
+  :global(.post-content .carousel-control-next-icon) {
+    display: inline-block;
+    width: 1.2rem;
+    height: 1.2rem;
+    background-size: 100% 100%;
+    background-repeat: no-repeat;
   }
 
-  :global(.post-content .post-gallery.is-full[data-count='5'] .gallery-thumb:nth-child(1)) {
-    grid-column: span 2;
+  :global(.post-content .carousel-control-prev-icon) {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='white' viewBox='0 0 16 16'%3E%3Cpath d='M11.354 1.646a.5.5 0 0 1 0 .708L5.707 8l5.647 5.646a.5.5 0 0 1-.708.708l-6-6a.5.5 0 0 1 0-.708l6-6a.5.5 0 0 1 .708 0z'/%3E%3C/svg%3E");
   }
 
-  :global(.post-content .post-gallery.is-full[data-count='5'] .gallery-grid),
-  :global(.post-content .post-gallery.is-full[data-count='6'] .gallery-grid) {
-    grid-template-columns: repeat(3, 1fr);
-    grid-auto-rows: 140px;
+  :global(.post-content .carousel-control-next-icon) {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='white' viewBox='0 0 16 16'%3E%3Cpath d='M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E");
   }
 
-  :global(.gallery-modal) {
-    @apply fixed inset-0 z-50 flex items-center justify-center;
-  }
-
-  :global(.gallery-modal-backdrop) {
-    @apply absolute inset-0 bg-black/80;
-  }
-
-  :global(.gallery-modal-content) {
-    @apply relative z-10 max-w-[92vw] max-h-[90vh] flex flex-col items-center gap-4;
-  }
-
-  :global(.gallery-modal-image) {
-    @apply max-h-[78vh] max-w-[92vw] object-contain rounded-lg;
-  }
-
-  :global(.gallery-modal-caption) {
-    @apply text-sm text-white/80 text-center;
-  }
-
-  :global(.gallery-modal-close) {
-    @apply fixed top-6 right-6 text-white bg-black/60 p-3 rounded-full 
-    hover:bg-black/80 transition-colors duration-200 z-50 cursor-pointer
-    flex items-center justify-center;
-  }
-
-  :global(.gallery-modal-prev),
-  :global(.gallery-modal-next) {
-    @apply fixed top-1/2 -translate-y-1/2 text-white bg-black/50 p-3 rounded-full
-    hover:bg-black/70 transition-colors duration-200 z-50 cursor-pointer
-    flex items-center justify-center;
-  }
-
-  :global(.gallery-modal-prev) {
-    @apply left-6;
-  }
-
-  :global(.gallery-modal-next) {
-    @apply right-6;
-  }
-
-  :global(.gallery-modal svg) {
-    @apply w-6 h-6;
+  :global(.post-content .visually-hidden) {
+    @apply absolute w-px h-px p-0 -m-px overflow-hidden whitespace-nowrap border-0;
+    clip: rect(0, 0, 0, 0);
   }
 
   :global(.post-content ul) {
