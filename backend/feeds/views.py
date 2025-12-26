@@ -1045,11 +1045,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
                 is_pending=False,
                 author__is_blocked=False,
             )
-            .annotate(
-                score=Cast(F("rating"), IntegerField())
-                + Cast(F("comments_count"), IntegerField()) * Value(5)
-            )
-            .order_by("-score", "-created_at")[:limit]
+            .order_by("-created_at")[:limit]
         )
 
         for post in posts:
