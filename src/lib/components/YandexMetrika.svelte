@@ -2,8 +2,7 @@
   import { env } from '$env/dynamic/public';
   import { onMount } from 'svelte';
   
-  const PUBLIC_YM_MEASUREMENT_ID = env.PUBLIC_YM_MEASUREMENT_ID;
-  console.log('YM_MEASUREMENT_ID:', PUBLIC_YM_MEASUREMENT_ID);
+  const PUBLIC_YM_MEASUREMENT_ID = env.PUBLIC_YM_MEASUREMENT_ID || '106046128';
 
   onMount(() => {
   
@@ -37,11 +36,13 @@
         k.src = r;
         a.parentNode.insertBefore(k, a);
       }
-    })(window, document, "script", "https://mc.yandex.ru/metrika/tag.js", "ym");
+    })(window, document, "script", `https://mc.yandex.ru/metrika/tag.js?id=${PUBLIC_YM_MEASUREMENT_ID}`, "ym");
 
     window.ym(Number(PUBLIC_YM_MEASUREMENT_ID), "init", {
+      ssr: true,
       webvisor:true,
       clickmap: true,
+      ecommerce: "dataLayer",
       trackLinks: true,
       accurateTrackBounce: true
     });
