@@ -107,6 +107,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
 TELEGRAM_USE_POLLING = os.environ.get("TELEGRAM_USE_POLLING", "0") == "1"
+TELEGRAM_ADMIN_CHAT_ID = os.environ.get("TELEGRAM_ADMIN_CHAT_ID", "")
 SITE_BASE_URL = os.environ.get("SITE_BASE_URL", "http://localhost:5173")
 
 CORS_ALLOW_ALL_ORIGINS = DEBUG

@@ -23,6 +23,41 @@ from .models import Author, BotSession, Post, Rubric
 _BOT_ID: int | None = None
 
 
+def _maybe_notify_new_author(author: Author, post: Post) -> None:
+    if author.first_post_notified:
+        return
+    if post.is_pending or post.is_blocked:
+        return
+    already_published = (
+        Post.objects.filter(author=author, is_pending=False, is_blocked=False)
+        .exclude(id=post.id)
+        .exists()
+    )
+    if already_published:
+        author.first_post_notified = True
+        author.save(update_fields=["first_post_notified", "updated_at"])
+        return
+
+    admin_chat = settings.TELEGRAM_ADMIN_CHAT_ID
+    if not admin_chat:
+        return
+
+    site_base = settings.SITE_BASE_URL.rstrip("/")
+    author_url = f"{site_base}/{author.username}"
+    post_url = f"{site_base}/b/post/{post.id}"
+    rubric = author.rubric.name if author.rubric else "—"
+    _send_bot_message(
+        int(admin_chat),
+        "Новый автор опубликовал первый пост.\n"
+        f"Канал: @{author.username}\n"
+        f"Рубрика: {rubric}\n"
+        f"Автор: {author_url}\n"
+        f"Пост: {post_url}",
+    )
+    author.first_post_notified = True
+    author.save(update_fields=["first_post_notified", "updated_at"])
+
+
 def _media_url(request: HttpRequest, field) -> str | None:
     if not field:
         return None
@@ -545,6 +580,8 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
                 ]
             },
         )
+    elif created and not requires_approval:
+        _maybe_notify_new_author(author, post)
 
 
 def _handle_private_message(message: dict) -> None:
@@ -768,6 +805,7 @@ def _handle_callback_query(callback_query: dict) -> None:
         if post:
             post.is_pending = False
             post.save(update_fields=["is_pending", "updated_at"])
+            _maybe_notify_new_author(post.author, post)
             _answer_callback_query(callback_id, "Опубликовано")
         else:
             _answer_callback_query(callback_id, "Пост не найден")
