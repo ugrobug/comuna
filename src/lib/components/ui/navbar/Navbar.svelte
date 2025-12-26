@@ -34,11 +34,8 @@
     Fire,
     Clock,
     Inbox,
-    ChevronDown,
-    InformationCircle,
-    Megaphone,
-    ClipboardDocumentList,
-    ArrowPath
+    ArrowPath,
+    DocumentText
   } from 'svelte-hero-icons'
   import Profile from './Profile.svelte'
   import NavButton from './NavButton.svelte'
@@ -52,80 +49,33 @@
   import { colorScheme } from '$lib/ui/colors'
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
-  import { env } from '$env/dynamic/public';
   import SidebarButton from '$lib/components/ui/sidebar/SidebarButton.svelte'
-  import CommunityIcon from '$lib/components/ui/CommunityIcon.svelte'
   import { iconOfLink } from '$lib/components/ui/navbar/link'
   import { Badge } from 'mono-svelte'
   import { onMount } from 'svelte';
-  import { getFederatedCommunities, getTopCommunities } from '$lib/api/communities';
+  
+  import { buildRubricsUrl } from '$lib/api/backend';
   import { getRandomTaglineFromSite, hasTaglines } from '$lib/taglineUtils.js';
   import Markdown from '$lib/components/markdown/Markdown.svelte';
 
-  const PUBLIC_TELEGRAM_URL = env.PUBLIC_TELEGRAM_URL;
-
-  const PUBLIC_PROJECT_ABOUT = env.PUBLIC_PROJECT_ABOUT || '/about';
-  const PUBLIC_PROJECT_ADVRTISEMENT =
-    env.PUBLIC_PROJECT_ADVRTISEMENT || '/advertisement';
-  const PUBLIC_PROJECT_AUTHORS = env.PUBLIC_PROJECT_AUTHORS || '/authors';
-  const PUBLIC_PROJECT_RULES = env.PUBLIC_PROJECT_RULES || '/rules';
-
-  let topCommunities: Array<{ name: string; icon: string | null; url: string; subscribers: number; }> = [];
-  let displayedCommunitiesCount = 20;
-  let hasMoreCommunities = false;
-  let allLocalCommunities: Array<{ name: string; icon: string | null; url: string; subscribers: number; }> = [];
-  let federatedCommunities: Array<{ name: string; icon: string | null; url: string; subscribers: number; }> = [];
-  let showFederated = false;
+  let rubrics: Array<{ name: string; slug: string; icon_url?: string | null }> = [];
   
   // Переменная для случайного слогана
   let randomTagline = '';
 
-  async function loadFederatedCommunities() {
-    federatedCommunities = await getFederatedCommunities();
-    const federatedToShow = federatedCommunities.slice(0, 10);
-    topCommunities = [...allLocalCommunities, ...federatedToShow];
-    displayedCommunitiesCount = allLocalCommunities.length + 10;
-    hasMoreCommunities = 10 < federatedCommunities.length;
-  }
-
-  function loadMoreCommunities() {
-    if (!showFederated) {
-      if (displayedCommunitiesCount < allLocalCommunities.length) {
-        topCommunities = allLocalCommunities;
-        displayedCommunitiesCount = allLocalCommunities.length;
-        hasMoreCommunities = true;
-      } else {
-        showFederated = true;
-        loadFederatedCommunities();
-      }
-    } else {
-      const currentFederatedCount = displayedCommunitiesCount - allLocalCommunities.length;
-      const newFederatedCount = currentFederatedCount + 10;
-      const federatedToShow = federatedCommunities.slice(0, newFederatedCount);
-      topCommunities = [...allLocalCommunities, ...federatedToShow];
-      displayedCommunitiesCount = allLocalCommunities.length + newFederatedCount;
-      hasMoreCommunities = newFederatedCount < federatedCommunities.length;
-    }
-  }
-
-  function updateDisplayedCommunities() {
-    if (showFederated) {
-      const totalCommunities = [...allLocalCommunities, ...federatedCommunities];
-      topCommunities = totalCommunities.slice(0, displayedCommunitiesCount);
-      hasMoreCommunities = displayedCommunitiesCount < totalCommunities.length;
-    } else {
-      topCommunities = allLocalCommunities.slice(0, displayedCommunitiesCount);
-      hasMoreCommunities = displayedCommunitiesCount < allLocalCommunities.length || allLocalCommunities.length > 0;
+  async function loadRubrics() {
+    try {
+      const response = await fetch(buildRubricsUrl());
+      if (!response.ok) return;
+      const data = await response.json();
+      rubrics = data.rubrics ?? [];
+    } catch (e) {
+      rubrics = [];
     }
   }
 
   onMount(() => {
-    // Загружаем сообщества
-    getTopCommunities().then(communities => {
-      allLocalCommunities = communities;
-      topCommunities = allLocalCommunities.slice(0, displayedCommunitiesCount);
-      hasMoreCommunities = allLocalCommunities.length > displayedCommunitiesCount || allLocalCommunities.length > 0;
-    });
+    loadRubrics();
     
     // Добавляем обработчик клавиши Escape
     document.addEventListener('keydown', handleKeydown);
@@ -328,7 +278,6 @@
             </MenuButton>
           </Menu>
         {:else}
-          <!--
           <Button
             color="none"
             class="!rounded-full bg-orange-600 hover:bg-orange-700 text-white font-normal py-2 px-4 !text-base md:py-2 md:px-4"
@@ -338,7 +287,6 @@
             <span class="hidden md:inline">{$t('account.login')}</span>
             <span class="md:hidden">Войти</span>
           </Button>
-          -->
         {/if}
         <!-- Профиль -->
         {#if $profile?.jwt}
@@ -443,68 +391,27 @@
         </div>
       {/if}
 
-      <div class="flex flex-col gap-2">
-        <span 
-          class="px-2 py-1 text-sm font-normal text-slate-500 dark:text-zinc-200 text-left"
-        >
-          {$t('nav.popular_communities')}
-        </span>
-        {#each topCommunities as community}
-          <SidebarButton href={community.url} on:click={() => { sidebarOpen = false; }}>
-            <div slot="icon" class="w-7 h-7">
-              <CommunityIcon name={community.name} icon={community.icon} />
-            </div>
-            <span slot="label">
-              {community.name}
-            </span>
-          </SidebarButton>
-        {/each}
-        {#if hasMoreCommunities}
-          <SidebarButton 
-            on:click={() => { sidebarOpen = false; loadMoreCommunities(); }}
-            icon={ChevronDown}
-            href="javascript:void(0)"
+      {#if rubrics.length}
+        <div class="flex flex-col gap-2">
+          <span 
+            class="px-2 py-1 text-sm font-normal text-slate-500 dark:text-zinc-200 text-left"
           >
-            <span slot="label">Показать все</span>
-          </SidebarButton>
-        {/if}
-      </div>
-
-      <div class="flex flex-col gap-2">
-        <span
-          class="px-2 py-1 text-sm font-normal text-slate-500 dark:text-zinc-200 text-left"
-        >
-          Ресурсы
-        </span>
-        {#if env.PUBLIC_TELEGRAM_URL || env.PUBLIC_GITHUB_URL}
-          <div class="flex items-center pl-2 gap-2">
-            {#if env.PUBLIC_TELEGRAM_URL}
-              <a href={env.PUBLIC_TELEGRAM_URL} target="_blank" rel="noopener noreferrer" class="telegram-btn group">
-                <img src="/img/logos/telegram_logo.svg" alt="Telegram" class="w-5 h-5 min-w-[20px] min-h-[20px] max-w-[20px] max-h-[20px] transition-transform group-hover:scale-110 group-hover:drop-shadow-lg" />
-              </a>
-            {/if}
-            {#if env.PUBLIC_GITHUB_URL}
-              <a href={env.PUBLIC_GITHUB_URL} target="_blank" rel="noopener noreferrer" class="github-btn group">
-                <img src="/img/logos/github-mark.svg" alt="GitHub" class="w-5 h-5 min-w-[20px] min-h-[20px] max-w-[20px] max-h-[20px] opacity-80 transition-transform group-hover:scale-110 group-hover:drop-shadow-lg dark:invert" />
-              </a>
-            {/if}
-          </div>
-        {/if}
-        <div class="flex flex-col gap-1">
-          <SidebarButton href={PUBLIC_PROJECT_ABOUT} icon={InformationCircle} on:click={() => { sidebarOpen = false; }}>
-            <span slot="label">О Проекте</span>
-          </SidebarButton>
-          <SidebarButton href={PUBLIC_PROJECT_ADVRTISEMENT} icon={Megaphone} on:click={() => { sidebarOpen = false; }}>
-            <span slot="label">Реклама</span>
-          </SidebarButton>
-          <SidebarButton href={PUBLIC_PROJECT_AUTHORS} icon={PencilSquare} on:click={() => { sidebarOpen = false; }}>
-            <span slot="label">Авторам</span>
-          </SidebarButton>
-          <SidebarButton href={PUBLIC_PROJECT_RULES} icon={ClipboardDocumentList} on:click={() => { sidebarOpen = false; }}>
-            <span slot="label">Правила</span>
-          </SidebarButton>
+            Рубрики
+          </span>
+          {#each rubrics as rubric}
+            <SidebarButton href={`/rubrics/${rubric.slug}/posts`} on:click={() => { sidebarOpen = false; }}>
+              <div slot="icon" class="w-7 h-7 rounded-full overflow-hidden bg-slate-100 dark:bg-zinc-800 flex items-center justify-center">
+                {#if rubric.icon_url}
+                  <img src={rubric.icon_url} alt={rubric.name} class="w-full h-full object-cover" />
+                {:else}
+                  <Icon src={DocumentText} size="20" />
+                {/if}
+              </div>
+              <span slot="label">{rubric.name}</span>
+            </SidebarButton>
+          {/each}
         </div>
-      </div>
+      {/if}
 
       </aside>
     </button>
