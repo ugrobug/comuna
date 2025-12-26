@@ -1,4 +1,6 @@
+import { env } from '$env/dynamic/public'
 import { profile } from '$lib/auth.js'
+import { buildBackendPostPath, buildSearchUrl, backendPostToPostView } from '$lib/api/backend'
 import { client, getClient } from '$lib/lemmy.js'
 import { getItemPublished } from '$lib/lemmy/item.js'
 import type {
@@ -7,7 +9,6 @@ import type {
   ListingType,
   PersonView,
   PostView,
-  SearchResponse,
   SearchType,
   SortType,
 } from 'lemmy-js-client'
@@ -21,6 +22,46 @@ export async function load({ url, fetch }) {
   const type = url.searchParams.get('type') || 'All'
   const listing_type =
     (url.searchParams.get('listing_type') as ListingType) || 'All'
+
+  if (env.PUBLIC_BACKEND_URL && query) {
+    const response = await fetch(buildSearchUrl(query, page, 20, type, sort))
+    if (!response.ok) {
+      return {
+        backend: true,
+        page: page,
+        sort: sort,
+        type: type,
+        query: query,
+        results: { posts: [], authors: [] },
+      }
+    }
+    const payload = await response.json()
+
+    const posts = (payload.posts ?? []).map((backendPost) => ({
+      post: backendPostToPostView(backendPost, backendPost.author),
+      linkOverride: buildBackendPostPath(backendPost),
+      authorUsername: backendPost.author?.username,
+      rubricSlug: backendPost.rubric_slug ?? undefined,
+      channelUrl: backendPost.channel_url ?? backendPost.author?.channel_url,
+    }))
+
+    const authors = payload.authors ?? []
+
+    return {
+      backend: true,
+      page: page,
+      sort: sort,
+      type: type,
+      query: query,
+      results: {
+        posts,
+        authors,
+        total_posts: payload.total_posts ?? posts.length,
+        total_authors: payload.total_authors ?? authors.length,
+        limit: payload.limit ?? 20,
+      },
+    }
+  }
 
   if (query) {
     const results = await client({ func: fetch }).search({

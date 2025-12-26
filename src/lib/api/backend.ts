@@ -31,6 +31,23 @@ export const buildHomeFeedUrl = (): string => {
   return `${getBackendBaseUrl()}/api/home/`
 }
 
+export const buildSearchUrl = (
+  query: string,
+  page = 1,
+  limit = 20,
+  type: string = 'All',
+  sort: string = 'New'
+): string => {
+  const params = new URLSearchParams({
+    q: query,
+    page: String(page),
+    limit: String(limit),
+    type: type,
+    sort: sort,
+  })
+  return `${getBackendBaseUrl()}/api/search/?${params.toString()}`
+}
+
 export const buildTopAuthorsMonthUrl = (limit = 5): string => {
   const params = new URLSearchParams({ limit: String(limit) })
   return `${getBackendBaseUrl()}/api/authors/top-month/?${params.toString()}`

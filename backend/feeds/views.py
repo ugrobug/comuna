@@ -1119,6 +1119,119 @@ def top_authors_month(request: HttpRequest) -> HttpResponse:
     return JsonResponse({"ok": True, "authors": serialized})
 
 
+def search_content(request: HttpRequest) -> HttpResponse:
+    query = (request.GET.get("q") or "").strip()
+    if not query:
+        return JsonResponse(
+            {
+                "ok": True,
+                "query": "",
+                "page": 1,
+                "limit": 0,
+                "posts": [],
+                "authors": [],
+                "total_posts": 0,
+                "total_authors": 0,
+            }
+        )
+
+    type_filter = (request.GET.get("type") or "All").lower()
+    sort = (request.GET.get("sort") or "New").lower()
+
+    limit_raw = request.GET.get("limit", "20")
+    page_raw = request.GET.get("page", "1")
+    try:
+        limit = min(max(int(limit_raw), 1), 50)
+    except ValueError:
+        limit = 20
+    try:
+        page = max(int(page_raw), 1)
+    except ValueError:
+        page = 1
+
+    offset = (page - 1) * limit
+
+    posts: list[dict] = []
+    authors: list[dict] = []
+    total_posts = 0
+    total_authors = 0
+
+    if type_filter in ("all", "posts"):
+        post_query = Q(title__icontains=query) | Q(content__icontains=query)
+        post_query |= Q(author__username__icontains=query) | Q(
+            author__title__icontains=query
+        )
+        posts_qs = (
+            Post.objects.filter(
+                post_query,
+                is_blocked=False,
+                is_pending=False,
+                author__is_blocked=False,
+            )
+            .select_related("author", "rubric")
+            .order_by("-created_at" if sort == "new" else "-created_at")
+        )
+        total_posts = posts_qs.count()
+        for post in posts_qs[offset : offset + limit]:
+            rubric = post.rubric
+            author_channel_url = post.author.invite_url or post.author.channel_url
+            posts.append(
+                {
+                    "id": post.id,
+                    "title": post.title,
+                    "rubric": rubric.name if rubric else None,
+                    "rubric_slug": rubric.slug if rubric else None,
+                    "rubric_icon_url": _media_url(request, rubric.icon_url)
+                    if rubric
+                    else None,
+                    "content": post.content,
+                    "source_url": post.source_url,
+                    "channel_url": author_channel_url or post.channel_url,
+                    "created_at": post.created_at.isoformat(),
+                    "author": {
+                        "username": post.author.username,
+                        "title": post.author.title,
+                        "channel_url": author_channel_url,
+                        "avatar_url": post.author.avatar_url,
+                        "description": post.author.description,
+                        "subscribers_count": post.author.subscribers_count,
+                    },
+                }
+            )
+
+    if type_filter in ("all", "users", "authors"):
+        authors_qs = Author.objects.filter(is_blocked=False).filter(
+            Q(username__icontains=query)
+            | Q(title__icontains=query)
+            | Q(description__icontains=query)
+        )
+        total_authors = authors_qs.count()
+        for author in authors_qs[offset : offset + limit]:
+            authors.append(
+                {
+                    "username": author.username,
+                    "title": author.title,
+                    "avatar_url": author.avatar_url,
+                    "description": author.description,
+                    "channel_url": author.invite_url or author.channel_url,
+                    "subscribers_count": author.subscribers_count,
+                }
+            )
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "query": query,
+            "page": page,
+            "limit": limit,
+            "posts": posts,
+            "authors": authors,
+            "total_posts": total_posts,
+            "total_authors": total_authors,
+        }
+    )
+
+
 def sitemap_xml(request: HttpRequest) -> HttpResponse:
     base_url = request.build_absolute_uri("/").rstrip("/")
     urls: list[str] = []

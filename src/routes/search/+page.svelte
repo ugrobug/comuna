@@ -17,6 +17,7 @@
   } from '$lib/lemmy/item.js'
   import { userSettings } from '$lib/settings.js'
   import { searchParam } from '$lib/util.js'
+  import Avatar from '$lib/components/ui/Avatar.svelte'
   import type {
     CommentView,
     CommunityView,
@@ -101,11 +102,15 @@
   >
     <option value="All">{$t('content.all')}</option>
     <option value="Posts">{$t('content.posts')}</option>
-    <option value="Comments">{$t('content.comments')}</option>
-    <option value="Communities">{$t('content.communities')}</option>
+    {#if !data.backend}
+      <option value="Comments">{$t('content.comments')}</option>
+      <option value="Communities">{$t('content.communities')}</option>
+    {/if}
     <option value="Users">{$t('content.users')}</option>
   </Select>
-  <Sort navigate bind:selected={data.sort} />
+  {#if !data.backend}
+    <Sort navigate bind:selected={data.sort} />
+  {/if}
   <Button
     slot="summary"
     size="square-lg"
@@ -116,7 +121,7 @@
     <Icon src={ChevronDown} size="20" mini />
   </Button>
 </div>
-{#if moreOptions}
+{#if moreOptions && !data.backend}
   <div transition:slide={{ axis: 'y', easing: expoOut }} class="max-w-sm">
     <ObjectAutocomplete
       label={$t('nav.create.community')}
@@ -128,7 +133,57 @@
     />
   </div>
 {/if}
-{#if !data.results}
+{#if data.backend}
+  {#if !data.results?.posts?.length && !data.results?.authors?.length}
+    <Placeholder
+      icon={MagnifyingGlass}
+      title={$t('routes.search.noResults.title')}
+      description={query == ''
+        ? $t('routes.search.noResults.alt')
+        : $t('routes.search.noResults.description')}
+      class="pt-4"
+    />
+  {:else}
+    {#if data.results?.authors?.length && (data.type === 'All' || data.type === 'Users')}
+      <div class="mt-4 mb-2 text-sm uppercase tracking-wide text-slate-500">Авторы</div>
+      <div class="flex flex-col gap-3">
+        {#each data.results.authors as author}
+          <a
+            class="flex items-center gap-3 rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors"
+            href={`/${author.username}`}
+          >
+            <Avatar url={author.avatar_url} width={48} alt={author.title ?? author.username} />
+            <div class="flex flex-col gap-1">
+              <div class="text-base font-semibold text-slate-900 dark:text-zinc-100">
+                {author.title ?? author.username}
+              </div>
+              {#if author.description}
+                <div class="text-sm text-slate-600 dark:text-zinc-400 line-clamp-2">
+                  {author.description}
+                </div>
+              {/if}
+            </div>
+          </a>
+        {/each}
+      </div>
+    {/if}
+
+    {#if data.results?.posts?.length && (data.type === 'All' || data.type === 'Posts')}
+      <div class="mt-6 mb-2 text-sm uppercase tracking-wide text-slate-500">Посты</div>
+      <div class="flex flex-col gap-4">
+        {#each data.results.posts as item (item.post.post.id)}
+          <Post
+            post={item.post}
+            linkOverride={item.linkOverride}
+            userUrlOverride={item.authorUsername ? `/${item.authorUsername}` : undefined}
+            communityUrlOverride={item.rubricSlug ? `/rubrics/${item.rubricSlug}/posts` : undefined}
+            subscribeUrl={item.channelUrl}
+          />
+        {/each}
+      </div>
+    {/if}
+  {/if}
+{:else if !data.results}
   <Placeholder
     icon={MagnifyingGlass}
     title={$t('routes.search.noResults.title')}
