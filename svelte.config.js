@@ -29,6 +29,9 @@ const config = {
     // 	},
     // 	mode: 'nonce'
     // }
+    serviceWorker: {
+      register: false,
+    },
     alias: {
       'mono-svelte': 'src/lib/mono',
     },

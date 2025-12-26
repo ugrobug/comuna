@@ -45,6 +45,13 @@ import PopularPosts from '$lib/components/ui/sidebar/PopularPosts.svelte'
     showSpinner: false,
   })
 
+  onMount(() => {
+    if (!('serviceWorker' in navigator)) return
+    navigator.serviceWorker.getRegistrations().then((regs) => {
+      regs.forEach((reg) => reg.unregister())
+    })
+  })
+
   let barTimeout: any = 0
 
   $: {
