@@ -592,19 +592,25 @@ def _handle_private_message(message: dict) -> None:
             "Пришлите ссылку приглашения на ваш канал (например, https://t.me/+xxxx). "
             "Мы будем использовать её в кнопках подписки на сайте.",
         )
-        BotSession.objects.update_or_create(telegram_user_id=chat_id, defaults={})
+        BotSession.objects.update_or_create(
+            telegram_user_id=chat_id,
+            defaults={"invite_waiting": True},
+        )
         return
 
     if text.startswith("https://t.me/") or text.startswith("http://t.me/"):
-        invite_url = text.strip()
         session = BotSession.objects.filter(telegram_user_id=chat_id).first()
-        if not session:
-            session = BotSession.objects.create(telegram_user_id=chat_id)
-        session.invite_url = invite_url
-        session.save(update_fields=["invite_url", "updated_at"])
-        Author.objects.filter(admin_chat_id=chat_id).update(invite_url=invite_url)
-        _send_bot_message(chat_id, "Ссылка сохранена. Мы будем использовать её для кнопок подписки.")
-        return
+        if session and session.invite_waiting:
+            invite_url = text.strip()
+            session.invite_url = invite_url
+            session.invite_waiting = False
+            session.save(update_fields=["invite_url", "invite_waiting", "updated_at"])
+            Author.objects.filter(admin_chat_id=chat_id).update(invite_url=invite_url)
+            _send_bot_message(
+                chat_id,
+                "Ссылка сохранена. Мы будем использовать её для кнопок подписки.",
+            )
+            return
 
 
     forward_chat = message.get("forward_from_chat")

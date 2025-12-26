@@ -78,6 +78,7 @@ class BotSession(models.Model):
         "Rubric", on_delete=models.SET_NULL, null=True, blank=True, related_name="bot_sessions"
     )
     invite_url = models.URLField(max_length=255, blank=True)
+    invite_waiting = models.BooleanField(default=False)
     mode_selected = models.BooleanField(default=False)
     instructions_sent = models.BooleanField(default=False)
     pending_update_post_id = models.IntegerField(null=True, blank=True)
