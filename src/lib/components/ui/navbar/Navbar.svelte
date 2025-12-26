@@ -328,6 +328,7 @@
             </MenuButton>
           </Menu>
         {:else}
+          <!--
           <Button
             color="none"
             class="!rounded-full bg-orange-600 hover:bg-orange-700 text-white font-normal py-2 px-4 !text-base md:py-2 md:px-4"
@@ -337,6 +338,7 @@
             <span class="hidden md:inline">{$t('account.login')}</span>
             <span class="md:hidden">Войти</span>
           </Button>
+          -->
         {/if}
         <!-- Профиль -->
         {#if $profile?.jwt}
