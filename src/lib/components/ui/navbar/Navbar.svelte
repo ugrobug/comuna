@@ -35,7 +35,10 @@
     Clock,
     Inbox,
     ArrowPath,
-    DocumentText
+    DocumentText,
+    InformationCircle,
+    Megaphone,
+    ClipboardDocumentList
   } from 'svelte-hero-icons'
   import Profile from './Profile.svelte'
   import NavButton from './NavButton.svelte'
@@ -49,6 +52,7 @@
   import { colorScheme } from '$lib/ui/colors'
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
+  import { env } from '$env/dynamic/public';
   import SidebarButton from '$lib/components/ui/sidebar/SidebarButton.svelte'
   import { iconOfLink } from '$lib/components/ui/navbar/link'
   import { Badge } from 'mono-svelte'
@@ -59,6 +63,14 @@
   import Markdown from '$lib/components/markdown/Markdown.svelte';
 
   let rubrics: Array<{ name: string; slug: string; icon_url?: string | null }> = [];
+
+  const PUBLIC_TELEGRAM_URL = env.PUBLIC_TELEGRAM_URL;
+
+  const PUBLIC_PROJECT_ABOUT = env.PUBLIC_PROJECT_ABOUT || '/about';
+  const PUBLIC_PROJECT_ADVRTISEMENT =
+    env.PUBLIC_PROJECT_ADVRTISEMENT || '/advertisement';
+  const PUBLIC_PROJECT_AUTHORS = env.PUBLIC_PROJECT_AUTHORS || '/authors';
+  const PUBLIC_PROJECT_RULES = env.PUBLIC_PROJECT_RULES || '/rules';
   
   // Переменная для случайного слогана
   let randomTagline = '';
@@ -412,6 +424,42 @@
           {/each}
         </div>
       {/if}
+
+      <div class="flex flex-col gap-2">
+        <span
+          class="px-2 py-1 text-sm font-normal text-slate-500 dark:text-zinc-200 text-left"
+        >
+          Ресурсы
+        </span>
+        {#if env.PUBLIC_TELEGRAM_URL || env.PUBLIC_GITHUB_URL}
+          <div class="flex items-center pl-2 gap-2">
+            {#if env.PUBLIC_TELEGRAM_URL}
+              <a href={env.PUBLIC_TELEGRAM_URL} target="_blank" rel="noopener noreferrer" class="telegram-btn group">
+                <img src="/img/logos/telegram_logo.svg" alt="Telegram" class="w-5 h-5 min-w-[20px] min-h-[20px] max-w-[20px] max-h-[20px] transition-transform group-hover:scale-110 group-hover:drop-shadow-lg" />
+              </a>
+            {/if}
+            {#if env.PUBLIC_GITHUB_URL}
+              <a href={env.PUBLIC_GITHUB_URL} target="_blank" rel="noopener noreferrer" class="github-btn group">
+                <img src="/img/logos/github-mark.svg" alt="GitHub" class="w-5 h-5 min-w-[20px] min-h-[20px] max-w-[20px] max-h-[20px] opacity-80 transition-transform group-hover:scale-110 group-hover:drop-shadow-lg dark:invert" />
+              </a>
+            {/if}
+          </div>
+        {/if}
+        <div class="flex flex-col gap-1">
+          <SidebarButton href={PUBLIC_PROJECT_ABOUT} icon={InformationCircle} on:click={() => { sidebarOpen = false; }}>
+            <span slot="label">О Проекте</span>
+          </SidebarButton>
+          <SidebarButton href={PUBLIC_PROJECT_ADVRTISEMENT} icon={Megaphone} on:click={() => { sidebarOpen = false; }}>
+            <span slot="label">Реклама</span>
+          </SidebarButton>
+          <SidebarButton href={PUBLIC_PROJECT_AUTHORS} icon={PencilSquare} on:click={() => { sidebarOpen = false; }}>
+            <span slot="label">Авторам</span>
+          </SidebarButton>
+          <SidebarButton href={PUBLIC_PROJECT_RULES} icon={ClipboardDocumentList} on:click={() => { sidebarOpen = false; }}>
+            <span slot="label">Правила</span>
+          </SidebarButton>
+        </div>
+      </div>
 
       </aside>
     </button>
