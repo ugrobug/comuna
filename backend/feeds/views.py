@@ -15,6 +15,7 @@ from django.db.models.functions import Cast
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils import timezone
+from django.utils.text import slugify
 from django.views.decorators.csrf import csrf_exempt
 
 from .models import Author, BotSession, Post, Rubric
@@ -46,6 +47,12 @@ def _build_title(text: str) -> str:
     if len(first_line) <= 120:
         return first_line
     return first_line[:117] + "..."
+
+
+def _slugify_title(text: str) -> str:
+    if not text:
+        return ""
+    return slugify(text, allow_unicode=True)
 
 
 def _extract_plain_text(message: dict) -> str:
@@ -1111,12 +1118,14 @@ def sitemap_xml(request: HttpRequest) -> HttpResponse:
 
     posts = (
         Post.objects.filter(is_blocked=False, is_pending=False, author__is_blocked=False)
-        .only("id", "updated_at", "created_at")
+        .only("id", "title", "updated_at", "created_at")
         .order_by("-created_at")[:5000]
     )
     for post in posts:
         lastmod = _format_lastmod(post.updated_at or post.created_at)
-        add_url(f"/b/post/{post.id}", lastmod)
+        slug = _slugify_title(post.title)
+        path = f"/b/post/{post.id}-{slug}" if slug else f"/b/post/{post.id}"
+        add_url(path, lastmod)
 
     body = (
         '<?xml version="1.0" encoding="UTF-8"?>'

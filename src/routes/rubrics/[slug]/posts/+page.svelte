@@ -1,7 +1,7 @@
 <script lang="ts">
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import Post from '$lib/components/lemmy/post/Post.svelte'
-  import { backendPostToPostView } from '$lib/api/backend'
+  import { backendPostToPostView, buildBackendPostPath } from '$lib/api/backend'
   import { env } from '$env/dynamic/public'
   import { page } from '$app/stores'
 
@@ -78,7 +78,7 @@
           actions={true}
           showReadMore={false}
           showFullBody={false}
-          linkOverride={`/b/post/${backendPost.id}`}
+          linkOverride={buildBackendPostPath(backendPost)}
           userUrlOverride={backendPost.author?.username ? `/${backendPost.author.username}` : undefined}
           communityUrlOverride={`/rubrics/${data.rubric?.slug ?? backendPost.rubric_slug}/posts`}
           subscribeUrl={backendPost.channel_url ?? backendPost.author?.channel_url}

@@ -7,7 +7,7 @@
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import { t } from '$lib/translations.js'
   import Post from '$lib/components/lemmy/post/Post.svelte'
-  import { backendPostToPostView } from '$lib/api/backend'
+  import { backendPostToPostView, buildBackendPostPath } from '$lib/api/backend'
 
   export let data
 
@@ -31,7 +31,7 @@
           actions={true}
           showReadMore={false}
           showFullBody={false}
-          linkOverride={`/b/post/${backendPost.id}`}
+          linkOverride={buildBackendPostPath(backendPost)}
           userUrlOverride={backendPost.author?.username ? `/${backendPost.author.username}` : undefined}
           communityUrlOverride={backendPost.rubric_slug ? `/rubrics/${backendPost.rubric_slug}/posts` : undefined}
           subscribeUrl={backendPost.channel_url ?? backendPost.author?.channel_url}

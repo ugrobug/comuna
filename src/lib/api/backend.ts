@@ -1,4 +1,5 @@
 import { env } from '$env/dynamic/public'
+import { slugifyTitle } from '$lib/util/slug'
 
 export const getBackendBaseUrl = (): string => {
   const base = env.PUBLIC_BACKEND_URL || 'http://localhost:8000'
@@ -19,6 +20,11 @@ export const buildRubricPostsUrl = (slug: string): string => {
 
 export const buildPostDetailUrl = (id: number | string): string => {
   return `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/`
+}
+
+export const buildBackendPostPath = (post: { id: number; title: string }): string => {
+  const slug = slugifyTitle(post.title)
+  return slug ? `/b/post/${post.id}-${slug}` : `/b/post/${post.id}`
 }
 
 export const buildHomeFeedUrl = (): string => {
