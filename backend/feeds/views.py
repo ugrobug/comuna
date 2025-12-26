@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -15,7 +16,6 @@ from django.db.models.functions import Cast
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils import timezone
-from django.utils.text import slugify
 from django.views.decorators.csrf import csrf_exempt
 
 from .models import Author, BotSession, Post, Rubric
@@ -52,7 +52,45 @@ def _build_title(text: str) -> str:
 def _slugify_title(text: str) -> str:
     if not text:
         return ""
-    return slugify(text, allow_unicode=True)
+    translit_map = {
+        "а": "a",
+        "б": "b",
+        "в": "v",
+        "г": "g",
+        "д": "d",
+        "е": "e",
+        "ё": "e",
+        "ж": "zh",
+        "з": "z",
+        "и": "i",
+        "й": "y",
+        "к": "k",
+        "л": "l",
+        "м": "m",
+        "н": "n",
+        "о": "o",
+        "п": "p",
+        "р": "r",
+        "с": "s",
+        "т": "t",
+        "у": "u",
+        "ф": "f",
+        "х": "h",
+        "ц": "ts",
+        "ч": "ch",
+        "ш": "sh",
+        "щ": "shch",
+        "ы": "y",
+        "э": "e",
+        "ю": "yu",
+        "я": "ya",
+        "ъ": "",
+        "ь": "",
+    }
+    lowered = text.lower()
+    translit = "".join(translit_map.get(ch, ch) for ch in lowered)
+    slug = re.sub(r"[^a-z0-9]+", "-", translit).strip("-")
+    return slug
 
 
 def _extract_plain_text(message: dict) -> str:
