@@ -1076,48 +1076,48 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
 
 
 def home_feed(request: HttpRequest) -> HttpResponse:
-    rubrics = Rubric.objects.filter(is_active=True).order_by("sort_order", "name")
-    serialized_posts = []
+    limit_raw = request.GET.get("limit", "50")
+    try:
+        limit = min(max(int(limit_raw), 1), 200)
+    except ValueError:
+        limit = 50
 
-    for rubric in rubrics:
-        limit = rubric.home_limit or 0
-        if limit <= 0:
-            continue
-
-        posts = (
-            Post.objects.filter(
-                rubric=rubric,
-                is_blocked=False,
-                is_pending=False,
-                author__is_blocked=False,
-            )
-            .order_by("-created_at")[:limit]
+    posts = (
+        Post.objects.filter(
+            is_blocked=False,
+            is_pending=False,
+            author__is_blocked=False,
         )
+        .select_related("author", "rubric")
+        .order_by("-created_at")[:limit]
+    )
 
-        for post in posts:
-            author_channel_url = post.author.invite_url or post.author.channel_url
-            serialized_posts.append(
-                {
-                    "id": post.id,
-                    "title": post.title,
-                    "rubric": rubric.name,
-                    "rubric_slug": rubric.slug,
-                    "rubric_icon_url": _media_url(request, rubric.icon_url),
-                    "content": post.content,
-                    "source_url": post.source_url,
-                    "channel_url": author_channel_url or post.channel_url,
-                    "created_at": post.created_at.isoformat(),
-                    "author": {
-                        "username": post.author.username,
-                        "title": post.author.title,
-                        "channel_url": author_channel_url,
-                        "avatar_url": post.author.avatar_url,
-                    },
-                    "score": post.rating + post.comments_count * 5,
-                    "rating": post.rating,
-                    "comments_count": post.comments_count,
-                }
-            )
+    serialized_posts = []
+    for post in posts:
+        rubric = post.rubric
+        author_channel_url = post.author.invite_url or post.author.channel_url
+        serialized_posts.append(
+            {
+                "id": post.id,
+                "title": post.title,
+                "rubric": rubric.name if rubric else None,
+                "rubric_slug": rubric.slug if rubric else None,
+                "rubric_icon_url": _media_url(request, rubric.icon_url) if rubric else None,
+                "content": post.content,
+                "source_url": post.source_url,
+                "channel_url": author_channel_url or post.channel_url,
+                "created_at": post.created_at.isoformat(),
+                "author": {
+                    "username": post.author.username,
+                    "title": post.author.title,
+                    "channel_url": author_channel_url,
+                    "avatar_url": post.author.avatar_url,
+                },
+                "score": post.rating + post.comments_count * 5,
+                "rating": post.rating,
+                "comments_count": post.comments_count,
+            }
+        )
 
     return JsonResponse({"ok": True, "posts": serialized_posts})
 
