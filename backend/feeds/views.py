@@ -774,6 +774,7 @@ def _handle_callback_query(callback_query: dict) -> None:
             telegram_user_id=chat_id,
             defaults={"auto_publish": auto_publish, "mode_selected": True},
         )
+        Author.objects.filter(admin_chat_id=chat_id).update(auto_publish=auto_publish)
         _answer_callback_query(callback_id, "Настройка сохранена")
         _maybe_send_setup_instructions(chat_id)
         return
@@ -791,6 +792,7 @@ def _handle_callback_query(callback_query: dict) -> None:
         BotSession.objects.update_or_create(
             telegram_user_id=chat_id, defaults={"rubric": rubric}
         )
+        Author.objects.filter(admin_chat_id=chat_id).update(rubric=rubric)
         _answer_callback_query(callback_id, "Рубрика сохранена")
         _maybe_send_setup_instructions(chat_id)
         return
