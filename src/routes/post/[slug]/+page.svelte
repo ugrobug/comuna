@@ -916,7 +916,9 @@
       metaTitle && metaTitle !== 'undefined' && metaTitle !== 'null' ? metaTitle : '';
     const fallbackTitle = stripHtml(post.name || post.title || '').trim();
 
-    return cleanMetaTitle || fallbackTitle || 'Пост';
+    const baseTitle = cleanMetaTitle || fallbackTitle || 'Пост';
+    const dotIndex = baseTitle.indexOf('.');
+    return (dotIndex > 0 ? baseTitle.slice(0, dotIndex) : baseTitle).trim() || 'Пост';
   }
 
   function getMetaDescription(post: any): string {
