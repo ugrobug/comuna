@@ -63,6 +63,12 @@ def _maybe_notify_new_author(author: Author, post: Post) -> None:
 def _media_url(request: HttpRequest, field) -> str | None:
     if not field:
         return None
+    site_base = getattr(settings, "SITE_BASE_URL", "").rstrip("/")
+    if site_base:
+        try:
+            return f"{site_base}{field.url}"
+        except Exception:
+            pass
     try:
         return request.build_absolute_uri(field.url)
     except Exception:
