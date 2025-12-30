@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+from django.core.files.base import ContentFile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -65,6 +67,10 @@ def _media_url(request: HttpRequest, field) -> str | None:
         return request.build_absolute_uri(field.url)
     except Exception:
         return None
+
+
+def _author_avatar_url(request: HttpRequest, author: Author) -> str | None:
+    return _media_url(request, author.avatar_image) or author.avatar_url
 
 
 def _format_lastmod(value) -> str | None:
@@ -340,13 +346,21 @@ def _refresh_author_from_telegram(author: Author, chat_id: int, token: str) -> N
             author.channel_url = f"https://t.me/{result['username']}"
         photo = result.get("photo")
         if photo and photo.get("big_file_id"):
-            file_info = _fetch_telegram_json(
-                "getFile", token, {"file_id": photo["big_file_id"]}
-            )
+            file_id = photo["big_file_id"]
+            file_info = _fetch_telegram_json("getFile", token, {"file_id": file_id})
             if file_info and file_info.get("ok") and file_info.get("result"):
                 file_path = file_info["result"].get("file_path")
                 if file_path:
                     author.avatar_url = f"https://api.telegram.org/file/bot{token}/{file_path}"
+                    if file_id != author.avatar_file_id:
+                        try:
+                            with urllib.request.urlopen(author.avatar_url, timeout=10) as response:
+                                data = response.read()
+                            filename = os.path.basename(file_path) or f"{author.username}.jpg"
+                            author.avatar_image.save(filename, ContentFile(data), save=False)
+                            author.avatar_file_id = file_id
+                        except Exception:
+                            pass
 
     count = _fetch_telegram_json("getChatMemberCount", token, {"chat_id": chat_id})
     if count and count.get("ok") and isinstance(count.get("result"), int):
@@ -358,6 +372,8 @@ def _refresh_author_from_telegram(author: Author, chat_id: int, token: str) -> N
             "description",
             "channel_url",
             "avatar_url",
+            "avatar_image",
+            "avatar_file_id",
             "subscribers_count",
             "updated_at",
         ]
@@ -938,7 +954,7 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
                     "username": author.username,
                     "title": author.title,
                     "channel_url": author_channel_url,
-                    "avatar_url": author.avatar_url,
+                    "avatar_url": _author_avatar_url(request, author),
                     "description": author.description,
                     "subscribers_count": author.subscribers_count,
                 },
@@ -952,7 +968,7 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
                 "username": author.username,
                 "title": author.title,
                 "channel_url": author_channel_url,
-                "avatar_url": author.avatar_url,
+                "avatar_url": _author_avatar_url(request, author),
                 "description": author.description,
                 "subscribers_count": author.subscribers_count,
                 "posts_count": posts_count,
@@ -1020,7 +1036,7 @@ def rubric_posts(request: HttpRequest, slug: str) -> HttpResponse:
                     "username": post.author.username,
                     "title": post.author.title,
                     "channel_url": author_channel_url,
-                    "avatar_url": post.author.avatar_url,
+                    "avatar_url": _author_avatar_url(request, post.author),
                 },
             }
         )
@@ -1068,7 +1084,7 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
                     "username": post.author.username,
                     "title": post.author.title,
                     "channel_url": author_channel_url,
-                    "avatar_url": post.author.avatar_url,
+                    "avatar_url": _author_avatar_url(request, post.author),
                 },
             },
         }
@@ -1111,7 +1127,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
                     "username": post.author.username,
                     "title": post.author.title,
                     "channel_url": author_channel_url,
-                    "avatar_url": post.author.avatar_url,
+                    "avatar_url": _author_avatar_url(request, post.author),
                 },
                 "score": post.rating + post.comments_count * 5,
                 "rating": post.rating,
@@ -1155,7 +1171,7 @@ def top_authors_month(request: HttpRequest) -> HttpResponse:
             {
                 "username": author.username,
                 "title": author.title,
-                "avatar_url": author.avatar_url,
+                "avatar_url": _author_avatar_url(request, author),
                 "channel_url": author.invite_url or author.channel_url,
                 "month_score": author.month_score or 0,
                 "month_posts": author.month_posts or 0,
@@ -1238,7 +1254,7 @@ def search_content(request: HttpRequest) -> HttpResponse:
                         "username": post.author.username,
                         "title": post.author.title,
                         "channel_url": author_channel_url,
-                        "avatar_url": post.author.avatar_url,
+                        "avatar_url": _author_avatar_url(request, post.author),
                         "description": post.author.description,
                         "subscribers_count": post.author.subscribers_count,
                     },
@@ -1257,7 +1273,7 @@ def search_content(request: HttpRequest) -> HttpResponse:
                 {
                     "username": author.username,
                     "title": author.title,
-                    "avatar_url": author.avatar_url,
+                    "avatar_url": _author_avatar_url(request, author),
                     "description": author.description,
                     "channel_url": author.invite_url or author.channel_url,
                     "subscribers_count": author.subscribers_count,

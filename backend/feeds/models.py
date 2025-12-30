@@ -9,6 +9,8 @@ class Author(models.Model):
     channel_url = models.URLField(max_length=255, blank=True)
     invite_url = models.URLField(max_length=255, blank=True)
     avatar_url = models.URLField(max_length=255, blank=True)
+    avatar_image = models.ImageField(upload_to="authors/avatars/", blank=True)
+    avatar_file_id = models.CharField(max_length=255, blank=True)
     description = models.TextField(blank=True)
     subscribers_count = models.PositiveIntegerField(default=0)
     rubric = models.ForeignKey(
