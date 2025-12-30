@@ -334,42 +334,54 @@ def _answer_callback_query(callback_query_id: str, text: str = "") -> None:
     _fetch_telegram_json("answerCallbackQuery", token, payload)
 
 
-def _refresh_author_from_telegram(author: Author, chat_id: int, token: str) -> None:
-    chat = _fetch_telegram_json("getChat", token, {"chat_id": chat_id})
-    if chat and chat.get("ok") and chat.get("result"):
-        result = chat["result"]
-        if result.get("title"):
-            author.title = result["title"]
-        if result.get("description"):
-            author.description = result["description"]
-        if result.get("username"):
-            author.channel_url = f"https://t.me/{result['username']}"
-        photo = result.get("photo")
-        if photo and photo.get("big_file_id"):
-            file_id = photo["big_file_id"]
-            file_info = _fetch_telegram_json("getFile", token, {"file_id": file_id})
-            if file_info and file_info.get("ok") and file_info.get("result"):
-                file_path = file_info["result"].get("file_path")
-                if file_path:
-                    author.avatar_url = f"https://api.telegram.org/file/bot{token}/{file_path}"
-                    if file_id != author.avatar_file_id:
-                        try:
-                            with urllib.request.urlopen(author.avatar_url, timeout=10) as response:
-                                data = response.read()
-                            filename = os.path.basename(file_path) or f"{author.username}.jpg"
-                            author.avatar_image.save(filename, ContentFile(data), save=False)
-                            author.avatar_file_id = file_id
-                        except Exception:
-                            pass
+def _refresh_author_from_telegram(author: Author, chat_ref, token: str) -> None:
+    chat = _fetch_telegram_json("getChat", token, {"chat_id": chat_ref})
+    if not chat or not chat.get("ok") or not chat.get("result"):
+        return
 
-    count = _fetch_telegram_json("getChatMemberCount", token, {"chat_id": chat_id})
-    if count and count.get("ok") and isinstance(count.get("result"), int):
-        author.subscribers_count = count["result"]
+    result = chat["result"]
+    if result.get("type") != "channel":
+        return
+
+    channel_id = result.get("id")
+    if channel_id:
+        author.channel_id = channel_id
+
+    if result.get("title"):
+        author.title = result["title"]
+    if result.get("description"):
+        author.description = result["description"]
+    if result.get("username"):
+        author.channel_url = f"https://t.me/{result['username']}"
+
+    photo = result.get("photo")
+    if photo and photo.get("big_file_id"):
+        file_id = photo["big_file_id"]
+        file_info = _fetch_telegram_json("getFile", token, {"file_id": file_id})
+        if file_info and file_info.get("ok") and file_info.get("result"):
+            file_path = file_info["result"].get("file_path")
+            if file_path:
+                author.avatar_url = f"https://api.telegram.org/file/bot{token}/{file_path}"
+                if file_id != author.avatar_file_id:
+                    try:
+                        with urllib.request.urlopen(author.avatar_url, timeout=10) as response:
+                            data = response.read()
+                        filename = os.path.basename(file_path) or f"{author.username}.jpg"
+                        author.avatar_image.save(filename, ContentFile(data), save=False)
+                        author.avatar_file_id = file_id
+                    except Exception:
+                        pass
+
+    if channel_id:
+        count = _fetch_telegram_json("getChatMemberCount", token, {"chat_id": channel_id})
+        if count and count.get("ok") and isinstance(count.get("result"), int):
+            author.subscribers_count = count["result"]
 
     author.save(
         update_fields=[
             "title",
             "description",
+            "channel_id",
             "channel_url",
             "avatar_url",
             "avatar_image",
@@ -457,6 +469,7 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
         defaults={
             "title": chat.get("title", ""),
             "channel_url": f"https://t.me/{username}",
+            "channel_id": chat.get("id"),
         },
     )
 
@@ -713,6 +726,7 @@ def _handle_private_message(message: dict) -> None:
                 defaults={
                     "title": forward_chat.get("title", ""),
                     "channel_url": f"https://t.me/{forward_chat.get('username')}",
+                    "channel_id": forward_chat.get("id"),
                 },
             )
 

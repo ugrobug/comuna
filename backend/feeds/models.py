@@ -6,6 +6,7 @@ from django.db import models
 class Author(models.Model):
     username = models.CharField(max_length=64, unique=True)
     title = models.CharField(max_length=255, blank=True)
+    channel_id = models.BigIntegerField(null=True, blank=True)
     channel_url = models.URLField(max_length=255, blank=True)
     invite_url = models.URLField(max_length=255, blank=True)
     avatar_url = models.URLField(max_length=255, blank=True)
