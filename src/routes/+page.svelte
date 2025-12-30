@@ -45,7 +45,7 @@
 </div>
 
 <svelte:head>
-  <title>{env.PUBLIC_SITE_TITLE}</title>
+  <title>Самые новые и обсуждаемые посты лучших telegram каналов</title>
   <meta name="description" content={env.PUBLIC_SITE_DESCRIPTION} />
   
   <!-- Open Graph теги -->
