@@ -796,6 +796,73 @@ def _handle_private_message(message: dict) -> None:
     )
 
 
+def _handle_my_chat_member(update: dict) -> None:
+    chat = update.get("chat", {})
+    if chat.get("type") != "channel":
+        return
+
+    new_member = update.get("new_chat_member", {})
+    status = new_member.get("status")
+    if status not in {"administrator", "member"}:
+        return
+
+    actor = update.get("from", {})
+    admin_chat_id = actor.get("id")
+    if not admin_chat_id:
+        return
+
+    username = chat.get("username")
+    if not username:
+        _send_bot_message(
+            admin_chat_id,
+            "У канала нет публичного username. Сделайте канал публичным и повторите.",
+        )
+        return
+
+    author = Author.objects.filter(username__iexact=username).first()
+    if not author:
+        author = Author.objects.create(
+            username=username,
+            title=chat.get("title", ""),
+            channel_id=chat.get("id"),
+            channel_url=f"https://t.me/{username}",
+        )
+
+    session = BotSession.objects.filter(telegram_user_id=admin_chat_id).first()
+    author.admin_chat_id = admin_chat_id
+    author.channel_id = chat.get("id") or author.channel_id
+    if chat.get("title"):
+        author.title = chat["title"]
+
+    update_fields = ["admin_chat_id", "channel_id", "updated_at"]
+    if chat.get("title"):
+        update_fields.append("title")
+
+    if session:
+        author.auto_publish = session.auto_publish
+        update_fields.append("auto_publish")
+        if session.rubric:
+            author.rubric = session.rubric
+            update_fields.append("rubric")
+        if session.invite_url:
+            author.invite_url = session.invite_url
+            update_fields.append("invite_url")
+
+    author.save(update_fields=update_fields)
+
+    if session and author.rubric:
+        Post.objects.filter(author=author).update(rubric=author.rubric)
+
+    token = settings.TELEGRAM_BOT_TOKEN
+    if token:
+        _refresh_author_from_telegram(author, f"@{username}", token)
+
+    _send_bot_message(
+        admin_chat_id,
+        f"Канал @{author.username} подключён. Настройки применены.",
+    )
+
+
 def _handle_callback_query(callback_query: dict) -> None:
     callback_id = callback_query.get("id")
     data = callback_query.get("data", "")
@@ -923,6 +990,8 @@ def telegram_webhook(request: HttpRequest, token: str) -> HttpResponse:
         _handle_channel_post(payload["channel_post"])
     elif "edited_channel_post" in payload:
         _handle_channel_post(payload["edited_channel_post"])
+    elif "my_chat_member" in payload:
+        _handle_my_chat_member(payload["my_chat_member"])
     elif "message" in payload:
         _handle_private_message(payload["message"])
     elif "callback_query" in payload:
