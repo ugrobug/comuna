@@ -6,7 +6,7 @@
   import { userSettings } from '$lib/settings.js'
   import PostLink from '$lib/components/lemmy/post/link/PostLink.svelte'
   import PostMeta from '$lib/components/lemmy/post/PostMeta.svelte'
-  import { Badge, Material, toast } from 'mono-svelte'
+  import { Badge, Button, Material, toast } from 'mono-svelte'
   import Markdown from '$lib/components/markdown/Markdown.svelte'
   import ExpandableImage from '$lib/components/ui/ExpandableImage.svelte'
   import {
@@ -171,6 +171,23 @@
           {showFullBody}
           class="relative text-slate-600 dark:text-zinc-400"
         />
+        {#if subscribeUrl}
+          <div class="mt-4">
+            <Button
+              size="sm"
+              color="primary"
+              href={subscribeUrl}
+              target="_blank"
+              rel="noreferrer"
+              class="h-10 !min-h-[2.5rem] max-w-max"
+            >
+              <span class="inline-flex items-center gap-2 text-white">
+                <img src="/img/logos/telegram_logo.svg" alt="Telegram" class="w-4 h-4" />
+                Подписаться на телеграм автора
+              </span>
+            </Button>
+          </div>
+        {/if}
       </div>
     {:else}
       <a
