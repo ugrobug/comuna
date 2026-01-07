@@ -128,6 +128,14 @@
   $: canonicalUrl = hasSlug 
     ? $page.url.toString() 
     : new URL(`/post/${data.post.post_view.post.id}-${createSlug(data.post.post_view.post.name)}`, $page.url.origin).toString();
+  const getTelegramSubscribeUrl = (creator: any): string | null => {
+    if (!creator) return null
+    const actorId = creator.actor_id || ''
+    if (actorId.includes('t.me/')) return actorId
+    const username = creator.name || ''
+    return username ? `https://t.me/${username}` : null
+  }
+  $: authorSubscribeUrl = getTelegramSubscribeUrl(data?.post?.post_view?.creator)
 
   onMount(async () => {
     if (
@@ -1111,6 +1119,23 @@
       {:else}
         {@html stripHtml(data.post.post_view.post.body)}
       {/if}
+    </div>
+  {/if}
+  {#if authorSubscribeUrl}
+    <div class="mt-5">
+      <Button
+        size="sm"
+        color="primary"
+        href={authorSubscribeUrl}
+        target="_blank"
+        rel="noreferrer"
+        class="h-10 !min-h-[2.5rem]"
+      >
+        <span class="inline-flex items-center gap-2 text-white">
+          <img src="/img/logos/telegram_logo.svg" alt="Telegram" class="w-4 h-4" />
+          Подписаться на телеграм автора
+        </span>
+      </Button>
     </div>
   {/if}
   <div class="w-full relative">
