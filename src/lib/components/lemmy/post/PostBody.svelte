@@ -469,8 +469,10 @@
         const firstP = tempDiv.querySelector('p');
         if (firstP && firstP.innerHTML) {
           content += `<p>${firstP.innerHTML}</p>`;
+        } else if (tempDiv.firstElementChild) {
+          content += tempDiv.firstElementChild.outerHTML;
         } else {
-          // Если нет параграфа, берем первые 300 символов текста
+          // Если нет разметки, берем первые 300 символов текста
           const text = tempDiv.textContent || '';
           content += `<p>${text.slice(0, 300)}${text.length > 300 ? '...' : ''}</p>`;
         }
@@ -550,10 +552,7 @@
   this={htmlElement}
   style={$$props.style ?? ''}
   class="post-content {!expanded
-    ? ` overflow-hidden
-bg-gradient-to-b text-transparent from-slate-600 via-slate-600
-dark:from-zinc-100 dark:via-zinc-200 dark:to-zinc-400 bg-clip-text z-0
-${view == 'list' ? `max-h-24` : 'max-h-48'}`
+    ? ` overflow-hidden ${view == 'list' ? `max-h-24` : 'max-h-48'}`
     : 'text-slate-600 dark:text-zinc-400 max-h-full'} {!hasPreview && !showFullBody ? 'set-max-height' : ''} text-base {$$props.class ??
     ''} {overflows && !hasPreview && !showFullBody ? 'has-overflow' : ''}"
   class:pointer-events-none={!showFullBody}
@@ -591,20 +590,6 @@ ${view == 'list' ? `max-h-24` : 'max-h-48'}`
     overflow: hidden;
   }
   
-  .set-max-height.has-overflow::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 200px;
-    background: linear-gradient(to bottom, transparent, rgb(255 255 255));
-  }
-
-  :global(.dark) .set-max-height.has-overflow::after {
-    background: linear-gradient(to bottom, transparent, #202532);
-  }
-
   .custom-gradient {
     background: linear-gradient(to bottom, 
       rgb(243 244 246) 0%, 
