@@ -183,12 +183,10 @@
               href={subscribeUrl}
               target="_blank"
               rel="noreferrer"
-              class="h-10 !min-h-[2.5rem] max-w-max"
+              class="h-10 !min-h-[2.5rem] max-w-max !px-4 inline-flex items-center gap-2 whitespace-nowrap"
             >
-              <span class="inline-flex items-center gap-2 text-white">
-                <img src="/img/logos/telegram_logo.svg" alt="Telegram" class="w-4 h-4" />
-                Подписаться на телеграм автора
-              </span>
+              <img src="/img/logos/telegram_logo.svg" alt="Telegram" class="w-4 h-4" />
+              <span class="text-white whitespace-nowrap">Подписаться на телеграм автора</span>
             </Button>
           </div>
         {/if}

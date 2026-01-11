@@ -419,9 +419,13 @@
     if (browser) {
       const tempDiv = document.createElement('div');
       tempDiv.innerHTML = html;
-      const firstP = tempDiv.querySelector('p');
-      if (firstP && firstP.textContent) {
-        return buildPreviewParagraphFromHtml(firstP.innerHTML, firstP.textContent);
+      const paragraphs = Array.from(tempDiv.querySelectorAll('p'));
+      for (const paragraph of paragraphs) {
+        if (!paragraph.textContent) continue;
+        const preview = buildPreviewParagraphFromHtml(paragraph.innerHTML, paragraph.textContent);
+        if (preview) {
+          return preview;
+        }
       }
       const text = tempDiv.textContent || '';
       return buildPreviewParagraphFromText(text);
@@ -430,10 +434,15 @@
   }
 
   function extractPreviewParagraphFromJson(content: any): string {
-    const firstParagraphBlock = content?.blocks?.find((block: any) => block.type === 'paragraph' && block.data?.text);
-    if (firstParagraphBlock?.data?.text) {
-      const paragraphHtml = firstParagraphBlock.data.text;
-      return buildPreviewParagraphFromHtml(paragraphHtml, stripHtmlTags(paragraphHtml));
+    const paragraphBlocks = (content?.blocks ?? []).filter(
+      (block: any) => block.type === 'paragraph' && block.data?.text
+    );
+    for (const block of paragraphBlocks) {
+      const paragraphHtml = block.data.text;
+      const preview = buildPreviewParagraphFromHtml(paragraphHtml, stripHtmlTags(paragraphHtml));
+      if (preview) {
+        return preview;
+      }
     }
     return '';
   }
@@ -460,6 +469,7 @@
         
         let previewContent = '';
         const previewParagraph = extractPreviewParagraphFromJson(content);
+        let previewText = '';
 
         // Сначала добавляем изображение превью, если оно есть
         if (content?.additional?.previewImage?.trim()) {
@@ -472,9 +482,13 @@
 
         // Затем добавляем описание превью или первый абзац
         if (content?.additional?.previewDescription?.trim()) {
-          previewContent += buildPreviewParagraphFromText(content.additional.previewDescription.trim());
-        } else if (previewParagraph) {
-          previewContent += previewParagraph;
+          previewText = buildPreviewParagraphFromText(content.additional.previewDescription.trim());
+        }
+        if (!previewText && previewParagraph) {
+          previewText = previewParagraph;
+        }
+        if (previewText) {
+          previewContent += previewText;
         }
 
         if (previewContent) {
@@ -498,6 +512,7 @@
     const descriptionMatch = html.match(descriptionRegex);
     
     let content = '';
+    let previewText = '';
     
     // Сначала добавляем изображение, если оно есть
     if (imageMatch && imageMatch[1].trim()) {
@@ -505,14 +520,15 @@
       content += processImage(imageUrl, content);
     }
 
-    // Затем добавляем описание, если оно есть
+    // Затем добавляем описание или первый абзац
     if (descriptionMatch && descriptionMatch[1].trim()) {
-      content += buildPreviewParagraphFromText(descriptionMatch[1].trim());
-    } else {
-      const previewParagraph = extractPreviewParagraphFromHtml(html);
-      if (previewParagraph) {
-        content += previewParagraph;
-      }
+      previewText = buildPreviewParagraphFromText(descriptionMatch[1].trim());
+    }
+    if (!previewText) {
+      previewText = extractPreviewParagraphFromHtml(html);
+    }
+    if (previewText) {
+      content += previewText;
     }
     
     // Если есть превью теги, устанавливаем флаг hasPreview
