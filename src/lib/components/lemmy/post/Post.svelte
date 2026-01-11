@@ -166,6 +166,7 @@
         <PostBody
           element="section"
           body={post.post.body}
+          title={post.post.name}
           {view}
           clickThrough={true}
           {showFullBody}
@@ -199,6 +200,7 @@
         <PostBody
           element="section"
           body={post.post.body}
+          title={post.post.name}
           {view}
           clickThrough={false}
           {showFullBody}

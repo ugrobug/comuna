@@ -25,6 +25,7 @@
   }
 
   export let body: string
+  export let title: string | undefined = undefined
   export let view: View = 'cozy'
   export let clickThrough = false
   export let showFullBody = false
@@ -385,6 +386,7 @@
       }
       return html;
     }
+    const maxPreviewLength = 250;
     // Проверяем, является ли контент JSON или base64
     if (isJsonContent(html)) {
       try {
@@ -420,8 +422,29 @@
           return `${previewContent}`;
         }
         
-        // Если нет превью, конвертируем весь контент
+        // Если нет превью, собираем превью из первого абзаца
         hasPreview = false;
+        const firstParagraphBlock = content?.blocks?.find((block: any) => block.type === 'paragraph' && block.data?.text);
+        if (firstParagraphBlock?.data?.text) {
+          const paragraphHtml = firstParagraphBlock.data.text;
+          let paragraphText = stripHtmlTags(paragraphHtml).trim();
+          if (title) {
+            const titleText = title.trim();
+            if (paragraphText.toLowerCase().startsWith(titleText.toLowerCase())) {
+              paragraphText = paragraphText.slice(titleText.length).replace(/^[:\-–—.\s]+/, '').trim();
+            }
+          }
+          if (paragraphText) {
+            const needsTrim = paragraphText.length > maxPreviewLength;
+            if (needsTrim) {
+              paragraphText = `${paragraphText.slice(0, maxPreviewLength).trim()}...`;
+            }
+            if (!needsTrim && paragraphText === stripHtmlTags(paragraphHtml).trim()) {
+              return `<p>${paragraphHtml}</p>`;
+            }
+            return `<p>${escapeHtml(paragraphText)}</p>`;
+          }
+        }
         return convertJsonToHtml(html);
       } catch (error) {
         console.error('Error processing JSON content:', error);
@@ -467,14 +490,31 @@
         
         // Добавляем первый параграф текста с форматированием
         const firstP = tempDiv.querySelector('p');
-        if (firstP && firstP.innerHTML) {
-          content += `<p>${firstP.innerHTML}</p>`;
+        if (firstP && firstP.textContent) {
+          let paragraphText = firstP.textContent.trim();
+          if (title) {
+            const titleText = title.trim();
+            if (paragraphText.toLowerCase().startsWith(titleText.toLowerCase())) {
+              paragraphText = paragraphText.slice(titleText.length).replace(/^[:\-–—.\s]+/, '').trim();
+            }
+          }
+          if (paragraphText) {
+            const needsTrim = paragraphText.length > maxPreviewLength;
+            if (needsTrim) {
+              paragraphText = `${paragraphText.slice(0, maxPreviewLength).trim()}...`;
+            }
+            if (!needsTrim && firstP.innerHTML && paragraphText === firstP.textContent.trim()) {
+              content += `<p>${firstP.innerHTML}</p>`;
+            } else {
+              content += `<p>${escapeHtml(paragraphText)}</p>`;
+            }
+          }
         } else if (tempDiv.firstElementChild) {
           content += tempDiv.firstElementChild.outerHTML;
         } else {
-          // Если нет разметки, берем первые 300 символов текста
+          // Если нет разметки, берем первые 250 символов текста
           const text = tempDiv.textContent || '';
-          content += `<p>${text.slice(0, 300)}${text.length > 300 ? '...' : ''}</p>`;
+          content += `<p>${escapeHtml(text.slice(0, maxPreviewLength))}${text.length > maxPreviewLength ? '...' : ''}</p>`;
         }
       } else {
         // Для серверного рендеринга возвращаем оригинальный HTML
@@ -499,6 +539,24 @@
     }
     // Если мы на сервере или DOMPurify еще не загружен, возвращаем исходный HTML
     return html;
+  }
+
+  function escapeHtml(value: string): string {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+  }
+
+  function stripHtmlTags(value: string): string {
+    if (browser) {
+      const temp = document.createElement('div');
+      temp.innerHTML = value;
+      return temp.textContent || '';
+    }
+    return value.replace(/<[^>]*>/g, '');
   }
 
   // Сбрасываем флаг при изменении body
