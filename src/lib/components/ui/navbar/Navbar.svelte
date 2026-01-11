@@ -57,6 +57,7 @@
   import { iconOfLink } from '$lib/components/ui/navbar/link'
   import { Badge } from 'mono-svelte'
   import { onMount } from 'svelte';
+  import { siteUser, logout as siteLogout } from '$lib/siteAuth'
   
   import { buildRubricsUrl } from '$lib/api/backend';
   import { getRandomTaglineFromSite, hasTaglines } from '$lib/taglineUtils.js';
@@ -290,17 +291,31 @@
             </MenuButton>
           </Menu>
         {:else}
-          <!--
-          <Button
-            color="none"
-            class="!rounded-full bg-orange-600 hover:bg-orange-700 text-white font-normal py-2 px-4 !text-base md:py-2 md:px-4"
-            title={$t('account.login')}
-            on:click={() => loginModalOpen = true}
-          >
-            <span class="hidden md:inline">{$t('account.login')}</span>
-            <span class="md:hidden">Войти</span>
-          </Button>
-          -->
+          {#if $siteUser}
+            <a
+              href="/account"
+              class="!rounded-full bg-orange-600 hover:bg-orange-700 text-white font-normal py-2 px-4 !text-base md:py-2 md:px-4"
+            >
+              Кабинет
+            </a>
+            <Button
+              color="ghost"
+              class="!rounded-full font-normal py-2 px-4 !text-base md:py-2 md:px-4"
+              on:click={siteLogout}
+            >
+              Выйти
+            </Button>
+          {:else}
+            <Button
+              color="none"
+              class="!rounded-full bg-orange-600 hover:bg-orange-700 text-white font-normal py-2 px-4 !text-base md:py-2 md:px-4"
+              title={$t('account.login')}
+              on:click={() => (loginModalOpen = true)}
+            >
+              <span class="hidden md:inline">{$t('account.login')}</span>
+              <span class="md:hidden">Войти</span>
+            </Button>
+          {/if}
         {/if}
         <!-- Профиль -->
         {#if $profile?.jwt}

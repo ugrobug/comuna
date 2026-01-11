@@ -23,6 +23,7 @@
   export let type: MediaType = 'none'
   export let opened: boolean | undefined = undefined
   export let blur: boolean = post.nsfw && $userSettings.nsfwBlur
+  export let linkOverride: string | undefined = undefined
 </script>
 
 <!-- 
@@ -32,7 +33,7 @@
   - Embed link/card.
 -->
 {#if type == 'image' && (view == 'cozy' || view == 'card')}
-  <PostImage {post} {blur} />
+  <PostImage {post} {blur} {linkOverride} />
 {:else if (type == 'iframe' || type == 'video') && (view == 'cozy' || view == 'card') && post.url}
   <PostIframe
     thumbnail={post.thumbnail_url}

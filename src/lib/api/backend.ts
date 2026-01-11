@@ -22,6 +22,14 @@ export const buildPostDetailUrl = (id: number | string): string => {
   return `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/`
 }
 
+export const buildPostCommentsUrl = (id: number | string): string => {
+  return `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/comments/`
+}
+
+export const buildPostLikeUrl = (id: number | string): string => {
+  return `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/like/`
+}
+
 export const buildBackendPostPath = (post: { id: number; title: string }): string => {
   const slug = slugifyTitle(post.title)
   return slug ? `/b/post/${post.id}-${slug}` : `/b/post/${post.id}`
@@ -82,6 +90,8 @@ export type BackendPost = {
   rubric?: string | null
   rubric_slug?: string | null
   rubric_icon_url?: string | null
+  comments_count?: number
+  likes_count?: number
   author?: BackendAuthor
 }
 
@@ -153,8 +163,8 @@ export const backendPostToPostView = (
     counts: {
       id: post.id,
       post_id: post.id,
-      comments: 0,
-      score: 0,
+      comments: post.comments_count ?? 0,
+      score: post.likes_count ?? 0,
       upvotes: 0,
       downvotes: 0,
       published: post.created_at,

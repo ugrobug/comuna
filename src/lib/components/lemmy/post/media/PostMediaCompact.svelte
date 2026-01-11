@@ -22,6 +22,7 @@
   export let type: MediaType = 'none'
   export let view: View = 'cozy'
   export let blur: boolean = post.nsfw && $userSettings.nsfwBlur
+  export let linkOverride: string | undefined = undefined
 
   const thumbnailSize = (view: View) =>
     view == 'compact' ? 'w-40 h-22 sm:w-28' : 'w-24 h-24 sm:w-32'
@@ -58,7 +59,7 @@
   {/if}
   <svelte:element
     this={!$userSettings.expandImages || type != 'image' ? 'a' : 'button'}
-    href={postLink(post)}
+    href={linkOverride ?? postLink(post)}
     on:click={() => {
       if (type == 'image') {
         showImage(bestImageURL(post, false, -1))

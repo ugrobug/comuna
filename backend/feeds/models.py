@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from django.db import models
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
 
 
 class Author(models.Model):
@@ -75,6 +78,30 @@ class Post(models.Model):
         return f"{self.author.username}:{self.message_id}"
 
 
+class PostComment(models.Model):
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="comments")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="post_comments")
+    body = models.TextField()
+    is_deleted = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return f"{self.post_id}:{self.user_id}"
+
+
+class PostLike(models.Model):
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="likes")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="post_likes")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("post", "user")
+
+    def __str__(self) -> str:
+        return f"{self.post_id}:{self.user_id}"
+
+
 class BotSession(models.Model):
     telegram_user_id = models.BigIntegerField(unique=True)
     auto_publish = models.BooleanField(default=True)
@@ -92,3 +119,27 @@ class BotSession(models.Model):
 
     def __str__(self) -> str:
         return str(self.telegram_user_id)
+
+
+class AuthorAdmin(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="author_links")
+    author = models.ForeignKey(Author, on_delete=models.CASCADE, related_name="admin_links")
+    telegram_user_id = models.BigIntegerField(null=True, blank=True)
+    verified_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("user", "author")
+
+    def __str__(self) -> str:
+        return f"{self.user_id}:{self.author_id}"
+
+
+class AuthorVerificationCode(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="author_codes")
+    code = models.CharField(max_length=64, unique=True)
+    used_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self) -> str:
+        return f"{self.user_id}:{self.code}"

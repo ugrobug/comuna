@@ -30,6 +30,7 @@
     Trash,
     UserCircle,
     XMark,
+    ArrowUp,
   } from 'svelte-hero-icons'
   import FormattedNumber from '$lib/components/util/FormattedNumber.svelte'
   import { createEventDispatcher } from 'svelte'
@@ -66,10 +67,16 @@
   import RelativeDate, {
     formatRelativeDate,
   } from '$lib/components/util/RelativeDate.svelte'
+  import { siteToken } from '$lib/siteAuth'
+  import { buildPostLikeUrl } from '$lib/api/backend'
 
   export let post: PostView
   export let view: View = 'cozy'
   export let debug: boolean = false
+  export let backendPostId: number | null = null
+  export let backendPostUrl: string | null = null
+  export let backendComments: number | null = null
+  export let backendLikes: number | null = null
 
   const dispatcher = createEventDispatcher<{ edit: PostView; hide: boolean }>()
 
@@ -79,9 +86,48 @@
   let translating = false
 
   let localShare = false
+  let backendLiking = false
+  let backendLiked = false
+  let backendLikesCount = backendLikes ?? 0
+  let backendCommentsCount = backendComments ?? 0
 
   $: buttonHeight = view == 'compact' ? 'h-7' : 'h-8'
   $: buttonSquare = view == 'compact' ? 'w-7 h-7' : 'w-8 h-8'
+  $: isBackendPost = backendPostId !== null
+  $: if (backendLikes !== null && backendLikes !== undefined) backendLikesCount = backendLikes
+  $: if (backendComments !== null && backendComments !== undefined)
+    backendCommentsCount = backendComments
+
+  const commentLink = () => {
+    if (backendPostUrl) return `${backendPostUrl}#comments`
+    return `${postLink(post.post)}#comments`
+  }
+
+  async function toggleBackendLike() {
+    if (!backendPostId) return
+    if (!$siteToken) {
+      toast({ content: 'Войдите, чтобы ставить лайки', type: 'warning' })
+      return
+    }
+    backendLiking = true
+    try {
+      const response = await fetch(buildPostLikeUrl(backendPostId), {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${$siteToken}`,
+        },
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data?.error || 'Не удалось поставить лайк')
+      }
+      backendLiked = data.liked
+      backendLikesCount = data.likes_count ?? backendLikesCount
+    } catch (error) {
+      toast({ content: (error as Error)?.message ?? 'Не удалось поставить лайк', type: 'error' })
+    }
+    backendLiking = false
+  }
 </script>
 
 {#if editing}
@@ -122,35 +168,69 @@
   style={$$props.style ?? ''}
 >
   {#if !post.post.locked}
-    <PostVote
-      post={post.post}
-      bind:vote={post.my_vote}
-      bind:score={post.counts.score}
-      bind:upvotes={post.counts.upvotes}
-      bind:downvotes={post.counts.downvotes}
-      showCounts={$profile?.user?.local_user_view?.local_user?.show_scores ??
-        true}
-    />
-
-    <Button
-      size="custom"
-      href="{postLink(post.post)}#comments"
-      class="!text-inherit h-full px-3 relative"
-      color="ghost"
-      rounding="pill"
-      target={$userSettings.openLinksInNewTab ? '_blank' : ''}
-      title={$t('post.actions.comments')}
-      animations={{ scale: true, large: false }}
-    >
-      {@const newComment =
-        publishedToDate(post.counts.newest_comment_time).getTime() >
-        new Date().getTime() - 5 * 60 * 1000}
-      <Icon
-        src={newComment ? ChatBubbleOvalLeftEllipsis : ChatBubbleOvalLeft}
-        size="18"
+    {#if isBackendPost}
+      <Button
+        size="custom"
+        class="!text-inherit h-full px-3 relative"
+        color="ghost"
+        rounding="pill"
+        on:click={toggleBackendLike}
+        loading={backendLiking}
+        disabled={backendLiking}
+        title="Лайк"
+        animations={{ scale: true, large: false }}
+      >
+        <Icon
+          src={ArrowUp}
+          size="18"
+          class={backendLiked ? 'text-blue-600' : ''}
+        />
+        <FormattedNumber number={backendLikesCount} />
+      </Button>
+      <Button
+        size="custom"
+        href={commentLink()}
+        class="!text-inherit h-full px-3 relative"
+        color="ghost"
+        rounding="pill"
+        target={$userSettings.openLinksInNewTab ? '_blank' : ''}
+        title={$t('post.actions.comments')}
+        animations={{ scale: true, large: false }}
+      >
+        <Icon src={ChatBubbleOvalLeft} size="18" />
+        <FormattedNumber number={backendCommentsCount} />
+      </Button>
+    {:else}
+      <PostVote
+        post={post.post}
+        bind:vote={post.my_vote}
+        bind:score={post.counts.score}
+        bind:upvotes={post.counts.upvotes}
+        bind:downvotes={post.counts.downvotes}
+        showCounts={$profile?.user?.local_user_view?.local_user?.show_scores ??
+          true}
       />
-      <FormattedNumber number={post.counts.comments} />
-    </Button>
+
+      <Button
+        size="custom"
+        href="{postLink(post.post)}#comments"
+        class="!text-inherit h-full px-3 relative"
+        color="ghost"
+        rounding="pill"
+        target={$userSettings.openLinksInNewTab ? '_blank' : ''}
+        title={$t('post.actions.comments')}
+        animations={{ scale: true, large: false }}
+      >
+        {@const newComment =
+          publishedToDate(post.counts.newest_comment_time).getTime() >
+          new Date().getTime() - 5 * 60 * 1000}
+        <Icon
+          src={newComment ? ChatBubbleOvalLeftEllipsis : ChatBubbleOvalLeft}
+          size="18"
+        />
+        <FormattedNumber number={post.counts.comments} />
+      </Button>
+    {/if}
   {:else}
     <div class="flex sm:flex-row flex-row gap-2 items-end s-aVEWgsRpkTgD">
       <span class="max-md:px-1.5 max-md:py-1.5 px-2.5 py-1 rounded-full text-xs font-medium flex items-center gap-1 ring-1 ring-inset bg-yellow-100 dark:bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 ring-yellow-400 dark:ring-yellow-500/30 h-8 w-8 flex items-center justify-center !p-0" title="Заморожено">

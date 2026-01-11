@@ -4,9 +4,15 @@ from django.contrib import admin
 from django.urls import path
 
 from feeds.views import (
+    auth_me,
+    author_verification_code,
     author_posts,
     home_feed,
+    login_user,
     post_detail,
+    post_comments,
+    post_like,
+    register_user,
     rubric_posts,
     rubrics_list,
     search_content,
@@ -21,9 +27,15 @@ urlpatterns = [
     path("api/rubrics/", rubrics_list, name="rubrics-list"),
     path("api/rubrics/<str:slug>/posts/", rubric_posts, name="rubric-posts"),
     path("api/posts/<int:post_id>/", post_detail, name="post-detail"),
+    path("api/posts/<int:post_id>/comments/", post_comments, name="post-comments"),
+    path("api/posts/<int:post_id>/like/", post_like, name="post-like"),
     path("api/home/", home_feed, name="home-feed"),
     path("api/search/", search_content, name="search-content"),
     path("api/authors/top-month/", top_authors_month, name="top-authors-month"),
+    path("api/auth/register/", register_user, name="auth-register"),
+    path("api/auth/login/", login_user, name="auth-login"),
+    path("api/auth/me/", auth_me, name="auth-me"),
+    path("api/auth/verification-code/", author_verification_code, name="auth-verification-code"),
     path("sitemap.xml", sitemap_xml, name="sitemap-xml"),
     path("tg/webhook/<str:token>/", telegram_webhook, name="telegram-webhook"),
 ]

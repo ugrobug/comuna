@@ -1,6 +1,7 @@
 <script lang="ts">
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import Post from '$lib/components/lemmy/post/Post.svelte'
+  import PostComments from '$lib/components/site/PostComments.svelte'
   import { backendPostToPostView, buildBackendPostPath } from '$lib/api/backend'
 
   export let data
@@ -25,4 +26,6 @@
     subscribeUrl={data.post.channel_url ?? data.post.author?.channel_url}
     subscribeLabel="Подписаться"
   />
+
+  <PostComments postId={data.post.id} />
 </div>

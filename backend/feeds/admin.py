@@ -1,6 +1,14 @@
 from django.contrib import admin
 
-from .models import Author, Post, Rubric
+from .models import (
+    Author,
+    AuthorAdmin as AuthorAdminLink,
+    AuthorVerificationCode,
+    Post,
+    PostComment,
+    PostLike,
+    Rubric,
+)
 
 
 @admin.register(Author)
@@ -57,3 +65,32 @@ class RubricAdmin(admin.ModelAdmin):
         "sort_order",
         "is_active",
     )
+
+
+@admin.register(PostComment)
+class PostCommentAdmin(admin.ModelAdmin):
+    list_display = ("post", "user", "created_at", "is_deleted")
+    list_filter = ("is_deleted",)
+    search_fields = ("body", "user__username", "post__title")
+    raw_id_fields = ("post", "user")
+
+
+@admin.register(PostLike)
+class PostLikeAdmin(admin.ModelAdmin):
+    list_display = ("post", "user", "created_at")
+    search_fields = ("user__username", "post__title")
+    raw_id_fields = ("post", "user")
+
+
+@admin.register(AuthorAdminLink)
+class AuthorAdminLinkAdmin(admin.ModelAdmin):
+    list_display = ("author", "user", "verified_at", "created_at")
+    search_fields = ("author__username", "user__username")
+    raw_id_fields = ("author", "user")
+
+
+@admin.register(AuthorVerificationCode)
+class AuthorVerificationCodeAdmin(admin.ModelAdmin):
+    list_display = ("user", "code", "used_at", "created_at")
+    search_fields = ("user__username", "code")
+    raw_id_fields = ("user",)

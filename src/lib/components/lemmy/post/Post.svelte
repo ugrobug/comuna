@@ -41,6 +41,7 @@
   export let subscribeLabel: string = 'Подписаться'
 
   $: postUrl = linkOverride ?? postLink(post.post)
+  $: isBackendPost = Boolean(linkOverride)
   $: type = mediaType(post.post.url, view)
   $: rule = getTagRule([])
 
@@ -142,6 +143,7 @@
           blur={rule == 'blur' ? true : undefined}
           {view}
           {type}
+          linkOverride={postUrl}
         />
       {/if}
     </div>
@@ -155,6 +157,7 @@
         style="grid-area: media;"
         blur={rule == 'blur' ? true : undefined}
         {view}
+        linkOverride={postUrl}
       />
     {/if}
   {/key}
@@ -223,7 +226,16 @@
   {/if}
 
   {#if actions}
-    <PostActions on:hide {post} style="grid-area: actions;" {view} />
+    <PostActions
+      on:hide
+      {post}
+      style="grid-area: actions;"
+      {view}
+      backendPostId={isBackendPost ? post.post.id : null}
+      backendPostUrl={isBackendPost ? postUrl : null}
+      backendComments={isBackendPost ? post.counts.comments : null}
+      backendLikes={isBackendPost ? post.counts.score : null}
+    />
   {:else if view == 'compact'}
     <div class="flex flex-row items-center gap-2 text-sm">
       <Badge>

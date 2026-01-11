@@ -8,6 +8,7 @@
 
   export let post: Post
   export let blur: boolean = false
+  export let linkOverride: string | undefined = undefined
 
   let imageLoaded: boolean | null = null
 
@@ -19,7 +20,7 @@
 <!--disabled preloads here since most people will hover over every image while scrolling-->
 <svelte:element
   this={$userSettings.expandImages ? 'button' : 'a'}
-  href={postLink(post)}
+  href={linkOverride ?? postLink(post)}
   class="container mx-auto z-10 rounded-xl max-h-[60vh] relative overflow-hidden bg-slate-100 dark:bg-zinc-900"
   data-sveltekit-preload-data="off"
   aria-label={post.name}

@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 import os
 import re
+import secrets
 from django.core.files.base import ContentFile
+from django.core.signing import BadSignature, SignatureExpired, TimestampSigner
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -19,10 +21,80 @@ from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
+from django.contrib.auth import authenticate, get_user_model
 
-from .models import Author, BotSession, Post, Rubric
+from .models import (
+    Author,
+    AuthorAdmin,
+    AuthorVerificationCode,
+    BotSession,
+    Post,
+    PostComment,
+    PostLike,
+    Rubric,
+)
+
+User = get_user_model()
 
 _BOT_ID: int | None = None
+_TOKEN_SIGNER = TimestampSigner(salt="comuna-auth")
+_TOKEN_MAX_AGE = 60 * 60 * 24 * 30
+
+
+def _issue_token(user: User) -> str:
+    return _TOKEN_SIGNER.sign(str(user.id))
+
+
+def _get_user_from_token(token: str) -> User | None:
+    try:
+        unsigned = _TOKEN_SIGNER.unsign(token, max_age=_TOKEN_MAX_AGE)
+    except (BadSignature, SignatureExpired):
+        return None
+    try:
+        return User.objects.get(id=int(unsigned))
+    except (User.DoesNotExist, ValueError, TypeError):
+        return None
+
+
+def _get_user_from_request(request: HttpRequest) -> User | None:
+    auth = request.headers.get("Authorization", "")
+    if auth.lower().startswith("bearer "):
+        token = auth.split(" ", 1)[1].strip()
+    elif auth.lower().startswith("token "):
+        token = auth.split(" ", 1)[1].strip()
+    else:
+        token = ""
+    if not token:
+        return None
+    return _get_user_from_token(token)
+
+
+def _serialize_user(user: User) -> dict:
+    author_links = (
+        AuthorAdmin.objects.select_related("author")
+        .filter(user=user, verified_at__isnull=False)
+        .order_by("author__username")
+    )
+    authors = [
+        {
+            "username": link.author.username,
+            "title": link.author.title,
+            "channel_url": link.author.invite_url or link.author.channel_url,
+        }
+        for link in author_links
+    ]
+    return {
+        "id": user.id,
+        "username": user.username,
+        "email": user.email,
+        "is_author": bool(authors),
+        "authors": authors,
+    }
+
+
+def _generate_verification_code() -> str:
+    token = secrets.token_urlsafe(6).replace("_", "").replace("-", "").upper()
+    return f"COMUNA-{token}"
 
 
 def _maybe_notify_new_author(author: Author, post: Post) -> None:
@@ -623,6 +695,39 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
         _maybe_notify_new_author(author, post)
 
 
+def _handle_verification_code(chat_id: int, code: str) -> None:
+    record = (
+        AuthorVerificationCode.objects.select_related("user")
+        .filter(code__iexact=code, used_at__isnull=True)
+        .first()
+    )
+    if not record:
+        _send_bot_message(chat_id, "Код не найден или уже использован.")
+        return
+
+    authors = Author.objects.filter(admin_chat_id=chat_id, is_blocked=False).order_by("-updated_at")
+    if not authors:
+        _send_bot_message(
+            chat_id,
+            "Сначала подключите канал в боте, затем отправьте код повторно.",
+        )
+        return
+
+    now = timezone.now()
+    linked = []
+    for author in authors:
+        link, _ = AuthorAdmin.objects.get_or_create(user=record.user, author=author)
+        link.telegram_user_id = chat_id
+        link.verified_at = now
+        link.save(update_fields=["telegram_user_id", "verified_at"])
+        linked.append(f"@{author.username}")
+
+    record.used_at = now
+    record.save(update_fields=["used_at"])
+
+    _send_bot_message(chat_id, "Канал подтверждён: " + ", ".join(linked))
+
+
 def _handle_private_message(message: dict) -> None:
     chat = message.get("chat", {})
     if chat.get("type") != "private":
@@ -656,6 +761,10 @@ def _handle_private_message(message: dict) -> None:
             "5) Для старых постов — пересылайте их сюда.\n"
             "Сайт: https://comuna.ru/authors",
         )
+        return
+
+    if text.upper().startswith("COMUNA-"):
+        _handle_verification_code(chat_id, text.strip())
         return
 
     if text == "Настройка":
@@ -1004,6 +1113,187 @@ def telegram_webhook(request: HttpRequest, token: str) -> HttpResponse:
     return JsonResponse({"ok": True})
 
 
+@csrf_exempt
+def register_user(request: HttpRequest) -> HttpResponse:
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+
+    username = (payload.get("username") or "").strip()
+    password = payload.get("password") or ""
+    email = (payload.get("email") or "").strip()
+
+    if not username or not password:
+        return JsonResponse({"ok": False, "error": "username and password are required"}, status=400)
+    if len(password) < 8:
+        return JsonResponse({"ok": False, "error": "пароль слишком короткий"}, status=400)
+
+    if User.objects.filter(username__iexact=username).exists():
+        return JsonResponse({"ok": False, "error": "username already exists"}, status=400)
+    if email and User.objects.filter(email__iexact=email).exists():
+        return JsonResponse({"ok": False, "error": "email already exists"}, status=400)
+
+    user = User.objects.create_user(username=username, email=email or None, password=password)
+    token = _issue_token(user)
+    return JsonResponse({"ok": True, "token": token, "user": _serialize_user(user)})
+
+
+@csrf_exempt
+def login_user(request: HttpRequest) -> HttpResponse:
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+
+    username_or_email = (payload.get("username") or "").strip()
+    password = payload.get("password") or ""
+    if not username_or_email or not password:
+        return JsonResponse({"ok": False, "error": "invalid credentials"}, status=400)
+
+    user = None
+    if "@" in username_or_email:
+        user = User.objects.filter(email__iexact=username_or_email).first()
+        if user and not user.check_password(password):
+            user = None
+    else:
+        user = authenticate(username=username_or_email, password=password)
+
+    if not user:
+        return JsonResponse({"ok": False, "error": "invalid credentials"}, status=401)
+
+    token = _issue_token(user)
+    return JsonResponse({"ok": True, "token": token, "user": _serialize_user(user)})
+
+
+def auth_me(request: HttpRequest) -> HttpResponse:
+    user = _get_user_from_request(request)
+    if not user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    return JsonResponse({"ok": True, "user": _serialize_user(user)})
+
+
+@csrf_exempt
+def author_verification_code(request: HttpRequest) -> HttpResponse:
+    user = _get_user_from_request(request)
+    if not user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    if request.method not in {"GET", "POST"}:
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    active = (
+        AuthorVerificationCode.objects.filter(user=user, used_at__isnull=True)
+        .order_by("-created_at")
+        .first()
+    )
+    if active and active.created_at >= timezone.now() - timedelta(days=1):
+        return JsonResponse({"ok": True, "code": active.code})
+
+    code = _generate_verification_code()
+    while AuthorVerificationCode.objects.filter(code=code).exists():
+        code = _generate_verification_code()
+
+    AuthorVerificationCode.objects.create(user=user, code=code)
+    return JsonResponse({"ok": True, "code": code})
+
+
+@csrf_exempt
+def post_comments(request: HttpRequest, post_id: int) -> HttpResponse:
+    try:
+        post = Post.objects.select_related("author").get(
+            id=post_id, is_blocked=False, is_pending=False, author__is_blocked=False
+        )
+    except Post.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "post not found"}, status=404)
+
+    if request.method == "GET":
+        comments = (
+            PostComment.objects.filter(post=post, is_deleted=False)
+            .select_related("user")
+            .order_by("created_at")
+        )
+        serialized = [
+            {
+                "id": comment.id,
+                "body": comment.body,
+                "created_at": comment.created_at.isoformat(),
+                "user": {"username": comment.user.username},
+            }
+            for comment in comments
+        ]
+        return JsonResponse({"ok": True, "comments": serialized})
+
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    user = _get_user_from_request(request)
+    if not user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+
+    body = (payload.get("body") or "").strip()
+    if not body:
+        return JsonResponse({"ok": False, "error": "comment is empty"}, status=400)
+    if len(body) > 2000:
+        return JsonResponse({"ok": False, "error": "comment too long"}, status=400)
+
+    comment = PostComment.objects.create(post=post, user=user, body=body)
+    Post.objects.filter(id=post.id).update(comments_count=F("comments_count") + 1)
+    post.refresh_from_db(fields=["comments_count"])
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "comment": {
+                "id": comment.id,
+                "body": comment.body,
+                "created_at": comment.created_at.isoformat(),
+                "user": {"username": user.username},
+            },
+            "comments_count": post.comments_count,
+        }
+    )
+
+
+@csrf_exempt
+def post_like(request: HttpRequest, post_id: int) -> HttpResponse:
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    user = _get_user_from_request(request)
+    if not user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+
+    try:
+        post = Post.objects.select_related("author").get(
+            id=post_id, is_blocked=False, is_pending=False, author__is_blocked=False
+        )
+    except Post.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "post not found"}, status=404)
+
+    existing = PostLike.objects.filter(post=post, user=user).first()
+    if existing:
+        existing.delete()
+        if post.rating > 0:
+            Post.objects.filter(id=post.id).update(rating=F("rating") - 1)
+        liked = False
+    else:
+        PostLike.objects.create(post=post, user=user)
+        Post.objects.filter(id=post.id).update(rating=F("rating") + 1)
+        liked = True
+
+    post.refresh_from_db(fields=["rating"])
+    return JsonResponse({"ok": True, "liked": liked, "likes_count": post.rating})
+
+
 def author_posts(request: HttpRequest, username: str) -> HttpResponse:
     try:
         author = Author.objects.get(username__iexact=username)
@@ -1043,6 +1333,8 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
                 "source_url": post.source_url,
                 "channel_url": author_channel_url or post.channel_url,
                 "created_at": post.created_at.isoformat(),
+                "comments_count": post.comments_count,
+                "likes_count": post.rating,
                 "author": {
                     "username": author.username,
                     "title": author.title,
@@ -1125,6 +1417,8 @@ def rubric_posts(request: HttpRequest, slug: str) -> HttpResponse:
                 "source_url": post.source_url,
                 "channel_url": author_channel_url or post.channel_url,
                 "created_at": post.created_at.isoformat(),
+                "comments_count": post.comments_count,
+                "likes_count": post.rating,
                 "author": {
                     "username": post.author.username,
                     "title": post.author.title,
@@ -1173,6 +1467,8 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
                 "source_url": post.source_url,
                 "channel_url": author_channel_url or post.channel_url,
                 "created_at": post.created_at.isoformat(),
+                "comments_count": post.comments_count,
+                "likes_count": post.rating,
                 "author": {
                     "username": post.author.username,
                     "title": post.author.title,
@@ -1225,6 +1521,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
                 "score": post.rating + post.comments_count * 5,
                 "rating": post.rating,
                 "comments_count": post.comments_count,
+                "likes_count": post.rating,
             }
         )
 
@@ -1343,6 +1640,8 @@ def search_content(request: HttpRequest) -> HttpResponse:
                     "source_url": post.source_url,
                     "channel_url": author_channel_url or post.channel_url,
                     "created_at": post.created_at.isoformat(),
+                    "comments_count": post.comments_count,
+                    "likes_count": post.rating,
                     "author": {
                         "username": post.author.username,
                         "title": post.author.title,

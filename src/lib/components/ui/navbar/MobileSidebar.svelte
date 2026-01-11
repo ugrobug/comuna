@@ -37,6 +37,7 @@
   import { env } from '$env/dynamic/public'
   import { createEventDispatcher } from 'svelte'
   import { buildRubricsUrl } from '$lib/api/backend'
+  import { siteUser, logout as siteLogout } from '$lib/siteAuth'
 
   const dispatch = createEventDispatcher()
 
@@ -83,6 +84,31 @@
 <div style="background: #ffe; color: #b00; font-weight: bold; padding: 8px; text-align: center;">SIDEBAR TEST</div>
 
 <nav class="flex flex-col p-4 overflow-auto gap-2 h-auto min-h-0">
+  <div class="flex flex-col gap-1">
+    {#if $siteUser}
+      <SidebarButton href=\"/account\" on:click={handleNavigation} icon={UserCircle}>
+        <span slot=\"label\">Кабинет</span>
+      </SidebarButton>
+      <SidebarButton
+        icon={ArrowLeftOnRectangle}
+        on:click={() => {
+          siteLogout();
+          handleNavigation();
+        }}
+      >
+        <span slot=\"label\">Выйти</span>
+      </SidebarButton>
+    {:else}
+      <SidebarButton
+        icon={ArrowLeftOnRectangle}
+        on:click={() => {
+          loginModalOpen = true;
+        }}
+      >
+        <span slot=\"label\">Войти</span>
+      </SidebarButton>
+    {/if}
+  </div>
   {#if $userSettings.dock.pins?.length ?? 0 > 0}
     <div class="flex items-center flex-wrap gap-2 pl-1.5">
       {#each $userSettings.dock.pins as pin}
