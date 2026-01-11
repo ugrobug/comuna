@@ -465,10 +465,10 @@
           content += processImage(firstImg.src, html, firstImg.alt || '', firstImg.title || '');
         }
         
-        // Добавляем первый параграф текста
+        // Добавляем первый параграф текста с форматированием
         const firstP = tempDiv.querySelector('p');
-        if (firstP && firstP.textContent) {
-          content += `<p>${firstP.textContent.slice(0, 300)}${firstP.textContent.length > 300 ? '...' : ''}</p>`;
+        if (firstP && firstP.innerHTML) {
+          content += `<p>${firstP.innerHTML}</p>`;
         } else {
           // Если нет параграфа, берем первые 300 символов текста
           const text = tempDiv.textContent || '';

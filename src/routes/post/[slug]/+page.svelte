@@ -925,8 +925,15 @@
     const fallbackTitle = stripHtml(post.name || post.title || '').trim();
 
     const baseTitle = cleanMetaTitle || fallbackTitle || 'Пост';
-    const dotIndex = baseTitle.indexOf('.');
-    return (dotIndex > 0 ? baseTitle.slice(0, dotIndex) : baseTitle).trim() || 'Пост';
+    const separators = ['.', '!', '?'];
+    let cutIndex = -1;
+    separators.forEach((separator) => {
+      const idx = baseTitle.indexOf(separator);
+      if (idx > 0 && (cutIndex === -1 || idx < cutIndex)) {
+        cutIndex = idx;
+      }
+    });
+    return (cutIndex > 0 ? baseTitle.slice(0, cutIndex) : baseTitle).trim() || 'Пост';
   }
 
   function getMetaDescription(post: any): string {
