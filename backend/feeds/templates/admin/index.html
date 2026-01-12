@@ -1,0 +1,73 @@
+{% extends "admin/base_site.html" %}
+{% load i18n log admin_metrics %}
+
+{% block coltype %}colMS{% endblock %}
+{% block bodyclass %}{{ block.super }} dashboard{% endblock %}
+
+{% block content %}
+<div id="content-main">
+  {% if app_list %}
+    {% for app in app_list %}
+      {% include "admin/app_list.html" with app=app %}
+    {% endfor %}
+  {% else %}
+    <p>{% translate "You don't have permission to view or edit anything." %}</p>
+  {% endif %}
+</div>
+
+<div id="content-related">
+  {% get_admin_metrics as metrics %}
+  <div class="module" id="site-metrics-module">
+    <h2>Метрики сайта</h2>
+    <table>
+      <tr>
+        <th>Авторов</th>
+        <td>{{ metrics.authors }}</td>
+      </tr>
+      <tr>
+        <th>Всего постов</th>
+        <td>{{ metrics.posts_total }}</td>
+      </tr>
+      <tr>
+        <th>Постов за 30 дней</th>
+        <td>{{ metrics.posts_last_30 }}</td>
+      </tr>
+      <tr>
+        <th>Постов на автора в месяц</th>
+        <td>{{ metrics.avg_posts_per_author|floatformat:2 }}</td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="module" id="recent-actions-module">
+    <h2>{% translate "Recent actions" %}</h2>
+    <h3>{% translate "My actions" %}</h3>
+    {% get_admin_log 10 as admin_log for_user user %}
+    {% if admin_log %}
+      <ul class="actionlist">
+        {% for entry in admin_log %}
+          <li class="{% if entry.is_addition %}addlink{% endif %}{% if entry.is_change %}changelink{% endif %}{% if entry.is_deletion %}deletelink{% endif %}">
+            {% if entry.is_deletion %}
+              {{ entry.object_repr }}
+            {% else %}
+              <a href="{{ entry.get_admin_url }}">{{ entry.object_repr }}</a>
+            {% endif %}
+            <br>
+            {% if entry.content_type %}
+              <span class="mini quiet">
+                {% filter capfirst %}
+                  {{ entry.content_type.name }}
+                {% endfilter %}
+              </span>
+            {% else %}
+              <span class="mini quiet">{% translate "Unknown content" %}</span>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p>{% translate "None available" %}</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
