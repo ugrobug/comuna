@@ -1792,18 +1792,29 @@ def home_feed(request: HttpRequest) -> HttpResponse:
     except ValueError:
         limit = 50
 
-    posts = (
+    posts = list(
         Post.objects.filter(
             is_blocked=False,
             is_pending=False,
             author__is_blocked=False,
         )
         .select_related("author", "rubric")
-        .order_by("-created_at")[:limit]
+        .order_by("-created_at")[: limit * 3]
     )
 
     serialized_posts = []
-    for post in posts:
+    remaining = posts[:]
+    last_author_id = None
+
+    while remaining and len(serialized_posts) < limit:
+        next_index = None
+        for idx, candidate in enumerate(remaining):
+            if candidate.author_id != last_author_id:
+                next_index = idx
+                break
+        if next_index is None:
+            next_index = 0
+        post = remaining.pop(next_index)
         rubric = post.rubric
         author_channel_url = post.author.invite_url or post.author.channel_url
         serialized_posts.append(
@@ -1829,6 +1840,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
                 "likes_count": post.rating,
             }
         )
+        last_author_id = post.author_id
 
     return JsonResponse({"ok": True, "posts": serialized_posts})
 
