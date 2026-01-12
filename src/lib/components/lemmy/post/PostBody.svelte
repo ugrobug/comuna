@@ -433,6 +433,60 @@
     return buildPreviewParagraphFromText(stripHtmlTags(html));
   }
 
+  function extractPreviewImageFromJson(content: any): { url: string; alt: string; title: string } | null {
+    const blocks = content?.blocks ?? [];
+    for (const block of blocks) {
+      if (block.type === 'image') {
+        const url = block.data?.file?.url || block.data?.url;
+        if (url) {
+          return {
+            url,
+            alt: block.data?.file?.alt || block.data?.alt || '',
+            title: block.data?.file?.title || block.data?.title || ''
+          };
+        }
+      }
+      if (block.type === 'gallery') {
+        const first = block.data?.images?.[0];
+        if (first?.url) {
+          return {
+            url: first.url,
+            alt: first.alt || '',
+            title: first.title || ''
+          };
+        }
+      }
+    }
+    return null;
+  }
+
+  function extractFirstImageFromHtml(html: string): { url: string; alt: string; title: string } | null {
+    if (browser) {
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = html;
+      const img = tempDiv.querySelector('img');
+      if (img) {
+        return {
+          url: img.getAttribute('src') || '',
+          alt: img.getAttribute('alt') || '',
+          title: img.getAttribute('title') || ''
+        };
+      }
+      return null;
+    }
+
+    const imgMatch = html.match(/<img[^>]+src=["']([^"']+)["'][^>]*>/i);
+    if (!imgMatch) return null;
+    const tag = imgMatch[0];
+    const altMatch = tag.match(/alt=["']([^"']*)["']/i);
+    const titleMatch = tag.match(/title=["']([^"']*)["']/i);
+    return {
+      url: imgMatch[1],
+      alt: altMatch ? altMatch[1] : '',
+      title: titleMatch ? titleMatch[1] : ''
+    };
+  }
+
   function extractPreviewParagraphFromJson(content: any): string {
     const paragraphBlocks = (content?.blocks ?? []).filter(
       (block: any) => block.type === 'paragraph' && block.data?.text
@@ -470,13 +524,26 @@
         let previewContent = '';
         const previewParagraph = extractPreviewParagraphFromJson(content);
         let previewText = '';
+        let previewImageUrl = content?.additional?.previewImage?.trim() || '';
+        let previewImageAlt = 'Preview image';
+        let previewImageTitle = '';
 
         // Сначала добавляем изображение превью, если оно есть
-        if (content?.additional?.previewImage?.trim()) {
+        if (!previewImageUrl) {
+          const fallbackImage = extractPreviewImageFromJson(content);
+          if (fallbackImage?.url) {
+            previewImageUrl = fallbackImage.url;
+            previewImageAlt = fallbackImage.alt || previewImageAlt;
+            previewImageTitle = fallbackImage.title || '';
+          }
+        }
+
+        if (previewImageUrl) {
           previewContent += processImage(
-            content.additional.previewImage.trim(),
+            previewImageUrl,
             '',
-            'Preview image'
+            previewImageAlt,
+            previewImageTitle
           );
         }
 
@@ -513,11 +580,24 @@
     
     let content = '';
     let previewText = '';
+    let previewImageUrl = '';
+    let previewImageAlt = '';
+    let previewImageTitle = '';
     
     // Сначала добавляем изображение, если оно есть
     if (imageMatch && imageMatch[1].trim()) {
-      const imageUrl = imageMatch[1].trim();
-      content += processImage(imageUrl, content);
+      previewImageUrl = imageMatch[1].trim();
+    } else {
+      const fallbackImage = extractFirstImageFromHtml(html);
+      if (fallbackImage?.url) {
+        previewImageUrl = fallbackImage.url;
+        previewImageAlt = fallbackImage.alt || '';
+        previewImageTitle = fallbackImage.title || '';
+      }
+    }
+
+    if (previewImageUrl) {
+      content += processImage(previewImageUrl, html, previewImageAlt, previewImageTitle);
     }
 
     // Затем добавляем описание или первый абзац
