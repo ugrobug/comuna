@@ -26,6 +26,14 @@ export const buildPostCommentsUrl = (id: number | string): string => {
   return `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/comments/`
 }
 
+export const buildCommentDetailUrl = (id: number | string): string => {
+  return `${getBackendBaseUrl()}/api/comments/${encodeURIComponent(id)}/`
+}
+
+export const buildCommentLikeUrl = (id: number | string): string => {
+  return `${getBackendBaseUrl()}/api/comments/${encodeURIComponent(id)}/like/`
+}
+
 export const buildPostLikeUrl = (id: number | string): string => {
   return `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/like/`
 }

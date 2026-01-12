@@ -6,6 +6,7 @@ from .models import (
     AuthorVerificationCode,
     Post,
     PostComment,
+    PostCommentLike,
     PostLike,
     Rubric,
 )
@@ -69,10 +70,10 @@ class RubricAdmin(admin.ModelAdmin):
 
 @admin.register(PostComment)
 class PostCommentAdmin(admin.ModelAdmin):
-    list_display = ("post", "user", "created_at", "is_deleted")
+    list_display = ("post", "user", "parent", "created_at", "is_deleted")
     list_filter = ("is_deleted",)
     search_fields = ("body", "user__username", "post__title")
-    raw_id_fields = ("post", "user")
+    raw_id_fields = ("post", "user", "parent")
 
 
 @admin.register(PostLike)
@@ -80,6 +81,13 @@ class PostLikeAdmin(admin.ModelAdmin):
     list_display = ("post", "user", "created_at")
     search_fields = ("user__username", "post__title")
     raw_id_fields = ("post", "user")
+
+
+@admin.register(PostCommentLike)
+class PostCommentLikeAdmin(admin.ModelAdmin):
+    list_display = ("comment", "user", "created_at")
+    search_fields = ("user__username", "comment__post__title")
+    raw_id_fields = ("comment", "user")
 
 
 @admin.register(AuthorAdminLink)

@@ -81,6 +81,9 @@ class Post(models.Model):
 class PostComment(models.Model):
     post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="comments")
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="post_comments")
+    parent = models.ForeignKey(
+        "self", on_delete=models.CASCADE, null=True, blank=True, related_name="replies"
+    )
     body = models.TextField()
     is_deleted = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -88,6 +91,18 @@ class PostComment(models.Model):
 
     def __str__(self) -> str:
         return f"{self.post_id}:{self.user_id}"
+
+
+class PostCommentLike(models.Model):
+    comment = models.ForeignKey(PostComment, on_delete=models.CASCADE, related_name="likes")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="comment_likes")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("comment", "user")
+
+    def __str__(self) -> str:
+        return f"{self.comment_id}:{self.user_id}"
 
 
 class PostLike(models.Model):

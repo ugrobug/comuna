@@ -27,5 +27,5 @@
     subscribeLabel="Подписаться"
   />
 
-  <PostComments postId={data.post.id} />
+  <PostComments postId={data.post.id} postAuthor={data.post.author?.username ?? null} />
 </div>

@@ -30,6 +30,7 @@ from .models import (
     BotSession,
     Post,
     PostComment,
+    PostCommentLike,
     PostLike,
     Rubric,
 )
@@ -1389,16 +1390,31 @@ def post_comments(request: HttpRequest, post_id: int) -> HttpResponse:
         return JsonResponse({"ok": False, "error": "post not found"}, status=404)
 
     if request.method == "GET":
+        user = _get_user_from_request(request)
         comments = (
-            PostComment.objects.filter(post=post, is_deleted=False)
+            PostComment.objects.filter(post=post)
             .select_related("user")
+            .annotate(likes_count=Count("likes", distinct=True))
             .order_by("created_at")
         )
+        liked_ids = set()
+        if user:
+            liked_ids = set(
+                PostCommentLike.objects.filter(user=user, comment__post=post).values_list(
+                    "comment_id", flat=True
+                )
+            )
         serialized = [
             {
                 "id": comment.id,
-                "body": comment.body,
+                "body": "" if comment.is_deleted else comment.body,
                 "created_at": comment.created_at.isoformat(),
+                "updated_at": comment.updated_at.isoformat(),
+                "parent_id": comment.parent_id,
+                "is_deleted": comment.is_deleted,
+                "likes_count": comment.likes_count,
+                "liked_by_me": comment.id in liked_ids,
+                "can_edit": bool(user and comment.user_id == user.id and not comment.is_deleted),
                 "user": {"username": comment.user.username},
             }
             for comment in comments
@@ -1418,12 +1434,20 @@ def post_comments(request: HttpRequest, post_id: int) -> HttpResponse:
         return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
 
     body = (payload.get("body") or "").strip()
+    parent_id = payload.get("parent_id")
     if not body:
         return JsonResponse({"ok": False, "error": "comment is empty"}, status=400)
     if len(body) > 2000:
         return JsonResponse({"ok": False, "error": "comment too long"}, status=400)
 
-    comment = PostComment.objects.create(post=post, user=user, body=body)
+    parent = None
+    if parent_id:
+        try:
+            parent = PostComment.objects.get(id=int(parent_id), post=post, is_deleted=False)
+        except (PostComment.DoesNotExist, ValueError, TypeError):
+            return JsonResponse({"ok": False, "error": "parent comment not found"}, status=404)
+
+    comment = PostComment.objects.create(post=post, user=user, body=body, parent=parent)
     Post.objects.filter(id=post.id).update(comments_count=F("comments_count") + 1)
     post.refresh_from_db(fields=["comments_count"])
 
@@ -1434,11 +1458,114 @@ def post_comments(request: HttpRequest, post_id: int) -> HttpResponse:
                 "id": comment.id,
                 "body": comment.body,
                 "created_at": comment.created_at.isoformat(),
+                "updated_at": comment.updated_at.isoformat(),
+                "parent_id": comment.parent_id,
+                "is_deleted": comment.is_deleted,
+                "likes_count": 0,
+                "liked_by_me": False,
+                "can_edit": True,
                 "user": {"username": user.username},
             },
             "comments_count": post.comments_count,
         }
     )
+
+
+@csrf_exempt
+def comment_detail(request: HttpRequest, comment_id: int) -> HttpResponse:
+    if request.method not in ("PATCH", "DELETE"):
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    user = _get_user_from_request(request)
+    if not user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+
+    try:
+        comment = PostComment.objects.select_related("post", "user").get(id=comment_id)
+    except PostComment.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "comment not found"}, status=404)
+
+    if comment.is_deleted:
+        return JsonResponse({"ok": False, "error": "comment not found"}, status=404)
+
+    if comment.user_id != user.id:
+        return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+
+    if request.method == "PATCH":
+        try:
+            payload = json.loads(request.body.decode("utf-8"))
+        except json.JSONDecodeError:
+            return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+
+        body = (payload.get("body") or "").strip()
+        if not body:
+            return JsonResponse({"ok": False, "error": "comment is empty"}, status=400)
+        if len(body) > 2000:
+            return JsonResponse({"ok": False, "error": "comment too long"}, status=400)
+
+        comment.body = body
+        comment.save(update_fields=["body", "updated_at"])
+        likes_count = PostCommentLike.objects.filter(comment=comment).count()
+        liked_by_me = PostCommentLike.objects.filter(comment=comment, user=user).exists()
+
+        return JsonResponse(
+            {
+                "ok": True,
+                "comment": {
+                    "id": comment.id,
+                    "body": comment.body,
+                    "created_at": comment.created_at.isoformat(),
+                    "updated_at": comment.updated_at.isoformat(),
+                    "parent_id": comment.parent_id,
+                    "is_deleted": comment.is_deleted,
+                    "likes_count": likes_count,
+                    "liked_by_me": liked_by_me,
+                    "can_edit": True,
+                    "user": {"username": comment.user.username},
+                },
+            }
+        )
+
+    comment.is_deleted = True
+    comment.save(update_fields=["is_deleted", "updated_at"])
+    Post.objects.filter(id=comment.post_id, comments_count__gt=0).update(
+        comments_count=F("comments_count") - 1
+    )
+
+    return JsonResponse({"ok": True, "comment_id": comment.id})
+
+
+@csrf_exempt
+def comment_like(request: HttpRequest, comment_id: int) -> HttpResponse:
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    user = _get_user_from_request(request)
+    if not user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+
+    try:
+        comment = PostComment.objects.select_related("post", "post__author").get(
+            id=comment_id,
+            is_deleted=False,
+            post__is_blocked=False,
+            post__is_pending=False,
+            post__author__is_blocked=False,
+        )
+    except PostComment.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "comment not found"}, status=404)
+
+    existing = PostCommentLike.objects.filter(comment=comment, user=user).first()
+    if existing:
+        existing.delete()
+        liked = False
+    else:
+        PostCommentLike.objects.create(comment=comment, user=user)
+        liked = True
+
+    likes_count = PostCommentLike.objects.filter(comment=comment).count()
+
+    return JsonResponse({"ok": True, "liked": liked, "likes_count": likes_count})
 
 
 @csrf_exempt
