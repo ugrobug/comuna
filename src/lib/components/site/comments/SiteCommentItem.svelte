@@ -213,7 +213,7 @@
   {#if node.children.length > 0}
     <ul class="mt-4 ml-4 pl-4 border-l border-slate-200 dark:border-zinc-800 flex flex-col gap-4">
       {#each node.children as child (child.comment.id)}
-        <SiteCommentItem
+        <svelte:self
           node={child}
           depth={depth + 1}
           {postId}
