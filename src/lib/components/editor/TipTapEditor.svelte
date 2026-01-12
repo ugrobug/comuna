@@ -61,9 +61,67 @@
     }
   })
 
+  const TelegramEmbed = Node.create({
+    name: 'telegramEmbed',
+    group: 'block',
+    atom: true,
+    selectable: true,
+    draggable: false,
+    addAttributes() {
+      return {
+        src: {
+          default: null,
+        },
+        height: {
+          default: null,
+        },
+      }
+    },
+    parseHTML() {
+      return [
+        {
+          tag: 'div.post-embed',
+          getAttrs: (node) => {
+            if (!(node instanceof HTMLElement)) return false
+            const iframe = node.querySelector('iframe')
+            if (!iframe) return false
+            return {
+              src: iframe.getAttribute('src'),
+              height: iframe.getAttribute('height'),
+            }
+          },
+        },
+      ]
+    },
+    renderHTML({ HTMLAttributes }) {
+      const src = HTMLAttributes.src || ''
+      const height = HTMLAttributes.height || '420'
+      return [
+        'div',
+        { class: 'post-embed' },
+        [
+          'iframe',
+          {
+            class: 'telegram-embed',
+            src,
+            width: '100%',
+            height,
+            frameborder: '0',
+            allow: 'accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture',
+            allowfullscreen: 'true',
+            loading: 'lazy',
+            referrerpolicy: 'no-referrer',
+          },
+        ],
+      ]
+    },
+  })
+
   export let value = ''
   export let placeholder = ''
   export let label = ''
+  export let allowMedia = true
+  export let includeMetaTags = true
 
   let previewImage = ''
   let previewDescription = ''
@@ -169,8 +227,10 @@
 
   const updateMarkdown = (html: string) => {
     // Добавляем все теги в конец HTML
-    const tags = `<preview-image>${previewImage}</preview-image><preview-description>${previewDescription}</preview-description><meta-title>${metaTitle}</meta-title><meta-description>${metaDescription}</meta-description>`
-    const htmlWithTags = `${html}${tags}`
+    const tags = includeMetaTags
+      ? `<preview-image>${previewImage}</preview-image><preview-description>${previewDescription}</preview-description><meta-title>${metaTitle}</meta-title><meta-description>${metaDescription}</meta-description>`
+      : ''
+    const htmlWithTags = includeMetaTags ? `${html}${tags}` : html
     markdownOutput = htmlWithTags
     value = markdownOutput
   }
@@ -656,6 +716,7 @@
         }),
         CustomImage,
         Gallery,
+        TelegramEmbed,
       ],
       content: contentWithoutTags,
       onUpdate: ({ editor }) => {
@@ -816,24 +877,26 @@
         >
           🔗
         </button>
-        <button
-          class="toolbar-btn"
-          on:click|preventDefault|stopPropagation={addImage}
-          type="button"
-          title="Вставить изображение"
-        >
-          📷
-        </button>
-        <button
-          class="toolbar-btn"
-          on:click|preventDefault|stopPropagation={() => {
-            editor.chain().focus().insertGallery().run()
-          }}
-          type="button"
-          title="Добавить галерею"
-        >
-          🖼️
-        </button>
+        {#if allowMedia}
+          <button
+            class="toolbar-btn"
+            on:click|preventDefault|stopPropagation={addImage}
+            type="button"
+            title="Вставить изображение"
+          >
+            📷
+          </button>
+          <button
+            class="toolbar-btn"
+            on:click|preventDefault|stopPropagation={() => {
+              editor.chain().focus().insertGallery().run()
+            }}
+            type="button"
+            title="Добавить галерею"
+          >
+            🖼️
+          </button>
+        {/if}
       </div>
     </div>
   {/if}

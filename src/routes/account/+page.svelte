@@ -1,6 +1,7 @@
 <script lang="ts">
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import { Button, Modal, Spinner, TextInput } from 'mono-svelte'
+  import TipTapEditor from '$lib/components/editor/TipTapEditor.svelte'
   import {
     fetchUserPosts,
     fetchVerificationCode,
@@ -10,7 +11,7 @@
     updateUserPost,
     type SiteUserPost,
   } from '$lib/siteAuth'
-  import { onMount, tick } from 'svelte'
+  import { onMount } from 'svelte'
   import { buildBackendPostPath } from '$lib/api/backend'
 
   let code = ''
@@ -25,12 +26,8 @@
   let editing: SiteUserPost | null = null
   let editTitle = ''
   let editContent = ''
-  let editMedia = ''
   let saving = false
   let saveError = ''
-  let editorElement: HTMLDivElement | null = null
-  let showLinkInput = false
-  let linkUrl = ''
 
   const loadCode = async () => {
     loading = true
@@ -41,34 +38,6 @@
       error = (err as Error)?.message ?? 'Не удалось получить код'
     }
     loading = false
-  }
-
-  const splitContentForEdit = (content: string) => {
-    if (!content) {
-      return { media: '', text: '' }
-    }
-    let remaining = content.trim()
-    const mediaParts: string[] = []
-    const patterns = [
-      /^\s*(<div class="post-gallery">[\s\S]*?<\/div>)/i,
-      /^\s*(<div class="post-embed">[\s\S]*?<\/div>)/i,
-      /^\s*(<img[^>]*>)/i,
-    ]
-    let matched = true
-    while (matched) {
-      matched = false
-      for (const pattern of patterns) {
-        const match = remaining.match(pattern)
-        if (match) {
-          mediaParts.push(match[1])
-          remaining = remaining.replace(match[0], '')
-          remaining = remaining.replace(/^(<br\s*\/?>\s*)+/gi, '').trim()
-          matched = true
-          break
-        }
-      }
-    }
-    return { media: mediaParts.join(''), text: remaining }
   }
 
   const loadPosts = async () => {
@@ -85,58 +54,16 @@
     }
   }
 
-  const openEdit = async (post: SiteUserPost) => {
+  const openEdit = (post: SiteUserPost) => {
     editing = post
     editTitle = post.title || ''
-    const { media, text } = splitContentForEdit(post.content || '')
-    editMedia = media
-    editContent = text
+    editContent = post.content || ''
     saveError = ''
-    showLinkInput = false
-    linkUrl = ''
     editOpen = true
-    await tick()
-    if (editorElement) {
-      editorElement.innerHTML = editContent || ''
-    }
-  }
-
-  const normalizeLink = (value: string) => {
-    const trimmed = value.trim()
-    if (!trimmed) return ''
-    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-      return trimmed
-    }
-    return `https://${trimmed}`
   }
 
   const stripHtml = (value: string) =>
     value.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim()
-
-  const applyCommand = (command: string, value?: string) => {
-    if (!editorElement) return
-    editorElement.focus()
-    document.execCommand(command, false, value)
-    editContent = editorElement.innerHTML
-  }
-
-  const insertLink = () => {
-    if (!editorElement) return
-    const url = normalizeLink(linkUrl)
-    if (!url) return
-    editorElement.focus()
-    const selection = window.getSelection()
-    const selectedText = selection?.toString() ?? ''
-    const label = selectedText || url
-    document.execCommand(
-      'insertHTML',
-      false,
-      `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`
-    )
-    editContent = editorElement.innerHTML
-    linkUrl = ''
-    showLinkInput = false
-  }
 
   const saveEdit = async () => {
     if (!editing) return
@@ -145,15 +72,14 @@
     try {
       const trimmedHtml = editContent.trim()
       const hasText = stripHtml(trimmedHtml).length > 0
-      if (!hasText && !editMedia) {
+      if (!hasText) {
         saveError = 'Текст поста не может быть пустым'
         saving = false
         return
       }
-      const combined = [editMedia, trimmedHtml].filter(Boolean).join('<br><br>')
       const updated = await updateUserPost(editing.id, {
         title: editTitle,
-        content: combined,
+        content: trimmedHtml,
       })
       posts = posts.map((post) => (post.id === updated.id ? updated : post))
       editOpen = false
@@ -302,46 +228,11 @@
     <div class="flex flex-col gap-4">
       <TextInput label="Заголовок" bind:value={editTitle} />
       <div class="flex flex-col gap-2">
-        <div class="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-2">
-          <button class="editor-btn" type="button" title="Полужирный" on:click={() => applyCommand('bold')}>Ж</button>
-          <button class="editor-btn" type="button" title="Курсив" on:click={() => applyCommand('italic')}>К</button>
-          <button class="editor-btn" type="button" title="Заголовок 2" on:click={() => applyCommand('formatBlock', 'h2')}>H2</button>
-          <button class="editor-btn" type="button" title="Заголовок 3" on:click={() => applyCommand('formatBlock', 'h3')}>H3</button>
-          <button class="editor-btn" type="button" title="Маркированный список" on:click={() => applyCommand('insertUnorderedList')}>•</button>
-          <button class="editor-btn" type="button" title="Нумерованный список" on:click={() => applyCommand('insertOrderedList')}>1.</button>
-          <button class="editor-btn" type="button" title="Цитата" on:click={() => applyCommand('formatBlock', 'blockquote')}>"</button>
-          <button class="editor-btn" type="button" title="Блок кода" on:click={() => applyCommand('formatBlock', 'pre')}>{`</>`}</button>
-          <button class="editor-btn" type="button" title="Добавить ссылку" on:click={() => (showLinkInput = !showLinkInput)}>🔗</button>
-        </div>
-        {#if showLinkInput}
-          <div class="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-2">
-            <input
-              type="url"
-              class="flex-1 min-w-[180px] px-3 py-2 rounded-md border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm text-slate-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
-              placeholder="Ссылка"
-              bind:value={linkUrl}
-              on:keydown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault()
-                  insertLink()
-                }
-              }}
-            />
-            <Button size="sm" color="primary" on:click={insertLink}>Вставить</Button>
-          </div>
-        {/if}
-        <div
-          class="rich-editor min-h-[200px] rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-3 text-sm text-slate-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
-          contenteditable="true"
-          role="textbox"
-          aria-multiline="true"
-          data-placeholder="Текст поста"
-          bind:this={editorElement}
-          on:input={() => {
-            if (editorElement) {
-              editContent = editorElement.innerHTML
-            }
-          }}
+        <TipTapEditor
+          bind:value={editContent}
+          placeholder="Текст поста"
+          includeMetaTags={false}
+          allowMedia={false}
         />
         <p class="text-xs text-slate-500 dark:text-zinc-400">
           Картинки и галереи сохраняются автоматически.
@@ -361,14 +252,3 @@
     </div>
   </Modal>
 {/if}
-
-<style lang="postcss">
-  .editor-btn {
-    @apply h-8 min-w-[32px] px-2 rounded-md border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm font-semibold text-slate-700 dark:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-800 transition;
-  }
-
-  .rich-editor:empty:before {
-    content: attr(data-placeholder);
-    @apply text-slate-400 dark:text-zinc-500;
-  }
-</style>
