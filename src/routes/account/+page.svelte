@@ -1,12 +1,33 @@
 <script lang="ts">
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
-  import { Button } from 'mono-svelte'
-  import { fetchVerificationCode, logout, refreshSiteUser, siteUser } from '$lib/siteAuth'
+  import { Button, Modal, Spinner, TextInput } from 'mono-svelte'
+  import {
+    fetchUserPosts,
+    fetchVerificationCode,
+    logout,
+    refreshSiteUser,
+    siteUser,
+    updateUserPost,
+    type SiteUserPost,
+  } from '$lib/siteAuth'
   import { onMount } from 'svelte'
+  import { buildBackendPostPath } from '$lib/api/backend'
 
   let code = ''
   let loading = false
   let error = ''
+  let postsLoading = false
+  let postsError = ''
+  let postsTotal = 0
+  let posts: SiteUserPost[] = []
+
+  let editOpen = false
+  let editing: SiteUserPost | null = null
+  let editTitle = ''
+  let editContent = ''
+  let editMedia = ''
+  let saving = false
+  let saveError = ''
 
   const loadCode = async () => {
     loading = true
@@ -19,8 +40,85 @@
     loading = false
   }
 
+  const splitContentForEdit = (content: string) => {
+    if (!content) {
+      return { media: '', text: '' }
+    }
+    let remaining = content.trim()
+    let media = ''
+    const galleryMatch = remaining.match(/^\s*(<div class="post-gallery">[\s\S]*?<\/div>)/i)
+    if (galleryMatch) {
+      media = galleryMatch[1]
+      remaining = remaining.replace(galleryMatch[0], '')
+    } else {
+      const imageMatch = remaining.match(/^\s*(<img[^>]*>)/i)
+      if (imageMatch) {
+        media = imageMatch[1]
+        remaining = remaining.replace(imageMatch[0], '')
+      }
+    }
+    remaining = remaining.replace(/^(<br\s*\/?>\s*)+/gi, '').trim()
+    return { media, text: remaining }
+  }
+
+  const loadPosts = async () => {
+    postsLoading = true
+    postsError = ''
+    try {
+      const data = await fetchUserPosts(50, 0)
+      posts = data.posts
+      postsTotal = data.total
+    } catch (err) {
+      postsError = (err as Error)?.message ?? 'Не удалось загрузить посты'
+    } finally {
+      postsLoading = false
+    }
+  }
+
+  const openEdit = (post: SiteUserPost) => {
+    editing = post
+    editTitle = post.title || ''
+    const { media, text } = splitContentForEdit(post.content || '')
+    editMedia = media
+    editContent = text
+    saveError = ''
+    editOpen = true
+  }
+
+  const saveEdit = async () => {
+    if (!editing) return
+    saving = true
+    saveError = ''
+    try {
+      const trimmedText = editContent.trim()
+      const combined = editMedia
+        ? `${editMedia}${trimmedText ? `<br><br>${trimmedText}` : ''}`
+        : trimmedText
+      if (!combined.trim()) {
+        saveError = 'Текст поста не может быть пустым'
+        saving = false
+        return
+      }
+      const updated = await updateUserPost(editing.id, {
+        title: editTitle,
+        content: combined,
+      })
+      posts = posts.map((post) => (post.id === updated.id ? updated : post))
+      editOpen = false
+      editing = null
+    } catch (err) {
+      saveError = (err as Error)?.message ?? 'Не удалось сохранить изменения'
+    } finally {
+      saving = false
+    }
+  }
+
   onMount(() => {
-    refreshSiteUser()
+    refreshSiteUser().then((user) => {
+      if (user) {
+        loadPosts()
+      }
+    })
   })
 </script>
 
@@ -79,6 +177,57 @@
       {/if}
     </div>
 
+    <div class="rounded-xl border border-slate-200 dark:border-zinc-800 p-6">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <h2 class="text-lg font-semibold">Ваши посты</h2>
+        {#if postsTotal}
+          <div class="text-xs text-slate-500 dark:text-zinc-400">
+            Всего: {postsTotal}
+          </div>
+        {/if}
+      </div>
+      {#if postsLoading}
+        <div class="flex items-center gap-2 text-sm text-slate-500 dark:text-zinc-400">
+          <Spinner size="sm" />
+          Загрузка...
+        </div>
+      {:else if postsError}
+        <p class="text-sm text-red-600">{postsError}</p>
+      {:else if posts.length === 0}
+        <p class="text-sm text-slate-500 dark:text-zinc-400">
+          Пока нет постов. Они появятся после публикации в вашем канале.
+        </p>
+      {:else}
+        <div class="flex flex-col gap-4">
+          {#each posts as post}
+            <div class="rounded-lg border border-slate-200 dark:border-zinc-800 p-4">
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <a
+                    class="text-base font-semibold text-slate-900 dark:text-white hover:underline"
+                    href={buildBackendPostPath({ id: post.id, title: post.title })}
+                  >
+                    {post.title}
+                  </a>
+                  <div class="text-xs text-slate-500 dark:text-zinc-400 mt-1">
+                    @{post.author.username}
+                    <span class="mx-1">•</span>
+                    {new Date(post.created_at).toLocaleDateString('ru-RU')}
+                    {#if post.is_pending}
+                      <span class="ml-2 text-amber-600">На согласовании</span>
+                    {/if}
+                  </div>
+                </div>
+                <Button size="sm" color="secondary" on:click={() => openEdit(post)}>
+                  Редактировать
+                </Button>
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </div>
+
     <div>
       <Button color="ghost" on:click={logout}>Выйти</Button>
     </div>
@@ -88,3 +237,35 @@
     </p>
   {/if}
 </div>
+
+{#if editOpen}
+  <Modal bind:open={editOpen} title="Редактирование поста">
+    <div class="flex flex-col gap-4">
+      <TextInput label="Заголовок" bind:value={editTitle} />
+      <div class="flex flex-col gap-2">
+        <label class="text-sm font-medium text-slate-700 dark:text-zinc-200">
+          Текст поста
+        </label>
+        <textarea
+          class="w-full min-h-[180px] rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-3 text-sm text-slate-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+          bind:value={editContent}
+          placeholder="Текст поста"
+        ></textarea>
+        <p class="text-xs text-slate-500 dark:text-zinc-400">
+          Картинки и галереи сохраняются автоматически.
+        </p>
+      </div>
+      {#if saveError}
+        <p class="text-sm text-red-600">{saveError}</p>
+      {/if}
+      <div class="flex flex-wrap gap-2">
+        <Button color="primary" on:click={saveEdit} loading={saving} disabled={saving}>
+          Сохранить
+        </Button>
+        <Button color="ghost" on:click={() => (editOpen = false)} disabled={saving}>
+          Отмена
+        </Button>
+      </div>
+    </div>
+  </Modal>
+{/if}

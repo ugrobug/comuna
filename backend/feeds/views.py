@@ -172,6 +172,12 @@ def _build_title(text: str) -> str:
     return first_line[:117].strip() + "..."
 
 
+def _strip_html(text: str) -> str:
+    if not text:
+        return ""
+    return re.sub(r"<[^>]+>", "", text)
+
+
 def _slugify_title(text: str) -> str:
     if not text:
         return ""
@@ -1199,6 +1205,122 @@ def author_verification_code(request: HttpRequest) -> HttpResponse:
 
     AuthorVerificationCode.objects.create(user=user, code=code)
     return JsonResponse({"ok": True, "code": code})
+
+
+def _serialize_post_for_user(request: HttpRequest, post: Post) -> dict:
+    rubric = post.rubric
+    author_channel_url = post.author.invite_url or post.author.channel_url
+    return {
+        "id": post.id,
+        "title": post.title,
+        "content": post.content,
+        "created_at": post.created_at.isoformat(),
+        "updated_at": post.updated_at.isoformat(),
+        "is_pending": post.is_pending,
+        "rubric": rubric.name if rubric else None,
+        "rubric_slug": rubric.slug if rubric else None,
+        "rubric_icon_url": _media_url(request, rubric.icon_url) if rubric else None,
+        "author": {
+            "username": post.author.username,
+            "title": post.author.title,
+            "channel_url": author_channel_url,
+            "avatar_url": _author_avatar_url(request, post.author),
+        },
+    }
+
+
+def user_posts(request: HttpRequest) -> HttpResponse:
+    user = _get_user_from_request(request)
+    if not user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    if request.method != "GET":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    limit_raw = request.GET.get("limit", "20")
+    offset_raw = request.GET.get("offset", "0")
+    try:
+        limit = min(max(int(limit_raw), 1), 50)
+    except ValueError:
+        limit = 20
+    try:
+        offset = max(int(offset_raw), 0)
+    except ValueError:
+        offset = 0
+
+    author_ids = list(
+        AuthorAdmin.objects.filter(user=user, verified_at__isnull=False).values_list(
+            "author_id", flat=True
+        )
+    )
+    if not author_ids:
+        return JsonResponse({"ok": True, "posts": [], "total": 0})
+
+    posts_qs = (
+        Post.objects.filter(author_id__in=author_ids, is_blocked=False, author__is_blocked=False)
+        .select_related("author", "rubric")
+        .order_by("-created_at")
+    )
+
+    total = posts_qs.count()
+    posts = posts_qs[offset : offset + limit]
+    serialized = [_serialize_post_for_user(request, post) for post in posts]
+    return JsonResponse({"ok": True, "posts": serialized, "total": total})
+
+
+@csrf_exempt
+def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
+    user = _get_user_from_request(request)
+    if not user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    if request.method not in {"PATCH", "PUT"}:
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    try:
+        post = Post.objects.select_related("author", "rubric").get(
+            id=post_id, is_blocked=False, author__is_blocked=False
+        )
+    except Post.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "post not found"}, status=404)
+
+    is_linked = AuthorAdmin.objects.filter(
+        user=user, author=post.author, verified_at__isnull=False
+    ).exists()
+    if not is_linked:
+        return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+
+    title = payload.get("title") if "title" in payload else None
+    content = payload.get("content") if "content" in payload else None
+
+    if title is None and content is None:
+        return JsonResponse({"ok": False, "error": "nothing to update"}, status=400)
+
+    if content is not None:
+        content = str(content).strip()
+        if not content:
+            return JsonResponse({"ok": False, "error": "content is empty"}, status=400)
+        if len(content) > 100000:
+            return JsonResponse({"ok": False, "error": "content too long"}, status=400)
+        post.content = content
+        raw_data = dict(post.raw_data or {})
+        raw_data["manual_edit"] = True
+        raw_data["manual_updated_at"] = timezone.now().isoformat()
+        post.raw_data = raw_data
+
+    if title is not None:
+        title = str(title).strip()
+        if title:
+            post.title = title[:255]
+        else:
+            source_text = _strip_html(post.content)
+            post.title = _build_title(source_text)
+
+    post.save(update_fields=["title", "content", "raw_data", "updated_at"])
+    return JsonResponse({"ok": True, "post": _serialize_post_for_user(request, post)})
 
 
 @csrf_exempt

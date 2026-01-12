@@ -16,6 +16,22 @@ export type SiteUser = {
   authors: SiteAuthorLink[]
 }
 
+export type SiteUserPost = {
+  id: number
+  title: string
+  content: string
+  created_at: string
+  updated_at?: string
+  is_pending?: boolean
+  rubric?: string | null
+  rubric_slug?: string | null
+  rubric_icon_url?: string | null
+  author: {
+    username: string
+    title?: string | null
+  }
+}
+
 const TOKEN_KEY = 'comuna.site.token'
 
 const initialToken = browser ? localStorage.getItem(TOKEN_KEY) : null
@@ -128,6 +144,60 @@ export const fetchVerificationCode = async () => {
   }
 
   return data.code as string
+}
+
+export const fetchUserPosts = async (limit = 20, offset = 0) => {
+  const token = get(siteToken)
+  if (!token) {
+    throw new Error('Нужна авторизация')
+  }
+
+  const params = new URLSearchParams({
+    limit: String(limit),
+    offset: String(offset),
+  })
+
+  const response = await fetch(buildUrl(`/api/auth/posts/?${params.toString()}`), {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+
+  const data = await response.json()
+  if (!response.ok) {
+    throw new Error(data?.error || 'Не удалось загрузить посты')
+  }
+
+  return {
+    posts: (data?.posts || []) as SiteUserPost[],
+    total: data?.total ?? 0,
+  }
+}
+
+export const updateUserPost = async (
+  postId: number,
+  payload: { title?: string; content?: string }
+) => {
+  const token = get(siteToken)
+  if (!token) {
+    throw new Error('Нужна авторизация')
+  }
+
+  const response = await fetch(buildUrl(`/api/auth/posts/${postId}/`), {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  })
+
+  const data = await response.json()
+  if (!response.ok) {
+    throw new Error(data?.error || 'Не удалось обновить пост')
+  }
+
+  return data?.post as SiteUserPost
 }
 
 if (browser && initialToken) {

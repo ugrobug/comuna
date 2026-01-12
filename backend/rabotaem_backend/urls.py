@@ -19,6 +19,8 @@ from feeds.views import (
     sitemap_xml,
     telegram_webhook,
     top_authors_month,
+    user_post_update,
+    user_posts,
 )
 
 urlpatterns = [
@@ -36,6 +38,8 @@ urlpatterns = [
     path("api/auth/login/", login_user, name="auth-login"),
     path("api/auth/me/", auth_me, name="auth-me"),
     path("api/auth/verification-code/", author_verification_code, name="auth-verification-code"),
+    path("api/auth/posts/", user_posts, name="auth-posts"),
+    path("api/auth/posts/<int:post_id>/", user_post_update, name="auth-post-update"),
     path("sitemap.xml", sitemap_xml, name="sitemap-xml"),
     path("tg/webhook/<str:token>/", telegram_webhook, name="telegram-webhook"),
 ]
