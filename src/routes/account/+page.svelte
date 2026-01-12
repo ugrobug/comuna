@@ -2,6 +2,7 @@
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import { Button, Modal, Spinner, TextInput } from 'mono-svelte'
   import TipTapEditor from '$lib/components/editor/TipTapEditor.svelte'
+  import EditorJS from '$lib/components/editor/EditorJS.svelte'
   import {
     fetchUserPosts,
     fetchVerificationCode,
@@ -12,6 +13,7 @@
     type SiteUserPost,
   } from '$lib/siteAuth'
   import { onMount } from 'svelte'
+  import { deserializeEditorModel } from '$lib/util'
   import { buildBackendPostPath } from '$lib/api/backend'
 
   let code = ''
@@ -26,6 +28,7 @@
   let editing: SiteUserPost | null = null
   let editTitle = ''
   let editContent = ''
+  let isJsonContent = true
   let saving = false
   let saveError = ''
 
@@ -54,10 +57,35 @@
     }
   }
 
+  const detectContentType = (content: string): boolean => {
+    if (!content || content.trim() === '') {
+      return true
+    }
+    if (content.trim().startsWith('<') && content.trim().endsWith('>')) {
+      return false
+    }
+    try {
+      const parsed = JSON.parse(content)
+      return parsed && typeof parsed === 'object' && 'blocks' in parsed
+    } catch {
+      try {
+        const isBase64 = /^[A-Za-z0-9+/]*={0,2}$/.test(content)
+        if (!isBase64) {
+          return false
+        }
+        const decoded = deserializeEditorModel(content)
+        return decoded && typeof decoded === 'object' && 'blocks' in decoded
+      } catch {
+        return false
+      }
+    }
+  }
+
   const openEdit = (post: SiteUserPost) => {
     editing = post
     editTitle = post.title || ''
     editContent = post.content || ''
+    isJsonContent = detectContentType(editContent)
     saveError = ''
     editOpen = true
   }
@@ -71,11 +99,19 @@
     saveError = ''
     try {
       const trimmedHtml = editContent.trim()
-      const hasText = stripHtml(trimmedHtml).length > 0
-      if (!hasText) {
-        saveError = 'Текст поста не может быть пустым'
-        saving = false
-        return
+      if (isJsonContent) {
+        if (!trimmedHtml) {
+          saveError = 'Текст поста не может быть пустым'
+          saving = false
+          return
+        }
+      } else {
+        const hasText = stripHtml(trimmedHtml).length > 0
+        if (!hasText) {
+          saveError = 'Текст поста не может быть пустым'
+          saving = false
+          return
+        }
       }
       const updated = await updateUserPost(editing.id, {
         title: editTitle,
@@ -228,12 +264,21 @@
     <div class="flex flex-col gap-4">
       <TextInput label="Заголовок" bind:value={editTitle} />
       <div class="flex flex-col gap-2">
-        <TipTapEditor
-          bind:value={editContent}
-          placeholder="Текст поста"
-          includeMetaTags={false}
-          allowMedia={false}
-        />
+        {#if isJsonContent}
+          <EditorJS
+            bind:value={editContent}
+            placeholder="Текст поста"
+            enableAutosave={false}
+            postId={editing?.id ?? null}
+          />
+        {:else}
+          <TipTapEditor
+            bind:value={editContent}
+            placeholder="Текст поста"
+            includeMetaTags={false}
+            allowMedia={false}
+          />
+        {/if}
         <p class="text-xs text-slate-500 dark:text-zinc-400">
           Картинки и галереи сохраняются автоматически.
         </p>
