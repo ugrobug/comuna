@@ -10,11 +10,26 @@
   
   let DOMPurify: any
   let parser: any
+  let purifyConfigured = false
   
   if (browser) {
     // Динамический импорт DOMPurify только на клиенте
     import('dompurify').then(module => {
       DOMPurify = module.default
+      if (!purifyConfigured) {
+        DOMPurify.addHook('afterSanitizeAttributes', (node: Element) => {
+          if (node.tagName === 'IFRAME') {
+            const src = node.getAttribute('src') || ''
+            if (!src.startsWith('https://t.me/')) {
+              node.remove()
+              return
+            }
+            node.setAttribute('loading', 'lazy')
+            node.setAttribute('referrerpolicy', 'no-referrer')
+          }
+        })
+        purifyConfigured = true
+      }
     })
   } else {
     // Импорт jsdom для серверной обработки
@@ -654,8 +669,42 @@
       });
 
       return DOMPurify.sanitize(processedHtml, {
-        ALLOWED_TAGS: ['p', 'b', 'i', 'em', 'strong', 'a', 'br', 'ul', 'ol', 'li', 'img', 'figure', 'figcaption', 'blockquote', 'footer', 'div'],
-        ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'srcset', 'sizes', 'loading', 'alt', 'width', 'height', 'class']
+        ALLOWED_TAGS: [
+          'p',
+          'b',
+          'i',
+          'em',
+          'strong',
+          'a',
+          'br',
+          'ul',
+          'ol',
+          'li',
+          'img',
+          'figure',
+          'figcaption',
+          'blockquote',
+          'footer',
+          'div',
+          'iframe',
+        ],
+        ALLOWED_ATTR: [
+          'href',
+          'target',
+          'rel',
+          'src',
+          'srcset',
+          'sizes',
+          'loading',
+          'alt',
+          'width',
+          'height',
+          'class',
+          'allow',
+          'allowfullscreen',
+          'frameborder',
+          'referrerpolicy',
+        ],
       });
     }
     // Если мы на сервере или DOMPurify еще не загружен, возвращаем исходный HTML
@@ -864,6 +913,15 @@
 
   :global(.post-content .featured-gallery-thumb.active img) {
     @apply ring-2 ring-blue-500;
+  }
+
+  :global(.post-content .post-embed) {
+    @apply my-4;
+  }
+
+  :global(.post-content .post-embed iframe) {
+    @apply w-full rounded-lg;
+    border: 0;
   }
 
   @media (max-width: 768px) {

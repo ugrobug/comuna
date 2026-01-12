@@ -346,18 +346,57 @@ def _extract_photo_url(message: dict, token: str) -> str | None:
     return f"https://api.telegram.org/file/bot{token}/{file_path}"
 
 
-def _build_content_with_images(text_html: str, image_urls: list[str]) -> str:
-    if not image_urls:
-        return text_html
-    if len(image_urls) == 1:
-        media_html = f'<img src="{image_urls[0]}" alt="" />'
-    else:
-        gallery_imgs = "".join(f'<img src="{url}" alt="" />' for url in image_urls)
-        media_html = f'<div class="post-gallery">{gallery_imgs}</div>'
-    parts = [media_html]
+def _build_content_with_images(
+    text_html: str,
+    image_urls: list[str],
+    embed_html: str = "",
+) -> str:
+    parts: list[str] = []
+    if image_urls:
+        if len(image_urls) == 1:
+            media_html = f'<img src="{image_urls[0]}" alt="" />'
+        else:
+            gallery_imgs = "".join(f'<img src="{url}" alt="" />' for url in image_urls)
+            media_html = f'<div class="post-gallery">{gallery_imgs}</div>'
+        parts.append(media_html)
+    if embed_html:
+        parts.append(embed_html)
     if text_html:
-        parts.append(f"<br><br>{text_html}")
-    return "".join(parts)
+        parts.append(text_html)
+    return "<br><br>".join([part for part in parts if part])
+
+
+def _build_telegram_embed_html(username: str, message_id: int, height: int) -> str:
+    src = f"https://t.me/{username}/{message_id}?embed=1&single=1"
+    return (
+        '<div class="post-embed">'
+        f'<iframe class="telegram-embed" src="{src}" '
+        f'width="100%" height="{height}" frameborder="0" '
+        'allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" '
+        'allowfullscreen loading="lazy" referrerpolicy="no-referrer"></iframe>'
+        "</div>"
+    )
+
+
+def _extract_telegram_embed(message: dict, username: str) -> tuple[str, str]:
+    message_id = message.get("message_id")
+    if not message_id or not username:
+        return "", ""
+
+    document = message.get("document") or {}
+    mime_type = (document.get("mime_type") or "").lower()
+    has_video = any(
+        message.get(key) for key in ("video", "video_note", "animation")
+    ) or mime_type.startswith("video/")
+    has_audio = any(message.get(key) for key in ("audio", "voice")) or mime_type.startswith(
+        "audio/"
+    )
+
+    if has_video:
+        return _build_telegram_embed_html(username, message_id, 420), "Видео"
+    if has_audio:
+        return _build_telegram_embed_html(username, message_id, 200), "Аудио"
+    return "", ""
 
 
 def _fetch_telegram_json(method: str, token: str, payload: dict) -> dict | None:
@@ -588,6 +627,7 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
     formatted_text = _format_telegram_text(raw_text, _extract_entities(message))
     image_url = _extract_photo_url(message, token) if token else None
     gallery_urls = [image_url] if image_url else []
+    embed_html, embed_label = _extract_telegram_embed(message, username)
     if media_group_id:
         with transaction.atomic():
             Author.objects.select_for_update().filter(pk=author.pk)
@@ -615,8 +655,14 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
                 raw_data["media_group_id"] = media_group_id
                 if not raw_data.get("formatted_text") and formatted_text:
                     raw_data["formatted_text"] = formatted_text
+                if embed_html and not raw_data.get("embed_html"):
+                    raw_data["embed_html"] = embed_html
                 base_text = raw_data.get("formatted_text") or formatted_text
-                content = _build_content_with_images(base_text, existing_urls)
+                content = _build_content_with_images(
+                    base_text,
+                    existing_urls,
+                    raw_data.get("embed_html") or embed_html,
+                )
                 existing_group_post.content = content
                 existing_group_post.raw_data = raw_data
                 existing_group_post.channel_url = f"https://t.me/{username}"
@@ -635,10 +681,12 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
                 )
                 return
 
-    content = _build_content_with_images(formatted_text, gallery_urls)
+    content = _build_content_with_images(formatted_text, gallery_urls, embed_html)
     title = _build_title(raw_text)
     if not title and image_url:
         title = "Фото"
+    if not title and embed_label:
+        title = embed_label
     channel_url = f"https://t.me/{username}"
     source_url = f"{channel_url}/{message_id}"
 
@@ -650,6 +698,8 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
     if media_group_id and gallery_urls:
         raw_data["gallery_urls"] = gallery_urls
         raw_data["formatted_text"] = formatted_text
+    if embed_html:
+        raw_data["embed_html"] = embed_html
     post, created = Post.objects.get_or_create(
         author=author,
         message_id=message_id,
