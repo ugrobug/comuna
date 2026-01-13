@@ -185,11 +185,7 @@
               rel="noreferrer"
               class="h-10 !min-h-[2.5rem] max-w-max !px-4 inline-flex items-center gap-2 whitespace-nowrap dark:!bg-primary-900 dark:!text-white dark:!border-transparent dark:hover:!brightness-110"
             >
-              <img
-                src="/img/logos/telegram_logo.svg"
-                alt="Telegram"
-                class="w-4 h-4 dark:brightness-0 dark:invert"
-              />
+              <img src="/img/logos/telegram_logo.svg" alt="Telegram" class="w-4 h-4" />
               <span class="text-white whitespace-nowrap">Подписаться на телеграм автора</span>
             </Button>
           </div>

@@ -302,11 +302,7 @@
             rel="noreferrer"
           >
             <span class="inline-flex items-center gap-2 text-white">
-              <img
-                src="/img/logos/telegram_logo.svg"
-                alt="Telegram"
-                class="w-4 h-4 dark:brightness-0 dark:invert"
-              />
+              <img src="/img/logos/telegram_logo.svg" alt="Telegram" class="w-4 h-4" />
               {subscribeLabel}
             </span>
           </Button>
