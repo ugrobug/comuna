@@ -34,6 +34,7 @@ from .models import (
     PostLike,
     Rubric,
 )
+from .telegram_media import download_telegram_file_by_path
 
 User = get_user_model()
 
@@ -344,6 +345,9 @@ def _extract_photo_url(message: dict, token: str) -> str | None:
     file_path = file_info["result"].get("file_path")
     if not file_path:
         return None
+    local_url = download_telegram_file_by_path(file_path, token)
+    if local_url:
+        return local_url
     return f"https://api.telegram.org/file/bot{token}/{file_path}"
 
 
