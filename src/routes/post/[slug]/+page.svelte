@@ -1136,10 +1136,14 @@
         href={authorSubscribeUrl}
         target="_blank"
         rel="noreferrer"
-        class="h-10 !min-h-[2.5rem]"
+        class="h-10 !min-h-[2.5rem] dark:!bg-primary-900 dark:!text-white dark:!border-transparent dark:hover:!brightness-110"
       >
         <span class="inline-flex items-center gap-2 text-white">
-          <img src="/img/logos/telegram_logo.svg" alt="Telegram" class="w-4 h-4" />
+          <img
+            src="/img/logos/telegram_logo.svg"
+            alt="Telegram"
+            class="w-4 h-4 dark:brightness-0 dark:invert"
+          />
           Подписаться на телеграм автора
         </span>
       </Button>
