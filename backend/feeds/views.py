@@ -328,7 +328,7 @@ def _format_telegram_text(text: str, entities: list[dict]) -> str:
     return "".join(out).replace("\n", "<br>")
 
 
-def _extract_photo_url(message: dict, token: str) -> str | None:
+def _extract_photo_file_id(message: dict) -> str | None:
     photos = message.get("photo") or []
     if not photos:
         return None
@@ -336,7 +336,11 @@ def _extract_photo_url(message: dict, token: str) -> str | None:
         photos,
         key=lambda item: (item.get("file_size", 0), item.get("width", 0) * item.get("height", 0)),
     )
-    file_id = largest.get("file_id")
+    return largest.get("file_id")
+
+
+def _extract_photo_url(message: dict, token: str) -> str | None:
+    file_id = _extract_photo_file_id(message)
     if not file_id:
         return None
     file_info = _fetch_telegram_json("getFile", token, {"file_id": file_id})
@@ -345,10 +349,7 @@ def _extract_photo_url(message: dict, token: str) -> str | None:
     file_path = file_info["result"].get("file_path")
     if not file_path:
         return None
-    local_url = download_telegram_file_by_path(file_path, token)
-    if local_url:
-        return local_url
-    return f"https://api.telegram.org/file/bot{token}/{file_path}"
+    return download_telegram_file_by_path(file_path, token)
 
 
 def _build_content_with_images(
@@ -630,6 +631,7 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
 
     raw_text = _extract_plain_text(message)
     formatted_text = _format_telegram_text(raw_text, _extract_entities(message))
+    photo_file_id = _extract_photo_file_id(message)
     image_url = _extract_photo_url(message, token) if token else None
     gallery_urls = [image_url] if image_url else []
     embed_html, embed_label = _extract_telegram_embed(message, username)
@@ -657,6 +659,11 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
                 if image_url and image_url not in existing_urls:
                     existing_urls.append(image_url)
                 raw_data["gallery_urls"] = existing_urls
+                if photo_file_id:
+                    existing_file_ids = list(raw_data.get("gallery_file_ids") or [])
+                    if photo_file_id not in existing_file_ids:
+                        existing_file_ids.append(photo_file_id)
+                    raw_data["gallery_file_ids"] = existing_file_ids
                 raw_data["media_group_id"] = media_group_id
                 if not raw_data.get("formatted_text") and formatted_text:
                     raw_data["formatted_text"] = formatted_text
@@ -698,11 +705,15 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
     requires_approval = (not author.auto_publish and author.admin_chat_id) and not force_publish
 
     raw_data = dict(message)
+    if photo_file_id:
+        raw_data["photo_file_id"] = photo_file_id
     if media_group_id:
         raw_data["media_group_id"] = media_group_id
     if media_group_id and gallery_urls:
         raw_data["gallery_urls"] = gallery_urls
         raw_data["formatted_text"] = formatted_text
+    if media_group_id and photo_file_id:
+        raw_data["gallery_file_ids"] = [photo_file_id]
     if embed_html:
         raw_data["embed_html"] = embed_html
     post, created = Post.objects.get_or_create(

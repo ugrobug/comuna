@@ -41,6 +41,8 @@ class Command(BaseCommand):
                 Q(content__contains="api.telegram.org/file/bot")
                 | Q(raw_data__has_key="gallery_urls")
                 | Q(raw_data__has_key="photo")
+                | Q(raw_data__has_key="gallery_file_ids")
+                | Q(raw_data__has_key="photo_file_id")
             )
             .order_by("-id")
         )
@@ -58,11 +60,22 @@ class Command(BaseCommand):
 
             raw_data = dict(post.raw_data or {})
             gallery_urls = list(raw_data.get("gallery_urls") or [])
+            gallery_file_ids = list(raw_data.get("gallery_file_ids") or [])
             content_urls = list(self._extract_img_urls(content))
             source_urls = gallery_urls or content_urls
+            single_file_id = raw_data.get("photo_file_id") or self._extract_file_id(raw_data)
+            needs_insert = False
+
+            if not source_urls:
+                if gallery_file_ids:
+                    source_urls = [""] * len(gallery_file_ids)
+                    needs_insert = True
+                elif single_file_id:
+                    source_urls = [""]
+                    needs_insert = True
 
             local_urls: list[str] = []
-            for url in source_urls:
+            for index, url in enumerate(source_urls):
                 if self._is_local_url(url):
                     local_urls.append(url)
                     continue
@@ -74,7 +87,11 @@ class Command(BaseCommand):
                         local_url = download_telegram_file_by_path(file_path, token)
 
                 if not local_url:
-                    file_id = self._extract_file_id(raw_data)
+                    file_id = None
+                    if index < len(gallery_file_ids):
+                        file_id = gallery_file_ids[index]
+                    elif len(source_urls) == 1:
+                        file_id = single_file_id
                     if file_id:
                         local_url = download_telegram_file_by_id(file_id, token)
 
@@ -86,10 +103,14 @@ class Command(BaseCommand):
                 new_content = self._replace_img_urls(content, local_urls)
                 if new_content != content:
                     changed = True
+            elif not content_urls and needs_insert and local_urls:
+                new_content = self._inject_images(content, local_urls)
+                if new_content != content:
+                    changed = True
 
             new_gallery_urls = []
-            if gallery_urls:
-                new_gallery_urls = local_urls
+            if gallery_urls or gallery_file_ids:
+                new_gallery_urls = [url for url in local_urls if url]
 
             if changed and not dry_run:
                 if new_content != content:
@@ -120,6 +141,20 @@ class Command(BaseCommand):
             return replacement
 
         return IMG_SRC_RE.sub(replacer, content)
+
+    @staticmethod
+    def _inject_images(content: str, urls: list[str]) -> str:
+        urls = [url for url in urls if url]
+        if not urls:
+            return content
+        if len(urls) == 1:
+            media_html = f'<img src="{urls[0]}" alt="" />'
+        else:
+            gallery_imgs = "".join(f'<img src="{url}" alt="" />' for url in urls)
+            media_html = f'<div class="post-gallery">{gallery_imgs}</div>'
+        if content:
+            return f"{media_html}<br><br>{content}"
+        return media_html
 
     @staticmethod
     def _extract_file_id(raw_data: dict) -> str | None:
