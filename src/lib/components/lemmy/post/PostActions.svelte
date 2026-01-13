@@ -30,7 +30,8 @@
     Trash,
     UserCircle,
     XMark,
-    ArrowUp,
+    ChevronDown,
+    ChevronUp,
   } from 'svelte-hero-icons'
   import FormattedNumber from '$lib/components/util/FormattedNumber.svelte'
   import { createEventDispatcher } from 'svelte'
@@ -52,6 +53,7 @@
     MenuDivider,
     Modal,
     Spinner,
+    buttonColor,
     toast,
   } from 'mono-svelte'
   import { fediseer, type Data } from '$lib/fediseer/fediseer'
@@ -86,8 +88,8 @@
   let translating = false
 
   let localShare = false
-  let backendLiking = false
-  let backendLiked = false
+  let backendVoting = false
+  let backendVote = 0
   let backendLikesCount = backendLikes ?? 0
   let backendCommentsCount = backendComments ?? 0
 
@@ -103,30 +105,32 @@
     return `${postLink(post.post)}#comments`
   }
 
-  async function toggleBackendLike() {
+  async function setBackendVote(value: number) {
     if (!backendPostId) return
     if (!$siteToken) {
-      toast({ content: 'Войдите, чтобы ставить лайки', type: 'warning' })
+      toast({ content: 'Войдите, чтобы голосовать', type: 'warning' })
       return
     }
-    backendLiking = true
+    backendVoting = true
     try {
       const response = await fetch(buildPostLikeUrl(backendPostId), {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${$siteToken}`,
+          'Content-Type': 'application/json',
         },
+        body: JSON.stringify({ value }),
       })
       const data = await response.json()
       if (!response.ok) {
-        throw new Error(data?.error || 'Не удалось поставить лайк')
+        throw new Error(data?.error || 'Не удалось проголосовать')
       }
-      backendLiked = data.liked
+      backendVote = typeof data.vote === 'number' ? data.vote : data.liked ? 1 : 0
       backendLikesCount = data.likes_count ?? backendLikesCount
     } catch (error) {
-      toast({ content: (error as Error)?.message ?? 'Не удалось поставить лайк', type: 'error' })
+      toast({ content: (error as Error)?.message ?? 'Не удалось проголосовать', type: 'error' })
     }
-    backendLiking = false
+    backendVoting = false
   }
 </script>
 
@@ -169,24 +173,39 @@
 >
   {#if !post.post.locked}
     {#if isBackendPost}
-      <Button
-        size="custom"
-        class="!text-inherit h-full px-3 relative"
-        color="ghost"
-        rounding="pill"
-        on:click={toggleBackendLike}
-        loading={backendLiking}
-        disabled={backendLiking}
-        title="Лайк"
-        animations={{ scale: true, large: false }}
+      <div
+        class="{buttonColor.ghost} rounded-full h-full font-medium flex items-center overflow-hidden transition-colors flex-shrink-0
+        !text-inherit divide-x divide-slate-200 dark:divide-zinc-800
+        {backendVoting ? 'animate-pulse opacity-75 pointer-events-none' : ''}"
+        role="group"
+        aria-label="Голосование"
       >
-        <Icon
-          src={ArrowUp}
-          size="18"
-          class={backendLiked ? 'text-blue-600' : ''}
-        />
-        <FormattedNumber number={backendLikesCount} />
-      </Button>
+        <button
+          on:click={() => setBackendVote(backendVote === 1 ? 0 : 1)}
+          class="flex items-center gap-0.5 px-2 transition-colors
+          {backendVote === 1
+            ? 'text-green-500 dark:text-green-400'
+            : 'text-slate-500 dark:text-zinc-400 hover:text-green-500 dark:hover:text-green-400'}"
+          aria-pressed={backendVote === 1}
+          aria-label="Плюс"
+        >
+          <Icon src={ChevronUp} size="20" micro />
+        </button>
+        <span class="px-2 text-sm text-slate-700 dark:text-zinc-200">
+          <FormattedNumber number={backendLikesCount} />
+        </span>
+        <button
+          on:click={() => setBackendVote(backendVote === -1 ? 0 : -1)}
+          class="flex items-center gap-0.5 px-2 transition-colors
+          {backendVote === -1
+            ? 'text-red-500 dark:text-red-400'
+            : 'text-slate-500 dark:text-zinc-400 hover:text-red-500 dark:hover:text-red-400'}"
+          aria-pressed={backendVote === -1}
+          aria-label="Минус"
+        >
+          <Icon src={ChevronDown} size="20" micro />
+        </button>
+      </div>
       <Button
         size="custom"
         href={commentLink()}

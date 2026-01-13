@@ -87,7 +87,7 @@ class PostCommentAdmin(admin.ModelAdmin):
 
 @admin.register(PostLike)
 class PostLikeAdmin(admin.ModelAdmin):
-    list_display = ("post", "user", "created_at")
+    list_display = ("post", "user", "value", "created_at")
     search_fields = ("user__username", "post__title")
     raw_id_fields = ("post", "user")
 

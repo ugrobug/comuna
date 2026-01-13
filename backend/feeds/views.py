@@ -1599,19 +1599,51 @@ def post_like(request: HttpRequest, post_id: int) -> HttpResponse:
     except Post.DoesNotExist:
         return JsonResponse({"ok": False, "error": "post not found"}, status=404)
 
+    vote_value = 1
+    if request.body:
+        try:
+            payload = json.loads(request.body.decode("utf-8"))
+        except json.JSONDecodeError:
+            payload = {}
+        if isinstance(payload, dict):
+            vote_value = int(payload.get("value", payload.get("vote", payload.get("score", 1))))
+
+    if vote_value not in (-1, 0, 1):
+        return JsonResponse({"ok": False, "error": "invalid vote value"}, status=400)
+
     existing = PostLike.objects.filter(post=post, user=user).first()
+    delta = 0
+    new_vote = 0
     if existing:
-        existing.delete()
-        if post.rating > 0:
-            Post.objects.filter(id=post.id).update(rating=F("rating") - 1)
-        liked = False
+        if vote_value == 0 or existing.value == vote_value:
+            delta = -existing.value
+            existing.delete()
+            new_vote = 0
+        else:
+            delta = vote_value - existing.value
+            existing.value = vote_value
+            existing.save(update_fields=["value"])
+            new_vote = vote_value
     else:
-        PostLike.objects.create(post=post, user=user)
-        Post.objects.filter(id=post.id).update(rating=F("rating") + 1)
-        liked = True
+        if vote_value != 0:
+            PostLike.objects.create(post=post, user=user, value=vote_value)
+            delta = vote_value
+            new_vote = vote_value
+
+    if delta:
+        Post.objects.filter(id=post.id).update(rating=F("rating") + delta)
+
+    liked = new_vote == 1
 
     post.refresh_from_db(fields=["rating"])
-    return JsonResponse({"ok": True, "liked": liked, "likes_count": post.rating})
+    return JsonResponse(
+        {
+            "ok": True,
+            "liked": liked,
+            "vote": new_vote,
+            "likes_count": post.rating,
+        }
+    )
 
 
 def author_posts(request: HttpRequest, username: str) -> HttpResponse:
