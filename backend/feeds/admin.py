@@ -14,8 +14,17 @@ from .models import (
 
 @admin.register(Author)
 class AuthorAdmin(admin.ModelAdmin):
-    list_display = ("username", "title", "rubric", "auto_publish", "is_blocked", "created_at")
-    list_filter = ("rubric", "auto_publish", "is_blocked")
+    list_display = (
+        "username",
+        "title",
+        "rubric",
+        "auto_publish",
+        "shadow_banned",
+        "force_home",
+        "is_blocked",
+        "created_at",
+    )
+    list_filter = ("rubric", "auto_publish", "shadow_banned", "force_home", "is_blocked")
     search_fields = ("username", "title")
 
 

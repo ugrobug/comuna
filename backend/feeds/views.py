@@ -1813,6 +1813,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
             is_pending=False,
             author__is_blocked=False,
         )
+        .filter(Q(author__shadow_banned=False) | Q(author__force_home=True))
         .select_related("author", "rubric")
         .order_by("-created_at")[: limit * 3]
     )
@@ -1879,6 +1880,7 @@ def top_authors_month(request: HttpRequest) -> HttpResponse:
 
     authors = (
         Author.objects.filter(is_blocked=False)
+        .filter(Q(shadow_banned=False) | Q(force_home=True))
         .annotate(
             month_score=Sum(score_expr, filter=posts_filter),
             month_posts=Count("posts", filter=posts_filter),

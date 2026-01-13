@@ -23,6 +23,8 @@ class Author(models.Model):
     auto_publish = models.BooleanField(default=True)
     admin_chat_id = models.BigIntegerField(null=True, blank=True)
     is_blocked = models.BooleanField(default=False)
+    shadow_banned = models.BooleanField(default=False)
+    force_home = models.BooleanField(default=False)
     first_post_notified = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
