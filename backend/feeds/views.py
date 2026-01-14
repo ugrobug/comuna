@@ -10,7 +10,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections import defaultdict
-from datetime import timedelta
+from datetime import timedelta, timezone as dt_timezone
 from math import ceil
 from html import escape
 from xml.sax.saxutils import escape as xml_escape
@@ -158,8 +158,8 @@ def _format_lastmod(value) -> str | None:
     if not value:
         return None
     if timezone.is_naive(value):
-        value = timezone.make_aware(value, timezone.utc)
-    return value.astimezone(timezone.utc).date().isoformat()
+        value = timezone.make_aware(value, dt_timezone.utc)
+    return value.astimezone(dt_timezone.utc).date().isoformat()
 
 
 def _build_title(text: str) -> str:
