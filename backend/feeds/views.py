@@ -1646,6 +1646,38 @@ def post_like(request: HttpRequest, post_id: int) -> HttpResponse:
     )
 
 
+def recent_comments(request: HttpRequest) -> HttpResponse:
+    limit_raw = request.GET.get("limit", "5")
+    try:
+        limit = min(max(int(limit_raw), 1), 20)
+    except ValueError:
+        limit = 5
+
+    comments = (
+        PostComment.objects.filter(
+            is_deleted=False,
+            post__is_blocked=False,
+            post__is_pending=False,
+            post__author__is_blocked=False,
+        )
+        .select_related("user", "post")
+        .order_by("-created_at")[:limit]
+    )
+
+    serialized = [
+        {
+            "id": comment.id,
+            "body": comment.body,
+            "created_at": comment.created_at.isoformat(),
+            "user": {"username": comment.user.username},
+            "post": {"id": comment.post_id, "title": comment.post.title},
+        }
+        for comment in comments
+    ]
+
+    return JsonResponse({"ok": True, "comments": serialized})
+
+
 def author_posts(request: HttpRequest, username: str) -> HttpResponse:
     try:
         author = Author.objects.get(username__iexact=username)

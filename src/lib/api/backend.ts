@@ -34,6 +34,11 @@ export const buildCommentLikeUrl = (id: number | string): string => {
   return `${getBackendBaseUrl()}/api/comments/${encodeURIComponent(id)}/like/`
 }
 
+export const buildRecentCommentsUrl = (limit = 5): string => {
+  const params = new URLSearchParams({ limit: String(limit) })
+  return `${getBackendBaseUrl()}/api/comments/recent/?${params.toString()}`
+}
+
 export const buildPostLikeUrl = (id: number | string): string => {
   return `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/like/`
 }

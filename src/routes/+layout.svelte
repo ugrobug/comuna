@@ -36,6 +36,7 @@
 import YandexMetrika from '$lib/components/YandexMetrika.svelte'
 import GoogleAnalytics from '$lib/components/GoogleAnalytics.svelte'
 import PopularPosts from '$lib/components/ui/sidebar/PopularPosts.svelte'
+import RecentComments from '$lib/components/ui/sidebar/RecentComments.svelte'
 
   nProgress.configure({
     minimum: 0.4,
@@ -201,6 +202,9 @@ import PopularPosts from '$lib/components/ui/sidebar/PopularPosts.svelte'
         <!-- PopularPosts -->
         <div class="flex-1 min-h-0">
           <PopularPosts />
+        </div>
+        <div class="flex-1 min-h-0">
+          <RecentComments />
         </div>
       </div>
     </div>
