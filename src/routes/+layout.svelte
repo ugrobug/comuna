@@ -200,10 +200,9 @@ import RecentComments from '$lib/components/ui/sidebar/RecentComments.svelte'
         {/if}
         
         <!-- PopularPosts -->
-        <div class="flex-1 min-h-0">
+        <div class="flex flex-col gap-4">
           <PopularPosts />
-        </div>
-        <div class="flex-1 min-h-0">
+          <div class="h-px bg-slate-200 dark:bg-zinc-800"></div>
           <RecentComments />
         </div>
       </div>

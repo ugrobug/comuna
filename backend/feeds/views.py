@@ -11,6 +11,7 @@ import urllib.parse
 import urllib.request
 from collections import defaultdict
 from datetime import timedelta
+from math import ceil
 from html import escape
 from xml.sax.saxutils import escape as xml_escape
 from django.db import transaction
@@ -2085,48 +2086,17 @@ def search_content(request: HttpRequest) -> HttpResponse:
     )
 
 
-def sitemap_xml(request: HttpRequest) -> HttpResponse:
-    base_url = request.build_absolute_uri("/").rstrip("/")
-    urls: list[str] = []
+SITEMAP_PAGE_SIZE = 5000
 
-    def add_url(path: str, lastmod: str | None = None) -> None:
-        loc = f"{base_url}{path}"
+
+def _sitemap_urlset(entries: list[tuple[str, str | None]]) -> HttpResponse:
+    urls = []
+    for loc, lastmod in entries:
         entry = f"<url><loc>{xml_escape(loc)}</loc>"
         if lastmod:
             entry += f"<lastmod>{xml_escape(lastmod)}</lastmod>"
         entry += "</url>"
         urls.append(entry)
-
-    static_paths = [
-        "/",
-        "/authors",
-        "/about",
-        "/advertisement",
-        "/rules",
-        "/legal",
-    ]
-    for path in static_paths:
-        add_url(path)
-
-    rubrics = Rubric.objects.filter(is_active=True).order_by("slug")
-    for rubric in rubrics:
-        add_url(f"/rubrics/{rubric.slug}/posts", _format_lastmod(rubric.updated_at))
-
-    authors = Author.objects.filter(is_blocked=False).order_by("username")
-    for author in authors:
-        add_url(f"/{author.username}", _format_lastmod(author.updated_at))
-
-    posts = (
-        Post.objects.filter(is_blocked=False, is_pending=False, author__is_blocked=False)
-        .only("id", "title", "updated_at", "created_at")
-        .order_by("-created_at")[:5000]
-    )
-    for post in posts:
-        lastmod = _format_lastmod(post.updated_at or post.created_at)
-        slug = _slugify_title(post.title)
-        path = f"/b/post/{post.id}-{slug}" if slug else f"/b/post/{post.id}"
-        add_url(path, lastmod)
-
     body = (
         '<?xml version="1.0" encoding="UTF-8"?>'
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
@@ -2134,3 +2104,117 @@ def sitemap_xml(request: HttpRequest) -> HttpResponse:
         + "</urlset>"
     )
     return HttpResponse(body, content_type="application/xml")
+
+
+def _sitemap_index(entries: list[tuple[str, str | None]]) -> HttpResponse:
+    items = []
+    for loc, lastmod in entries:
+        entry = f"<sitemap><loc>{xml_escape(loc)}</loc>"
+        if lastmod:
+            entry += f"<lastmod>{xml_escape(lastmod)}</lastmod>"
+        entry += "</sitemap>"
+        items.append(entry)
+    body = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        + "".join(items)
+        + "</sitemapindex>"
+    )
+    return HttpResponse(body, content_type="application/xml")
+
+
+def sitemap_xml(request: HttpRequest) -> HttpResponse:
+    base_url = request.build_absolute_uri("/").rstrip("/")
+
+    def full(path: str) -> str:
+        return f"{base_url}{path}"
+
+    rubrics_lastmod = Rubric.objects.order_by("-updated_at").values_list("updated_at", flat=True).first()
+    authors_lastmod = Author.objects.order_by("-updated_at").values_list("updated_at", flat=True).first()
+    posts_lastmod = (
+        Post.objects.filter(is_blocked=False, is_pending=False, author__is_blocked=False)
+        .order_by("-updated_at")
+        .values_list("updated_at", flat=True)
+        .first()
+    )
+    posts_count = (
+        Post.objects.filter(is_blocked=False, is_pending=False, author__is_blocked=False).count()
+    )
+    pages = max(1, ceil(posts_count / SITEMAP_PAGE_SIZE))
+
+    entries: list[tuple[str, str | None]] = [
+        (full("/sitemap-static.xml"), None),
+        (full("/sitemap-rubrics.xml"), _format_lastmod(rubrics_lastmod) if rubrics_lastmod else None),
+        (full("/sitemap-authors.xml"), _format_lastmod(authors_lastmod) if authors_lastmod else None),
+    ]
+
+    for page in range(1, pages + 1):
+        entries.append(
+            (
+                full(f"/sitemap-posts-{page}.xml"),
+                _format_lastmod(posts_lastmod) if posts_lastmod else None,
+            )
+        )
+
+    return _sitemap_index(entries)
+
+
+def sitemap_static_xml(request: HttpRequest) -> HttpResponse:
+    base_url = request.build_absolute_uri("/").rstrip("/")
+    static_paths = [
+        "/",
+        "/authors",
+        "/rubrics",
+        "/about",
+        "/advertisement",
+        "/rules",
+    ]
+    entries = [(f"{base_url}{path}", None) for path in static_paths]
+    return _sitemap_urlset(entries)
+
+
+def sitemap_rubrics_xml(request: HttpRequest) -> HttpResponse:
+    base_url = request.build_absolute_uri("/").rstrip("/")
+    rubrics = Rubric.objects.filter(is_active=True).order_by("slug")
+    entries = [
+        (f"{base_url}/rubrics/{rubric.slug}/posts", _format_lastmod(rubric.updated_at))
+        for rubric in rubrics
+    ]
+    return _sitemap_urlset(entries)
+
+
+def sitemap_authors_xml(request: HttpRequest) -> HttpResponse:
+    base_url = request.build_absolute_uri("/").rstrip("/")
+    authors = Author.objects.filter(is_blocked=False).order_by("username")
+    entries = [
+        (f"{base_url}/{author.username}", _format_lastmod(author.updated_at))
+        for author in authors
+    ]
+    return _sitemap_urlset(entries)
+
+
+def sitemap_posts_xml(request: HttpRequest, page: int) -> HttpResponse:
+    if page < 1:
+        return HttpResponse(status=404)
+
+    base_url = request.build_absolute_uri("/").rstrip("/")
+    qs = Post.objects.filter(is_blocked=False, is_pending=False, author__is_blocked=False)
+    total = qs.count()
+    total_pages = max(1, ceil(total / SITEMAP_PAGE_SIZE))
+    if page > total_pages:
+        return HttpResponse(status=404)
+
+    offset = (page - 1) * SITEMAP_PAGE_SIZE
+    posts = (
+        qs.only("id", "title", "updated_at", "created_at")
+        .order_by("-updated_at", "-id")[offset : offset + SITEMAP_PAGE_SIZE]
+    )
+
+    entries = []
+    for post in posts:
+        lastmod = _format_lastmod(post.updated_at or post.created_at)
+        slug = _slugify_title(post.title)
+        path = f"/b/post/{post.id}-{slug}" if slug else f"/b/post/{post.id}"
+        entries.append((f"{base_url}{path}", lastmod))
+
+    return _sitemap_urlset(entries)

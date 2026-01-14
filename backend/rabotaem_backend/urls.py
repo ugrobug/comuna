@@ -19,6 +19,10 @@ from feeds.views import (
     rubric_posts,
     rubrics_list,
     search_content,
+    sitemap_authors_xml,
+    sitemap_posts_xml,
+    sitemap_rubrics_xml,
+    sitemap_static_xml,
     sitemap_xml,
     telegram_webhook,
     top_authors_month,
@@ -47,6 +51,10 @@ urlpatterns = [
     path("api/auth/posts/", user_posts, name="auth-posts"),
     path("api/auth/posts/<int:post_id>/", user_post_update, name="auth-post-update"),
     path("sitemap.xml", sitemap_xml, name="sitemap-xml"),
+    path("sitemap-static.xml", sitemap_static_xml, name="sitemap-static-xml"),
+    path("sitemap-rubrics.xml", sitemap_rubrics_xml, name="sitemap-rubrics-xml"),
+    path("sitemap-authors.xml", sitemap_authors_xml, name="sitemap-authors-xml"),
+    path("sitemap-posts-<int:page>.xml", sitemap_posts_xml, name="sitemap-posts-xml"),
     path("tg/webhook/<str:token>/", telegram_webhook, name="telegram-webhook"),
 ]
 
