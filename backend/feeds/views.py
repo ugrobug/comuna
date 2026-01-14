@@ -162,6 +162,13 @@ def _format_lastmod(value) -> str | None:
     return value.astimezone(dt_timezone.utc).date().isoformat()
 
 
+def _sitemap_base_url(request: HttpRequest) -> str:
+    base = (getattr(settings, "SITE_BASE_URL", "") or "").strip().rstrip("/")
+    if base:
+        return base
+    return request.build_absolute_uri("/").rstrip("/")
+
+
 def _build_title(text: str) -> str:
     if not text:
         return ""
@@ -2124,7 +2131,7 @@ def _sitemap_index(entries: list[tuple[str, str | None]]) -> HttpResponse:
 
 
 def sitemap_xml(request: HttpRequest) -> HttpResponse:
-    base_url = request.build_absolute_uri("/").rstrip("/")
+    base_url = _sitemap_base_url(request)
 
     def full(path: str) -> str:
         return f"{base_url}{path}"
@@ -2160,7 +2167,7 @@ def sitemap_xml(request: HttpRequest) -> HttpResponse:
 
 
 def sitemap_static_xml(request: HttpRequest) -> HttpResponse:
-    base_url = request.build_absolute_uri("/").rstrip("/")
+    base_url = _sitemap_base_url(request)
     static_paths = [
         "/",
         "/authors",
@@ -2174,7 +2181,7 @@ def sitemap_static_xml(request: HttpRequest) -> HttpResponse:
 
 
 def sitemap_rubrics_xml(request: HttpRequest) -> HttpResponse:
-    base_url = request.build_absolute_uri("/").rstrip("/")
+    base_url = _sitemap_base_url(request)
     rubrics = Rubric.objects.filter(is_active=True).order_by("slug")
     entries = [
         (f"{base_url}/rubrics/{rubric.slug}/posts", _format_lastmod(rubric.updated_at))
@@ -2184,7 +2191,7 @@ def sitemap_rubrics_xml(request: HttpRequest) -> HttpResponse:
 
 
 def sitemap_authors_xml(request: HttpRequest) -> HttpResponse:
-    base_url = request.build_absolute_uri("/").rstrip("/")
+    base_url = _sitemap_base_url(request)
     authors = Author.objects.filter(is_blocked=False).order_by("username")
     entries = [
         (f"{base_url}/{author.username}", _format_lastmod(author.updated_at))
@@ -2197,7 +2204,7 @@ def sitemap_posts_xml(request: HttpRequest, page: int) -> HttpResponse:
     if page < 1:
         return HttpResponse(status=404)
 
-    base_url = request.build_absolute_uri("/").rstrip("/")
+    base_url = _sitemap_base_url(request)
     qs = Post.objects.filter(is_blocked=False, is_pending=False, author__is_blocked=False)
     total = qs.count()
     total_pages = max(1, ceil(total / SITEMAP_PAGE_SIZE))
