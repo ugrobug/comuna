@@ -1172,19 +1172,7 @@
   
   let element: HTMLElement
   let editor: any
-  let showMarkdown = false
   let markdownOutput = ''
-
-  // Вычисляемое свойство для отображения читаемого JSON в режиме предпросмотра
-  $: displayMarkdown = (() => {
-    if (!markdownOutput) return ''
-    try {
-      const decodedData = deserializeEditorModel(markdownOutput)
-      return JSON.stringify(decodedData, null, 2)
-    } catch (e) {
-      return markdownOutput // Возвращаем как есть в случае ошибки
-    }
-  })()
 
   // Функция для автосохранения черновика
   const autosaveDraft = () => {
@@ -1759,39 +1747,6 @@
     bind:this={element}
   />
 
-  {#if true}
-  <div class="mt-2">
-    <div class="flex items-center gap-4">
-      <Button
-        size="sm"
-        color="ghost"
-        on:click={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          showMarkdown = !showMarkdown;
-        }}
-      >
-        {showMarkdown ? 'Скрыть JSON' : 'Показать JSON'}
-      </Button>
-      
-      <span class="text-sm text-slate-500 dark:text-slate-400">
-        {markdownOutput.length} символов (base64)
-      </span>
-    </div>
-
-    {#if showMarkdown}
-      <div class="mt-2 space-y-2">
-        <div class="p-2 bg-blue-50 dark:bg-blue-900/20 rounded text-sm text-blue-700 dark:text-blue-300">
-          ℹ️ Данные хранятся в формате base64. Ниже показан декодированный JSON для удобства просмотра.
-        </div>
-        <pre class="p-3 bg-slate-100 dark:bg-slate-800 rounded-lg overflow-x-auto">
-          <code>{displayMarkdown}</code>
-        </pre>
-      </div>
-    {/if}
-  </div>
-  {/if}
-  
   {#if showPostSettings}
     <!-- Информационный блок об обложке поста -->
     <div class="mt-4 text-xs sm:text-sm text-slate-600 dark:text-slate-400 bg-white dark:bg-zinc-900/60 border border-dashed border-slate-200 dark:border-zinc-800 rounded-lg px-3 py-2 sm:px-4 sm:py-3">
