@@ -7,6 +7,8 @@
   import './CustomInputTune.css'
   import { saveDraft, getDraft, formatLastSaved, getDraftLastSaved } from '$lib/session'
 
+  export let showPostSettings: boolean = true
+
   // Импортируем иконки
   const iconPath = '/img/editorjs'
   const icons = {
@@ -517,48 +519,51 @@
       image.alt = this.data.file.alt
       image.title = this.data.file.title
       
-      const previewControl = document.createElement('div')
-      previewControl.classList.add('image-tool__preview-control')
-      
-      // Показываем контрол только если изображение уже загружено
-      if (!this.data.file.url) {
-        previewControl.style.display = 'none'
-      }
-      
-      const isPreview = Boolean(this.data.file.url && this.data.file.url === previewImage)
-      previewControl.classList.toggle('active', isPreview)
-      previewControl.innerHTML = `
-        <span class="preview-star">${isPreview ? '★' : '☆'}</span>
-        <span class="preview-text">Вывести в ленте</span>
-      `
-      previewControl.onclick = (e) => {
-        e.preventDefault()
-        e.stopPropagation()
-        if (this.data.file.url) {
-          // Если выбираем новое изображение, сначала очищаем все остальные
-          if (this.data.file.url !== previewImage) {
-            // Находим все контролы в редакторе
-            const allControls = document.querySelectorAll('.image-tool__preview-control')
-            allControls.forEach(control => {
-              control.classList.remove('active')
-              const star = control.querySelector('.preview-star')
-              if (star) {
-                star.textContent = '☆'
-              }
-            })
+      let previewControl: HTMLDivElement | null = null
+      if (showPostSettings) {
+        previewControl = document.createElement('div')
+        previewControl.classList.add('image-tool__preview-control')
+
+        // Показываем контрол только если изображение уже загружено
+        if (!this.data.file.url) {
+          previewControl.style.display = 'none'
+        }
+
+        const isPreview = Boolean(this.data.file.url && this.data.file.url === previewImage)
+        previewControl.classList.toggle('active', isPreview)
+        previewControl.innerHTML = `
+          <span class="preview-star">${isPreview ? '★' : '☆'}</span>
+          <span class="preview-text">Вывести в ленте</span>
+        `
+        previewControl.onclick = (e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          if (this.data.file.url) {
+            // Если выбираем новое изображение, сначала очищаем все остальные
+            if (this.data.file.url !== previewImage) {
+              // Находим все контролы в редакторе
+              const allControls = document.querySelectorAll('.image-tool__preview-control')
+              allControls.forEach(control => {
+                control.classList.remove('active')
+                const star = control.querySelector('.preview-star')
+                if (star) {
+                  star.textContent = '☆'
+                }
+              })
+            }
+
+            // Устанавливаем новое значение previewImage
+            previewImage = this.data.file.url === previewImage ? '' : this.data.file.url
+
+            // Обновляем текущий контрол
+            previewControl?.classList.toggle('active', Boolean(this.data.file.url === previewImage))
+            const star = previewControl?.querySelector('.preview-star')
+            if (star) {
+              star.textContent = this.data.file.url === previewImage ? '★' : '☆'
+            }
+
+            editor.save().then(updateMarkdown)
           }
-          
-          // Устанавливаем новое значение previewImage
-          previewImage = this.data.file.url === previewImage ? '' : this.data.file.url
-          
-          // Обновляем текущий контрол
-          previewControl.classList.toggle('active', Boolean(this.data.file.url === previewImage))
-          const star = previewControl.querySelector('.preview-star')
-          if (star) {
-            star.textContent = this.data.file.url === previewImage ? '★' : '☆'
-          }
-          
-          editor.save().then(updateMarkdown)
         }
       }
       
@@ -629,14 +634,16 @@
               image.src = this.data.file.url
               
               // Показываем контрол "Вывести в ленте" после успешной загрузки
-              previewControl.style.display = 'flex'
-              
-              // Обновляем состояние контрола
-              const isNowPreview = Boolean(this.data.file.url === previewImage)
-              previewControl.classList.toggle('active', isNowPreview)
-              const star = previewControl.querySelector('.preview-star')
-              if (star) {
-                star.textContent = isNowPreview ? '★' : '☆'
+              if (previewControl) {
+                previewControl.style.display = 'flex'
+
+                // Обновляем состояние контрола
+                const isNowPreview = Boolean(this.data.file.url === previewImage)
+                previewControl.classList.toggle('active', isNowPreview)
+                const star = previewControl.querySelector('.preview-star')
+                if (star) {
+                  star.textContent = isNowPreview ? '★' : '☆'
+                }
               }
             }
           } catch (error) {
@@ -651,7 +658,9 @@
       }
       
       imageWrapper.appendChild(image)
-      imageWrapper.appendChild(previewControl)
+      if (previewControl) {
+        imageWrapper.appendChild(previewControl)
+      }
       wrapper.appendChild(imageWrapper)
       
       wrapper.appendChild(button)
@@ -1783,98 +1792,100 @@
   </div>
   {/if}
   
-  <!-- Информационный блок об обложке поста -->
-  <div class="mt-4 text-xs sm:text-sm text-slate-600 dark:text-slate-400 bg-white dark:bg-zinc-900/60 border border-dashed border-slate-200 dark:border-zinc-800 rounded-lg px-3 py-2 sm:px-4 sm:py-3">
-    <div class="flex flex-col sm:flex-row gap-3 sm:gap-4 items-start">
-      <div class="flex-1 flex flex-col gap-1.5">
-        <span class="font-medium text-slate-800 dark:text-slate-100">
-          Обложка поста
-        </span>
-        <p class="leading-snug">
-          Хороший пост должен быть с обложкой. Выберите любое изображение в статье и кликните - <strong>вывести в ленте</strong>. Тогда выбранное изображение появится в ленте постов, и ваш пост станет гораздо более кликабельным.
-        </p>
+  {#if showPostSettings}
+    <!-- Информационный блок об обложке поста -->
+    <div class="mt-4 text-xs sm:text-sm text-slate-600 dark:text-slate-400 bg-white dark:bg-zinc-900/60 border border-dashed border-slate-200 dark:border-zinc-800 rounded-lg px-3 py-2 sm:px-4 sm:py-3">
+      <div class="flex flex-col sm:flex-row gap-3 sm:gap-4 items-start">
+        <div class="flex-1 flex flex-col gap-1.5">
+          <span class="font-medium text-slate-800 dark:text-slate-100">
+            Обложка поста
+          </span>
+          <p class="leading-snug">
+            Хороший пост должен быть с обложкой. Выберите любое изображение в статье и кликните - <strong>вывести в ленте</strong>. Тогда выбранное изображение появится в ленте постов, и ваш пост станет гораздо более кликабельным.
+          </p>
+        </div>
+        <div class="flex-shrink-0 w-full sm:w-auto sm:max-w-[300px]">
+          <img
+            src="/img/oblozhka.webp"
+            alt="Демонстрация создания обложки поста"
+            class="w-full sm:w-[300px] rounded-lg border border-slate-200 dark:border-zinc-700"
+            loading="lazy"
+          />
+        </div>
       </div>
-      <div class="flex-shrink-0 w-full sm:w-auto sm:max-w-[300px]">
-        <img
-          src="/img/oblozhka.webp"
-          alt="Демонстрация создания обложки поста"
-          class="w-full sm:w-[300px] rounded-lg border border-slate-200 dark:border-zinc-700"
-          loading="lazy"
+    </div>
+
+    <div class="mt-4 space-y-4">
+      <div class="flex flex-col gap-1">
+        <div class="flex items-center justify-between">
+          <p class="font-medium text-lg text-slate-600 dark:text-slate-300">
+            Настройки поста
+          </p>
+          {#if draftLastSaved}
+            <span class="text-xs text-slate-500 dark:text-slate-400">
+              Черновик: {formatLastSaved(draftLastSaved)}
+            </span>
+          {/if}
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-4 space-y-4">
+      <div class="flex flex-col gap-1">
+        <label for="previewDescription" class="font-medium text-sm text-slate-600 dark:text-slate-300">
+          Вывести в ленте
+        </label>
+        <textarea
+          id="previewDescription"
+          bind:value={previewDescription}
+          on:input={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            editor.save().then(updateMarkdown);
+          }}
+          placeholder="Этот текст будет показан в ленте постов и в превью статьи. Коротко и ясно опишите, о чём материал — это помогает привлечь внимание и повысить кликабельность. Если оставить поле пустым, в ленту автоматически попадут первые 300 символов из статьи."
+          rows="4"
+          class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200 resize-none"
+        ></textarea>
+      </div>
+
+      <div class="flex flex-col gap-1">
+        <label for="metaTitle" class="font-medium text-sm text-slate-600 dark:text-slate-300">
+          SEO meta title
+        </label>
+        <input
+          id="metaTitle"
+          type="text"
+          bind:value={metaTitle}
+          on:input={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            editor.save().then(updateMarkdown);
+          }}
+          placeholder="Введите заголовок для поисковых систем (до 60 символов)"
+          class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200"
         />
       </div>
-    </div>
-  </div>
-  
-  <div class="mt-4 space-y-4">
-    <div class="flex flex-col gap-1">
-      <div class="flex items-center justify-between">
-        <p class="font-medium text-lg text-slate-600 dark:text-slate-300">
-          Настройки поста
-        </p>
-        {#if draftLastSaved}
-          <span class="text-xs text-slate-500 dark:text-slate-400">
-            Черновик: {formatLastSaved(draftLastSaved)}
-          </span>
-        {/if}
+
+      <div class="flex flex-col gap-1">
+        <label for="metaDescription" class="font-medium text-sm text-slate-600 dark:text-slate-300">
+          SEO meta description
+        </label>
+        <textarea
+          id="metaDescription"
+          bind:value={metaDescription}
+          on:input={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            editor.save().then(updateMarkdown);
+          }}
+          placeholder="Описание, которое увидят пользователи в результатах поиска (до 160 символов)"
+          rows="3"
+          class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200 resize-none"
+        ></textarea>
       </div>
     </div>
-  </div>
-
-  <div class="mt-4 space-y-4">
-    <div class="flex flex-col gap-1">
-      <label for="previewDescription" class="font-medium text-sm text-slate-600 dark:text-slate-300">
-        Вывести в ленте
-      </label>
-      <textarea
-        id="previewDescription"
-        bind:value={previewDescription}
-        on:input={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          editor.save().then(updateMarkdown);
-        }}
-        placeholder="Этот текст будет показан в ленте постов и в превью статьи. Коротко и ясно опишите, о чём материал — это помогает привлечь внимание и повысить кликабельность. Если оставить поле пустым, в ленту автоматически попадут первые 300 символов из статьи."
-        rows="4"
-        class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200 resize-none"
-      ></textarea>
-    </div>
-
-    <div class="flex flex-col gap-1">
-      <label for="metaTitle" class="font-medium text-sm text-slate-600 dark:text-slate-300">
-        SEO meta title
-      </label>
-      <input
-        id="metaTitle"
-        type="text"
-        bind:value={metaTitle}
-        on:input={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          editor.save().then(updateMarkdown);
-        }}
-        placeholder="Введите заголовок для поисковых систем (до 60 символов)"
-        class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200"
-      />
-    </div>
-
-    <div class="flex flex-col gap-1">
-      <label for="metaDescription" class="font-medium text-sm text-slate-600 dark:text-slate-300">
-        SEO meta description
-      </label>
-      <textarea
-        id="metaDescription"
-        bind:value={metaDescription}
-        on:input={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          editor.save().then(updateMarkdown);
-        }}
-        placeholder="Описание, которое увидят пользователи в результатах поиска (до 160 символов)"
-        rows="3"
-        class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200 resize-none"
-      ></textarea>
-    </div>
-  </div>
+  {/if}
 </div>
 
 <style>
