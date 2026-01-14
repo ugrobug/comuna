@@ -38,7 +38,8 @@
     DocumentText,
     InformationCircle,
     Megaphone,
-    ClipboardDocumentList
+    ClipboardDocumentList,
+    ChevronDown
   } from 'svelte-hero-icons'
   import Profile from './Profile.svelte'
   import NavButton from './NavButton.svelte'
@@ -292,19 +293,36 @@
           </Menu>
         {:else}
           {#if $siteUser}
-            <a
-              href="/account"
-              class="!rounded-full bg-orange-600 hover:bg-orange-700 text-white font-normal py-2 px-4 !text-base md:py-2 md:px-4"
-            >
-              Кабинет
-            </a>
             <Button
-              color="ghost"
-              class="!rounded-full font-normal py-2 px-4 !text-base md:py-2 md:px-4"
-              on:click={siteLogout}
+              color="none"
+              class="!rounded-full bg-orange-600 hover:bg-orange-700 text-white font-normal py-2 px-4 !text-base md:py-2 md:px-4"
+              href="/account#new-post"
             >
-              Выйти
+              Написать
             </Button>
+            <Menu placement="bottom-end">
+              <button
+                slot="target"
+                class="flex items-center gap-2 rounded-full border border-slate-200 dark:border-zinc-700 px-2 py-1 transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800"
+                title="Меню пользователя"
+              >
+                <Avatar
+                  url={$siteUser.avatar_url || undefined}
+                  width={32}
+                  alt={$siteUser.username}
+                />
+                <Icon src={ChevronDown} size="16" class="text-slate-500 dark:text-zinc-400" />
+              </button>
+              <MenuButton link href="/account" class="py-2.5">
+                Кабинет
+              </MenuButton>
+              <MenuButton
+                class="py-2.5 text-red-600 dark:text-red-400"
+                on:click={siteLogout}
+              >
+                Выйти
+              </MenuButton>
+            </Menu>
           {:else}
             <Button
               color="none"

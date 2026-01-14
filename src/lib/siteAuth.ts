@@ -6,12 +6,14 @@ export type SiteAuthorLink = {
   username: string
   title?: string | null
   channel_url?: string | null
+  avatar_url?: string | null
 }
 
 export type SiteUser = {
   id: number
   username: string
   email?: string | null
+  avatar_url?: string | null
   is_author: boolean
   authors: SiteAuthorLink[]
 }
@@ -29,6 +31,7 @@ export type SiteUserPost = {
   author: {
     username: string
     title?: string | null
+    avatar_url?: string | null
   }
 }
 
@@ -195,6 +198,33 @@ export const updateUserPost = async (
   const data = await response.json()
   if (!response.ok) {
     throw new Error(data?.error || 'Не удалось обновить пост')
+  }
+
+  return data?.post as SiteUserPost
+}
+
+export const createUserPost = async (payload: {
+  title: string
+  content: string
+  author_username?: string
+}) => {
+  const token = get(siteToken)
+  if (!token) {
+    throw new Error('Нужна авторизация')
+  }
+
+  const response = await fetch(buildUrl('/api/auth/posts/'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  })
+
+  const data = await response.json()
+  if (!response.ok) {
+    throw new Error(data?.error || 'Не удалось создать пост')
   }
 
   return data?.post as SiteUserPost

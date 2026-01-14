@@ -78,18 +78,25 @@ def _serialize_user(user: User) -> dict:
         .filter(user=user, verified_at__isnull=False)
         .order_by("author__username")
     )
-    authors = [
-        {
-            "username": link.author.username,
-            "title": link.author.title,
-            "channel_url": link.author.invite_url or link.author.channel_url,
-        }
-        for link in author_links
-    ]
+    authors = []
+    avatar_url = None
+    for link in author_links:
+        author = link.author
+        if not avatar_url:
+            avatar_url = _author_avatar_url(None, author)
+        authors.append(
+            {
+                "username": author.username,
+                "title": author.title,
+                "channel_url": author.invite_url or author.channel_url,
+                "avatar_url": _author_avatar_url(None, author),
+            }
+        )
     return {
         "id": user.id,
         "username": user.username,
         "email": user.email,
+        "avatar_url": avatar_url,
         "is_author": bool(authors),
         "authors": authors,
     }
@@ -98,6 +105,14 @@ def _serialize_user(user: User) -> dict:
 def _generate_verification_code() -> str:
     token = secrets.token_urlsafe(6).replace("_", "").replace("-", "").upper()
     return f"COMUNA-{token}"
+
+
+def _generate_manual_message_id(author: Author) -> int:
+    for _ in range(10):
+        candidate = -secrets.randbelow(2_000_000_000) - 1
+        if not Post.objects.filter(author=author, message_id=candidate).exists():
+            return candidate
+    raise ValueError("failed to generate message id")
 
 
 def _maybe_notify_new_author(author: Author, post: Post) -> None:
@@ -135,7 +150,7 @@ def _maybe_notify_new_author(author: Author, post: Post) -> None:
     author.save(update_fields=["first_post_notified", "updated_at"])
 
 
-def _media_url(request: HttpRequest, field) -> str | None:
+def _media_url(request: HttpRequest | None, field) -> str | None:
     if not field:
         return None
     site_base = getattr(settings, "SITE_BASE_URL", "").rstrip("/")
@@ -144,13 +159,15 @@ def _media_url(request: HttpRequest, field) -> str | None:
             return f"{site_base}{field.url}"
         except Exception:
             pass
+    if request is None:
+        return None
     try:
         return request.build_absolute_uri(field.url)
     except Exception:
         return None
 
 
-def _author_avatar_url(request: HttpRequest, author: Author) -> str | None:
+def _author_avatar_url(request: HttpRequest | None, author: Author) -> str | None:
     return _media_url(request, author.avatar_image) or author.avatar_url
 
 
@@ -1313,6 +1330,64 @@ def user_posts(request: HttpRequest) -> HttpResponse:
     user = _get_user_from_request(request)
     if not user:
         return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+
+    author_links = (
+        AuthorAdmin.objects.filter(user=user, verified_at__isnull=False)
+        .select_related("author")
+        .order_by("author__username")
+    )
+    author_ids = [link.author_id for link in author_links]
+
+    if request.method == "POST":
+        if not author_ids:
+            return JsonResponse({"ok": False, "error": "no verified authors"}, status=400)
+        try:
+            payload = json.loads(request.body.decode("utf-8"))
+        except json.JSONDecodeError:
+            return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+
+        title = (payload.get("title") or "").strip()
+        content = (payload.get("content") or "").strip()
+        author_username = (payload.get("author_username") or "").strip()
+
+        if not title:
+            return JsonResponse({"ok": False, "error": "title is required"}, status=400)
+        if not content:
+            return JsonResponse({"ok": False, "error": "content is required"}, status=400)
+
+        author = None
+        if author_username:
+            author = (
+                Author.objects.filter(id__in=author_ids, username__iexact=author_username).first()
+            )
+            if not author:
+                return JsonResponse({"ok": False, "error": "author not found"}, status=404)
+        elif len(author_links) == 1:
+            author = author_links[0].author
+        else:
+            return JsonResponse({"ok": False, "error": "author required"}, status=400)
+
+        channel_url = author.invite_url or author.channel_url
+        try:
+            message_id = _generate_manual_message_id(author)
+        except ValueError:
+            return JsonResponse({"ok": False, "error": "unable to create post"}, status=500)
+
+        post = Post.objects.create(
+            author=author,
+            message_id=message_id,
+            title=title,
+            content=content,
+            rubric=author.rubric,
+            channel_url=channel_url,
+            source_url=channel_url,
+            raw_data={"source": "manual"},
+            is_pending=False,
+            is_blocked=False,
+        )
+        _maybe_notify_new_author(author, post)
+        return JsonResponse({"ok": True, "post": _serialize_post_for_user(request, post)})
+
     if request.method != "GET":
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
 
@@ -1327,11 +1402,6 @@ def user_posts(request: HttpRequest) -> HttpResponse:
     except ValueError:
         offset = 0
 
-    author_ids = list(
-        AuthorAdmin.objects.filter(user=user, verified_at__isnull=False).values_list(
-            "author_id", flat=True
-        )
-    )
     if not author_ids:
         return JsonResponse({"ok": True, "posts": [], "total": 0})
 
