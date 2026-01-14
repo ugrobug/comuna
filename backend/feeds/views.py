@@ -1844,6 +1844,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
             is_blocked=False,
             is_pending=False,
             author__is_blocked=False,
+            rating__gte=0,
         )
         .filter(Q(author__shadow_banned=False) | Q(author__force_home=True))
         .select_related("author", "rubric")
