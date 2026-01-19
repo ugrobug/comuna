@@ -1,5 +1,7 @@
-import type { Community } from 'lemmy-js-client';
-import { getClient } from '$lib/lemmy';
+import { env } from '$env/dynamic/public'
+import { getClient } from '$lib/lemmy'
+
+const hasLemmyInstance = Boolean(env.PUBLIC_INSTANCE_URL)
 
 export async function getTopCommunities(): Promise<{
   name: string;
@@ -7,6 +9,9 @@ export async function getTopCommunities(): Promise<{
   url: string;
   subscribers: number;
 }[]> {
+  if (!hasLemmyInstance) {
+    return []
+  }
   const client = getClient();
   
   try {
@@ -36,6 +41,9 @@ export async function getFederatedCommunities(): Promise<{
   url: string;
   subscribers: number;
 }[]> {
+  if (!hasLemmyInstance) {
+    return []
+  }
   const client = getClient();
   
   try {

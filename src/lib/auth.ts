@@ -176,9 +176,14 @@ export let profile: Readable<Profile> & { set: (v: Profile) => void } =
         site.set(undefined)
         
         // Загружаем данные сайта для неавторизованных пользователей
-        client({ instanceURL: profile.instance })
-          .getSite()
-          .then((res) => site.set(res))
+        if (env.PUBLIC_INSTANCE_URL) {
+          client({ instanceURL: profile.instance })
+            .getSite()
+            .then((res) => site.set(res))
+            .catch((err) => {
+              console.warn('Failed to load instance site data:', err)
+            })
+        }
         fetchUser.loading = false
       }
     }
