@@ -1096,10 +1096,7 @@ def _handle_private_message(message: dict) -> None:
             return
 
         _handle_channel_post(forwarded)
-        if author and session and apply_session:
-            _send_bot_message(chat_id, f"Настройки применены для @{author.username}.")
-        else:
-            _send_bot_message(chat_id, "Пост добавлен на сайт.")
+        _send_bot_message(chat_id, "Пост добавлен на сайт.")
         return
 
     _send_bot_message(
