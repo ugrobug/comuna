@@ -5,26 +5,21 @@
   import { backendPostToPostView, buildBackendPostPath, buildRubricPostsUrl } from '$lib/api/backend'
   import { env } from '$env/dynamic/public'
   import { page } from '$app/stores'
-  import { afterUpdate, onDestroy, tick } from 'svelte'
+  import { onDestroy, onMount } from 'svelte'
 
   export let data
 
   const pageSize = 10
-  const prefetchOffset = 3
   let posts = data.posts ?? []
   let hasMore = posts.length === pageSize
   let loadingMore = false
-  let sentinel: HTMLElement | null = null
-  let observer: IntersectionObserver | null = null
-  $: prefetchIndex = Math.max(posts.length - prefetchOffset, 0)
   $: if (data?.posts) {
     posts = data.posts ?? []
     hasMore = posts.length === pageSize
     loadingMore = false
-    observer?.disconnect()
-    observer = null
-    sentinel = null
   }
+  const scrollThreshold = 400
+  let scrollRaf: number | null = null
 
   $: siteTitle = env.PUBLIC_SITE_TITLE || 'Comuna'
   $: rubricName = data.rubric?.name ?? 'Рубрика'
@@ -72,33 +67,37 @@
     }
   }
 
-  const setupObserver = async () => {
-    if (!browser) return
-    await tick()
-    if (observer) {
-      observer.disconnect()
-      observer = null
+  const maybeLoadMore = () => {
+    if (!browser || loadingMore || !hasMore) return
+    const viewportBottom = window.scrollY + window.innerHeight
+    const pageHeight = document.documentElement.scrollHeight
+    if (pageHeight - viewportBottom <= scrollThreshold) {
+      loadMore()
     }
-    if (!sentinel || !hasMore) return
-    observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          loadMore()
-        }
-      },
-      { threshold: 0.1 }
-    )
-    observer.observe(sentinel)
   }
 
-  afterUpdate(() => {
-    if (browser) {
-      setupObserver()
-    }
+  const onScroll = () => {
+    if (scrollRaf !== null) return
+    scrollRaf = window.requestAnimationFrame(() => {
+      scrollRaf = null
+      maybeLoadMore()
+    })
+  }
+
+  onMount(() => {
+    if (!browser) return
+    maybeLoadMore()
+    window.addEventListener('scroll', onScroll, { passive: true })
   })
 
   onDestroy(() => {
-    observer?.disconnect()
+    if (browser) {
+      window.removeEventListener('scroll', onScroll)
+      if (scrollRaf !== null) {
+        window.cancelAnimationFrame(scrollRaf)
+        scrollRaf = null
+      }
+    }
   })
 </script>
 
@@ -153,7 +152,7 @@
 
   {#if posts?.length}
     <div class="flex flex-col gap-6">
-      {#each posts as backendPost, index (backendPost.id)}
+      {#each posts as backendPost (backendPost.id)}
         {@const postView = backendPostToPostView(backendPost)}
         <Post
           post={postView}
@@ -167,9 +166,6 @@
           subscribeUrl={backendPost.channel_url ?? backendPost.author?.channel_url}
           subscribeLabel="Подписаться"
         />
-        {#if index === prefetchIndex}
-          <div bind:this={sentinel} class="h-px"></div>
-        {/if}
       {/each}
     </div>
     {#if loadingMore}
