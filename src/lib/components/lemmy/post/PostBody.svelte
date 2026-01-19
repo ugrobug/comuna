@@ -403,7 +403,10 @@
     if (title) {
       const titleText = title.trim();
       if (titleText && paragraphText.toLowerCase().startsWith(titleText.toLowerCase())) {
-        paragraphText = paragraphText.slice(titleText.length).replace(/^[:\-–—.\s]+/, '').trim();
+        paragraphText = paragraphText
+          .slice(titleText.length)
+          .replace(/^[:\-–—.!?\s]+/, '')
+          .trim();
       }
     }
     if (!paragraphText) {

@@ -201,10 +201,16 @@ def _build_title(text: str) -> str:
     if not text:
         return ""
     first_line = text.strip().splitlines()[0].strip()
+    positions = []
     for separator in (".", "!", "?"):
         idx = first_line.find(separator)
         if idx > 0:
+            positions.append((idx, separator))
+    if positions:
+        idx, separator = min(positions, key=lambda item: item[0])
+        if separator == ".":
             return first_line[:idx].strip()
+        return first_line[: idx + 1].strip()
     if len(first_line) <= 120:
         return first_line
     return first_line[:117].strip() + "..."
