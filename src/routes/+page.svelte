@@ -17,10 +17,14 @@
   let posts = data.posts ?? []
   let hasMore = posts.length === pageSize
   let loadingMore = false
+  let lastPostsRef = data.posts
   $: if (data?.posts) {
-    posts = data.posts ?? []
-    hasMore = posts.length === pageSize
-    loadingMore = false
+    if (data.posts !== lastPostsRef) {
+      lastPostsRef = data.posts
+      posts = data.posts ?? []
+      hasMore = posts.length === pageSize
+      loadingMore = false
+    }
   }
   const scrollThreshold = 400
   let scrollRaf: number | null = null
