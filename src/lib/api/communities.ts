@@ -1,7 +1,5 @@
-import { env } from '$env/dynamic/public'
+import { HAS_LEMMY_INSTANCE, PUBLIC_INSTANCE_URL } from '$lib/instance'
 import { getClient } from '$lib/lemmy'
-
-const hasLemmyInstance = Boolean(env.PUBLIC_INSTANCE_URL)
 
 export async function getTopCommunities(): Promise<{
   name: string;
@@ -9,10 +7,10 @@ export async function getTopCommunities(): Promise<{
   url: string;
   subscribers: number;
 }[]> {
-  if (!hasLemmyInstance) {
+  if (!HAS_LEMMY_INSTANCE || !PUBLIC_INSTANCE_URL) {
     return []
   }
-  const client = getClient();
+  const client = getClient(PUBLIC_INSTANCE_URL);
   
   try {
     // Загружаем только локальные сообщества
@@ -41,10 +39,10 @@ export async function getFederatedCommunities(): Promise<{
   url: string;
   subscribers: number;
 }[]> {
-  if (!hasLemmyInstance) {
+  if (!HAS_LEMMY_INSTANCE || !PUBLIC_INSTANCE_URL) {
     return []
   }
-  const client = getClient();
+  const client = getClient(PUBLIC_INSTANCE_URL);
   
   try {
     // Сначала загружаем локальные сообщества для исключения

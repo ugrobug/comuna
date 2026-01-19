@@ -3,7 +3,12 @@ import {
   isAdmin,
 } from '$lib/components/lemmy/moderation/moderation.js'
 import { toast } from 'mono-svelte'
-import { DEFAULT_INSTANCE_URL, instance } from '$lib/instance.js'
+import {
+  DEFAULT_INSTANCE_URL,
+  HAS_LEMMY_INSTANCE,
+  PUBLIC_INSTANCE_URL,
+  instance,
+} from '$lib/instance.js'
 import { client, getClient } from '$lib/lemmy.js'
 import { site } from './lemmy'
 import { instanceToURL, moveItem } from '$lib/util.js'
@@ -176,7 +181,7 @@ export let profile: Readable<Profile> & { set: (v: Profile) => void } =
         site.set(undefined)
         
         // Загружаем данные сайта для неавторизованных пользователей
-        if (env.PUBLIC_INSTANCE_URL) {
+        if (HAS_LEMMY_INSTANCE && PUBLIC_INSTANCE_URL) {
           client({ instanceURL: profile.instance })
             .getSite()
             .then((res) => site.set(res))
@@ -224,17 +229,17 @@ profileData.subscribe(async (pd) => {
 if (
   env.PUBLIC_MIGRATE_COOKIE &&
   get(profileData).profiles.length == 0 &&
-  env.PUBLIC_INSTANCE_URL
+  PUBLIC_INSTANCE_URL
 ) {
   const jwt = getCookie('jwt')
   if (jwt) {
     new Promise(async () => {
-      const user = await userFromJwt(jwt, env.PUBLIC_INSTANCE_URL ?? '')
+      const user = await userFromJwt(jwt, PUBLIC_INSTANCE_URL ?? '')
       if (!user) return
 
       const result = await setUser(
         jwt,
-        env.PUBLIC_INSTANCE_URL ?? '',
+        PUBLIC_INSTANCE_URL ?? '',
         user?.user?.local_user_view.person.name
       )
 

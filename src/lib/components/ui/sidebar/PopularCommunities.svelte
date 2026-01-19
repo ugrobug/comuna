@@ -3,6 +3,7 @@
   import { getTopCommunities } from '$lib/api/communities';
   import { t } from '$lib/translations';
   import CommunityIcon from '$lib/components/ui/CommunityIcon.svelte';
+  import { HAS_LEMMY_INSTANCE } from '$lib/instance';
 
   let topCommunities: Array<{
     name: string;
@@ -12,6 +13,7 @@
   }> = [];
 
   onMount(async () => {
+    if (!HAS_LEMMY_INSTANCE) return;
     topCommunities = await getTopCommunities();
   });
 </script>
@@ -43,6 +45,7 @@
     color: inherit;
   }
 </style>
+{#if HAS_LEMMY_INSTANCE}
 <div class="flex flex-col gap-2 bg-white dark:bg-zinc-900 rounded-xl py-4">
   <span class="text-base font-normal text-slate-900 dark:text-zinc-200 mb-2">Лучшее в этом месяце</span>
   <span class="px-2 py-1 text-sm font-normal">
@@ -67,3 +70,4 @@
     {$t('nav.show_all')}
   </a>
 </div>
+{/if}

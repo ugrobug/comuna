@@ -41,6 +41,7 @@
   import { Icon } from 'svelte-hero-icons'
   import LoginModal from '$lib/components/auth/LoginModal.svelte'
   import { env } from '$env/dynamic/public'
+  import { HAS_LEMMY_INSTANCE } from '$lib/instance'
   import { buildRubricsUrl } from '$lib/api/backend'
 
   const PUBLIC_PROJECT_ABOUT = env.PUBLIC_PROJECT_ABOUT || '/about';
@@ -155,17 +156,19 @@
   }
 
   onMount(async () => {
-    // Загружаем сообщества для всех пользователей
-    allLocalCommunities = await getTopCommunities();
-    console.log('Загружено локальных сообществ:', allLocalCommunities.length);
-    
-    // Показываем первые 20 локальных сообществ
-    topCommunities = allLocalCommunities.slice(0, displayedCommunitiesCount);
-    // Кнопка показывается, если есть больше локальных ИЛИ есть федерация сообщества
-    hasMoreCommunities = allLocalCommunities.length > displayedCommunitiesCount || allLocalCommunities.length > 0;
-    
-    console.log('Отображается сообществ:', topCommunities.length, 'Есть еще:', hasMoreCommunities);
-    console.log('hasMoreCommunities =', hasMoreCommunities);
+    if (HAS_LEMMY_INSTANCE) {
+      // Загружаем сообщества только если настроен инстанс Lemmy
+      allLocalCommunities = await getTopCommunities();
+      console.log('Загружено локальных сообществ:', allLocalCommunities.length);
+      
+      // Показываем первые 20 локальных сообществ
+      topCommunities = allLocalCommunities.slice(0, displayedCommunitiesCount);
+      // Кнопка показывается, если есть больше локальных ИЛИ есть федерация сообщества
+      hasMoreCommunities = allLocalCommunities.length > displayedCommunitiesCount || allLocalCommunities.length > 0;
+      
+      console.log('Отображается сообществ:', topCommunities.length, 'Есть еще:', hasMoreCommunities);
+      console.log('hasMoreCommunities =', hasMoreCommunities);
+    }
     loadRubrics();
   });
 
@@ -299,37 +302,39 @@
     </div>
   {/if}
 
-  <div class="flex flex-col gap-2">
-    {#if $profile?.jwt}
-      <span 
-        class="px-2 py-1 text-sm font-normal text-slate-500 dark:text-zinc-200"
-      >
-        {$t('nav.popular_communities')}
-      </span>
-    {/if}
-    
-    {#each topCommunities as community}
-      <SidebarButton href={community.url}>
-        <div slot="icon" class="w-7 h-7">
-          <CommunityIcon name={community.name} icon={community.icon} />
-        </div>
-        <span slot="label">
-          {community.name}
+  {#if HAS_LEMMY_INSTANCE}
+    <div class="flex flex-col gap-2">
+      {#if $profile?.jwt}
+        <span 
+          class="px-2 py-1 text-sm font-normal text-slate-500 dark:text-zinc-200"
+        >
+          {$t('nav.popular_communities')}
         </span>
-      </SidebarButton>
-    {/each}
-    
-    <!-- Отладка: {hasMoreCommunities} -->
-    {#if hasMoreCommunities}
-      <SidebarButton 
-        on:click={loadMoreCommunities} 
-        icon={ChevronDown}
-        href="javascript:void(0)"
-      >
-        <span slot="label">Показать все</span>
-      </SidebarButton>
-    {/if}
-  </div>
+      {/if}
+      
+      {#each topCommunities as community}
+        <SidebarButton href={community.url}>
+          <div slot="icon" class="w-7 h-7">
+            <CommunityIcon name={community.name} icon={community.icon} />
+          </div>
+          <span slot="label">
+            {community.name}
+          </span>
+        </SidebarButton>
+      {/each}
+      
+      <!-- Отладка: {hasMoreCommunities} -->
+      {#if hasMoreCommunities}
+        <SidebarButton 
+          on:click={loadMoreCommunities} 
+          icon={ChevronDown}
+          href="javascript:void(0)"
+        >
+          <span slot="label">Показать все</span>
+        </SidebarButton>
+      {/if}
+    </div>
+  {/if}
 
   <div class="flex flex-col gap-2">
     <span
