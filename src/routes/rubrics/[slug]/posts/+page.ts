@@ -3,11 +3,9 @@ import { error } from '@sveltejs/kit'
 
 export const load = async ({ params, fetch }) => {
   const slug = params.slug
-  const url = new URL(buildRubricPostsUrl(slug))
-  url.searchParams.set('limit', '10')
-  url.searchParams.set('offset', '0')
+  const url = buildRubricPostsUrl(slug)
 
-  const response = await fetch(url.toString())
+  const response = await fetch(url)
   if (!response.ok) {
     if (response.status === 404) {
       throw error(404, 'Рубрика не найдена')

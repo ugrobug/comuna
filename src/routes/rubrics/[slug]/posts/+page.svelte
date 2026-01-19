@@ -1,22 +1,11 @@
 <script lang="ts">
-  import { browser } from '$app/environment'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import Post from '$lib/components/lemmy/post/Post.svelte'
-  import { backendPostToPostView, buildBackendPostPath, buildRubricPostsUrl } from '$lib/api/backend'
+  import { backendPostToPostView, buildBackendPostPath } from '$lib/api/backend'
   import { env } from '$env/dynamic/public'
   import { page } from '$app/stores'
-  import { afterUpdate, onDestroy, tick } from 'svelte'
 
   export let data
-
-  const pageSize = 10
-  const prefetchOffset = 3
-  let posts = data.posts ?? []
-  let hasMore = posts.length === pageSize
-  let loadingMore = false
-  let sentinel: HTMLElement | null = null
-  let observer: IntersectionObserver | null = null
-  $: prefetchIndex = Math.max(posts.length - prefetchOffset, 0)
 
   $: siteTitle = env.PUBLIC_SITE_TITLE || 'Comuna'
   $: rubricName = data.rubric?.name ?? 'Рубрика'
@@ -28,69 +17,6 @@
     $page.url.pathname,
     (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '') + '/'
   ).toString()
-
-  const buildPageUrl = (offset: number) => {
-    if (!data.rubric?.slug) return ''
-    const url = new URL(buildRubricPostsUrl(data.rubric.slug))
-    url.searchParams.set('limit', String(pageSize))
-    url.searchParams.set('offset', String(offset))
-    return url.toString()
-  }
-
-  const loadMore = async () => {
-    if (loadingMore || !hasMore) return
-    const url = buildPageUrl(posts.length)
-    if (!url) return
-    loadingMore = true
-    try {
-      const response = await fetch(url)
-      if (!response.ok) {
-        hasMore = false
-        return
-      }
-      const payload = await response.json()
-      const nextPosts = payload.posts ?? []
-      if (nextPosts.length) {
-        posts = [...posts, ...nextPosts]
-      }
-      if (nextPosts.length < pageSize) {
-        hasMore = false
-      }
-    } catch (error) {
-      console.error('Failed to load more rubric posts:', error)
-    } finally {
-      loadingMore = false
-    }
-  }
-
-  const setupObserver = async () => {
-    if (!browser) return
-    await tick()
-    if (observer) {
-      observer.disconnect()
-      observer = null
-    }
-    if (!sentinel || !hasMore) return
-    observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          loadMore()
-        }
-      },
-      { threshold: 0.1 }
-    )
-    observer.observe(sentinel)
-  }
-
-  afterUpdate(() => {
-    if (browser) {
-      setupObserver()
-    }
-  })
-
-  onDestroy(() => {
-    observer?.disconnect()
-  })
 </script>
 
 <div class="flex flex-col gap-6 max-w-3xl">
@@ -142,9 +68,9 @@
     </div>
   </section>
 
-  {#if posts?.length}
+  {#if data.posts?.length}
     <div class="flex flex-col gap-6">
-      {#each posts as backendPost, index (backendPost.id)}
+      {#each data.posts as backendPost (backendPost.id)}
         {@const postView = backendPostToPostView(backendPost)}
         <Post
           post={postView}
@@ -158,14 +84,8 @@
           subscribeUrl={backendPost.channel_url ?? backendPost.author?.channel_url}
           subscribeLabel="Подписаться"
         />
-        {#if index === prefetchIndex}
-          <div bind:this={sentinel} class="h-px"></div>
-        {/if}
       {/each}
     </div>
-    {#if loadingMore}
-      <div class="text-sm text-slate-500">Загрузка...</div>
-    {/if}
   {:else}
     <div class="text-base text-slate-500">В этой рубрике пока нет публикаций.</div>
   {/if}

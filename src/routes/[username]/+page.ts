@@ -3,11 +3,9 @@ import { error } from '@sveltejs/kit'
 
 export const load = async ({ params, fetch }) => {
   const username = params.username
-  const url = new URL(buildAuthorPostsUrl(username))
-  url.searchParams.set('limit', '10')
-  url.searchParams.set('offset', '0')
+  const url = buildAuthorPostsUrl(username)
 
-  const response = await fetch(url.toString())
+  const response = await fetch(url)
   if (!response.ok) {
     if (response.status === 404) {
       throw error(404, 'Автор не найден')
