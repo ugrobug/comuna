@@ -16,13 +16,9 @@
   let sentinel: HTMLElement | null = null
   let observer: IntersectionObserver | null = null
   $: prefetchIndex = Math.max(posts.length - prefetchOffset, 0)
-  let lastFeedKey = ''
-  $: feedKey = `${$page.url.pathname}${$page.url.search}`
-  $: if (feedKey !== lastFeedKey) {
-    lastFeedKey = feedKey
-    const initialPosts = data.posts ?? []
-    posts = initialPosts
-    hasMore = initialPosts.length === pageSize
+  $: if (data?.posts) {
+    posts = data.posts ?? []
+    hasMore = posts.length === pageSize
     loadingMore = false
     observer?.disconnect()
     observer = null
