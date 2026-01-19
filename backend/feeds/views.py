@@ -1026,13 +1026,6 @@ def _handle_private_message(message: dict) -> None:
         session = BotSession.objects.filter(telegram_user_id=chat_id).first()
         author = Author.objects.filter(username__iexact=forward_chat.get("username")).first()
 
-        if session and not session.rubric:
-            _send_bot_message(
-                chat_id,
-                "Перед первой публикацией необходимо выбрать тематику канала.",
-            )
-            return
-
         if not author and session and session.rubric:
             author, _ = Author.objects.get_or_create(
                 username=forward_chat.get("username"),
@@ -1043,7 +1036,7 @@ def _handle_private_message(message: dict) -> None:
                 },
             )
 
-        if author and not author.rubric and not (session and session.rubric):
+        if author and not author.rubric:
             _send_bot_message(
                 chat_id,
                 "Перед первой публикацией необходимо выбрать тематику канала.",
