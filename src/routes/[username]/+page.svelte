@@ -16,6 +16,13 @@
   let sentinel: HTMLElement | null = null
   let observer: IntersectionObserver | null = null
   $: prefetchIndex = Math.max(posts.length - prefetchOffset, 0)
+  $: if (data?.posts) {
+    posts = data.posts ?? []
+    hasMore = posts.length === pageSize
+    loadingMore = false
+    observer?.disconnect()
+    observer = null
+  }
 
   const formatNumber = (value: number | undefined) => {
     if (!value && value !== 0) return '—'

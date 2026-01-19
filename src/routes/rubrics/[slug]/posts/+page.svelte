@@ -17,6 +17,13 @@
   let sentinel: HTMLElement | null = null
   let observer: IntersectionObserver | null = null
   $: prefetchIndex = Math.max(posts.length - prefetchOffset, 0)
+  $: if (data?.posts) {
+    posts = data.posts ?? []
+    hasMore = posts.length === pageSize
+    loadingMore = false
+    observer?.disconnect()
+    observer = null
+  }
 
   $: siteTitle = env.PUBLIC_SITE_TITLE || 'Comuna'
   $: rubricName = data.rubric?.name ?? 'Рубрика'
