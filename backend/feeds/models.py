@@ -21,6 +21,7 @@ class Author(models.Model):
         "Rubric", on_delete=models.SET_NULL, null=True, blank=True, related_name="authors"
     )
     auto_publish = models.BooleanField(default=True)
+    publish_delay_days = models.PositiveSmallIntegerField(default=0)
     admin_chat_id = models.BigIntegerField(null=True, blank=True)
     is_blocked = models.BooleanField(default=False)
     shadow_banned = models.BooleanField(default=False)
@@ -68,6 +69,7 @@ class Post(models.Model):
     channel_url = models.URLField(max_length=255, blank=True)
     is_pending = models.BooleanField(default=False)
     is_blocked = models.BooleanField(default=False)
+    publish_at = models.DateTimeField(null=True, blank=True)
     raw_data = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -123,8 +125,12 @@ class PostLike(models.Model):
 class BotSession(models.Model):
     telegram_user_id = models.BigIntegerField(unique=True)
     auto_publish = models.BooleanField(default=True)
+    publish_delay_days = models.PositiveSmallIntegerField(default=0)
     rubric = models.ForeignKey(
         "Rubric", on_delete=models.SET_NULL, null=True, blank=True, related_name="bot_sessions"
+    )
+    selected_author = models.ForeignKey(
+        "Author", on_delete=models.SET_NULL, null=True, blank=True, related_name="bot_sessions"
     )
     invite_url = models.URLField(max_length=255, blank=True)
     invite_waiting = models.BooleanField(default=False)

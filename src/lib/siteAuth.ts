@@ -7,6 +7,11 @@ export type SiteAuthorLink = {
   title?: string | null
   channel_url?: string | null
   avatar_url?: string | null
+  rubric?: string | null
+  rubric_slug?: string | null
+  auto_publish?: boolean
+  publish_delay_days?: number
+  invite_url?: string | null
 }
 
 export type SiteUser = {
@@ -25,6 +30,7 @@ export type SiteUserPost = {
   created_at: string
   updated_at?: string
   is_pending?: boolean
+  publish_at?: string | null
   rubric?: string | null
   rubric_slug?: string | null
   rubric_icon_url?: string | null
@@ -228,6 +234,29 @@ export const createUserPost = async (payload: {
   }
 
   return data?.post as SiteUserPost
+}
+
+export const uploadSiteImage = async (image: File) => {
+  const token = get(siteToken)
+  if (!token) {
+    throw new Error('Нужна авторизация')
+  }
+  const formData = new FormData()
+  formData.append('image', image)
+
+  const response = await fetch(buildUrl('/api/auth/uploads/'), {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: formData,
+  })
+
+  const data = await response.json()
+  if (!response.ok || !data?.url) {
+    throw new Error(data?.error || 'Не удалось загрузить изображение')
+  }
+  return data.url as string
 }
 
 if (browser && initialToken) {

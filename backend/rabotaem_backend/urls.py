@@ -28,6 +28,7 @@ from feeds.views import (
     top_authors_month,
     user_post_update,
     user_posts,
+    user_upload,
 )
 
 urlpatterns = [
@@ -50,6 +51,7 @@ urlpatterns = [
     path("api/auth/verification-code/", author_verification_code, name="auth-verification-code"),
     path("api/auth/posts/", user_posts, name="auth-posts"),
     path("api/auth/posts/<int:post_id>/", user_post_update, name="auth-post-update"),
+    path("api/auth/uploads/", user_upload, name="auth-uploads"),
     path("sitemap.xml", sitemap_xml, name="sitemap-xml"),
     path("sitemap-static.xml", sitemap_static_xml, name="sitemap-static-xml"),
     path("sitemap-rubrics.xml", sitemap_rubrics_xml, name="sitemap-rubrics-xml"),

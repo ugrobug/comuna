@@ -5,6 +5,8 @@ import os
 import re
 import secrets
 from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
+from django.utils.text import get_valid_filename
 from django.core.signing import BadSignature, SignatureExpired, TimestampSigner
 import urllib.error
 import urllib.parse
@@ -74,7 +76,7 @@ def _get_user_from_request(request: HttpRequest) -> User | None:
 
 def _serialize_user(user: User) -> dict:
     author_links = (
-        AuthorAdmin.objects.select_related("author")
+        AuthorAdmin.objects.select_related("author", "author__rubric")
         .filter(user=user, verified_at__isnull=False)
         .order_by("author__username")
     )
@@ -90,6 +92,11 @@ def _serialize_user(user: User) -> dict:
                 "title": author.title,
                 "channel_url": author.invite_url or author.channel_url,
                 "avatar_url": _author_avatar_url(None, author),
+                "rubric": author.rubric.name if author.rubric else None,
+                "rubric_slug": author.rubric.slug if author.rubric else None,
+                "auto_publish": author.auto_publish,
+                "publish_delay_days": author.publish_delay_days,
+                "invite_url": author.invite_url,
             }
         )
     return {
@@ -177,6 +184,10 @@ def _format_lastmod(value) -> str | None:
     if timezone.is_naive(value):
         value = timezone.make_aware(value, dt_timezone.utc)
     return value.astimezone(dt_timezone.utc).date().isoformat()
+
+
+def _publish_ready_filter(now) -> Q:
+    return Q(publish_at__isnull=True) | Q(publish_at__lte=now)
 
 
 def _sitemap_base_url(request: HttpRequest) -> str:
@@ -564,10 +575,72 @@ def _build_rubric_keyboard() -> list[list[dict]]:
     return keyboard
 
 
+def _get_admin_authors(chat_id: int) -> list[Author]:
+    return list(
+        Author.objects.filter(admin_chat_id=chat_id, is_blocked=False)
+        .select_related("rubric")
+        .order_by("username")
+    )
+
+
+def _format_delay_label(days: int) -> str:
+    if days <= 0:
+        return "без задержки"
+    return f"{days} дн."
+
+
+def _send_channel_picker(chat_id: int, prompt: str) -> bool:
+    authors = _get_admin_authors(chat_id)
+    if not authors:
+        _send_bot_message(
+            chat_id,
+            "Сначала добавьте бота администратором в канал и дайте права "
+            "«Читать сообщения» и «Публиковать сообщения».",
+        )
+        return False
+    keyboard: list[list[dict]] = []
+    row: list[dict] = []
+    for author in authors:
+        row.append({"text": f"@{author.username}", "callback_data": f"channel:{author.id}"})
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    _send_bot_message_with_keyboard(chat_id, prompt, {"inline_keyboard": keyboard})
+    return True
+
+
+def _send_channel_settings_menu(chat_id: int, author: Author) -> None:
+    mode_label = "Автопубликация" if author.auto_publish else "Согласование"
+    delay_label = _format_delay_label(author.publish_delay_days)
+    rubric_label = author.rubric.name if author.rubric else "не выбрана"
+    invite_label = "установлена" if author.invite_url else "не задана"
+    _send_bot_message_with_keyboard(
+        chat_id,
+        "Настройки для канала "
+        f"@{author.username}:\n"
+        f"Режим: {mode_label}\n"
+        f"Тематика: {rubric_label}\n"
+        f"Задержка: {delay_label}\n"
+        f"Ссылка: {invite_label}",
+        {
+            "inline_keyboard": [
+                [{"text": "Режим публикации", "callback_data": "settings:mode"}],
+                [{"text": "Тематика канала", "callback_data": "settings:rubric"}],
+                [{"text": "Задержка публикации", "callback_data": "settings:delay"}],
+                [{"text": "Ссылка для подписки", "callback_data": "settings:invite"}],
+            ]
+        },
+    )
+
+
 def _send_setup_options(chat_id: int) -> None:
     BotSession.objects.update_or_create(
         telegram_user_id=chat_id, defaults={"instructions_sent": False}
     )
+    if _send_channel_picker(chat_id, "Выберите канал для настройки"):
+        return
     _send_bot_message_with_keyboard(
         chat_id,
         "Будем публиковать все новые посты на сайте или ты хочешь каждый новый пост "
@@ -587,13 +660,31 @@ def _send_setup_options(chat_id: int) -> None:
             "Выберите тематику канала",
             {"inline_keyboard": rubric_keyboard},
         )
+    _send_bot_message_with_keyboard(
+        chat_id,
+        "Выберите задержку публикации:",
+        {
+            "inline_keyboard": [
+                [{"text": "Без задержки", "callback_data": "delay:0"}],
+                [{"text": "1 день", "callback_data": "delay:1"}],
+                [{"text": "3 дня", "callback_data": "delay:3"}],
+                [{"text": "7 дней", "callback_data": "delay:7"}],
+            ]
+        },
+    )
 
 
-def _send_setup_instructions(chat_id: int, auto_publish: bool) -> None:
+def _send_setup_instructions(chat_id: int, auto_publish: bool, delay_days: int) -> None:
     publish_line = (
         "Новые посты будут публиковаться автоматически."
         if auto_publish
         else "Новые посты будут отправляться на согласование в боте."
+    )
+    delay_line = (
+        "Публикация будет с задержкой "
+        f"{delay_days} дн."
+        if delay_days
+        else "Публикация без задержки."
     )
     _send_bot_message(
         chat_id,
@@ -602,7 +693,8 @@ def _send_setup_instructions(chat_id: int, auto_publish: bool) -> None:
         "2) Дайте права: «Читать сообщения» и «Публиковать сообщения».\n"
         "3) По желанию добавьте ссылку приглашения на канал.\n"
         "4) Для старых постов — пересылайте их сюда, и они появятся на сайте.\n"
-        f"{publish_line}",
+        f"{publish_line}\n"
+        f"{delay_line}",
     )
 
 
@@ -611,7 +703,7 @@ def _maybe_send_setup_instructions(chat_id: int) -> None:
     if not session or session.instructions_sent:
         return
     if session.mode_selected and session.rubric:
-        _send_setup_instructions(chat_id, session.auto_publish)
+        _send_setup_instructions(chat_id, session.auto_publish, session.publish_delay_days)
         session.instructions_sent = True
         session.save(update_fields=["instructions_sent", "updated_at"])
 
@@ -726,6 +818,8 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
         title = embed_label
     channel_url = f"https://t.me/{username}"
     source_url = f"{channel_url}/{message_id}"
+    delay_days = max(int(author.publish_delay_days or 0), 0)
+    publish_at = timezone.now() + timedelta(days=delay_days) if delay_days else None
 
     requires_approval = (not author.auto_publish and author.admin_chat_id) and not force_publish
 
@@ -753,6 +847,7 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
             "is_pending": requires_approval,
             "rubric": author.rubric,
             "media_group_id": media_group_id,
+            "publish_at": publish_at,
         },
     )
 
@@ -869,25 +964,21 @@ def _handle_private_message(message: dict) -> None:
         return
 
     if text == "Ссылка для подписки":
-        _send_bot_message(
-            chat_id,
-            "Пришлите ссылку приглашения на ваш канал (например, https://t.me/+xxxx). "
-            "Мы будем использовать её в кнопках подписки на сайте.",
-        )
-        BotSession.objects.update_or_create(
-            telegram_user_id=chat_id,
-            defaults={"invite_waiting": True},
-        )
+        _send_channel_picker(chat_id, "Выберите канал для ссылки приглашения")
         return
 
     if text.startswith("https://t.me/") or text.startswith("http://t.me/"):
         session = BotSession.objects.filter(telegram_user_id=chat_id).first()
         if session and session.invite_waiting:
+            author = session.selected_author
+            if not author:
+                _send_bot_message(chat_id, "Сначала выберите канал для настройки.")
+                return
             invite_url = text.strip()
-            session.invite_url = invite_url
             session.invite_waiting = False
-            session.save(update_fields=["invite_url", "invite_waiting", "updated_at"])
-            Author.objects.filter(admin_chat_id=chat_id).update(invite_url=invite_url)
+            session.save(update_fields=["invite_waiting", "updated_at"])
+            author.invite_url = invite_url
+            author.save(update_fields=["invite_url", "updated_at"])
             _send_bot_message(
                 chat_id,
                 "Ссылка сохранена. Мы будем использовать её для кнопок подписки.",
@@ -959,19 +1050,31 @@ def _handle_private_message(message: dict) -> None:
             )
             return
 
+        apply_session = False
         if session and author:
-            author.auto_publish = session.auto_publish
-            author.admin_chat_id = chat_id
-            if session.rubric:
-                author.rubric = session.rubric
-            if session.invite_url:
-                author.invite_url = session.invite_url
-            author.save(
-                update_fields=["auto_publish", "admin_chat_id", "rubric", "invite_url", "updated_at"]
-            )
-            if author.rubric:
-                Post.objects.filter(author=author).update(rubric=author.rubric)
-            session.delete()
+            apply_session = session.selected_author is None or session.selected_author_id == author.id
+            if apply_session:
+                author.auto_publish = session.auto_publish
+                author.admin_chat_id = chat_id
+                if session.rubric:
+                    author.rubric = session.rubric
+                if session.invite_url:
+                    author.invite_url = session.invite_url
+                if session.publish_delay_days:
+                    author.publish_delay_days = session.publish_delay_days
+                update_fields = [
+                    "auto_publish",
+                    "admin_chat_id",
+                    "rubric",
+                    "invite_url",
+                    "publish_delay_days",
+                    "updated_at",
+                ]
+                author.save(update_fields=update_fields)
+                if author.rubric:
+                    Post.objects.filter(author=author).update(rubric=author.rubric)
+                if session.selected_author is None:
+                    session.delete()
 
         existing_post = Post.objects.filter(
             author__username__iexact=forward_chat.get("username"),
@@ -1000,7 +1103,7 @@ def _handle_private_message(message: dict) -> None:
             return
 
         _handle_channel_post(forwarded)
-        if author and session:
+        if author and session and apply_session:
             _send_bot_message(chat_id, f"Настройки применены для @{author.username}.")
         else:
             _send_bot_message(chat_id, "Пост добавлен на сайт.")
@@ -1055,14 +1158,18 @@ def _handle_my_chat_member(update: dict) -> None:
         update_fields.append("title")
 
     if session:
-        author.auto_publish = session.auto_publish
-        update_fields.append("auto_publish")
-        if session.rubric:
-            author.rubric = session.rubric
-            update_fields.append("rubric")
-        if session.invite_url:
-            author.invite_url = session.invite_url
-            update_fields.append("invite_url")
+        if session.selected_author is None:
+            author.auto_publish = session.auto_publish
+            update_fields.append("auto_publish")
+            if session.rubric:
+                author.rubric = session.rubric
+                update_fields.append("rubric")
+            if session.invite_url:
+                author.invite_url = session.invite_url
+                update_fields.append("invite_url")
+            if session.publish_delay_days:
+                author.publish_delay_days = session.publish_delay_days
+                update_fields.append("publish_delay_days")
 
     author.save(update_fields=update_fields)
 
@@ -1085,15 +1192,28 @@ def _handle_callback_query(callback_query: dict) -> None:
     message = callback_query.get("message", {})
     chat = message.get("chat", {})
     chat_id = chat.get("id")
+    session = None
+    if chat_id:
+        session = (
+            BotSession.objects.filter(telegram_user_id=chat_id)
+            .select_related("selected_author", "rubric")
+            .first()
+        )
 
     if data.startswith("mode:") and chat_id:
         mode = data.split(":", 1)[1]
         auto_publish = mode == "auto"
+        if session and session.selected_author:
+            author = session.selected_author
+            author.auto_publish = auto_publish
+            author.save(update_fields=["auto_publish", "updated_at"])
+            _answer_callback_query(callback_id, "Настройка сохранена")
+            _send_bot_message(chat_id, f"Режим обновлён для @{author.username}.")
+            return
         BotSession.objects.update_or_create(
             telegram_user_id=chat_id,
             defaults={"auto_publish": auto_publish, "mode_selected": True},
         )
-        Author.objects.filter(admin_chat_id=chat_id).update(auto_publish=auto_publish)
         _answer_callback_query(callback_id, "Настройка сохранена")
         _maybe_send_setup_instructions(chat_id)
         return
@@ -1108,13 +1228,125 @@ def _handle_callback_query(callback_query: dict) -> None:
         if not rubric:
             _answer_callback_query(callback_id, "Рубрика не найдена")
             return
+        if session and session.selected_author:
+            author = session.selected_author
+            author.rubric = rubric
+            author.save(update_fields=["rubric", "updated_at"])
+            Post.objects.filter(author=author).update(rubric=rubric)
+            _answer_callback_query(callback_id, "Рубрика сохранена")
+            _send_bot_message(chat_id, f"Тематика обновлена для @{author.username}.")
+            return
         BotSession.objects.update_or_create(
             telegram_user_id=chat_id, defaults={"rubric": rubric}
         )
-        Author.objects.filter(admin_chat_id=chat_id).update(rubric=rubric)
         _answer_callback_query(callback_id, "Рубрика сохранена")
         _maybe_send_setup_instructions(chat_id)
         return
+
+    if data.startswith("delay:") and chat_id:
+        try:
+            delay_days = int(data.split(":", 1)[1])
+        except ValueError:
+            _answer_callback_query(callback_id, "Некорректная задержка")
+            return
+        if delay_days not in (0, 1, 3, 7):
+            _answer_callback_query(callback_id, "Некорректная задержка")
+            return
+        if session and session.selected_author:
+            author = session.selected_author
+            author.publish_delay_days = delay_days
+            author.save(update_fields=["publish_delay_days", "updated_at"])
+            _answer_callback_query(callback_id, "Задержка сохранена")
+            _send_bot_message(
+                chat_id,
+                f"Задержка публикации обновлена для @{author.username}.",
+            )
+            return
+        BotSession.objects.update_or_create(
+            telegram_user_id=chat_id, defaults={"publish_delay_days": delay_days}
+        )
+        _answer_callback_query(callback_id, "Задержка сохранена")
+        _maybe_send_setup_instructions(chat_id)
+        return
+
+    if data.startswith("channel:") and chat_id:
+        try:
+            author_id = int(data.split(":", 1)[1])
+        except ValueError:
+            _answer_callback_query(callback_id, "Некорректный канал")
+            return
+        author = Author.objects.filter(id=author_id, admin_chat_id=chat_id).first()
+        if not author:
+            _answer_callback_query(callback_id, "Канал не найден")
+            return
+        if session:
+            session.selected_author = author
+            session.invite_waiting = False
+            session.save(update_fields=["selected_author", "invite_waiting", "updated_at"])
+        else:
+            BotSession.objects.update_or_create(
+                telegram_user_id=chat_id,
+                defaults={"selected_author": author, "invite_waiting": False},
+            )
+        _answer_callback_query(callback_id, "Канал выбран")
+        _send_channel_settings_menu(chat_id, author)
+        return
+
+    if data.startswith("settings:") and chat_id:
+        action = data.split(":", 1)[1]
+        if not session or not session.selected_author:
+            _answer_callback_query(callback_id, "Сначала выберите канал")
+            _send_channel_picker(chat_id, "Выберите канал для настройки")
+            return
+        if action == "mode":
+            _answer_callback_query(callback_id, "Выберите режим")
+            _send_bot_message_with_keyboard(
+                chat_id,
+                "Выберите режим публикации:",
+                {
+                    "inline_keyboard": [
+                        [{"text": "Автопубликация", "callback_data": "mode:auto"}],
+                        [{"text": "Согласование", "callback_data": "mode:approval"}],
+                    ]
+                },
+            )
+            return
+        if action == "rubric":
+            rubric_keyboard = _build_rubric_keyboard()
+            if rubric_keyboard:
+                _answer_callback_query(callback_id, "Выберите тематику")
+                _send_bot_message_with_keyboard(
+                    chat_id,
+                    "Выберите тематику канала",
+                    {"inline_keyboard": rubric_keyboard},
+                )
+            else:
+                _answer_callback_query(callback_id, "Нет доступных рубрик")
+            return
+        if action == "delay":
+            _answer_callback_query(callback_id, "Выберите задержку")
+            _send_bot_message_with_keyboard(
+                chat_id,
+                "Выберите задержку публикации:",
+                {
+                    "inline_keyboard": [
+                        [{"text": "Без задержки", "callback_data": "delay:0"}],
+                        [{"text": "1 день", "callback_data": "delay:1"}],
+                        [{"text": "3 дня", "callback_data": "delay:3"}],
+                        [{"text": "7 дней", "callback_data": "delay:7"}],
+                    ]
+                },
+            )
+            return
+        if action == "invite":
+            _answer_callback_query(callback_id, "Ожидаю ссылку")
+            _send_bot_message(
+                chat_id,
+                "Пришлите ссылку приглашения на канал (например, https://t.me/+xxxx).",
+            )
+            session.invite_waiting = True
+            session.save(update_fields=["invite_waiting", "updated_at"])
+            return
 
     if data.startswith("approve:") and chat_id:
         try:
@@ -1314,6 +1546,7 @@ def _serialize_post_for_user(request: HttpRequest, post: Post) -> dict:
         "created_at": post.created_at.isoformat(),
         "updated_at": post.updated_at.isoformat(),
         "is_pending": post.is_pending,
+        "publish_at": post.publish_at.isoformat() if post.publish_at else None,
         "rubric": rubric.name if rubric else None,
         "rubric_slug": rubric.slug if rubric else None,
         "rubric_icon_url": _media_url(request, rubric.icon_url) if rubric else None,
@@ -1326,6 +1559,7 @@ def _serialize_post_for_user(request: HttpRequest, post: Post) -> dict:
     }
 
 
+@csrf_exempt
 def user_posts(request: HttpRequest) -> HttpResponse:
     user = _get_user_from_request(request)
     if not user:
@@ -1372,6 +1606,8 @@ def user_posts(request: HttpRequest) -> HttpResponse:
             message_id = _generate_manual_message_id(author)
         except ValueError:
             return JsonResponse({"ok": False, "error": "unable to create post"}, status=500)
+        delay_days = max(int(author.publish_delay_days or 0), 0)
+        publish_at = timezone.now() + timedelta(days=delay_days) if delay_days else None
 
         post = Post.objects.create(
             author=author,
@@ -1384,6 +1620,7 @@ def user_posts(request: HttpRequest) -> HttpResponse:
             raw_data={"source": "manual"},
             is_pending=False,
             is_blocked=False,
+            publish_at=publish_at,
         )
         _maybe_notify_new_author(author, post)
         return JsonResponse({"ok": True, "post": _serialize_post_for_user(request, post)})
@@ -1415,6 +1652,46 @@ def user_posts(request: HttpRequest) -> HttpResponse:
     posts = posts_qs[offset : offset + limit]
     serialized = [_serialize_post_for_user(request, post) for post in posts]
     return JsonResponse({"ok": True, "posts": serialized, "total": total})
+
+
+@csrf_exempt
+def user_upload(request: HttpRequest) -> HttpResponse:
+    user = _get_user_from_request(request)
+    if not user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    upload = (
+        request.FILES.get("image")
+        or request.FILES.get("file")
+        or request.FILES.get("images[]")
+    )
+    if not upload:
+        return JsonResponse({"ok": False, "error": "image is required"}, status=400)
+
+    content_type = (getattr(upload, "content_type", "") or "").lower()
+    if not content_type.startswith("image/"):
+        return JsonResponse({"ok": False, "error": "unsupported file type"}, status=400)
+
+    max_bytes = getattr(settings, "USER_UPLOAD_MAX_BYTES", 10 * 1024 * 1024)
+    if upload.size and upload.size > max_bytes:
+        return JsonResponse({"ok": False, "error": "file is too large"}, status=400)
+
+    base_name = get_valid_filename(os.path.splitext(upload.name or "image")[0])
+    ext = os.path.splitext(upload.name or "")[1].lower()
+    if ext not in {".jpg", ".jpeg", ".png", ".webp", ".gif"}:
+        ext = ".jpg"
+    filename = f"uploads/manual/{base_name}-{secrets.token_hex(8)}{ext}"
+    saved_path = default_storage.save(filename, upload)
+    relative_url = default_storage.url(saved_path)
+    site_base = (getattr(settings, "SITE_BASE_URL", "") or "").rstrip("/")
+    if site_base:
+        url = f"{site_base}{relative_url}"
+    else:
+        url = request.build_absolute_uri(relative_url)
+
+    return JsonResponse({"ok": True, "url": url})
 
 
 @csrf_exempt
@@ -1476,8 +1753,12 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
 @csrf_exempt
 def post_comments(request: HttpRequest, post_id: int) -> HttpResponse:
     try:
-        post = Post.objects.select_related("author").get(
-            id=post_id, is_blocked=False, is_pending=False, author__is_blocked=False
+        now = timezone.now()
+        post = (
+            Post.objects.select_related("author")
+            .filter(is_blocked=False, is_pending=False, author__is_blocked=False)
+            .filter(_publish_ready_filter(now))
+            .get(id=post_id)
         )
     except Post.DoesNotExist:
         return JsonResponse({"ok": False, "error": "post not found"}, status=404)
@@ -1638,12 +1919,18 @@ def comment_like(request: HttpRequest, comment_id: int) -> HttpResponse:
         return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
 
     try:
-        comment = PostComment.objects.select_related("post", "post__author").get(
-            id=comment_id,
-            is_deleted=False,
-            post__is_blocked=False,
-            post__is_pending=False,
-            post__author__is_blocked=False,
+        now = timezone.now()
+        comment = (
+            PostComment.objects.select_related("post", "post__author")
+            .filter(
+                id=comment_id,
+                is_deleted=False,
+                post__is_blocked=False,
+                post__is_pending=False,
+                post__author__is_blocked=False,
+            )
+            .filter(Q(post__publish_at__isnull=True) | Q(post__publish_at__lte=now))
+            .get()
         )
     except PostComment.DoesNotExist:
         return JsonResponse({"ok": False, "error": "comment not found"}, status=404)
@@ -1671,8 +1958,12 @@ def post_like(request: HttpRequest, post_id: int) -> HttpResponse:
         return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
 
     try:
-        post = Post.objects.select_related("author").get(
-            id=post_id, is_blocked=False, is_pending=False, author__is_blocked=False
+        now = timezone.now()
+        post = (
+            Post.objects.select_related("author")
+            .filter(is_blocked=False, is_pending=False, author__is_blocked=False)
+            .filter(_publish_ready_filter(now))
+            .get(id=post_id)
         )
     except Post.DoesNotExist:
         return JsonResponse({"ok": False, "error": "post not found"}, status=404)
@@ -1731,6 +2022,7 @@ def recent_comments(request: HttpRequest) -> HttpResponse:
     except ValueError:
         limit = 5
 
+    now = timezone.now()
     comments = (
         PostComment.objects.filter(
             is_deleted=False,
@@ -1738,6 +2030,7 @@ def recent_comments(request: HttpRequest) -> HttpResponse:
             post__is_pending=False,
             post__author__is_blocked=False,
         )
+        .filter(Q(post__publish_at__isnull=True) | Q(post__publish_at__lte=now))
         .select_related("user", "post")
         .order_by("-created_at")[:limit]
     )
@@ -1771,15 +2064,19 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
     except ValueError:
         limit = 20
 
+    now = timezone.now()
     posts = (
         Post.objects.filter(author=author, is_blocked=False, is_pending=False)
+        .filter(_publish_ready_filter(now))
         .order_by("-created_at")
         .all()[:limit]
     )
 
-    posts_count = Post.objects.filter(
-        author=author, is_blocked=False, is_pending=False
-    ).count()
+    posts_count = (
+        Post.objects.filter(author=author, is_blocked=False, is_pending=False)
+        .filter(_publish_ready_filter(now))
+        .count()
+    )
     author_channel_url = author.invite_url or author.channel_url
     serialized = []
     for post in posts:
@@ -1854,6 +2151,7 @@ def rubric_posts(request: HttpRequest, slug: str) -> HttpResponse:
     except ValueError:
         limit = 20
 
+    now = timezone.now()
     posts = (
         Post.objects.filter(
             rubric=rubric,
@@ -1861,6 +2159,7 @@ def rubric_posts(request: HttpRequest, slug: str) -> HttpResponse:
             is_pending=False,
             author__is_blocked=False,
         )
+        .filter(_publish_ready_filter(now))
         .order_by("-created_at")
         .all()[:limit]
     )
@@ -1908,8 +2207,12 @@ def rubric_posts(request: HttpRequest, slug: str) -> HttpResponse:
 
 def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
     try:
-        post = Post.objects.select_related("author", "rubric").get(
-            id=post_id, is_blocked=False, is_pending=False, author__is_blocked=False
+        now = timezone.now()
+        post = (
+            Post.objects.select_related("author", "rubric")
+            .filter(is_blocked=False, is_pending=False, author__is_blocked=False)
+            .filter(_publish_ready_filter(now))
+            .get(id=post_id)
         )
     except Post.DoesNotExist:
         return JsonResponse({"ok": False, "error": "post not found"}, status=404)
@@ -1949,6 +2252,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
     except ValueError:
         limit = 50
 
+    now = timezone.now()
     posts = list(
         Post.objects.filter(
             is_blocked=False,
@@ -1956,6 +2260,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
             author__is_blocked=False,
             rating__gte=0,
         )
+        .filter(_publish_ready_filter(now))
         .filter(Q(author__shadow_banned=False) | Q(author__force_home=True))
         .select_related("author", "rubric")
         .order_by("-created_at")[: limit * 3]
@@ -2012,6 +2317,7 @@ def top_authors_month(request: HttpRequest) -> HttpResponse:
         limit = 5
 
     cutoff = timezone.now() - timedelta(days=30)
+    now = timezone.now()
     score_expr = Cast(F("posts__rating"), IntegerField()) + Cast(
         F("posts__comments_count"), IntegerField()
     ) * Value(5)
@@ -2019,7 +2325,7 @@ def top_authors_month(request: HttpRequest) -> HttpResponse:
         posts__created_at__gte=cutoff,
         posts__is_blocked=False,
         posts__is_pending=False,
-    )
+    ) & (Q(posts__publish_at__isnull=True) | Q(posts__publish_at__lte=now))
 
     authors = (
         Author.objects.filter(is_blocked=False)
@@ -2090,6 +2396,7 @@ def search_content(request: HttpRequest) -> HttpResponse:
         post_query |= Q(author__username__icontains=query) | Q(
             author__title__icontains=query
         )
+        now = timezone.now()
         posts_qs = (
             Post.objects.filter(
                 post_query,
@@ -2097,6 +2404,7 @@ def search_content(request: HttpRequest) -> HttpResponse:
                 is_pending=False,
                 author__is_blocked=False,
             )
+            .filter(_publish_ready_filter(now))
             .select_related("author", "rubric")
             .order_by("-created_at" if sort == "new" else "-created_at")
         )
@@ -2202,6 +2510,7 @@ def _sitemap_index(entries: list[tuple[str, str | None]]) -> HttpResponse:
 
 def sitemap_xml(request: HttpRequest) -> HttpResponse:
     base_url = _sitemap_base_url(request)
+    now = timezone.now()
 
     def full(path: str) -> str:
         return f"{base_url}{path}"
@@ -2210,12 +2519,15 @@ def sitemap_xml(request: HttpRequest) -> HttpResponse:
     authors_lastmod = Author.objects.order_by("-updated_at").values_list("updated_at", flat=True).first()
     posts_lastmod = (
         Post.objects.filter(is_blocked=False, is_pending=False, author__is_blocked=False)
+        .filter(_publish_ready_filter(now))
         .order_by("-updated_at")
         .values_list("updated_at", flat=True)
         .first()
     )
     posts_count = (
-        Post.objects.filter(is_blocked=False, is_pending=False, author__is_blocked=False).count()
+        Post.objects.filter(is_blocked=False, is_pending=False, author__is_blocked=False)
+        .filter(_publish_ready_filter(now))
+        .count()
     )
     pages = max(1, ceil(posts_count / SITEMAP_PAGE_SIZE))
 
@@ -2275,7 +2587,11 @@ def sitemap_posts_xml(request: HttpRequest, page: int) -> HttpResponse:
         return HttpResponse(status=404)
 
     base_url = _sitemap_base_url(request)
-    qs = Post.objects.filter(is_blocked=False, is_pending=False, author__is_blocked=False)
+    now = timezone.now()
+    qs = (
+        Post.objects.filter(is_blocked=False, is_pending=False, author__is_blocked=False)
+        .filter(_publish_ready_filter(now))
+    )
     total = qs.count()
     total_pages = max(1, ceil(total / SITEMAP_PAGE_SIZE))
     if page > total_pages:

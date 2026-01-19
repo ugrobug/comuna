@@ -19,6 +19,7 @@ class AuthorAdmin(admin.ModelAdmin):
         "title",
         "rubric",
         "auto_publish",
+        "publish_delay_days",
         "shadow_banned",
         "force_home",
         "is_blocked",
@@ -38,6 +39,7 @@ class PostAdmin(admin.ModelAdmin):
         "message_id",
         "is_pending",
         "is_blocked",
+        "publish_at",
         "created_at",
     )
     list_filter = ("is_pending", "is_blocked", "author", "rubric")
@@ -55,6 +57,7 @@ class PostAdmin(admin.ModelAdmin):
         "channel_url",
         "is_pending",
         "is_blocked",
+        "publish_at",
         "raw_data",
     )
 

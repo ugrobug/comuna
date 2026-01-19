@@ -1,13 +1,28 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
   import { profile } from '$lib/auth'
+  import { uploadSiteImage, siteToken } from '$lib/siteAuth'
   import { uploadImage, serializeEditorModel, deserializeEditorModel } from '$lib/util'
+  import { get } from 'svelte/store'
   import { Button } from 'mono-svelte'
   import CustomInputTune from './CustomInputTune'
   import './CustomInputTune.css'
   import { saveDraft, getDraft, formatLastSaved, getDraftLastSaved } from '$lib/session'
 
   export let showPostSettings: boolean = true
+
+  const uploadEditorImage = async (file: File) => {
+    if (get(siteToken)) {
+      return { url: await uploadSiteImage(file), useWebp: false }
+    }
+    if ($profile?.jwt) {
+      return {
+        url: await uploadImage(file, $profile.instance, $profile.jwt),
+        useWebp: true,
+      }
+    }
+    throw new Error('Нужна авторизация для загрузки изображений')
+  }
 
   // Импортируем иконки
   const iconPath = '/img/editorjs'
@@ -256,7 +271,7 @@
         if (!target.files) return
         
         const files = Array.from(target.files)
-        if (files.length > 0 && $profile?.jwt) {
+        if (files.length > 0) {
           try {
             this.isUploading = true
             wrapper.appendChild(loader)
@@ -264,10 +279,11 @@
             button.textContent = 'Загрузка...'
             
             for (const file of files) {
-              const imageUrl = await uploadImage(file, $profile.instance, $profile.jwt)
-              if (imageUrl) {
+              const uploaded = await uploadEditorImage(file)
+              if (uploaded?.url) {
+                const finalUrl = uploaded.useWebp ? `${uploaded.url}?format=webp` : uploaded.url
                 this.data.images.push({
-                  url: `${imageUrl}?format=webp`,
+                  url: finalUrl,
                   alt: '',
                   title: ''
                 })
@@ -621,16 +637,18 @@
         if (!target.files) return
         
         const file = target.files[0]
-        if (file && $profile?.jwt) {
+        if (file) {
           try {
             this.isUploading = true
             wrapper.appendChild(loader)
             button.disabled = true
             button.textContent = 'Загрузка...'
             
-            const imageUrl = await uploadImage(file, $profile.instance, $profile.jwt)
-            if (imageUrl) {
-              this.data.file.url = `${imageUrl}?format=webp`
+            const uploaded = await uploadEditorImage(file)
+            if (uploaded?.url) {
+              this.data.file.url = uploaded.useWebp
+                ? `${uploaded.url}?format=webp`
+                : uploaded.url
               image.src = this.data.file.url
               
               // Показываем контрол "Вывести в ленте" после успешной загрузки

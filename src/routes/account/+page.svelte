@@ -178,12 +178,31 @@
     <div class="rounded-xl border border-slate-200 dark:border-zinc-800 p-6">
       <h2 class="text-lg font-semibold mb-2">Ваши подтверждённые каналы</h2>
       {#if $siteUser.is_author && $siteUser.authors.length}
-        <ul class="flex flex-col gap-2 text-sm">
+        <ul class="flex flex-col gap-3 text-sm">
           {#each $siteUser.authors as author}
-            <li>
-              @{author.username}
-              {#if author.title}
-                <span class="text-slate-500 dark:text-zinc-400">— {author.title}</span>
+            <li class="flex flex-col gap-1">
+              <div>
+                @{author.username}
+                {#if author.title}
+                  <span class="text-slate-500 dark:text-zinc-400">— {author.title}</span>
+                {/if}
+              </div>
+              <div class="text-xs text-slate-500 dark:text-zinc-400">
+                Режим: {author.auto_publish === false ? 'Согласование' : 'Автопубликация'}
+                <span class="mx-1">•</span>
+                Тематика: {author.rubric ?? 'не выбрана'}
+                <span class="mx-1">•</span>
+                Задержка: {author.publish_delay_days ? `${author.publish_delay_days} дн.` : 'без задержки'}
+              </div>
+              {#if author.invite_url}
+                <a
+                  class="text-xs text-blue-600 hover:underline dark:text-blue-400"
+                  href={author.invite_url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Ссылка приглашения
+                </a>
               {/if}
             </li>
           {/each}
@@ -231,6 +250,11 @@
                     {new Date(post.created_at).toLocaleDateString('ru-RU')}
                     {#if post.is_pending}
                       <span class="ml-2 text-amber-600">На согласовании</span>
+                    {/if}
+                    {#if post.publish_at && new Date(post.publish_at) > new Date()}
+                      <span class="ml-2 text-blue-600">
+                        Запланировано на {new Date(post.publish_at).toLocaleDateString('ru-RU')}
+                      </span>
                     {/if}
                   </div>
                 </div>
