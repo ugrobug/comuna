@@ -2,18 +2,97 @@
 </script>
 
 <script lang="ts">
+  import { browser } from '$app/environment'
   import { page } from '$app/stores'
   import { env } from '$env/dynamic/public'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import { t } from '$lib/translations.js'
   import Post from '$lib/components/lemmy/post/Post.svelte'
-  import { backendPostToPostView, buildBackendPostPath } from '$lib/api/backend'
+  import { backendPostToPostView, buildBackendPostPath, buildHomeFeedUrl } from '$lib/api/backend'
+  import { afterUpdate, onDestroy, tick } from 'svelte'
 
   export let data
+
+  const pageSize = 10
+  const prefetchOffset = 3
+  let posts = data.posts ?? []
+  let hasMore = posts.length === pageSize
+  let loadingMore = false
+  let sentinel: HTMLElement | null = null
+  let observer: IntersectionObserver | null = null
+  $: prefetchIndex = Math.max(posts.length - prefetchOffset, 0)
+  $: if (data?.posts) {
+    posts = data.posts ?? []
+    hasMore = posts.length === pageSize
+    loadingMore = false
+    observer?.disconnect()
+    observer = null
+    sentinel = null
+  }
 
   // Определяем канонический URL для главной страницы
   $: siteBaseUrl = (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '')
   $: canonicalUrl = `${siteBaseUrl}/`
+
+  const buildPageUrl = (offset: number) => {
+    const url = new URL(buildHomeFeedUrl())
+    url.searchParams.set('limit', String(pageSize))
+    url.searchParams.set('offset', String(offset))
+    return url.toString()
+  }
+
+  const loadMore = async () => {
+    if (loadingMore || !hasMore) return
+    loadingMore = true
+    try {
+      const response = await fetch(buildPageUrl(posts.length))
+      if (!response.ok) {
+        hasMore = false
+        return
+      }
+      const payload = await response.json()
+      const nextPosts = payload.posts ?? []
+      if (nextPosts.length) {
+        posts = [...posts, ...nextPosts]
+      }
+      if (nextPosts.length < pageSize) {
+        hasMore = false
+      }
+    } catch (error) {
+      console.error('Failed to load more posts:', error)
+    } finally {
+      loadingMore = false
+    }
+  }
+
+  const setupObserver = async () => {
+    if (!browser) return
+    await tick()
+    if (observer) {
+      observer.disconnect()
+      observer = null
+    }
+    if (!sentinel || !hasMore) return
+    observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          loadMore()
+        }
+      },
+      { threshold: 0.1 }
+    )
+    observer.observe(sentinel)
+  }
+
+  afterUpdate(() => {
+    if (browser) {
+      setupObserver()
+    }
+  })
+
+  onDestroy(() => {
+    observer?.disconnect()
+  })
 </script>
 <div class="flex flex-col gap-2 max-w-full w-full min-w-0">
   <header class="flex flex-col gap-4 relative">
@@ -21,9 +100,9 @@
       {$t('routes.frontpage.title')}
     </Header>
   </header>
-  {#if data.posts?.length}
+  {#if posts?.length}
     <div class="flex flex-col gap-6">
-      {#each data.posts as backendPost (backendPost.id)}
+      {#each posts as backendPost, index (backendPost.id)}
         {@const postView = backendPostToPostView(backendPost, backendPost.author)}
         <Post
           post={postView}
@@ -37,8 +116,14 @@
           subscribeUrl={backendPost.channel_url ?? backendPost.author?.channel_url}
           subscribeLabel="Подписаться"
         />
+        {#if index === prefetchIndex}
+          <div bind:this={sentinel} class="h-px"></div>
+        {/if}
       {/each}
     </div>
+    {#if loadingMore}
+      <div class="text-sm text-slate-500">Загрузка...</div>
+    {/if}
   {:else}
     <div class="text-base text-slate-500">Пока нет публикаций.</div>
   {/if}

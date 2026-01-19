@@ -2054,18 +2054,23 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
     if author.is_blocked:
         return JsonResponse({"ok": False, "error": "author not found"}, status=404)
 
-    limit_raw = request.GET.get("limit", "20")
+    limit_raw = request.GET.get("limit", "10")
     try:
         limit = min(max(int(limit_raw), 1), 50)
     except ValueError:
-        limit = 20
+        limit = 10
+    offset_raw = request.GET.get("offset", "0")
+    try:
+        offset = max(int(offset_raw), 0)
+    except ValueError:
+        offset = 0
 
     now = timezone.now()
     posts = (
         Post.objects.filter(author=author, is_blocked=False, is_pending=False)
         .filter(_publish_ready_filter(now))
         .order_by("-created_at")
-        .all()[:limit]
+        .all()[offset : offset + limit]
     )
 
     posts_count = (
@@ -2141,11 +2146,16 @@ def rubric_posts(request: HttpRequest, slug: str) -> HttpResponse:
     except Rubric.DoesNotExist:
         return JsonResponse({"ok": False, "error": "rubric not found"}, status=404)
 
-    limit_raw = request.GET.get("limit", "20")
+    limit_raw = request.GET.get("limit", "10")
     try:
         limit = min(max(int(limit_raw), 1), 50)
     except ValueError:
-        limit = 20
+        limit = 10
+    offset_raw = request.GET.get("offset", "0")
+    try:
+        offset = max(int(offset_raw), 0)
+    except ValueError:
+        offset = 0
 
     now = timezone.now()
     posts = (
@@ -2157,7 +2167,7 @@ def rubric_posts(request: HttpRequest, slug: str) -> HttpResponse:
         )
         .filter(_publish_ready_filter(now))
         .order_by("-created_at")
-        .all()[:limit]
+        .all()[offset : offset + limit]
     )
 
     serialized = []
@@ -2242,13 +2252,20 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
 
 
 def home_feed(request: HttpRequest) -> HttpResponse:
-    limit_raw = request.GET.get("limit", "50")
+    limit_raw = request.GET.get("limit", "10")
     try:
         limit = min(max(int(limit_raw), 1), 200)
     except ValueError:
-        limit = 50
+        limit = 10
+    offset_raw = request.GET.get("offset", "0")
+    try:
+        offset = max(int(offset_raw), 0)
+    except ValueError:
+        offset = 0
 
     now = timezone.now()
+    target_count = limit + offset
+    fetch_size = max(target_count * 3, limit * 3)
     posts = list(
         Post.objects.filter(
             is_blocked=False,
@@ -2259,14 +2276,14 @@ def home_feed(request: HttpRequest) -> HttpResponse:
         .filter(_publish_ready_filter(now))
         .filter(Q(author__shadow_banned=False) | Q(author__force_home=True))
         .select_related("author", "rubric")
-        .order_by("-created_at")[: limit * 3]
+        .order_by("-created_at")[:fetch_size]
     )
 
     serialized_posts = []
     remaining = posts[:]
     last_author_id = None
 
-    while remaining and len(serialized_posts) < limit:
+    while remaining and len(serialized_posts) < target_count:
         next_index = None
         for idx, candidate in enumerate(remaining):
             if candidate.author_id != last_author_id:
@@ -2302,7 +2319,9 @@ def home_feed(request: HttpRequest) -> HttpResponse:
         )
         last_author_id = post.author_id
 
-    return JsonResponse({"ok": True, "posts": serialized_posts})
+    return JsonResponse(
+        {"ok": True, "posts": serialized_posts[offset : offset + limit]}
+    )
 
 
 def top_authors_month(request: HttpRequest) -> HttpResponse:
