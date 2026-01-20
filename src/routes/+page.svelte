@@ -70,6 +70,7 @@
     $siteUser &&
     selectedRubrics.length > 0 &&
     !isEditingMyFeed
+  $: hideNegativeMyFeed = $userSettings.myFeedHideNegative ?? true
   $: rubricNameMap = new Map(rubrics.map((rubric) => [rubric.slug, rubric.name]))
   $: selectedRubricNames = selectedRubrics.map(
     (slug) => rubricNameMap.get(slug) ?? slug
@@ -84,7 +85,7 @@
     if (feedType === 'fresh') {
       baseUrl = buildFreshFeedUrl()
     } else if (feedType === 'mine') {
-      baseUrl = buildMyFeedUrl(selectedRubrics)
+      baseUrl = buildMyFeedUrl(selectedRubrics, hideNegativeMyFeed)
     }
     const url = new URL(baseUrl)
     url.searchParams.set('limit', String(pageSize))
@@ -173,7 +174,7 @@
 
   $: if (feedType === 'mine') {
     const authKey = $siteUser ? 'auth' : 'anon'
-    const key = `${authKey}:${selectedRubrics.join(',')}`
+    const key = `${authKey}:${selectedRubrics.join(',')}:${hideNegativeMyFeed ? 'no-negative' : 'all'}`
     if (key !== lastMyFeedKey) {
       lastMyFeedKey = key
       resetMyFeed()

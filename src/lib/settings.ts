@@ -100,6 +100,7 @@ interface Settings {
   infiniteScroll: boolean
   language: string | null
   myFeedRubrics: string[]
+  myFeedHideNegative: boolean
   useRtl: boolean
   translator: string | undefined
   parseTags: boolean
@@ -181,6 +182,7 @@ export const defaultSettings: Settings = {
   infiniteScroll: true,
   language: 'ru',
   myFeedRubrics: [],
+  myFeedHideNegative: true,
   useRtl: false,
   translator: undefined,
   parseTags: true,
@@ -207,11 +209,15 @@ const migrate = (settings: any): Settings => {
   if (!Array.isArray(settings?.myFeedRubrics)) {
     settings.myFeedRubrics = []
   }
+  if (typeof settings?.myFeedHideNegative !== 'boolean') {
+    settings.myFeedHideNegative = defaultSettings.myFeedHideNegative
+  }
   settings.language = 'ru'
   settings.dock = { ...defaultSettings.dock, pins: [] }
   settings.defaultSort = { ...defaultSettings.defaultSort }
   settings.showInstances = { ...defaultSettings.showInstances }
   settings.displayNames = defaultSettings.displayNames
+  settings.myFeedHideNegative = defaultSettings.myFeedHideNegative
   settings.view = defaultSettings.view
   settings.leftAlign = defaultSettings.leftAlign
   settings.randomPlaceholders = defaultSettings.randomPlaceholders

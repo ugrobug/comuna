@@ -213,5 +213,10 @@
         <span class="text-sm text-slate-500">Рубрики пока недоступны.</span>
       {/if}
     </Setting>
+    <ToggleSetting
+      bind:checked={$userSettings.myFeedHideNegative}
+      title="Не показывать посты с отрицательным рейтингом"
+      description="В моей ленте скрывать публикации с рейтингом ниже нуля."
+    />
   </Section>
 </div>

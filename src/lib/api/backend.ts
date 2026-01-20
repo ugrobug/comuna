@@ -56,10 +56,16 @@ export const buildFreshFeedUrl = (): string => {
   return `${getBackendBaseUrl()}/api/home/fresh/`
 }
 
-export const buildMyFeedUrl = (rubrics?: string[]): string => {
+export const buildMyFeedUrl = (
+  rubrics?: string[],
+  hideNegative: boolean = true
+): string => {
   const url = new URL(`${getBackendBaseUrl()}/api/home/my/`)
   if (rubrics?.length) {
     url.searchParams.set('rubrics', rubrics.join(','))
+  }
+  if (!hideNegative) {
+    url.searchParams.set('hide_negative', '0')
   }
   return url.toString()
 }

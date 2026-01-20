@@ -2397,6 +2397,9 @@ def my_feed(request: HttpRequest) -> HttpResponse:
     if not rubric_slugs:
         return JsonResponse({"ok": True, "posts": []})
 
+    hide_negative_raw = request.GET.get("hide_negative", "1").lower()
+    hide_negative = hide_negative_raw not in ("0", "false", "no", "off")
+
     rubric_ids = list(
         Rubric.objects.filter(slug__in=rubric_slugs, is_active=True).values_list(
             "id", flat=True
@@ -2406,17 +2409,21 @@ def my_feed(request: HttpRequest) -> HttpResponse:
         return JsonResponse({"ok": True, "posts": []})
 
     now = timezone.now()
-    posts = (
+    posts_query = (
         Post.objects.filter(
             rubric_id__in=rubric_ids,
             is_blocked=False,
             is_pending=False,
             author__is_blocked=False,
-            rating__gte=0,
         )
         .filter(_publish_ready_filter(now))
         .filter(Q(author__shadow_banned=False) | Q(author__force_home=True))
-        .select_related("author", "rubric")
+    )
+    if hide_negative:
+        posts_query = posts_query.filter(rating__gte=0)
+
+    posts = (
+        posts_query.select_related("author", "rubric")
         .order_by("-created_at")[offset : offset + limit]
     )
 
