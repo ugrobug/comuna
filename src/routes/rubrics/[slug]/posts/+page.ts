@@ -3,12 +3,12 @@ import { error } from '@sveltejs/kit'
 
 const PAGE_SIZE = 10
 
-export const load = async ({ params, fetch }) => {
+export const load = async ({ params, fetch, url }) => {
   const slug = params.slug
-  const url = new URL(buildRubricPostsUrl(slug))
-  url.searchParams.set('limit', String(PAGE_SIZE))
+  const requestUrl = new URL(buildRubricPostsUrl(slug), url.origin)
+  requestUrl.searchParams.set('limit', String(PAGE_SIZE))
 
-  const response = await fetch(url.toString())
+  const response = await fetch(requestUrl.toString())
   if (!response.ok) {
     if (response.status === 404) {
       throw error(404, 'Рубрика не найдена')

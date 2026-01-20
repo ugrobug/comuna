@@ -12,7 +12,7 @@ export async function load({ fetch, url }) {
     try {
       const feedUrl =
         feedType === 'fresh' ? buildFreshFeedUrl() : buildHomeFeedUrl()
-      const requestUrl = new URL(feedUrl)
+      const requestUrl = new URL(feedUrl, url.origin)
       requestUrl.searchParams.set('limit', String(PAGE_SIZE))
       const response = await fetch(requestUrl.toString())
       if (response.ok) {

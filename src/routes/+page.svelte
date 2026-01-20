@@ -118,7 +118,7 @@
   }
 
   const loadMore = async () => {
-    if (loadingMore || !hasMore) return
+    if (!browser || loadingMore || !hasMore) return
     if (feedType === 'mine' && !canLoadMyFeed) return
     loadingMore = true
     try {
@@ -144,7 +144,7 @@
   }
 
   const loadRubrics = async () => {
-    if (rubricsLoading || rubrics.length) return
+    if (!browser || rubricsLoading || rubrics.length) return
     rubricsLoading = true
     try {
       const response = await fetch(buildRubricsUrl())

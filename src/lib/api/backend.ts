@@ -4,10 +4,7 @@ import { slugifyTitle } from '$lib/util/slug'
 
 export const getBackendBaseUrl = (): string => {
   if (!browser) {
-    const base =
-      env.PUBLIC_INTERNAL_BACKEND_URL ||
-      env.PUBLIC_BACKEND_URL ||
-      'http://backend:8000'
+    const base = env.PUBLIC_INTERNAL_BACKEND_URL || ''
     return base.replace(/\/$/, '')
   }
   const base = env.PUBLIC_BACKEND_URL || 'http://localhost:8000'
