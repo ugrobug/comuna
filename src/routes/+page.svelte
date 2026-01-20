@@ -34,6 +34,8 @@
   let lastMyFeedKey = ''
   let rubrics: Array<{ name: string; slug: string; icon_url?: string | null }> = []
   let rubricsLoading = false
+  let isEditingMyFeed = false
+  let draftRubrics: string[] = []
   $: if (data?.posts) {
     if (data.posts !== lastPostsRef && data.feedType !== 'mine') {
       lastPostsRef = data.posts
@@ -63,7 +65,15 @@
   let scrollRaf: number | null = null
 
   $: selectedRubrics = $userSettings.myFeedRubrics ?? []
-  $: canLoadMyFeed = feedType === 'mine' && $siteUser && selectedRubrics.length > 0
+  $: canLoadMyFeed =
+    feedType === 'mine' &&
+    $siteUser &&
+    selectedRubrics.length > 0 &&
+    !isEditingMyFeed
+  $: rubricNameMap = new Map(rubrics.map((rubric) => [rubric.slug, rubric.name]))
+  $: selectedRubricNames = selectedRubrics.map(
+    (slug) => rubricNameMap.get(slug) ?? slug
+  )
 
   // Определяем канонический URL для главной страницы
   $: siteBaseUrl = (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '')
@@ -124,14 +134,20 @@
     }
   }
 
-  const toggleRubric = (slug: string) => {
-    const current = new Set(selectedRubrics)
+  const startEditMyFeed = () => {
+    isEditingMyFeed = true
+    draftRubrics = [...selectedRubrics]
+    loadRubrics()
+  }
+
+  const toggleDraftRubric = (slug: string) => {
+    const current = new Set(draftRubrics)
     if (current.has(slug)) {
       current.delete(slug)
     } else {
       current.add(slug)
     }
-    $userSettings = { ...$userSettings, myFeedRubrics: Array.from(current) }
+    draftRubrics = Array.from(current)
   }
 
   const resetMyFeed = () => {
@@ -145,6 +161,16 @@
     }
   }
 
+  const saveMyFeed = () => {
+    $userSettings = {
+      ...$userSettings,
+      myFeedRubrics: [...draftRubrics],
+    }
+    if (browser) {
+      window.location.reload()
+    }
+  }
+
   $: if (feedType === 'mine') {
     const authKey = $siteUser ? 'auth' : 'anon'
     const key = `${authKey}:${selectedRubrics.join(',')}`
@@ -154,6 +180,9 @@
     }
     if (!rubrics.length && !rubricsLoading) {
       loadRubrics()
+    }
+    if ($siteUser && !selectedRubrics.length && !isEditingMyFeed) {
+      startEditMyFeed()
     }
   }
 
@@ -200,37 +229,83 @@
     <div class="text-base text-slate-500">
       После регистрации вы получите доступ к персонализируемой ленте, которую сможете настроить и видеть только интересные вам посты.
     </div>
-  {:else if feedType === 'mine' && !selectedRubrics.length}
+  {:else if feedType === 'mine' && $siteUser}
     <div class="flex flex-col gap-4">
-      <div class="text-base text-slate-600 dark:text-zinc-300">
-        Выберите рубрики, которые хотите видеть в своей ленте. Эти настройки всегда можно поменять в настройках сайта.
-      </div>
-      {#if rubricsLoading}
-        <div class="text-sm text-slate-500">Загружаем рубрики...</div>
-      {:else if rubrics.length}
-        <div class="flex flex-col gap-3">
-          {#each rubrics as rubric}
-            <label class="flex items-center gap-3 text-sm text-slate-700 dark:text-zinc-200">
-              <input
-                class="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-900"
-                type="checkbox"
-                checked={selectedRubrics.includes(rubric.slug)}
-                on:change={() => toggleRubric(rubric.slug)}
-              />
-              <span>{rubric.name}</span>
-            </label>
-          {/each}
+      {#if isEditingMyFeed}
+        <div class="text-base text-slate-600 dark:text-zinc-300">
+          Выберите рубрики, которые хотите видеть в своей ленте. Эти настройки всегда можно поменять в настройках сайта.
         </div>
-        <div class="flex items-center gap-2">
-          <Button color="primary" on:click={resetMyFeed}>
-            Показать ленту
-          </Button>
-          <a href="/settings" class="text-sm text-blue-600 dark:text-blue-400 hover:underline">
-            Настройки сайта
-          </a>
-        </div>
+        {#if rubricsLoading}
+          <div class="text-sm text-slate-500">Загружаем рубрики...</div>
+        {:else if rubrics.length}
+          <div class="flex flex-col gap-3">
+            {#each rubrics as rubric}
+              <label class="flex items-center gap-3 text-sm text-slate-700 dark:text-zinc-200">
+                <input
+                  class="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-900"
+                  type="checkbox"
+                  checked={draftRubrics.includes(rubric.slug)}
+                  on:change={() => toggleDraftRubric(rubric.slug)}
+                />
+                <span>{rubric.name}</span>
+              </label>
+            {/each}
+          </div>
+          <div class="flex items-center gap-2">
+            <Button color="primary" on:click={saveMyFeed}>
+              Сохранить
+            </Button>
+            <a href="/settings" class="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+              Настройки сайта
+            </a>
+          </div>
+        {:else}
+          <div class="text-sm text-slate-500">Рубрики пока не загружены.</div>
+        {/if}
       {:else}
-        <div class="text-sm text-slate-500">Рубрики пока не загружены.</div>
+        <div class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4">
+          <div class="text-sm text-slate-500 dark:text-zinc-400">Выбранные рубрики</div>
+          {#if selectedRubricNames.length}
+            <div class="mt-2 flex flex-wrap gap-2">
+              {#each selectedRubricNames as name}
+                <span class="rounded-full bg-slate-100 dark:bg-zinc-800 px-3 py-1 text-sm text-slate-700 dark:text-zinc-200">
+                  {name}
+                </span>
+              {/each}
+            </div>
+          {:else}
+            <div class="mt-2 text-sm text-slate-500">Рубрики не выбраны.</div>
+          {/if}
+          <div class="mt-3">
+            <Button color="ghost" on:click={startEditMyFeed}>
+              Изменить
+            </Button>
+          </div>
+        </div>
+        {#if posts?.length}
+          <div class="flex flex-col gap-6">
+            {#each posts as backendPost (backendPost.id)}
+              {@const postView = backendPostToPostView(backendPost, backendPost.author)}
+              <Post
+                post={postView}
+                view="cozy"
+                actions={true}
+                showReadMore={false}
+                showFullBody={false}
+                linkOverride={buildBackendPostPath(backendPost)}
+                userUrlOverride={backendPost.author?.username ? `/${backendPost.author.username}` : undefined}
+                communityUrlOverride={backendPost.rubric_slug ? `/rubrics/${backendPost.rubric_slug}/posts` : undefined}
+                subscribeUrl={backendPost.channel_url ?? backendPost.author?.channel_url}
+                subscribeLabel="Подписаться"
+              />
+            {/each}
+          </div>
+          {#if loadingMore}
+            <div class="text-sm text-slate-500">Загрузка...</div>
+          {/if}
+        {:else}
+          <div class="text-base text-slate-500">Пока нет публикаций.</div>
+        {/if}
       {/if}
     </div>
   {:else if posts?.length}

@@ -314,6 +314,9 @@
                 />
                 <Icon src={ChevronDown} size="16" class="text-slate-500 dark:text-zinc-400" />
               </button>
+              <MenuButton link href="/settings" class="py-2.5">
+                Настройки
+              </MenuButton>
               <MenuButton link href="/account" class="py-2.5">
                 Кабинет
               </MenuButton>

@@ -5,6 +5,7 @@
     Inbox,
     UserCircle,
     UserGroup,
+    Cog6Tooth,
     Fire,
     Clock,
     Megaphone,
@@ -82,6 +83,9 @@
 <nav class="flex flex-col p-4 overflow-auto gap-2 h-auto min-h-0">
   <div class="flex flex-col gap-1">
     {#if $siteUser}
+      <SidebarButton href="/settings" on:click={handleNavigation} icon={Cog6Tooth}>
+        <span slot="label">Настройки</span>
+      </SidebarButton>
       <SidebarButton href=\"/account\" on:click={handleNavigation} icon={UserCircle}>
         <span slot=\"label\">Кабинет</span>
       </SidebarButton>
