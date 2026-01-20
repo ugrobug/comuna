@@ -179,7 +179,7 @@ export const defaultSettings: Settings = {
     reverseActions: toBool(env.PUBLIC_REVERSE_ACTIONS) ?? false,
   },
   infiniteScroll: true,
-  language: env.PUBLIC_LANGUAGE ?? null,
+  language: 'ru',
   myFeedRubrics: [],
   useRtl: false,
   translator: env.PUBLIC_TRANSLATOR ?? undefined,
@@ -207,6 +207,7 @@ const migrate = (settings: any): Settings => {
   if (!Array.isArray(settings?.myFeedRubrics)) {
     settings.myFeedRubrics = []
   }
+  settings.language = 'ru'
 
   return settings
 }

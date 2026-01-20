@@ -4,7 +4,6 @@
   import MultiSelect from '$lib/components/input/Switch.svelte'
   import Sort from '$lib/components/lemmy/dropdowns/Sort.svelte'
   import {
-    Badge,
     Disclosure,
     Material,
     Note,
@@ -29,7 +28,6 @@
     ChevronRight,
     GlobeAmericas,
     Icon,
-    Language,
     Plus,
     Trash,
     ArrowTopRightOnSquare,
@@ -42,7 +40,7 @@
   import { DOMAIN_REGEX_FORMS, removeItem } from '$lib/util.js'
   import Section from './Section.svelte'
   import ToggleSetting from './ToggleSetting.svelte'
-  import { locale, locales, t } from '$lib/translations'
+  import { t } from '$lib/translations'
   import { getDefaultLinks, iconOfLink } from '$lib/components/ui/navbar/link'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import { profile } from '$lib/auth'
@@ -83,32 +81,6 @@
     loadMyFeedRubrics()
   })
 
-  let localeMap: Map<
-    string,
-    {
-      name: string
-      translated: number
-      flag: string
-    }
-  > = new Map([
-    ['en', { name: 'English', translated: -1, flag: '🇬🇧' }],
-    ['he', { name: 'עברית', translated: -1, flag: '🇮🇱' }],
-    ['bg', { name: 'български', translated: 0.67, flag: '🇧🇬' }],
-    ['de', { name: 'Deutsch', translated: 0.7, flag: '🇩🇪' }],
-    ['es', { name: 'Español', translated: 0.89, flag: '🇪🇸' }],
-    ['et', { name: 'eesti keel', translated: 0.23, flag: '🇪🇪' }],
-    ['fi', { name: 'suomi', translated: 0.98, flag: '🇫🇮' }],
-    ['fr', { name: 'Français', translated: 0.93, flag: '🇫🇷' }],
-    ['hu', { name: 'Magyar', translated: 0.51, flag: '🇭🇺' }],
-    ['ja', { name: '日本語', translated: 0.93, flag: '🇯🇵' }],
-    ['nl', { name: 'Nederlands', translated: 0.89, flag: '🇳🇱' }],
-    ['pl', { name: 'Polski', translated: 0.91, flag: '🇵🇱' }],
-    ['pt', { name: 'Português', translated: 0.86, flag: '🇵🇹' }],
-    ['tr', { name: 'Türkçe', translated: 0.99, flag: '🇹🇷' }],
-    ['ru', { name: 'Русский', translated: 0.88, flag: '🇷🇺' }],
-    ['zh-Hans', { name: '简体中文', translated: 0.83, flag: '🇨🇳' }],
-    ['zh-Hant', { name: '繁體中文', translated: 0.23, flag: '🇹🇼' }],
-  ])
 </script>
 
 <svelte:head>
@@ -234,48 +206,6 @@
     </Section>
   {/if}
   <Section id="app" title={$t('settings.app.title')}>
-    <div class="flex flex-col gap-2">
-      <Setting>
-        <span slot="title" class="inline-flex items-center gap-2">
-          {$t('settings.app.lang.title')}
-          <Badge>{$t('settings.beta')}</Badge>
-        </span>
-        <p slot="description">
-          {$t('settings.app.lang.description')}
-        </p>
-        <!--@ts-ignore-->
-        <Select bind:value={$userSettings.language}>
-          <option value={null}>
-            <Icon src={Language} size="16" mini />
-            {$t('settings.app.lang.auto')}
-          </option>
-          {#each $locales as locale}
-            {@const mapped = localeMap.get(locale) ?? {
-              flag: '',
-              translated: 1,
-              name: locale,
-            }}
-            <option value={locale}>
-              <span>{mapped?.flag}</span>
-              <span>{mapped?.name}</span>
-              <div
-                class="text-slate-600 dark:text-zinc-400 text-xs ml-auto"
-                data-hide-selected
-                data-label={mapped.translated < 0
-                  ? ''
-                  : `${mapped.translated * 100}%`}
-              ></div>
-            </option>
-          {/each}
-        </Select>
-      </Setting>
-      {#if $locale == 'he'}
-        <ToggleSetting
-          bind:checked={$userSettings.useRtl}
-          title={$t('settings.app.lang.useRtl.title')}
-        ></ToggleSetting>
-      {/if}
-    </div>
     <!-- Удаляем или комментируем этот блок настроек -->
     <!--
     <Setting>
