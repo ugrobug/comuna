@@ -2324,6 +2324,134 @@ def home_feed(request: HttpRequest) -> HttpResponse:
     )
 
 
+def fresh_feed(request: HttpRequest) -> HttpResponse:
+    limit_raw = request.GET.get("limit", "10")
+    try:
+        limit = min(max(int(limit_raw), 1), 200)
+    except ValueError:
+        limit = 10
+    offset_raw = request.GET.get("offset", "0")
+    try:
+        offset = max(int(offset_raw), 0)
+    except ValueError:
+        offset = 0
+
+    now = timezone.now()
+    posts = (
+        Post.objects.filter(
+            is_blocked=False,
+            is_pending=False,
+            author__is_blocked=False,
+            rating__gte=0,
+        )
+        .filter(_publish_ready_filter(now))
+        .filter(Q(author__shadow_banned=False) | Q(author__force_home=True))
+        .select_related("author", "rubric")
+        .order_by("-created_at")[offset : offset + limit]
+    )
+
+    serialized = []
+    for post in posts:
+        rubric = post.rubric
+        author_channel_url = post.author.invite_url or post.author.channel_url
+        serialized.append(
+            {
+                "id": post.id,
+                "title": post.title,
+                "rubric": rubric.name if rubric else None,
+                "rubric_slug": rubric.slug if rubric else None,
+                "rubric_icon_url": _media_url(request, rubric.icon_url) if rubric else None,
+                "content": post.content,
+                "source_url": post.source_url,
+                "channel_url": author_channel_url or post.channel_url,
+                "created_at": post.created_at.isoformat(),
+                "author": {
+                    "username": post.author.username,
+                    "title": post.author.title,
+                    "channel_url": author_channel_url,
+                    "avatar_url": _author_avatar_url(request, post.author),
+                },
+                "score": post.rating + post.comments_count * 5,
+                "rating": post.rating,
+                "comments_count": post.comments_count,
+                "likes_count": post.rating,
+            }
+        )
+
+    return JsonResponse({"ok": True, "posts": serialized})
+
+
+def my_feed(request: HttpRequest) -> HttpResponse:
+    limit_raw = request.GET.get("limit", "10")
+    try:
+        limit = min(max(int(limit_raw), 1), 200)
+    except ValueError:
+        limit = 10
+    offset_raw = request.GET.get("offset", "0")
+    try:
+        offset = max(int(offset_raw), 0)
+    except ValueError:
+        offset = 0
+
+    rubrics_raw = request.GET.get("rubrics", "")
+    rubric_slugs = [slug.strip() for slug in rubrics_raw.split(",") if slug.strip()]
+    if not rubric_slugs:
+        return JsonResponse({"ok": True, "posts": []})
+
+    rubric_ids = list(
+        Rubric.objects.filter(slug__in=rubric_slugs, is_active=True).values_list(
+            "id", flat=True
+        )
+    )
+    if not rubric_ids:
+        return JsonResponse({"ok": True, "posts": []})
+
+    now = timezone.now()
+    posts = (
+        Post.objects.filter(
+            rubric_id__in=rubric_ids,
+            is_blocked=False,
+            is_pending=False,
+            author__is_blocked=False,
+            rating__gte=0,
+        )
+        .filter(_publish_ready_filter(now))
+        .filter(Q(author__shadow_banned=False) | Q(author__force_home=True))
+        .select_related("author", "rubric")
+        .order_by("-created_at")[offset : offset + limit]
+    )
+
+    serialized = []
+    for post in posts:
+        rubric = post.rubric
+        author_channel_url = post.author.invite_url or post.author.channel_url
+        serialized.append(
+            {
+                "id": post.id,
+                "title": post.title,
+                "rubric": rubric.name if rubric else None,
+                "rubric_slug": rubric.slug if rubric else None,
+                "rubric_icon_url": _media_url(request, rubric.icon_url) if rubric else None,
+                "content": post.content,
+                "source_url": post.source_url,
+                "channel_url": author_channel_url or post.channel_url,
+                "created_at": post.created_at.isoformat(),
+                "author": {
+                    "username": post.author.username,
+                    "title": post.author.title,
+                    "channel_url": author_channel_url,
+                    "avatar_url": _author_avatar_url(request, post.author),
+                },
+                "score": post.rating + post.comments_count * 5,
+                "rating": post.rating,
+                "comments_count": post.comments_count,
+                "likes_count": post.rating,
+            }
+        )
+
+    return JsonResponse({"ok": True, "posts": serialized})
+
+
 def top_authors_month(request: HttpRequest) -> HttpResponse:
     limit_raw = request.GET.get("limit", "5")
     try:

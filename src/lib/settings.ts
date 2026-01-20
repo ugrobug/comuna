@@ -99,6 +99,7 @@ interface Settings {
   }
   infiniteScroll: boolean
   language: string | null
+  myFeedRubrics: string[]
   useRtl: boolean
   translator: string | undefined
   parseTags: boolean
@@ -179,6 +180,7 @@ export const defaultSettings: Settings = {
   },
   infiniteScroll: true,
   language: env.PUBLIC_LANGUAGE ?? null,
+  myFeedRubrics: [],
   useRtl: false,
   translator: env.PUBLIC_TRANSLATOR ?? undefined,
   parseTags: true,
@@ -201,6 +203,9 @@ const migrate = (settings: any): Settings => {
       },
     ]
     settings.moderation.removalReasonPreset = undefined
+  }
+  if (!Array.isArray(settings?.myFeedRubrics)) {
+    settings.myFeedRubrics = []
   }
 
   return settings

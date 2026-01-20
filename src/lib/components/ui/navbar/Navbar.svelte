@@ -17,7 +17,6 @@
   } from 'mono-svelte'
   import {
     GlobeAlt,
-    Home,
     Icon,
     MagnifyingGlass,
     PencilSquare,
@@ -30,10 +29,10 @@
     Sun,
     UserCircle,
     Bars3,
-    Trophy,
     Fire,
     Clock,
     Inbox,
+    UserGroup,
     ArrowPath,
     DocumentText,
     InformationCircle,
@@ -387,37 +386,36 @@
         <hr class="border-slate-200 dark:border-zinc-900 my-1" />
       {/if}
 
+      {@const currentFeed = $page.url.searchParams.get('feed') ?? 'hot'}
+      <div class="flex flex-col gap-1">
+        <SidebarButton
+          icon={Fire}
+          href="/?feed=hot"
+          active={currentFeed === 'hot'}
+          on:click={() => { sidebarOpen = false; }}
+        >
+          <span slot="label">Горячее</span>
+        </SidebarButton>
+        <SidebarButton
+          icon={Clock}
+          href="/?feed=fresh"
+          active={currentFeed === 'fresh'}
+          on:click={() => { sidebarOpen = false; }}
+        >
+          <span slot="label">Свежее</span>
+        </SidebarButton>
+        <SidebarButton
+          icon={UserGroup}
+          href="/?feed=mine"
+          active={currentFeed === 'mine'}
+          on:click={() => { sidebarOpen = false; }}
+        >
+          <span slot="label">Моя лента</span>
+        </SidebarButton>
+      </div>
+
       {#if $profile?.jwt}
         <div class="flex flex-col gap-1">
-          <SidebarButton 
-            icon={Home} 
-            href="/?type=Subscribed"
-            on:click={() => { sidebarOpen = false; handleAuthRequired(); }}
-          >
-            <span slot="label">{$t('nav.feed')}</span>
-          </SidebarButton>
-          <SidebarButton 
-            icon={Trophy}
-            href="/?sort=TopAll&type=All"
-            active={$page.url.pathname === '/' && $page.url.searchParams.get('sort') === 'TopAll'}
-            on:click={() => { sidebarOpen = false; }}
-          >
-            <span slot="label">{$t('nav.best')}</span>
-          </SidebarButton>
-          <SidebarButton 
-            icon={Fire} 
-            href="/?sort=Hot"
-            on:click={() => { sidebarOpen = false; }}
-          >
-            <span slot="label">{$t('filter.sort.hot')}</span>
-          </SidebarButton>
-          <SidebarButton 
-            icon={Clock} 
-            href="/?sort=New"
-            on:click={() => { sidebarOpen = false; }}
-          >
-            <span slot="label">{$t('filter.sort.new')}</span>
-          </SidebarButton>
           <SidebarButton 
             icon={Inbox} 
             href="/inbox"

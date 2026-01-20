@@ -52,6 +52,18 @@ export const buildHomeFeedUrl = (): string => {
   return `${getBackendBaseUrl()}/api/home/`
 }
 
+export const buildFreshFeedUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/home/fresh/`
+}
+
+export const buildMyFeedUrl = (rubrics?: string[]): string => {
+  const url = new URL(`${getBackendBaseUrl()}/api/home/my/`)
+  if (rubrics?.length) {
+    url.searchParams.set('rubrics', rubrics.join(','))
+  }
+  return url.toString()
+}
+
 export const buildSearchUrl = (
   query: string,
   page = 1,

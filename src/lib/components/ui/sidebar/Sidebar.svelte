@@ -1,19 +1,10 @@
 <script lang="ts">
   import type { IconSource } from 'svelte-hero-icons'
   import {
-    ArrowLeftOnRectangle,
-    Bookmark,
-    Identification,
     Inbox,
-    UserCircle,
     UserGroup,
-    GlobeAlt,
-    Home,
     Fire,
     Clock,
-    Trophy,
-    Newspaper,
-    Briefcase,
     Megaphone,
     DocumentText,
     InformationCircle,
@@ -173,6 +164,7 @@
   });
 
   $: searchParams = new URLSearchParams($page.url.search);
+  $: currentFeed = searchParams.get('feed') ?? 'hot';
 
   // Проверяем, находимся ли мы на странице создания/редактирования поста
   $: isPostFormRoute = $page.url.pathname.includes('/create/post') || 
@@ -232,39 +224,21 @@
     <hr class="border-slate-200 dark:border-zinc-900 my-1" />
   {/if}
 
+  <div class="flex flex-col gap-1">
+    <SidebarButton icon={Fire} href="/?feed=hot" active={currentFeed === 'hot'}>
+      <span slot="label">Горячее</span>
+    </SidebarButton>
+    <SidebarButton icon={Clock} href="/?feed=fresh" active={currentFeed === 'fresh'}>
+      <span slot="label">Свежее</span>
+    </SidebarButton>
+    <SidebarButton icon={UserGroup} href="/?feed=mine" active={currentFeed === 'mine'}>
+      <span slot="label">Моя лента</span>
+    </SidebarButton>
+  </div>
+
   {#if $profile?.jwt}
     <div class="flex flex-col gap-1">
-      <SidebarButton 
-        icon={Home} 
-        href="/?type=Subscribed"
-        on:click={handleAuthRequired}
-      >
-        <span slot="label">{$t('nav.feed')}</span>
-      </SidebarButton>
-      <SidebarButton 
-        icon={Trophy}
-        href="/?sort=TopAll&type=All"
-        active={$page.url.pathname === '/' && $page.url.searchParams.get('sort') === 'TopAll'}
-      >
-        <span slot="label">{$t('nav.best')}</span>
-      </SidebarButton>
-      <SidebarButton 
-        icon={Fire} 
-        href="/?sort=Hot"
-      >
-        <span slot="label">{$t('filter.sort.hot')}</span>
-      </SidebarButton>
-      <SidebarButton 
-        icon={Clock} 
-        href="/?sort=New"
-      >
-        <span slot="label">{$t('filter.sort.new')}</span>
-      </SidebarButton>
-      <SidebarButton 
-        icon={Inbox} 
-        href="/inbox"
-        on:click={handleAuthRequired}
-      >
+      <SidebarButton icon={Inbox} href="/inbox" on:click={handleAuthRequired}>
         <span slot="label" class="flex items-center gap-2">
           {$t('profile.inbox')}
           {#if $notifications.inbox}
