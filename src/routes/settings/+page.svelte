@@ -1,7 +1,7 @@
 <script lang="ts">
   import { defaultSettings, userSettings } from '$lib/settings'
   import Setting from './Setting.svelte'
-  import { TextInput, toast, Modal, TextArea } from 'mono-svelte'
+  import { toast, Modal, TextArea } from 'mono-svelte'
   import {
     ArrowDownTray,
     ArrowPath,
@@ -10,8 +10,7 @@
     Icon,
     ArrowTopRightOnSquare,
   } from 'svelte-hero-icons'
-  import { Button, Checkbox, Select } from 'mono-svelte'
-  import { DOMAIN_REGEX_FORMS } from '$lib/util.js'
+  import { Button, Checkbox } from 'mono-svelte'
   import Section from './Section.svelte'
   import ToggleSetting from './ToggleSetting.svelte'
   import { t } from '$lib/translations'
@@ -136,10 +135,6 @@
     <Icon src={ArrowTopRightOnSquare} size="14" micro />
     {$t('settings.app.title')}
   </Button>
-  <Button href="#embeds" size="sm" class="text-xs" rounding="pill">
-    <Icon src={ArrowTopRightOnSquare} size="14" micro />
-    {$t('settings.embeds.title')}
-  </Button>
   <Button href="#lemmy" size="sm" class="text-xs" rounding="pill">
     <Icon src={ArrowTopRightOnSquare} size="14" micro />
     {$t('settings.lemmy.title')}
@@ -166,12 +161,6 @@
     </Section>
   {/if}
   <Section id="app" title={$t('settings.app.title')}>
-    <ToggleSetting
-      supportedPlatforms={{ desktop: true, tablet: false, mobile: false }}
-      bind:checked={$userSettings.newWidth}
-      title={$t('settings.app.limitLayoutWidth.title')}
-      description={$t('settings.app.limitLayoutWidth.description')}
-    />
     <ToggleSetting
       bind:checked={$userSettings.openLinksInNewTab}
       title={$t('settings.app.postsInNewTab.title')}
@@ -217,51 +206,6 @@
       {/if}
     </Setting>
   </Section>
-  <Section id="embeds" title={$t('settings.embeds.title')}>
-    <ToggleSetting
-      title={$t('settings.embeds.clickToView.title')}
-      description={$t('settings.embeds.clickToView.description')}
-      bind:checked={$userSettings.embeds.clickToView}
-    />
-    <Setting>
-      <span slot="title">YouTube</span>
-      <span slot="description">
-        {$t('settings.embeds.youtube.description')}
-      </span>
-      <Select bind:value={$userSettings.embeds.youtube}>
-        <option value="youtube">YouTube</option>
-        <option value="invidious">Invidious</option>
-        <option value="piped">Piped</option>
-      </Select>
-    </Setting>
-    {#if $userSettings.embeds.youtube == 'invidious'}
-      <Setting>
-        <span slot="title">{$t('settings.embeds.instance.invidious')}</span>
-        <span slot="description">
-          {$t('settings.embeds.instance.description')}
-        </span>
-        <TextInput
-          label={$t('settings.embeds.instance.invidious')}
-          pattern={DOMAIN_REGEX_FORMS}
-          bind:value={$userSettings.embeds.invidious}
-        />
-      </Setting>
-    {/if}
-    {#if $userSettings.embeds.youtube == 'piped'}
-      <Setting>
-        <span slot="title">{$t('settings.embeds.instance.piped')}</span>
-        <span slot="description">
-          {$t('settings.embeds.instance.description')}
-        </span>
-        <TextInput
-          label={$t('settings.embeds.instance.piped')}
-          pattern={DOMAIN_REGEX_FORMS}
-          bind:value={$userSettings.embeds.piped}
-        />
-      </Setting>
-    {/if}
-  </Section>
-
   <Section id="lemmy" title={$t('settings.lemmy.title')}>
     <Setting>
       <span slot="title">{$t('settings.lemmy.instances.title')}</span>
