@@ -182,6 +182,15 @@
         <option value="dark">Темная</option>
       </Select>
     </Setting>
+    <Setting>
+      <span slot="title">Главная страница</span>
+      <span slot="description">Выберите, какая лента будет открываться при входе на сайт.</span>
+      <Select bind:value={$userSettings.homeFeed}>
+        <option value="hot">Горячее</option>
+        <option value="fresh">Свежее</option>
+        <option value="mine">Моя лента</option>
+      </Select>
+    </Setting>
   </Section>
 
   <Section id="my-feed" title="Моя лента">

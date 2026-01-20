@@ -36,8 +36,9 @@
   let rubricsLoading = false
   let isEditingMyFeed = false
   let draftRubrics: string[] = []
+  let feedParam: string | null = null
   $: if (data?.posts) {
-    if (data.posts !== lastPostsRef && data.feedType !== 'mine') {
+    if (data.posts !== lastPostsRef && data.feedType === feedType && data.feedType !== 'mine') {
       lastPostsRef = data.posts
       posts = data.posts ?? []
       offset = posts.length
@@ -45,7 +46,8 @@
       loadingMore = false
     }
   }
-  $: if (data?.feedType && data.feedType !== lastFeedType) {
+  $: feedParam = $page.url.searchParams.get('feed')
+  $: if (data?.feedType && data.feedType !== lastFeedType && feedParam) {
     lastFeedType = data.feedType
     feedType = data.feedType ?? 'hot'
     if (feedType === 'mine') {
@@ -59,6 +61,28 @@
       offset = posts.length
       hasMore = posts.length === pageSize
       loadingMore = false
+    }
+  }
+  $: if (!feedParam) {
+    const preferredFeed = $userSettings.homeFeed ?? 'hot'
+    if (preferredFeed !== feedType) {
+      feedType = preferredFeed
+      lastFeedType = preferredFeed
+      if (feedType === 'mine') {
+        posts = []
+        offset = 0
+        hasMore = false
+        loadingMore = false
+        lastMyFeedKey = ''
+      } else {
+        posts = []
+        offset = 0
+        hasMore = true
+        loadingMore = false
+        if (browser) {
+          loadMore()
+        }
+      }
     }
   }
   const scrollThreshold = 400

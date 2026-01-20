@@ -2265,7 +2265,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
 
     now = timezone.now()
     target_count = limit + offset
-    fetch_size = max(target_count * 3, limit * 3)
+    fetch_size = max(target_count * 5, limit * 5)
     posts = list(
         Post.objects.filter(
             is_blocked=False,
@@ -2282,6 +2282,8 @@ def home_feed(request: HttpRequest) -> HttpResponse:
     serialized_posts = []
     remaining = posts[:]
     last_author_id = None
+    rubric_daily_counts = {}
+    forced_daily_counts = {}
 
     while remaining and len(serialized_posts) < target_count:
         next_index = None
@@ -2293,6 +2295,22 @@ def home_feed(request: HttpRequest) -> HttpResponse:
             next_index = 0
         post = remaining.pop(next_index)
         rubric = post.rubric
+        day_key = timezone.localtime(post.created_at).date()
+        rubric_limit = rubric.home_limit if rubric else None
+        rubric_key = (rubric.id, day_key) if rubric else None
+        rubric_count = rubric_daily_counts.get(rubric_key, 0) if rubric_key else 0
+        allow_by_rubric = True
+        if rubric_key is not None and rubric_limit is not None:
+            allow_by_rubric = rubric_count < rubric_limit
+        forced_key = (post.author_id, day_key)
+        forced_used = forced_daily_counts.get(forced_key, 0)
+        force_slot_available = post.author.force_home and forced_used < 1
+        if not (allow_by_rubric or force_slot_available):
+            continue
+        if allow_by_rubric and rubric_key is not None:
+            rubric_daily_counts[rubric_key] = rubric_count + 1
+        elif force_slot_available:
+            forced_daily_counts[forced_key] = forced_used + 1
         author_channel_url = post.author.invite_url or post.author.channel_url
         serialized_posts.append(
             {

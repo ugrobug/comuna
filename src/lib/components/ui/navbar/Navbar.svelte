@@ -38,6 +38,7 @@
   import { page } from '$app/stores'
   import { env } from '$env/dynamic/public';
   import SidebarButton from '$lib/components/ui/sidebar/SidebarButton.svelte'
+  import { userSettings } from '$lib/settings'
   import { Badge } from 'mono-svelte'
   import { onMount } from 'svelte';
   import { siteUser, logout as siteLogout } from '$lib/siteAuth'
@@ -92,7 +93,9 @@
 
   // Функция для перехода на главную страницу с обновлением
   function goToHome() {
-    goto('/', { 
+    const defaultFeed = $userSettings.homeFeed ?? 'hot'
+    const target = defaultFeed === 'hot' ? '/' : `/?feed=${defaultFeed}`
+    goto(target, { 
       replaceState: true,
       invalidateAll: true // Принудительно инвалидируем все данные
     })
@@ -125,7 +128,7 @@
     updateRandomTagline();
   }
 
-  $: currentFeed = $page.url.searchParams.get('feed') ?? 'hot'
+  $: currentFeed = $page.url.searchParams.get('feed') ?? ($userSettings.homeFeed ?? 'hot')
 
   // Принудительное обновление при монтировании компонента
   onMount(() => {

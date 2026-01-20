@@ -26,6 +26,7 @@
   import { env } from '$env/dynamic/public'
   import { HAS_LEMMY_INSTANCE } from '$lib/instance'
   import { buildRubricsUrl } from '$lib/api/backend'
+  import { userSettings } from '$lib/settings'
 
   const PUBLIC_PROJECT_ABOUT = env.PUBLIC_PROJECT_ABOUT || '/about';
   const PUBLIC_PROJECT_ADVRTISEMENT =
@@ -156,7 +157,7 @@
   });
 
   $: searchParams = new URLSearchParams($page.url.search);
-  $: currentFeed = searchParams.get('feed') ?? 'hot';
+  $: currentFeed = searchParams.get('feed') ?? ($userSettings.homeFeed ?? 'hot');
 
   // Проверяем, находимся ли мы на странице создания/редактирования поста
   $: isPostFormRoute = $page.url.pathname.includes('/create/post') || 

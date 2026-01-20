@@ -98,6 +98,7 @@ interface Settings {
     reverseActions: boolean
   }
   infiniteScroll: boolean
+  homeFeed: 'hot' | 'fresh' | 'mine'
   language: string | null
   myFeedRubrics: string[]
   myFeedHideNegative: boolean
@@ -180,6 +181,7 @@ export const defaultSettings: Settings = {
     reverseActions: false,
   },
   infiniteScroll: true,
+  homeFeed: 'hot',
   language: 'ru',
   myFeedRubrics: [],
   myFeedHideNegative: true,
@@ -208,6 +210,10 @@ const migrate = (settings: any): Settings => {
   }
   if (!Array.isArray(settings?.myFeedRubrics)) {
     settings.myFeedRubrics = []
+  }
+  const validHomeFeeds = new Set(['hot', 'fresh', 'mine'])
+  if (!validHomeFeeds.has(settings?.homeFeed)) {
+    settings.homeFeed = defaultSettings.homeFeed
   }
   if (typeof settings?.myFeedHideNegative !== 'boolean') {
     settings.myFeedHideNegative = defaultSettings.myFeedHideNegative

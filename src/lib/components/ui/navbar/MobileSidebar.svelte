@@ -25,6 +25,7 @@
   import { createEventDispatcher } from 'svelte'
   import { buildRubricsUrl } from '$lib/api/backend'
   import { siteUser, logout as siteLogout } from '$lib/siteAuth'
+  import { userSettings } from '$lib/settings'
 
   const dispatch = createEventDispatcher()
 
@@ -66,7 +67,7 @@
   $: searchParams = new URLSearchParams($page.url.search);
   $: isPostFormRoute = $page.url.pathname.includes('/create/post') || 
                        $page.url.pathname.includes('/edit/post')
-  $: currentFeed = $page.url.searchParams.get('feed') ?? 'hot'
+  $: currentFeed = $page.url.searchParams.get('feed') ?? ($userSettings.homeFeed ?? 'hot')
 </script>
 
 <div style="background: #ffe; color: #b00; font-weight: bold; padding: 8px; text-align: center;">SIDEBAR TEST</div>
