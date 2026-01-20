@@ -1,8 +1,8 @@
 <script lang="ts">
   import { optimizeImageURL } from '$lib/components/lemmy/post/helpers'
   import { findClosestNumber } from '$lib/util.js'
-  import { createAvatar } from '@dicebear/core'
-  import * as initials from '@dicebear/initials'
+  import { browser } from '$app/environment'
+  import { onMount } from 'svelte'
 
   const sizes = [16, 24, 32, 48, 64, 96, 128, 256, 512]
 
@@ -16,6 +16,7 @@
 
   // Базовые классы для всех аватаров
   const baseClasses = "aspect-square object-cover overflow-hidden flex-shrink-0 border border-slate-300 dark:border-zinc-700"
+  let svgMarkup = ''
 
   const optimizeUrl = (
     url: string | undefined,
@@ -55,6 +56,29 @@
       .map(size => `${optimizeImageURL(url, size.width)} ${size.multiplier}`)
       .join(', ')
   }
+
+  const getInitials = (value: string) => {
+    const trimmed = value.trim()
+    if (!trimmed) return '?'
+    const parts = trimmed.split(/\s+/).filter(Boolean)
+    const letters = parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? '')
+    return letters.join('') || trimmed[0]?.toUpperCase() || '?'
+  }
+
+  const fallbackInitials = getInitials(alt || title || '')
+
+  onMount(async () => {
+    if (!browser) return
+    try {
+      const [{ createAvatar }, initials] = await Promise.all([
+        import('@dicebear/core'),
+        import('@dicebear/initials'),
+      ])
+      svgMarkup = createAvatar(initials, { seed: alt || title || fallbackInitials }).toString()
+    } catch (error) {
+      svgMarkup = ''
+    }
+  })
 </script>
 
 {#if url}
@@ -73,8 +97,12 @@
     class="{baseClasses} {circle ? 'rounded-full' : 'rounded-lg'}"
     style="width: {width}px; height: {width}px"
   >
-    {@html createAvatar(initials, {
-      seed: alt,
-    }).toString()}
+    {#if browser && svgMarkup}
+      {@html svgMarkup}
+    {:else}
+      <span class="w-full h-full flex items-center justify-center text-xs font-semibold text-slate-600 dark:text-zinc-200">
+        {fallbackInitials}
+      </span>
+    {/if}
   </div>
 {/if}
