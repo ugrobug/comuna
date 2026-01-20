@@ -1,7 +1,12 @@
+import { browser } from '$app/environment'
 import { env } from '$env/dynamic/public'
 import { slugifyTitle } from '$lib/util/slug'
 
 export const getBackendBaseUrl = (): string => {
+  if (!browser) {
+    const base = env.PUBLIC_INTERNAL_BACKEND_URL || ''
+    return base.replace(/\/$/, '')
+  }
   const base = env.PUBLIC_BACKEND_URL || 'http://localhost:8000'
   return base.replace(/\/$/, '')
 }
@@ -60,14 +65,16 @@ export const buildMyFeedUrl = (
   rubrics?: string[],
   hideNegative: boolean = true
 ): string => {
-  const url = new URL(`${getBackendBaseUrl()}/api/home/my/`)
+  const base = `${getBackendBaseUrl()}/api/home/my/`
+  const params = new URLSearchParams()
   if (rubrics?.length) {
-    url.searchParams.set('rubrics', rubrics.join(','))
+    params.set('rubrics', rubrics.join(','))
   }
   if (!hideNegative) {
-    url.searchParams.set('hide_negative', '0')
+    params.set('hide_negative', '0')
   }
-  return url.toString()
+  const query = params.toString()
+  return query ? `${base}?${query}` : base
 }
 
 export const buildSearchUrl = (

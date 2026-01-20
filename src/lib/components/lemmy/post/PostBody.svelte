@@ -9,7 +9,6 @@
   import { deserializeEditorModel } from '$lib/util'
   
   let DOMPurify: any
-  let parser: any
   let purifyConfigured = false
   
   if (browser) {
@@ -30,12 +29,6 @@
         })
         purifyConfigured = true
       }
-    })
-  } else {
-    // Импорт jsdom для серверной обработки
-    import('jsdom').then(module => {
-      const { JSDOM } = module.default
-      parser = new JSDOM().window.DOMParser
     })
   }
 
