@@ -1,7 +1,6 @@
 <script lang="ts">
   import { defaultSettings, userSettings } from '$lib/settings'
   import Setting from './Setting.svelte'
-  import Sort from '$lib/components/lemmy/dropdowns/Sort.svelte'
   import { TextInput, toast, Modal, TextArea } from 'mono-svelte'
   import {
     ArrowDownTray,
@@ -167,43 +166,6 @@
     </Section>
   {/if}
   <Section id="app" title={$t('settings.app.title')}>
-    <Setting
-      optionClass="flex-[2] max-w-full flex-wrap min-w-0 "
-      itemsClass="flex-col !items-start lg:!items-center lg:flex-row"
-    >
-      <span slot="title">{$t('settings.app.sort.title')}</span>
-      <span slot="description">{$t('settings.app.sort.description')}</span>
-      <div
-        class="flex flex-row flex-wrap
-          flex-1 gap-2 w-full lg:w-max max-w-full lg:self-end"
-      >
-        <div class="max-w-full">
-          <Select bind:value={$userSettings.defaultSort.feed}>
-            <option value="All">{$t('filter.location.all')}</option>
-            <option value="Local">{$t('filter.location.local')}</option>
-            <option value="Subscribed">
-              {$t('filter.location.subscribed')}
-            </option>
-            <option value="Moderator">
-              {$t('filter.location.moderator')}
-            </option>
-          </Select>
-        </div>
-        <div class="max-w-full">
-          <Sort
-            bind:selected={$userSettings.defaultSort.sort}
-            navigate={false}
-          />
-        </div>
-        <div class="max-w-full">
-          <Select bind:value={$userSettings.defaultSort.comments}>
-            <option value="Hot">{$t('filter.sort.hot')}</option>
-            <option value="Top">{$t('filter.sort.top.label')}</option>
-            <option value="New">{$t('filter.sort.new')}</option>
-          </Select>
-        </div>
-      </div>
-    </Setting>
     <ToggleSetting
       supportedPlatforms={{ desktop: true, tablet: false, mobile: false }}
       bind:checked={$userSettings.newWidth}
