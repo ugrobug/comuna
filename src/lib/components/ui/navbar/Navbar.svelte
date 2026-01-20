@@ -15,8 +15,6 @@
     Plus,
     ServerStack,
     Newspaper,
-    Moon,
-    Sun,
     Bars3,
     Fire,
     Clock,
@@ -36,7 +34,6 @@
   import CommandsWrapper from './commands/CommandsWrapper.svelte'
   import { optimizeImageURL } from '$lib/components/lemmy/post/helpers'
   import LoginModal from '$lib/components/auth/LoginModal.svelte'
-  import { colorScheme } from '$lib/ui/colors'
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
   import { env } from '$env/dynamic/public';
@@ -92,10 +89,6 @@
     console.log('sidebarOpen:', sidebarOpen);
   }
 
-  // Функция для переключения темы
-  function toggleTheme() {
-    $colorScheme = $colorScheme === 'dark' ? 'light' : 'dark'
-  }
 
   // Функция для перехода на главную страницу с обновлением
   function goToHome() {
@@ -234,18 +227,6 @@
           on:click={() => window.location.href = '/search'}
         >
           <Icon src={MagnifyingGlass} size="18" class="w-4 h-4 md:w-[18px] md:h-[18px]" />
-        </button>
-        <!-- Переключатель темы -->
-        <button
-          on:click={toggleTheme}
-          class="w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
-          title={$colorScheme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
-        >
-          {#if $colorScheme === 'dark'}
-            <Icon src={Sun} size="18" class="w-4 h-4 md:w-[18px] md:h-[18px]" />
-          {:else}
-            <Icon src={Moon} size="18" class="w-4 h-4 md:w-[18px] md:h-[18px]" />
-          {/if}
         </button>
         <!-- Кнопка создания/входа -->
         {#if $profile?.jwt}

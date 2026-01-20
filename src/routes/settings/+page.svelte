@@ -10,7 +10,7 @@
     Icon,
     ArrowTopRightOnSquare,
   } from 'svelte-hero-icons'
-  import { Button } from 'mono-svelte'
+  import { Button, Select } from 'mono-svelte'
   import Section from './Section.svelte'
   import ToggleSetting from './ToggleSetting.svelte'
   import { t } from '$lib/translations'
@@ -18,6 +18,7 @@
   import { profile } from '$lib/auth'
   import { buildRubricsUrl } from '$lib/api/backend'
   import { onMount } from 'svelte'
+  import { colorScheme, inDarkColorScheme } from '$lib/ui/colors'
   let importing = false
   let importText = ''
   let myFeedRubrics: Array<{ name: string; slug: string }> = []
@@ -50,6 +51,9 @@
 
   onMount(() => {
     loadMyFeedRubrics()
+    if ($colorScheme === 'system') {
+      $colorScheme = inDarkColorScheme() ? 'dark' : 'light'
+    }
   })
 
 </script>
@@ -169,6 +173,14 @@
         {$t('settings.app.theming.link')}
         <Icon src={ArrowRight} size="16" mini slot="suffix" />
       </Button>
+    </Setting>
+    <Setting>
+      <span slot="title">Темная/светлая тема</span>
+      <span slot="description">Выберите светлую или темную тему.</span>
+      <Select bind:value={$colorScheme}>
+        <option value="light">Светлая</option>
+        <option value="dark">Темная</option>
+      </Select>
     </Setting>
   </Section>
 
