@@ -7,27 +7,16 @@
   } from '$lib/components/lemmy/moderation/moderation.js'
   import Avatar from '$lib/components/ui/Avatar.svelte'
   import { site } from '$lib/lemmy.js'
+  import { Button, Menu, MenuButton, MenuDivider } from 'mono-svelte'
   import {
-    Button,
-    Menu,
-    MenuButton,
-    MenuDivider,
-    Modal,
-    Spinner,
-  } from 'mono-svelte'
-  import {
-    GlobeAlt,
     Icon,
     MagnifyingGlass,
     PencilSquare,
     Plus,
     ServerStack,
-    XMark,
-    ArrowLeftOnRectangle,
     Newspaper,
     Moon,
     Sun,
-    UserCircle,
     Bars3,
     Fire,
     Clock,
@@ -46,15 +35,12 @@
   import { t } from '$lib/translations'
   import CommandsWrapper from './commands/CommandsWrapper.svelte'
   import { optimizeImageURL } from '$lib/components/lemmy/post/helpers'
-  import { userSettings } from '$lib/settings'
-  import { dockProps } from '../layout/Shell.svelte'
   import LoginModal from '$lib/components/auth/LoginModal.svelte'
   import { colorScheme } from '$lib/ui/colors'
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
   import { env } from '$env/dynamic/public';
   import SidebarButton from '$lib/components/ui/sidebar/SidebarButton.svelte'
-  import { iconOfLink } from '$lib/components/ui/navbar/link'
   import { Badge } from 'mono-svelte'
   import { onMount } from 'svelte';
   import { siteUser, logout as siteLogout } from '$lib/siteAuth'
@@ -368,29 +354,6 @@
     >
       <!-- Контент меню с отступом сверху -->
       <div class="flex flex-col gap-2 w-full">
-        {#if $userSettings.dock.pins?.length ?? 0 > 0}
-          <div class="flex items-center flex-wrap gap-2 pl-1.5">
-          {#each $userSettings.dock.pins as pin}
-            <SidebarButton
-              icon={iconOfLink(pin.url)}
-              on:click={() => { sidebarOpen = false; goto(pin.url); }}
-              alignment="center"
-              selected={`${$page.url.pathname}${$page.url.search}` == pin.url}
-              on:contextmenu={(e) => {
-                e.preventDefault()
-                $userSettings.dock.pins = $userSettings.dock.pins.toSpliced(
-                  $userSettings.dock.pins.findLastIndex((p) => pin.url == p.url),
-                  1
-                )
-                return false
-              }}
-              size="square-md"
-            ></SidebarButton>
-          {/each}
-        </div>
-        <hr class="border-slate-200 dark:border-zinc-900 my-1" />
-      {/if}
-
       <div class="flex flex-col gap-1">
         <SidebarButton
           icon={Fire}

@@ -1,5 +1,4 @@
 <script lang="ts">
-  import type { IconSource } from 'svelte-hero-icons'
   import {
     ArrowLeftOnRectangle,
     Inbox,
@@ -14,18 +13,10 @@
     PencilSquare,
     ClipboardDocumentList,
   } from 'svelte-hero-icons'
-  import { notifications, profile, profileData } from '$lib/auth.js'
-  import { userSettings } from '$lib/settings.js'
+  import { notifications, profile } from '$lib/auth.js'
   import SidebarButton from '$lib/components/ui/sidebar/SidebarButton.svelte'
-  import ProfileButton from '$lib/components/ui/sidebar/ProfileButton.svelte'
-  import { flip } from 'svelte/animate'
-  import { expoOut } from 'svelte/easing'
   import { Badge } from 'mono-svelte'
-  import Expandable from '$lib/components/ui/Expandable.svelte'
-  import EndPlaceholder from '../EndPlaceholder.svelte'
   import { t } from '$lib/translations'
-  import { iconOfLink } from './link'
-  import { goto } from '$app/navigation'
   import { page } from '$app/stores'
   import { onMount } from 'svelte'
   import { Icon } from 'svelte-hero-icons'
@@ -109,32 +100,6 @@
       </SidebarButton>
     {/if}
   </div>
-  {#if $userSettings.dock.pins?.length ?? 0 > 0}
-    <div class="flex items-center flex-wrap gap-2 pl-1.5">
-      {#each $userSettings.dock.pins as pin}
-        <SidebarButton
-          icon={iconOfLink(pin.url)}
-          on:click={() => {
-            goto(pin.url);
-            handleNavigation();
-          }}
-          alignment="center"
-          selected={`${$page.url.pathname}${$page.url.search}` == pin.url}
-          on:contextmenu={(e) => {
-            e.preventDefault()
-            $userSettings.dock.pins = $userSettings.dock.pins.toSpliced(
-              $userSettings.dock.pins.findLastIndex((p) => pin.url == p.url),
-              1
-            )
-            return false
-          }}
-          size="square-md"
-        ></SidebarButton>
-      {/each}
-    </div>
-    <hr class="border-slate-200 dark:border-zinc-900 my-1" />
-  {/if}
-
   <div class="flex flex-col gap-1">
     <SidebarButton
       icon={Fire}

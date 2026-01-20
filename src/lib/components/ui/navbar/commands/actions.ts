@@ -6,7 +6,6 @@ import {
   isAdmin,
 } from '$lib/components/lemmy/moderation/moderation'
 import { resumables, type ResumableItem } from '$lib/lemmy/item'
-import { userSettings } from '$lib/settings'
 import { t } from '$lib/translations'
 import { colorScheme, theme, themeData, type ThemeData } from '$lib/ui/colors'
 import { fullCommunityName } from '$lib/util'
@@ -24,7 +23,6 @@ import {
   ShieldCheck,
   UserCircle,
   UserGroup,
-  ViewColumns,
   type IconSource,
   PaintBrush,
   ComputerDesktop,
@@ -328,56 +326,6 @@ export function getGroups(
           href: '/settings',
           name: t.get('nav.menu.settings'),
           icon: Cog6Tooth,
-        },
-        {
-          name: t.get('nav.commands.setView'),
-          icon: ViewColumns,
-          subActions: [
-            {
-              name: t.get('nav.commands.setViewTo', {
-                default: t.get('filter.view.compact'),
-              }),
-              icon: ViewColumns,
-              handle: () =>
-                userSettings.update((s) => ({
-                  ...s,
-                  view: 'compact',
-                })),
-            },
-            {
-              name: t.get('nav.commands.setViewTo', {
-                default: t.get('filter.view.cozy'),
-              }),
-              icon: ViewColumns,
-              handle: () =>
-                userSettings.update((s) => ({
-                  ...s,
-                  view: 'cozy',
-                })),
-            },
-            {
-              name: t.get('nav.commands.setViewTo', {
-                default: t.get('filter.view.list'),
-              }),
-              icon: ViewColumns,
-              handle: () =>
-                userSettings.update((s) => ({
-                  ...s,
-                  view: 'list',
-                })),
-            },
-            {
-              name: t.get('nav.commands.setViewTo', {
-                default: t.get('filter.view.legacy'),
-              }),
-              icon: ViewColumns,
-              handle: () =>
-                userSettings.update((s) => ({
-                  ...s,
-                  view: 'card',
-                })),
-            },
-          ],
         },
         {
           name: t.get('nav.commands.setColor'),

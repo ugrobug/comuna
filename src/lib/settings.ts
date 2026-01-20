@@ -112,7 +112,7 @@ interface Settings {
 export const defaultSettings: Settings = {
   settingsVer: 3,
   expandableImages: toBool(env.PUBLIC_EXPANDABLE_IMAGES) ?? true,
-  markReadPosts: toBool(env.PUBLIC_MARK_READ_POSTS) ?? true,
+  markReadPosts: false,
   showInstances: {
     user: toBool(env.PUBLIC_SHOW_INSTANCES_USER) ?? true,
     community: toBool(env.PUBLIC_SHOW_INSTANCES_COMMUNITY) ?? true,
@@ -138,7 +138,7 @@ export const defaultSettings: Settings = {
     accounts: true,
   },
   displayNames: toBool(env.PUBLIC_DISPLAY_NAMES) ?? true,
-  nsfwBlur: toBool(env.PUBLIC_NSFW_BLUR) ?? true,
+  nsfwBlur: false,
   moderation: {
     presets: [
       {
@@ -147,7 +147,7 @@ export const defaultSettings: Settings = {
       },
     ],
   },
-  randomPlaceholders: toBool(env.PUBLIC_RANDOM_PLACEHOLDERS) ?? true,
+  randomPlaceholders: false,
   modlogCardView: toBool(env.PUBLIC_MODLOG_CARD_VIEW) ?? undefined,
   debugInfo: toBool(env.PUBLIC_DEBUG_INFO) ?? false,
   expandImages: toBool(env.PUBLIC_EXPAND_IMAGES) ?? true,
@@ -159,7 +159,7 @@ export const defaultSettings: Settings = {
   newWidth: toBool(env.PUBLIC_LIMIT_LAYOUT_WIDTH) ?? true,
   markPostsAsRead: toBool(env.PUBLIC_MARK_POSTS_AS_READ) ?? true,
   openLinksInNewTab: false,
-  crosspostOriginalLink: true,
+  crosspostOriginalLink: false,
   embeds: {
     clickToView: true,
     youtube: 'youtube',
@@ -167,8 +167,8 @@ export const defaultSettings: Settings = {
     piped: undefined,
   },
   dock: {
-    noGap: toBool(env.PUBLIC_DOCK_PANEL) ?? null,
-    top: toBool(env.PUBLIC_DOCK_TOP) ?? null,
+    noGap: null,
+    top: null,
     pins: [],
     paletteHotkey: '/',
   },
@@ -176,13 +176,13 @@ export const defaultSettings: Settings = {
     deduplicateEmbed: toBool(env.PUBLIC_DEDUPLICATE_EMBED) ?? true,
     showHidden: false,
     noVirtualize: false,
-    reverseActions: toBool(env.PUBLIC_REVERSE_ACTIONS) ?? false,
+    reverseActions: false,
   },
   infiniteScroll: true,
   language: 'ru',
   myFeedRubrics: [],
   useRtl: false,
-  translator: env.PUBLIC_TRANSLATOR ?? undefined,
+  translator: undefined,
   parseTags: true,
   tagRules: {
     cw: 'blur',
@@ -208,6 +208,25 @@ const migrate = (settings: any): Settings => {
     settings.myFeedRubrics = []
   }
   settings.language = 'ru'
+  settings.dock = { ...defaultSettings.dock, pins: [] }
+  settings.view = defaultSettings.view
+  settings.leftAlign = defaultSettings.leftAlign
+  settings.randomPlaceholders = defaultSettings.randomPlaceholders
+  settings.expandImages = defaultSettings.expandImages
+  settings.expandableImages = defaultSettings.expandableImages
+  settings.nsfwBlur = defaultSettings.nsfwBlur
+  settings.markReadPosts = defaultSettings.markReadPosts
+  settings.crosspostOriginalLink = defaultSettings.crosspostOriginalLink
+  settings.infiniteScroll = defaultSettings.infiniteScroll
+  settings.translator = defaultSettings.translator
+  settings.hidePosts = { ...defaultSettings.hidePosts }
+  settings.posts = {
+    ...defaultSettings.posts,
+    ...(settings.posts ?? {}),
+    deduplicateEmbed: defaultSettings.posts.deduplicateEmbed,
+    showHidden: defaultSettings.posts.showHidden,
+    reverseActions: defaultSettings.posts.reverseActions,
+  }
 
   return settings
 }
