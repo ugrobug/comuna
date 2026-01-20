@@ -210,6 +210,8 @@ const migrate = (settings: any): Settings => {
   settings.language = 'ru'
   settings.dock = { ...defaultSettings.dock, pins: [] }
   settings.defaultSort = { ...defaultSettings.defaultSort }
+  settings.showInstances = { ...defaultSettings.showInstances }
+  settings.displayNames = defaultSettings.displayNames
   settings.view = defaultSettings.view
   settings.leftAlign = defaultSettings.leftAlign
   settings.randomPlaceholders = defaultSettings.randomPlaceholders

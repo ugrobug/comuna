@@ -10,7 +10,7 @@
     Icon,
     ArrowTopRightOnSquare,
   } from 'svelte-hero-icons'
-  import { Button, Checkbox } from 'mono-svelte'
+  import { Button } from 'mono-svelte'
   import Section from './Section.svelte'
   import ToggleSetting from './ToggleSetting.svelte'
   import { t } from '$lib/translations'
@@ -135,10 +135,6 @@
     <Icon src={ArrowTopRightOnSquare} size="14" micro />
     {$t('settings.app.title')}
   </Button>
-  <Button href="#lemmy" size="sm" class="text-xs" rounding="pill">
-    <Icon src={ArrowTopRightOnSquare} size="14" micro />
-    {$t('settings.lemmy.title')}
-  </Button>
 </div>
 
 <div
@@ -205,29 +201,5 @@
         <span class="text-sm text-slate-500">Рубрики пока недоступны.</span>
       {/if}
     </Setting>
-  </Section>
-  <Section id="lemmy" title={$t('settings.lemmy.title')}>
-    <Setting>
-      <span slot="title">{$t('settings.lemmy.instances.title')}</span>
-      <span slot="description">
-        {$t('settings.lemmy.instances.description')}
-      </span>
-      <div class="flex flex-row flex-wrap items-center gap-4">
-        <Checkbox bind:checked={$userSettings.showInstances.user}>
-          {$t('content.users')}
-        </Checkbox>
-        <Checkbox bind:checked={$userSettings.showInstances.comments}>
-          {$t('content.comments')}
-        </Checkbox>
-        <Checkbox bind:checked={$userSettings.showInstances.community}>
-          {$t('content.communities')}
-        </Checkbox>
-      </div>
-    </Setting>
-    <ToggleSetting
-      bind:checked={$userSettings.displayNames}
-      title={$t('settings.app.displayName.title')}
-      description={$t('settings.app.displayName.description')}
-    />
   </Section>
 </div>
