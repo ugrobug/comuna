@@ -74,6 +74,7 @@
   $: searchParams = new URLSearchParams($page.url.search);
   $: isPostFormRoute = $page.url.pathname.includes('/create/post') || 
                        $page.url.pathname.includes('/edit/post')
+  $: currentFeed = $page.url.searchParams.get('feed') ?? 'hot'
 </script>
 
 <div style="background: #ffe; color: #b00; font-weight: bold; padding: 8px; text-align: center;">SIDEBAR TEST</div>
@@ -130,7 +131,6 @@
     <hr class="border-slate-200 dark:border-zinc-900 my-1" />
   {/if}
 
-  {@const currentFeed = $page.url.searchParams.get('feed') ?? 'hot'}
   <div class="flex flex-col gap-1">
     <SidebarButton
       icon={Fire}

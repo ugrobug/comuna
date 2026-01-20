@@ -146,6 +146,8 @@
     updateRandomTagline();
   }
 
+  $: currentFeed = $page.url.searchParams.get('feed') ?? 'hot'
+
   // Принудительное обновление при монтировании компонента
   onMount(() => {
     if ($site) {
@@ -386,7 +388,6 @@
         <hr class="border-slate-200 dark:border-zinc-900 my-1" />
       {/if}
 
-      {@const currentFeed = $page.url.searchParams.get('feed') ?? 'hot'}
       <div class="flex flex-col gap-1">
         <SidebarButton
           icon={Fire}
