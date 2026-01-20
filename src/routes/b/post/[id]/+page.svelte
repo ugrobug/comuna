@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { env } from '$env/dynamic/public'
+  import { page } from '$app/stores'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import Post from '$lib/components/lemmy/post/Post.svelte'
   import PostComments from '$lib/components/site/PostComments.svelte'
@@ -7,7 +9,69 @@
   export let data
 
   const postView = backendPostToPostView(data.post)
+
+  const stripHtml = (value: string) =>
+    value.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+
+  const extractFirstImage = (value: string) => {
+    const match = value.match(/<img[^>]+src=["']([^"']+)["']/i)
+    return match ? match[1] : null
+  }
+
+  const buildDescription = (value: string, max = 200) => {
+    const text = stripHtml(value)
+    if (!text) return ''
+    if (text.length <= max) return text
+    return `${text.slice(0, max).trim()}…`
+  }
+
+  $: siteBaseUrl = (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '')
+  $: canonicalUrl = `${siteBaseUrl}${$page.url.pathname}`
+  $: authorName = data.post?.author?.title || data.post?.author?.username || 'Автор'
+  $: authorUrl = data.post?.author?.username
+    ? `${siteBaseUrl}/${data.post.author.username}`
+    : undefined
+  $: firstImage = extractFirstImage(data.post?.content || '')
+  $: postDescription = buildDescription(data.post?.content || '')
+  $: articleSchema =
+    data.post
+      ? JSON.stringify({
+          '@context': 'https://schema.org',
+          '@type': 'BlogPosting',
+          headline: data.post.title,
+          name: data.post.title,
+          description: postDescription || undefined,
+          url: canonicalUrl,
+          mainEntityOfPage: { '@type': 'WebPage', '@id': canonicalUrl },
+          datePublished: data.post.created_at,
+          dateModified: data.post.created_at,
+          inLanguage: 'ru-RU',
+          articleSection: data.post.rubric || undefined,
+          author: {
+            '@type': 'Person',
+            name: authorName,
+            url: authorUrl,
+            sameAs: data.post.author?.channel_url || undefined,
+          },
+          publisher: {
+            '@type': 'Organization',
+            name: env.PUBLIC_SITE_TITLE || 'Comuna',
+            url: siteBaseUrl,
+            logo: {
+              '@type': 'ImageObject',
+              url: `${siteBaseUrl}/favicon_120x120.svg`,
+            },
+          },
+          image: firstImage ? [firstImage] : undefined,
+        })
+      : ''
 </script>
+
+<svelte:head>
+  {#if articleSchema}
+    <script type="application/ld+json">{articleSchema}</script>
+  {/if}
+</svelte:head>
 
 <div class="flex flex-col gap-6 max-w-3xl">
   <Header pageHeader>

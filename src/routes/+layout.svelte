@@ -86,6 +86,35 @@ import RecentComments from '$lib/components/ui/sidebar/RecentComments.svelte'
   $: defaultDescription = env.PUBLIC_SITE_DESCRIPTION || 'Публикуем лучшие посты из Telegram-каналов.'
   $: siteTitle = $site?.site_view?.site?.name || defaultTitle
   $: siteDescription = $site?.site_view?.site?.description || defaultDescription
+  $: siteSchema = JSON.stringify({
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'Organization',
+        '@id': `${siteBaseUrl}#organization`,
+        name: siteTitle,
+        url: siteBaseUrl,
+        logo: {
+          '@type': 'ImageObject',
+          url: `${siteBaseUrl}/favicon_120x120.svg`,
+        },
+      },
+      {
+        '@type': 'WebSite',
+        '@id': `${siteBaseUrl}#website`,
+        url: siteBaseUrl,
+        name: siteTitle,
+        description: siteDescription,
+        publisher: { '@id': `${siteBaseUrl}#organization` },
+        inLanguage: 'ru-RU',
+        potentialAction: {
+          '@type': 'SearchAction',
+          target: `${siteBaseUrl}/search?q={search_term_string}`,
+          'query-input': 'required name=search_term_string',
+        },
+      },
+    ],
+  })
 
   onMount(() => {
     if (browser) {
@@ -138,6 +167,8 @@ import RecentComments from '$lib/components/ui/sidebar/RecentComments.svelte'
   <!-- Добавляем alternate для языковых версий, если они есть -->
   <link rel="alternate" hreflang="ru" href={canonicalUrl} />
   <link rel="alternate" hreflang="x-default" href={canonicalUrl} />
+
+  <script type="application/ld+json">{siteSchema}</script>
 </svelte:head>
 
 <Button
