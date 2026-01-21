@@ -32,7 +32,7 @@
   let lastPostsRef = data.posts
   let lastFeedType = feedType
   let lastMyFeedKey = ''
-  let rubrics: Array<{ name: string; slug: string; icon_url?: string | null }> = []
+  let rubrics: Array<{ name: string; slug: string; icon_url?: string | null; icon_thumb_url?: string | null }> = []
   let rubricsLoading = false
   let isEditingMyFeed = false
   let draftRubrics: string[] = []

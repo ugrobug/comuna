@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+from io import BytesIO
+import os
+
 from django.db import models
 from django.contrib.auth import get_user_model
+from django.core.files.base import ContentFile
+from PIL import Image, ImageOps
 
 User = get_user_model()
 
@@ -35,9 +40,12 @@ class Author(models.Model):
 
 
 class Rubric(models.Model):
+    ICON_THUMB_SIZE = (64, 64)
+
     name = models.CharField(max_length=120, unique=True)
     slug = models.SlugField(max_length=120, unique=True)
     icon_url = models.ImageField(upload_to="rubrics/icons/", blank=True)
+    icon_thumb = models.ImageField(upload_to="rubrics/icons/thumbs/", blank=True)
     cover_image_url = models.ImageField(upload_to="rubrics/covers/", blank=True)
     description = models.TextField(blank=True)
     subscribe_url = models.URLField(max_length=255, blank=True)
@@ -52,6 +60,77 @@ class Rubric(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+    def _build_icon_thumb(self) -> tuple[ContentFile, str] | None:
+        if not self.icon_url:
+            return None
+        try:
+            self.icon_url.open("rb")
+            with Image.open(self.icon_url) as img:
+                img = ImageOps.exif_transpose(img)
+                resample = getattr(Image, "Resampling", Image).LANCZOS
+                img = ImageOps.fit(img, self.ICON_THUMB_SIZE, resample)
+                has_alpha = img.mode in ("RGBA", "LA") or (
+                    img.mode == "P" and "transparency" in img.info
+                )
+                if has_alpha:
+                    img = img.convert("RGBA")
+                    fmt = "PNG"
+                    ext = "png"
+                    save_kwargs = {"optimize": True}
+                else:
+                    img = img.convert("RGB")
+                    fmt = "JPEG"
+                    ext = "jpg"
+                    save_kwargs = {"quality": 85, "optimize": True}
+                buffer = BytesIO()
+                img.save(buffer, fmt, **save_kwargs)
+                return ContentFile(buffer.getvalue()), ext
+        except Exception:
+            return None
+        finally:
+            try:
+                self.icon_url.close()
+            except Exception:
+                pass
+
+    def _generate_icon_thumb(self) -> None:
+        result = self._build_icon_thumb()
+        if not result:
+            return
+        content, ext = result
+        base = os.path.splitext(os.path.basename(self.icon_url.name or ""))[0] or f"rubric_{self.pk}"
+        filename = f"{base}_64x64.{ext}"
+        if self.icon_thumb:
+            self.icon_thumb.delete(save=False)
+        self.icon_thumb.save(filename, content, save=False)
+        self._skip_icon_thumb = True
+        super().save(update_fields=["icon_thumb"])
+        self._skip_icon_thumb = False
+
+    def save(self, *args, **kwargs) -> None:
+        if getattr(self, "_skip_icon_thumb", False):
+            super().save(*args, **kwargs)
+            return
+
+        icon_changed = False
+        if self.pk:
+            previous = Rubric.objects.filter(pk=self.pk).only("icon_url").first()
+            if previous and previous.icon_url.name != self.icon_url.name:
+                icon_changed = True
+        else:
+            icon_changed = bool(self.icon_url)
+
+        super().save(*args, **kwargs)
+
+        if self.icon_url:
+            if icon_changed or not self.icon_thumb:
+                self._generate_icon_thumb()
+        elif self.icon_thumb:
+            self.icon_thumb.delete(save=False)
+            self._skip_icon_thumb = True
+            super().save(update_fields=["icon_thumb"])
+            self._skip_icon_thumb = False
 
 
 class Post(models.Model):

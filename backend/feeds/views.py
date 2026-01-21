@@ -178,6 +178,12 @@ def _author_avatar_url(request: HttpRequest | None, author: Author) -> str | Non
     return _media_url(request, author.avatar_image) or author.avatar_url
 
 
+def _rubric_icon_url(request: HttpRequest | None, rubric: Rubric | None) -> str | None:
+    if not rubric:
+        return None
+    return _media_url(request, rubric.icon_thumb) or _media_url(request, rubric.icon_url)
+
+
 def _format_lastmod(value) -> str | None:
     if not value:
         return None
@@ -1545,7 +1551,7 @@ def _serialize_post_for_user(request: HttpRequest, post: Post) -> dict:
         "publish_at": post.publish_at.isoformat() if post.publish_at else None,
         "rubric": rubric.name if rubric else None,
         "rubric_slug": rubric.slug if rubric else None,
-        "rubric_icon_url": _media_url(request, rubric.icon_url) if rubric else None,
+        "rubric_icon_url": _rubric_icon_url(request, rubric),
         "author": {
             "username": post.author.username,
             "title": post.author.title,
@@ -2088,7 +2094,7 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
                 "title": post.title,
                 "rubric": rubric.name if rubric else None,
                 "rubric_slug": rubric.slug if rubric else None,
-                "rubric_icon_url": _media_url(request, rubric.icon_url) if rubric else None,
+                "rubric_icon_url": _rubric_icon_url(request, rubric),
                 "content": post.content,
                 "source_url": post.source_url,
                 "channel_url": author_channel_url or post.channel_url,
@@ -2131,6 +2137,7 @@ def rubrics_list(request: HttpRequest) -> HttpResponse:
             "name": rubric.name,
             "slug": rubric.slug,
             "icon_url": _media_url(request, rubric.icon_url),
+            "icon_thumb_url": _media_url(request, rubric.icon_thumb),
             "cover_image_url": _media_url(request, rubric.cover_image_url),
             "description": rubric.description,
             "subscribe_url": rubric.subscribe_url,
@@ -2179,7 +2186,7 @@ def rubric_posts(request: HttpRequest, slug: str) -> HttpResponse:
                 "title": post.title,
                 "rubric": rubric.name,
                 "rubric_slug": rubric.slug,
-                "rubric_icon_url": _media_url(request, rubric.icon_url),
+                "rubric_icon_url": _rubric_icon_url(request, rubric),
                 "content": post.content,
                 "source_url": post.source_url,
                 "channel_url": author_channel_url or post.channel_url,
@@ -2202,6 +2209,7 @@ def rubric_posts(request: HttpRequest, slug: str) -> HttpResponse:
                 "name": rubric.name,
                 "slug": rubric.slug,
                 "icon_url": _media_url(request, rubric.icon_url),
+                "icon_thumb_url": _media_url(request, rubric.icon_thumb),
                 "cover_image_url": _media_url(request, rubric.cover_image_url),
                 "description": rubric.description,
                 "subscribe_url": rubric.subscribe_url,
@@ -2233,7 +2241,7 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
                 "title": post.title,
                 "rubric": rubric.name if rubric else None,
                 "rubric_slug": rubric.slug if rubric else None,
-                "rubric_icon_url": _media_url(request, rubric.icon_url) if rubric else None,
+                "rubric_icon_url": _rubric_icon_url(request, rubric),
                 "content": post.content,
                 "source_url": post.source_url,
                 "channel_url": author_channel_url or post.channel_url,
@@ -2318,7 +2326,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
                 "title": post.title,
                 "rubric": rubric.name if rubric else None,
                 "rubric_slug": rubric.slug if rubric else None,
-                "rubric_icon_url": _media_url(request, rubric.icon_url) if rubric else None,
+                "rubric_icon_url": _rubric_icon_url(request, rubric),
                 "content": post.content,
                 "source_url": post.source_url,
                 "channel_url": author_channel_url or post.channel_url,
@@ -2377,7 +2385,7 @@ def fresh_feed(request: HttpRequest) -> HttpResponse:
                 "title": post.title,
                 "rubric": rubric.name if rubric else None,
                 "rubric_slug": rubric.slug if rubric else None,
-                "rubric_icon_url": _media_url(request, rubric.icon_url) if rubric else None,
+                "rubric_icon_url": _rubric_icon_url(request, rubric),
                 "content": post.content,
                 "source_url": post.source_url,
                 "channel_url": author_channel_url or post.channel_url,
@@ -2455,7 +2463,7 @@ def my_feed(request: HttpRequest) -> HttpResponse:
                 "title": post.title,
                 "rubric": rubric.name if rubric else None,
                 "rubric_slug": rubric.slug if rubric else None,
-                "rubric_icon_url": _media_url(request, rubric.icon_url) if rubric else None,
+                "rubric_icon_url": _rubric_icon_url(request, rubric),
                 "content": post.content,
                 "source_url": post.source_url,
                 "channel_url": author_channel_url or post.channel_url,
@@ -2585,7 +2593,7 @@ def search_content(request: HttpRequest) -> HttpResponse:
                     "title": post.title,
                     "rubric": rubric.name if rubric else None,
                     "rubric_slug": rubric.slug if rubric else None,
-                    "rubric_icon_url": _media_url(request, rubric.icon_url)
+                    "rubric_icon_url": _rubric_icon_url(request, rubric)
                     if rubric
                     else None,
                     "content": post.content,

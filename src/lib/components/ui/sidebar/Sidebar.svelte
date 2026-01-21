@@ -60,7 +60,7 @@
   let showFederated = false; // Флаг показа федерациях сообществ
 
   let loginModalOpen = false;
-  let rubrics: Array<{ name: string; slug: string }> = [];
+  let rubrics: Array<{ name: string; slug: string; icon_url?: string | null; icon_thumb_url?: string | null }> = [];
 
   function handleAuthRequired(e: MouseEvent) {
     if (!$profile?.jwt) {
@@ -234,8 +234,8 @@
       {#each rubrics as rubric}
         <SidebarButton href={`/rubrics/${rubric.slug}/posts`}>
           <div slot="icon" class="w-7 h-7 rounded-full overflow-hidden bg-slate-100 dark:bg-zinc-800 flex items-center justify-center">
-            {#if rubric.icon_url}
-              <img src={rubric.icon_url} alt={rubric.name} class="w-full h-full object-cover" />
+            {#if rubric.icon_thumb_url || rubric.icon_url}
+              <img src={rubric.icon_thumb_url ?? rubric.icon_url} alt={rubric.name} class="w-full h-full object-cover" />
             {:else}
               <Icon src={DocumentText} size="20" />
             {/if}
