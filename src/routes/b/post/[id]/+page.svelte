@@ -25,6 +25,12 @@
     return `${text.slice(0, max).trim()}…`
   }
 
+  const toJsonLd = (value: unknown) =>
+    JSON.stringify(value)
+      .replace(/</g, '\\u003c')
+      .replace(/>/g, '\\u003e')
+      .replace(/&/g, '\\u0026')
+
   $: siteBaseUrl = (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '')
   $: canonicalUrl = `${siteBaseUrl}${$page.url.pathname}`
   $: authorName = data.post?.author?.title || data.post?.author?.username || 'Автор'
@@ -35,7 +41,7 @@
   $: postDescription = buildDescription(data.post?.content || '')
   $: articleSchema =
     data.post
-      ? JSON.stringify({
+      ? toJsonLd({
           '@context': 'https://schema.org',
           '@type': 'BlogPosting',
           headline: data.post.title,
@@ -69,7 +75,7 @@
 
 <svelte:head>
   {#if articleSchema}
-    <script type="application/ld+json">{articleSchema}</script>
+    <script type="application/ld+json">{@html articleSchema}</script>
   {/if}
 </svelte:head>
 

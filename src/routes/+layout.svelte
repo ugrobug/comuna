@@ -86,7 +86,13 @@ import RecentComments from '$lib/components/ui/sidebar/RecentComments.svelte'
   $: defaultDescription = env.PUBLIC_SITE_DESCRIPTION || 'Публикуем лучшие посты из Telegram-каналов.'
   $: siteTitle = $site?.site_view?.site?.name || defaultTitle
   $: siteDescription = $site?.site_view?.site?.description || defaultDescription
-  $: siteSchema = JSON.stringify({
+  const toJsonLd = (value: unknown) =>
+    JSON.stringify(value)
+      .replace(/</g, '\\u003c')
+      .replace(/>/g, '\\u003e')
+      .replace(/&/g, '\\u0026')
+
+  $: siteSchema = toJsonLd({
     '@context': 'https://schema.org',
     '@graph': [
       {
@@ -168,7 +174,7 @@ import RecentComments from '$lib/components/ui/sidebar/RecentComments.svelte'
   <link rel="alternate" hreflang="ru" href={canonicalUrl} />
   <link rel="alternate" hreflang="x-default" href={canonicalUrl} />
 
-  <script type="application/ld+json">{siteSchema}</script>
+  <script type="application/ld+json">{@html siteSchema}</script>
 </svelte:head>
 
 <Button
