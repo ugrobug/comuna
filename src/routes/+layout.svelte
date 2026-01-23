@@ -92,7 +92,7 @@ import RecentComments from '$lib/components/ui/sidebar/RecentComments.svelte'
       .replace(/>/g, '\\u003e')
       .replace(/&/g, '\\u0026')
 
-  $: siteSchema = toJsonLd({
+  $: siteSchemaJson = toJsonLd({
     '@context': 'https://schema.org',
     '@graph': [
       {
@@ -121,6 +121,7 @@ import RecentComments from '$lib/components/ui/sidebar/RecentComments.svelte'
       },
     ],
   })
+  $: siteSchemaTag = `<script type="application/ld+json">${siteSchemaJson}</script>`
 
   onMount(() => {
     if (browser) {
@@ -174,7 +175,7 @@ import RecentComments from '$lib/components/ui/sidebar/RecentComments.svelte'
   <link rel="alternate" hreflang="ru" href={canonicalUrl} />
   <link rel="alternate" hreflang="x-default" href={canonicalUrl} />
 
-  <script type="application/ld+json">{@html siteSchema}</script>
+  {@html siteSchemaTag}
 </svelte:head>
 
 <Button

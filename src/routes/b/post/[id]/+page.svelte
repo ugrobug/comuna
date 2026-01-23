@@ -71,12 +71,13 @@
           image: firstImage ? [firstImage] : undefined,
         })
       : ''
+  $: articleSchemaTag = articleSchema
+    ? `<script type="application/ld+json">${articleSchema}</script>`
+    : ''
 </script>
 
 <svelte:head>
-  {#if articleSchema}
-    <script type="application/ld+json">{@html articleSchema}</script>
-  {/if}
+  {@html articleSchemaTag}
 </svelte:head>
 
 <div class="flex flex-col gap-6 max-w-3xl">
