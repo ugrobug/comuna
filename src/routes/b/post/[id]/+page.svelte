@@ -31,6 +31,9 @@
       .replace(/>/g, '\\u003e')
       .replace(/&/g, '\\u0026')
 
+  const buildJsonLdTag = (json: string) =>
+    json ? `<script type="application/ld+json">${json}</` + `script>` : ''
+
   $: siteBaseUrl = (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '')
   $: canonicalUrl = `${siteBaseUrl}${$page.url.pathname}`
   $: authorName = data.post?.author?.title || data.post?.author?.username || 'Автор'
@@ -71,9 +74,7 @@
           image: firstImage ? [firstImage] : undefined,
         })
       : ''
-  $: articleSchemaTag = articleSchema
-    ? `<script type="application/ld+json">${articleSchema}</script>`
-    : ''
+  $: articleSchemaTag = buildJsonLdTag(articleSchema)
 </script>
 
 <svelte:head>

@@ -92,6 +92,9 @@ import RecentComments from '$lib/components/ui/sidebar/RecentComments.svelte'
       .replace(/>/g, '\\u003e')
       .replace(/&/g, '\\u0026')
 
+  const buildJsonLdTag = (json: string) =>
+    json ? `<script type="application/ld+json">${json}</` + `script>` : ''
+
   $: siteSchemaJson = toJsonLd({
     '@context': 'https://schema.org',
     '@graph': [
@@ -121,7 +124,7 @@ import RecentComments from '$lib/components/ui/sidebar/RecentComments.svelte'
       },
     ],
   })
-  $: siteSchemaTag = `<script type="application/ld+json">${siteSchemaJson}</script>`
+  $: siteSchemaTag = buildJsonLdTag(siteSchemaJson)
 
   onMount(() => {
     if (browser) {
