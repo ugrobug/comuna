@@ -127,6 +127,59 @@ export const register = async (payload: {
   return data.user as SiteUser
 }
 
+export type TelegramAuthPayload = {
+  id: number
+  first_name?: string
+  last_name?: string
+  username?: string
+  photo_url?: string
+  auth_date: number
+  hash: string
+}
+
+export const loginTelegram = async (payload: TelegramAuthPayload) => {
+  const response = await fetch(buildUrl('/api/auth/telegram/'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+
+  const data = await response.json()
+  if (!response.ok || !data?.token) {
+    throw new Error(data?.error || 'Не удалось войти через Telegram')
+  }
+
+  saveToken(data.token)
+  siteToken.set(data.token)
+  siteUser.set(data.user)
+  return data.user as SiteUser
+}
+
+export type VkAuthPayload = {
+  access_token: string
+  expires_in?: number
+  user_id?: number
+  id_token?: string
+}
+
+export const loginVK = async (payload: VkAuthPayload) => {
+  const response = await fetch(buildUrl('/api/auth/vk/'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+
+  const data = await response.json()
+  if (!response.ok || !data?.token) {
+    throw new Error(data?.error || 'Не удалось войти через VK')
+  }
+
+  saveToken(data.token)
+  siteToken.set(data.token)
+  siteUser.set(data.user)
+  return data.user as SiteUser
+}
+
 export const logout = () => {
   saveToken(null)
   siteToken.set(null)
@@ -213,6 +266,7 @@ export const createUserPost = async (payload: {
   title: string
   content: string
   author_username?: string
+  rubric_slug?: string
 }) => {
   const token = get(siteToken)
   if (!token) {

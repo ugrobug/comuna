@@ -4,15 +4,27 @@
   "start_url": "/",
   "icons": [
     {
-      "src": "favicon_120x120.svg",
-      "type": "image/svg+xml",
-      "sizes": "120x120",
+      "src": "pwa-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
       "purpose": "any"
     },
     {
-      "src": "favicon_120x120.svg",
-      "type": "image/svg+xml",
-      "sizes": "120x120",
+      "src": "pwa-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any"
+    },
+    {
+      "src": "pwa-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "maskable"
+    },
+    {
+      "src": "pwa-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
       "purpose": "maskable"
     }
   ],

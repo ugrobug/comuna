@@ -26,11 +26,13 @@ from feeds.views import (
     sitemap_rubrics_xml,
     sitemap_static_xml,
     sitemap_xml,
+    telegram_auth,
     telegram_webhook,
     top_authors_month,
     user_post_update,
     user_posts,
     user_upload,
+    vk_auth,
 )
 
 urlpatterns = [
@@ -51,6 +53,8 @@ urlpatterns = [
     path("api/authors/top-month/", top_authors_month, name="top-authors-month"),
     path("api/auth/register/", register_user, name="auth-register"),
     path("api/auth/login/", login_user, name="auth-login"),
+    path("api/auth/telegram/", telegram_auth, name="auth-telegram"),
+    path("api/auth/vk/", vk_auth, name="auth-vk"),
     path("api/auth/me/", auth_me, name="auth-me"),
     path("api/auth/verification-code/", author_verification_code, name="auth-verification-code"),
     path("api/auth/posts/", user_posts, name="auth-posts"),

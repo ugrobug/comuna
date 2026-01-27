@@ -264,11 +264,6 @@ export function getGroups(
               icon: ArrowRightOnRectangle,
             },
             {
-              href: '/signup',
-              name: t.get('account.signup'),
-              icon: Identification,
-            },
-            {
               href: '/login/guest',
               name: t.get('account.addGuest'),
               icon: Plus,
@@ -284,11 +279,6 @@ export function getGroups(
               href: '/login',
               name: t.get('account.login'),
               icon: ArrowRightOnRectangle,
-            },
-            {
-              href: '/signup',
-              name: t.get('account.signup'),
-              icon: Identification,
             },
             {
               href: '/login/guest',

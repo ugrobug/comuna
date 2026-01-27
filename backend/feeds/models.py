@@ -246,3 +246,31 @@ class AuthorVerificationCode(models.Model):
 
     def __str__(self) -> str:
         return f"{self.user_id}:{self.code}"
+
+
+class TelegramAccount(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="telegram_account")
+    telegram_id = models.BigIntegerField(unique=True)
+    username = models.CharField(max_length=255, blank=True)
+    first_name = models.CharField(max_length=255, blank=True)
+    last_name = models.CharField(max_length=255, blank=True)
+    avatar_url = models.URLField(max_length=500, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return f"telegram:{self.telegram_id}"
+
+
+class VkAccount(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="vk_account")
+    vk_id = models.BigIntegerField(unique=True)
+    username = models.CharField(blank=True, max_length=255)
+    first_name = models.CharField(blank=True, max_length=255)
+    last_name = models.CharField(blank=True, max_length=255)
+    avatar_url = models.URLField(blank=True, max_length=500)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return f"vk:{self.vk_id}"

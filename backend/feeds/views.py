@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import hmac
+import hashlib
 import os
 import re
 import secrets
@@ -36,6 +38,8 @@ from .models import (
     PostCommentLike,
     PostLike,
     Rubric,
+    TelegramAccount,
+    VkAccount,
 )
 from .telegram_media import download_telegram_file_by_path
 
@@ -74,6 +78,131 @@ def _get_user_from_request(request: HttpRequest) -> User | None:
     return _get_user_from_token(token)
 
 
+def _verify_telegram_login(payload: dict) -> tuple[bool, str | None]:
+    token = settings.TELEGRAM_BOT_TOKEN
+    if not token:
+        return False, "telegram auth disabled"
+    provided_hash = payload.get("hash")
+    if not provided_hash:
+        return False, "missing hash"
+    data = {k: v for k, v in payload.items() if k != "hash" and v is not None}
+    auth_date_raw = data.get("auth_date")
+    try:
+        auth_date = int(auth_date_raw)
+    except (TypeError, ValueError):
+        return False, "invalid auth date"
+    now_ts = int(timezone.now().timestamp())
+    if now_ts - auth_date > 60 * 60 * 24:
+        return False, "auth expired"
+    for key, value in list(data.items()):
+        data[key] = str(value)
+    data_check_string = "\n".join(f"{key}={data[key]}" for key in sorted(data.keys()))
+    secret_key = hashlib.sha256(token.encode("utf-8")).digest()
+    computed_hash = hmac.new(
+        secret_key, data_check_string.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
+    if computed_hash != provided_hash:
+        return False, "invalid hash"
+    return True, None
+
+
+def _generate_unique_username(base: str, suffix: str) -> str:
+    base = re.sub(r"[^a-zA-Z0-9_]", "_", base).strip("_")
+    if not base:
+        base = "user"
+    candidate = base
+    if User.objects.filter(username__iexact=candidate).exists():
+        candidate = f"{base}_{suffix}"
+    if User.objects.filter(username__iexact=candidate).exists():
+        candidate = f"tg_{suffix}"
+    return candidate[:150]
+
+
+def _fetch_vk_json(method: str, payload: dict) -> dict | None:
+    url = f"https://api.vk.com/method/{method}"
+    data = urllib.parse.urlencode(payload)
+    try:
+        with urllib.request.urlopen(f"{url}?{data}", timeout=5) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, json.JSONDecodeError):
+        return None
+
+
+@csrf_exempt
+def vk_auth(request: HttpRequest) -> HttpResponse:
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+
+    access_token = (payload.get("access_token") or "").strip()
+    if not access_token:
+        return JsonResponse({"ok": False, "error": "missing access token"}, status=400)
+
+    response = _fetch_vk_json(
+        "users.get",
+        {
+            "access_token": access_token,
+            "v": "5.131",
+            "fields": "photo_200,screen_name",
+        },
+    )
+    if not response or "response" not in response:
+        return JsonResponse({"ok": False, "error": "vk auth failed"}, status=400)
+
+    users = response.get("response") or []
+    if not users:
+        return JsonResponse({"ok": False, "error": "vk user not found"}, status=400)
+    vk_user = users[0]
+
+    try:
+        vk_id = int(vk_user.get("id"))
+    except (TypeError, ValueError):
+        return JsonResponse({"ok": False, "error": "invalid vk id"}, status=400)
+
+    screen_name = (vk_user.get("screen_name") or "").strip()
+    first_name = (vk_user.get("first_name") or "").strip()
+    last_name = (vk_user.get("last_name") or "").strip()
+    avatar_url = (vk_user.get("photo_200") or "").strip()
+
+    account = (
+        VkAccount.objects.select_related("user")
+        .filter(vk_id=vk_id)
+        .first()
+    )
+    if account:
+        user = account.user
+    else:
+        base_username = screen_name or first_name or "vk"
+        candidate = _generate_unique_username(base_username, str(vk_id))
+        user = User.objects.create_user(username=candidate)
+        user.set_unusable_password()
+        if first_name:
+            user.first_name = first_name
+        if last_name:
+            user.last_name = last_name
+        user.save(update_fields=["password", "first_name", "last_name"])
+        account = VkAccount.objects.create(
+            user=user,
+            vk_id=vk_id,
+            username=screen_name,
+            first_name=first_name,
+            last_name=last_name,
+            avatar_url=avatar_url,
+        )
+
+    account.username = screen_name
+    account.first_name = first_name
+    account.last_name = last_name
+    account.avatar_url = avatar_url
+    account.save(update_fields=["username", "first_name", "last_name", "avatar_url", "updated_at"])
+
+    token = _issue_token(user)
+    return JsonResponse({"ok": True, "token": token, "user": _serialize_user(user)})
+
+
 def _serialize_user(user: User) -> dict:
     author_links = (
         AuthorAdmin.objects.select_related("author", "author__rubric")
@@ -107,6 +236,66 @@ def _serialize_user(user: User) -> dict:
         "is_author": bool(authors),
         "authors": authors,
     }
+
+
+@csrf_exempt
+def telegram_auth(request: HttpRequest) -> HttpResponse:
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+
+    ok, error_message = _verify_telegram_login(payload)
+    if not ok:
+        return JsonResponse({"ok": False, "error": error_message or "invalid telegram auth"}, status=400)
+
+    try:
+        telegram_id = int(payload.get("id"))
+    except (TypeError, ValueError):
+        return JsonResponse({"ok": False, "error": "invalid telegram id"}, status=400)
+
+    username = (payload.get("username") or "").strip()
+    first_name = (payload.get("first_name") or "").strip()
+    last_name = (payload.get("last_name") or "").strip()
+    avatar_url = (payload.get("photo_url") or "").strip()
+
+    account = (
+        TelegramAccount.objects.select_related("user")
+        .filter(telegram_id=telegram_id)
+        .first()
+    )
+
+    if account:
+        user = account.user
+    else:
+        base_username = username or (first_name or "tg")
+        candidate = _generate_unique_username(base_username, str(telegram_id))
+        user = User.objects.create_user(username=candidate)
+        user.set_unusable_password()
+        if first_name:
+            user.first_name = first_name
+        if last_name:
+            user.last_name = last_name
+        user.save(update_fields=["password", "first_name", "last_name"])
+        account = TelegramAccount.objects.create(
+            user=user,
+            telegram_id=telegram_id,
+            username=username,
+            first_name=first_name,
+            last_name=last_name,
+            avatar_url=avatar_url,
+        )
+
+    account.username = username
+    account.first_name = first_name
+    account.last_name = last_name
+    account.avatar_url = avatar_url
+    account.save(update_fields=["username", "first_name", "last_name", "avatar_url", "updated_at"])
+
+    token = _issue_token(user)
+    return JsonResponse({"ok": True, "token": token, "user": _serialize_user(user)})
 
 
 def _generate_verification_code() -> str:
@@ -1454,6 +1643,11 @@ def telegram_webhook(request: HttpRequest, token: str) -> HttpResponse:
 def register_user(request: HttpRequest) -> HttpResponse:
     if request.method != "POST":
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    if not getattr(settings, "ALLOW_PASSWORD_REGISTRATION", False):
+        return JsonResponse(
+            {"ok": False, "error": "Регистрация по почте отключена. Используйте Telegram."},
+            status=403,
+        )
     try:
         payload = json.loads(request.body.decode("utf-8"))
     except json.JSONDecodeError:
@@ -1561,6 +1755,19 @@ def _serialize_post_for_user(request: HttpRequest, post: Post) -> dict:
     }
 
 
+def _get_or_create_personal_author(user: User) -> tuple[Author | None, str | None]:
+    username = (getattr(user, "username", "") or "").strip()
+    if not username:
+        return None, "invalid username"
+    existing = Author.objects.filter(username__iexact=username).first()
+    if existing:
+        if existing.channel_url or existing.channel_id:
+            return None, "Этот ник уже занят Telegram-каналом. Подключите канал через бота или смените логин."
+        return existing, None
+    author = Author.objects.create(username=username, title=username)
+    return author, None
+
+
 @csrf_exempt
 def user_posts(request: HttpRequest) -> HttpResponse:
     user = _get_user_from_request(request)
@@ -1573,10 +1780,16 @@ def user_posts(request: HttpRequest) -> HttpResponse:
         .order_by("author__username")
     )
     author_ids = [link.author_id for link in author_links]
+    personal_author = Author.objects.filter(
+        username__iexact=(user.username or "").strip(),
+        channel_url="",
+        channel_id__isnull=True,
+    ).first()
+    if personal_author and personal_author.id not in author_ids:
+        author_ids.append(personal_author.id)
+    personal_author_error = None
 
     if request.method == "POST":
-        if not author_ids:
-            return JsonResponse({"ok": False, "error": "no verified authors"}, status=400)
         try:
             payload = json.loads(request.body.decode("utf-8"))
         except json.JSONDecodeError:
@@ -1585,6 +1798,7 @@ def user_posts(request: HttpRequest) -> HttpResponse:
         title = (payload.get("title") or "").strip()
         content = (payload.get("content") or "").strip()
         author_username = (payload.get("author_username") or "").strip()
+        rubric_slug = (payload.get("rubric_slug") or "").strip()
 
         if not title:
             return JsonResponse({"ok": False, "error": "title is required"}, status=400)
@@ -1600,8 +1814,24 @@ def user_posts(request: HttpRequest) -> HttpResponse:
                 return JsonResponse({"ok": False, "error": "author not found"}, status=404)
         elif len(author_links) == 1:
             author = author_links[0].author
+        elif not author_links:
+            personal_author, personal_author_error = _get_or_create_personal_author(user)
+            if personal_author_error:
+                return JsonResponse({"ok": False, "error": personal_author_error}, status=400)
+            if personal_author:
+                author = personal_author
         else:
             return JsonResponse({"ok": False, "error": "author required"}, status=400)
+
+        rubric = None
+        if rubric_slug:
+            rubric = Rubric.objects.filter(slug__iexact=rubric_slug, is_active=True).first()
+            if not rubric:
+                return JsonResponse({"ok": False, "error": "rubric not found"}, status=404)
+        if not rubric:
+            rubric = author.rubric if author else None
+        if not rubric:
+            return JsonResponse({"ok": False, "error": "rubric required"}, status=400)
 
         channel_url = author.invite_url or author.channel_url
         try:
@@ -1616,7 +1846,7 @@ def user_posts(request: HttpRequest) -> HttpResponse:
             message_id=message_id,
             title=title,
             content=content,
-            rubric=author.rubric,
+            rubric=rubric,
             channel_url=channel_url,
             source_url=channel_url,
             raw_data={"source": "manual"},
