@@ -140,6 +140,16 @@ def _author_display_fields(
     return channel_url, title
 
 
+def _author_avatar_for_rubric(
+    request: HttpRequest | None,
+    author: Author,
+    rubric: Rubric | None,
+) -> str | None:
+    if _is_comuna_rubric(rubric):
+        return None
+    return _author_avatar_url(request, author)
+
+
 def _fetch_vk_json(method: str, payload: dict) -> dict | None:
     url = f"https://api.vk.com/method/{method}"
     data = urllib.parse.urlencode(payload)
@@ -1843,7 +1853,7 @@ def _serialize_post_for_user(request: HttpRequest, post: Post) -> dict:
             "username": post.author.username,
             "title": author_title,
             "channel_url": author_channel_url,
-            "avatar_url": _author_avatar_url(request, post.author),
+                    "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
         },
     }
 
@@ -2406,6 +2416,7 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
     posts = (
         Post.objects.filter(author=author, is_blocked=False, is_pending=False)
         .filter(_publish_ready_filter(now))
+        .filter(Q(rubric__isnull=True) | Q(rubric__is_hidden=False))
         .order_by("-created_at")
         .all()[offset : offset + limit]
     )
@@ -2413,6 +2424,7 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
     posts_count = (
         Post.objects.filter(author=author, is_blocked=False, is_pending=False)
         .filter(_publish_ready_filter(now))
+        .filter(Q(rubric__isnull=True) | Q(rubric__is_hidden=False))
         .count()
     )
     author_channel_url = author.invite_url or author.channel_url
@@ -2439,7 +2451,7 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
                     "username": author.username,
                     "title": author_title,
                     "channel_url": author_channel_url,
-                    "avatar_url": _author_avatar_url(request, author),
+                    "avatar_url": _author_avatar_for_rubric(request, author, rubric),
                     "description": author.description,
                     "subscribers_count": author.subscribers_count,
                 },
@@ -2541,7 +2553,7 @@ def rubric_posts(request: HttpRequest, slug: str) -> HttpResponse:
                     "username": post.author.username,
                     "title": author_title,
                     "channel_url": author_channel_url,
-                    "avatar_url": _author_avatar_url(request, post.author),
+                    "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
                 },
             }
         )
@@ -2598,7 +2610,7 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
                     "username": post.author.username,
                     "title": author_title,
                     "channel_url": author_channel_url,
-                    "avatar_url": _author_avatar_url(request, post.author),
+                    "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
                 },
             },
         }
@@ -2684,7 +2696,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
                     "username": post.author.username,
                     "title": author_title,
                     "channel_url": author_channel_url,
-                    "avatar_url": _author_avatar_url(request, post.author),
+                    "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
                 },
                 "score": post.rating + post.comments_count * 5,
                 "rating": post.rating,
@@ -2746,7 +2758,7 @@ def fresh_feed(request: HttpRequest) -> HttpResponse:
                     "username": post.author.username,
                     "title": author_title,
                     "channel_url": author_channel_url,
-                    "avatar_url": _author_avatar_url(request, post.author),
+                    "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
                 },
                 "score": post.rating + post.comments_count * 5,
                 "rating": post.rating,
@@ -2826,7 +2838,7 @@ def my_feed(request: HttpRequest) -> HttpResponse:
                     "username": post.author.username,
                     "title": author_title,
                     "channel_url": author_channel_url,
-                    "avatar_url": _author_avatar_url(request, post.author),
+                    "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
                 },
                 "score": post.rating + post.comments_count * 5,
                 "rating": post.rating,
@@ -2962,7 +2974,7 @@ def search_content(request: HttpRequest) -> HttpResponse:
                         "username": post.author.username,
                         "title": author_title,
                         "channel_url": author_channel_url,
-                        "avatar_url": _author_avatar_url(request, post.author),
+                        "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
                         "description": post.author.description,
                         "subscribers_count": post.author.subscribers_count,
                     },

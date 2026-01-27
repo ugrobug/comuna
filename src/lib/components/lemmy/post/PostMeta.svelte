@@ -44,6 +44,7 @@
   export let userUrlOverride: string | undefined = undefined
   export let subscribeUrl: string | undefined = undefined
   export let subscribeLabel: string = 'Подписаться'
+  export let disableUserLink: boolean = false
 
   // Badges
   export let badges = {
@@ -88,6 +89,8 @@
       return '';
     }
   }
+
+  $: userLink = userUrlOverride ?? `/u/${user?.name}${user?.local === true ? '' : `@${getInstanceFromActorId(user?.actor_id, user?.local)}`}`
 
   function scrollToTop() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -183,19 +186,31 @@
   <div class="flex gap-4">
     <!-- Аватары -->
     <div class="relative flex-shrink-0">
-      <a
-        href={userUrlOverride ?? `/u/${user?.name}${user?.local === true ? '' : `@${getInstanceFromActorId(user?.actor_id, user?.local)}`}`}
-        class="block cursor-pointer"
-        data-sveltekit-preload-data="tap"
-      >
-        <Avatar
-          url={user?.avatar}
-          width={48}
-          alt={user?.name}
-          circle={true}
-          class_="!rounded-full hover:ring-2 transition-all ring-offset-0 ring-primary-900 dark:ring-primary-100"
-        />
-      </a>
+      {#if disableUserLink}
+        <div class="block">
+          <Avatar
+            url={user?.avatar}
+            width={48}
+            alt={user?.name}
+            circle={true}
+            class_="!rounded-full"
+          />
+        </div>
+      {:else}
+        <a
+          href={userLink}
+          class="block cursor-pointer"
+          data-sveltekit-preload-data="tap"
+        >
+          <Avatar
+            url={user?.avatar}
+            width={48}
+            alt={user?.name}
+            circle={true}
+            class_="!rounded-full hover:ring-2 transition-all ring-offset-0 ring-primary-900 dark:ring-primary-100"
+          />
+        </a>
+      {/if}
       
       <!-- rubric icon removed -->
     </div>
@@ -203,13 +218,19 @@
     <!-- Информация -->
     <div class="flex flex-col min-w-0 justify-center">
       <div class="flex items-center gap-1">
-        <a 
-          href={userUrlOverride ?? `/u/${user?.name}${user?.local === true ? '' : `@${getInstanceFromActorId(user?.actor_id, user?.local)}`}`}
-          class="text-base font-normal hover:underline !text-black dark:!text-white block max-w-full break-words line-clamp-2 sm:line-clamp-1"
-          data-sveltekit-preload-data="tap"
-        >
-          {user?.display_name || user?.name}
-        </a>
+        {#if disableUserLink}
+          <span class="text-base font-normal !text-black dark:!text-white block max-w-full break-words line-clamp-2 sm:line-clamp-1">
+            {user?.display_name || user?.name}
+          </span>
+        {:else}
+          <a 
+            href={userLink}
+            class="text-base font-normal hover:underline !text-black dark:!text-white block max-w-full break-words line-clamp-2 sm:line-clamp-1"
+            data-sveltekit-preload-data="tap"
+          >
+            {user?.display_name || user?.name}
+          </a>
+        {/if}
         
         {#if badges.admin}
           <img 

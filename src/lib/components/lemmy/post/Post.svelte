@@ -39,11 +39,18 @@
   export let userUrlOverride: string | undefined = undefined
   export let subscribeUrl: string | undefined = undefined
   export let subscribeLabel: string = 'Подписаться'
+  export let disableUserLink: boolean | undefined = undefined
 
   $: postUrl = linkOverride ?? postLink(post.post)
   $: isBackendPost = Boolean(linkOverride)
   $: type = mediaType(post.post.url, view)
   $: rule = getTagRule([])
+  $: communityName = post.community?.name || ''
+  $: communityTitle = post.community?.title || ''
+  $: autoDisableUserLink =
+    disableUserLink ??
+    communityName.toLowerCase() === 'comuna' ||
+    communityTitle.toLowerCase() === 'comuna'
 
   $: hideBody =
     $userSettings.posts.deduplicateEmbed &&
@@ -112,6 +119,7 @@
     {view}
     {communityUrlOverride}
     {userUrlOverride}
+    disableUserLink={autoDisableUserLink}
     {subscribeUrl}
     {subscribeLabel}
   >
