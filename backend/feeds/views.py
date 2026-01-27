@@ -120,6 +120,26 @@ def _generate_unique_username(base: str, suffix: str) -> str:
     return candidate[:150]
 
 
+def _is_comuna_rubric(rubric: Rubric | None) -> bool:
+    if not rubric or not rubric.slug:
+        return False
+    return rubric.slug.strip().lower() == "comuna"
+
+
+def _author_display_fields(
+    author: Author,
+    rubric: Rubric | None,
+    post_channel_url: str | None = None,
+) -> tuple[str | None, str]:
+    channel_url = author.invite_url or author.channel_url
+    title = author.title or author.username
+    if _is_comuna_rubric(rubric):
+        return "", "Admin"
+    if not channel_url:
+        channel_url = post_channel_url
+    return channel_url, title
+
+
 def _fetch_vk_json(method: str, payload: dict) -> dict | None:
     url = f"https://api.vk.com/method/{method}"
     data = urllib.parse.urlencode(payload)
@@ -1805,7 +1825,9 @@ def author_verification_code(request: HttpRequest) -> HttpResponse:
 
 def _serialize_post_for_user(request: HttpRequest, post: Post) -> dict:
     rubric = post.rubric
-    author_channel_url = post.author.invite_url or post.author.channel_url
+    author_channel_url, author_title = _author_display_fields(
+        post.author, rubric, post.channel_url
+    )
     return {
         "id": post.id,
         "title": post.title,
@@ -1819,7 +1841,7 @@ def _serialize_post_for_user(request: HttpRequest, post: Post) -> dict:
         "rubric_icon_url": _rubric_icon_url(request, rubric),
         "author": {
             "username": post.author.username,
-            "title": post.author.title,
+            "title": author_title,
             "channel_url": author_channel_url,
             "avatar_url": _author_avatar_url(request, post.author),
         },
@@ -1905,6 +1927,12 @@ def user_posts(request: HttpRequest) -> HttpResponse:
             return JsonResponse({"ok": False, "error": "rubric required"}, status=400)
         if rubric.is_hidden and not user.is_staff:
             return JsonResponse({"ok": False, "error": "rubric not allowed"}, status=403)
+        if _is_comuna_rubric(rubric):
+            personal_author, personal_author_error = _get_or_create_personal_author(user)
+            if personal_author_error:
+                return JsonResponse({"ok": False, "error": personal_author_error}, status=400)
+            if personal_author:
+                author = personal_author
 
         channel_url = author.invite_url or author.channel_url
         try:
@@ -2391,6 +2419,9 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
     serialized = []
     for post in posts:
         rubric = post.rubric
+        author_channel_url, author_title = _author_display_fields(
+            author, rubric, post.channel_url
+        )
         serialized.append(
             {
                 "id": post.id,
@@ -2400,13 +2431,13 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
                 "rubric_icon_url": _rubric_icon_url(request, rubric),
                 "content": post.content,
                 "source_url": post.source_url,
-                "channel_url": author_channel_url or post.channel_url,
+                "channel_url": author_channel_url,
                 "created_at": post.created_at.isoformat(),
                 "comments_count": post.comments_count,
                 "likes_count": post.rating,
                 "author": {
                     "username": author.username,
-                    "title": author.title,
+                    "title": author_title,
                     "channel_url": author_channel_url,
                     "avatar_url": _author_avatar_url(request, author),
                     "description": author.description,
@@ -2490,7 +2521,9 @@ def rubric_posts(request: HttpRequest, slug: str) -> HttpResponse:
 
     serialized = []
     for post in posts:
-        author_channel_url = post.author.invite_url or post.author.channel_url
+        author_channel_url, author_title = _author_display_fields(
+            post.author, rubric, post.channel_url
+        )
         serialized.append(
             {
                 "id": post.id,
@@ -2500,13 +2533,13 @@ def rubric_posts(request: HttpRequest, slug: str) -> HttpResponse:
                 "rubric_icon_url": _rubric_icon_url(request, rubric),
                 "content": post.content,
                 "source_url": post.source_url,
-                "channel_url": author_channel_url or post.channel_url,
+                "channel_url": author_channel_url,
                 "created_at": post.created_at.isoformat(),
                 "comments_count": post.comments_count,
                 "likes_count": post.rating,
                 "author": {
                     "username": post.author.username,
-                    "title": post.author.title,
+                    "title": author_title,
                     "channel_url": author_channel_url,
                     "avatar_url": _author_avatar_url(request, post.author),
                 },
@@ -2543,7 +2576,9 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
         return JsonResponse({"ok": False, "error": "post not found"}, status=404)
 
     rubric = post.rubric
-    author_channel_url = post.author.invite_url or post.author.channel_url
+    author_channel_url, author_title = _author_display_fields(
+        post.author, rubric, post.channel_url
+    )
     return JsonResponse(
         {
             "ok": True,
@@ -2555,13 +2590,13 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
                 "rubric_icon_url": _rubric_icon_url(request, rubric),
                 "content": post.content,
                 "source_url": post.source_url,
-                "channel_url": author_channel_url or post.channel_url,
+                "channel_url": author_channel_url,
                 "created_at": post.created_at.isoformat(),
                 "comments_count": post.comments_count,
                 "likes_count": post.rating,
                 "author": {
                     "username": post.author.username,
-                    "title": post.author.title,
+                    "title": author_title,
                     "channel_url": author_channel_url,
                     "avatar_url": _author_avatar_url(request, post.author),
                 },
@@ -2631,7 +2666,9 @@ def home_feed(request: HttpRequest) -> HttpResponse:
             rubric_daily_counts[rubric_key] = rubric_count + 1
         elif force_slot_available:
             forced_daily_counts[forced_key] = forced_used + 1
-        author_channel_url = post.author.invite_url or post.author.channel_url
+        author_channel_url, author_title = _author_display_fields(
+            post.author, rubric, post.channel_url
+        )
         serialized_posts.append(
             {
                 "id": post.id,
@@ -2641,11 +2678,11 @@ def home_feed(request: HttpRequest) -> HttpResponse:
                 "rubric_icon_url": _rubric_icon_url(request, rubric),
                 "content": post.content,
                 "source_url": post.source_url,
-                "channel_url": author_channel_url or post.channel_url,
+                "channel_url": author_channel_url,
                 "created_at": post.created_at.isoformat(),
                 "author": {
                     "username": post.author.username,
-                    "title": post.author.title,
+                    "title": author_title,
                     "channel_url": author_channel_url,
                     "avatar_url": _author_avatar_url(request, post.author),
                 },
@@ -2691,7 +2728,9 @@ def fresh_feed(request: HttpRequest) -> HttpResponse:
     serialized = []
     for post in posts:
         rubric = post.rubric
-        author_channel_url = post.author.invite_url or post.author.channel_url
+        author_channel_url, author_title = _author_display_fields(
+            post.author, rubric, post.channel_url
+        )
         serialized.append(
             {
                 "id": post.id,
@@ -2701,11 +2740,11 @@ def fresh_feed(request: HttpRequest) -> HttpResponse:
                 "rubric_icon_url": _rubric_icon_url(request, rubric),
                 "content": post.content,
                 "source_url": post.source_url,
-                "channel_url": author_channel_url or post.channel_url,
+                "channel_url": author_channel_url,
                 "created_at": post.created_at.isoformat(),
                 "author": {
                     "username": post.author.username,
-                    "title": post.author.title,
+                    "title": author_title,
                     "channel_url": author_channel_url,
                     "avatar_url": _author_avatar_url(request, post.author),
                 },
@@ -2769,7 +2808,9 @@ def my_feed(request: HttpRequest) -> HttpResponse:
     serialized = []
     for post in posts:
         rubric = post.rubric
-        author_channel_url = post.author.invite_url or post.author.channel_url
+        author_channel_url, author_title = _author_display_fields(
+            post.author, rubric, post.channel_url
+        )
         serialized.append(
             {
                 "id": post.id,
@@ -2779,11 +2820,11 @@ def my_feed(request: HttpRequest) -> HttpResponse:
                 "rubric_icon_url": _rubric_icon_url(request, rubric),
                 "content": post.content,
                 "source_url": post.source_url,
-                "channel_url": author_channel_url or post.channel_url,
+                "channel_url": author_channel_url,
                 "created_at": post.created_at.isoformat(),
                 "author": {
                     "username": post.author.username,
-                    "title": post.author.title,
+                    "title": author_title,
                     "channel_url": author_channel_url,
                     "avatar_url": _author_avatar_url(request, post.author),
                 },
@@ -2899,7 +2940,9 @@ def search_content(request: HttpRequest) -> HttpResponse:
         total_posts = posts_qs.count()
         for post in posts_qs[offset : offset + limit]:
             rubric = post.rubric
-            author_channel_url = post.author.invite_url or post.author.channel_url
+            author_channel_url, author_title = _author_display_fields(
+                post.author, rubric, post.channel_url
+            )
             posts.append(
                 {
                     "id": post.id,
@@ -2911,13 +2954,13 @@ def search_content(request: HttpRequest) -> HttpResponse:
                     else None,
                     "content": post.content,
                     "source_url": post.source_url,
-                    "channel_url": author_channel_url or post.channel_url,
+                    "channel_url": author_channel_url,
                     "created_at": post.created_at.isoformat(),
                     "comments_count": post.comments_count,
                     "likes_count": post.rating,
                     "author": {
                         "username": post.author.username,
-                        "title": post.author.title,
+                        "title": author_title,
                         "channel_url": author_channel_url,
                         "avatar_url": _author_avatar_url(request, post.author),
                         "description": post.author.description,

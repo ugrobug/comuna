@@ -1,6 +1,6 @@
 <script lang="ts">
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
-  import { Button, Spinner, TextInput, Select } from 'mono-svelte'
+  import { Button, Spinner, TextInput, Select, toast } from 'mono-svelte'
   import EditorJS from '$lib/components/editor/EditorJS.svelte'
   import { onMount } from 'svelte'
   import { deserializeEditorModel } from '$lib/util'
@@ -121,6 +121,11 @@
       })
       createTitle = ''
       createContent = ''
+      toast({
+        content:
+          'Ваш пост опубликован! Не забудьте поделиться ссылкой на него в социальных сетях',
+        type: 'success',
+      })
     } catch (err) {
       createError = (err as Error)?.message ?? 'Не удалось создать пост'
     } finally {
