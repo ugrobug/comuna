@@ -176,7 +176,7 @@
   This component will build two different things: a post's meta block and the title.
 -->
 <header
-  class="grid w-full meta text-xs min-w-0 max-w-full max-h-[3.75rem]"
+  class="grid w-full meta text-xs min-w-0 max-w-full max-h-none sm:max-h-[3.75rem]"
   class:compact={view == 'compact'}
   style={$$props.style ?? ''}
 >
@@ -205,7 +205,7 @@
       <div class="flex items-center gap-1">
         <a 
           href={userUrlOverride ?? `/u/${user?.name}${user?.local === true ? '' : `@${getInstanceFromActorId(user?.actor_id, user?.local)}`}`}
-          class="text-base font-normal hover:underline !text-black dark:!text-white"
+          class="text-base font-normal hover:underline !text-black dark:!text-white block max-w-full break-words line-clamp-2 sm:line-clamp-1"
           data-sveltekit-preload-data="tap"
         >
           {user?.display_name || user?.name}
