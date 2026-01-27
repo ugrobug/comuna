@@ -19,7 +19,12 @@
   let creating = false
   let createError = ''
   let rubricsLoading = false
-  let rubrics: Array<{ name: string; slug: string }> = []
+  let rubrics: Array<{ name: string; slug: string; icon_url?: string | null; icon_thumb_url?: string | null }> = []
+  let rubricMenuOpen = false
+  let rubricMenuRef: HTMLDivElement | null = null
+  let selectedRubric: { name: string; slug: string; icon_url?: string | null; icon_thumb_url?: string | null } | undefined
+
+  $: selectedRubric = rubrics.find((rubric) => rubric.slug === createRubric)
 
   const isEditorContentEmpty = (value: string) => {
     if (!value || value.trim() === '') return true
@@ -50,6 +55,18 @@
       .finally(() => {
         rubricsLoading = false
       })
+
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!rubricMenuOpen || !rubricMenuRef) return
+      const target = event.target as Node | null
+      if (target && !rubricMenuRef.contains(target)) {
+        rubricMenuOpen = false
+      }
+    }
+    document.addEventListener('click', closeOnOutsideClick)
+    return () => {
+      document.removeEventListener('click', closeOnOutsideClick)
+    }
   })
 
   $: if ($siteUser?.authors?.length && !createAuthor) {
@@ -100,6 +117,11 @@
       creating = false
     }
   }
+
+  const selectRubric = (slug: string) => {
+    createRubric = slug
+    rubricMenuOpen = false
+  }
 </script>
 
 <div class="flex flex-col gap-6 max-w-3xl">
@@ -138,12 +160,82 @@
             Загрузка рубрик...
           </div>
         {:else}
-          <Select bind:value={createRubric} class="max-w-xs">
-            <option value="" disabled>Выберите рубрику</option>
-            {#each rubrics as rubric}
-              <option value={rubric.slug}>{rubric.name}</option>
-            {/each}
-          </Select>
+          <div class="relative w-full" bind:this={rubricMenuRef}>
+            <button
+              type="button"
+              class="w-full min-w-[18rem] rounded-lg border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-3 py-2 text-left shadow-sm flex items-center justify-between gap-3"
+              aria-haspopup="listbox"
+              aria-expanded={rubricMenuOpen}
+              on:click={() => (rubricMenuOpen = !rubricMenuOpen)}
+            >
+              <div class="flex items-center gap-2 min-w-0">
+                <div class="h-7 w-7 rounded-full border border-slate-200 dark:border-zinc-700 bg-slate-100 dark:bg-zinc-800 overflow-hidden flex items-center justify-center text-xs font-semibold text-slate-500 dark:text-zinc-400">
+                  {#if selectedRubric?.icon_thumb_url || selectedRubric?.icon_url}
+                    <img
+                      src={selectedRubric.icon_thumb_url ?? selectedRubric.icon_url}
+                      alt={selectedRubric.name}
+                      class="h-full w-full object-cover"
+                    />
+                  {:else if selectedRubric?.name}
+                    {selectedRubric.name[0]}
+                  {:else}
+                    #
+                  {/if}
+                </div>
+                <span class="text-sm text-slate-700 dark:text-zinc-200 truncate">
+                  {#if selectedRubric}
+                    {selectedRubric.name}
+                  {:else}
+                    Выберите рубрику
+                  {/if}
+                </span>
+              </div>
+              <svg
+                class="h-4 w-4 text-slate-500 dark:text-zinc-400 flex-shrink-0"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.24 4.5a.75.75 0 01-1.08 0l-4.24-4.5a.75.75 0 01.02-1.06z"
+                  clip-rule="evenodd"
+                />
+              </svg>
+            </button>
+
+            {#if rubricMenuOpen}
+              <div
+                class="absolute z-20 mt-2 w-full rounded-lg border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-lg max-h-72 overflow-auto"
+                role="listbox"
+              >
+                {#each rubrics as rubric}
+                  <button
+                    type="button"
+                    class={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-zinc-800 ${
+                      createRubric === rubric.slug ? 'bg-slate-100 dark:bg-zinc-800' : ''
+                    }`}
+                    on:click={() => selectRubric(rubric.slug)}
+                  >
+                    <div class="h-7 w-7 rounded-full border border-slate-200 dark:border-zinc-700 bg-slate-100 dark:bg-zinc-800 overflow-hidden flex items-center justify-center text-xs font-semibold text-slate-500 dark:text-zinc-400 flex-shrink-0">
+                      {#if rubric.icon_thumb_url || rubric.icon_url}
+                        <img
+                          src={rubric.icon_thumb_url ?? rubric.icon_url}
+                          alt={rubric.name}
+                          class="h-full w-full object-cover"
+                        />
+                      {:else}
+                        {rubric.name?.[0] ?? 'R'}
+                      {/if}
+                    </div>
+                    <span class="flex-1 whitespace-normal text-slate-700 dark:text-zinc-200">
+                      {rubric.name}
+                    </span>
+                  </button>
+                {/each}
+              </div>
+            {/if}
+          </div>
         {/if}
         <TextInput label="Заголовок" bind:value={createTitle} />
         <EditorJS
