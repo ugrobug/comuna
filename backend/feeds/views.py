@@ -6,6 +6,8 @@ import hashlib
 import os
 import re
 import secrets
+import base64
+import time
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.utils.text import get_valid_filename
@@ -128,6 +130,59 @@ def _fetch_vk_json(method: str, payload: dict) -> dict | None:
         return None
 
 
+def _decode_jwt_payload(token: str) -> dict | None:
+    parts = token.split(".")
+    if len(parts) < 2:
+        return None
+    payload_segment = parts[1]
+    padding = "=" * (-len(payload_segment) % 4)
+    try:
+        decoded = base64.urlsafe_b64decode(payload_segment + padding)
+        return json.loads(decoded.decode("utf-8"))
+    except (ValueError, json.JSONDecodeError):
+        return None
+
+
+def _parse_vk_id_token(id_token: str, user_id_hint: int | None = None) -> dict | None:
+    payload = _decode_jwt_payload(id_token)
+    if not payload:
+        return None
+
+    exp = payload.get("exp")
+    if isinstance(exp, (int, float)) and exp < time.time():
+        return None
+
+    vk_app_id = os.environ.get("VK_APP_ID")
+    aud = payload.get("aud")
+    if vk_app_id and aud and str(aud) != str(vk_app_id):
+        return None
+
+    sub = payload.get("sub") or payload.get("user_id") or user_id_hint
+    try:
+        vk_id = int(sub)
+    except (TypeError, ValueError):
+        return None
+
+    screen_name = (payload.get("preferred_username") or payload.get("screen_name") or "").strip()
+    full_name = (payload.get("name") or "").strip()
+    first_name = (payload.get("given_name") or "").strip()
+    last_name = (payload.get("family_name") or "").strip()
+    if not first_name and full_name:
+        parts = full_name.split(" ", 1)
+        first_name = parts[0]
+        if len(parts) > 1:
+            last_name = parts[1]
+    avatar_url = (payload.get("picture") or payload.get("avatar") or "").strip()
+
+    return {
+        "vk_id": vk_id,
+        "screen_name": screen_name,
+        "first_name": first_name,
+        "last_name": last_name,
+        "avatar_url": avatar_url,
+    }
+
+
 @csrf_exempt
 def vk_auth(request: HttpRequest) -> HttpResponse:
     if request.method != "POST":
@@ -138,34 +193,45 @@ def vk_auth(request: HttpRequest) -> HttpResponse:
         return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
 
     access_token = (payload.get("access_token") or "").strip()
-    if not access_token:
-        return JsonResponse({"ok": False, "error": "missing access token"}, status=400)
+    id_token = (payload.get("id_token") or "").strip()
+    user_id_hint = payload.get("user_id")
+    vk_user = None
 
-    response = _fetch_vk_json(
-        "users.get",
-        {
-            "access_token": access_token,
-            "v": "5.131",
-            "fields": "photo_200,screen_name",
-        },
-    )
-    if not response or "response" not in response:
+    if access_token:
+        response = _fetch_vk_json(
+            "users.get",
+            {
+                "access_token": access_token,
+                "v": "5.131",
+                "fields": "photo_200,screen_name",
+            },
+        )
+        if response and "response" in response:
+            users = response.get("response") or []
+            if users:
+                vk_user = {
+                    "vk_id": users[0].get("id"),
+                    "screen_name": (users[0].get("screen_name") or "").strip(),
+                    "first_name": (users[0].get("first_name") or "").strip(),
+                    "last_name": (users[0].get("last_name") or "").strip(),
+                    "avatar_url": (users[0].get("photo_200") or "").strip(),
+                }
+
+    if not vk_user and id_token:
+        vk_user = _parse_vk_id_token(id_token, user_id_hint=user_id_hint)
+
+    if not vk_user:
         return JsonResponse({"ok": False, "error": "vk auth failed"}, status=400)
 
-    users = response.get("response") or []
-    if not users:
-        return JsonResponse({"ok": False, "error": "vk user not found"}, status=400)
-    vk_user = users[0]
-
     try:
-        vk_id = int(vk_user.get("id"))
+        vk_id = int(vk_user.get("vk_id"))
     except (TypeError, ValueError):
         return JsonResponse({"ok": False, "error": "invalid vk id"}, status=400)
 
     screen_name = (vk_user.get("screen_name") or "").strip()
     first_name = (vk_user.get("first_name") or "").strip()
     last_name = (vk_user.get("last_name") or "").strip()
-    avatar_url = (vk_user.get("photo_200") or "").strip()
+    avatar_url = (vk_user.get("avatar_url") or "").strip()
 
     account = (
         VkAccount.objects.select_related("user")

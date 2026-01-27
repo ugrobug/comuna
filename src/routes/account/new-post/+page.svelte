@@ -163,12 +163,12 @@
           <div class="relative w-full" bind:this={rubricMenuRef}>
             <button
               type="button"
-              class="w-full min-w-[18rem] rounded-lg border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-3 py-2 text-left shadow-sm flex items-center justify-between gap-3"
+              class="w-full min-w-0 sm:min-w-[22rem] max-w-full rounded-lg border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-3 py-2 text-left shadow-sm flex items-start justify-between gap-3"
               aria-haspopup="listbox"
               aria-expanded={rubricMenuOpen}
               on:click={() => (rubricMenuOpen = !rubricMenuOpen)}
             >
-              <div class="flex items-center gap-2 min-w-0">
+              <div class="flex items-start gap-2 min-w-0">
                 <div class="h-7 w-7 rounded-full border border-slate-200 dark:border-zinc-700 bg-slate-100 dark:bg-zinc-800 overflow-hidden flex items-center justify-center text-xs font-semibold text-slate-500 dark:text-zinc-400">
                   {#if selectedRubric?.icon_thumb_url || selectedRubric?.icon_url}
                     <img
@@ -182,7 +182,7 @@
                     #
                   {/if}
                 </div>
-                <span class="text-sm text-slate-700 dark:text-zinc-200 truncate">
+                <span class="text-sm text-slate-700 dark:text-zinc-200 whitespace-normal break-words">
                   {#if selectedRubric}
                     {selectedRubric.name}
                   {:else}
