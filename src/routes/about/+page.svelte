@@ -1,8 +1,12 @@
 <script>
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import SectionTitle from '$lib/components/ui/SectionTitle.svelte'
+  import Post from '$lib/components/lemmy/post/Post.svelte'
+  import { backendPostToPostView, buildBackendPostPath } from '$lib/api/backend'
   import { env } from '$env/dynamic/public'
   import { page } from '$app/stores'
+
+  export let data
 
   const title = `О проекте — ${env.PUBLIC_SITE_TITLE || 'Comuna'}`
   const description =
@@ -29,6 +33,26 @@
       Google и Яндекса. Люди находят статьи, переходят на канал и подписываются.
     </p>
   </div>
+
+  <SectionTitle class="text-lg font-semibold">Обновления Comuna</SectionTitle>
+  {#if data?.posts?.length}
+    <div class="flex flex-col gap-6">
+      {#each data.posts as backendPost (backendPost.id)}
+        {@const postView = backendPostToPostView(backendPost, backendPost.author)}
+        <Post
+          post={postView}
+          view="cozy"
+          actions={true}
+          showReadMore={false}
+          showFullBody={false}
+          linkOverride={buildBackendPostPath(backendPost)}
+          userUrlOverride={backendPost.author?.username ? `/${backendPost.author.username}` : undefined}
+        />
+      {/each}
+    </div>
+  {:else}
+    <p class="text-base text-slate-500">Пока нет обновлений.</p>
+  {/if}
 
   <SectionTitle class="text-lg font-semibold">Как это работает</SectionTitle>
   <ol class="list-decimal pl-6 space-y-2 text-base leading-relaxed">

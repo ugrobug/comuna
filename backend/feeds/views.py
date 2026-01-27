@@ -299,6 +299,7 @@ def _serialize_user(user: User) -> dict:
         "username": user.username,
         "email": user.email,
         "avatar_url": avatar_url,
+        "is_staff": user.is_staff,
         "is_author": bool(authors),
         "authors": authors,
     }
@@ -829,7 +830,11 @@ def _refresh_author_from_telegram(author: Author, chat_ref, token: str) -> None:
 
 
 def _build_rubric_keyboard() -> list[list[dict]]:
-    rubrics = list(Rubric.objects.filter(is_active=True).order_by("sort_order", "name"))
+    rubrics = list(
+        Rubric.objects.filter(is_active=True, is_hidden=False).order_by(
+            "sort_order", "name"
+        )
+    )
     keyboard: list[list[dict]] = []
     row: list[dict] = []
     for rubric in rubrics:
@@ -1898,6 +1903,8 @@ def user_posts(request: HttpRequest) -> HttpResponse:
             rubric = author.rubric if author else None
         if not rubric:
             return JsonResponse({"ok": False, "error": "rubric required"}, status=400)
+        if rubric.is_hidden and not user.is_staff:
+            return JsonResponse({"ok": False, "error": "rubric not allowed"}, status=403)
 
         channel_url = author.invite_url or author.channel_url
         try:
@@ -2426,7 +2433,15 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
 
 
 def rubrics_list(request: HttpRequest) -> HttpResponse:
-    rubrics = Rubric.objects.filter(is_active=True).order_by("sort_order", "name")
+    include_hidden = request.GET.get("include_hidden") in ("1", "true", "yes")
+    rubrics = Rubric.objects.filter(is_active=True)
+    if include_hidden:
+        user = _get_user_from_request(request)
+        if not user or not user.is_staff:
+            rubrics = rubrics.filter(is_hidden=False)
+    else:
+        rubrics = rubrics.filter(is_hidden=False)
+    rubrics = rubrics.order_by("sort_order", "name")
     serialized = [
         {
             "id": rubric.id,
@@ -2579,6 +2594,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
         )
         .filter(_publish_ready_filter(now))
         .filter(Q(author__shadow_banned=False) | Q(author__force_home=True))
+        .filter(Q(rubric__isnull=True) | Q(rubric__is_hidden=False))
         .select_related("author", "rubric")
         .order_by("-created_at")[:fetch_size]
     )
@@ -2667,6 +2683,7 @@ def fresh_feed(request: HttpRequest) -> HttpResponse:
         )
         .filter(_publish_ready_filter(now))
         .filter(Q(author__shadow_banned=False) | Q(author__force_home=True))
+        .filter(Q(rubric__isnull=True) | Q(rubric__is_hidden=False))
         .select_related("author", "rubric")
         .order_by("-created_at")[offset : offset + limit]
     )
@@ -2723,9 +2740,9 @@ def my_feed(request: HttpRequest) -> HttpResponse:
     hide_negative = hide_negative_raw not in ("0", "false", "no", "off")
 
     rubric_ids = list(
-        Rubric.objects.filter(slug__in=rubric_slugs, is_active=True).values_list(
-            "id", flat=True
-        )
+        Rubric.objects.filter(
+            slug__in=rubric_slugs, is_active=True, is_hidden=False
+        ).values_list("id", flat=True)
     )
     if not rubric_ids:
         return JsonResponse({"ok": True, "posts": []})
@@ -2986,7 +3003,12 @@ def sitemap_xml(request: HttpRequest) -> HttpResponse:
     def full(path: str) -> str:
         return f"{base_url}{path}"
 
-    rubrics_lastmod = Rubric.objects.order_by("-updated_at").values_list("updated_at", flat=True).first()
+    rubrics_lastmod = (
+        Rubric.objects.filter(is_hidden=False)
+        .order_by("-updated_at")
+        .values_list("updated_at", flat=True)
+        .first()
+    )
     authors_lastmod = Author.objects.order_by("-updated_at").values_list("updated_at", flat=True).first()
     posts_lastmod = (
         Post.objects.filter(is_blocked=False, is_pending=False, author__is_blocked=False)
@@ -3035,7 +3057,7 @@ def sitemap_static_xml(request: HttpRequest) -> HttpResponse:
 
 def sitemap_rubrics_xml(request: HttpRequest) -> HttpResponse:
     base_url = _sitemap_base_url(request)
-    rubrics = Rubric.objects.filter(is_active=True).order_by("slug")
+    rubrics = Rubric.objects.filter(is_active=True, is_hidden=False).order_by("slug")
     entries = [
         (f"{base_url}/rubrics/{rubric.slug}/posts", _format_lastmod(rubric.updated_at))
         for rubric in rubrics

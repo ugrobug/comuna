@@ -19,6 +19,7 @@ export type SiteUser = {
   username: string
   email?: string | null
   avatar_url?: string | null
+  is_staff?: boolean
   is_author: boolean
   authors: SiteAuthorLink[]
 }

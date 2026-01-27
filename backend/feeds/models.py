@@ -51,6 +51,7 @@ class Rubric(models.Model):
     subscribe_url = models.URLField(max_length=255, blank=True)
     home_limit = models.PositiveIntegerField(default=3)
     is_active = models.BooleanField(default=True)
+    is_hidden = models.BooleanField(default=False)
     sort_order = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

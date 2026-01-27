@@ -64,8 +64,8 @@ class PostAdmin(admin.ModelAdmin):
 
 @admin.register(Rubric)
 class RubricAdmin(admin.ModelAdmin):
-    list_display = ("name", "slug", "is_active", "sort_order")
-    list_filter = ("is_active",)
+    list_display = ("name", "slug", "is_active", "is_hidden", "sort_order")
+    list_filter = ("is_active", "is_hidden")
     search_fields = ("name", "slug")
     fields = (
         "name",
@@ -77,6 +77,7 @@ class RubricAdmin(admin.ModelAdmin):
         "home_limit",
         "sort_order",
         "is_active",
+        "is_hidden",
     )
 
 

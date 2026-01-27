@@ -7,6 +7,7 @@
   import {
     createUserPost,
     refreshSiteUser,
+    siteToken,
     siteUser,
   } from '$lib/siteAuth'
   import { buildRubricsUrl } from '$lib/api/backend'
@@ -36,25 +37,34 @@
     }
   }
 
+  const loadRubrics = async () => {
+    if (rubricsLoading) return
+    rubricsLoading = true
+    const headers: Record<string, string> = {}
+    if ($siteToken) {
+      headers.Authorization = `Bearer ${$siteToken}`
+    }
+    try {
+      const response = await fetch(buildRubricsUrl({ includeHidden: true }), {
+        headers,
+      })
+      const data = await response.json()
+      rubrics = data?.rubrics ?? []
+      if (!createRubric && rubrics.length === 1) {
+        createRubric = rubrics[0].slug
+      }
+    } catch {
+      rubrics = []
+    } finally {
+      rubricsLoading = false
+    }
+  }
+
   onMount(() => {
     refreshSiteUser().finally(() => {
       loadingUser = false
+      loadRubrics()
     })
-    rubricsLoading = true
-    fetch(buildRubricsUrl())
-      .then((response) => response.json())
-      .then((data) => {
-        rubrics = data?.rubrics ?? []
-        if (!createRubric && rubrics.length === 1) {
-          createRubric = rubrics[0].slug
-        }
-      })
-      .catch(() => {
-        rubrics = []
-      })
-      .finally(() => {
-        rubricsLoading = false
-      })
 
     const closeOnOutsideClick = (event: MouseEvent) => {
       if (!rubricMenuOpen || !rubricMenuRef) return

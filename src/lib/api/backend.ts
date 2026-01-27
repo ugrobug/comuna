@@ -15,8 +15,13 @@ export const buildAuthorPostsUrl = (username: string): string => {
   return `${getBackendBaseUrl()}/api/authors/${encodeURIComponent(username)}/posts/`
 }
 
-export const buildRubricsUrl = (): string => {
-  return `${getBackendBaseUrl()}/api/rubrics/`
+export const buildRubricsUrl = (options?: { includeHidden?: boolean }): string => {
+  const base = `${getBackendBaseUrl()}/api/rubrics/`
+  if (!options?.includeHidden) {
+    return base
+  }
+  const params = new URLSearchParams({ include_hidden: '1' })
+  return `${base}?${params.toString()}`
 }
 
 export const buildRubricPostsUrl = (slug: string): string => {
