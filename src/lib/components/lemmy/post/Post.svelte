@@ -49,8 +49,8 @@
   $: communityTitle = post.community?.title || ''
   $: autoDisableUserLink =
     disableUserLink ??
-    communityName.toLowerCase() === 'comuna' ||
-    communityTitle.toLowerCase() === 'comuna'
+    (communityName.toLowerCase() === 'comuna' ||
+      communityTitle.toLowerCase() === 'comuna')
 
   $: hideBody =
     $userSettings.posts.deduplicateEmbed &&
