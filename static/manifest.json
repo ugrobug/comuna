@@ -1,19 +1,19 @@
 {
-  "short_name": "Работаем!",
-  "name": "Работаем!",
+  "short_name": "Comuna",
+  "name": "Comuna",
   "start_url": "/",
   "icons": [
     {
-      "src": "logo_512.png",
-      "type": "image/png",
-      "sizes": "512x512",
-      "purpose": "maskable"
+      "src": "favicon_120x120.svg",
+      "type": "image/svg+xml",
+      "sizes": "120x120",
+      "purpose": "any"
     },
     {
-      "src": "logo_512.png",
-      "type": "image/png",
-      "sizes": "512x512",
-      "purpose": "any"
+      "src": "favicon_120x120.svg",
+      "type": "image/svg+xml",
+      "sizes": "120x120",
+      "purpose": "maskable"
     }
   ],
   "background_color": "#000000",
