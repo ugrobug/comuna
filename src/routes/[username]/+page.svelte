@@ -145,6 +145,11 @@
           <span class="px-4 py-2 rounded-full bg-slate-100 dark:bg-zinc-800">
             {formatNumber(data.author?.posts_count)} постов
           </span>
+          {#if data.author?.author_rating !== undefined}
+            <span class="px-4 py-2 rounded-full bg-slate-100 dark:bg-zinc-800">
+              Рейтинг {formatNumber(data.author?.author_rating)}
+            </span>
+          {/if}
         </div>
         {#if data.author?.description}
           <p class="text-lg leading-relaxed text-slate-700 dark:text-zinc-300">
