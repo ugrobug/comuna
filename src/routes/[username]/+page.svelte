@@ -127,7 +127,7 @@
             class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700"
             href={data.author.channel_url}
             target="_blank"
-            rel="noreferrer"
+            rel="nofollow noopener"
           >
             <img src="/img/logos/telegram_logo.svg" alt="Telegram" class="w-6 h-6" />
           </a>

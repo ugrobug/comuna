@@ -1135,7 +1135,7 @@
         color="primary"
         href={authorSubscribeUrl}
         target="_blank"
-        rel="noreferrer"
+        rel="nofollow noopener"
         class="h-10 !min-h-[2.5rem] dark:!bg-primary-900 dark:!text-white dark:!border-transparent dark:hover:!brightness-110"
       >
         <span class="inline-flex items-center gap-2 text-white">

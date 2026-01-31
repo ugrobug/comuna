@@ -320,7 +320,7 @@
             class="ml-2 max-sm:hidden h-8 !min-h-[2rem] dark:!bg-primary-900 dark:!text-white dark:!border-transparent dark:hover:!brightness-110"
             href={subscribeUrl}
             target="_blank"
-            rel="noreferrer"
+            rel="nofollow noopener"
           >
             <span class="inline-flex items-center gap-2 text-white">
               <img src="/img/logos/telegram_logo.svg" alt="Telegram" class="w-4 h-4" />

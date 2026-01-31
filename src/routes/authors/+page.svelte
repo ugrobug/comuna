@@ -38,7 +38,7 @@
   <SectionTitle class="text-lg font-semibold">Как подключиться</SectionTitle>
   <ol class="list-decimal pl-6 space-y-2 text-base leading-relaxed">
     <li>Убедитесь, что канал публичный и у него есть @username.</li>
-    <li>Добавьте нашего бота <a href="https://t.me/comuna_tg_bot" target="_blank" rel="noreferrer">@comuna_tg_bot</a> в администраторы канала и дайте права читать/публиковать сообщения.</li>
+    <li>Добавьте нашего бота <a href="https://t.me/comuna_tg_bot" target="_blank" rel="nofollow noopener">@comuna_tg_bot</a> в администраторы канала и дайте права читать/публиковать сообщения.</li>
     <li>В боте выберите тематику канала и режим публикации.</li>
     <li>При желании добавьте ссылку приглашения на канал — она будет использоваться в кнопках подписки, и вы сможете отслеживать конверсию.</li>
     <li>Публикуйте посты как обычно — они появятся на сайте.</li>

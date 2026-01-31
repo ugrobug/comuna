@@ -17,6 +17,16 @@
       DOMPurify = module.default
       if (!purifyConfigured) {
         DOMPurify.addHook('afterSanitizeAttributes', (node: Element) => {
+          if (node.tagName === 'A') {
+            const href = node.getAttribute('href') || ''
+            if (href.includes('t.me/')) {
+              const rel = node.getAttribute('rel') || ''
+              const relParts = new Set(rel.split(/\s+/).filter(Boolean))
+              relParts.add('nofollow')
+              relParts.add('noopener')
+              node.setAttribute('rel', Array.from(relParts).join(' '))
+            }
+          }
           if (node.tagName === 'IFRAME') {
             const src = node.getAttribute('src') || ''
             if (!src.startsWith('https://t.me/')) {
@@ -658,9 +668,10 @@
   }
 
   function sanitizeHtml(html: string) {
+    const withNoFollow = addTelegramNoFollow(html)
     if (browser && DOMPurify) {
       // Обрабатываем изображения
-      const processedHtml = html.replace(/<img[^>]+src="([^"]+)"[^>]*>/gi, (match, src) => {
+      const processedHtml = withNoFollow.replace(/<img[^>]+src="([^"]+)"[^>]*>/gi, (match, src) => {
         return processImage(src, html);
       });
 
@@ -704,7 +715,7 @@
       });
     }
     // Если мы на сервере или DOMPurify еще не загружен, возвращаем исходный HTML
-    return html;
+    return withNoFollow;
   }
 
   function escapeHtml(value: string): string {
@@ -723,6 +734,41 @@
       return temp.textContent || '';
     }
     return value.replace(/<[^>]*>/g, '');
+  }
+
+  function addTelegramNoFollow(html: string): string {
+    if (!html) return html
+    if (browser) {
+      const temp = document.createElement('div')
+      temp.innerHTML = html
+      const links = temp.querySelectorAll('a[href]')
+      links.forEach((link) => {
+        const href = link.getAttribute('href') || ''
+        if (href.includes('t.me/')) {
+          const rel = link.getAttribute('rel') || ''
+          const relParts = new Set(rel.split(/\s+/).filter(Boolean))
+          relParts.add('nofollow')
+          relParts.add('noopener')
+          link.setAttribute('rel', Array.from(relParts).join(' '))
+        }
+      })
+      return temp.innerHTML
+    }
+    return html.replace(
+      /<a\b([^>]*?)href=(["'])([^"']*t\.me\/[^"']*)\2([^>]*?)>/gi,
+      (match, pre, quote, href, post) => {
+        const hasRel = /\srel=/.test(match)
+        if (hasRel) {
+          return match.replace(/\srel=(["'])([^"']*)\1/i, (_m, q, rel) => {
+            const relParts = new Set(rel.split(/\s+/).filter(Boolean))
+            relParts.add('nofollow')
+            relParts.add('noopener')
+            return ` rel=${q}${Array.from(relParts).join(' ')}${q}`
+          })
+        }
+        return `<a${pre}href=${quote}${href}${quote}${post} rel="nofollow noopener">`
+      }
+    )
   }
 
   // Сбрасываем флаг при изменении body
