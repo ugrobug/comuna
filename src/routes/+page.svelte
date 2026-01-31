@@ -95,6 +95,7 @@
     selectedRubrics.length > 0 &&
     !isEditingMyFeed
   $: hideNegativeMyFeed = $userSettings.myFeedHideNegative ?? true
+  $: hideReadPosts = ($userSettings.hideReadPosts ?? false) && !!$siteUser
   $: rubricNameMap = new Map(rubrics.map((rubric) => [rubric.slug, rubric.name]))
   $: selectedRubricNames = selectedRubrics.map(
     (slug) => rubricNameMap.get(slug) ?? slug
@@ -105,11 +106,11 @@
   $: canonicalUrl = `${siteBaseUrl}/`
 
   const buildPageUrl = (offset: number) => {
-    let baseUrl = buildHomeFeedUrl()
+    let baseUrl = buildHomeFeedUrl({ hideRead: hideReadPosts })
     if (feedType === 'fresh') {
-      baseUrl = buildFreshFeedUrl()
+      baseUrl = buildFreshFeedUrl({ hideRead: hideReadPosts })
     } else if (feedType === 'mine') {
-      baseUrl = buildMyFeedUrl(selectedRubrics, hideNegativeMyFeed)
+      baseUrl = buildMyFeedUrl(selectedRubrics, hideNegativeMyFeed, hideReadPosts)
     }
     const url = new URL(baseUrl)
     url.searchParams.set('limit', String(pageSize))

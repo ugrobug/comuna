@@ -53,22 +53,37 @@ export const buildPostLikeUrl = (id: number | string): string => {
   return `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/like/`
 }
 
+export const buildPostReadUrl = (id: number | string): string => {
+  return `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/read/`
+}
+
 export const buildBackendPostPath = (post: { id: number; title: string }): string => {
   const slug = slugifyTitle(post.title)
   return slug ? `/b/post/${post.id}-${slug}` : `/b/post/${post.id}`
 }
 
-export const buildHomeFeedUrl = (): string => {
-  return `${getBackendBaseUrl()}/api/home/`
+export const buildHomeFeedUrl = (options?: { hideRead?: boolean }): string => {
+  const base = `${getBackendBaseUrl()}/api/home/`
+  if (!options?.hideRead) {
+    return base
+  }
+  const params = new URLSearchParams({ hide_read: '1' })
+  return `${base}?${params.toString()}`
 }
 
-export const buildFreshFeedUrl = (): string => {
-  return `${getBackendBaseUrl()}/api/home/fresh/`
+export const buildFreshFeedUrl = (options?: { hideRead?: boolean }): string => {
+  const base = `${getBackendBaseUrl()}/api/home/fresh/`
+  if (!options?.hideRead) {
+    return base
+  }
+  const params = new URLSearchParams({ hide_read: '1' })
+  return `${base}?${params.toString()}`
 }
 
 export const buildMyFeedUrl = (
   rubrics?: string[],
-  hideNegative: boolean = true
+  hideNegative: boolean = true,
+  hideRead: boolean = false
 ): string => {
   const base = `${getBackendBaseUrl()}/api/home/my/`
   const params = new URLSearchParams()
@@ -77,6 +92,9 @@ export const buildMyFeedUrl = (
   }
   if (!hideNegative) {
     params.set('hide_negative', '0')
+  }
+  if (hideRead) {
+    params.set('hide_read', '1')
   }
   const query = params.toString()
   return query ? `${base}?${query}` : base

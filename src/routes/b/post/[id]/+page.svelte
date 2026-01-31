@@ -4,7 +4,9 @@
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import Post from '$lib/components/lemmy/post/Post.svelte'
   import PostComments from '$lib/components/site/PostComments.svelte'
-  import { backendPostToPostView, buildBackendPostPath } from '$lib/api/backend'
+  import { backendPostToPostView, buildBackendPostPath, buildPostReadUrl } from '$lib/api/backend'
+  import { onMount } from 'svelte'
+  import { siteToken } from '$lib/siteAuth'
 
   export let data
 
@@ -75,6 +77,22 @@
         })
       : ''
   $: articleSchemaTag = buildJsonLdTag(articleSchema)
+
+  onMount(async () => {
+    if (!data?.post?.id) return
+    const token = $siteToken
+    if (!token) return
+    try {
+      await fetch(buildPostReadUrl(data.post.id), {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+    } catch (error) {
+      console.error('Failed to mark post as read:', error)
+    }
+  })
 </script>
 
 <svelte:head>

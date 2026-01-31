@@ -39,6 +39,7 @@ from .models import (
     PostComment,
     PostCommentLike,
     PostLike,
+    PostRead,
     Rubric,
     TelegramAccount,
     VkAccount,
@@ -2647,6 +2648,21 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
     )
 
 
+@csrf_exempt
+def post_read(request: HttpRequest, post_id: int) -> HttpResponse:
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    user = _get_user_from_request(request)
+    if not user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    try:
+        post = Post.objects.get(id=post_id, is_blocked=False, author__is_blocked=False)
+    except Post.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "post not found"}, status=404)
+    PostRead.objects.get_or_create(post=post, user=user)
+    return JsonResponse({"ok": True})
+
+
 def home_feed(request: HttpRequest) -> HttpResponse:
     limit_raw = request.GET.get("limit", "10")
     try:
@@ -2660,9 +2676,11 @@ def home_feed(request: HttpRequest) -> HttpResponse:
         offset = 0
 
     now = timezone.now()
+    hide_read = request.GET.get("hide_read") in ("1", "true", "yes")
+    read_user = _get_user_from_request(request) if hide_read else None
     target_count = limit + offset
     fetch_size = max(target_count * 5, limit * 5)
-    posts = list(
+    posts_query = (
         Post.objects.filter(
             is_blocked=False,
             is_pending=False,
@@ -2671,7 +2689,11 @@ def home_feed(request: HttpRequest) -> HttpResponse:
         .filter(_publish_ready_filter(now))
         .filter(Q(author__shadow_banned=False) | Q(author__force_home=True))
         .filter(Q(rubric__isnull=True) | Q(rubric__is_hidden=False))
-        .select_related("author", "rubric")
+    )
+    if read_user:
+        posts_query = posts_query.exclude(reads__user=read_user)
+    posts = list(
+        posts_query.select_related("author", "rubric")
         .order_by("-created_at")[:fetch_size]
     )
     author_ids = {post.author_id for post in posts}
@@ -2767,7 +2789,9 @@ def fresh_feed(request: HttpRequest) -> HttpResponse:
         offset = 0
 
     now = timezone.now()
-    posts = (
+    hide_read = request.GET.get("hide_read") in ("1", "true", "yes")
+    read_user = _get_user_from_request(request) if hide_read else None
+    posts_query = (
         Post.objects.filter(
             is_blocked=False,
             is_pending=False,
@@ -2776,7 +2800,11 @@ def fresh_feed(request: HttpRequest) -> HttpResponse:
         .filter(_publish_ready_filter(now))
         .filter(Q(author__shadow_banned=False) | Q(author__force_home=True))
         .filter(Q(rubric__isnull=True) | Q(rubric__is_hidden=False))
-        .select_related("author", "rubric")
+    )
+    if read_user:
+        posts_query = posts_query.exclude(reads__user=read_user)
+    posts = (
+        posts_query.select_related("author", "rubric")
         .order_by("-created_at")[offset : offset + limit]
     )
 
@@ -2842,6 +2870,8 @@ def my_feed(request: HttpRequest) -> HttpResponse:
         return JsonResponse({"ok": True, "posts": []})
 
     now = timezone.now()
+    hide_read = request.GET.get("hide_read") in ("1", "true", "yes")
+    read_user = _get_user_from_request(request) if hide_read else None
     posts_query = (
         Post.objects.filter(
             rubric_id__in=rubric_ids,
@@ -2852,6 +2882,8 @@ def my_feed(request: HttpRequest) -> HttpResponse:
         .filter(_publish_ready_filter(now))
         .filter(Q(author__shadow_banned=False) | Q(author__force_home=True))
     )
+    if read_user:
+        posts_query = posts_query.exclude(reads__user=read_user)
     if hide_negative:
         posts_query = posts_query.filter(rating__gte=0)
 

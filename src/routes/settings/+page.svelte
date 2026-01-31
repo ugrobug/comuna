@@ -191,6 +191,11 @@
         <option value="mine">Моя лента</option>
       </Select>
     </Setting>
+    <ToggleSetting
+      bind:checked={$userSettings.hideReadPosts}
+      title="Скрывать прочитанные"
+      description="Если вы уже открывали пост, он больше не будет показываться в «Горячем», «Свежем» и «Моей ленте»."
+    />
   </Section>
 
   <Section id="my-feed" title="Моя лента">

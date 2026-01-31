@@ -75,6 +75,7 @@ interface Settings {
 
   newWidth: boolean
   markPostsAsRead: boolean
+  hideReadPosts: boolean
 
   openLinksInNewTab: boolean
   crosspostOriginalLink: boolean
@@ -160,6 +161,7 @@ export const defaultSettings: Settings = {
   hidePhoton: toBool(env.PUBLIC_REMOVE_CREDIT) ?? false,
   newWidth: toBool(env.PUBLIC_LIMIT_LAYOUT_WIDTH) ?? true,
   markPostsAsRead: toBool(env.PUBLIC_MARK_POSTS_AS_READ) ?? true,
+  hideReadPosts: false,
   openLinksInNewTab: false,
   crosspostOriginalLink: false,
   embeds: {
@@ -218,6 +220,9 @@ const migrate = (settings: any): Settings => {
   if (typeof settings?.myFeedHideNegative !== 'boolean') {
     settings.myFeedHideNegative = defaultSettings.myFeedHideNegative
   }
+  if (typeof settings?.hideReadPosts !== 'boolean') {
+    settings.hideReadPosts = defaultSettings.hideReadPosts
+  }
   settings.language = 'ru'
   settings.dock = { ...defaultSettings.dock, pins: [] }
   settings.defaultSort = { ...defaultSettings.defaultSort }
@@ -231,6 +236,7 @@ const migrate = (settings: any): Settings => {
   settings.expandableImages = defaultSettings.expandableImages
   settings.nsfwBlur = defaultSettings.nsfwBlur
   settings.markReadPosts = defaultSettings.markReadPosts
+  settings.hideReadPosts = defaultSettings.hideReadPosts
   settings.crosspostOriginalLink = defaultSettings.crosspostOriginalLink
   settings.infiniteScroll = defaultSettings.infiniteScroll
   settings.translator = defaultSettings.translator
