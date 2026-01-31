@@ -307,6 +307,16 @@ def _serialize_user(user: User) -> dict:
     )
     authors = []
     avatar_url = None
+    now = timezone.now()
+    posts_filter = _author_posts_rating_filter(now)
+    rating_map = {
+        row["id"]: row["total"]
+        for row in (
+            Author.objects.filter(id__in=[link.author_id for link in author_links])
+            .annotate(total=Sum("posts__rating", filter=posts_filter))
+            .values("id", "total")
+        )
+    }
     for link in author_links:
         author = link.author
         if not avatar_url:
@@ -322,6 +332,7 @@ def _serialize_user(user: User) -> dict:
                 "auto_publish": author.auto_publish,
                 "publish_delay_days": author.publish_delay_days,
                 "invite_url": author.invite_url,
+                "author_rating": _author_rating_value(rating_map.get(author.id)),
             }
         )
     return {
@@ -462,6 +473,17 @@ def _media_url(request: HttpRequest | None, field) -> str | None:
 
 def _author_avatar_url(request: HttpRequest | None, author: Author) -> str | None:
     return _media_url(request, author.avatar_image) or author.avatar_url
+
+
+def _author_rating_value(total_rating: int | None) -> float:
+    return round((total_rating or 0) * 0.05, 2)
+
+
+def _author_posts_rating_filter(now) -> Q:
+    return (
+        Q(posts__is_blocked=False, posts__is_pending=False)
+        & (Q(posts__publish_at__isnull=True) | Q(posts__publish_at__lte=now))
+    )
 
 
 def _rubric_icon_url(request: HttpRequest | None, rubric: Rubric | None) -> str | None:
@@ -2427,6 +2449,13 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
         .filter(Q(rubric__isnull=True) | Q(rubric__is_hidden=False))
         .count()
     )
+    author_rating_total = (
+        Post.objects.filter(author=author, is_blocked=False, is_pending=False)
+        .filter(_publish_ready_filter(now))
+        .filter(Q(rubric__isnull=True) | Q(rubric__is_hidden=False))
+        .aggregate(total=Sum("rating"))
+        .get("total")
+    )
     author_channel_url = author.invite_url or author.channel_url
     serialized = []
     for post in posts:
@@ -2469,6 +2498,7 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
                 "description": author.description,
                 "subscribers_count": author.subscribers_count,
                 "posts_count": posts_count,
+                "author_rating": _author_rating_value(author_rating_total),
             },
             "posts": serialized,
         }
@@ -2874,6 +2904,7 @@ def top_authors_month(request: HttpRequest) -> HttpResponse:
         .annotate(
             month_score=Sum(score_expr, filter=posts_filter),
             month_posts=Count("posts", filter=posts_filter),
+            total_rating=Sum("posts__rating", filter=posts_filter),
         )
         .filter(month_posts__gt=0)
         .order_by("-month_score", "-month_posts", "username")[:limit]
@@ -2889,6 +2920,7 @@ def top_authors_month(request: HttpRequest) -> HttpResponse:
                 "channel_url": author.invite_url or author.channel_url,
                 "month_score": author.month_score or 0,
                 "month_posts": author.month_posts or 0,
+                "author_rating": _author_rating_value(author.total_rating),
             }
         )
 
@@ -2982,10 +3014,16 @@ def search_content(request: HttpRequest) -> HttpResponse:
             )
 
     if type_filter in ("all", "users", "authors"):
-        authors_qs = Author.objects.filter(is_blocked=False).filter(
-            Q(username__icontains=query)
-            | Q(title__icontains=query)
-            | Q(description__icontains=query)
+        now = timezone.now()
+        posts_filter = _author_posts_rating_filter(now)
+        authors_qs = (
+            Author.objects.filter(is_blocked=False)
+            .filter(
+                Q(username__icontains=query)
+                | Q(title__icontains=query)
+                | Q(description__icontains=query)
+            )
+            .annotate(total_rating=Sum("posts__rating", filter=posts_filter))
         )
         total_authors = authors_qs.count()
         for author in authors_qs[offset : offset + limit]:
@@ -2997,6 +3035,7 @@ def search_content(request: HttpRequest) -> HttpResponse:
                     "description": author.description,
                     "channel_url": author.invite_url or author.channel_url,
                     "subscribers_count": author.subscribers_count,
+                    "author_rating": _author_rating_value(author.total_rating),
                 }
             )
 
