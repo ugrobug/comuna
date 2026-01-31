@@ -228,7 +228,6 @@ const migrate = (settings: any): Settings => {
   settings.defaultSort = { ...defaultSettings.defaultSort }
   settings.showInstances = { ...defaultSettings.showInstances }
   settings.displayNames = defaultSettings.displayNames
-  settings.myFeedHideNegative = defaultSettings.myFeedHideNegative
   settings.view = defaultSettings.view
   settings.leftAlign = defaultSettings.leftAlign
   settings.randomPlaceholders = defaultSettings.randomPlaceholders
@@ -236,7 +235,6 @@ const migrate = (settings: any): Settings => {
   settings.expandableImages = defaultSettings.expandableImages
   settings.nsfwBlur = defaultSettings.nsfwBlur
   settings.markReadPosts = defaultSettings.markReadPosts
-  settings.hideReadPosts = defaultSettings.hideReadPosts
   settings.crosspostOriginalLink = defaultSettings.crosspostOriginalLink
   settings.infiniteScroll = defaultSettings.infiniteScroll
   settings.translator = defaultSettings.translator
