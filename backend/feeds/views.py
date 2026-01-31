@@ -2667,7 +2667,6 @@ def home_feed(request: HttpRequest) -> HttpResponse:
             is_blocked=False,
             is_pending=False,
             author__is_blocked=False,
-            rating__gte=0,
         )
         .filter(_publish_ready_filter(now))
         .filter(Q(author__shadow_banned=False) | Q(author__force_home=True))
@@ -2675,6 +2674,16 @@ def home_feed(request: HttpRequest) -> HttpResponse:
         .select_related("author", "rubric")
         .order_by("-created_at")[:fetch_size]
     )
+    author_ids = {post.author_id for post in posts}
+    author_rating_map = {}
+    if author_ids:
+        posts_filter = _author_posts_rating_filter(now)
+        author_rating_map = {
+            row["id"]: _author_rating_value(row["total"])
+            for row in Author.objects.filter(id__in=author_ids)
+            .annotate(total=Sum("posts__rating", filter=posts_filter))
+            .values("id", "total")
+        }
 
     serialized_posts = []
     remaining = posts[:]
@@ -2692,6 +2701,10 @@ def home_feed(request: HttpRequest) -> HttpResponse:
             next_index = 0
         post = remaining.pop(next_index)
         rubric = post.rubric
+        author_rating = author_rating_map.get(post.author_id, 0)
+        combined_rating = post.rating + author_rating
+        if combined_rating < 0:
+            continue
         day_key = timezone.localtime(post.created_at).date()
         rubric_limit = rubric.home_limit if rubric else None
         rubric_key = (rubric.id, day_key) if rubric else None
@@ -2728,7 +2741,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
                     "channel_url": author_channel_url,
                     "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
                 },
-                "score": post.rating + post.comments_count * 5,
+                "score": post.rating + post.comments_count * 5 + author_rating,
                 "rating": post.rating,
                 "comments_count": post.comments_count,
                 "likes_count": post.rating,
