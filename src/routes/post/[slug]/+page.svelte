@@ -50,6 +50,8 @@
   import PostFeed from '$lib/components/lemmy/post/feed/PostFeed.svelte'
   import { postFeed } from '$lib/lemmy/postfeed'
   import { deserializeEditorModel } from '$lib/util'
+  import { buildPostReadUrl } from '$lib/api/backend'
+  import { siteToken } from '$lib/siteAuth'
 
   export let data
 
@@ -138,6 +140,19 @@
   $: authorSubscribeUrl = getTelegramSubscribeUrl(data?.post?.post_view?.creator)
 
   onMount(async () => {
+    const token = $siteToken
+    if (token && data?.post?.post_view?.post?.id) {
+      try {
+        await fetch(buildPostReadUrl(data.post.post_view.post.id), {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        })
+      } catch (error) {
+        console.error('Failed to mark post as read:', error)
+      }
+    }
     if (
       !(data.post.post_view.read && $userSettings.markPostsAsRead) &&
       $profile?.jwt
