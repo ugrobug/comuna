@@ -1,7 +1,7 @@
 <script lang="ts">
   import { defaultSettings, userSettings } from '$lib/settings'
   import Setting from './Setting.svelte'
-  import { toast, Modal, TextArea } from 'mono-svelte'
+  import { toast, Modal, TextArea, TextInput } from 'mono-svelte'
   import {
     ArrowDownTray,
     ArrowPath,
