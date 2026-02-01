@@ -122,7 +122,7 @@
 
 <div class="flex flex-col gap-6 max-w-3xl">
   <Header pageHeader>
-    <h1 class="text-2xl font-bold">Посты по тегу «{tagName}»</h1>
+    <h1 class="text-2xl font-bold">Посты по тегу: «{tagName}»</h1>
   </Header>
 
   <div class="flex flex-wrap items-center gap-3">

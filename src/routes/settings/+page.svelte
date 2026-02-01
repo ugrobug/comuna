@@ -23,6 +23,15 @@
   let importText = ''
   let myFeedRubrics: Array<{ name: string; slug: string }> = []
   let myFeedRubricsLoading = false
+  $: blacklistedTags = Object.entries($userSettings.tagRules ?? {})
+    .filter(([, rule]) => rule === 'hide')
+    .map(([tag]) => tag)
+
+  const removeBlacklistedTag = (tag: string) => {
+    const nextRules = { ...($userSettings.tagRules ?? {}) }
+    delete nextRules[tag]
+    $userSettings = { ...$userSettings, tagRules: nextRules }
+  }
 
   const loadMyFeedRubrics = async () => {
     if (myFeedRubricsLoading) return
@@ -232,5 +241,30 @@
       title="Не показывать посты с отрицательным рейтингом"
       description="В моей ленте скрывать публикации с рейтингом ниже нуля."
     />
+    <Setting itemsClass="!flex-col !items-start">
+      <span slot="title">Черный список тегов</span>
+      <span slot="description">
+        Посты с этими тегами скрываются во всех лентах.
+      </span>
+      {#if blacklistedTags.length}
+        <div class="flex flex-wrap gap-2">
+          {#each blacklistedTags as tag}
+            <span class="inline-flex items-center gap-2 rounded-full bg-slate-100 dark:bg-zinc-800 px-3 py-1 text-xs font-medium text-slate-700 dark:text-zinc-200">
+              #{tag}
+              <button
+                type="button"
+                class="text-slate-500 hover:text-slate-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+                aria-label={`Удалить тег ${tag} из черного списка`}
+                on:click={() => removeBlacklistedTag(tag)}
+              >
+                ×
+              </button>
+            </span>
+          {/each}
+        </div>
+      {:else}
+        <span class="text-sm text-slate-500 dark:text-zinc-400">Черный список пуст.</span>
+      {/if}
+    </Setting>
   </Section>
 </div>
