@@ -386,7 +386,9 @@
 <div class="flex flex-col gap-2 max-w-full w-full min-w-0">
   <header class="flex flex-col gap-2 relative">
     {#if feedType === 'mine'}
-      <Header pageHeader>Моя лента</Header>
+      <h1 class="text-2xl font-semibold text-slate-900 dark:text-zinc-100">
+        Моя лента
+      </h1>
       {#if $siteUser}
         <button
           type="button"
