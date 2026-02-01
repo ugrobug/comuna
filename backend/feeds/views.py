@@ -1277,7 +1277,6 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
                 "updated_at",
             ]
         )
-    _apply_post_tags(post)
     elif requires_approval:
         _send_bot_message_with_keyboard(
             author.admin_chat_id,
@@ -1293,6 +1292,7 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
         )
     elif created and not requires_approval:
         _maybe_notify_new_author(author, post)
+    _apply_post_tags(post)
 
 
 def _handle_verification_code(chat_id: int, code: str) -> None:
