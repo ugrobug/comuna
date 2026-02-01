@@ -49,6 +49,7 @@
   ]
   let myFeedMood: 'funny' | 'serious' | 'sad' | null = null
   let myFeedMoodExpiresAt: number | null = null
+  let moodNow = Date.now()
   let moodActive = false
   let effectiveMood: 'funny' | 'serious' | 'sad' | null = null
   let moodTagSet = new Set<string>()
@@ -118,7 +119,7 @@
   $: moodActive =
     !!myFeedMood &&
     !!myFeedMoodExpiresAt &&
-    Date.now() < myFeedMoodExpiresAt
+    moodNow < myFeedMoodExpiresAt
   $: effectiveMood = moodActive ? myFeedMood : null
   $: rubricNameMap = new Map(rubrics.map((rubric) => [rubric.slug, rubric.name]))
   $: selectedRubricNames = selectedRubrics.map(
@@ -128,22 +129,21 @@
   // Определяем канонический URL для главной страницы
   $: siteBaseUrl = (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '')
   $: canonicalUrl = `${siteBaseUrl}/`
-  $: if (
-    browser &&
-    myFeedMood &&
-    myFeedMoodExpiresAt &&
-    Date.now() >= myFeedMoodExpiresAt
-  ) {
-    $userSettings = {
-      ...$userSettings,
-      myFeedMood: null,
-      myFeedMoodExpiresAt: null,
-    }
-  }
   $: if (browser) {
-    myFeedMood
-    myFeedMoodExpiresAt
-    scheduleMoodExpiry()
+    if (moodExpiryTimer) {
+      window.clearTimeout(moodExpiryTimer)
+      moodExpiryTimer = null
+    }
+    if (myFeedMoodExpiresAt) {
+      const delay = myFeedMoodExpiresAt - Date.now()
+      if (delay > 0) {
+        moodExpiryTimer = window.setTimeout(() => {
+          moodNow = Date.now()
+        }, delay)
+      } else {
+        moodNow = Date.now()
+      }
+    }
   }
 
   const buildPageUrl = (offset: number) => {
@@ -309,22 +309,6 @@
     }
   }
 
-  function scheduleMoodExpiry() {
-    if (!browser) return
-    if (moodExpiryTimer) {
-      window.clearTimeout(moodExpiryTimer)
-      moodExpiryTimer = null
-    }
-    if (!myFeedMoodExpiresAt) return
-    const delay = myFeedMoodExpiresAt - Date.now()
-    if (delay <= 0) {
-      $userSettings = { ...$userSettings, myFeedMood: null, myFeedMoodExpiresAt: null }
-      return
-    }
-    moodExpiryTimer = window.setTimeout(() => {
-      $userSettings = { ...$userSettings, myFeedMood: null, myFeedMoodExpiresAt: null }
-    }, delay)
-  }
 
   $: moodTagSet =
     effectiveMood && tagMoodMap.size
