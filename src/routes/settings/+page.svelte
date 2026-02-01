@@ -23,6 +23,7 @@
   let importText = ''
   let myFeedRubrics: Array<{ name: string; slug: string }> = []
   let myFeedRubricsLoading = false
+  let manualBlacklistTag = ''
   $: blacklistedTags = Object.entries($userSettings.tagRules ?? {})
     .filter(([, rule]) => rule === 'hide')
     .map(([tag]) => tag)
@@ -31,6 +32,20 @@
     const nextRules = { ...($userSettings.tagRules ?? {}) }
     delete nextRules[tag]
     $userSettings = { ...$userSettings, tagRules: nextRules }
+  }
+
+  const addBlacklistedTag = () => {
+    const normalized = manualBlacklistTag.trim().toLowerCase()
+    if (!normalized) return
+    $userSettings = {
+      ...$userSettings,
+      tagRules: { ...($userSettings.tagRules ?? {}), [normalized]: 'hide' },
+    }
+    manualBlacklistTag = ''
+  }
+
+  const clearBlacklistedTags = () => {
+    $userSettings = { ...$userSettings, tagRules: {} }
   }
 
   const loadMyFeedRubrics = async () => {
@@ -246,6 +261,21 @@
       <span slot="description">
         Посты с этими тегами скрываются во всех лентах.
       </span>
+      <div class="flex flex-wrap items-end gap-2">
+        <TextInput
+          label="Добавить тег вручную"
+          bind:value={manualBlacklistTag}
+          placeholder="Например: йога"
+        />
+        <Button size="sm" color="secondary" on:click={addBlacklistedTag}>
+          Добавить
+        </Button>
+        {#if blacklistedTags.length}
+          <Button size="sm" color="ghost" on:click={clearBlacklistedTags}>
+            Очистить список
+          </Button>
+        {/if}
+      </div>
       {#if blacklistedTags.length}
         <div class="flex flex-wrap gap-2">
           {#each blacklistedTags as tag}
