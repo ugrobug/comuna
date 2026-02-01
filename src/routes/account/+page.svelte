@@ -28,6 +28,7 @@
   let editing: SiteUserPost | null = null
   let editTitle = ''
   let editContent = ''
+  let editTags = ''
   let isJsonContent = true
   let saving = false
   let saveError = ''
@@ -85,6 +86,7 @@
     editing = post
     editTitle = post.title || ''
     editContent = post.content || ''
+    editTags = (post.tags ?? []).join(', ')
     isJsonContent = detectContentType(editContent)
     saveError = ''
     editOpen = true
@@ -114,9 +116,14 @@
           return
         }
       }
+      const tags = editTags
+        .split(',')
+        .map((tag) => tag.trim())
+        .filter((tag) => tag.length > 0)
       const updated = await updateUserPost(editing.id, {
         title: editTitle,
         content: trimmedHtml,
+        tags,
       })
       posts = posts.map((post) => (post.id === updated.id ? updated : post))
       editOpen = false
@@ -289,6 +296,7 @@
   <Modal bind:open={editOpen} title="Редактирование поста">
     <div class="flex flex-col gap-4">
       <TextInput label="Заголовок" bind:value={editTitle} />
+      <TextInput label="Теги (через запятую)" bind:value={editTags} />
       <div class="flex flex-col gap-2">
         {#if isJsonContent}
           <EditorJS

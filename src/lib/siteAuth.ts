@@ -240,7 +240,7 @@ export const fetchUserPosts = async (limit = 20, offset = 0) => {
 
 export const updateUserPost = async (
   postId: number,
-  payload: { title?: string; content?: string }
+  payload: { title?: string; content?: string; tags?: string[] }
 ) => {
   const token = get(siteToken)
   if (!token) {

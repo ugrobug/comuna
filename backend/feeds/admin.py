@@ -67,8 +67,8 @@ class PostAdmin(admin.ModelAdmin):
 
 @admin.register(Tag)
 class TagAdmin(admin.ModelAdmin):
-    list_display = ("name", "is_active", "created_at")
-    list_filter = ("is_active",)
+    list_display = ("name", "mood", "is_active", "created_at")
+    list_filter = ("mood", "is_active")
     search_fields = ("name",)
 
 

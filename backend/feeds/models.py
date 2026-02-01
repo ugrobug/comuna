@@ -135,7 +135,19 @@ class Rubric(models.Model):
 
 
 class Tag(models.Model):
+    MOOD_SERIOUS = "serious"
+    MOOD_FUNNY = "funny"
+    MOOD_SAD = "sad"
+    MOOD_CHOICES = (
+        (MOOD_SERIOUS, "Серьезный"),
+        (MOOD_FUNNY, "Веселый"),
+        (MOOD_SAD, "Грустный"),
+    )
+
     name = models.CharField(max_length=64, unique=True)
+    mood = models.CharField(
+        max_length=16, choices=MOOD_CHOICES, default=MOOD_SERIOUS
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
