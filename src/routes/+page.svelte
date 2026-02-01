@@ -14,7 +14,6 @@
     buildFreshFeedUrl,
     buildHomeFeedUrl,
     buildMyFeedUrl,
-    buildRubricsUrl,
     buildTagsListUrl,
   } from '$lib/api/backend'
   import { siteToken, siteUser } from '$lib/siteAuth'
@@ -36,10 +35,7 @@
   let lastFeedType = feedType
   let lastMyFeedKey = ''
   let lastFeedKey: string | null = null
-  let rubrics: Array<{ name: string; slug: string; icon_url?: string | null; icon_thumb_url?: string | null }> = []
-  let rubricsLoading = false
   let myFeedSettingsOpen = false
-  let draftRubrics: string[] = []
   let feedParam: string | null = null
   const moodDurationMs = 3 * 60 * 60 * 1000
   const moodOptions: Array<{ label: string; value: 'funny' | 'serious' | 'sad' }> = [
@@ -121,11 +117,6 @@
     !!myFeedMoodExpiresAt &&
     moodNow < myFeedMoodExpiresAt
   $: effectiveMood = moodActive ? myFeedMood : null
-  $: rubricNameMap = new Map(rubrics.map((rubric) => [rubric.slug, rubric.name]))
-  $: selectedRubricNames = selectedRubrics.map(
-    (slug) => rubricNameMap.get(slug) ?? slug
-  )
-
   // Определяем канонический URL для главной страницы
   $: siteBaseUrl = (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '')
   $: canonicalUrl = `${siteBaseUrl}/`
@@ -216,26 +207,8 @@
     }
   }
 
-  const loadRubrics = async () => {
-    if (!browser || rubricsLoading || rubrics.length) return
-    rubricsLoading = true
-    try {
-      const response = await fetch(buildRubricsUrl())
-      if (response.ok) {
-        const data = await response.json()
-        rubrics = data.rubrics ?? []
-      }
-    } catch (error) {
-      console.error('Failed to load rubrics:', error)
-    } finally {
-      rubricsLoading = false
-    }
-  }
-
   const openMyFeedSettings = () => {
     myFeedSettingsOpen = true
-    draftRubrics = [...selectedRubrics]
-    loadRubrics()
   }
 
   const toggleMyFeedSettings = () => {
@@ -246,16 +219,6 @@
     }
   }
 
-  const toggleDraftRubric = (slug: string) => {
-    const current = new Set(draftRubrics)
-    if (current.has(slug)) {
-      current.delete(slug)
-    } else {
-      current.add(slug)
-    }
-    draftRubrics = Array.from(current)
-  }
-
   const resetMyFeed = () => {
     posts = []
     offset = 0
@@ -264,16 +227,6 @@
     if (canLoadMyFeed) {
       hasMore = true
       loadMore()
-    }
-  }
-
-  const saveMyFeed = () => {
-    $userSettings = {
-      ...$userSettings,
-      myFeedRubrics: [...draftRubrics],
-    }
-    if (browser) {
-      window.location.reload()
     }
   }
 
@@ -334,12 +287,6 @@
     if (key !== lastMyFeedKey) {
       lastMyFeedKey = key
       resetMyFeed()
-    }
-    if (!rubrics.length && !rubricsLoading) {
-      loadRubrics()
-    }
-    if ($siteUser && !selectedRubrics.length && !myFeedSettingsOpen) {
-      openMyFeedSettings()
     }
     if (effectiveMood) {
       loadTagMoods()
@@ -427,45 +374,19 @@
           <div class="text-xs text-slate-500 dark:text-zinc-400">
             Можно быстро настроить ленту под настроение на 3 часа — действует в текущей сессии.
           </div>
-          <div class="text-base text-slate-600 dark:text-zinc-300">
-            Выберите рубрики, которые хотите видеть в своей ленте. Эти настройки всегда можно поменять в настройках сайта.
+          <div class="text-sm text-slate-600 dark:text-zinc-300">
+            Выбор рубрик и составление черного списка доступны в настройках сайта.
           </div>
-          {#if rubricsLoading}
-            <div class="text-sm text-slate-500">Загружаем рубрики...</div>
-          {:else if rubrics.length}
-            <div class="flex flex-col gap-3">
-              {#each rubrics as rubric}
-                <label class="flex items-center gap-3 text-sm text-slate-700 dark:text-zinc-200">
-                  <input
-                    class="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-900"
-                    type="checkbox"
-                    checked={draftRubrics.includes(rubric.slug)}
-                    on:change={() => toggleDraftRubric(rubric.slug)}
-                  />
-                  <span>{rubric.name}</span>
-                </label>
-              {/each}
-            </div>
-            <div class="flex items-center gap-2">
-              <Button color="primary" on:click={saveMyFeed}>
-                Сохранить
-              </Button>
-              <a href="/settings" class="text-sm text-blue-600 dark:text-blue-400 hover:underline">
-                Настройки сайта
-              </a>
-            </div>
-          {:else}
-            <div class="text-sm text-slate-500">Рубрики пока не загружены.</div>
-          {/if}
+          <a href="/settings" class="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+            Перейти в настройки
+          </a>
         </div>
       {:else}
-        <div class="text-sm text-slate-500 dark:text-zinc-400">
-          {#if selectedRubricNames.length}
-            Выбранные рубрики: {selectedRubricNames.join(', ')}
-          {:else}
-            Рубрики не выбраны.
-          {/if}
-        </div>
+        {#if !selectedRubrics.length}
+          <div class="text-sm text-slate-500 dark:text-zinc-400">
+            Чтобы лента заработала, выберите рубрики в настройках сайта.
+          </div>
+        {/if}
       {/if}
       {#if effectiveMood && tagMoodLoading}
         <div class="text-sm text-slate-500">Загружаем теги настроения...</div>
