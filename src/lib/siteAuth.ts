@@ -35,6 +35,7 @@ export type SiteUserPost = {
   rubric?: string | null
   rubric_slug?: string | null
   rubric_icon_url?: string | null
+  tags?: string[]
   author: {
     username: string
     title?: string | null
@@ -268,6 +269,7 @@ export const createUserPost = async (payload: {
   content: string
   author_username?: string
   rubric_slug?: string
+  tags?: string[]
 }) => {
   const token = get(siteToken)
   if (!token) {

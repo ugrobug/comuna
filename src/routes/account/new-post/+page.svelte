@@ -15,6 +15,7 @@
   let loadingUser = true
   let createTitle = ''
   let createContent = ''
+  let createTags = ''
   let createAuthor = ''
   let createRubric = ''
   let creating = false
@@ -113,14 +114,20 @@
     }
     creating = true
     try {
+      const tags = createTags
+        .split(',')
+        .map((tag) => tag.trim())
+        .filter((tag) => tag.length > 0)
       await createUserPost({
         title: createTitle.trim(),
         content: createContent.trim(),
         author_username: createAuthor || undefined,
         rubric_slug: createRubric || undefined,
+        tags: tags.length ? tags : undefined,
       })
       createTitle = ''
       createContent = ''
+      createTags = ''
       toast({
         content:
           'Ваш пост опубликован! Не забудьте поделиться ссылкой на него в социальных сетях',
@@ -253,6 +260,7 @@
           </div>
         {/if}
         <TextInput label="Заголовок" bind:value={createTitle} />
+        <TextInput label="Теги (через запятую)" bind:value={createTags} />
         <EditorJS
           bind:value={createContent}
           placeholder="Текст поста"
@@ -272,6 +280,7 @@
             on:click={() => {
               createTitle = ''
               createContent = ''
+              createTags = ''
               createError = ''
             }}
             disabled={creating}

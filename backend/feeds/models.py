@@ -134,6 +134,19 @@ class Rubric(models.Model):
             self._skip_icon_thumb = False
 
 
+class Tag(models.Model):
+    name = models.CharField(max_length=64, unique=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class Post(models.Model):
     author = models.ForeignKey(Author, on_delete=models.CASCADE, related_name="posts")
     message_id = models.BigIntegerField()
@@ -142,6 +155,7 @@ class Post(models.Model):
     rubric = models.ForeignKey(
         Rubric, on_delete=models.SET_NULL, null=True, blank=True, related_name="posts"
     )
+    tags = models.ManyToManyField(Tag, blank=True, related_name="posts")
     content = models.TextField(blank=True)
     rating = models.IntegerField(default=0)
     comments_count = models.PositiveIntegerField(default=0)

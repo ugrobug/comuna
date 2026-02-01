@@ -9,6 +9,7 @@ from .models import (
     PostCommentLike,
     PostLike,
     Rubric,
+    Tag,
 )
 
 
@@ -48,6 +49,7 @@ class PostAdmin(admin.ModelAdmin):
     fields = (
         "author",
         "rubric",
+        "tags",
         "message_id",
         "title",
         "content",
@@ -60,6 +62,14 @@ class PostAdmin(admin.ModelAdmin):
         "publish_at",
         "raw_data",
     )
+    filter_horizontal = ("tags",)
+
+
+@admin.register(Tag)
+class TagAdmin(admin.ModelAdmin):
+    list_display = ("name", "is_active", "created_at")
+    list_filter = ("is_active",)
+    search_fields = ("name",)
 
 
 @admin.register(Rubric)

@@ -18,7 +18,7 @@ import urllib.request
 from collections import defaultdict
 from datetime import timedelta, timezone as dt_timezone
 from math import ceil
-from html import escape
+from html import escape, unescape
 from xml.sax.saxutils import escape as xml_escape
 from django.db import transaction
 from django.db.models import Count, F, IntegerField, Q, Sum, Value
@@ -41,6 +41,7 @@ from .models import (
     PostLike,
     PostRead,
     Rubric,
+    Tag,
     TelegramAccount,
     VkAccount,
 )
@@ -534,7 +535,87 @@ def _build_title(text: str) -> str:
 def _strip_html(text: str) -> str:
     if not text:
         return ""
-    return re.sub(r"<[^>]+>", "", text)
+    return unescape(re.sub(r"<[^>]+>", "", text))
+
+
+def _normalize_tag_value(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def _parse_tag_payload(raw) -> list[str]:
+    if not raw:
+        return []
+    if isinstance(raw, str):
+        parts = re.split(r"[,\n]", raw)
+    elif isinstance(raw, (list, tuple)):
+        parts = raw
+    else:
+        return []
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for part in parts:
+        if part is None:
+            continue
+        value = _normalize_tag_value(str(part))
+        if not value:
+            continue
+        key = value.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(value)
+    return normalized
+
+
+def _count_tag_occurrences(text_lower: str, tag_lower: str) -> int:
+    if not text_lower or not tag_lower:
+        return 0
+    if re.fullmatch(r"[\w\-]+", tag_lower):
+        pattern = re.compile(rf"(?<!\w){re.escape(tag_lower)}(?!\w)")
+        return len(pattern.findall(text_lower))
+    return text_lower.count(tag_lower)
+
+
+def _apply_post_tags(post: Post, explicit_tags: list[str] | None = None) -> None:
+    explicit_tags = explicit_tags or []
+    existing_tags = {tag.name.lower(): tag for tag in Tag.objects.all()}
+    selected_tags: list[Tag] = []
+    seen_ids: set[int] = set()
+
+    for tag_name in explicit_tags:
+        normalized = _normalize_tag_value(tag_name)
+        if not normalized:
+            continue
+        key = normalized.lower()
+        tag = existing_tags.get(key)
+        if not tag:
+            tag = Tag.objects.create(name=normalized)
+            existing_tags[key] = tag
+        if tag.id not in seen_ids:
+            selected_tags.append(tag)
+            seen_ids.add(tag.id)
+            if len(selected_tags) >= 5:
+                break
+
+    if len(selected_tags) < 5 and existing_tags:
+        text = _strip_html(f"{post.title} {post.content}").lower()
+        candidates: list[tuple[int, int, str, Tag]] = []
+        for tag in existing_tags.values():
+            if not tag.is_active or tag.id in seen_ids:
+                continue
+            count = _count_tag_occurrences(text, tag.name.lower())
+            if count:
+                candidates.append((count, len(tag.name), tag.name.lower(), tag))
+        candidates.sort(key=lambda item: (-item[0], -item[1], item[2]))
+        for _, __, ___, tag in candidates:
+            selected_tags.append(tag)
+            if len(selected_tags) >= 5:
+                break
+
+    if selected_tags:
+        post.tags.set(selected_tags)
+    else:
+        post.tags.clear()
 
 
 def _slugify_title(text: str) -> str:
@@ -1133,6 +1214,7 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
                         "updated_at",
                     ]
                 )
+                _apply_post_tags(existing_group_post)
                 return
 
     content = _build_content_with_images(formatted_text, gallery_urls, embed_html)
@@ -1195,6 +1277,7 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
                 "updated_at",
             ]
         )
+    _apply_post_tags(post)
     elif requires_approval:
         _send_bot_message_with_keyboard(
             author.admin_chat_id,
@@ -1872,6 +1955,7 @@ def _serialize_post_for_user(request: HttpRequest, post: Post) -> dict:
         "rubric": rubric.name if rubric else None,
         "rubric_slug": rubric.slug if rubric else None,
         "rubric_icon_url": _rubric_icon_url(request, rubric),
+        "tags": [tag.name for tag in post.tags.all()],
         "author": {
             "username": post.author.username,
             "title": author_title,
@@ -1925,6 +2009,7 @@ def user_posts(request: HttpRequest) -> HttpResponse:
         content = (payload.get("content") or "").strip()
         author_username = (payload.get("author_username") or "").strip()
         rubric_slug = (payload.get("rubric_slug") or "").strip()
+        explicit_tags = _parse_tag_payload(payload.get("tags"))
 
         if not title:
             return JsonResponse({"ok": False, "error": "title is required"}, status=400)
@@ -1988,6 +2073,7 @@ def user_posts(request: HttpRequest) -> HttpResponse:
             is_blocked=False,
             publish_at=publish_at,
         )
+        _apply_post_tags(post, explicit_tags)
         _maybe_notify_new_author(author, post)
         return JsonResponse({"ok": True, "post": _serialize_post_for_user(request, post)})
 
@@ -2011,6 +2097,7 @@ def user_posts(request: HttpRequest) -> HttpResponse:
     posts_qs = (
         Post.objects.filter(author_id__in=author_ids, is_blocked=False, author__is_blocked=False)
         .select_related("author", "rubric")
+        .prefetch_related("tags")
         .order_by("-created_at")
     )
 
@@ -2088,8 +2175,9 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
 
     title = payload.get("title") if "title" in payload else None
     content = payload.get("content") if "content" in payload else None
+    tags_payload = payload.get("tags") if "tags" in payload else None
 
-    if title is None and content is None:
+    if title is None and content is None and tags_payload is None:
         return JsonResponse({"ok": False, "error": "nothing to update"}, status=400)
 
     if content is not None:
@@ -2113,6 +2201,11 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
             post.title = _build_title(source_text)
 
     post.save(update_fields=["title", "content", "raw_data", "updated_at"])
+    if tags_payload is not None:
+        explicit_tags = _parse_tag_payload(tags_payload)
+    else:
+        explicit_tags = [tag.name for tag in post.tags.all()]
+    _apply_post_tags(post, explicit_tags)
     return JsonResponse({"ok": True, "post": _serialize_post_for_user(request, post)})
 
 
@@ -2440,6 +2533,7 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
         Post.objects.filter(author=author, is_blocked=False, is_pending=False)
         .filter(_publish_ready_filter(now))
         .filter(Q(rubric__isnull=True) | Q(rubric__is_hidden=False))
+        .prefetch_related("tags")
         .order_by("-created_at")
         .all()[offset : offset + limit]
     )
@@ -2477,6 +2571,7 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
                 "created_at": post.created_at.isoformat(),
                 "comments_count": post.comments_count,
                 "likes_count": post.rating,
+                "tags": [tag.name for tag in post.tags.all()],
                 "author": {
                     "username": author.username,
                     "title": author_title,
@@ -2558,6 +2653,7 @@ def rubric_posts(request: HttpRequest, slug: str) -> HttpResponse:
             author__is_blocked=False,
         )
         .filter(_publish_ready_filter(now))
+        .prefetch_related("tags")
         .order_by("-created_at")
         .all()[offset : offset + limit]
     )
@@ -2580,6 +2676,7 @@ def rubric_posts(request: HttpRequest, slug: str) -> HttpResponse:
                 "created_at": post.created_at.isoformat(),
                 "comments_count": post.comments_count,
                 "likes_count": post.rating,
+                "tags": [tag.name for tag in post.tags.all()],
                 "author": {
                     "username": post.author.username,
                     "title": author_title,
@@ -2611,6 +2708,7 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
         now = timezone.now()
         post = (
             Post.objects.select_related("author", "rubric")
+            .prefetch_related("tags")
             .filter(is_blocked=False, is_pending=False, author__is_blocked=False)
             .filter(_publish_ready_filter(now))
             .get(id=post_id)
@@ -2637,6 +2735,7 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
                 "created_at": post.created_at.isoformat(),
                 "comments_count": post.comments_count,
                 "likes_count": post.rating,
+                "tags": [tag.name for tag in post.tags.all()],
                 "author": {
                     "username": post.author.username,
                     "title": author_title,
@@ -2694,6 +2793,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
         posts_query = posts_query.exclude(reads__user=read_user)
     posts = list(
         posts_query.select_related("author", "rubric")
+        .prefetch_related("tags")
         .order_by("-created_at")[:fetch_size]
     )
     author_ids = {post.author_id for post in posts}
@@ -2763,6 +2863,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
                     "channel_url": author_channel_url,
                     "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
                 },
+                "tags": [tag.name for tag in post.tags.all()],
                 "score": post.rating + post.comments_count * 5 + author_rating,
                 "rating": post.rating,
                 "comments_count": post.comments_count,
@@ -2805,6 +2906,7 @@ def fresh_feed(request: HttpRequest) -> HttpResponse:
         posts_query = posts_query.exclude(reads__user=read_user)
     posts = (
         posts_query.select_related("author", "rubric")
+        .prefetch_related("tags")
         .order_by("-created_at")[offset : offset + limit]
     )
 
@@ -2831,6 +2933,7 @@ def fresh_feed(request: HttpRequest) -> HttpResponse:
                     "channel_url": author_channel_url,
                     "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
                 },
+                "tags": [tag.name for tag in post.tags.all()],
                 "score": post.rating + post.comments_count * 5,
                 "rating": post.rating,
                 "comments_count": post.comments_count,
@@ -2889,6 +2992,7 @@ def my_feed(request: HttpRequest) -> HttpResponse:
 
     posts = (
         posts_query.select_related("author", "rubric")
+        .prefetch_related("tags")
         .order_by("-created_at")[offset : offset + limit]
     )
 
@@ -2915,6 +3019,7 @@ def my_feed(request: HttpRequest) -> HttpResponse:
                     "channel_url": author_channel_url,
                     "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
                 },
+                "tags": [tag.name for tag in post.tags.all()],
                 "score": post.rating + post.comments_count * 5,
                 "rating": post.rating,
                 "comments_count": post.comments_count,
@@ -3024,6 +3129,7 @@ def search_content(request: HttpRequest) -> HttpResponse:
             )
             .filter(_publish_ready_filter(now))
             .select_related("author", "rubric")
+            .prefetch_related("tags")
             .order_by("-created_at" if sort == "new" else "-created_at")
         )
         total_posts = posts_qs.count()
@@ -3047,6 +3153,7 @@ def search_content(request: HttpRequest) -> HttpResponse:
                     "created_at": post.created_at.isoformat(),
                     "comments_count": post.comments_count,
                     "likes_count": post.rating,
+                    "tags": [tag.name for tag in post.tags.all()],
                     "author": {
                         "username": post.author.username,
                         "title": author_title,

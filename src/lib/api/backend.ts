@@ -153,6 +153,7 @@ export type BackendPost = {
   rubric_icon_url?: string | null
   comments_count?: number
   likes_count?: number
+  tags?: string[]
   author?: BackendAuthor
 }
 
