@@ -45,7 +45,6 @@
   ]
   let myFeedMood: 'funny' | 'serious' | 'sad' | null = null
   let myFeedMoodExpiresAt: number | null = null
-  let moodNow = Date.now()
   let moodActive = false
   let effectiveMood: 'funny' | 'serious' | 'sad' | null = null
   let moodTagSet = new Set<string>()
@@ -115,27 +114,11 @@
   $: moodActive =
     !!myFeedMood &&
     !!myFeedMoodExpiresAt &&
-    moodNow < myFeedMoodExpiresAt
+    Date.now() < myFeedMoodExpiresAt
   $: effectiveMood = moodActive ? myFeedMood : null
   // Определяем канонический URL для главной страницы
   $: siteBaseUrl = (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '')
   $: canonicalUrl = `${siteBaseUrl}/`
-  $: if (browser) {
-    if (moodExpiryTimer) {
-      window.clearTimeout(moodExpiryTimer)
-      moodExpiryTimer = null
-    }
-    if (myFeedMoodExpiresAt) {
-      const delay = myFeedMoodExpiresAt - Date.now()
-      if (delay > 0) {
-        moodExpiryTimer = window.setTimeout(() => {
-          moodNow = Date.now()
-        }, delay)
-      } else {
-        moodNow = Date.now()
-      }
-    }
-  }
 
   const buildPageUrl = (offset: number) => {
     let baseUrl = buildHomeFeedUrl({ hideRead: hideReadPosts })
@@ -254,12 +237,49 @@
   }
 
   const selectMood = (value: 'funny' | 'serious' | 'sad') => {
+    if (moodActive && myFeedMood === value) {
+      clearMood()
+      return
+    }
     const expiresAt = Date.now() + moodDurationMs
     $userSettings = {
       ...$userSettings,
       myFeedMood: value,
       myFeedMoodExpiresAt: expiresAt,
     }
+  }
+
+  const clearMood = () => {
+    $userSettings = {
+      ...$userSettings,
+      myFeedMood: null,
+      myFeedMoodExpiresAt: null,
+    }
+  }
+
+  const scheduleMoodClear = (expiresAt: number | null) => {
+    if (!browser) return
+    if (moodExpiryTimer) {
+      window.clearTimeout(moodExpiryTimer)
+      moodExpiryTimer = null
+    }
+    if (!expiresAt) return
+    const delay = expiresAt - Date.now()
+    if (delay <= 0) {
+      userSettings.update((settings) => ({
+        ...settings,
+        myFeedMood: null,
+        myFeedMoodExpiresAt: null,
+      }))
+      return
+    }
+    moodExpiryTimer = window.setTimeout(() => {
+      userSettings.update((settings) => ({
+        ...settings,
+        myFeedMood: null,
+        myFeedMoodExpiresAt: null,
+      }))
+    }, delay)
   }
 
 
@@ -313,7 +333,13 @@
   onMount(() => {
     if (!browser) return
     maybeLoadMore()
+    const unsubscribe = userSettings.subscribe((settings) => {
+      scheduleMoodClear(settings.myFeedMoodExpiresAt ?? null)
+    })
     window.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      unsubscribe()
+    }
   })
 
   onDestroy(() => {
@@ -370,6 +396,11 @@
                 {mood.label}
               </Button>
             {/each}
+            {#if moodActive}
+              <Button color="ghost" on:click={clearMood}>
+                Выключить
+              </Button>
+            {/if}
           </div>
           <div class="text-xs text-slate-500 dark:text-zinc-400">
             Можно быстро настроить ленту под настроение на 3 часа — действует в текущей сессии.
