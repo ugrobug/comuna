@@ -16,7 +16,7 @@
     buildMyFeedUrl,
     buildRubricsUrl,
   } from '$lib/api/backend'
-  import { siteUser } from '$lib/siteAuth'
+  import { siteToken, siteUser } from '$lib/siteAuth'
   import { userSettings } from '$lib/settings'
   import { Button } from 'mono-svelte'
   import { onDestroy, onMount } from 'svelte'
@@ -32,6 +32,7 @@
   let lastPostsRef = data.posts
   let lastFeedType = feedType
   let lastMyFeedKey = ''
+  let lastFeedKey: string | null = null
   let rubrics: Array<{ name: string; slug: string; icon_url?: string | null; icon_thumb_url?: string | null }> = []
   let rubricsLoading = false
   let isEditingMyFeed = false
@@ -118,12 +119,43 @@
     return url.toString()
   }
 
+  $: if (feedType !== 'mine') {
+    const feedKey = [
+      feedType,
+      hideReadPosts ? 'read' : 'all',
+      hideNegativeMyFeed ? 'hide-neg' : 'show-neg',
+    ].join('|')
+    if (lastFeedKey === null) {
+      lastFeedKey = feedKey
+      if (hideReadPosts && browser) {
+        posts = []
+        offset = 0
+        hasMore = true
+        loadingMore = false
+        loadMore()
+      }
+    } else if (feedKey !== lastFeedKey) {
+      lastFeedKey = feedKey
+      posts = []
+      offset = 0
+      hasMore = true
+      loadingMore = false
+      if (browser) {
+        loadMore()
+      }
+    }
+  }
+
   const loadMore = async () => {
     if (!browser || loadingMore || !hasMore) return
     if (feedType === 'mine' && !canLoadMyFeed) return
     loadingMore = true
     try {
-      const response = await fetch(buildPageUrl(offset))
+      const token = $siteToken
+      const headers = token ? { Authorization: `Bearer ${token}` } : undefined
+      const response = await fetch(buildPageUrl(offset), {
+        headers,
+      })
       if (!response.ok) {
         hasMore = false
         return
@@ -199,7 +231,7 @@
 
   $: if (feedType === 'mine') {
     const authKey = $siteUser ? 'auth' : 'anon'
-    const key = `${authKey}:${selectedRubrics.join(',')}:${hideNegativeMyFeed ? 'no-negative' : 'all'}`
+    const key = `${authKey}:${selectedRubrics.join(',')}:${hideNegativeMyFeed ? 'no-negative' : 'all'}:${hideReadPosts ? 'hide-read' : 'all-read'}`
     if (key !== lastMyFeedKey) {
       lastMyFeedKey = key
       resetMyFeed()
