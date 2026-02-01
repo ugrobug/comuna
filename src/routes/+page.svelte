@@ -396,11 +396,6 @@
                 {mood.label}
               </Button>
             {/each}
-            {#if moodActive}
-              <Button color="ghost" on:click={clearMood}>
-                Выключить
-              </Button>
-            {/if}
           </div>
           <div class="text-xs text-slate-500 dark:text-zinc-400">
             Можно быстро настроить ленту под настроение на 3 часа — действует в текущей сессии.
