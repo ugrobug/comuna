@@ -2703,6 +2703,16 @@ def rubric_posts(request: HttpRequest, slug: str) -> HttpResponse:
     )
 
 
+def tags_list(request: HttpRequest) -> HttpResponse:
+    tags = Tag.objects.filter(is_active=True).order_by("name")
+    return JsonResponse(
+        {
+            "ok": True,
+            "tags": [{"name": tag.name, "mood": tag.mood} for tag in tags],
+        }
+    )
+
+
 def tag_posts(request: HttpRequest, tag: str) -> HttpResponse:
     if not tag:
         return JsonResponse({"ok": False, "error": "tag not found"}, status=404)

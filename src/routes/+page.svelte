@@ -15,17 +15,20 @@
     buildHomeFeedUrl,
     buildMyFeedUrl,
     buildRubricsUrl,
+    buildTagsListUrl,
   } from '$lib/api/backend'
   import { siteToken, siteUser } from '$lib/siteAuth'
   import { userSettings } from '$lib/settings'
   import { Button } from 'mono-svelte'
   import { onDestroy, onMount } from 'svelte'
+  import { Cog6Tooth, Icon } from 'svelte-hero-icons'
 
   export let data
 
   const pageSize = 10
   let feedType = data.feedType ?? 'hot'
   let posts = data.posts ?? []
+  let filteredMyFeedPosts = posts
   let offset = posts.length
   let hasMore = posts.length === pageSize
   let loadingMore = false
@@ -35,9 +38,23 @@
   let lastFeedKey: string | null = null
   let rubrics: Array<{ name: string; slug: string; icon_url?: string | null; icon_thumb_url?: string | null }> = []
   let rubricsLoading = false
-  let isEditingMyFeed = false
+  let myFeedSettingsOpen = false
   let draftRubrics: string[] = []
   let feedParam: string | null = null
+  const moodDurationMs = 3 * 60 * 60 * 1000
+  const moodOptions: Array<{ label: string; value: 'funny' | 'serious' | 'sad' }> = [
+    { label: 'Веселое', value: 'funny' },
+    { label: 'Серьезное', value: 'serious' },
+    { label: 'Грустное', value: 'sad' },
+  ]
+  let myFeedMood: 'funny' | 'serious' | 'sad' | null = null
+  let myFeedMoodExpiresAt: number | null = null
+  let moodActive = false
+  let effectiveMood: 'funny' | 'serious' | 'sad' | null = null
+  let moodTagSet = new Set<string>()
+  let tagMoodMap = new Map<string, string>()
+  let tagMoodLoading = false
+  let moodExpiryTimer: ReturnType<typeof setTimeout> | null = null
   $: if (data?.posts) {
     if (data.posts !== lastPostsRef && data.feedType === feedType && data.feedType !== 'mine') {
       lastPostsRef = data.posts
@@ -93,10 +110,16 @@
   $: canLoadMyFeed =
     feedType === 'mine' &&
     $siteUser &&
-    selectedRubrics.length > 0 &&
-    !isEditingMyFeed
+    selectedRubrics.length > 0
   $: hideNegativeMyFeed = $userSettings.myFeedHideNegative ?? true
   $: hideReadPosts = ($userSettings.hideReadPosts ?? false) && !!$siteUser
+  $: myFeedMood = $userSettings.myFeedMood ?? null
+  $: myFeedMoodExpiresAt = $userSettings.myFeedMoodExpiresAt ?? null
+  $: moodActive =
+    !!myFeedMood &&
+    !!myFeedMoodExpiresAt &&
+    Date.now() < myFeedMoodExpiresAt
+  $: effectiveMood = moodActive ? myFeedMood : null
   $: rubricNameMap = new Map(rubrics.map((rubric) => [rubric.slug, rubric.name]))
   $: selectedRubricNames = selectedRubrics.map(
     (slug) => rubricNameMap.get(slug) ?? slug
@@ -105,6 +128,23 @@
   // Определяем канонический URL для главной страницы
   $: siteBaseUrl = (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '')
   $: canonicalUrl = `${siteBaseUrl}/`
+  $: if (
+    browser &&
+    myFeedMood &&
+    myFeedMoodExpiresAt &&
+    Date.now() >= myFeedMoodExpiresAt
+  ) {
+    $userSettings = {
+      ...$userSettings,
+      myFeedMood: null,
+      myFeedMoodExpiresAt: null,
+    }
+  }
+  $: if (browser) {
+    myFeedMood
+    myFeedMoodExpiresAt
+    scheduleMoodExpiry()
+  }
 
   const buildPageUrl = (offset: number) => {
     let baseUrl = buildHomeFeedUrl({ hideRead: hideReadPosts })
@@ -192,10 +232,18 @@
     }
   }
 
-  const startEditMyFeed = () => {
-    isEditingMyFeed = true
+  const openMyFeedSettings = () => {
+    myFeedSettingsOpen = true
     draftRubrics = [...selectedRubrics]
     loadRubrics()
+  }
+
+  const toggleMyFeedSettings = () => {
+    if (myFeedSettingsOpen) {
+      myFeedSettingsOpen = false
+    } else {
+      openMyFeedSettings()
+    }
   }
 
   const toggleDraftRubric = (slug: string) => {
@@ -229,6 +277,73 @@
     }
   }
 
+  const normalizeTag = (tag: string) => tag.trim().toLowerCase()
+
+  const loadTagMoods = async () => {
+    if (!browser || tagMoodLoading || tagMoodMap.size) return
+    tagMoodLoading = true
+    try {
+      const response = await fetch(buildTagsListUrl())
+      if (response.ok) {
+        const payload = await response.json()
+        const entries =
+          payload.tags?.map((tag: { name: string; mood: string }) => [
+            normalizeTag(tag.name),
+            tag.mood,
+          ]) ?? []
+        tagMoodMap = new Map(entries)
+      }
+    } catch (error) {
+      console.error('Failed to load tag moods:', error)
+    } finally {
+      tagMoodLoading = false
+    }
+  }
+
+  const selectMood = (value: 'funny' | 'serious' | 'sad') => {
+    const expiresAt = Date.now() + moodDurationMs
+    $userSettings = {
+      ...$userSettings,
+      myFeedMood: value,
+      myFeedMoodExpiresAt: expiresAt,
+    }
+  }
+
+  function scheduleMoodExpiry() {
+    if (!browser) return
+    if (moodExpiryTimer) {
+      window.clearTimeout(moodExpiryTimer)
+      moodExpiryTimer = null
+    }
+    if (!myFeedMoodExpiresAt) return
+    const delay = myFeedMoodExpiresAt - Date.now()
+    if (delay <= 0) {
+      $userSettings = { ...$userSettings, myFeedMood: null, myFeedMoodExpiresAt: null }
+      return
+    }
+    moodExpiryTimer = window.setTimeout(() => {
+      $userSettings = { ...$userSettings, myFeedMood: null, myFeedMoodExpiresAt: null }
+    }, delay)
+  }
+
+  $: moodTagSet =
+    effectiveMood && tagMoodMap.size
+      ? new Set(
+          Array.from(tagMoodMap.entries())
+            .filter(([, mood]) => mood === effectiveMood)
+            .map(([name]) => name)
+        )
+      : new Set<string>()
+
+  $: filteredMyFeedPosts =
+    effectiveMood && tagMoodMap.size
+      ? posts.filter((post) =>
+          (post.tags ?? []).some((tag) => moodTagSet.has(normalizeTag(tag)))
+        )
+      : effectiveMood
+        ? []
+        : posts
+
   $: if (feedType === 'mine') {
     const authKey = $siteUser ? 'auth' : 'anon'
     const key = `${authKey}:${selectedRubrics.join(',')}:${hideNegativeMyFeed ? 'no-negative' : 'all'}:${hideReadPosts ? 'hide-read' : 'all-read'}`
@@ -239,8 +354,11 @@
     if (!rubrics.length && !rubricsLoading) {
       loadRubrics()
     }
-    if ($siteUser && !selectedRubrics.length && !isEditingMyFeed) {
-      startEditMyFeed()
+    if ($siteUser && !selectedRubrics.length && !myFeedSettingsOpen) {
+      openMyFeedSettings()
+    }
+    if (effectiveMood) {
+      loadTagMoods()
     }
   }
 
@@ -274,14 +392,33 @@
         window.cancelAnimationFrame(scrollRaf)
         scrollRaf = null
       }
+      if (moodExpiryTimer) {
+        window.clearTimeout(moodExpiryTimer)
+        moodExpiryTimer = null
+      }
     }
   })
 </script>
 <div class="flex flex-col gap-2 max-w-full w-full min-w-0">
-  <header class="flex flex-col gap-4 relative">
-    <Header pageHeader>
-      {$t('routes.frontpage.title')}
-    </Header>
+  <header class="flex flex-col gap-2 relative">
+    {#if feedType === 'mine'}
+      <Header pageHeader>Моя лента</Header>
+      {#if $siteUser}
+        <button
+          type="button"
+          class="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-slate-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+          on:click={toggleMyFeedSettings}
+          aria-expanded={myFeedSettingsOpen}
+        >
+          <Icon src={Cog6Tooth} size="16" mini />
+          <span>Настроить</span>
+        </button>
+      {/if}
+    {:else}
+      <Header pageHeader>
+        {$t('routes.frontpage.title')}
+      </Header>
+    {/if}
   </header>
   {#if feedType === 'mine' && !$siteUser}
     <div class="text-base text-slate-500">
@@ -289,81 +426,87 @@
     </div>
   {:else if feedType === 'mine' && $siteUser}
     <div class="flex flex-col gap-4">
-      {#if isEditingMyFeed}
-        <div class="text-base text-slate-600 dark:text-zinc-300">
-          Выберите рубрики, которые хотите видеть в своей ленте. Эти настройки всегда можно поменять в настройках сайта.
-        </div>
-        {#if rubricsLoading}
-          <div class="text-sm text-slate-500">Загружаем рубрики...</div>
-        {:else if rubrics.length}
-          <div class="flex flex-col gap-3">
-            {#each rubrics as rubric}
-              <label class="flex items-center gap-3 text-sm text-slate-700 dark:text-zinc-200">
-                <input
-                  class="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-900"
-                  type="checkbox"
-                  checked={draftRubrics.includes(rubric.slug)}
-                  on:change={() => toggleDraftRubric(rubric.slug)}
-                />
-                <span>{rubric.name}</span>
-              </label>
+      {#if myFeedSettingsOpen}
+        <div class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 flex flex-col gap-4">
+          <div class="flex flex-wrap gap-2">
+            {#each moodOptions as mood}
+              <Button
+                color={effectiveMood === mood.value ? 'primary' : 'ghost'}
+                on:click={() => selectMood(mood.value)}
+              >
+                {mood.label}
+              </Button>
             {/each}
           </div>
-          <div class="flex items-center gap-2">
-            <Button color="primary" on:click={saveMyFeed}>
-              Сохранить
-            </Button>
-            <a href="/settings" class="text-sm text-blue-600 dark:text-blue-400 hover:underline">
-              Настройки сайта
-            </a>
+          <div class="text-xs text-slate-500 dark:text-zinc-400">
+            Можно быстро настроить ленту под настроение на 3 часа — действует в текущей сессии.
           </div>
-        {:else}
-          <div class="text-sm text-slate-500">Рубрики пока не загружены.</div>
-        {/if}
-      {:else}
-        <div class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4">
-          <div class="text-sm text-slate-500 dark:text-zinc-400">Выбранные рубрики</div>
-          {#if selectedRubricNames.length}
-            <div class="mt-2 flex flex-wrap gap-2">
-              {#each selectedRubricNames as name}
-                <span class="rounded-full bg-slate-100 dark:bg-zinc-800 px-3 py-1 text-sm text-slate-700 dark:text-zinc-200">
-                  {name}
-                </span>
+          <div class="text-base text-slate-600 dark:text-zinc-300">
+            Выберите рубрики, которые хотите видеть в своей ленте. Эти настройки всегда можно поменять в настройках сайта.
+          </div>
+          {#if rubricsLoading}
+            <div class="text-sm text-slate-500">Загружаем рубрики...</div>
+          {:else if rubrics.length}
+            <div class="flex flex-col gap-3">
+              {#each rubrics as rubric}
+                <label class="flex items-center gap-3 text-sm text-slate-700 dark:text-zinc-200">
+                  <input
+                    class="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-900"
+                    type="checkbox"
+                    checked={draftRubrics.includes(rubric.slug)}
+                    on:change={() => toggleDraftRubric(rubric.slug)}
+                  />
+                  <span>{rubric.name}</span>
+                </label>
               {/each}
             </div>
+            <div class="flex items-center gap-2">
+              <Button color="primary" on:click={saveMyFeed}>
+                Сохранить
+              </Button>
+              <a href="/settings" class="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+                Настройки сайта
+              </a>
+            </div>
           {:else}
-            <div class="mt-2 text-sm text-slate-500">Рубрики не выбраны.</div>
+            <div class="text-sm text-slate-500">Рубрики пока не загружены.</div>
           {/if}
-          <div class="mt-3">
-            <Button color="ghost" on:click={startEditMyFeed}>
-              Изменить
-            </Button>
-          </div>
         </div>
-        {#if posts?.length}
-          <div class="flex flex-col gap-6">
-            {#each posts as backendPost (backendPost.id)}
-              {@const postView = backendPostToPostView(backendPost, backendPost.author)}
-              <Post
-                post={postView}
-                view="cozy"
-                actions={true}
-                showReadMore={false}
-                showFullBody={false}
-                linkOverride={buildBackendPostPath(backendPost)}
-                userUrlOverride={backendPost.author?.username ? `/${backendPost.author.username}` : undefined}
-                communityUrlOverride={backendPost.rubric_slug ? `/rubrics/${backendPost.rubric_slug}/posts` : undefined}
-                subscribeUrl={backendPost.channel_url ?? backendPost.author?.channel_url}
-                subscribeLabel="Подписаться"
-              />
-            {/each}
-          </div>
-          {#if loadingMore}
-            <div class="text-sm text-slate-500">Загрузка...</div>
+      {:else}
+        <div class="text-sm text-slate-500 dark:text-zinc-400">
+          {#if selectedRubricNames.length}
+            Выбранные рубрики: {selectedRubricNames.join(', ')}
+          {:else}
+            Рубрики не выбраны.
           {/if}
-        {:else}
-          <div class="text-base text-slate-500">Пока нет публикаций.</div>
+        </div>
+      {/if}
+      {#if effectiveMood && tagMoodLoading}
+        <div class="text-sm text-slate-500">Загружаем теги настроения...</div>
+      {/if}
+      {#if filteredMyFeedPosts?.length}
+        <div class="flex flex-col gap-6">
+          {#each filteredMyFeedPosts as backendPost (backendPost.id)}
+            {@const postView = backendPostToPostView(backendPost, backendPost.author)}
+            <Post
+              post={postView}
+              view="cozy"
+              actions={true}
+              showReadMore={false}
+              showFullBody={false}
+              linkOverride={buildBackendPostPath(backendPost)}
+              userUrlOverride={backendPost.author?.username ? `/${backendPost.author.username}` : undefined}
+              communityUrlOverride={backendPost.rubric_slug ? `/rubrics/${backendPost.rubric_slug}/posts` : undefined}
+              subscribeUrl={backendPost.channel_url ?? backendPost.author?.channel_url}
+              subscribeLabel="Подписаться"
+            />
+          {/each}
+        </div>
+        {#if loadingMore}
+          <div class="text-sm text-slate-500">Загрузка...</div>
         {/if}
+      {:else}
+        <div class="text-base text-slate-500">Пока нет публикаций.</div>
       {/if}
     </div>
   {:else if posts?.length}

@@ -61,6 +61,10 @@ export const buildPostReadUrl = (id: number | string): string => {
   return `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/read/`
 }
 
+export const buildTagsListUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/tags/`
+}
+
 export const buildBackendPostPath = (post: { id: number; title: string }): string => {
   const slug = slugifyTitle(post.title)
   return slug ? `/b/post/${post.id}-${slug}` : `/b/post/${post.id}`

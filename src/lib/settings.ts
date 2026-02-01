@@ -103,6 +103,8 @@ interface Settings {
   language: string | null
   myFeedRubrics: string[]
   myFeedHideNegative: boolean
+  myFeedMood: 'funny' | 'serious' | 'sad' | null
+  myFeedMoodExpiresAt: number | null
   useRtl: boolean
   translator: string | undefined
   parseTags: boolean
@@ -187,6 +189,8 @@ export const defaultSettings: Settings = {
   language: 'ru',
   myFeedRubrics: [],
   myFeedHideNegative: true,
+  myFeedMood: null,
+  myFeedMoodExpiresAt: null,
   useRtl: false,
   translator: undefined,
   parseTags: true,
@@ -222,6 +226,21 @@ const migrate = (settings: any): Settings => {
   }
   if (typeof settings?.hideReadPosts !== 'boolean') {
     settings.hideReadPosts = defaultSettings.hideReadPosts
+  }
+  const validMoods = new Set(['funny', 'serious', 'sad'])
+  if (!validMoods.has(settings?.myFeedMood)) {
+    settings.myFeedMood = defaultSettings.myFeedMood
+  }
+  if (typeof settings?.myFeedMoodExpiresAt !== 'number') {
+    settings.myFeedMoodExpiresAt = defaultSettings.myFeedMoodExpiresAt
+  }
+  if (
+    settings.myFeedMood &&
+    settings.myFeedMoodExpiresAt &&
+    Date.now() > settings.myFeedMoodExpiresAt
+  ) {
+    settings.myFeedMood = defaultSettings.myFeedMood
+    settings.myFeedMoodExpiresAt = defaultSettings.myFeedMoodExpiresAt
   }
   settings.language = 'ru'
   settings.dock = { ...defaultSettings.dock, pins: [] }
