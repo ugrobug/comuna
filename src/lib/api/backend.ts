@@ -178,6 +178,7 @@ export const backendPostToPostView = (
       name: titleWithTags,
       body: post.content,
       url: '',
+      tags: post.tags ?? [],
       published: post.created_at,
       updated: post.created_at,
       nsfw: false,

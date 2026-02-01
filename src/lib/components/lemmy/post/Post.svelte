@@ -47,6 +47,7 @@
   $: rule = getTagRule([])
   $: communityName = post.community?.name || ''
   $: communityTitle = post.community?.title || ''
+  $: backendTags = (post.post as { tags?: string[] }).tags ?? []
   $: autoDisableUserLink =
     disableUserLink ??
     (communityName.toLowerCase() === 'comuna' ||
@@ -183,6 +184,17 @@
           {showFullBody}
           class="relative text-slate-600 dark:text-zinc-400"
         />
+        {#if backendTags.length}
+          <div class="mt-4 flex flex-wrap gap-2">
+            {#each backendTags as tag}
+              <span
+                class="rounded-full bg-slate-100 dark:bg-zinc-800 px-3 py-1 text-xs font-medium text-slate-600 dark:text-zinc-300"
+              >
+                #{tag}
+              </span>
+            {/each}
+          </div>
+        {/if}
         {#if subscribeUrl}
           <div class="mt-4">
             <Button
