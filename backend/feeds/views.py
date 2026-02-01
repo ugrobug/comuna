@@ -2703,6 +2703,83 @@ def rubric_posts(request: HttpRequest, slug: str) -> HttpResponse:
     )
 
 
+def tag_posts(request: HttpRequest, tag: str) -> HttpResponse:
+    if not tag:
+        return JsonResponse({"ok": False, "error": "tag not found"}, status=404)
+
+    try:
+        tag_obj = Tag.objects.get(name__iexact=tag.strip(), is_active=True)
+    except Tag.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "tag not found"}, status=404)
+
+    limit_raw = request.GET.get("limit", "10")
+    try:
+        limit = min(max(int(limit_raw), 1), 50)
+    except ValueError:
+        limit = 10
+    offset_raw = request.GET.get("offset", "0")
+    try:
+        offset = max(int(offset_raw), 0)
+    except ValueError:
+        offset = 0
+
+    now = timezone.now()
+    posts = (
+        Post.objects.filter(
+            tags=tag_obj,
+            is_blocked=False,
+            is_pending=False,
+            author__is_blocked=False,
+        )
+        .filter(_publish_ready_filter(now))
+        .prefetch_related("tags")
+        .select_related("rubric", "author")
+        .order_by("-created_at")
+        .all()[offset : offset + limit]
+    )
+
+    serialized = []
+    for post in posts:
+        rubric = post.rubric
+        author_channel_url, author_title = _author_display_fields(
+            post.author, rubric, post.channel_url
+        )
+        serialized.append(
+            {
+                "id": post.id,
+                "title": post.title,
+                "rubric": rubric.name if rubric else None,
+                "rubric_slug": rubric.slug if rubric else None,
+                "rubric_icon_url": _rubric_icon_url(request, rubric)
+                if rubric
+                else None,
+                "content": post.content,
+                "source_url": post.source_url,
+                "channel_url": author_channel_url,
+                "created_at": post.created_at.isoformat(),
+                "comments_count": post.comments_count,
+                "likes_count": post.rating,
+                "tags": [tag.name for tag in post.tags.all()],
+                "author": {
+                    "username": post.author.username,
+                    "title": author_title,
+                    "channel_url": author_channel_url,
+                    "avatar_url": _author_avatar_for_rubric(
+                        request, post.author, rubric
+                    ),
+                },
+            }
+        )
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "tag": {"name": tag_obj.name},
+            "posts": serialized,
+        }
+    )
+
+
 def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
     try:
         now = timezone.now()

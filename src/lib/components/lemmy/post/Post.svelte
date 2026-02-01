@@ -44,7 +44,7 @@
   $: postUrl = linkOverride ?? postLink(post.post)
   $: isBackendPost = Boolean(linkOverride)
   $: type = mediaType(post.post.url, view)
-  $: rule = getTagRule([])
+  $: rule = getTagRule(backendTags.map((tag) => ({ content: tag })))
   $: communityName = post.community?.name || ''
   $: communityTitle = post.community?.title || ''
   $: backendTags = (post.post as { tags?: string[] }).tags ?? []
@@ -187,11 +187,13 @@
         {#if backendTags.length}
           <div class="mt-4 flex flex-wrap gap-2">
             {#each backendTags as tag}
-              <span
-                class="rounded-full bg-slate-100 dark:bg-zinc-800 px-3 py-1 text-xs font-medium text-slate-600 dark:text-zinc-300"
+              <a
+                href={`/tags/${encodeURIComponent(tag)}`}
+                class="rounded-full bg-slate-100 dark:bg-zinc-800 px-3 py-1 text-xs font-medium text-slate-600 dark:text-zinc-300 hover:bg-slate-200 dark:hover:bg-zinc-700"
+                rel="nofollow"
               >
                 #{tag}
-              </span>
+              </a>
             {/each}
           </div>
         {/if}

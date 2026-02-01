@@ -28,6 +28,10 @@ export const buildRubricPostsUrl = (slug: string): string => {
   return `${getBackendBaseUrl()}/api/rubrics/${encodeURIComponent(slug)}/posts/`
 }
 
+export const buildTagPostsUrl = (tag: string): string => {
+  return `${getBackendBaseUrl()}/api/tags/${encodeURIComponent(tag)}/posts/`
+}
+
 export const buildPostDetailUrl = (id: number | string): string => {
   return `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/`
 }
