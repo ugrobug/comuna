@@ -651,9 +651,29 @@ def _extract_hashtags(text: str) -> list[str]:
     return tags
 
 
+def _tag_key(tag: Tag) -> str:
+    if tag.lemma:
+        return tag.lemma.strip().lower()
+    lemma = _lemmatize_tag(tag.name)
+    return (lemma or tag.name).strip().lower()
+
+
+def _serialize_tag(tag: Tag) -> dict:
+    lemma = tag.lemma or _lemmatize_tag(tag.name) or tag.name
+    return {"name": tag.name, "lemma": lemma}
+
+
+def _serialize_tags(tags) -> list[dict]:
+    return [_serialize_tag(tag) for tag in tags]
+
+
 def _apply_post_tags(post: Post, explicit_tags: list[str] | None = None) -> None:
     explicit_tags = explicit_tags or []
-    existing_tags = {tag.name.lower(): tag for tag in Tag.objects.all()}
+    existing_tags = {}
+    for tag in Tag.objects.all():
+        key = _tag_key(tag)
+        if key and key not in existing_tags:
+            existing_tags[key] = tag
     selected_tags: list[Tag] = []
     seen_ids: set[int] = set()
 
@@ -661,10 +681,10 @@ def _apply_post_tags(post: Post, explicit_tags: list[str] | None = None) -> None
         normalized = _normalize_tag_value(tag_name)
         if not normalized:
             continue
-        key = normalized.lower()
+        lemma = _lemmatize_tag(normalized) or normalized
+        key = lemma.lower()
         tag = existing_tags.get(key)
         if not tag:
-            lemma = _lemmatize_tag(normalized)
             tag = Tag.objects.create(name=normalized, lemma=lemma)
             existing_tags[key] = tag
         if tag.id not in seen_ids:
@@ -2034,7 +2054,7 @@ def _serialize_post_for_user(request: HttpRequest, post: Post) -> dict:
         "rubric": rubric.name if rubric else None,
         "rubric_slug": rubric.slug if rubric else None,
         "rubric_icon_url": _rubric_icon_url(request, rubric),
-        "tags": [tag.name for tag in post.tags.all()],
+        "tags": _serialize_tags(post.tags.all()),
         "author": {
             "username": post.author.username,
             "title": author_title,
@@ -2650,7 +2670,7 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
                 "created_at": post.created_at.isoformat(),
                 "comments_count": post.comments_count,
                 "likes_count": post.rating,
-                "tags": [tag.name for tag in post.tags.all()],
+                "tags": _serialize_tags(post.tags.all()),
                 "author": {
                     "username": author.username,
                     "title": author_title,
@@ -2755,7 +2775,7 @@ def rubric_posts(request: HttpRequest, slug: str) -> HttpResponse:
                 "created_at": post.created_at.isoformat(),
                 "comments_count": post.comments_count,
                 "likes_count": post.rating,
-                "tags": [tag.name for tag in post.tags.all()],
+                "tags": _serialize_tags(post.tags.all()),
                 "author": {
                     "username": post.author.username,
                     "title": author_title,
@@ -2787,7 +2807,10 @@ def tags_list(request: HttpRequest) -> HttpResponse:
     return JsonResponse(
         {
             "ok": True,
-            "tags": [{"name": tag.name, "mood": tag.mood} for tag in tags],
+            "tags": [
+                {"name": tag.name, "lemma": tag.lemma or _lemmatize_tag(tag.name) or tag.name, "mood": tag.mood}
+                for tag in tags
+            ],
         }
     )
 
@@ -2796,10 +2819,18 @@ def tag_posts(request: HttpRequest, tag: str) -> HttpResponse:
     if not tag:
         return JsonResponse({"ok": False, "error": "tag not found"}, status=404)
 
-    try:
-        tag_obj = Tag.objects.get(name__iexact=tag.strip(), is_active=True)
-    except Tag.DoesNotExist:
+    normalized = _normalize_tag_value(tag)
+    lemma = _lemmatize_tag(normalized) or normalized
+    tags_qs = Tag.objects.filter(is_active=True).filter(
+        Q(lemma__iexact=lemma) | Q(name__iexact=normalized)
+    )
+    if not tags_qs.exists():
         return JsonResponse({"ok": False, "error": "tag not found"}, status=404)
+    tag_obj = (
+        tags_qs.filter(name__iexact=normalized).first()
+        or tags_qs.filter(lemma__iexact=lemma).first()
+        or tags_qs.first()
+    )
 
     limit_raw = request.GET.get("limit", "10")
     try:
@@ -2815,7 +2846,7 @@ def tag_posts(request: HttpRequest, tag: str) -> HttpResponse:
     now = timezone.now()
     posts = (
         Post.objects.filter(
-            tags=tag_obj,
+            tags__in=tags_qs,
             is_blocked=False,
             is_pending=False,
             author__is_blocked=False,
@@ -2848,7 +2879,7 @@ def tag_posts(request: HttpRequest, tag: str) -> HttpResponse:
                 "created_at": post.created_at.isoformat(),
                 "comments_count": post.comments_count,
                 "likes_count": post.rating,
-                "tags": [tag.name for tag in post.tags.all()],
+                "tags": _serialize_tags(post.tags.all()),
                 "author": {
                     "username": post.author.username,
                     "title": author_title,
@@ -2863,7 +2894,10 @@ def tag_posts(request: HttpRequest, tag: str) -> HttpResponse:
     return JsonResponse(
         {
             "ok": True,
-            "tag": {"name": tag_obj.name},
+            "tag": {
+                "name": tag_obj.name,
+                "lemma": tag_obj.lemma or _lemmatize_tag(tag_obj.name) or tag_obj.name,
+            },
             "posts": serialized,
         }
     )
@@ -2901,7 +2935,7 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
                 "created_at": post.created_at.isoformat(),
                 "comments_count": post.comments_count,
                 "likes_count": post.rating,
-                "tags": [tag.name for tag in post.tags.all()],
+                "tags": _serialize_tags(post.tags.all()),
                 "author": {
                     "username": post.author.username,
                     "title": author_title,
@@ -3029,7 +3063,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
                     "channel_url": author_channel_url,
                     "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
                 },
-                "tags": [tag.name for tag in post.tags.all()],
+                "tags": _serialize_tags(post.tags.all()),
                 "score": post.rating + post.comments_count * 5 + author_rating,
                 "rating": post.rating,
                 "comments_count": post.comments_count,
@@ -3099,7 +3133,7 @@ def fresh_feed(request: HttpRequest) -> HttpResponse:
                     "channel_url": author_channel_url,
                     "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
                 },
-                "tags": [tag.name for tag in post.tags.all()],
+                "tags": _serialize_tags(post.tags.all()),
                 "score": post.rating + post.comments_count * 5,
                 "rating": post.rating,
                 "comments_count": post.comments_count,
@@ -3185,7 +3219,7 @@ def my_feed(request: HttpRequest) -> HttpResponse:
                     "channel_url": author_channel_url,
                     "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
                 },
-                "tags": [tag.name for tag in post.tags.all()],
+                "tags": _serialize_tags(post.tags.all()),
                 "score": post.rating + post.comments_count * 5,
                 "rating": post.rating,
                 "comments_count": post.comments_count,
@@ -3319,7 +3353,7 @@ def search_content(request: HttpRequest) -> HttpResponse:
                     "created_at": post.created_at.isoformat(),
                     "comments_count": post.comments_count,
                     "likes_count": post.rating,
-                    "tags": [tag.name for tag in post.tags.all()],
+                    "tags": _serialize_tags(post.tags.all()),
                     "author": {
                         "username": post.author.username,
                         "title": author_title,

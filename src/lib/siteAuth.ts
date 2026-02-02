@@ -35,7 +35,7 @@ export type SiteUserPost = {
   rubric?: string | null
   rubric_slug?: string | null
   rubric_icon_url?: string | null
-  tags?: string[]
+  tags?: { name: string; lemma?: string | null }[]
   author: {
     username: string
     title?: string | null

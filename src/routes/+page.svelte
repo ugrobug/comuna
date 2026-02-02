@@ -18,6 +18,7 @@
   } from '$lib/api/backend'
   import { siteToken, siteUser } from '$lib/siteAuth'
   import { userSettings } from '$lib/settings'
+  import { normalizeTag } from '$lib/tags'
   import { Button } from 'mono-svelte'
   import { onDestroy, onMount } from 'svelte'
   import { Cog6Tooth, Icon } from 'svelte-hero-icons'
@@ -49,6 +50,7 @@
   let effectiveMood: 'funny' | 'serious' | 'sad' | null = null
   let moodTagSet = new Set<string>()
   let tagMoodMap = new Map<string, string>()
+  let tagLemmaMap = new Map<string, string>()
   let tagMoodLoading = false
   let moodExpiryTimer: ReturnType<typeof setTimeout> | null = null
   $: if (data?.posts) {
@@ -213,8 +215,6 @@
     }
   }
 
-  const normalizeTag = (tag: string) => tag.trim().toLowerCase()
-
   const loadTagMoods = async () => {
     if (!browser || tagMoodLoading || tagMoodMap.size) return
     tagMoodLoading = true
@@ -223,11 +223,17 @@
       if (response.ok) {
         const payload = await response.json()
         const entries =
-          payload.tags?.map((tag: { name: string; mood: string }) => [
-            normalizeTag(tag.name),
+          payload.tags?.map((tag: { name: string; lemma?: string; mood: string }) => [
+            normalizeTag(tag.lemma ?? tag.name),
             tag.mood,
           ]) ?? []
+        const lemmaEntries =
+          payload.tags?.map((tag: { name: string; lemma?: string }) => [
+            normalizeTag(tag.name),
+            normalizeTag(tag.lemma ?? tag.name),
+          ]) ?? []
         tagMoodMap = new Map(entries)
+        tagLemmaMap = new Map(lemmaEntries)
       }
     } catch (error) {
       console.error('Failed to load tag moods:', error)
@@ -295,7 +301,15 @@
   $: filteredMyFeedPosts =
     effectiveMood && tagMoodMap.size
       ? posts.filter((post) =>
-          (post.tags ?? []).some((tag) => moodTagSet.has(normalizeTag(tag)))
+          (post.tags ?? []).some((tag) => {
+            const rawName = typeof tag === 'string' ? tag : tag.name
+            const normalized = normalizeTag(rawName)
+            const lemma =
+              typeof tag === 'string'
+                ? tagLemmaMap.get(normalized) ?? normalized
+                : normalizeTag(tag.lemma ?? tag.name)
+            return moodTagSet.has(lemma)
+          })
         )
       : effectiveMood
         ? []

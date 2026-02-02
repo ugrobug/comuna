@@ -149,6 +149,11 @@ export type BackendAuthor = {
   posts_count?: number
 }
 
+export type BackendTag = {
+  name: string
+  lemma?: string | null
+}
+
 export type BackendPost = {
   id: number
   title: string
@@ -161,7 +166,7 @@ export type BackendPost = {
   rubric_icon_url?: string | null
   comments_count?: number
   likes_count?: number
-  tags?: string[]
+  tags?: BackendTag[]
   author?: BackendAuthor
 }
 

@@ -86,7 +86,10 @@
     editing = post
     editTitle = post.title || ''
     editContent = post.content || ''
-    editTags = (post.tags ?? []).join(', ')
+    const tagNames = (post.tags ?? []).map((tag) =>
+      typeof tag === 'string' ? tag : tag.name
+    )
+    editTags = tagNames.join(', ')
     isJsonContent = detectContentType(editContent)
     saveError = ''
     editOpen = true

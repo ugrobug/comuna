@@ -16,7 +16,8 @@
   import { t } from '$lib/translations'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import { profile } from '$lib/auth'
-  import { buildRubricsUrl } from '$lib/api/backend'
+  import { buildRubricsUrl, buildTagsListUrl } from '$lib/api/backend'
+  import { normalizeTag } from '$lib/tags'
   import { onMount } from 'svelte'
   import { colorScheme, inDarkColorScheme } from '$lib/ui/colors'
   let importing = false
@@ -24,6 +25,7 @@
   let myFeedRubrics: Array<{ name: string; slug: string }> = []
   let myFeedRubricsLoading = false
   let manualBlacklistTag = ''
+  let tagLemmaMap = new Map<string, string>()
   $: blacklistedTags = Object.entries($userSettings.tagRules ?? {})
     .filter(([, rule]) => rule === 'hide')
     .map(([tag]) => tag)
@@ -35,11 +37,12 @@
   }
 
   const addBlacklistedTag = () => {
-    const normalized = manualBlacklistTag.trim().toLowerCase()
+    const normalized = normalizeTag(manualBlacklistTag)
     if (!normalized) return
+    const lemma = tagLemmaMap.get(normalized) ?? normalized
     $userSettings = {
       ...$userSettings,
-      tagRules: { ...($userSettings.tagRules ?? {}), [normalized]: 'hide' },
+      tagRules: { ...($userSettings.tagRules ?? {}), [lemma]: 'hide' },
     }
     manualBlacklistTag = ''
   }
@@ -63,6 +66,43 @@
     }
   }
 
+  const loadTagLemmas = async () => {
+    try {
+      const response = await fetch(buildTagsListUrl())
+      if (!response.ok) return
+      const data = await response.json()
+      const entries =
+        data.tags?.map((tag: { name: string; lemma?: string }) => [
+          normalizeTag(tag.name),
+          normalizeTag(tag.lemma ?? tag.name),
+        ]) ?? []
+      tagLemmaMap = new Map(entries)
+      migrateTagRules()
+    } catch (error) {
+      tagLemmaMap = new Map()
+    }
+  }
+
+  const migrateTagRules = () => {
+    const rules = $userSettings.tagRules ?? {}
+    let changed = false
+    const nextRules = { ...rules }
+    for (const [key, rule] of Object.entries(rules)) {
+      const normalized = normalizeTag(key)
+      const lemma = tagLemmaMap.get(normalized)
+      if (lemma && lemma !== normalized) {
+        if (!nextRules[lemma]) {
+          nextRules[lemma] = rule
+        }
+        delete nextRules[key]
+        changed = true
+      }
+    }
+    if (changed) {
+      $userSettings = { ...$userSettings, tagRules: nextRules }
+    }
+  }
+
   const toggleMyFeedRubric = (slug: string) => {
     const current = new Set($userSettings.myFeedRubrics ?? [])
     if (current.has(slug)) {
@@ -75,6 +115,7 @@
 
   onMount(() => {
     loadMyFeedRubrics()
+    loadTagLemmas()
     if ($colorScheme === 'system') {
       $colorScheme = inDarkColorScheme() ? 'dark' : 'light'
     }

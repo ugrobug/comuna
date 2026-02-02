@@ -26,6 +26,7 @@
   import PostMediaCompact from '$lib/components/lemmy/post/media/PostMediaCompact.svelte'
   import PostBody from './PostBody.svelte'
   import { profile } from '$lib/auth'
+  import { getTagKey, getTagName, normalizeTag, type TagItem } from '$lib/tags'
 
   export let post: PostView
   export let actions: boolean = true
@@ -44,10 +45,18 @@
   $: postUrl = linkOverride ?? postLink(post.post)
   $: isBackendPost = Boolean(linkOverride)
   $: type = mediaType(post.post.url, view)
-  $: rule = getTagRule(backendTags.map((tag) => ({ content: tag })))
+  $: rule = getTagRule(
+    backendTags
+      .flatMap((tag) => {
+        const lemma = getTagKey(tag)
+        const name = normalizeTag(getTagName(tag))
+        return lemma === name ? [lemma] : [lemma, name]
+      })
+      .map((content) => ({ content }))
+  )
   $: communityName = post.community?.name || ''
   $: communityTitle = post.community?.title || ''
-  $: backendTags = (post.post as { tags?: string[] }).tags ?? []
+  $: backendTags = (post.post as { tags?: TagItem[] }).tags ?? []
   $: autoDisableUserLink =
     disableUserLink ??
     (communityName.toLowerCase() === 'comuna' ||
@@ -188,11 +197,11 @@
           <div class="mt-4 flex flex-wrap gap-2">
             {#each backendTags as tag}
               <a
-                href={`/tags/${encodeURIComponent(tag)}`}
+                href={`/tags/${encodeURIComponent(getTagKey(tag))}`}
                 class="rounded-full bg-slate-100 dark:bg-zinc-800 px-3 py-1 text-xs font-medium text-slate-600 dark:text-zinc-300 hover:bg-slate-200 dark:hover:bg-zinc-700"
                 rel="nofollow"
               >
-                #{tag}
+                #{getTagName(tag)}
               </a>
             {/each}
           </div>

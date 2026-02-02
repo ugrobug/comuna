@@ -8,6 +8,7 @@
   import Post from '$lib/components/lemmy/post/Post.svelte'
   import { backendPostToPostView, buildBackendPostPath, buildTagPostsUrl } from '$lib/api/backend'
   import { userSettings } from '$lib/settings'
+  import { normalizeTag } from '$lib/tags'
 
   export let data
 
@@ -28,7 +29,8 @@
   let scrollRaf: number | null = null
 
   $: tagName = data.tag?.name ?? data.tag ?? ''
-  $: tagKey = tagName.trim().toLowerCase()
+  $: tagLemma = normalizeTag(data.tag?.lemma ?? tagName)
+  $: tagKey = tagLemma
   $: isBlacklisted = Boolean(tagKey && $userSettings.tagRules?.[tagKey] === 'hide')
 
   $: siteTitle = env.PUBLIC_SITE_TITLE || 'Comuna'
@@ -41,7 +43,7 @@
 
   const buildPageUrl = (offset: number) => {
     if (!tagName) return ''
-    const url = new URL(buildTagPostsUrl(tagName))
+    const url = new URL(buildTagPostsUrl(tagLemma || tagName))
     url.searchParams.set('limit', String(pageSize))
     url.searchParams.set('offset', String(offset))
     return url.toString()
