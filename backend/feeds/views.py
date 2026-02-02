@@ -634,6 +634,23 @@ def _count_tag_occurrences(text_lower: str, tag_lower: str) -> int:
     return text_lower.count(tag_lower)
 
 
+def _extract_hashtags(text: str) -> list[str]:
+    if not text:
+        return []
+    tags: list[str] = []
+    seen: set[str] = set()
+    for match in re.findall(r"#([\w\-]+)", text, flags=re.UNICODE):
+        value = _normalize_tag_value(match)
+        if not value:
+            continue
+        key = value.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        tags.append(value)
+    return tags
+
+
 def _apply_post_tags(post: Post, explicit_tags: list[str] | None = None) -> None:
     explicit_tags = explicit_tags or []
     existing_tags = {tag.name.lower(): tag for tag in Tag.objects.all()}
@@ -1212,6 +1229,7 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
         return
 
     raw_text = _extract_plain_text(message)
+    explicit_tags = _extract_hashtags(raw_text)
     formatted_text = _format_telegram_text(raw_text, _extract_entities(message))
     photo_file_id = _extract_photo_file_id(message)
     image_url = _extract_photo_url(message, token) if token else None
@@ -1273,7 +1291,9 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
                         "updated_at",
                     ]
                 )
-                _apply_post_tags(existing_group_post)
+                if not explicit_tags:
+                    explicit_tags = [tag.name for tag in existing_group_post.tags.all()]
+                _apply_post_tags(existing_group_post, explicit_tags)
                 return
 
     content = _build_content_with_images(formatted_text, gallery_urls, embed_html)
@@ -1351,7 +1371,7 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
         )
     elif created and not requires_approval:
         _maybe_notify_new_author(author, post)
-    _apply_post_tags(post)
+    _apply_post_tags(post, explicit_tags)
 
 
 def _handle_verification_code(chat_id: int, code: str) -> None:
