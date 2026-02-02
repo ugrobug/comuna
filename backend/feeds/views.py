@@ -554,7 +554,10 @@ def _get_morph_analyzer():
     if pymorphy2 is None:
         return None
     if _MORPH_ANALYZER is None:
-        _MORPH_ANALYZER = pymorphy2.MorphAnalyzer()
+        try:
+            _MORPH_ANALYZER = pymorphy2.MorphAnalyzer()
+        except Exception:
+            _MORPH_ANALYZER = None
     return _MORPH_ANALYZER
 
 
