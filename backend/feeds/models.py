@@ -3,6 +3,7 @@ from __future__ import annotations
 from io import BytesIO
 import os
 import re
+import inspect
 try:
     import pymorphy2
 except ImportError:  # optional dependency for lemmatization
@@ -18,11 +19,21 @@ User = get_user_model()
 _MORPH_ANALYZER = None
 
 
+def _ensure_pymorphy2_compat():
+    if pymorphy2 is None:
+        return
+    if not hasattr(inspect, "getargspec"):
+        def getargspec(func):  # type: ignore
+            return inspect.getfullargspec(func)
+        inspect.getargspec = getargspec  # type: ignore[attr-defined]
+
+
 def _get_morph_analyzer():
     global _MORPH_ANALYZER
     if pymorphy2 is None:
         return None
     if _MORPH_ANALYZER is None:
+        _ensure_pymorphy2_compat()
         try:
             _MORPH_ANALYZER = pymorphy2.MorphAnalyzer()
         except Exception:
