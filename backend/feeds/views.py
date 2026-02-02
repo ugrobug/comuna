@@ -554,8 +554,12 @@ def _ensure_pymorphy2_compat():
     if pymorphy2 is None:
         return
     if not hasattr(inspect, "getargspec"):
+        from collections import namedtuple
+        ArgSpec = namedtuple("ArgSpec", "args varargs keywords defaults")
+
         def getargspec(func):  # type: ignore
-            return inspect.getfullargspec(func)
+            spec = inspect.getfullargspec(func)
+            return ArgSpec(spec.args, spec.varargs, spec.varkw, spec.defaults)
         inspect.getargspec = getargspec  # type: ignore[attr-defined]
 
 
