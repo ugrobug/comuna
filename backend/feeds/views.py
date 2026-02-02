@@ -8,6 +8,10 @@ import re
 import secrets
 import base64
 import time
+try:
+    import pymorphy2
+except ImportError:  # optional dependency for lemmatization
+    pymorphy2 = None
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.utils.text import get_valid_filename
@@ -542,6 +546,42 @@ def _normalize_tag_value(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
 
 
+_MORPH_ANALYZER = None
+
+
+def _get_morph_analyzer():
+    global _MORPH_ANALYZER
+    if pymorphy2 is None:
+        return None
+    if _MORPH_ANALYZER is None:
+        _MORPH_ANALYZER = pymorphy2.MorphAnalyzer()
+    return _MORPH_ANALYZER
+
+
+def _lemmatize_tag(value: str) -> str:
+    morph = _get_morph_analyzer()
+    if not morph:
+        return ""
+    text = _normalize_tag_value(value).lower()
+    if not text:
+        return ""
+    words = text.split()
+    lemmas: list[str] = []
+    for word in words:
+        parts = [part for part in word.split("-") if part]
+        if not parts:
+            continue
+        lemma_parts: list[str] = []
+        for part in parts:
+            parsed = morph.parse(part)
+            if parsed:
+                lemma_parts.append(parsed[0].normal_form)
+            else:
+                lemma_parts.append(part)
+        lemmas.append("-".join(lemma_parts))
+    return " ".join(lemmas).strip()
+
+
 def _parse_tag_payload(raw) -> list[str]:
     if not raw:
         return []
@@ -589,7 +629,8 @@ def _apply_post_tags(post: Post, explicit_tags: list[str] | None = None) -> None
         key = normalized.lower()
         tag = existing_tags.get(key)
         if not tag:
-            tag = Tag.objects.create(name=normalized)
+            lemma = _lemmatize_tag(normalized)
+            tag = Tag.objects.create(name=normalized, lemma=lemma)
             existing_tags[key] = tag
         if tag.id not in seen_ids:
             selected_tags.append(tag)

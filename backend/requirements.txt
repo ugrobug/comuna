@@ -4,3 +4,5 @@ django-cors-headers>=4.3
 Pillow>=10.3
 python-dotenv>=1.0
 gunicorn>=22.0
+pymorphy2>=0.9
+pymorphy2-dicts-ru>=2.4
