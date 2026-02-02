@@ -10,6 +10,7 @@ from .models import (
     PostLike,
     Rubric,
     Tag,
+    TagRelation,
     TagRelationType,
 )
 
@@ -66,12 +67,28 @@ class PostAdmin(admin.ModelAdmin):
     filter_horizontal = ("tags",)
 
 
+class TagRelationInline(admin.TabularInline):
+    model = TagRelation
+    fk_name = "from_tag"
+    extra = 1
+    raw_id_fields = ("to_tag",)
+    autocomplete_fields = ("relation_type",)
+
+
 @admin.register(Tag)
 class TagAdmin(admin.ModelAdmin):
-    list_display = ("name", "mood", "lemma", "synonym", "relation_tag", "relation_type", "is_active")
-    list_filter = ("mood", "is_active", "relation_type")
-    search_fields = ("name",)
-    raw_id_fields = ("relation_tag",)
+    list_display = ("name", "mood", "lemma", "synonym", "is_active")
+    list_filter = ("mood", "is_active")
+    search_fields = ("name", "lemma", "synonym")
+    inlines = (TagRelationInline,)
+
+
+@admin.register(TagRelation)
+class TagRelationAdmin(admin.ModelAdmin):
+    list_display = ("from_tag", "to_tag", "relation_type", "created_at")
+    list_filter = ("relation_type",)
+    search_fields = ("from_tag__name", "to_tag__name")
+    raw_id_fields = ("from_tag", "to_tag")
 
 
 @admin.register(TagRelationType)

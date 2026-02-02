@@ -164,20 +164,6 @@ class Tag(models.Model):
     )
     lemma = models.CharField(max_length=128, blank=True)
     synonym = models.CharField(max_length=128, blank=True)
-    relation_tag = models.ForeignKey(
-        "self",
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="related_from",
-    )
-    relation_type = models.ForeignKey(
-        "feeds.TagRelationType",
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="tag_relations",
-    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -187,6 +173,31 @@ class Tag(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+
+class TagRelation(models.Model):
+    from_tag = models.ForeignKey(
+        Tag, on_delete=models.CASCADE, related_name="relations"
+    )
+    to_tag = models.ForeignKey(
+        Tag, on_delete=models.CASCADE, related_name="related_to"
+    )
+    relation_type = models.ForeignKey(
+        "feeds.TagRelationType",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="relations",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["from_tag__name", "to_tag__name"]
+
+    def __str__(self) -> str:
+        relation = self.relation_type.name if self.relation_type else "без типа"
+        return f"{self.from_tag.name} → {self.to_tag.name} ({relation})"
 
 
 class Post(models.Model):
