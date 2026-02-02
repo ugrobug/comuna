@@ -71,8 +71,7 @@ class TagRelationInline(admin.TabularInline):
     model = TagRelation
     fk_name = "from_tag"
     extra = 1
-    raw_id_fields = ("to_tag",)
-    autocomplete_fields = ("relation_type",)
+    autocomplete_fields = ("to_tag", "relation_type")
 
 
 @admin.register(Tag)
