@@ -134,6 +134,18 @@ class Rubric(models.Model):
             self._skip_icon_thumb = False
 
 
+class TagRelationType(models.Model):
+    name = models.CharField(max_length=64, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class Tag(models.Model):
     MOOD_NEUTRAL = "neutral"
     MOOD_SERIOUS = "serious"
@@ -149,6 +161,22 @@ class Tag(models.Model):
     name = models.CharField(max_length=64, unique=True)
     mood = models.CharField(
         max_length=16, choices=MOOD_CHOICES, default=MOOD_NEUTRAL
+    )
+    lemma = models.CharField(max_length=128, blank=True)
+    synonym = models.CharField(max_length=128, blank=True)
+    relation_tag = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="related_from",
+    )
+    relation_type = models.ForeignKey(
+        "feeds.TagRelationType",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="tag_relations",
     )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)

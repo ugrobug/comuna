@@ -10,6 +10,7 @@ from .models import (
     PostLike,
     Rubric,
     Tag,
+    TagRelationType,
 )
 
 
@@ -67,8 +68,15 @@ class PostAdmin(admin.ModelAdmin):
 
 @admin.register(Tag)
 class TagAdmin(admin.ModelAdmin):
-    list_display = ("name", "mood", "is_active", "created_at")
-    list_filter = ("mood", "is_active")
+    list_display = ("name", "mood", "lemma", "synonym", "relation_tag", "relation_type", "is_active")
+    list_filter = ("mood", "is_active", "relation_type")
+    search_fields = ("name",)
+    raw_id_fields = ("relation_tag",)
+
+
+@admin.register(TagRelationType)
+class TagRelationTypeAdmin(admin.ModelAdmin):
+    list_display = ("name", "created_at")
     search_fields = ("name",)
 
 
