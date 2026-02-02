@@ -136,6 +136,7 @@ class Rubric(models.Model):
 
 class TagRelationType(models.Model):
     name = models.CharField(max_length=64, unique=True)
+    is_bidirectional = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -197,6 +198,39 @@ class TagRelation(models.Model):
     def __str__(self) -> str:
         relation = self.relation_type.name if self.relation_type else "без типа"
         return f"{self.from_tag.name} → {self.to_tag.name} ({relation})"
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if getattr(self, "_skip_bidirectional", False):
+            return
+        if self.relation_type and self.relation_type.is_bidirectional:
+            reverse = TagRelation.objects.filter(
+                from_tag=self.to_tag,
+                to_tag=self.from_tag,
+            ).first()
+            if reverse:
+                if reverse.relation_type_id != self.relation_type_id:
+                    TagRelation.objects.filter(pk=reverse.pk).update(
+                        relation_type=self.relation_type
+                    )
+            else:
+                reverse = TagRelation(
+                    from_tag=self.to_tag,
+                    to_tag=self.from_tag,
+                    relation_type=self.relation_type,
+                )
+                reverse._skip_bidirectional = True
+                reverse.save()
+
+    def delete(self, *args, **kwargs):
+        if not getattr(self, "_skip_bidirectional", False):
+            if self.relation_type and self.relation_type.is_bidirectional:
+                TagRelation.objects.filter(
+                    from_tag=self.to_tag,
+                    to_tag=self.from_tag,
+                    relation_type=self.relation_type,
+                ).delete()
+        super().delete(*args, **kwargs)
 
 
 class Post(models.Model):

@@ -92,7 +92,7 @@ class TagRelationAdmin(admin.ModelAdmin):
 
 @admin.register(TagRelationType)
 class TagRelationTypeAdmin(admin.ModelAdmin):
-    list_display = ("name", "created_at")
+    list_display = ("name", "is_bidirectional", "created_at")
     search_fields = ("name",)
 
 
