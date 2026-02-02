@@ -163,7 +163,6 @@ class Tag(models.Model):
         max_length=16, choices=MOOD_CHOICES, default=MOOD_NEUTRAL
     )
     lemma = models.CharField(max_length=128, blank=True)
-    synonym = models.CharField(max_length=128, blank=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

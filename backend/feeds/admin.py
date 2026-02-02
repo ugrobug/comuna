@@ -76,9 +76,9 @@ class TagRelationInline(admin.TabularInline):
 
 @admin.register(Tag)
 class TagAdmin(admin.ModelAdmin):
-    list_display = ("name", "mood", "lemma", "synonym", "is_active")
+    list_display = ("name", "mood", "lemma", "is_active")
     list_filter = ("mood", "is_active")
-    search_fields = ("name", "lemma", "synonym")
+    search_fields = ("name", "lemma")
     inlines = (TagRelationInline,)
 
 
