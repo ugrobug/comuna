@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from io import BytesIO
 import os
+import re
+try:
+    import pymorphy2
+except ImportError:  # optional dependency for lemmatization
+    pymorphy2 = None
 
 from django.db import models
 from django.contrib.auth import get_user_model
@@ -9,6 +14,41 @@ from django.core.files.base import ContentFile
 from PIL import Image, ImageOps
 
 User = get_user_model()
+
+_MORPH_ANALYZER = None
+
+
+def _get_morph_analyzer():
+    global _MORPH_ANALYZER
+    if pymorphy2 is None:
+        return None
+    if _MORPH_ANALYZER is None:
+        _MORPH_ANALYZER = pymorphy2.MorphAnalyzer()
+    return _MORPH_ANALYZER
+
+
+def _lemmatize_tag(value: str) -> str:
+    morph = _get_morph_analyzer()
+    if not morph:
+        return ""
+    text = re.sub(r"\s+", " ", value).strip().lower()
+    if not text:
+        return ""
+    words = text.split()
+    lemmas: list[str] = []
+    for word in words:
+        parts = [part for part in word.split("-") if part]
+        if not parts:
+            continue
+        lemma_parts: list[str] = []
+        for part in parts:
+            parsed = morph.parse(part)
+            if parsed:
+                lemma_parts.append(parsed[0].normal_form)
+            else:
+                lemma_parts.append(part)
+        lemmas.append("-".join(lemma_parts))
+    return " ".join(lemmas).strip()
 
 
 class Author(models.Model):
@@ -173,6 +213,11 @@ class Tag(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.lemma and self.name:
+            self.lemma = _lemmatize_tag(self.name)
+        super().save(*args, **kwargs)
 
 
 class TagRelation(models.Model):
