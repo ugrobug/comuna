@@ -36,6 +36,18 @@
         <th>Постов на автора в месяц</th>
         <td>{{ metrics.avg_posts_per_author|floatformat:2 }}</td>
       </tr>
+      <tr>
+        <th>Лайков за 30 дней</th>
+        <td>{{ metrics.likes_last_30 }}</td>
+      </tr>
+      <tr>
+        <th>Дизлайков за 30 дней</th>
+        <td>{{ metrics.dislikes_last_30 }}</td>
+      </tr>
+      <tr>
+        <th>Комментариев за 30 дней</th>
+        <td>{{ metrics.comments_last_30 }}</td>
+      </tr>
     </table>
   </div>
 
