@@ -87,6 +87,16 @@ def _get_user_from_request(request: HttpRequest) -> User | None:
     return _get_user_from_token(token)
 
 
+_TELEGRAM_LOGIN_FIELDS = {
+    "id",
+    "first_name",
+    "last_name",
+    "username",
+    "photo_url",
+    "auth_date",
+}
+
+
 def _verify_telegram_login(payload: dict) -> tuple[bool, str | None]:
     token = settings.TELEGRAM_BOT_TOKEN
     if not token:
@@ -94,7 +104,11 @@ def _verify_telegram_login(payload: dict) -> tuple[bool, str | None]:
     provided_hash = payload.get("hash")
     if not provided_hash:
         return False, "missing hash"
-    data = {k: v for k, v in payload.items() if k != "hash" and v is not None}
+    data = {
+        k: v
+        for k, v in payload.items()
+        if k in _TELEGRAM_LOGIN_FIELDS and v is not None
+    }
     auth_date_raw = data.get("auth_date")
     try:
         auth_date = int(auth_date_raw)
