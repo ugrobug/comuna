@@ -355,12 +355,15 @@ def _serialize_user(user: User) -> dict:
 
 @csrf_exempt
 def telegram_auth(request: HttpRequest) -> HttpResponse:
-    if request.method != "POST":
+    if request.method == "GET":
+        payload = dict(request.GET.items())
+    elif request.method == "POST":
+        try:
+            payload = json.loads(request.body.decode("utf-8"))
+        except json.JSONDecodeError:
+            return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+    else:
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
-    try:
-        payload = json.loads(request.body.decode("utf-8"))
-    except json.JSONDecodeError:
-        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
 
     ok, error_message = _verify_telegram_login(payload)
     if not ok:
@@ -410,6 +413,19 @@ def telegram_auth(request: HttpRequest) -> HttpResponse:
     account.save(update_fields=["username", "first_name", "last_name", "avatar_url", "updated_at"])
 
     token = _issue_token(user)
+    if request.method == "GET":
+        next_url = request.GET.get("next") or "/"
+        next_literal = json.dumps(next_url)
+        html = (
+            "<!doctype html><html><head><meta charset=\"utf-8\">"
+            "<title>Telegram login</title></head><body>"
+            "<script>"
+            f"try{{localStorage.setItem('comuna.site.token','{token}');}}catch(e){{}}"
+            f"window.location.replace({next_literal});"
+            "</script>"
+            "</body></html>"
+        )
+        return HttpResponse(html, content_type="text/html")
     return JsonResponse({"ok": True, "token": token, "user": _serialize_user(user)})
 
 

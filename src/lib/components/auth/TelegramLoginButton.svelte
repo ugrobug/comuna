@@ -11,9 +11,15 @@
   let loading = false
   let scriptLoaded = false
   const botName = (env.PUBLIC_TELEGRAM_LOGIN_BOT || '').replace(/^@/, '')
+  let authUrl = ''
 
   const mountWidget = () => {
     if (!browser || !container || !botName) return
+    if (!authUrl) {
+      const origin = env.PUBLIC_SITE_URL || window.location.origin
+      const next = `${window.location.pathname}${window.location.search}`
+      authUrl = `${origin.replace(/\/$/, '')}/api/auth/telegram/?next=${encodeURIComponent(next)}`
+    }
     container.innerHTML = ''
 
     const script = document.createElement('script')
@@ -22,7 +28,7 @@
     script.setAttribute('data-telegram-login', botName)
     script.setAttribute('data-size', 'large')
     script.setAttribute('data-radius', '8')
-    script.setAttribute('data-onauth', 'onTelegramAuth(user)')
+    script.setAttribute('data-auth-url', authUrl)
     script.setAttribute('data-request-access', 'write')
     script.onload = () => {
       scriptLoaded = true
