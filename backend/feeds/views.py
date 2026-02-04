@@ -1881,14 +1881,20 @@ def _handle_callback_query(callback_query: dict) -> None:
         except ValueError:
             _answer_callback_query(callback_id, "Некорректный пост")
             return
-        post = Post.objects.filter(id=post_id, is_pending=True).first()
-        if post:
+        post = Post.objects.filter(id=post_id).first()
+        if not post:
+            _answer_callback_query(callback_id, "Пост не найден")
+            return
+        if post.is_pending:
             post.is_pending = False
             post.save(update_fields=["is_pending", "updated_at"])
             _maybe_notify_new_author(post.author, post)
             _answer_callback_query(callback_id, "Опубликовано")
+            return
+        if post.is_blocked:
+            _answer_callback_query(callback_id, "Пост уже отклонён")
         else:
-            _answer_callback_query(callback_id, "Пост не найден")
+            _answer_callback_query(callback_id, "Пост уже опубликован")
         return
 
     if data.startswith("reject:") and chat_id:
@@ -1897,14 +1903,20 @@ def _handle_callback_query(callback_query: dict) -> None:
         except ValueError:
             _answer_callback_query(callback_id, "Некорректный пост")
             return
-        post = Post.objects.filter(id=post_id, is_pending=True).first()
-        if post:
+        post = Post.objects.filter(id=post_id).first()
+        if not post:
+            _answer_callback_query(callback_id, "Пост не найден")
+            return
+        if post.is_pending:
             post.is_pending = False
             post.is_blocked = True
             post.save(update_fields=["is_pending", "is_blocked", "updated_at"])
             _answer_callback_query(callback_id, "Пропущено")
+            return
+        if post.is_blocked:
+            _answer_callback_query(callback_id, "Пост уже отклонён")
         else:
-            _answer_callback_query(callback_id, "Пост не найден")
+            _answer_callback_query(callback_id, "Пост уже опубликован")
         return
 
     if data.startswith("update:") and chat_id:
