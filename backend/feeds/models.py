@@ -85,6 +85,8 @@ class Author(models.Model):
     )
     auto_publish = models.BooleanField(default=True)
     publish_delay_days = models.PositiveSmallIntegerField(default=0)
+    # Stored reputation points, updated at vote time (so it doesn't change if content is later removed).
+    rating_total = models.IntegerField(default=0)
     admin_chat_id = models.BigIntegerField(null=True, blank=True)
     is_blocked = models.BooleanField(default=False)
     shadow_banned = models.BooleanField(default=False)

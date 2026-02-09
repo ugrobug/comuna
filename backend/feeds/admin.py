@@ -23,6 +23,7 @@ class AuthorAdmin(admin.ModelAdmin):
         "rubric",
         "auto_publish",
         "publish_delay_days",
+        "rating_total",
         "shadow_banned",
         "force_home",
         "is_blocked",

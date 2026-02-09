@@ -328,16 +328,6 @@ def _serialize_user(user: User) -> dict:
     )
     authors = []
     avatar_url = None
-    now = timezone.now()
-    posts_filter = _author_posts_rating_filter(now)
-    rating_map = {
-        row["id"]: row["total"]
-        for row in (
-            Author.objects.filter(id__in=[link.author_id for link in author_links])
-            .annotate(total=Sum("posts__rating", filter=posts_filter))
-            .values("id", "total")
-        )
-    }
     for link in author_links:
         author = link.author
         if not avatar_url:
@@ -353,7 +343,7 @@ def _serialize_user(user: User) -> dict:
                 "auto_publish": author.auto_publish,
                 "publish_delay_days": author.publish_delay_days,
                 "invite_url": author.invite_url,
-                "author_rating": _author_rating_value(rating_map.get(author.id)),
+                "author_rating": _author_rating_value(author.rating_total),
             }
         )
     return {
@@ -2536,12 +2526,20 @@ def comment_like(request: HttpRequest, comment_id: int) -> HttpResponse:
         return JsonResponse({"ok": False, "error": "comment not found"}, status=404)
 
     existing = PostCommentLike.objects.filter(comment=comment, user=user).first()
+    delta = 0
     if existing:
         existing.delete()
         liked = False
+        delta = -1
     else:
         PostCommentLike.objects.create(comment=comment, user=user)
         liked = True
+        delta = 1
+
+    if delta:
+        Author.objects.filter(id=comment.post.author_id).update(
+            rating_total=F("rating_total") + delta
+        )
 
     likes_count = PostCommentLike.objects.filter(comment=comment).count()
 
@@ -2601,6 +2599,7 @@ def post_like(request: HttpRequest, post_id: int) -> HttpResponse:
 
     if delta:
         Post.objects.filter(id=post.id).update(rating=F("rating") + delta)
+        Author.objects.filter(id=post.author_id).update(rating_total=F("rating_total") + delta)
 
     liked = new_vote == 1
 
@@ -2685,13 +2684,6 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
         .filter(Q(rubric__isnull=True) | Q(rubric__is_hidden=False))
         .count()
     )
-    author_rating_total = (
-        Post.objects.filter(author=author, is_blocked=False, is_pending=False)
-        .filter(_publish_ready_filter(now))
-        .filter(Q(rubric__isnull=True) | Q(rubric__is_hidden=False))
-        .aggregate(total=Sum("rating"))
-        .get("total")
-    )
     author_channel_url = author.invite_url or author.channel_url
     serialized = []
     for post in posts:
@@ -2735,7 +2727,7 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
                 "description": author.description,
                 "subscribers_count": author.subscribers_count,
                 "posts_count": posts_count,
-                "author_rating": _author_rating_value(author_rating_total),
+                "author_rating": _author_rating_value(author.rating_total),
             },
             "posts": serialized,
         }
@@ -3041,12 +3033,11 @@ def home_feed(request: HttpRequest) -> HttpResponse:
     author_ids = {post.author_id for post in posts}
     author_rating_map = {}
     if author_ids:
-        posts_filter = _author_posts_rating_filter(now)
         author_rating_map = {
-            row["id"]: _author_rating_value(row["total"])
-            for row in Author.objects.filter(id__in=author_ids)
-            .annotate(total=Sum("posts__rating", filter=posts_filter))
-            .values("id", "total")
+            row["id"]: _author_rating_value(row["rating_total"])
+            for row in Author.objects.filter(id__in=author_ids).values(
+                "id", "rating_total"
+            )
         }
 
     serialized_posts = []
@@ -3408,8 +3399,6 @@ def search_content(request: HttpRequest) -> HttpResponse:
             )
 
     if type_filter in ("all", "users", "authors"):
-        now = timezone.now()
-        posts_filter = _author_posts_rating_filter(now)
         authors_qs = (
             Author.objects.filter(is_blocked=False)
             .filter(
@@ -3417,7 +3406,6 @@ def search_content(request: HttpRequest) -> HttpResponse:
                 | Q(title__icontains=query)
                 | Q(description__icontains=query)
             )
-            .annotate(total_rating=Sum("posts__rating", filter=posts_filter))
         )
         total_authors = authors_qs.count()
         for author in authors_qs[offset : offset + limit]:
@@ -3429,7 +3417,7 @@ def search_content(request: HttpRequest) -> HttpResponse:
                     "description": author.description,
                     "channel_url": author.invite_url or author.channel_url,
                     "subscribers_count": author.subscribers_count,
-                    "author_rating": _author_rating_value(author.total_rating),
+                    "author_rating": _author_rating_value(author.rating_total),
                 }
             )
 

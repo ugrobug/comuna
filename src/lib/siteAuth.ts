@@ -12,6 +12,7 @@ export type SiteAuthorLink = {
   auto_publish?: boolean
   publish_delay_days?: number
   invite_url?: string | null
+  author_rating?: number
 }
 
 export type SiteUser = {

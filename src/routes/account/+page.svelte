@@ -203,6 +203,10 @@
                 Тематика: {author.rubric ?? 'не выбрана'}
                 <span class="mx-1">•</span>
                 Задержка: {author.publish_delay_days ? `${author.publish_delay_days} дн.` : 'без задержки'}
+                {#if author.author_rating !== undefined}
+                  <span class="mx-1">•</span>
+                  Рейтинг: {author.author_rating}
+                {/if}
               </div>
               {#if author.invite_url}
                 <a
