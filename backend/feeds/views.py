@@ -3287,7 +3287,6 @@ def top_authors_month(request: HttpRequest) -> HttpResponse:
         .annotate(
             month_score=Sum(score_expr, filter=posts_filter),
             month_posts=Count("posts", filter=posts_filter),
-            total_rating=Sum("posts__rating", filter=posts_filter),
         )
         .filter(month_posts__gt=0)
         .order_by("-month_score", "-month_posts", "username")[:limit]
@@ -3303,7 +3302,7 @@ def top_authors_month(request: HttpRequest) -> HttpResponse:
                 "channel_url": author.invite_url or author.channel_url,
                 "month_score": author.month_score or 0,
                 "month_posts": author.month_posts or 0,
-                "author_rating": _author_rating_value(author.total_rating),
+                "author_rating": _author_rating_value(author.rating_total),
             }
         )
 
