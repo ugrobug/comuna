@@ -27,6 +27,8 @@
   import PostBody from './PostBody.svelte'
   import { profile } from '$lib/auth'
   import { getTagKey, getTagName, normalizeTag, type TagItem } from '$lib/tags'
+  import { buildPostReadUrl } from '$lib/api/backend'
+  import { siteToken } from '$lib/siteAuth'
 
   export let post: PostView
   export let actions: boolean = true
@@ -66,6 +68,24 @@
     $userSettings.posts.deduplicateEmbed &&
     post.post.embed_description == post.post.body &&
     view != 'compact'
+
+  let readOverride: boolean | null = null
+
+  const markBackendPostRead = async () => {
+    if (!isBackendPost) return
+    if (readOverride ?? post.read) return
+    const token = $siteToken
+    if (!token) return
+    try {
+      await fetch(buildPostReadUrl(post.post.id), {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      readOverride = true
+    } catch (error) {
+      console.error('Failed to mark post as read:', error)
+    }
+  }
 
   function getTagRule(tags: { content: string }[]): 'blur' | 'hide' | undefined {
     const tagContent = tags.map((t) => t.content.toLowerCase())
@@ -123,7 +143,7 @@
       ? 'Subscribed'
       : 'NotSubscribed'}
     id={post.post.id}
-    read={post.read}
+    read={readOverride ?? post.read}
     style="grid-area: meta;"
     edited={post.post.updated}
     {view}
@@ -223,22 +243,38 @@
         {/if}
       </div>
     {:else}
-      <a
-        href={postUrl}
-        class="block no-underline hover:no-underline"
-        style="grid-area: body;"
-        data-sveltekit-preload-data="off"
-      >
-        <PostBody
-          element="section"
-          body={post.post.body}
-          title={post.post.name}
-          {view}
-          clickThrough={false}
-          {showFullBody}
-          class="relative text-slate-600 dark:text-zinc-400"
-        />
-      </a>
+      {#if isBackendPost}
+        <div style="grid-area: body;">
+          <PostBody
+            element="section"
+            body={post.post.body}
+            title={post.post.name}
+            {view}
+            clickThrough={false}
+            {showFullBody}
+            collapsible={true}
+            class="relative text-slate-600 dark:text-zinc-400"
+            on:expand={markBackendPostRead}
+          />
+        </div>
+      {:else}
+        <a
+          href={postUrl}
+          class="block no-underline hover:no-underline"
+          style="grid-area: body;"
+          data-sveltekit-preload-data="off"
+        >
+          <PostBody
+            element="section"
+            body={post.post.body}
+            title={post.post.name}
+            {view}
+            clickThrough={false}
+            {showFullBody}
+            class="relative text-slate-600 dark:text-zinc-400"
+          />
+        </a>
+      {/if}
     {/if}
   {/if}
 

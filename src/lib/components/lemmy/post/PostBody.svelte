@@ -4,7 +4,7 @@
   import { Button } from 'mono-svelte'
   import { ChevronDown, Icon } from 'svelte-hero-icons'
   import { browser } from '$app/environment'
-  import { afterUpdate, onMount } from 'svelte'
+  import { afterUpdate, createEventDispatcher, onMount, tick } from 'svelte'
   import { page } from '$app/stores'
   import { deserializeEditorModel } from '$lib/util'
   
@@ -47,12 +47,16 @@
   export let view: View = 'cozy'
   export let clickThrough = false
   export let showFullBody = false
+  export let collapsible = false
   
   let htmlElement = 'div'
 
   export { htmlElement as element }
 
-  let expanded = true
+  const dispatch = createEventDispatcher<{ expand: void }>()
+
+  let expanded = false
+  let hasOverflow = false
   let element: Element
   let isFirstImage = true;
   let firstImageUrl: string | null = null;
@@ -61,11 +65,64 @@
   let lastProcessedBody = '';
   const maxPreviewLength = 250;
 
+  const normalizeTextForCompare = (value: string): string =>
+    value
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/[.!?]+$/g, '')
+      .trim()
+      .toLowerCase()
+
+  const stripLeadingTitleFromHtml = (html: string): string => {
+    const rawTitle = (title || '').trim()
+    if (!rawTitle) return html
+    const normalizedTitle = normalizeTextForCompare(rawTitle)
+    if (!normalizedTitle) return html
+
+    const stripInline = (fragment: string): string => {
+      const withoutBreaks = fragment.replace(/<br\s*\/?>/gi, ' ')
+      const withoutTags = withoutBreaks.replace(/<[^>]*>/g, ' ')
+      return normalizeTextForCompare(withoutTags)
+    }
+
+    // Allow a media prefix (image/gallery/figure + <br>) before the title block.
+    const mediaPrefixRegex =
+      /^\s*(?:(?:<img\b[^>]*>\s*(?:<br\s*\/?>\s*)*)|(?:<figure\b[\s\S]*?<\/figure>\s*(?:<br\s*\/?>\s*)*)|(?:<div\b[^>]*class=(["'])[^"']*\bpost-gallery\b[^"']*\1[^>]*>[\s\S]*?<\/div>\s*(?:<br\s*\/?>\s*)*))*\s*/i
+    const prefixMatch = html.match(mediaPrefixRegex)
+    const prefix = prefixMatch ? prefixMatch[0] : ''
+    const restHtml = html.slice(prefix.length)
+
+    const boldMatch = restHtml.match(/^\s*<(b|strong)>([\s\S]*?)<\/\1>/i)
+    if (boldMatch) {
+      const inner = stripInline(boldMatch[2] || '')
+      if (inner && inner === normalizedTitle) {
+        const rest = restHtml
+          .slice(boldMatch[0].length)
+          .replace(/^\s*(?:<br\s*\/?>\s*)+/i, '')
+        return `${prefix}${rest}`
+      }
+    }
+
+    const pMatch = restHtml.match(/^\s*<p>([\s\S]*?)<\/p>/i)
+    if (pMatch) {
+      const inner = stripInline(pMatch[1] || '')
+      if (inner && inner === normalizedTitle) {
+        const rest = restHtml
+          .slice(pMatch[0].length)
+          .replace(/^\s*(?:<br\s*\/?>\s*)+/i, '')
+        return `${prefix}${rest}`
+      }
+    }
+
+    return html
+  }
+
   const setupGalleries = () => {
     if (!browser || !element) return;
     const galleries = element.querySelectorAll('.post-gallery');
 
-    const mode = showFullBody ? 'full' : 'preview';
+    const fullMode = showFullBody || (collapsible && expanded)
+    const mode = fullMode ? 'full' : 'preview';
     galleries.forEach((gallery) => {
       if (gallery.getAttribute('data-gallery-ready') === mode) {
         return;
@@ -75,10 +132,19 @@
       const images = Array.from(gallery.querySelectorAll('img'));
       if (!images.length) return;
 
-      if (!showFullBody) {
-        images.slice(1).forEach((img) => img.remove());
-        gallery.innerHTML = '';
-        gallery.appendChild(images[0]);
+      if (!fullMode) {
+        // Keep all images in DOM so we can re-build the gallery when user expands,
+        // but visually show only the first one in preview mode.
+        images.forEach((img, index) => {
+          if (!(img instanceof HTMLElement)) return;
+          if (index === 0) {
+            img.style.display = '';
+            img.removeAttribute('data-preview-hidden');
+          } else {
+            img.style.display = 'none';
+            img.setAttribute('data-preview-hidden', '1');
+          }
+        });
         return;
       }
 
@@ -161,22 +227,18 @@
     });
   };
 
-  function isOverflown(element: Element, body: string = '') {
-    if (!element) return
-    let overflows =
-      element.scrollHeight > element.clientHeight ||
-      element.scrollWidth > element.clientWidth
-
-    if (!overflows) expanded = true
-    else expanded = false
-
-    return overflows
+  const expand = async (event?: Event) => {
+    event?.preventDefault()
+    event?.stopPropagation()
+    if (expanded) return
+    expanded = true
+    hasOverflow = false
+    dispatch('expand')
+    if (browser) {
+      await tick()
+      setTimeout(setupGalleries, 0)
+    }
   }
-
-  $: processedBody = extractPreviewContent(body)
-  // $: overflows = isOverflown(element, body)
-
-  $: overflows = isOverflown(element, processedBody)
 
   // Функция для добавления preload в head
   function addPreloadLink(url: string, srcset: string | null = null) {
@@ -523,11 +585,11 @@
   }
 
   function extractPreviewContent(html: string) {
-    if (showFullBody) {
+    if (showFullBody || collapsible) {
       if (isJsonContent(html)) {
-        return convertJsonToHtml(html);
+        return stripLeadingTitleFromHtml(convertJsonToHtml(html));
       }
-      return html;
+      return stripLeadingTitleFromHtml(html);
     }
     // Проверяем, является ли контент JSON или base64
     if (isJsonContent(html)) {
@@ -778,11 +840,30 @@
     firstImageSrcset = null;
     hasPreview = false;
     processedBody = extractPreviewContent(body);
+    if (!showFullBody && collapsible) {
+      expanded = false
+      hasOverflow = false
+    } else {
+      expanded = true
+      hasOverflow = false
+    }
   }
 
   onMount(() => {
     if (browser) {
       setTimeout(setupGalleries, 0);
+      setTimeout(() => {
+        if (!element) return
+        if (!collapsible || showFullBody) {
+          hasOverflow = false
+          return
+        }
+        // If it doesn't overflow in collapsed mode, show it fully.
+        hasOverflow = element.scrollHeight > element.clientHeight + 4
+        if (!hasOverflow) {
+          expanded = true
+        }
+      }, 50)
     }
   });
 
@@ -792,6 +873,21 @@
       lastProcessedBody = processedBody;
     }
     setTimeout(setupGalleries, 0);
+    setTimeout(() => {
+      if (!element) return
+      if (!collapsible || showFullBody) {
+        hasOverflow = false
+        return
+      }
+      if (expanded) {
+        hasOverflow = false
+        return
+      }
+      hasOverflow = element.scrollHeight > element.clientHeight + 4
+      if (!hasOverflow) {
+        expanded = true
+      }
+    }, 0)
   });
 
   // Добавляем preload для первого изображения
@@ -818,45 +914,35 @@
 
 </script>
 
-<svelte:element
-  this={htmlElement}
-  style={$$props.style ?? ''}
-  class="post-content {!expanded
-    ? ` overflow-hidden ${view == 'list' ? `max-h-24` : 'max-h-48'}`
-    : 'text-slate-600 dark:text-zinc-400 max-h-full'} {!hasPreview && !showFullBody ? 'set-max-height' : ''} text-base {$$props.class ??
-    ''} {overflows && !hasPreview && !showFullBody ? 'has-overflow' : ''}"
-  class:pointer-events-none={!showFullBody}
-  bind:this={element}
->
-  <!-- {@html sanitizeHtml(expanded ? processedBody : processedBody.slice(0, 1000))} -->
-  {@html sanitizeHtml(processedBody)}
-  
-  <!--
-  {#if overflows}
-    <Button
-      on:click={() => (expanded = !expanded)}
-      size="square-sm"
-      color="tertiary"
-      class="text-black dark:text-white absolute z-10 isolate pointer-events-auto bottom-0 {expanded
-        ? 'bg-slate-200/50 dark:bg-zinc-900 border shadow-md'
-        : ''} left-1/2 -translate-x-1/2 mb-4"
-      title="Expand"
-    >
-      <Icon
-        src={ChevronDown}
-        size="20"
-        mini
-        class="{expanded ? 'rotate-180' : ''} transition-transform"
-      />
-    </Button>
+<div class="post-body-wrapper relative">
+  <svelte:element
+    this={htmlElement}
+    style={$$props.style ?? ''}
+    class="post-content text-base {$$props.class ?? ''} {collapsible && !showFullBody && !expanded ? 'post-collapsed' : ''}"
+    class:pointer-events-none={!showFullBody && !(collapsible && expanded)}
+    bind:this={element}
+  >
+    {@html sanitizeHtml(processedBody)}
+  </svelte:element>
+
+  {#if collapsible && !showFullBody && !expanded && hasOverflow}
+    <div class="post-expand-overlay pointer-events-none absolute inset-x-0 bottom-0 flex justify-center pt-16">
+      <div class="pointer-events-auto flex justify-center w-full bg-gradient-to-b from-transparent to-white dark:to-zinc-900 pb-3">
+        <button
+          type="button"
+          class="mt-6 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white/95 dark:bg-zinc-900/95 px-4 py-2 text-sm font-medium text-slate-700 dark:text-zinc-200 shadow-sm hover:shadow-md transition"
+          on:click={expand}
+        >
+          Показать полностью
+        </button>
+      </div>
+    </div>
   {/if}
-  -->
-</svelte:element>
+</div>
 
 <style lang="postcss">
-  .set-max-height {
+  .post-collapsed {
     max-height: 600px;
-    position: relative;
     overflow: hidden;
   }
   
