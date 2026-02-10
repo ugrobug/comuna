@@ -86,6 +86,7 @@ import RecentComments from '$lib/components/ui/sidebar/RecentComments.svelte'
   $: defaultDescription = env.PUBLIC_SITE_DESCRIPTION || 'Публикуем лучшие посты из Telegram-каналов.'
   $: siteTitle = $site?.site_view?.site?.name || defaultTitle
   $: siteDescription = $site?.site_view?.site?.description || defaultDescription
+  $: isBackendPostRoute = $page.url.pathname.startsWith('/b/post/')
   const toJsonLd = (value: unknown) =>
     JSON.stringify(value)
       .replace(/</g, '\\u003c')
@@ -161,7 +162,10 @@ import RecentComments from '$lib/components/ui/sidebar/RecentComments.svelte'
           : $theme.colors.slate?.[25] ?? getDefaultColors().slate[25]
       )}
     />
-    <meta name="description" content={siteDescription} />
+    <!-- Telegram uses a short HTML prefix for link previews; avoid generic description on post pages. -->
+    {#if !isBackendPostRoute}
+      <meta name="description" content={siteDescription} />
+    {/if}
   <link rel="canonical" href={canonicalUrl} />
   
   <!-- Добавляем мета-тег noindex для страниц inbox -->
