@@ -9,26 +9,25 @@
     <meta name="application-name" content="Comuna" />
     <meta name="apple-mobile-web-app-title" content="Comuna" />
     <meta name="theme-color" content="#000000" />
-    
-    <script defer type="">
-      const dark = () =>
-        localStorage.theme == 'dark' ||
-        ((!localStorage.theme || localStorage.theme == 'system') &&
-          window.matchMedia('(prefers-color-scheme: dark)').matches)
-
-      if (dark()) document.documentElement.classList.add('dark')
-      else document.documentElement.classList.remove('dark')
-
-      window
-        .matchMedia('(prefers-color-scheme: dark)')
-        .addEventListener('change', (event) => {
-          if (dark()) document.documentElement.classList.add('dark')
-          else document.documentElement.classList.remove('dark')
-        })
-
-      // document.getElementById("loader")?.classList.remove('hidden')
-    </script>
     %sveltekit.head%
+
+    <!-- Keep this after %sveltekit.head% so OpenGraph tags stay early in <head> (Telegram preview). -->
+    <script>
+      ;(() => {
+        try {
+          const mq = window.matchMedia('(prefers-color-scheme: dark)')
+          const apply = () => {
+            const t = localStorage.theme
+            document.documentElement.classList.toggle(
+              'dark',
+              t === 'dark' || ((!t || t === 'system') && mq.matches)
+            )
+          }
+          apply()
+          mq.addEventListener('change', apply)
+        } catch {}
+      })()
+    </script>
   </head>
   <body data-sveltekit-preload-data="tap">
     <div class="loader">
