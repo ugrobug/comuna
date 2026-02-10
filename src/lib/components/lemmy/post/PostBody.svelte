@@ -63,6 +63,7 @@
   let firstImageSrcset: string | null = null;
   let hasPreview = false;
   let lastProcessedBody = '';
+  let processedBody = '';
   const maxPreviewLength = 250;
 
   const normalizeTextForCompare = (value: string): string =>
