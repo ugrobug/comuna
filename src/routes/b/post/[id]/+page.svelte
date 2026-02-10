@@ -52,6 +52,7 @@
     : undefined
   $: firstImage = extractFirstImage(data.post?.content || '')
   $: ogImage = firstImage ? ensureAbsoluteUrl(firstImage, siteBaseUrl) : ''
+  $: fallbackOgImage = `${siteBaseUrl}/img/og-image-1200x630.png`
   $: postDescription = buildDescription(data.post?.content || '')
   $: postTitle = data.post?.title || ''
   $: siteTitle = env.PUBLIC_SITE_TITLE || 'Comuna'
@@ -109,9 +110,6 @@
 
 <svelte:head>
   <title>{metaTitle}</title>
-  {#if postDescription}
-    <meta name="description" content={postDescription} />
-  {/if}
   <link rel="canonical" href={canonicalUrl} />
 
   <meta property="og:locale" content="ru_RU" />
@@ -121,13 +119,15 @@
   {#if postTitle}
     <meta property="og:title" content={postTitle} />
   {/if}
-  {#if postDescription}
-    <meta property="og:description" content={postDescription} />
-  {/if}
   {#if ogImage}
     <meta property="og:image" content={ogImage} />
     <meta property="og:image:secure_url" content={ogImage} />
   {/if}
+  <!-- Fallback image for link previews (e.g. text-only posts or if Telegram ignores small images). -->
+  <meta property="og:image" content={fallbackOgImage} />
+  <meta property="og:image:secure_url" content={fallbackOgImage} />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
   {#if data.post?.created_at}
     <meta property="article:published_time" content={data.post.created_at} />
   {/if}
@@ -135,16 +135,11 @@
     <meta property="article:section" content={data.post.rubric} />
   {/if}
 
-  <meta name="twitter:card" content={ogImage ? 'summary_large_image' : 'summary'} />
+  <meta name="twitter:card" content="summary_large_image" />
   {#if postTitle}
     <meta name="twitter:title" content={postTitle} />
   {/if}
-  {#if postDescription}
-    <meta name="twitter:description" content={postDescription} />
-  {/if}
-  {#if ogImage}
-    <meta name="twitter:image" content={ogImage} />
-  {/if}
+  <meta name="twitter:image" content={ogImage || fallbackOgImage} />
 
   {@html articleSchemaTag}
 </svelte:head>
