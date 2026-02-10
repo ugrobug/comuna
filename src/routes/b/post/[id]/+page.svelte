@@ -27,6 +27,14 @@
     return `${text.slice(0, max).trim()}…`
   }
 
+  const ensureAbsoluteUrl = (value: string | null | undefined, baseUrl: string) => {
+    if (!value) return ''
+    if (value.startsWith('http://') || value.startsWith('https://')) return value
+    if (value.startsWith('//')) return `https:${value}`
+    if (value.startsWith('/')) return `${baseUrl}${value}`
+    return `${baseUrl}/${value}`
+  }
+
   const toJsonLd = (value: unknown) =>
     JSON.stringify(value)
       .replace(/</g, '\\u003c')
@@ -43,7 +51,11 @@
     ? `${siteBaseUrl}/${data.post.author.username}`
     : undefined
   $: firstImage = extractFirstImage(data.post?.content || '')
+  $: ogImage = firstImage ? ensureAbsoluteUrl(firstImage, siteBaseUrl) : ''
   $: postDescription = buildDescription(data.post?.content || '')
+  $: postTitle = data.post?.title || ''
+  $: siteTitle = env.PUBLIC_SITE_TITLE || 'Comuna'
+  $: metaTitle = postTitle ? `${postTitle} — ${siteTitle}` : siteTitle
   $: articleSchema =
     data.post
       ? toJsonLd({
@@ -96,6 +108,44 @@
 </script>
 
 <svelte:head>
+  <title>{metaTitle}</title>
+  {#if postDescription}
+    <meta name="description" content={postDescription} />
+  {/if}
+  <link rel="canonical" href={canonicalUrl} />
+
+  <meta property="og:locale" content="ru_RU" />
+  <meta property="og:site_name" content={siteTitle} />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content={canonicalUrl} />
+  {#if postTitle}
+    <meta property="og:title" content={postTitle} />
+  {/if}
+  {#if postDescription}
+    <meta property="og:description" content={postDescription} />
+  {/if}
+  {#if ogImage}
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:secure_url" content={ogImage} />
+  {/if}
+  {#if data.post?.created_at}
+    <meta property="article:published_time" content={data.post.created_at} />
+  {/if}
+  {#if data.post?.rubric}
+    <meta property="article:section" content={data.post.rubric} />
+  {/if}
+
+  <meta name="twitter:card" content={ogImage ? 'summary_large_image' : 'summary'} />
+  {#if postTitle}
+    <meta name="twitter:title" content={postTitle} />
+  {/if}
+  {#if postDescription}
+    <meta name="twitter:description" content={postDescription} />
+  {/if}
+  {#if ogImage}
+    <meta name="twitter:image" content={ogImage} />
+  {/if}
+
   {@html articleSchemaTag}
 </svelte:head>
 
