@@ -70,28 +70,41 @@ export const buildBackendPostPath = (post: { id: number; title: string }): strin
   return slug ? `/b/post/${post.id}-${slug}` : `/b/post/${post.id}`
 }
 
-export const buildHomeFeedUrl = (options?: { hideRead?: boolean }): string => {
+export const buildHomeFeedUrl = (options?: {
+  hideRead?: boolean
+  onlyRead?: boolean
+}): string => {
   const base = `${getBackendBaseUrl()}/api/home/`
-  if (!options?.hideRead) {
-    return base
+  const params = new URLSearchParams()
+  if (options?.onlyRead) {
+    params.set('only_read', '1')
+  } else if (options?.hideRead) {
+    params.set('hide_read', '1')
   }
-  const params = new URLSearchParams({ hide_read: '1' })
-  return `${base}?${params.toString()}`
+  const query = params.toString()
+  return query ? `${base}?${query}` : base
 }
 
-export const buildFreshFeedUrl = (options?: { hideRead?: boolean }): string => {
+export const buildFreshFeedUrl = (options?: {
+  hideRead?: boolean
+  onlyRead?: boolean
+}): string => {
   const base = `${getBackendBaseUrl()}/api/home/fresh/`
-  if (!options?.hideRead) {
-    return base
+  const params = new URLSearchParams()
+  if (options?.onlyRead) {
+    params.set('only_read', '1')
+  } else if (options?.hideRead) {
+    params.set('hide_read', '1')
   }
-  const params = new URLSearchParams({ hide_read: '1' })
-  return `${base}?${params.toString()}`
+  const query = params.toString()
+  return query ? `${base}?${query}` : base
 }
 
 export const buildMyFeedUrl = (
   rubrics?: string[],
   hideNegative: boolean = true,
-  hideRead: boolean = false
+  hideRead: boolean = false,
+  onlyRead: boolean = false
 ): string => {
   const base = `${getBackendBaseUrl()}/api/home/my/`
   const params = new URLSearchParams()
@@ -101,7 +114,9 @@ export const buildMyFeedUrl = (
   if (!hideNegative) {
     params.set('hide_negative', '0')
   }
-  if (hideRead) {
+  if (onlyRead) {
+    params.set('only_read', '1')
+  } else if (hideRead) {
     params.set('hide_read', '1')
   }
   const query = params.toString()

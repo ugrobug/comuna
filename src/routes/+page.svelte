@@ -1,10 +1,11 @@
 <script lang="ts" context="module">
 </script>
 
-<script lang="ts">
-  import { browser } from '$app/environment'
-  import { page } from '$app/stores'
-  import { env } from '$env/dynamic/public'
+	<script lang="ts">
+	  import { browser } from '$app/environment'
+	  import { goto } from '$app/navigation'
+	  import { page } from '$app/stores'
+	  import { env } from '$env/dynamic/public'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import { t } from '$lib/translations.js'
   import Post from '$lib/components/lemmy/post/Post.svelte'
@@ -35,9 +36,12 @@
   let lastPostsRef = data.posts
   let lastFeedType = feedType
   let lastMyFeedKey = ''
-  let lastFeedKey: string | null = null
-  let myFeedSettingsOpen = false
-  let feedParam: string | null = null
+	  let lastFeedKey: string | null = null
+	  let myFeedSettingsOpen = false
+	  let feedParam: string | null = null
+	  let readParam: string | null = null
+	  let readOnly = false
+	  let hiddenReadCount = 0
   const moodDurationMs = 3 * 60 * 60 * 1000
   const moodOptions: Array<{ label: string; value: 'funny' | 'serious' | 'sad' }> = [
     { label: 'Веселое', value: 'funny' },
@@ -62,45 +66,51 @@
       loadingMore = false
     }
   }
-  $: feedParam = $page.url.searchParams.get('feed')
-  $: if (data?.feedType && data.feedType !== lastFeedType && feedParam) {
-    lastFeedType = data.feedType
-    feedType = data.feedType ?? 'hot'
-    if (feedType === 'mine') {
-      posts = []
-      offset = 0
-      hasMore = false
-      loadingMore = false
-      lastMyFeedKey = ''
-    } else {
-      posts = data.posts ?? []
-      offset = posts.length
-      hasMore = posts.length === pageSize
-      loadingMore = false
-    }
-  }
-  $: if (!feedParam) {
-    const preferredFeed = $userSettings.homeFeed ?? 'hot'
-    if (preferredFeed !== feedType) {
-      feedType = preferredFeed
-      lastFeedType = preferredFeed
-      if (feedType === 'mine') {
-        posts = []
-        offset = 0
-        hasMore = false
-        loadingMore = false
-        lastMyFeedKey = ''
-      } else {
-        posts = []
-        offset = 0
-        hasMore = true
-        loadingMore = false
-        if (browser) {
-          loadMore()
-        }
-      }
-    }
-  }
+	  $: feedParam = $page.url.searchParams.get('feed')
+	  $: readParam = $page.url.searchParams.get('read')
+	  $: readOnly = readParam === '1' || readParam === 'true' || readParam === 'yes'
+	  $: if (data?.feedType && data.feedType !== lastFeedType && feedParam) {
+	    lastFeedType = data.feedType
+	    feedType = data.feedType ?? 'hot'
+	    if (feedType === 'mine') {
+	      posts = []
+	      offset = 0
+	      hasMore = false
+	      loadingMore = false
+	      hiddenReadCount = 0
+	      lastMyFeedKey = ''
+	    } else {
+	      posts = data.posts ?? []
+	      offset = posts.length
+	      hasMore = posts.length === pageSize
+	      loadingMore = false
+	      hiddenReadCount = 0
+	    }
+	  }
+	  $: if (!feedParam) {
+	    const preferredFeed = $userSettings.homeFeed ?? 'hot'
+	    if (preferredFeed !== feedType) {
+	      feedType = preferredFeed
+	      lastFeedType = preferredFeed
+	      if (feedType === 'mine') {
+	        posts = []
+	        offset = 0
+	        hasMore = false
+	        loadingMore = false
+	        hiddenReadCount = 0
+	        lastMyFeedKey = ''
+	      } else {
+	        posts = []
+	        offset = 0
+	        hasMore = true
+	        loadingMore = false
+	        hiddenReadCount = 0
+	        if (browser) {
+	          loadMore()
+	        }
+	      }
+	    }
+	  }
   const scrollThreshold = 400
   let scrollRaf: number | null = null
 
@@ -109,9 +119,10 @@
     feedType === 'mine' &&
     $siteUser &&
     selectedRubrics.length > 0
-  $: hideNegativeMyFeed = $userSettings.myFeedHideNegative ?? true
-  $: hideReadPosts = ($userSettings.hideReadPosts ?? false) && !!$siteUser
-  $: myFeedMood = $userSettings.myFeedMood ?? null
+	  $: hideNegativeMyFeed = $userSettings.myFeedHideNegative ?? true
+	  $: hideReadPosts = ($userSettings.hideReadPosts ?? false) && !!$siteUser
+	  $: effectiveHideRead = hideReadPosts && !readOnly
+	  $: myFeedMood = $userSettings.myFeedMood ?? null
   $: myFeedMoodExpiresAt = $userSettings.myFeedMoodExpiresAt ?? null
   $: moodActive =
     !!myFeedMood &&
@@ -122,65 +133,82 @@
   $: siteBaseUrl = (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '')
   $: canonicalUrl = `${siteBaseUrl}/`
 
-  const buildPageUrl = (offset: number) => {
-    let baseUrl = buildHomeFeedUrl({ hideRead: hideReadPosts })
-    if (feedType === 'fresh') {
-      baseUrl = buildFreshFeedUrl({ hideRead: hideReadPosts })
-    } else if (feedType === 'mine') {
-      baseUrl = buildMyFeedUrl(selectedRubrics, hideNegativeMyFeed, hideReadPosts)
-    }
-    const url = new URL(baseUrl)
-    url.searchParams.set('limit', String(pageSize))
-    url.searchParams.set('offset', String(offset))
+	  const buildPageUrl = (offset: number) => {
+	    let baseUrl = buildHomeFeedUrl({
+	      hideRead: effectiveHideRead,
+	      onlyRead: readOnly,
+	    })
+	    if (feedType === 'fresh') {
+	      baseUrl = buildFreshFeedUrl({
+	        hideRead: effectiveHideRead,
+	        onlyRead: readOnly,
+	      })
+	    } else if (feedType === 'mine') {
+	      baseUrl = buildMyFeedUrl(
+	        selectedRubrics,
+	        hideNegativeMyFeed,
+	        effectiveHideRead,
+	        readOnly
+	      )
+	    }
+	    const url = new URL(baseUrl)
+	    url.searchParams.set('limit', String(pageSize))
+	    url.searchParams.set('offset', String(offset))
     return url.toString()
   }
 
-  $: if (feedType !== 'mine') {
-    const feedKey = [
-      feedType,
-      hideReadPosts ? 'read' : 'all',
-      hideNegativeMyFeed ? 'hide-neg' : 'show-neg',
-    ].join('|')
-    if (lastFeedKey === null) {
-      lastFeedKey = feedKey
-      if (hideReadPosts && browser) {
-        posts = []
-        offset = 0
-        hasMore = true
-        loadingMore = false
-        loadMore()
-      }
-    } else if (feedKey !== lastFeedKey) {
-      lastFeedKey = feedKey
-      posts = []
-      offset = 0
-      hasMore = true
-      loadingMore = false
-      if (browser) {
-        loadMore()
-      }
-    }
-  }
+	  $: if (feedType !== 'mine') {
+	    const feedKey = [
+	      feedType,
+	      readOnly ? 'only-read' : effectiveHideRead ? 'hide-read' : 'all',
+	      hideNegativeMyFeed ? 'hide-neg' : 'show-neg',
+	    ].join('|')
+	    if (lastFeedKey === null) {
+	      lastFeedKey = feedKey
+	      if ((effectiveHideRead || readOnly) && browser) {
+	        posts = []
+	        offset = 0
+	        hasMore = true
+	        loadingMore = false
+	        hiddenReadCount = 0
+	        loadMore()
+	      }
+	    } else if (feedKey !== lastFeedKey) {
+	      lastFeedKey = feedKey
+	      posts = []
+	      offset = 0
+	      hasMore = true
+	      loadingMore = false
+	      hiddenReadCount = 0
+	      if (browser) {
+	        loadMore()
+	      }
+	    }
+	  }
 
-  const loadMore = async () => {
-    if (!browser || loadingMore || !hasMore) return
-    if (feedType === 'mine' && !canLoadMyFeed) return
-    loadingMore = true
-    try {
-      const token = $siteToken
-      const headers = token ? { Authorization: `Bearer ${token}` } : undefined
-      const response = await fetch(buildPageUrl(offset), {
-        headers,
-      })
+	  const loadMore = async () => {
+	    if (!browser || loadingMore || !hasMore) return
+	    if (feedType === 'mine' && !canLoadMyFeed) return
+	    if (readOnly && !$siteUser) return
+	    loadingMore = true
+	    try {
+	      const token = $siteToken
+	      const headers = token ? { Authorization: `Bearer ${token}` } : undefined
+	      const response = await fetch(buildPageUrl(offset), {
+	        headers,
+	      })
       if (!response.ok) {
         hasMore = false
         return
-      }
-      const payload = await response.json()
-      const nextPosts = payload.posts ?? []
-      if (nextPosts.length) {
-        posts = [...posts, ...nextPosts]
-        offset += nextPosts.length
+	      }
+	      const payload = await response.json()
+	      if (typeof payload.hidden_read_count === 'number') {
+	        hiddenReadCount = payload.hidden_read_count
+	      }
+	      const nextPosts = payload.posts ?? []
+	      if (nextPosts.length) {
+	        posts = [...posts, ...nextPosts]
+	        offset += nextPosts.length
       }
       if (nextPosts.length < pageSize) {
         hasMore = false
@@ -204,16 +232,17 @@
     }
   }
 
-  const resetMyFeed = () => {
-    posts = []
-    offset = 0
-    hasMore = false
-    loadingMore = false
-    if (canLoadMyFeed) {
-      hasMore = true
-      loadMore()
-    }
-  }
+	  const resetMyFeed = () => {
+	    posts = []
+	    offset = 0
+	    hasMore = false
+	    loadingMore = false
+	    hiddenReadCount = 0
+	    if (canLoadMyFeed) {
+	      hasMore = true
+	      loadMore()
+	    }
+	  }
 
   const loadTagMoods = async () => {
     if (!browser || tagMoodLoading || tagMoodMap.size) return
@@ -317,7 +346,7 @@
 
   $: if (feedType === 'mine') {
     const authKey = $siteUser ? 'auth' : 'anon'
-    const key = `${authKey}:${selectedRubrics.join(',')}:${hideNegativeMyFeed ? 'no-negative' : 'all'}:${hideReadPosts ? 'hide-read' : 'all-read'}`
+    const key = `${authKey}:${selectedRubrics.join(',')}:${hideNegativeMyFeed ? 'no-negative' : 'all'}:${readOnly ? 'only-read' : effectiveHideRead ? 'hide-read' : 'all-read'}`
     if (key !== lastMyFeedKey) {
       lastMyFeedKey = key
       resetMyFeed()
@@ -369,6 +398,20 @@
       }
     }
   })
+
+  const openReadPosts = () => {
+    const url = new URL($page.url)
+    url.searchParams.set('read', '1')
+    url.searchParams.set('feed', feedType)
+    goto(`${url.pathname}?${url.searchParams.toString()}`)
+  }
+
+  const closeReadPosts = () => {
+    const url = new URL($page.url)
+    url.searchParams.delete('read')
+    url.searchParams.set('feed', feedType)
+    goto(`${url.pathname}?${url.searchParams.toString()}`)
+  }
 </script>
 <div class="flex flex-col gap-2 max-w-full w-full min-w-0">
   <header class="flex flex-col gap-2 relative">
@@ -393,6 +436,33 @@
       </Header>
     {/if}
   </header>
+  {#if $siteUser && readOnly}
+    <div class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-4 py-3 flex items-center justify-between gap-3">
+      <div class="text-sm text-slate-600 dark:text-zinc-300">
+        Показываем только прочитанные посты
+      </div>
+      <button
+        type="button"
+        class="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
+        on:click={closeReadPosts}
+      >
+        Вернуться
+      </button>
+    </div>
+  {:else if $siteUser && effectiveHideRead && hiddenReadCount > 0}
+    <div class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-4 py-3 flex items-center justify-between gap-3">
+      <div class="text-sm text-slate-600 dark:text-zinc-300">
+        {hiddenReadCount} прочитанных постов скрыто
+      </div>
+      <button
+        type="button"
+        class="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
+        on:click={openReadPosts}
+      >
+        Показать
+      </button>
+    </div>
+  {/if}
   {#if feedType === 'mine' && !$siteUser}
     <div class="text-base text-slate-500">
       После регистрации вы получите доступ к персонализируемой ленте, которую сможете настроить и видеть только интересные вам посты.

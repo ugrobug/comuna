@@ -3010,10 +3010,18 @@ def home_feed(request: HttpRequest) -> HttpResponse:
 
     now = timezone.now()
     hide_read = request.GET.get("hide_read") in ("1", "true", "yes")
-    read_user = _get_user_from_request(request) if hide_read else None
+    only_read = request.GET.get("only_read") in ("1", "true", "yes")
+    read_user = (
+        _get_user_from_request(request) if (hide_read or only_read) else None
+    )
+    if only_read and not read_user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
     target_count = limit + offset
     fetch_size = max(target_count * 5, limit * 5)
-    posts_query = (
+    combined_scaled = Cast(F("rating"), IntegerField()) * Value(20) + Cast(
+        F("author__rating_total"), IntegerField()
+    )
+    base_query = (
         Post.objects.filter(
             is_blocked=False,
             is_pending=False,
@@ -3022,8 +3030,57 @@ def home_feed(request: HttpRequest) -> HttpResponse:
         .filter(_publish_ready_filter(now))
         .filter(Q(author__shadow_banned=False) | Q(author__force_home=True))
         .filter(Q(rubric__isnull=True) | Q(rubric__is_hidden=False))
+        .annotate(combined_scaled=combined_scaled)
+        .filter(combined_scaled__gte=0)
     )
-    if read_user:
+    hidden_read_count = 0
+    if hide_read and read_user:
+        hidden_read_count = base_query.filter(reads__user=read_user).count()
+
+    if only_read:
+        posts_page = (
+            base_query.filter(reads__user=read_user)
+            .select_related("author", "rubric")
+            .prefetch_related("tags")
+            .order_by("-created_at")[offset : offset + limit]
+        )
+        serialized = []
+        for post in posts_page:
+            rubric = post.rubric
+            author_rating = _author_rating_value(post.author.rating_total)
+            author_channel_url, author_title = _author_display_fields(
+                post.author, rubric, post.channel_url
+            )
+            serialized.append(
+                {
+                    "id": post.id,
+                    "title": post.title,
+                    "rubric": rubric.name if rubric else None,
+                    "rubric_slug": rubric.slug if rubric else None,
+                    "rubric_icon_url": _rubric_icon_url(request, rubric),
+                    "content": post.content,
+                    "source_url": post.source_url,
+                    "channel_url": author_channel_url,
+                    "created_at": post.created_at.isoformat(),
+                    "author": {
+                        "username": post.author.username,
+                        "title": author_title,
+                        "channel_url": author_channel_url,
+                        "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
+                    },
+                    "tags": _serialize_tags(post.tags.all()),
+                    "score": post.rating + post.comments_count * 5 + author_rating,
+                    "rating": post.rating,
+                    "comments_count": post.comments_count,
+                    "likes_count": post.rating,
+                }
+            )
+        return JsonResponse(
+            {"ok": True, "posts": serialized, "hidden_read_count": hidden_read_count}
+        )
+
+    posts_query = base_query
+    if hide_read and read_user:
         posts_query = posts_query.exclude(reads__user=read_user)
     posts = list(
         posts_query.select_related("author", "rubric")
@@ -3106,7 +3163,11 @@ def home_feed(request: HttpRequest) -> HttpResponse:
         last_author_id = post.author_id
 
     return JsonResponse(
-        {"ok": True, "posts": serialized_posts[offset : offset + limit]}
+        {
+            "ok": True,
+            "posts": serialized_posts[offset : offset + limit],
+            "hidden_read_count": hidden_read_count,
+        }
     )
 
 
@@ -3124,8 +3185,13 @@ def fresh_feed(request: HttpRequest) -> HttpResponse:
 
     now = timezone.now()
     hide_read = request.GET.get("hide_read") in ("1", "true", "yes")
-    read_user = _get_user_from_request(request) if hide_read else None
-    posts_query = (
+    only_read = request.GET.get("only_read") in ("1", "true", "yes")
+    read_user = (
+        _get_user_from_request(request) if (hide_read or only_read) else None
+    )
+    if only_read and not read_user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    base_query = (
         Post.objects.filter(
             is_blocked=False,
             is_pending=False,
@@ -3135,7 +3201,15 @@ def fresh_feed(request: HttpRequest) -> HttpResponse:
         .filter(Q(author__shadow_banned=False) | Q(author__force_home=True))
         .filter(Q(rubric__isnull=True) | Q(rubric__is_hidden=False))
     )
-    if read_user:
+
+    hidden_read_count = 0
+    if hide_read and read_user:
+        hidden_read_count = base_query.filter(reads__user=read_user).count()
+
+    posts_query = base_query
+    if only_read:
+        posts_query = posts_query.filter(reads__user=read_user)
+    elif hide_read and read_user:
         posts_query = posts_query.exclude(reads__user=read_user)
     posts = (
         posts_query.select_related("author", "rubric")
@@ -3174,7 +3248,9 @@ def fresh_feed(request: HttpRequest) -> HttpResponse:
             }
         )
 
-    return JsonResponse({"ok": True, "posts": serialized})
+    return JsonResponse(
+        {"ok": True, "posts": serialized, "hidden_read_count": hidden_read_count}
+    )
 
 
 def my_feed(request: HttpRequest) -> HttpResponse:
@@ -3207,8 +3283,13 @@ def my_feed(request: HttpRequest) -> HttpResponse:
 
     now = timezone.now()
     hide_read = request.GET.get("hide_read") in ("1", "true", "yes")
-    read_user = _get_user_from_request(request) if hide_read else None
-    posts_query = (
+    only_read = request.GET.get("only_read") in ("1", "true", "yes")
+    read_user = (
+        _get_user_from_request(request) if (hide_read or only_read) else None
+    )
+    if only_read and not read_user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    base_query = (
         Post.objects.filter(
             rubric_id__in=rubric_ids,
             is_blocked=False,
@@ -3218,10 +3299,18 @@ def my_feed(request: HttpRequest) -> HttpResponse:
         .filter(_publish_ready_filter(now))
         .filter(Q(author__shadow_banned=False) | Q(author__force_home=True))
     )
-    if read_user:
-        posts_query = posts_query.exclude(reads__user=read_user)
     if hide_negative:
-        posts_query = posts_query.filter(rating__gte=0)
+        base_query = base_query.filter(rating__gte=0)
+
+    hidden_read_count = 0
+    if hide_read and read_user:
+        hidden_read_count = base_query.filter(reads__user=read_user).count()
+
+    posts_query = base_query
+    if only_read:
+        posts_query = posts_query.filter(reads__user=read_user)
+    elif hide_read and read_user:
+        posts_query = posts_query.exclude(reads__user=read_user)
 
     posts = (
         posts_query.select_related("author", "rubric")
@@ -3260,7 +3349,9 @@ def my_feed(request: HttpRequest) -> HttpResponse:
             }
         )
 
-    return JsonResponse({"ok": True, "posts": serialized})
+    return JsonResponse(
+        {"ok": True, "posts": serialized, "hidden_read_count": hidden_read_count}
+    )
 
 
 def top_authors_month(request: HttpRequest) -> HttpResponse:
