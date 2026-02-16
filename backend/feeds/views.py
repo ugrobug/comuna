@@ -557,6 +557,29 @@ def _build_title(text: str) -> str:
     return first_line[:117].strip() + "..."
 
 
+def _post_display_title(post: Post) -> str:
+    direct_title = (post.title or "").strip()
+    if direct_title:
+        return direct_title
+
+    raw_data = post.raw_data if isinstance(post.raw_data, dict) else {}
+    poll = raw_data.get("poll") if isinstance(raw_data, dict) else None
+    if isinstance(poll, dict):
+        question = str(poll.get("question") or "").strip()
+        if question:
+            poll_title = _build_title(question)
+            if poll_title:
+                return poll_title
+
+    content_text = _strip_html(post.content or "").strip()
+    if content_text:
+        content_title = _build_title(content_text)
+        if content_title:
+            return content_title
+
+    return "Пост"
+
+
 def _strip_html(text: str) -> str:
     if not text:
         return ""
@@ -782,6 +805,43 @@ def _extract_plain_text(message: dict) -> str:
     return (message.get("text") or message.get("caption") or "").strip()
 
 
+def _is_telegram_service_message(message: dict) -> bool:
+    service_keys = (
+        "new_chat_members",
+        "left_chat_member",
+        "new_chat_title",
+        "new_chat_photo",
+        "delete_chat_photo",
+        "group_chat_created",
+        "supergroup_chat_created",
+        "channel_chat_created",
+        "message_auto_delete_timer_changed",
+        "pinned_message",
+        "video_chat_started",
+        "video_chat_ended",
+        "video_chat_participants_invited",
+        "video_chat_scheduled",
+        "forum_topic_created",
+        "forum_topic_edited",
+        "forum_topic_closed",
+        "forum_topic_reopened",
+        "general_forum_topic_hidden",
+        "general_forum_topic_unhidden",
+        "write_access_allowed",
+        "giveaway",
+        "giveaway_created",
+        "giveaway_completed",
+        "giveaway_winners",
+        "chat_shared",
+        "user_shared",
+        "proximity_alert_triggered",
+        "migrate_to_chat_id",
+        "migrate_from_chat_id",
+        "connected_website",
+    )
+    return any(key in message for key in service_keys)
+
+
 def _extract_entities(message: dict) -> list[dict]:
     if message.get("text"):
         return message.get("entities") or []
@@ -910,6 +970,7 @@ def _build_content_with_images(
     text_html: str,
     image_urls: list[str],
     embed_html: str = "",
+    poll_html: str = "",
 ) -> str:
     parts: list[str] = []
     if image_urls:
@@ -921,6 +982,8 @@ def _build_content_with_images(
         parts.append(media_html)
     if embed_html:
         parts.append(embed_html)
+    if poll_html:
+        parts.append(poll_html)
     if text_html:
         parts.append(text_html)
     return "<br><br>".join([part for part in parts if part])
@@ -957,6 +1020,72 @@ def _extract_telegram_embed(message: dict, username: str) -> tuple[str, str]:
     if has_audio:
         return _build_telegram_embed_html(username, message_id, 200), "Аудио"
     return "", ""
+
+
+def _extract_telegram_poll(message: dict) -> tuple[str, str]:
+    poll = message.get("poll")
+    if not isinstance(poll, dict):
+        return "", ""
+
+    question = str(poll.get("question") or "").strip()
+    raw_options = poll.get("options") or []
+    options: list[tuple[str, int]] = []
+    if isinstance(raw_options, list):
+        for option in raw_options:
+            if not isinstance(option, dict):
+                continue
+            text = str(option.get("text") or "").strip()
+            if not text:
+                continue
+            try:
+                count = int(option.get("voter_count", 0))
+            except (TypeError, ValueError):
+                count = 0
+            options.append((text, max(count, 0)))
+
+    if not question and not options:
+        return "", ""
+
+    total_voters_raw = poll.get("total_voter_count")
+    total_voters = (
+        total_voters_raw if isinstance(total_voters_raw, int) and total_voters_raw >= 0 else None
+    )
+
+    option_items: list[str] = []
+    for text, count in options:
+        value_label = str(count)
+        if total_voters and total_voters > 0:
+            percent = round((count / total_voters) * 100)
+            value_label = f"{count} ({percent}%)"
+        option_items.append(
+            f'<li class="post-poll-option">{escape(text)} <b>{value_label}</b></li>'
+        )
+    options_html = (
+        f'<ul class="post-poll-options">{"".join(option_items)}</ul>' if option_items else ""
+    )
+
+    meta_parts: list[str] = []
+    if poll.get("is_anonymous"):
+        meta_parts.append("Анонимный опрос")
+    if poll.get("allows_multiple_answers"):
+        meta_parts.append("Можно выбрать несколько вариантов")
+    if poll.get("is_closed"):
+        meta_parts.append("Опрос завершен")
+    if total_voters is not None:
+        meta_parts.append(f"Голосов: {total_voters}")
+    meta_html = f'<div class="post-poll-meta">{" · ".join(meta_parts)}</div>' if meta_parts else ""
+
+    question_html = f'<div class="post-poll-question"><b>{escape(question)}</b></div>' if question else ""
+    poll_html = (
+        '<div class="post-poll">'
+        + "".join(part for part in (question_html, options_html, meta_html) if part)
+        + "</div>"
+    )
+
+    title = _build_title(question) if question else ""
+    if not title:
+        title = "Опрос"
+    return poll_html, title
 
 
 def _fetch_telegram_json(method: str, token: str, payload: dict) -> dict | None:
@@ -1236,6 +1365,12 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
     if not username:
         return
 
+    message_id = message.get("message_id")
+    if message_id is None:
+        return
+    if _is_telegram_service_message(message):
+        return
+
     author, _ = Author.objects.get_or_create(
         username=username,
         defaults={
@@ -1248,9 +1383,6 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
     if author.is_blocked:
         return
 
-    message_id = message.get("message_id")
-    if message_id is None:
-        return
     media_group_id = message.get("media_group_id") or ""
 
     token = settings.TELEGRAM_BOT_TOKEN
@@ -1275,6 +1407,7 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
     image_url = _extract_photo_url(message, token) if token else None
     gallery_urls = [image_url] if image_url else []
     embed_html, embed_label = _extract_telegram_embed(message, username)
+    poll_html, poll_label = _extract_telegram_poll(message)
     if media_group_id:
         with transaction.atomic():
             Author.objects.select_for_update().filter(pk=author.pk)
@@ -1309,11 +1442,14 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
                     raw_data["formatted_text"] = formatted_text
                 if embed_html and not raw_data.get("embed_html"):
                     raw_data["embed_html"] = embed_html
+                if poll_html and not raw_data.get("poll_html"):
+                    raw_data["poll_html"] = poll_html
                 base_text = raw_data.get("formatted_text") or formatted_text
                 content = _build_content_with_images(
                     base_text,
                     existing_urls,
                     raw_data.get("embed_html") or embed_html,
+                    raw_data.get("poll_html") or poll_html,
                 )
                 existing_group_post.content = content
                 existing_group_post.raw_data = raw_data
@@ -1336,8 +1472,14 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
                 _apply_post_tags(existing_group_post, explicit_tags)
                 return
 
-    content = _build_content_with_images(formatted_text, gallery_urls, embed_html)
+    has_publishable_content = bool(formatted_text.strip() or gallery_urls or embed_html or poll_html)
+    if not has_publishable_content:
+        return
+
+    content = _build_content_with_images(formatted_text, gallery_urls, embed_html, poll_html)
     title = _build_title(raw_text)
+    if not title and poll_label:
+        title = poll_label
     if not title and image_url:
         title = "Фото"
     if not title and embed_label:
@@ -1361,6 +1503,8 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
         raw_data["gallery_file_ids"] = [photo_file_id]
     if embed_html:
         raw_data["embed_html"] = embed_html
+    if poll_html:
+        raw_data["poll_html"] = poll_html
     post, created = Post.objects.get_or_create(
         author=author,
         message_id=message_id,
@@ -2077,7 +2221,7 @@ def _serialize_post_for_user(request: HttpRequest, post: Post) -> dict:
     )
     return {
         "id": post.id,
-        "title": post.title,
+        "title": _post_display_title(post),
         "content": post.content,
         "created_at": post.created_at.isoformat(),
         "updated_at": post.updated_at.isoformat(),
@@ -2640,7 +2784,7 @@ def recent_comments(request: HttpRequest) -> HttpResponse:
             "body": comment.body,
             "created_at": comment.created_at.isoformat(),
             "user": {"username": comment.user.username},
-            "post": {"id": comment.post_id, "title": comment.post.title},
+            "post": {"id": comment.post_id, "title": _post_display_title(comment.post)},
         }
         for comment in comments
     ]
@@ -2694,7 +2838,7 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
         serialized.append(
             {
                 "id": post.id,
-                "title": post.title,
+                "title": _post_display_title(post),
                 "rubric": rubric.name if rubric else None,
                 "rubric_slug": rubric.slug if rubric else None,
                 "rubric_icon_url": _rubric_icon_url(request, rubric),
@@ -2799,7 +2943,7 @@ def rubric_posts(request: HttpRequest, slug: str) -> HttpResponse:
         serialized.append(
             {
                 "id": post.id,
-                "title": post.title,
+                "title": _post_display_title(post),
                 "rubric": rubric.name,
                 "rubric_slug": rubric.slug,
                 "rubric_icon_url": _rubric_icon_url(request, rubric),
@@ -2901,7 +3045,7 @@ def tag_posts(request: HttpRequest, tag: str) -> HttpResponse:
         serialized.append(
             {
                 "id": post.id,
-                "title": post.title,
+                "title": _post_display_title(post),
                 "rubric": rubric.name if rubric else None,
                 "rubric_slug": rubric.slug if rubric else None,
                 "rubric_icon_url": _rubric_icon_url(request, rubric)
@@ -2959,7 +3103,7 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
             "ok": True,
             "post": {
                 "id": post.id,
-                "title": post.title,
+                "title": _post_display_title(post),
                 "rubric": rubric.name if rubric else None,
                 "rubric_slug": rubric.slug if rubric else None,
                 "rubric_icon_url": _rubric_icon_url(request, rubric),
@@ -3054,7 +3198,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
             serialized.append(
                 {
                     "id": post.id,
-                    "title": post.title,
+                    "title": _post_display_title(post),
                     "rubric": rubric.name if rubric else None,
                     "rubric_slug": rubric.slug if rubric else None,
                     "rubric_icon_url": _rubric_icon_url(request, rubric),
@@ -3139,7 +3283,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
         serialized_posts.append(
             {
                 "id": post.id,
-                "title": post.title,
+                "title": _post_display_title(post),
                 "rubric": rubric.name if rubric else None,
                 "rubric_slug": rubric.slug if rubric else None,
                 "rubric_icon_url": _rubric_icon_url(request, rubric),
@@ -3226,7 +3370,7 @@ def fresh_feed(request: HttpRequest) -> HttpResponse:
         serialized.append(
             {
                 "id": post.id,
-                "title": post.title,
+                "title": _post_display_title(post),
                 "rubric": rubric.name if rubric else None,
                 "rubric_slug": rubric.slug if rubric else None,
                 "rubric_icon_url": _rubric_icon_url(request, rubric),
@@ -3327,7 +3471,7 @@ def my_feed(request: HttpRequest) -> HttpResponse:
         serialized.append(
             {
                 "id": post.id,
-                "title": post.title,
+                "title": _post_display_title(post),
                 "rubric": rubric.name if rubric else None,
                 "rubric_slug": rubric.slug if rubric else None,
                 "rubric_icon_url": _rubric_icon_url(request, rubric),
@@ -3464,7 +3608,7 @@ def search_content(request: HttpRequest) -> HttpResponse:
             posts.append(
                 {
                     "id": post.id,
-                    "title": post.title,
+                    "title": _post_display_title(post),
                     "rubric": rubric.name if rubric else None,
                     "rubric_slug": rubric.slug if rubric else None,
                     "rubric_icon_url": _rubric_icon_url(request, rubric)

@@ -372,3 +372,24 @@ button:focus-visible {
 .post strong, .post b {
   font-weight: 500;
 }
+
+/* Стили для опросов из Telegram */
+.post .post-poll {
+  @apply my-4 rounded-xl border border-slate-200 bg-slate-50/80 p-4 dark:border-zinc-800 dark:bg-zinc-900/60;
+}
+
+.post .post-poll-question {
+  @apply text-base leading-snug mb-3;
+}
+
+.post .post-poll-options {
+  @apply list-none m-0 p-0 space-y-2;
+}
+
+.post .post-poll-option {
+  @apply flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900;
+}
+
+.post .post-poll-meta {
+  @apply mt-3 text-xs text-slate-500 dark:text-zinc-400;
+}
