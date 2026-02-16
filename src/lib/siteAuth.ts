@@ -11,6 +11,7 @@ export type SiteAuthorLink = {
   rubric_slug?: string | null
   auto_publish?: boolean
   publish_delay_days?: number
+  notify_comments?: boolean
   invite_url?: string | null
   author_rating?: number
 }

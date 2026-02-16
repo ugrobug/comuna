@@ -342,6 +342,7 @@ def _serialize_user(user: User) -> dict:
                 "rubric_slug": author.rubric.slug if author.rubric else None,
                 "auto_publish": author.auto_publish,
                 "publish_delay_days": author.publish_delay_days,
+                "notify_comments": author.notify_comments,
                 "invite_url": author.invite_url,
                 "author_rating": _author_rating_value(author.rating_total),
             }
@@ -479,6 +480,39 @@ def _maybe_notify_new_author(author: Author, post: Post) -> None:
     )
     author.first_post_notified = True
     author.save(update_fields=["first_post_notified", "updated_at"])
+
+
+def _comment_preview(text: str, max_length: int = 220) -> str:
+    preview = re.sub(r"\s+", " ", text or "").strip()
+    if len(preview) <= max_length:
+        return preview
+    return preview[: max_length - 1].rstrip() + "…"
+
+
+def _maybe_notify_author_comment(post: Post, comment: PostComment) -> None:
+    author = post.author
+    if not author.notify_comments or not author.admin_chat_id:
+        return
+
+    # Do not notify if the comment was left by this channel's verified owner.
+    if AuthorAdmin.objects.filter(
+        author=author, user_id=comment.user_id, verified_at__isnull=False
+    ).exists():
+        return
+
+    site_base = (getattr(settings, "SITE_BASE_URL", "") or "").rstrip("/")
+    post_link = f"{site_base}/b/post/{post.id}#comments" if site_base else ""
+    commenter = f"@{comment.user.username}" if comment.user.username else "Пользователь"
+    text = (
+        "Новый комментарий к вашему посту на Comuna.\n"
+        f"Пост: {_post_display_title(post)}\n"
+        f"Пользователь: {commenter}\n"
+        f"Комментарий: {_comment_preview(comment.body)}"
+    )
+    if post_link:
+        text += f"\nСсылка: {post_link}"
+
+    _send_bot_message(int(author.admin_chat_id), text)
 
 
 def _media_url(request: HttpRequest | None, field) -> str | None:
@@ -1267,6 +1301,7 @@ def _send_channel_settings_menu(chat_id: int, author: Author) -> None:
     delay_label = _format_delay_label(author.publish_delay_days)
     rubric_label = author.rubric.name if author.rubric else "не выбрана"
     invite_label = "установлена" if author.invite_url else "не задана"
+    comments_notify_label = "включены" if author.notify_comments else "выключены"
     _send_bot_message_with_keyboard(
         chat_id,
         "Настройки для канала "
@@ -1274,12 +1309,14 @@ def _send_channel_settings_menu(chat_id: int, author: Author) -> None:
         f"Режим: {mode_label}\n"
         f"Тематика: {rubric_label}\n"
         f"Задержка: {delay_label}\n"
-        f"Ссылка: {invite_label}",
+        f"Ссылка: {invite_label}\n"
+        f"Оповещения о комментариях: {comments_notify_label}",
         {
             "inline_keyboard": [
                 [{"text": "Режим публикации", "callback_data": "settings:mode"}],
                 [{"text": "Тематика канала", "callback_data": "settings:rubric"}],
                 [{"text": "Задержка публикации", "callback_data": "settings:delay"}],
+                [{"text": "Оповещать о комментариях", "callback_data": "settings:comments_notify"}],
                 [{"text": "Ссылка для подписки", "callback_data": "settings:invite"}],
             ]
         },
@@ -1930,6 +1967,29 @@ def _handle_callback_query(callback_query: dict) -> None:
         _maybe_send_setup_instructions(chat_id)
         return
 
+    if data.startswith("comments_notify:") and chat_id:
+        mode = data.split(":", 1)[1]
+        if mode not in {"on", "off"}:
+            _answer_callback_query(callback_id, "Некорректная настройка")
+            return
+        notify_comments = mode == "on"
+        if not session or not session.selected_author:
+            _answer_callback_query(callback_id, "Сначала выберите канал")
+            _send_channel_picker(chat_id, "Выберите канал для настройки")
+            return
+        author = session.selected_author
+        author.notify_comments = notify_comments
+        author.save(update_fields=["notify_comments", "updated_at"])
+        _answer_callback_query(callback_id, "Настройка сохранена")
+        _send_bot_message(
+            chat_id,
+            (
+                f"Оповещения о комментариях для @{author.username} "
+                f"{'включены' if notify_comments else 'выключены'}."
+            ),
+        )
+        return
+
     if data.startswith("channel:") and chat_id:
         try:
             author_id = int(data.split(":", 1)[1])
@@ -1995,6 +2055,20 @@ def _handle_callback_query(callback_query: dict) -> None:
                         [{"text": "1 день", "callback_data": "delay:1"}],
                         [{"text": "3 дня", "callback_data": "delay:3"}],
                         [{"text": "7 дней", "callback_data": "delay:7"}],
+                    ]
+                },
+            )
+            return
+        if action == "comments_notify":
+            _answer_callback_query(callback_id, "Выберите режим оповещений")
+            _send_bot_message_with_keyboard(
+                chat_id,
+                "Пользователи могут оставить комментарий к вашим постам на сайте, "
+                "хотите бот будет писать вам о новых?",
+                {
+                    "inline_keyboard": [
+                        [{"text": "Оповещать", "callback_data": "comments_notify:on"}],
+                        [{"text": "Не оповещать", "callback_data": "comments_notify:off"}],
                     ]
                 },
             )
@@ -2558,6 +2632,7 @@ def post_comments(request: HttpRequest, post_id: int) -> HttpResponse:
     comment = PostComment.objects.create(post=post, user=user, body=body, parent=parent)
     Post.objects.filter(id=post.id).update(comments_count=F("comments_count") + 1)
     post.refresh_from_db(fields=["comments_count"])
+    _maybe_notify_author_comment(post, comment)
 
     return JsonResponse(
         {

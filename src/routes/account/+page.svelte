@@ -203,6 +203,8 @@
                 Тематика: {author.rubric ?? 'не выбрана'}
                 <span class="mx-1">•</span>
                 Задержка: {author.publish_delay_days ? `${author.publish_delay_days} дн.` : 'без задержки'}
+                <span class="mx-1">•</span>
+                Комментарии: {author.notify_comments ? 'оповещать' : 'не оповещать'}
                 {#if author.author_rating !== undefined}
                   <span class="mx-1">•</span>
                   Рейтинг: {author.author_rating}
