@@ -1638,7 +1638,11 @@ def _handle_private_message(message: dict) -> None:
         return
 
     text = (message.get("text") or "").strip()
-    if text == "/start":
+    command = ""
+    if text.startswith("/"):
+        command = text.split(" ", 1)[0].lower()
+
+    if command in {"/start", "/start@comuna_tg_bot"}:
         _send_bot_message_with_keyboard(
             chat_id,
             "Привет! Это бот Comuna.ru он публикует твои посты на сайте, они "
@@ -1650,7 +1654,7 @@ def _handle_private_message(message: dict) -> None:
         _send_setup_options(chat_id)
         return
 
-    if text in {"/help", "Помощь"}:
+    if command in {"/help", "/help@comuna_tg_bot"} or text.lower() == "помощь":
         _send_bot_message(
             chat_id,
             "Как подключить канал:\n"
@@ -1667,7 +1671,15 @@ def _handle_private_message(message: dict) -> None:
         _handle_verification_code(chat_id, text.strip())
         return
 
-    if text == "Настройка":
+    if (
+        command in {"/settings", "/settings@comuna_tg_bot", "/menu", "/menu@comuna_tg_bot"}
+        or text.lower().startswith("настрой")
+    ):
+        _send_bot_message_with_keyboard(
+            chat_id,
+            "Открываю меню настроек.",
+            {"keyboard": [["Помощь", "Настройка"]], "resize_keyboard": True},
+        )
         _send_setup_options(chat_id)
         return
 
@@ -1807,9 +1819,10 @@ def _handle_private_message(message: dict) -> None:
         _send_bot_message(chat_id, "Пост добавлен на сайт.")
         return
 
-    _send_bot_message(
+    _send_bot_message_with_keyboard(
         chat_id,
         "Перешлите пост из канала, чтобы добавить его на сайт. Для помощи — /help.",
+        {"keyboard": [["Помощь", "Настройка"]], "resize_keyboard": True},
     )
 
 
