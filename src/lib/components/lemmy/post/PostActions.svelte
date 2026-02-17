@@ -121,6 +121,59 @@
       : post.post.ap_id
   }
 
+  const copyToClipboard = async (value: string): Promise<boolean> => {
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value)
+        return true
+      }
+    } catch {
+      // Fall through to legacy copy.
+    }
+
+    try {
+      const textarea = document.createElement('textarea')
+      textarea.value = value
+      textarea.setAttribute('readonly', '')
+      textarea.style.position = 'fixed'
+      textarea.style.opacity = '0'
+      textarea.style.pointerEvents = 'none'
+      document.body.appendChild(textarea)
+      textarea.focus()
+      textarea.select()
+      const copied = document.execCommand('copy')
+      document.body.removeChild(textarea)
+      return copied
+    } catch {
+      return false
+    }
+  }
+
+  const sharePost = async () => {
+    const url = shareUrl()
+
+    const canNativeShare =
+      typeof navigator?.share === 'function' &&
+      (typeof navigator?.canShare !== 'function' || navigator.canShare({ url }))
+
+    if (canNativeShare) {
+      try {
+        await navigator.share({ url })
+        return
+      } catch (error) {
+        // If user cancelled native share, don't show error/toast.
+        if ((error as { name?: string })?.name === 'AbortError') return
+      }
+    }
+
+    const copied = await copyToClipboard(url)
+    if (copied) {
+      toast({ content: $t('toast.copied') })
+    } else {
+      toast({ content: 'Не удалось скопировать ссылку', type: 'error' })
+    }
+  }
+
   async function setBackendVote(value: number) {
     if (!backendPostId) return
     if (!$siteToken) {
@@ -402,17 +455,7 @@
           : $t('post.actions.more.markRead')}
       </MenuButton>
     {/if}
-    <MenuButton
-      on:click={() => {
-        const url = shareUrl()
-        navigator.share?.({
-          url,
-        }) ??
-          navigator.clipboard.writeText(url)
-        toast({ content: $t('toast.copied') })
-      }}
-      class="flex-1 !py-0"
-    >
+    <MenuButton on:click={sharePost} class="flex-1 !py-0">
       <Icon src={Share} size="16" micro slot="prefix" />
       {$t('post.actions.more.share')}
       <div class="flex-1" />
