@@ -35,6 +35,28 @@
     return `${baseUrl}/${value}`
   }
 
+  const isReliablePreviewImage = (value: string | null | undefined, baseUrl: string) => {
+    if (!value) return false
+    try {
+      const imageUrl = new URL(value)
+      const siteUrl = new URL(baseUrl)
+      const isSameHost = imageUrl.host === siteUrl.host
+      const looksLikeImage = /\.(png|jpe?g|webp|gif)(\?.*)?$/i.test(imageUrl.pathname + imageUrl.search)
+      return isSameHost && looksLikeImage
+    } catch {
+      return false
+    }
+  }
+
+  const imageMimeByExtension = (value: string) => {
+    const normalized = value.toLowerCase()
+    if (normalized.includes('.png')) return 'image/png'
+    if (normalized.includes('.jpg') || normalized.includes('.jpeg')) return 'image/jpeg'
+    if (normalized.includes('.webp')) return 'image/webp'
+    if (normalized.includes('.gif')) return 'image/gif'
+    return 'image/png'
+  }
+
   const toJsonLd = (value: unknown) =>
     JSON.stringify(value)
       .replace(/</g, '\\u003c')
@@ -45,15 +67,19 @@
     json ? `<script type="application/ld+json">${json}</` + `script>` : ''
 
   $: siteBaseUrl = (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '')
-  $: canonicalUrl = `${siteBaseUrl}${$page.url.pathname}`
+  $: canonicalPath = data.canonicalId ? `/b/post/${data.canonicalId}` : $page.url.pathname
+  $: canonicalUrl = `${siteBaseUrl}${canonicalPath}`
   $: authorName = data.post?.author?.title || data.post?.author?.username || 'Автор'
   $: authorUrl = data.post?.author?.username
     ? `${siteBaseUrl}/${data.post.author.username}`
     : undefined
   $: firstImage = extractFirstImage(data.post?.content || '')
-  $: ogImage = firstImage ? ensureAbsoluteUrl(firstImage, siteBaseUrl) : ''
+  $: firstImageAbsolute = firstImage ? ensureAbsoluteUrl(firstImage, siteBaseUrl) : ''
   $: fallbackOgImage = `${siteBaseUrl}/img/og-image-1200x630.png`
+  $: ogImage = isReliablePreviewImage(firstImageAbsolute, siteBaseUrl) ? firstImageAbsolute : fallbackOgImage
+  $: ogImageType = imageMimeByExtension(ogImage)
   $: postDescription = buildDescription(data.post?.content || '')
+  $: metaDescription = postDescription || (env.PUBLIC_SITE_DESCRIPTION || 'Публикация на Comuna')
   $: postTitle = data.post?.title || ''
   $: siteTitle = env.PUBLIC_SITE_TITLE || 'Comuna'
   $: metaTitle = postTitle ? `${postTitle} — ${siteTitle}` : siteTitle
@@ -86,7 +112,7 @@
               url: `${siteBaseUrl}/favicon_120x120.svg`,
             },
           },
-          image: firstImage ? [firstImage] : undefined,
+          image: [ogImage],
         })
       : ''
   $: articleSchemaTag = buildJsonLdTag(articleSchema)
@@ -111,6 +137,7 @@
 <svelte:head>
   <title>{metaTitle}</title>
   <link rel="canonical" href={canonicalUrl} />
+  <meta name="description" content={metaDescription} />
 
   <meta property="og:locale" content="ru_RU" />
   <meta property="og:site_name" content={siteTitle} />
@@ -119,15 +146,12 @@
   {#if postTitle}
     <meta property="og:title" content={postTitle} />
   {/if}
-  {#if ogImage}
-    <meta property="og:image" content={ogImage} />
-    <meta property="og:image:secure_url" content={ogImage} />
-  {/if}
-  <!-- Fallback image for link previews (e.g. text-only posts or if Telegram ignores small images). -->
-  <meta property="og:image" content={fallbackOgImage} />
-  <meta property="og:image:secure_url" content={fallbackOgImage} />
+  <meta property="og:description" content={metaDescription} />
+  <meta property="og:image" content={ogImage} />
+  <meta property="og:image:secure_url" content={ogImage} />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
+  <meta property="og:image:type" content={ogImageType} />
   {#if data.post?.created_at}
     <meta property="article:published_time" content={data.post.created_at} />
   {/if}
@@ -139,7 +163,8 @@
   {#if postTitle}
     <meta name="twitter:title" content={postTitle} />
   {/if}
-  <meta name="twitter:image" content={ogImage || fallbackOgImage} />
+  <meta name="twitter:description" content={metaDescription} />
+  <meta name="twitter:image" content={ogImage} />
 
   {@html articleSchemaTag}
 </svelte:head>
