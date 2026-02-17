@@ -375,22 +375,22 @@
           class="text-slate-500 dark:text-zinc-400 self-center h-8 flex items-center" 
         />
       {/if}
-      {#if community}
-        {#if subscribeUrl}
-            <Button
-              size="sm"
-              color="primary"
-              class="ml-2 max-sm:hidden h-8 !min-h-[2rem] dark:!bg-primary-900 dark:!text-white dark:!border-transparent dark:hover:!brightness-110"
-              href={subscribeUrl}
-              target="_blank"
-              rel="nofollow noopener"
-              title={subscribeLabel}
-            >
-              <span class="inline-flex items-center gap-2 text-white">
-                <img src="/img/logos/telegram_logo.svg" alt="Telegram" class="w-4 h-4" />
-                {subscribeLabel}
-              </span>
-          </Button>
+	      {#if community}
+	        {#if subscribeUrl}
+	            <Button
+	              size="square-md"
+	              color="primary"
+	              class="ml-2 max-sm:hidden h-8 w-8 !min-h-[2rem] !min-w-[2rem] !px-0 dark:!bg-primary-900 dark:!text-white dark:!border-transparent dark:hover:!brightness-110"
+	              href={subscribeUrl}
+	              target="_blank"
+	              rel="nofollow noopener"
+	              title={subscribeLabel}
+	              aria-label={subscribeLabel}
+	            >
+	              <span class="inline-flex items-center justify-center text-white">
+	                <img src="/img/logos/telegram_logo.svg" alt="Telegram" class="w-4 h-4" />
+	              </span>
+	          </Button>
         {:else}
         <Subscribe community={{
           community,
