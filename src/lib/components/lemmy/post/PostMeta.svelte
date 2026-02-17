@@ -73,6 +73,8 @@
   )
   $: authorInMyFeed = Boolean(authorKey && myFeedAuthorKeys.has(authorKey))
   $: authorHidden = Boolean(authorKey && hiddenAuthorKeys.has(authorKey))
+  $: myFeedActionLabel = authorInMyFeed ? 'Убрать автора из моей ленты' : 'Добавить автора в мою ленту'
+  $: hiddenActionLabel = authorHidden ? 'Показывать автора' : 'Скрыть автора'
 
   // Функция для безопасного получения hostname
   function getInstanceFromActorId(actorId: string | undefined, isLocal: boolean | undefined): string {
@@ -196,8 +198,16 @@
     )
     if (existing) {
       nextAuthors.delete(existing)
+      toast({
+        content: 'Автор убран из "Моей ленты"',
+        type: 'success',
+      })
     } else {
       nextAuthors.add(authorUsername)
+      toast({
+        content: 'Посты автора будут выводиться в "Моей ленте"',
+        type: 'success',
+      })
     }
     $userSettings = { ...$userSettings, myFeedAuthors: Array.from(nextAuthors) }
   }
@@ -215,8 +225,16 @@
     )
     if (existingHidden) {
       nextHidden.delete(existingHidden)
+      toast({
+        content: 'Посты автора снова отображаются на сайте',
+        type: 'success',
+      })
     } else {
       nextHidden.add(authorUsername)
+      toast({
+        content: 'Вы больше не увидите посты автора на сайте',
+        type: 'success',
+      })
     }
 
     const nextMyFeed = new Set($userSettings.myFeedAuthors ?? [])
@@ -380,12 +398,13 @@
 	            <Button
 	              size="square-md"
 	              color="primary"
-	              class="ml-2 max-sm:hidden h-8 w-8 !min-h-[2rem] !min-w-[2rem] !px-0 dark:!bg-primary-900 dark:!text-white dark:!border-transparent dark:hover:!brightness-110"
+	              class="ml-2 max-sm:hidden h-8 w-8 !min-h-[2rem] !min-w-[2rem] !px-0 dark:!bg-primary-900 dark:!text-white dark:!border-transparent dark:hover:!brightness-110 action-tooltip"
 	              href={subscribeUrl}
 	              target="_blank"
 	              rel="nofollow noopener"
 	              title={subscribeLabel}
 	              aria-label={subscribeLabel}
+                data-tooltip={subscribeLabel}
 	            >
 	              <span class="inline-flex items-center justify-center text-white">
 	                <img src="/img/logos/telegram_logo.svg" alt="Telegram" class="w-4 h-4" />
@@ -449,29 +468,31 @@
       {#if $siteUser && authorUsername}
         <button
           type="button"
-          class="inline-flex items-center justify-center h-8 w-8 rounded-full border transition-colors
+          class="inline-flex items-center justify-center h-8 w-8 rounded-full border transition-colors action-tooltip
           {authorInMyFeed
             ? 'border-blue-300 bg-blue-50 text-blue-600 dark:border-blue-700 dark:bg-blue-950 dark:text-blue-300'
             : 'border-slate-300 bg-white text-slate-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300'}"
-          title={authorInMyFeed ? 'Убрать автора из моей ленты' : 'Добавить автора в мою ленту'}
-          aria-label={authorInMyFeed ? 'Убрать автора из моей ленты' : 'Добавить автора в мою ленту'}
+          title={myFeedActionLabel}
+          aria-label={myFeedActionLabel}
+          data-tooltip={myFeedActionLabel}
           on:click={toggleAuthorMyFeed}
         >
           <Icon src={authorInMyFeed ? Check : Plus} size="16" mini />
-          <span class="sr-only">{authorInMyFeed ? 'Убрать автора из моей ленты' : 'Добавить автора в мою ленту'}</span>
+          <span class="sr-only">{myFeedActionLabel}</span>
         </button>
         <button
           type="button"
-          class="inline-flex items-center justify-center h-8 w-8 rounded-full border transition-colors
+          class="inline-flex items-center justify-center h-8 w-8 rounded-full border transition-colors action-tooltip
           {authorHidden
             ? 'border-rose-300 bg-rose-50 text-rose-600 dark:border-rose-700 dark:bg-rose-950 dark:text-rose-300'
             : 'border-slate-300 bg-white text-slate-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300'}"
-          title={authorHidden ? 'Показывать автора' : 'Скрыть автора'}
-          aria-label={authorHidden ? 'Показывать автора' : 'Скрыть автора'}
+          title={hiddenActionLabel}
+          aria-label={hiddenActionLabel}
+          data-tooltip={hiddenActionLabel}
           on:click={toggleHiddenAuthor}
         >
           <Icon src={EyeSlash} size="16" mini />
-          <span class="sr-only">{authorHidden ? 'Показывать автора' : 'Скрыть автора'}</span>
+          <span class="sr-only">{hiddenActionLabel}</span>
         </button>
       {/if}
     </div>
@@ -507,5 +528,33 @@
     grid-template-columns: 1fr auto;
     gap: 1rem;
     align-items: center;
+  }
+
+  .action-tooltip {
+    position: relative;
+  }
+
+  .action-tooltip::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: calc(100% + 8px);
+    background: rgba(15, 23, 42, 0.95);
+    color: #fff;
+    font-size: 12px;
+    line-height: 1.2;
+    white-space: nowrap;
+    padding: 6px 8px;
+    border-radius: 6px;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 40;
+    transition: opacity 0.12s ease;
+  }
+
+  .action-tooltip:hover::after,
+  .action-tooltip:focus-visible::after {
+    opacity: 1;
   }
 </style>
