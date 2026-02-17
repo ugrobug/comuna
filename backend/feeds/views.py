@@ -3499,18 +3499,37 @@ def my_feed(request: HttpRequest) -> HttpResponse:
 
     rubrics_raw = request.GET.get("rubrics", "")
     rubric_slugs = [slug.strip() for slug in rubrics_raw.split(",") if slug.strip()]
-    if not rubric_slugs:
+    authors_raw = request.GET.get("authors", "")
+    author_usernames = [
+        username.strip().lstrip("@")
+        for username in authors_raw.split(",")
+        if username.strip().lstrip("@")
+    ]
+    if not rubric_slugs and not author_usernames:
         return JsonResponse({"ok": True, "posts": []})
 
     hide_negative_raw = request.GET.get("hide_negative", "1").lower()
     hide_negative = hide_negative_raw not in ("0", "false", "no", "off")
 
-    rubric_ids = list(
-        Rubric.objects.filter(
-            slug__in=rubric_slugs, is_active=True, is_hidden=False
-        ).values_list("id", flat=True)
-    )
-    if not rubric_ids:
+    rubric_ids: list[int] = []
+    if rubric_slugs:
+        rubric_ids = list(
+            Rubric.objects.filter(
+                slug__in=rubric_slugs, is_active=True, is_hidden=False
+            ).values_list("id", flat=True)
+        )
+
+    author_ids: list[int] = []
+    if author_usernames:
+        username_filter = Q()
+        for username in author_usernames[:200]:
+            username_filter |= Q(username__iexact=username)
+        if username_filter:
+            author_ids = list(
+                Author.objects.filter(username_filter, is_blocked=False).values_list("id", flat=True)
+            )
+
+    if not rubric_ids and not author_ids:
         return JsonResponse({"ok": True, "posts": []})
 
     now = timezone.now()
@@ -3521,9 +3540,15 @@ def my_feed(request: HttpRequest) -> HttpResponse:
     )
     if only_read and not read_user:
         return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    selection_filter = Q()
+    if rubric_ids:
+        selection_filter |= Q(rubric_id__in=rubric_ids)
+    if author_ids:
+        selection_filter |= Q(author_id__in=author_ids)
+
     base_query = (
         Post.objects.filter(
-            rubric_id__in=rubric_ids,
+            selection_filter,
             is_blocked=False,
             is_pending=False,
             author__is_blocked=False,

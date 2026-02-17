@@ -115,10 +115,11 @@
   let scrollRaf: number | null = null
 
   $: selectedRubrics = $userSettings.myFeedRubrics ?? []
+  $: selectedAuthors = $userSettings.myFeedAuthors ?? []
   $: canLoadMyFeed =
     feedType === 'mine' &&
     $siteUser &&
-    selectedRubrics.length > 0
+    (selectedRubrics.length > 0 || selectedAuthors.length > 0)
 	  $: hideNegativeMyFeed = $userSettings.myFeedHideNegative ?? true
 	  $: hideReadPosts = ($userSettings.hideReadPosts ?? false) && !!$siteUser
 	  $: effectiveHideRead = hideReadPosts && !readOnly
@@ -146,6 +147,7 @@
 	    } else if (feedType === 'mine') {
 	      baseUrl = buildMyFeedUrl(
 	        selectedRubrics,
+	        selectedAuthors,
 	        hideNegativeMyFeed,
 	        effectiveHideRead,
 	        readOnly
@@ -346,7 +348,7 @@
 
   $: if (feedType === 'mine') {
     const authKey = $siteUser ? 'auth' : 'anon'
-    const key = `${authKey}:${selectedRubrics.join(',')}:${hideNegativeMyFeed ? 'no-negative' : 'all'}:${readOnly ? 'only-read' : effectiveHideRead ? 'hide-read' : 'all-read'}`
+	    const key = `${authKey}:${selectedRubrics.join(',')}:${selectedAuthors.join(',')}:${hideNegativeMyFeed ? 'no-negative' : 'all'}:${readOnly ? 'only-read' : effectiveHideRead ? 'hide-read' : 'all-read'}`
     if (key !== lastMyFeedKey) {
       lastMyFeedKey = key
       resetMyFeed()
@@ -492,9 +494,9 @@
           </a>
         </div>
       {:else}
-        {#if !selectedRubrics.length}
+        {#if !selectedRubrics.length && !selectedAuthors.length}
           <div class="text-sm text-slate-500 dark:text-zinc-400">
-            Чтобы лента заработала, выберите рубрики в настройках сайта.
+            Чтобы лента заработала, выберите рубрики в настройках сайта или добавьте авторов на их страницах.
           </div>
         {/if}
       {/if}

@@ -26,6 +26,7 @@
   let myFeedRubricsLoading = false
   let manualBlacklistTag = ''
   let tagLemmaMap = new Map<string, string>()
+  $: myFeedAuthors = $userSettings.myFeedAuthors ?? []
   $: blacklistedTags = Object.entries($userSettings.tagRules ?? {})
     .filter(([, rule]) => rule === 'hide')
     .map(([tag]) => tag)
@@ -111,6 +112,15 @@
       current.add(slug)
     }
     $userSettings = { ...$userSettings, myFeedRubrics: Array.from(current) }
+  }
+
+  const removeMyFeedAuthor = (username: string) => {
+    $userSettings = {
+      ...$userSettings,
+      myFeedAuthors: ($userSettings.myFeedAuthors ?? []).filter(
+        (value) => value !== username
+      ),
+    }
   }
 
   onMount(() => {
@@ -290,6 +300,31 @@
         </a>
       {:else}
         <span class="text-sm text-slate-500">Рубрики пока недоступны.</span>
+      {/if}
+    </Setting>
+    <Setting itemsClass="!flex-col !items-start">
+      <span slot="title">Авторы моей ленты</span>
+      <span slot="description">
+        Добавляйте авторов на их страницах кнопкой «Добавить в мою ленту».
+      </span>
+      {#if myFeedAuthors.length}
+        <div class="flex flex-wrap gap-2">
+          {#each myFeedAuthors as username}
+            <span class="inline-flex items-center gap-2 rounded-full bg-slate-100 dark:bg-zinc-800 px-3 py-1 text-xs font-medium text-slate-700 dark:text-zinc-200">
+              @{username}
+              <button
+                type="button"
+                class="text-slate-500 hover:text-slate-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+                aria-label={`Удалить автора ${username} из моей ленты`}
+                on:click={() => removeMyFeedAuthor(username)}
+              >
+                ×
+              </button>
+            </span>
+          {/each}
+        </div>
+      {:else}
+        <span class="text-sm text-slate-500 dark:text-zinc-400">Пока нет выбранных авторов.</span>
       {/if}
     </Setting>
     <ToggleSetting

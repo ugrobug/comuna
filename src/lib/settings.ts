@@ -102,6 +102,7 @@ interface Settings {
   homeFeed: 'hot' | 'fresh' | 'mine'
   language: string | null
   myFeedRubrics: string[]
+  myFeedAuthors: string[]
   myFeedHideNegative: boolean
   myFeedMood: 'funny' | 'serious' | 'sad' | null
   myFeedMoodExpiresAt: number | null
@@ -188,6 +189,7 @@ export const defaultSettings: Settings = {
   homeFeed: 'hot',
   language: 'ru',
   myFeedRubrics: [],
+  myFeedAuthors: [],
   myFeedHideNegative: true,
   myFeedMood: null,
   myFeedMoodExpiresAt: null,
@@ -216,6 +218,19 @@ const migrate = (settings: any): Settings => {
   }
   if (!Array.isArray(settings?.myFeedRubrics)) {
     settings.myFeedRubrics = []
+  }
+  if (!Array.isArray(settings?.myFeedAuthors)) {
+    settings.myFeedAuthors = []
+  } else {
+    const seen = new Set<string>()
+    settings.myFeedAuthors = settings.myFeedAuthors
+      .map((author: unknown) => (typeof author === 'string' ? author.trim() : ''))
+      .filter((author: string) => !!author)
+      .filter((author: string) => {
+        if (seen.has(author)) return false
+        seen.add(author)
+        return true
+      })
   }
   const validHomeFeeds = new Set(['hot', 'fresh', 'mine'])
   if (!validHomeFeeds.has(settings?.homeFeed)) {

@@ -102,6 +102,7 @@ export const buildFreshFeedUrl = (options?: {
 
 export const buildMyFeedUrl = (
   rubrics?: string[],
+  authors?: string[],
   hideNegative: boolean = true,
   hideRead: boolean = false,
   onlyRead: boolean = false
@@ -110,6 +111,9 @@ export const buildMyFeedUrl = (
   const params = new URLSearchParams()
   if (rubrics?.length) {
     params.set('rubrics', rubrics.join(','))
+  }
+  if (authors?.length) {
+    params.set('authors', authors.join(','))
   }
   if (!hideNegative) {
     params.set('hide_negative', '0')

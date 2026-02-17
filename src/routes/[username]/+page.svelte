@@ -3,6 +3,8 @@
   import Post from '$lib/components/lemmy/post/Post.svelte'
   import { backendPostToPostView, buildAuthorPostsUrl, buildBackendPostPath } from '$lib/api/backend'
   import { env } from '$env/dynamic/public'
+  import { siteUser } from '$lib/siteAuth'
+  import { userSettings } from '$lib/settings'
   import { page } from '$app/stores'
   import { onDestroy, onMount } from 'svelte'
 
@@ -27,6 +29,22 @@
   const formatNumber = (value: number | undefined) => {
     if (!value && value !== 0) return '—'
     return value.toLocaleString('ru-RU')
+  }
+
+  $: authorUsername = data.author?.username ?? ''
+  $: authorInMyFeed = Boolean(
+    authorUsername && ($userSettings.myFeedAuthors ?? []).includes(authorUsername)
+  )
+
+  const toggleAuthorMyFeed = () => {
+    if (!authorUsername || !$siteUser) return
+    const current = new Set($userSettings.myFeedAuthors ?? [])
+    if (current.has(authorUsername)) {
+      current.delete(authorUsername)
+    } else {
+      current.add(authorUsername)
+    }
+    $userSettings = { ...$userSettings, myFeedAuthors: Array.from(current) }
   }
 
   $: siteTitle = env.PUBLIC_SITE_TITLE || 'Comuna'
@@ -151,6 +169,15 @@
             </span>
           {/if}
         </div>
+        {#if $siteUser && authorUsername}
+          <button
+            type="button"
+            class="inline-flex w-fit items-center gap-2 rounded-xl border border-slate-300 dark:border-zinc-700 px-4 py-2 text-sm font-medium text-slate-700 dark:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
+            on:click={toggleAuthorMyFeed}
+          >
+            {authorInMyFeed ? 'Убрать из моей ленты' : 'Добавить в мою ленту'}
+          </button>
+        {/if}
         {#if data.author?.description}
           <p class="text-lg leading-relaxed text-slate-700 dark:text-zinc-300">
             {data.author.description}
