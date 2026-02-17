@@ -105,6 +105,22 @@
     return `${postLink(post.post)}#comments`
   }
 
+  const absoluteUrl = (url: string) => {
+    if (typeof window === 'undefined') return url
+    try {
+      return new URL(url, window.location.origin).toString()
+    } catch (error) {
+      return url
+    }
+  }
+
+  const shareUrl = () => {
+    if (backendPostUrl) return absoluteUrl(backendPostUrl)
+    return localShare
+      ? `${instanceToURL(getInstance())}/post/${post.post.id}`
+      : post.post.ap_id
+  }
+
   async function setBackendVote(value: number) {
     if (!backendPostId) return
     if (!$siteToken) {
@@ -388,16 +404,11 @@
     {/if}
     <MenuButton
       on:click={() => {
+        const url = shareUrl()
         navigator.share?.({
-          url: localShare
-            ? `${instanceToURL(getInstance())}/post/${post.post.id}`
-            : post.post.ap_id,
+          url,
         }) ??
-          navigator.clipboard.writeText(
-            localShare
-              ? `${instanceToURL(getInstance())}/post/${post.post.id}`
-              : post.post.ap_id
-          )
+          navigator.clipboard.writeText(url)
         toast({ content: $t('toast.copied') })
       }}
       class="flex-1 !py-0"
@@ -405,7 +416,7 @@
       <Icon src={Share} size="16" micro slot="prefix" />
       {$t('post.actions.more.share')}
       <div class="flex-1" />
-      {#if !post.post.local}
+      {#if !post.post.local && !backendPostUrl}
         <div class="flex">
           <Button
             color={!localShare ? 'primary' : 'secondary'}

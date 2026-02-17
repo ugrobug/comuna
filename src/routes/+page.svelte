@@ -116,6 +116,9 @@
 
   $: selectedRubrics = $userSettings.myFeedRubrics ?? []
   $: selectedAuthors = $userSettings.myFeedAuthors ?? []
+  $: hiddenAuthorKeys = new Set(
+    ($userSettings.hiddenAuthors ?? []).map((value) => value.toLowerCase())
+  )
   $: canLoadMyFeed =
     feedType === 'mine' &&
     $siteUser &&
@@ -156,7 +159,16 @@
 	    const url = new URL(baseUrl)
 	    url.searchParams.set('limit', String(pageSize))
 	    url.searchParams.set('offset', String(offset))
-    return url.toString()
+	    return url.toString()
+	  }
+
+  const authorKey = (backendPost: { author?: { username?: string } }) =>
+    (backendPost.author?.username ?? '').trim().toLowerCase()
+
+  const isAuthorVisible = (backendPost: { author?: { username?: string } }) => {
+    const key = authorKey(backendPost)
+    if (!key) return true
+    return !hiddenAuthorKeys.has(key)
   }
 
 	  $: if (feedType !== 'mine') {
@@ -329,22 +341,24 @@
         )
       : new Set<string>()
 
-  $: filteredMyFeedPosts =
-    effectiveMood && tagMoodMap.size
-      ? posts.filter((post) =>
-          (post.tags ?? []).some((tag) => {
-            const rawName = typeof tag === 'string' ? tag : tag.name
-            const normalized = normalizeTag(rawName)
-            const lemma =
-              typeof tag === 'string'
-                ? tagLemmaMap.get(normalized) ?? normalized
-                : normalizeTag(tag.lemma ?? tag.name)
-            return moodTagSet.has(lemma)
-          })
-        )
-      : effectiveMood
-        ? []
-        : posts
+	  $: filteredMyFeedPosts =
+	    effectiveMood && tagMoodMap.size
+	      ? posts.filter((post) =>
+	          (post.tags ?? []).some((tag) => {
+	            const rawName = typeof tag === 'string' ? tag : tag.name
+	            const normalized = normalizeTag(rawName)
+	            const lemma =
+	              typeof tag === 'string'
+	                ? tagLemmaMap.get(normalized) ?? normalized
+	                : normalizeTag(tag.lemma ?? tag.name)
+	            return moodTagSet.has(lemma)
+	          })
+	        ).filter(isAuthorVisible)
+	      : effectiveMood
+	        ? []
+	        : posts.filter(isAuthorVisible)
+
+  $: visiblePosts = posts.filter(isAuthorVisible)
 
   $: if (feedType === 'mine') {
     const authKey = $siteUser ? 'auth' : 'anon'
@@ -528,9 +542,9 @@
         <div class="text-base text-slate-500">Пока нет публикаций.</div>
       {/if}
     </div>
-  {:else if posts?.length}
+  {:else if visiblePosts?.length}
     <div class="flex flex-col gap-6">
-      {#each posts as backendPost (backendPost.id)}
+      {#each visiblePosts as backendPost (backendPost.id)}
         {@const postView = backendPostToPostView(backendPost, backendPost.author)}
         <Post
           post={postView}

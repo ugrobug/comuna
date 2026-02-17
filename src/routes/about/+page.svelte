@@ -3,6 +3,7 @@
   import SectionTitle from '$lib/components/ui/SectionTitle.svelte'
   import Post from '$lib/components/lemmy/post/Post.svelte'
   import { backendPostToPostView, buildBackendPostPath } from '$lib/api/backend'
+  import { userSettings } from '$lib/settings'
   import { env } from '$env/dynamic/public'
   import { page } from '$app/stores'
 
@@ -11,6 +12,13 @@
   const title = `О проекте — ${env.PUBLIC_SITE_TITLE || 'Comuna'}`
   const description =
     'Comuna помогает Telegram-каналам получать органический трафик из поисковых систем за счет публикации контента на сайте.'
+  $: hiddenAuthorKeys = new Set(
+    ($userSettings.hiddenAuthors ?? []).map((value) => value.toLowerCase())
+  )
+  $: visiblePosts = (data?.posts ?? []).filter((backendPost) => {
+    const key = (backendPost.author?.username ?? '').trim().toLowerCase()
+    return !key || !hiddenAuthorKeys.has(key)
+  })
   $: canonicalUrl = new URL(
     $page.url.pathname,
     (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '') + '/'
@@ -35,9 +43,9 @@
   </div>
 
   <SectionTitle class="text-lg font-semibold">Обновления Comuna</SectionTitle>
-  {#if data?.posts?.length}
+  {#if visiblePosts?.length}
     <div class="flex flex-col gap-6">
-      {#each data.posts as backendPost (backendPost.id)}
+      {#each visiblePosts as backendPost (backendPost.id)}
         {@const postView = backendPostToPostView(backendPost, backendPost.author)}
         <Post
           post={postView}

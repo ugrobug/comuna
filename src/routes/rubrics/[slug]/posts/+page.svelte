@@ -3,6 +3,7 @@
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import Post from '$lib/components/lemmy/post/Post.svelte'
   import { backendPostToPostView, buildBackendPostPath, buildRubricPostsUrl } from '$lib/api/backend'
+  import { userSettings } from '$lib/settings'
   import { env } from '$env/dynamic/public'
   import { page } from '$app/stores'
   import { onDestroy, onMount } from 'svelte'
@@ -24,6 +25,9 @@
   }
   const scrollThreshold = 400
   let scrollRaf: number | null = null
+  $: hiddenAuthorKeys = new Set(
+    ($userSettings.hiddenAuthors ?? []).map((value) => value.toLowerCase())
+  )
 
   $: siteTitle = env.PUBLIC_SITE_TITLE || 'Comuna'
   $: rubricName = data.rubric?.name ?? 'Рубрика'
@@ -35,6 +39,17 @@
     $page.url.pathname,
     (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '') + '/'
   ).toString()
+
+  const authorKey = (backendPost: { author?: { username?: string } }) =>
+    (backendPost.author?.username ?? '').trim().toLowerCase()
+
+  const isAuthorVisible = (backendPost: { author?: { username?: string } }) => {
+    const key = authorKey(backendPost)
+    if (!key) return true
+    return !hiddenAuthorKeys.has(key)
+  }
+
+  $: visiblePosts = posts.filter(isAuthorVisible)
 
   const buildPageUrl = (offset: number) => {
     const slug = data.rubric?.slug
@@ -154,9 +169,9 @@
     </div>
   </section>
 
-  {#if posts?.length}
+  {#if visiblePosts?.length}
     <div class="flex flex-col gap-6">
-      {#each posts as backendPost (backendPost.id)}
+      {#each visiblePosts as backendPost (backendPost.id)}
         {@const postView = backendPostToPostView(backendPost)}
         <Post
           post={postView}

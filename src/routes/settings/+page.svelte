@@ -27,6 +27,7 @@
   let manualBlacklistTag = ''
   let tagLemmaMap = new Map<string, string>()
   $: myFeedAuthors = $userSettings.myFeedAuthors ?? []
+  $: hiddenAuthors = $userSettings.hiddenAuthors ?? []
   $: blacklistedTags = Object.entries($userSettings.tagRules ?? {})
     .filter(([, rule]) => rule === 'hide')
     .map(([tag]) => tag)
@@ -121,6 +122,19 @@
         (value) => value !== username
       ),
     }
+  }
+
+  const removeHiddenAuthor = (username: string) => {
+    $userSettings = {
+      ...$userSettings,
+      hiddenAuthors: ($userSettings.hiddenAuthors ?? []).filter(
+        (value) => value !== username
+      ),
+    }
+  }
+
+  const clearHiddenAuthors = () => {
+    $userSettings = { ...$userSettings, hiddenAuthors: [] }
   }
 
   onMount(() => {
@@ -325,6 +339,34 @@
         </div>
       {:else}
         <span class="text-sm text-slate-500 dark:text-zinc-400">Пока нет выбранных авторов.</span>
+      {/if}
+    </Setting>
+    <Setting itemsClass="!flex-col !items-start">
+      <span slot="title">Скрытые авторы</span>
+      <span slot="description">
+        Посты этих авторов не показываются в лентах.
+      </span>
+      {#if hiddenAuthors.length}
+        <div class="flex flex-wrap gap-2">
+          {#each hiddenAuthors as username}
+            <span class="inline-flex items-center gap-2 rounded-full bg-slate-100 dark:bg-zinc-800 px-3 py-1 text-xs font-medium text-slate-700 dark:text-zinc-200">
+              @{username}
+              <button
+                type="button"
+                class="text-slate-500 hover:text-slate-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+                aria-label={`Убрать автора ${username} из скрытых`}
+                on:click={() => removeHiddenAuthor(username)}
+              >
+                ×
+              </button>
+            </span>
+          {/each}
+        </div>
+        <Button size="sm" color="ghost" on:click={clearHiddenAuthors}>
+          Очистить список
+        </Button>
+      {:else}
+        <span class="text-sm text-slate-500 dark:text-zinc-400">Скрытых авторов пока нет.</span>
       {/if}
     </Setting>
     <ToggleSetting

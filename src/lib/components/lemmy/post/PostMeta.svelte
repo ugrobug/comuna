@@ -27,10 +27,12 @@
   import { toast } from 'mono-svelte'
   import { Plus, Check } from 'svelte-hero-icons'
   import { profile } from '$lib/auth'
+  import { siteUser } from '$lib/siteAuth'
   import { addSubscription } from '$lib/lemmy/user'
   import { client } from '$lib/lemmy'
   import Subscribe from '../../../../routes/communities/Subscribe.svelte'
   import LoginModal from '$lib/components/auth/LoginModal.svelte'
+  import { EyeSlash } from 'svelte-hero-icons'
 
   export let community: Community | undefined = undefined
   export let user: Person | undefined = undefined
@@ -61,6 +63,16 @@
 
   let popoverOpen = false
   let showLoginModal = false
+  $: authorUsername = (user?.name ?? '').trim()
+  $: authorKey = authorUsername.toLowerCase()
+  $: myFeedAuthorKeys = new Set(
+    ($userSettings.myFeedAuthors ?? []).map((value) => value.toLowerCase())
+  )
+  $: hiddenAuthorKeys = new Set(
+    ($userSettings.hiddenAuthors ?? []).map((value) => value.toLowerCase())
+  )
+  $: authorInMyFeed = Boolean(authorKey && myFeedAuthorKeys.has(authorKey))
+  $: authorHidden = Boolean(authorKey && hiddenAuthorKeys.has(authorKey))
 
   // Функция для безопасного получения hostname
   function getInstanceFromActorId(actorId: string | undefined, isLocal: boolean | undefined): string {
@@ -169,6 +181,57 @@
         type: 'error'
       });
     });
+  }
+
+  const toggleAuthorMyFeed = () => {
+    if (!$siteUser) {
+      showLoginModal = true
+      return
+    }
+    if (!authorUsername) return
+
+    const nextAuthors = new Set($userSettings.myFeedAuthors ?? [])
+    const existing = Array.from(nextAuthors).find(
+      (value) => value.toLowerCase() === authorKey
+    )
+    if (existing) {
+      nextAuthors.delete(existing)
+    } else {
+      nextAuthors.add(authorUsername)
+    }
+    $userSettings = { ...$userSettings, myFeedAuthors: Array.from(nextAuthors) }
+  }
+
+  const toggleHiddenAuthor = () => {
+    if (!$siteUser) {
+      showLoginModal = true
+      return
+    }
+    if (!authorUsername) return
+
+    const nextHidden = new Set($userSettings.hiddenAuthors ?? [])
+    const existingHidden = Array.from(nextHidden).find(
+      (value) => value.toLowerCase() === authorKey
+    )
+    if (existingHidden) {
+      nextHidden.delete(existingHidden)
+    } else {
+      nextHidden.add(authorUsername)
+    }
+
+    const nextMyFeed = new Set($userSettings.myFeedAuthors ?? [])
+    const existingMyFeed = Array.from(nextMyFeed).find(
+      (value) => value.toLowerCase() === authorKey
+    )
+    if (existingMyFeed && !existingHidden) {
+      nextMyFeed.delete(existingMyFeed)
+    }
+
+    $userSettings = {
+      ...$userSettings,
+      hiddenAuthors: Array.from(nextHidden),
+      myFeedAuthors: Array.from(nextMyFeed),
+    }
   }
 </script>
 
@@ -377,6 +440,32 @@
           </svelte:fragment>
         </Subscribe>
         {/if}
+      {/if}
+      {#if $siteUser && authorUsername}
+        <button
+          type="button"
+          class="inline-flex items-center justify-center h-8 w-8 rounded-full border transition-colors
+          {authorInMyFeed
+            ? 'border-blue-300 bg-blue-50 text-blue-600 dark:border-blue-700 dark:bg-blue-950 dark:text-blue-300'
+            : 'border-slate-300 bg-white text-slate-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300'}"
+          title={authorInMyFeed ? 'Убрать автора из моей ленты' : 'Добавить автора в мою ленту'}
+          aria-label={authorInMyFeed ? 'Убрать автора из моей ленты' : 'Добавить автора в мою ленту'}
+          on:click={toggleAuthorMyFeed}
+        >
+          <Icon src={authorInMyFeed ? Check : Plus} size="16" mini />
+        </button>
+        <button
+          type="button"
+          class="inline-flex items-center justify-center h-8 w-8 rounded-full border transition-colors
+          {authorHidden
+            ? 'border-rose-300 bg-rose-50 text-rose-600 dark:border-rose-700 dark:bg-rose-950 dark:text-rose-300'
+            : 'border-slate-300 bg-white text-slate-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300'}"
+          title={authorHidden ? 'Показывать автора' : 'Скрыть автора'}
+          aria-label={authorHidden ? 'Показывать автора' : 'Скрыть автора'}
+          on:click={toggleHiddenAuthor}
+        >
+          <Icon src={EyeSlash} size="16" mini />
+        </button>
       {/if}
     </div>
     <slot name="badges" />

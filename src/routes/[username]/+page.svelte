@@ -25,6 +25,9 @@
   }
   const scrollThreshold = 400
   let scrollRaf: number | null = null
+  $: hiddenAuthorKeys = new Set(
+    ($userSettings.hiddenAuthors ?? []).map((value) => value.toLowerCase())
+  )
 
   const formatNumber = (value: number | undefined) => {
     if (!value && value !== 0) return '—'
@@ -32,6 +35,10 @@
   }
 
   $: authorUsername = data.author?.username ?? ''
+  $: authorHiddenOnPortal = Boolean(
+    authorUsername && hiddenAuthorKeys.has(authorUsername.toLowerCase())
+  )
+  $: visiblePosts = authorHiddenOnPortal ? [] : posts
   $: authorInMyFeed = Boolean(
     authorUsername && ($userSettings.myFeedAuthors ?? []).includes(authorUsername)
   )
@@ -68,7 +75,7 @@
   }
 
   const loadMore = async () => {
-    if (loadingMore || !hasMore) return
+    if (loadingMore || !hasMore || authorHiddenOnPortal) return
     const url = buildPageUrl(posts.length)
     if (!url) return
     loadingMore = true
@@ -189,9 +196,9 @@
 
   <div class="text-lg font-semibold text-slate-900 dark:text-zinc-100">Посты</div>
 
-  {#if posts?.length}
+  {#if visiblePosts?.length}
     <div class="flex flex-col gap-6">
-      {#each posts as backendPost (backendPost.id)}
+      {#each visiblePosts as backendPost (backendPost.id)}
         {@const postView = backendPostToPostView(backendPost, data.author)}
         <Post
           post={postView}
