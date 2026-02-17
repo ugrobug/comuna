@@ -377,18 +377,19 @@
       {/if}
       {#if community}
         {#if subscribeUrl}
-          <Button
-            size="sm"
-            color="primary"
-            class="ml-2 max-sm:hidden h-8 !min-h-[2rem] dark:!bg-primary-900 dark:!text-white dark:!border-transparent dark:hover:!brightness-110"
-            href={subscribeUrl}
-            target="_blank"
-            rel="nofollow noopener"
-          >
-            <span class="inline-flex items-center gap-2 text-white">
-              <img src="/img/logos/telegram_logo.svg" alt="Telegram" class="w-4 h-4" />
-              {subscribeLabel}
-            </span>
+            <Button
+              size="sm"
+              color="primary"
+              class="ml-2 max-sm:hidden h-8 !min-h-[2rem] dark:!bg-primary-900 dark:!text-white dark:!border-transparent dark:hover:!brightness-110"
+              href={subscribeUrl}
+              target="_blank"
+              rel="nofollow noopener"
+              title={subscribeLabel}
+            >
+              <span class="inline-flex items-center gap-2 text-white">
+                <img src="/img/logos/telegram_logo.svg" alt="Telegram" class="w-4 h-4" />
+                {subscribeLabel}
+              </span>
           </Button>
         {:else}
         <Subscribe community={{
@@ -429,6 +430,7 @@
                 : 'bg-primary-100 dark:bg-primary-900 text-primary-900 dark:text-primary-100'}"
               on:click={() => handleSubscribeClick(subscribe)}
               disabled={subscribing}
+              title={subscribed === 'Subscribed' ? $t('cards.community.subscribed') : $t('cards.community.subscribe')}
               aria-label={subscribed === 'Subscribed' ? $t('cards.community.subscribed') : $t('cards.community.subscribe')}
             >
               <Icon 
@@ -436,6 +438,9 @@
                 size="18"
                 mini
               />
+              <span class="sr-only">
+                {subscribed === 'Subscribed' ? $t('cards.community.subscribed') : $t('cards.community.subscribe')}
+              </span>
             </button>
           </svelte:fragment>
         </Subscribe>
@@ -453,6 +458,7 @@
           on:click={toggleAuthorMyFeed}
         >
           <Icon src={authorInMyFeed ? Check : Plus} size="16" mini />
+          <span class="sr-only">{authorInMyFeed ? 'Убрать автора из моей ленты' : 'Добавить автора в мою ленту'}</span>
         </button>
         <button
           type="button"
@@ -465,6 +471,7 @@
           on:click={toggleHiddenAuthor}
         >
           <Icon src={EyeSlash} size="16" mini />
+          <span class="sr-only">{authorHidden ? 'Показывать автора' : 'Скрыть автора'}</span>
         </button>
       {/if}
     </div>
