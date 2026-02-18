@@ -266,6 +266,27 @@ export const updateUserPost = async (
   return data?.post as SiteUserPost
 }
 
+export const deleteUserPost = async (postId: number) => {
+  const token = get(siteToken)
+  if (!token) {
+    throw new Error('Нужна авторизация')
+  }
+
+  const response = await fetch(buildUrl(`/api/auth/posts/${postId}/`), {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+
+  const data = await response.json()
+  if (!response.ok) {
+    throw new Error(data?.error || 'Не удалось удалить пост')
+  }
+
+  return data
+}
+
 export const createUserPost = async (payload: {
   title: string
   content: string

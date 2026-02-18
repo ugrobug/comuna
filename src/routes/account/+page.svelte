@@ -1,9 +1,11 @@
 <script lang="ts">
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
-  import { Button, Modal, Spinner, TextInput } from 'mono-svelte'
+  import { Button, Modal, Spinner, TextInput, toast } from 'mono-svelte'
+  import { Icon, Trash } from 'svelte-hero-icons'
   import TipTapEditor from '$lib/components/editor/TipTapEditor.svelte'
   import EditorJS from '$lib/components/editor/EditorJS.svelte'
   import {
+    deleteUserPost,
     fetchUserPosts,
     fetchVerificationCode,
     logout,
@@ -32,6 +34,7 @@
   let isJsonContent = true
   let saving = false
   let saveError = ''
+  let deletingPostId: number | null = null
 
   const loadCode = async () => {
     loading = true
@@ -135,6 +138,32 @@
       saveError = (err as Error)?.message ?? 'Не удалось сохранить изменения'
     } finally {
       saving = false
+    }
+  }
+
+  const removePost = async (post: SiteUserPost) => {
+    if (typeof window !== 'undefined') {
+      const confirmed = window.confirm(`Удалить пост «${post.title}»?`)
+      if (!confirmed) return
+    }
+
+    deletingPostId = post.id
+    try {
+      await deleteUserPost(post.id)
+      posts = posts.filter((item) => item.id !== post.id)
+      postsTotal = Math.max(0, postsTotal - 1)
+      if (editing?.id === post.id) {
+        editOpen = false
+        editing = null
+      }
+      toast({ content: 'Пост удален', type: 'success' })
+    } catch (err) {
+      toast({
+        content: (err as Error)?.message ?? 'Не удалось удалить пост',
+        type: 'error',
+      })
+    } finally {
+      deletingPostId = null
     }
   }
 
@@ -274,14 +303,27 @@
                     {/if}
                   </div>
                 </div>
-                <div class="sm:justify-self-end">
+                <div class="sm:justify-self-end flex flex-wrap gap-2">
                   <Button
                     size="sm"
                     color="secondary"
                     class="w-full sm:w-auto"
                     on:click={() => openEdit(post)}
+                    disabled={deletingPostId === post.id}
                   >
                     Редактировать
+                  </Button>
+                  <Button
+                    size="sm"
+                    color="danger"
+                    class="w-full sm:w-auto"
+                    on:click={() => removePost(post)}
+                    loading={deletingPostId === post.id}
+                    disabled={deletingPostId === post.id}
+                    title="Удалить пост"
+                  >
+                    <Icon src={Trash} size="14" micro slot="prefix" />
+                    Удалить
                   </Button>
                 </div>
               </div>

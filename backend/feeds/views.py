@@ -2514,7 +2514,7 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
     user = _get_user_from_request(request)
     if not user:
         return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
-    if request.method not in {"PATCH", "PUT"}:
+    if request.method not in {"PATCH", "PUT", "DELETE"}:
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
 
     try:
@@ -2529,6 +2529,15 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
     ).exists()
     if not is_linked:
         return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+
+    if request.method == "DELETE":
+        raw_data = dict(post.raw_data or {})
+        raw_data["manual_deleted"] = True
+        raw_data["manual_deleted_at"] = timezone.now().isoformat()
+        post.is_blocked = True
+        post.raw_data = raw_data
+        post.save(update_fields=["is_blocked", "raw_data", "updated_at"])
+        return JsonResponse({"ok": True, "deleted": True, "post_id": post.id})
 
     try:
         payload = json.loads(request.body.decode("utf-8"))

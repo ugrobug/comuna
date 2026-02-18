@@ -187,7 +187,10 @@
 
   const toggleAuthorMyFeed = () => {
     if (!$siteUser) {
-      showLoginModal = true
+      toast({
+        content: 'Необходимо зарегистрироваться',
+        type: 'warning',
+      })
       return
     }
     if (!authorUsername) return
@@ -214,7 +217,10 @@
 
   const toggleHiddenAuthor = () => {
     if (!$siteUser) {
-      showLoginModal = true
+      toast({
+        content: 'Необходимо зарегистрироваться',
+        type: 'warning',
+      })
       return
     }
     if (!authorUsername) return
@@ -465,7 +471,7 @@
         </Subscribe>
         {/if}
       {/if}
-      {#if $siteUser && authorUsername}
+      {#if authorUsername}
         <button
           type="button"
           class="inline-flex items-center justify-center h-8 w-8 rounded-full border transition-colors action-tooltip
