@@ -847,6 +847,8 @@
           'ol',
           'li',
           'img',
+          'audio',
+          'source',
           'figure',
           'figcaption',
           'blockquote',
@@ -870,6 +872,9 @@
           'allowfullscreen',
           'frameborder',
           'referrerpolicy',
+          'controls',
+          'preload',
+          'type',
           'data-option-index',
           'data-poll-multiple',
           'data-poll-closed',
@@ -1157,6 +1162,22 @@
   :global(.post-content .post-embed iframe) {
     @apply w-full rounded-lg;
     border: 0;
+  }
+
+  :global(.post-content .post-audio) {
+    @apply my-4;
+  }
+
+  :global(.post-content .post-audio audio) {
+    @apply w-full;
+  }
+
+  :global(.post-content .post-audio-fallback) {
+    @apply my-4 text-sm;
+  }
+
+  :global(.post-content .post-audio-fallback a) {
+    @apply text-blue-600 dark:text-blue-400 hover:underline;
   }
 
   @media (max-width: 768px) {

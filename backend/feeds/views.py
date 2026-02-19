@@ -1001,6 +1001,50 @@ def _extract_photo_url(message: dict, token: str) -> str | None:
     return download_telegram_file_by_path(file_path, token)
 
 
+def _extract_audio_file_id(message: dict) -> str | None:
+    for key in ("audio", "voice"):
+        payload = message.get(key)
+        if isinstance(payload, dict):
+            file_id = payload.get("file_id")
+            if file_id:
+                return str(file_id)
+
+    document = message.get("document") or {}
+    if isinstance(document, dict):
+        mime_type = (document.get("mime_type") or "").lower()
+        if mime_type.startswith("audio/"):
+            file_id = document.get("file_id")
+            if file_id:
+                return str(file_id)
+    return None
+
+
+def _extract_audio_url(message: dict, token: str | None) -> str:
+    if not token:
+        return ""
+
+    existing_url = message.get("audio_url")
+    if isinstance(existing_url, str) and existing_url.strip():
+        return existing_url.strip()
+
+    file_id = _extract_audio_file_id(message)
+    if not file_id:
+        return ""
+
+    file_info = _fetch_telegram_json("getFile", token, {"file_id": file_id})
+    if not file_info or not file_info.get("ok") or not file_info.get("result"):
+        return ""
+
+    file_path = file_info["result"].get("file_path")
+    if not file_path:
+        return ""
+
+    audio_url = download_telegram_file_by_path(file_path, token) or ""
+    if audio_url:
+        message["audio_url"] = audio_url
+    return audio_url
+
+
 def _build_content_with_images(
     text_html: str,
     image_urls: list[str],
@@ -1036,7 +1080,28 @@ def _build_telegram_embed_html(username: str, message_id: int, height: int) -> s
     )
 
 
-def _extract_telegram_embed(message: dict, username: str) -> tuple[str, str]:
+def _build_telegram_audio_html(audio_url: str) -> str:
+    return (
+        '<div class="post-audio">'
+        f'<audio controls preload="metadata" src="{escape(audio_url, quote=True)}"></audio>'
+        "</div>"
+    )
+
+
+def _build_telegram_audio_fallback_html(username: str, message_id: int) -> str:
+    source_url = f"https://t.me/{username}/{message_id}"
+    return (
+        '<div class="post-audio-fallback">'
+        f'<a href="{escape(source_url, quote=True)}" target="_blank" rel="noopener">'
+        "Слушать аудио в Telegram"
+        "</a>"
+        "</div>"
+    )
+
+
+def _extract_telegram_embed(
+    message: dict, username: str, token: str | None = None
+) -> tuple[str, str]:
     message_id = message.get("message_id")
     if not message_id or not username:
         return "", ""
@@ -1053,8 +1118,58 @@ def _extract_telegram_embed(message: dict, username: str) -> tuple[str, str]:
     if has_video:
         return _build_telegram_embed_html(username, message_id, 420), "Видео"
     if has_audio:
-        return _build_telegram_embed_html(username, message_id, 200), "Аудио"
+        audio_url = _extract_audio_url(message, token)
+        if audio_url:
+            return _build_telegram_audio_html(audio_url), "Аудио"
+        return _build_telegram_audio_fallback_html(username, message_id), "Аудио"
     return "", ""
+
+
+def _replace_legacy_audio_embed(post: Post, content: str) -> str:
+    if not content or "telegram-embed" not in content:
+        return content
+
+    raw_data = post.raw_data if isinstance(post.raw_data, dict) else {}
+    has_audio = any(raw_data.get(key) for key in ("audio", "voice"))
+    if not has_audio:
+        document = raw_data.get("document") or {}
+        if not isinstance(document, dict):
+            return content
+        mime_type = (document.get("mime_type") or "").lower()
+        has_audio = mime_type.startswith("audio/")
+    if not has_audio:
+        return content
+
+    token = settings.TELEGRAM_BOT_TOKEN
+    had_audio_url = bool(raw_data.get("audio_url"))
+    audio_url = _extract_audio_url(raw_data, token)
+    if audio_url and not had_audio_url:
+        post.raw_data = raw_data
+        post.save(update_fields=["raw_data"])
+
+    if audio_url:
+        replacement = _build_telegram_audio_html(audio_url)
+    else:
+        message_id = raw_data.get("message_id")
+        username = getattr(post.author, "username", "") or ""
+        if not username or not message_id:
+            return content
+        replacement = _build_telegram_audio_fallback_html(username, message_id)
+
+    stored_embed_html = raw_data.get("embed_html")
+    if (
+        isinstance(stored_embed_html, str)
+        and "telegram-embed" in stored_embed_html
+        and stored_embed_html in content
+    ):
+        return content.replace(stored_embed_html, replacement, 1)
+
+    return re.sub(
+        r'<div class="post-embed">\s*<iframe class="telegram-embed"[\s\S]*?</iframe>\s*</div>',
+        replacement,
+        content,
+        count=1,
+    )
 
 
 def _extract_poll_options(raw_poll: dict) -> list[tuple[str, int]]:
@@ -1253,6 +1368,7 @@ def _live_poll_for_post(post: Post, user: User | None = None) -> dict | None:
 
 def _content_with_live_poll(post: Post, user: User | None = None) -> tuple[str, dict | None]:
     content = post.content or ""
+    content = _replace_legacy_audio_embed(post, content)
     live_poll = _live_poll_for_post(post, user)
     if not live_poll:
         return content, None
@@ -1604,7 +1720,7 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
     photo_file_id = _extract_photo_file_id(message)
     image_url = _extract_photo_url(message, token) if token else None
     gallery_urls = [image_url] if image_url else []
-    embed_html, embed_label = _extract_telegram_embed(message, username)
+    embed_html, embed_label = _extract_telegram_embed(message, username, token)
     poll_html, poll_label = _extract_telegram_poll(message)
     if media_group_id:
         with transaction.atomic():
