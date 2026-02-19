@@ -1121,7 +1121,9 @@ def _extract_telegram_embed(
 
 
 def _replace_legacy_audio_embed(post: Post, content: str) -> str:
-    if not content or "telegram-embed" not in content:
+    if not content:
+        return content
+    if "telegram-embed" not in content and "post-audio-fallback" not in content:
         return content
 
     raw_data = post.raw_data if isinstance(post.raw_data, dict) else {}
@@ -1158,6 +1160,14 @@ def _replace_legacy_audio_embed(post: Post, content: str) -> str:
         and stored_embed_html in content
     ):
         return content.replace(stored_embed_html, replacement, 1)
+
+    if "post-audio-fallback" in content:
+        return re.sub(
+            r'<div class="post-audio-fallback">[\s\S]*?</div>',
+            replacement,
+            content,
+            count=1,
+        )
 
     return re.sub(
         r'<div class="post-embed">\s*<iframe class="telegram-embed"[\s\S]*?</iframe>\s*</div>',
