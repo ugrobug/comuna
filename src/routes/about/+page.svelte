@@ -42,6 +42,14 @@
     </p>
   </div>
 
+  <SectionTitle class="text-lg font-semibold">Как это работает</SectionTitle>
+  <ol class="list-decimal pl-6 space-y-2 text-base leading-relaxed">
+    <li>Вы добавляете нашего бота в админы своего канала.</li>
+    <li>Мы автоматически создаем страницы с вашими постами.</li>
+    <li>Поисковые системы индексируют страницы.</li>
+    <li>Читатели приходят на сайт и подписываются на ваш канал.</li>
+  </ol>
+
   <SectionTitle class="text-lg font-semibold">Обновления Comuna</SectionTitle>
   {#if visiblePosts?.length}
     <div class="flex flex-col gap-6">
@@ -61,14 +69,6 @@
   {:else}
     <p class="text-base text-slate-500">Пока нет обновлений.</p>
   {/if}
-
-  <SectionTitle class="text-lg font-semibold">Как это работает</SectionTitle>
-  <ol class="list-decimal pl-6 space-y-2 text-base leading-relaxed">
-    <li>Вы добавляете нашего бота в админы своего канала.</li>
-    <li>Мы автоматически создаем страницы с вашими постами.</li>
-    <li>Поисковые системы индексируют страницы.</li>
-    <li>Читатели приходят на сайт и подписываются на ваш канал.</li>
-  </ol>
 </div>
 
 <svelte:head>
