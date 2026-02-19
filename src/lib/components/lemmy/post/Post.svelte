@@ -207,6 +207,8 @@
         <PostBody
           element="section"
           body={post.post.body}
+          postId={isBackendPost ? post.post.id : null}
+          allowPollVoting={isBackendPost}
           title={post.post.name}
           {view}
           clickThrough={true}
@@ -248,6 +250,8 @@
           <PostBody
             element="section"
             body={post.post.body}
+            postId={isBackendPost ? post.post.id : null}
+            allowPollVoting={isBackendPost}
             title={post.post.name}
             {view}
             clickThrough={false}
@@ -267,6 +271,8 @@
           <PostBody
             element="section"
             body={post.post.body}
+            postId={isBackendPost ? post.post.id : null}
+            allowPollVoting={isBackendPost}
             title={post.post.name}
             {view}
             clickThrough={false}

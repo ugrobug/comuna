@@ -61,6 +61,10 @@ export const buildPostReadUrl = (id: number | string): string => {
   return `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/read/`
 }
 
+export const buildPostPollVoteUrl = (id: number | string): string => {
+  return `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/poll-vote/`
+}
+
 export const buildTagsListUrl = (): string => {
   return `${getBackendBaseUrl()}/api/tags/`
 }
@@ -173,10 +177,28 @@ export type BackendTag = {
   lemma?: string | null
 }
 
+export type BackendPollOption = {
+  index: number
+  text: string
+  voter_count: number
+}
+
+export type BackendPoll = {
+  id?: string | null
+  question: string
+  is_anonymous: boolean
+  allows_multiple_answers: boolean
+  is_closed: boolean
+  total_voter_count: number
+  options: BackendPollOption[]
+  user_selection?: number[]
+}
+
 export type BackendPost = {
   id: number
   title: string
   content: string
+  poll?: BackendPoll | null
   created_at: string
   source_url?: string | null
   channel_url?: string | null

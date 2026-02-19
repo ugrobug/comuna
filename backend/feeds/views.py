@@ -44,6 +44,7 @@ from .models import (
     PostComment,
     PostCommentLike,
     PostLike,
+    PostPollVote,
     PostRead,
     Rubric,
     Tag,
@@ -1056,66 +1057,226 @@ def _extract_telegram_embed(message: dict, username: str) -> tuple[str, str]:
     return "", ""
 
 
-def _extract_telegram_poll(message: dict) -> tuple[str, str]:
-    poll = message.get("poll")
-    if not isinstance(poll, dict):
-        return "", ""
-
-    question = str(poll.get("question") or "").strip()
-    raw_options = poll.get("options") or []
+def _extract_poll_options(raw_poll: dict) -> list[tuple[str, int]]:
+    raw_options = raw_poll.get("options") or []
     options: list[tuple[str, int]] = []
-    if isinstance(raw_options, list):
-        for option in raw_options:
-            if not isinstance(option, dict):
-                continue
-            text = str(option.get("text") or "").strip()
-            if not text:
-                continue
-            try:
-                count = int(option.get("voter_count", 0))
-            except (TypeError, ValueError):
-                count = 0
-            options.append((text, max(count, 0)))
+    if not isinstance(raw_options, list):
+        return options
+    for option in raw_options:
+        if not isinstance(option, dict):
+            continue
+        text = str(option.get("text") or "").strip()
+        if not text:
+            continue
+        try:
+            count = int(option.get("voter_count", 0))
+        except (TypeError, ValueError):
+            count = 0
+        options.append((text, max(count, 0)))
+    return options
 
+
+def _normalize_poll_selection(value: object, options_count: int) -> list[int]:
+    if not isinstance(value, list):
+        return []
+    normalized: list[int] = []
+    for raw in value:
+        try:
+            index = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if index < 0 or index >= options_count:
+            continue
+        if index in normalized:
+            continue
+        normalized.append(index)
+    return normalized
+
+
+def _parse_poll_selection_payload(value: object, options_count: int) -> list[int] | None:
+    if not isinstance(value, list):
+        return None
+    parsed: list[int] = []
+    for raw in value:
+        try:
+            index = int(raw)
+        except (TypeError, ValueError):
+            return None
+        if index < 0 or index >= options_count:
+            return None
+        if index in parsed:
+            continue
+        parsed.append(index)
+    return parsed
+
+
+def _build_poll_payload(
+    raw_poll: dict,
+    *,
+    option_counts: list[int] | None = None,
+    user_selection: list[int] | None = None,
+    extra_voters: int = 0,
+) -> dict | None:
+    if not isinstance(raw_poll, dict):
+        return None
+    question = str(raw_poll.get("question") or "").strip()
+    options = _extract_poll_options(raw_poll)
     if not question and not options:
-        return "", ""
+        return None
 
-    total_voters_raw = poll.get("total_voter_count")
-    total_voters = (
-        total_voters_raw if isinstance(total_voters_raw, int) and total_voters_raw >= 0 else None
+    resolved_counts = (
+        list(option_counts[: len(options)]) if option_counts is not None else [count for _, count in options]
     )
+    if len(resolved_counts) < len(options):
+        resolved_counts.extend([0] * (len(options) - len(resolved_counts)))
+
+    total_voters_raw = raw_poll.get("total_voter_count")
+    if isinstance(total_voters_raw, int):
+        total_voters = max(total_voters_raw, 0)
+    else:
+        total_voters = 0
+    total_voters += max(extra_voters, 0)
+
+    option_payload = []
+    for idx, (text, _) in enumerate(options):
+        option_payload.append(
+            {
+                "index": idx,
+                "text": text,
+                "voter_count": max(int(resolved_counts[idx]), 0),
+            }
+        )
+
+    normalized_selection = _normalize_poll_selection(user_selection or [], len(option_payload))
+    poll_id = str(raw_poll.get("id") or "").strip()
+    return {
+        "id": poll_id or None,
+        "question": question,
+        "is_anonymous": bool(raw_poll.get("is_anonymous")),
+        "allows_multiple_answers": bool(raw_poll.get("allows_multiple_answers")),
+        "is_closed": bool(raw_poll.get("is_closed")),
+        "total_voter_count": total_voters,
+        "options": option_payload,
+        "user_selection": normalized_selection,
+    }
+
+
+def _render_poll_html_from_payload(payload: dict) -> str:
+    options = payload.get("options") or []
+    total_voters = max(int(payload.get("total_voter_count") or 0), 0)
+    selected_set = set(payload.get("user_selection") or [])
 
     option_items: list[str] = []
-    for text, count in options:
+    for option in options:
+        idx = int(option.get("index", -1))
+        text = str(option.get("text") or "").strip()
+        count = max(int(option.get("voter_count") or 0), 0)
         value_label = str(count)
-        if total_voters and total_voters > 0:
+        if total_voters > 0:
             percent = round((count / total_voters) * 100)
             value_label = f"{count} ({percent}%)"
+        option_class = "post-poll-option is-selected" if idx in selected_set else "post-poll-option"
+        marker = "✓ " if idx in selected_set else ""
         option_items.append(
-            f'<li class="post-poll-option">{escape(text)} <b>{value_label}</b></li>'
+            f'<li class="{option_class}" data-option-index="{idx}">{marker}{escape(text)} <b>{value_label}</b></li>'
         )
     options_html = (
         f'<ul class="post-poll-options">{"".join(option_items)}</ul>' if option_items else ""
     )
 
     meta_parts: list[str] = []
-    if poll.get("is_anonymous"):
+    if payload.get("is_anonymous"):
         meta_parts.append("Анонимный опрос")
-    if poll.get("allows_multiple_answers"):
+    if payload.get("allows_multiple_answers"):
         meta_parts.append("Можно выбрать несколько вариантов")
-    if poll.get("is_closed"):
+    if payload.get("is_closed"):
         meta_parts.append("Опрос завершен")
-    if total_voters is not None:
-        meta_parts.append(f"Голосов: {total_voters}")
-    meta_html = f'<div class="post-poll-meta">{" · ".join(meta_parts)}</div>' if meta_parts else ""
+    else:
+        meta_parts.append("Нажмите вариант, чтобы проголосовать")
+    meta_parts.append(f"Голосов: {total_voters}")
+    meta_html = f'<div class="post-poll-meta">{" · ".join(meta_parts)}</div>'
 
+    question = str(payload.get("question") or "").strip()
     question_html = f'<div class="post-poll-question"><b>{escape(question)}</b></div>' if question else ""
-    poll_html = (
-        '<div class="post-poll">'
+    poll_attrs = [
+        f'data-poll-multiple="{"1" if payload.get("allows_multiple_answers") else "0"}"',
+        f'data-poll-closed="{"1" if payload.get("is_closed") else "0"}"',
+    ]
+    poll_id = payload.get("id")
+    if poll_id:
+        poll_attrs.append(f'data-poll-id="{escape(str(poll_id))}"')
+    attrs = " ".join(poll_attrs)
+    return (
+        f'<div class="post-poll" {attrs}>'
         + "".join(part for part in (question_html, options_html, meta_html) if part)
         + "</div>"
     )
 
+
+def _live_poll_for_post(post: Post, user: User | None = None) -> dict | None:
+    raw_data = post.raw_data if isinstance(post.raw_data, dict) else {}
+    raw_poll = raw_data.get("poll")
+    payload = _build_poll_payload(raw_poll)
+    if not payload:
+        return None
+
+    options = payload.get("options") or []
+    options_count = len(options)
+    counts = [int(option.get("voter_count") or 0) for option in options]
+    user_selection: list[int] = []
+    site_voters: set[int] = set()
+
+    votes = PostPollVote.objects.filter(post=post).values_list("user_id", "selected_options")
+    for vote_user_id, selected_options in votes:
+        normalized = _normalize_poll_selection(selected_options, options_count)
+        if not normalized:
+            continue
+        site_voters.add(vote_user_id)
+        for index in normalized:
+            counts[index] += 1
+        if user and vote_user_id == user.id:
+            user_selection = normalized
+
+    live_payload = _build_poll_payload(
+        raw_poll,
+        option_counts=counts,
+        user_selection=user_selection,
+        extra_voters=len(site_voters),
+    )
+    if not live_payload:
+        return None
+    return {
+        "poll": live_payload,
+        "html": _render_poll_html_from_payload(live_payload),
+    }
+
+
+def _content_with_live_poll(post: Post, user: User | None = None) -> tuple[str, dict | None]:
+    content = post.content or ""
+    live_poll = _live_poll_for_post(post, user)
+    if not live_poll:
+        return content, None
+
+    poll_html = live_poll["html"]
+    raw_data = post.raw_data if isinstance(post.raw_data, dict) else {}
+    stored_poll_html = raw_data.get("poll_html")
+    if isinstance(stored_poll_html, str) and stored_poll_html and stored_poll_html in content:
+        return content.replace(stored_poll_html, poll_html, 1), live_poll["poll"]
+    if not content:
+        return poll_html, live_poll["poll"]
+    if '<div class="post-poll"' not in content and poll_html not in content:
+        return f"{content}<br><br>{poll_html}", live_poll["poll"]
+    return content, live_poll["poll"]
+
+
+def _extract_telegram_poll(message: dict) -> tuple[str, str]:
+    poll = message.get("poll")
+    payload = _build_poll_payload(poll)
+    if not payload:
+        return "", ""
+
+    question = str(payload.get("question") or "").strip()
+    poll_html = _render_poll_html_from_payload(payload)
     title = _build_title(question) if question else ""
     if not title:
         title = "Опрос"
@@ -2301,15 +2462,17 @@ def author_verification_code(request: HttpRequest) -> HttpResponse:
     return JsonResponse({"ok": True, "code": code})
 
 
-def _serialize_post_for_user(request: HttpRequest, post: Post) -> dict:
+def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None = None) -> dict:
     rubric = post.rubric
     author_channel_url, author_title = _author_display_fields(
         post.author, rubric, post.channel_url
     )
+    content, poll_payload = _content_with_live_poll(post, user)
     return {
         "id": post.id,
         "title": _post_display_title(post),
-        "content": post.content,
+        "content": content,
+        "poll": poll_payload,
         "created_at": post.created_at.isoformat(),
         "updated_at": post.updated_at.isoformat(),
         "is_pending": post.is_pending,
@@ -2437,7 +2600,7 @@ def user_posts(request: HttpRequest) -> HttpResponse:
         )
         _apply_post_tags(post, explicit_tags)
         _maybe_notify_new_author(author, post)
-        return JsonResponse({"ok": True, "post": _serialize_post_for_user(request, post)})
+        return JsonResponse({"ok": True, "post": _serialize_post_for_user(request, post, user)})
 
     if request.method != "GET":
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
@@ -2465,7 +2628,7 @@ def user_posts(request: HttpRequest) -> HttpResponse:
 
     total = posts_qs.count()
     posts = posts_qs[offset : offset + limit]
-    serialized = [_serialize_post_for_user(request, post) for post in posts]
+    serialized = [_serialize_post_for_user(request, post, user) for post in posts]
     return JsonResponse({"ok": True, "posts": serialized, "total": total})
 
 
@@ -2577,7 +2740,7 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
     else:
         explicit_tags = [tag.name for tag in post.tags.all()]
     _apply_post_tags(post, explicit_tags)
-    return JsonResponse({"ok": True, "post": _serialize_post_for_user(request, post)})
+    return JsonResponse({"ok": True, "post": _serialize_post_for_user(request, post, user)})
 
 
 @csrf_exempt
@@ -2855,6 +3018,77 @@ def post_like(request: HttpRequest, post_id: int) -> HttpResponse:
     )
 
 
+@csrf_exempt
+def post_poll_vote(request: HttpRequest, post_id: int) -> HttpResponse:
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    user = _get_user_from_request(request)
+    if not user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+
+    try:
+        now = timezone.now()
+        post = (
+            Post.objects.filter(is_blocked=False, is_pending=False, author__is_blocked=False)
+            .filter(_publish_ready_filter(now))
+            .get(id=post_id)
+        )
+    except Post.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "post not found"}, status=404)
+
+    raw_data = post.raw_data if isinstance(post.raw_data, dict) else {}
+    raw_poll = raw_data.get("poll")
+    poll_payload = _build_poll_payload(raw_poll)
+    if not poll_payload:
+        return JsonResponse({"ok": False, "error": "poll not found"}, status=404)
+    if poll_payload.get("is_closed"):
+        return JsonResponse({"ok": False, "error": "poll is closed"}, status=400)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8")) if request.body else {}
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+    if not isinstance(payload, dict):
+        return JsonResponse({"ok": False, "error": "invalid payload"}, status=400)
+
+    submitted_options = payload.get("options")
+    if submitted_options is None and "option" in payload:
+        submitted_options = [payload.get("option")]
+    if submitted_options is None:
+        return JsonResponse({"ok": False, "error": "options are required"}, status=400)
+
+    options_count = len(poll_payload.get("options") or [])
+    normalized = _parse_poll_selection_payload(submitted_options, options_count)
+    if normalized is None:
+        return JsonResponse({"ok": False, "error": "invalid poll options"}, status=400)
+
+    allows_multiple = bool(poll_payload.get("allows_multiple_answers"))
+    if not allows_multiple and len(normalized) > 1:
+        return JsonResponse({"ok": False, "error": "multiple options are not allowed"}, status=400)
+
+    existing = PostPollVote.objects.filter(post=post, user=user).first()
+    if normalized:
+        if existing:
+            existing.selected_options = normalized
+            existing.save(update_fields=["selected_options", "updated_at"])
+        else:
+            PostPollVote.objects.create(post=post, user=user, selected_options=normalized)
+    elif existing:
+        existing.delete()
+
+    live_poll = _live_poll_for_post(post, user)
+    if not live_poll:
+        return JsonResponse({"ok": False, "error": "poll not found"}, status=404)
+    return JsonResponse(
+        {
+            "ok": True,
+            "poll": live_poll["poll"],
+            "poll_html": live_poll["html"],
+        }
+    )
+
+
 def recent_comments(request: HttpRequest) -> HttpResponse:
     limit_raw = request.GET.get("limit", "5")
     try:
@@ -2908,6 +3142,7 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
         offset = max(int(offset_raw), 0)
     except ValueError:
         offset = 0
+    current_user = _get_user_from_request(request)
 
     now = timezone.now()
     posts = (
@@ -2929,6 +3164,7 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
     serialized = []
     for post in posts:
         rubric = post.rubric
+        content, poll_payload = _content_with_live_poll(post, current_user)
         author_channel_url, author_title = _author_display_fields(
             author, rubric, post.channel_url
         )
@@ -2939,7 +3175,8 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
                 "rubric": rubric.name if rubric else None,
                 "rubric_slug": rubric.slug if rubric else None,
                 "rubric_icon_url": _rubric_icon_url(request, rubric),
-                "content": post.content,
+                "content": content,
+                "poll": poll_payload,
                 "source_url": post.source_url,
                 "channel_url": author_channel_url,
                 "created_at": post.created_at.isoformat(),
@@ -3017,6 +3254,7 @@ def rubric_posts(request: HttpRequest, slug: str) -> HttpResponse:
         offset = max(int(offset_raw), 0)
     except ValueError:
         offset = 0
+    current_user = _get_user_from_request(request)
 
     now = timezone.now()
     posts = (
@@ -3034,6 +3272,7 @@ def rubric_posts(request: HttpRequest, slug: str) -> HttpResponse:
 
     serialized = []
     for post in posts:
+        content, poll_payload = _content_with_live_poll(post, current_user)
         author_channel_url, author_title = _author_display_fields(
             post.author, rubric, post.channel_url
         )
@@ -3044,7 +3283,8 @@ def rubric_posts(request: HttpRequest, slug: str) -> HttpResponse:
                 "rubric": rubric.name,
                 "rubric_slug": rubric.slug,
                 "rubric_icon_url": _rubric_icon_url(request, rubric),
-                "content": post.content,
+                "content": content,
+                "poll": poll_payload,
                 "source_url": post.source_url,
                 "channel_url": author_channel_url,
                 "created_at": post.created_at.isoformat(),
@@ -3117,6 +3357,7 @@ def tag_posts(request: HttpRequest, tag: str) -> HttpResponse:
         offset = max(int(offset_raw), 0)
     except ValueError:
         offset = 0
+    current_user = _get_user_from_request(request)
 
     now = timezone.now()
     posts = (
@@ -3136,6 +3377,7 @@ def tag_posts(request: HttpRequest, tag: str) -> HttpResponse:
     serialized = []
     for post in posts:
         rubric = post.rubric
+        content, poll_payload = _content_with_live_poll(post, current_user)
         author_channel_url, author_title = _author_display_fields(
             post.author, rubric, post.channel_url
         )
@@ -3148,7 +3390,8 @@ def tag_posts(request: HttpRequest, tag: str) -> HttpResponse:
                 "rubric_icon_url": _rubric_icon_url(request, rubric)
                 if rubric
                 else None,
-                "content": post.content,
+                "content": content,
+                "poll": poll_payload,
                 "source_url": post.source_url,
                 "channel_url": author_channel_url,
                 "created_at": post.created_at.isoformat(),
@@ -3192,6 +3435,8 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
         return JsonResponse({"ok": False, "error": "post not found"}, status=404)
 
     rubric = post.rubric
+    current_user = _get_user_from_request(request)
+    content, poll_payload = _content_with_live_poll(post, current_user)
     author_channel_url, author_title = _author_display_fields(
         post.author, rubric, post.channel_url
     )
@@ -3204,7 +3449,8 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
                 "rubric": rubric.name if rubric else None,
                 "rubric_slug": rubric.slug if rubric else None,
                 "rubric_icon_url": _rubric_icon_url(request, rubric),
-                "content": post.content,
+                "content": content,
+                "poll": poll_payload,
                 "source_url": post.source_url,
                 "channel_url": author_channel_url,
                 "created_at": post.created_at.isoformat(),
@@ -3255,6 +3501,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
     read_user = (
         _get_user_from_request(request) if (hide_read or only_read) else None
     )
+    current_user = read_user or _get_user_from_request(request)
     if only_read and not read_user:
         return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
     target_count = limit + offset
@@ -3289,6 +3536,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
         for post in posts_page:
             rubric = post.rubric
             author_rating = _author_rating_value(post.author.rating_total)
+            content, poll_payload = _content_with_live_poll(post, current_user)
             author_channel_url, author_title = _author_display_fields(
                 post.author, rubric, post.channel_url
             )
@@ -3299,7 +3547,8 @@ def home_feed(request: HttpRequest) -> HttpResponse:
                     "rubric": rubric.name if rubric else None,
                     "rubric_slug": rubric.slug if rubric else None,
                     "rubric_icon_url": _rubric_icon_url(request, rubric),
-                    "content": post.content,
+                    "content": content,
+                    "poll": poll_payload,
                     "source_url": post.source_url,
                     "channel_url": author_channel_url,
                     "created_at": post.created_at.isoformat(),
@@ -3355,6 +3604,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
         post = remaining.pop(next_index)
         rubric = post.rubric
         author_rating = author_rating_map.get(post.author_id, 0)
+        content, poll_payload = _content_with_live_poll(post, current_user)
         combined_rating = post.rating + author_rating
         if combined_rating < 0:
             continue
@@ -3384,7 +3634,8 @@ def home_feed(request: HttpRequest) -> HttpResponse:
                 "rubric": rubric.name if rubric else None,
                 "rubric_slug": rubric.slug if rubric else None,
                 "rubric_icon_url": _rubric_icon_url(request, rubric),
-                "content": post.content,
+                "content": content,
+                "poll": poll_payload,
                 "source_url": post.source_url,
                 "channel_url": author_channel_url,
                 "created_at": post.created_at.isoformat(),
@@ -3430,6 +3681,7 @@ def fresh_feed(request: HttpRequest) -> HttpResponse:
     read_user = (
         _get_user_from_request(request) if (hide_read or only_read) else None
     )
+    current_user = read_user or _get_user_from_request(request)
     if only_read and not read_user:
         return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
     base_query = (
@@ -3461,6 +3713,7 @@ def fresh_feed(request: HttpRequest) -> HttpResponse:
     serialized = []
     for post in posts:
         rubric = post.rubric
+        content, poll_payload = _content_with_live_poll(post, current_user)
         author_channel_url, author_title = _author_display_fields(
             post.author, rubric, post.channel_url
         )
@@ -3471,7 +3724,8 @@ def fresh_feed(request: HttpRequest) -> HttpResponse:
                 "rubric": rubric.name if rubric else None,
                 "rubric_slug": rubric.slug if rubric else None,
                 "rubric_icon_url": _rubric_icon_url(request, rubric),
-                "content": post.content,
+                "content": content,
+                "poll": poll_payload,
                 "source_url": post.source_url,
                 "channel_url": author_channel_url,
                 "created_at": post.created_at.isoformat(),
@@ -3547,6 +3801,7 @@ def my_feed(request: HttpRequest) -> HttpResponse:
     read_user = (
         _get_user_from_request(request) if (hide_read or only_read) else None
     )
+    current_user = read_user or _get_user_from_request(request)
     if only_read and not read_user:
         return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
     selection_filter = Q()
@@ -3587,6 +3842,7 @@ def my_feed(request: HttpRequest) -> HttpResponse:
     serialized = []
     for post in posts:
         rubric = post.rubric
+        content, poll_payload = _content_with_live_poll(post, current_user)
         author_channel_url, author_title = _author_display_fields(
             post.author, rubric, post.channel_url
         )
@@ -3597,7 +3853,8 @@ def my_feed(request: HttpRequest) -> HttpResponse:
                 "rubric": rubric.name if rubric else None,
                 "rubric_slug": rubric.slug if rubric else None,
                 "rubric_icon_url": _rubric_icon_url(request, rubric),
-                "content": post.content,
+                "content": content,
+                "poll": poll_payload,
                 "source_url": post.source_url,
                 "channel_url": author_channel_url,
                 "created_at": post.created_at.isoformat(),
@@ -3684,6 +3941,7 @@ def search_content(request: HttpRequest) -> HttpResponse:
 
     type_filter = (request.GET.get("type") or "All").lower()
     sort = (request.GET.get("sort") or "New").lower()
+    current_user = _get_user_from_request(request)
 
     limit_raw = request.GET.get("limit", "20")
     page_raw = request.GET.get("page", "1")
@@ -3724,6 +3982,7 @@ def search_content(request: HttpRequest) -> HttpResponse:
         total_posts = posts_qs.count()
         for post in posts_qs[offset : offset + limit]:
             rubric = post.rubric
+            content, poll_payload = _content_with_live_poll(post, current_user)
             author_channel_url, author_title = _author_display_fields(
                 post.author, rubric, post.channel_url
             )
@@ -3736,7 +3995,8 @@ def search_content(request: HttpRequest) -> HttpResponse:
                     "rubric_icon_url": _rubric_icon_url(request, rubric)
                     if rubric
                     else None,
-                    "content": post.content,
+                    "content": content,
+                    "poll": poll_payload,
                     "source_url": post.source_url,
                     "channel_url": author_channel_url,
                     "created_at": post.created_at.isoformat(),

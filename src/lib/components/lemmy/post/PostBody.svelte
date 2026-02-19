@@ -1,12 +1,14 @@
 <script lang="ts">
   import Markdown from '$lib/components/markdown/Markdown.svelte'
   import type { View } from '$lib/settings'
-  import { Button } from 'mono-svelte'
+  import { Button, toast } from 'mono-svelte'
   import { ChevronDown, Icon } from 'svelte-hero-icons'
   import { browser } from '$app/environment'
   import { afterUpdate, createEventDispatcher, onMount, tick } from 'svelte'
   import { page } from '$app/stores'
   import { deserializeEditorModel } from '$lib/util'
+  import { buildPostPollVoteUrl } from '$lib/api/backend'
+  import { siteToken } from '$lib/siteAuth'
   
   let DOMPurify: any
   let purifyConfigured = false
@@ -43,6 +45,8 @@
   }
 
   export let body: string
+  export let postId: number | null = null
+  export let allowPollVoting = false
   export let title: string | undefined = undefined
   export let view: View = 'cozy'
   export let clickThrough = false
@@ -239,6 +243,98 @@
       await tick()
       setTimeout(setupGalleries, 0)
     }
+  }
+
+  const getSelectedPollOptions = (pollElement: HTMLElement): number[] => {
+    const selected = new Set<number>()
+    pollElement
+      .querySelectorAll<HTMLElement>('.post-poll-option.is-selected')
+      .forEach((item) => {
+        const raw = item.getAttribute('data-option-index')
+        const index = raw === null ? Number.NaN : Number(raw)
+        if (Number.isInteger(index) && index >= 0) {
+          selected.add(index)
+        }
+      })
+    return Array.from(selected).sort((a, b) => a - b)
+  }
+
+  const submitPollVote = async (pollElement: HTMLElement, nextSelection: number[]) => {
+    if (!allowPollVoting || !postId) return
+    const token = $siteToken
+    if (!token) {
+      toast({ content: 'Необходимо зарегистрироваться', type: 'warning' })
+      return
+    }
+
+    pollElement.setAttribute('data-poll-voting', '1')
+    try {
+      const response = await fetch(buildPostPollVoteUrl(postId), {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ options: nextSelection }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok || !data?.ok) {
+        throw new Error(data?.error || 'Не удалось проголосовать')
+      }
+      if (typeof data.poll_html === 'string' && data.poll_html.trim()) {
+        pollElement.outerHTML = data.poll_html
+      }
+    } catch (error) {
+      toast({
+        content: (error as Error)?.message ?? 'Не удалось проголосовать',
+        type: 'error',
+      })
+    } finally {
+      const currentPoll = element?.querySelector<HTMLElement>('.post-poll')
+      currentPoll?.removeAttribute('data-poll-voting')
+    }
+  }
+
+  const handlePollClick = async (event: Event) => {
+    if (!browser || !allowPollVoting || !postId || !element) return
+    const target = event.target as HTMLElement | null
+    if (!target) return
+    const option = target.closest('.post-poll-option') as HTMLElement | null
+    if (!option) return
+    const pollElement = option.closest('.post-poll') as HTMLElement | null
+    if (!pollElement || !element.contains(pollElement)) return
+
+    event.preventDefault()
+    event.stopPropagation()
+
+    if (pollElement.getAttribute('data-poll-voting') === '1') return
+    if (pollElement.getAttribute('data-poll-closed') === '1') {
+      toast({ content: 'Опрос завершен', type: 'warning' })
+      return
+    }
+
+    const rawOptionIndex = option.getAttribute('data-option-index')
+    const optionIndex = rawOptionIndex === null ? Number.NaN : Number(rawOptionIndex)
+    if (!Number.isInteger(optionIndex) || optionIndex < 0) return
+
+    const multiple = pollElement.getAttribute('data-poll-multiple') === '1'
+    const selected = getSelectedPollOptions(pollElement)
+    const next = new Set(selected)
+
+    if (multiple) {
+      if (next.has(optionIndex)) {
+        next.delete(optionIndex)
+      } else {
+        next.add(optionIndex)
+      }
+    } else if (next.has(optionIndex) && next.size === 1) {
+      next.clear()
+    } else {
+      next.clear()
+      next.add(optionIndex)
+    }
+
+    await submitPollVote(pollElement, Array.from(next).sort((a, b) => a - b))
   }
 
   // Функция для добавления preload в head
@@ -774,6 +870,10 @@
           'allowfullscreen',
           'frameborder',
           'referrerpolicy',
+          'data-option-index',
+          'data-poll-multiple',
+          'data-poll-closed',
+          'data-poll-id',
         ],
       });
     }
@@ -851,20 +951,26 @@
   }
 
   onMount(() => {
-    if (browser) {
-      setTimeout(setupGalleries, 0);
-      setTimeout(() => {
-        if (!element) return
-        if (!collapsible || showFullBody) {
-          hasOverflow = false
-          return
-        }
-        // If it doesn't overflow in collapsed mode, show it fully.
-        hasOverflow = element.scrollHeight > element.clientHeight + 4
-        if (!hasOverflow) {
-          expanded = true
-        }
-      }, 50)
+    if (!browser) return
+    const clickHandler = (event: Event) => {
+      void handlePollClick(event)
+    }
+    element?.addEventListener('click', clickHandler)
+    setTimeout(setupGalleries, 0);
+    setTimeout(() => {
+      if (!element) return
+      if (!collapsible || showFullBody) {
+        hasOverflow = false
+        return
+      }
+      // If it doesn't overflow in collapsed mode, show it fully.
+      hasOverflow = element.scrollHeight > element.clientHeight + 4
+      if (!hasOverflow) {
+        expanded = true
+      }
+    }, 50)
+    return () => {
+      element?.removeEventListener('click', clickHandler)
     }
   });
 

@@ -368,6 +368,20 @@ class PostLike(models.Model):
         return f"{self.post_id}:{self.user_id}"
 
 
+class PostPollVote(models.Model):
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="poll_votes")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="post_poll_votes")
+    selected_options = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("post", "user")
+
+    def __str__(self) -> str:
+        return f"{self.post_id}:{self.user_id}"
+
+
 class PostRead(models.Model):
     post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="reads")
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="post_reads")
