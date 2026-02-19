@@ -1089,14 +1089,9 @@ def _build_telegram_audio_html(audio_url: str) -> str:
 
 
 def _build_telegram_audio_fallback_html(username: str, message_id: int) -> str:
-    source_url = f"https://t.me/{username}/{message_id}"
-    return (
-        '<div class="post-audio-fallback">'
-        f'<a href="{escape(source_url, quote=True)}" target="_blank" rel="noopener">'
-        "Слушать аудио в Telegram"
-        "</a>"
-        "</div>"
-    )
+    # Telegram Bot API cannot download files larger than 20MB.
+    # For such audios we fall back to Telegram widget so playback still works.
+    return _build_telegram_embed_html(username, message_id, 200)
 
 
 def _extract_telegram_embed(
