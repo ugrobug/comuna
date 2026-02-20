@@ -85,8 +85,8 @@ class TagRelationInline(admin.TabularInline):
 
 @admin.register(Tag)
 class TagAdmin(admin.ModelAdmin):
-    list_display = ("name", "mood", "lemma", "is_active")
-    list_filter = ("mood", "is_active")
+    list_display = ("name", "mood", "lemma", "is_active", "hide_from_home")
+    list_filter = ("mood", "is_active", "hide_from_home")
     search_fields = ("name", "lemma")
     inlines = (TagRelationInline,)
 
@@ -107,8 +107,15 @@ class TagRelationTypeAdmin(admin.ModelAdmin):
 
 @admin.register(Rubric)
 class RubricAdmin(admin.ModelAdmin):
-    list_display = ("name", "slug", "is_active", "is_hidden", "sort_order")
-    list_filter = ("is_active", "is_hidden")
+    list_display = (
+        "name",
+        "slug",
+        "hide_from_home",
+        "is_active",
+        "is_hidden",
+        "sort_order",
+    )
+    list_filter = ("hide_from_home", "is_active", "is_hidden")
     search_fields = ("name", "slug")
     fields = (
         "name",
@@ -118,6 +125,7 @@ class RubricAdmin(admin.ModelAdmin):
         "cover_image_url",
         "subscribe_url",
         "home_limit",
+        "hide_from_home",
         "sort_order",
         "is_active",
         "is_hidden",

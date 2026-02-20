@@ -26,7 +26,7 @@ from math import ceil
 from html import escape, unescape
 from xml.sax.saxutils import escape as xml_escape
 from django.db import transaction
-from django.db.models import Count, F, IntegerField, Q, Sum, Value
+from django.db.models import Count, Exists, F, IntegerField, OuterRef, Q, Sum, Value
 from django.db.models.functions import Cast
 
 from django.conf import settings
@@ -3630,6 +3630,10 @@ def home_feed(request: HttpRequest) -> HttpResponse:
     combined_scaled = Cast(F("rating"), IntegerField()) * Value(20) + Cast(
         F("author__rating_total"), IntegerField()
     )
+    hidden_home_tag_qs = Tag.objects.filter(
+        posts__id=OuterRef("pk"),
+        hide_from_home=True,
+    )
     base_query = (
         Post.objects.filter(
             is_blocked=False,
@@ -3639,7 +3643,10 @@ def home_feed(request: HttpRequest) -> HttpResponse:
         .filter(_publish_ready_filter(now))
         .filter(Q(author__shadow_banned=False) | Q(author__force_home=True))
         .filter(Q(rubric__isnull=True) | Q(rubric__is_hidden=False))
+        .filter(Q(rubric__isnull=True) | Q(rubric__hide_from_home=False))
         .annotate(combined_scaled=combined_scaled)
+        .annotate(has_hidden_home_tag=Exists(hidden_home_tag_qs))
+        .filter(has_hidden_home_tag=False)
         .filter(combined_scaled__gte=0)
     )
     hidden_read_count = 0

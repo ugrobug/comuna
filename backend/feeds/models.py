@@ -111,6 +111,11 @@ class Rubric(models.Model):
     description = models.TextField(blank=True)
     subscribe_url = models.URLField(max_length=255, blank=True)
     home_limit = models.PositiveIntegerField(default=3)
+    hide_from_home = models.BooleanField(
+        default=False,
+        verbose_name="Не показывать на главной",
+        help_text="Если включено, посты этой рубрики не попадут в ленту «Горячее».",
+    )
     is_active = models.BooleanField(default=True)
     is_hidden = models.BooleanField(default=False)
     sort_order = models.PositiveIntegerField(default=0)
@@ -226,6 +231,11 @@ class Tag(models.Model):
     )
     lemma = models.CharField(max_length=128, blank=True)
     is_active = models.BooleanField(default=True)
+    hide_from_home = models.BooleanField(
+        default=False,
+        verbose_name="Не показывать на главной",
+        help_text="Если включено, посты с этим тегом не попадут в ленту «Горячее».",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
