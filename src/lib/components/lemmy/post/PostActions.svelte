@@ -69,7 +69,7 @@
   import RelativeDate, {
     formatRelativeDate,
   } from '$lib/components/util/RelativeDate.svelte'
-  import { siteToken } from '$lib/siteAuth'
+  import { deleteUserPost, siteToken, siteUser } from '$lib/siteAuth'
   import { buildPostLikeUrl } from '$lib/api/backend'
 
   export let post: PostView
@@ -80,7 +80,11 @@
   export let backendComments: number | null = null
   export let backendLikes: number | null = null
 
-  const dispatcher = createEventDispatcher<{ edit: PostView; hide: boolean }>()
+  const dispatcher = createEventDispatcher<{
+    edit: PostView
+    hide: boolean
+    deleted: { postId: number }
+  }>()
 
   let editing = false
   let saving = false
@@ -89,6 +93,7 @@
 
   let localShare = false
   let backendVoting = false
+  let deletingBackendPost = false
   let backendVote = 0
   let backendLikesCount = backendLikes ?? 0
   let backendCommentsCount = backendComments ?? 0
@@ -200,6 +205,35 @@
       toast({ content: (error as Error)?.message ?? 'Не удалось проголосовать', type: 'error' })
     }
     backendVoting = false
+  }
+
+  const deleteBackendPostByAdmin = async () => {
+    if (!backendPostId) return
+    if (!$siteUser?.is_staff) {
+      toast({ content: 'Недостаточно прав', type: 'warning' })
+      return
+    }
+
+    const confirmed = window.confirm('Удалить этот пост с сайта?')
+    if (!confirmed) return
+
+    deletingBackendPost = true
+    try {
+      await deleteUserPost(backendPostId)
+      toast({ content: 'Пост удален' })
+      dispatcher('deleted', { postId: backendPostId })
+
+      if (
+        typeof window !== 'undefined' &&
+        window.location.pathname.startsWith(`/b/post/${backendPostId}`)
+      ) {
+        await goto('/')
+      }
+    } catch (error) {
+      toast({ content: (error as Error)?.message || 'Не удалось удалить пост', type: 'error' })
+    } finally {
+      deletingBackendPost = false
+    }
   }
 </script>
 
@@ -440,6 +474,16 @@
       >
         <Icon src={PencilSquare} size="16" micro slot="prefix" />
         {$t('post.actions.more.edit')}
+      </MenuButton>
+    {/if}
+    {#if isBackendPost && $siteUser?.is_staff}
+      <MenuButton
+        on:click={deleteBackendPostByAdmin}
+        color="danger-subtle"
+        disabled={deletingBackendPost}
+      >
+        <Icon src={Trash} size="16" micro slot="prefix" />
+        {deletingBackendPost ? 'Удаление...' : 'Удалить пост (админ)'}
       </MenuButton>
     {/if}
     {#if $profile?.jwt}

@@ -2811,13 +2811,18 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
     is_linked = AuthorAdmin.objects.filter(
         user=user, author=post.author, verified_at__isnull=False
     ).exists()
-    if not is_linked:
+    can_staff_delete = bool(user.is_staff and request.method == "DELETE")
+    if not is_linked and not can_staff_delete:
         return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
 
     if request.method == "DELETE":
         raw_data = dict(post.raw_data or {})
         raw_data["manual_deleted"] = True
         raw_data["manual_deleted_at"] = timezone.now().isoformat()
+        if user.is_staff and not is_linked:
+            raw_data["manual_deleted_by_staff"] = True
+            raw_data["manual_deleted_by_staff_user_id"] = user.id
+            raw_data["manual_deleted_by_staff_username"] = user.username
         post.is_blocked = True
         post.raw_data = raw_data
         post.save(update_fields=["is_blocked", "raw_data", "updated_at"])

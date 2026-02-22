@@ -70,6 +70,7 @@
     view != 'compact'
 
   let readOverride: boolean | null = null
+  let removedByAdmin = false
 
   const markBackendPostRead = async () => {
     if (!isBackendPost) return
@@ -119,6 +120,7 @@
   {view == 'list' ? 'py-5 list-type' : ''}
   {view == 'cozy' ? 'pt-4 pb-4 list-type flex flex-col gap-2' : ''}
   {$$props.class ?? ''}"
+  class:hidden={removedByAdmin}
   id={post.post.id.toString()}
   style={$$props.style ?? ''}
 >
@@ -299,6 +301,7 @@
   {#if actions}
     <PostActions
       on:hide
+      on:deleted={() => (removedByAdmin = true)}
       {post}
       style="grid-area: actions;"
       {view}
