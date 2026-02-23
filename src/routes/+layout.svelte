@@ -37,6 +37,7 @@ import YandexMetrika from '$lib/components/YandexMetrika.svelte'
 import GoogleAnalytics from '$lib/components/GoogleAnalytics.svelte'
 import PopularPosts from '$lib/components/ui/sidebar/PopularPosts.svelte'
 import RecentComments from '$lib/components/ui/sidebar/RecentComments.svelte'
+import KeyboardShortcutsHint from '$lib/components/ui/sidebar/KeyboardShortcutsHint.svelte'
 
   nProgress.configure({
     minimum: 0.4,
@@ -87,6 +88,16 @@ import RecentComments from '$lib/components/ui/sidebar/RecentComments.svelte'
   $: siteTitle = $site?.site_view?.site?.name || defaultTitle
   $: siteDescription = $site?.site_view?.site?.description || defaultDescription
   $: isBackendPostRoute = $page.url.pathname.startsWith('/b/post/')
+  $: keyboardShortcutsHintEnabled = new Set([
+    '/',
+    '/about',
+    '/[username]',
+    '/rubrics/[slug]/posts',
+    '/tags/[tag]',
+    '/c/[name]',
+    '/post/[slug]',
+    '/profile/voted/[type]',
+  ]).has($page.route.id ?? '')
   const toJsonLd = (value: unknown) =>
     JSON.stringify(value)
       .replace(/</g, '\\u003c')
@@ -246,6 +257,7 @@ import RecentComments from '$lib/components/ui/sidebar/RecentComments.svelte'
         
         <!-- PopularPosts -->
         <div class="flex flex-col gap-4">
+          <KeyboardShortcutsHint enabled={keyboardShortcutsHintEnabled} />
           <PopularPosts />
           <div class="h-px bg-slate-200 dark:bg-zinc-800"></div>
           <RecentComments />
