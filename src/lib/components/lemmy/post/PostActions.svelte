@@ -70,7 +70,7 @@
     formatRelativeDate,
   } from '$lib/components/util/RelativeDate.svelte'
   import { deleteUserPost, siteToken, siteUser } from '$lib/siteAuth'
-  import { buildPostLikeUrl } from '$lib/api/backend'
+  import { buildPostFavoriteUrl, buildPostLikeUrl } from '$lib/api/backend'
 
   export let post: PostView
   export let view: View = 'cozy'
@@ -97,6 +97,8 @@
   let backendVote = 0
   let backendLikesCount = backendLikes ?? 0
   let backendCommentsCount = backendComments ?? 0
+  let backendFavoriteSaving = false
+  let backendFavorited = false
 
   $: buttonHeight = view == 'compact' ? 'h-7' : 'h-8'
   $: buttonSquare = view == 'compact' ? 'w-7 h-7' : 'w-8 h-8'
@@ -104,6 +106,7 @@
   $: if (backendLikes !== null && backendLikes !== undefined) backendLikesCount = backendLikes
   $: if (backendComments !== null && backendComments !== undefined)
     backendCommentsCount = backendComments
+  $: if (isBackendPost) backendFavorited = Boolean(post.saved)
 
   const commentLink = () => {
     if (backendPostUrl) return `${backendPostUrl}#comments`
@@ -207,6 +210,57 @@
     backendVoting = false
   }
 
+  const redirectToSiteRegistration = async () => {
+    const next =
+      typeof window === 'undefined'
+        ? '/'
+        : `${window.location.pathname}${window.location.search}${window.location.hash}`
+    toast({ content: 'Необходимо зарегистрироваться', type: 'warning' })
+    await goto(`/account?next=${encodeURIComponent(next)}`)
+  }
+
+  const toggleBackendFavorite = async () => {
+    if (!backendPostId) return
+    if (!$siteToken) {
+      await redirectToSiteRegistration()
+      return
+    }
+
+    backendFavoriteSaving = true
+    const nextValue = !backendFavorited
+    try {
+      const response = await fetch(buildPostFavoriteUrl(backendPostId), {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${$siteToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ favorite: nextValue }),
+      })
+      const data = await response.json()
+      if (response.status === 401) {
+        await redirectToSiteRegistration()
+        return
+      }
+      if (!response.ok) {
+        throw new Error(data?.error || 'Не удалось изменить избранное')
+      }
+      backendFavorited = Boolean(data?.favorited ?? data?.is_favorite)
+      post.saved = backendFavorited
+      toast({
+        content: backendFavorited ? 'Пост добавлен в избранное' : 'Пост удален из избранного',
+        type: 'success',
+      })
+    } catch (error) {
+      toast({
+        content: (error as Error)?.message ?? 'Не удалось изменить избранное',
+        type: 'error',
+      })
+    } finally {
+      backendFavoriteSaving = false
+    }
+  }
+
   const deleteBackendPostByAdmin = async () => {
     if (!backendPostId) return
     if (!$siteUser?.is_staff) {
@@ -285,6 +339,7 @@
       >
         <button
           on:click={() => setBackendVote(backendVote === 1 ? 0 : 1)}
+          data-post-action-vote-up
           class="flex items-center gap-0.5 px-2 transition-colors
           {backendVote === 1
             ? 'text-green-500 dark:text-green-400'
@@ -299,6 +354,7 @@
         </span>
         <button
           on:click={() => setBackendVote(backendVote === -1 ? 0 : -1)}
+          data-post-action-vote-down
           class="flex items-center gap-0.5 px-2 transition-colors
           {backendVote === -1
             ? 'text-red-500 dark:text-red-400'
@@ -321,6 +377,25 @@
       >
         <Icon src={ChatBubbleOvalLeft} size="18" />
         <FormattedNumber number={backendCommentsCount} />
+      </Button>
+      <Button
+        on:click={toggleBackendFavorite}
+        size="custom"
+        class={buttonSquare}
+        color="ghost"
+        rounding="pill"
+        loading={backendFavoriteSaving}
+        disabled={backendFavoriteSaving}
+        title={backendFavorited ? 'Убрать из избранного' : 'Добавить в избранное'}
+        aria-label={backendFavorited ? 'Убрать из избранного' : 'Добавить в избранное'}
+        animations={{ scale: true, large: true }}
+      >
+        <Icon
+          src={backendFavorited ? BookmarkSlash : Bookmark}
+          size="16"
+          mini
+          slot="prefix"
+        />
       </Button>
     {:else}
       <PostVote
@@ -394,7 +469,7 @@
     />
   {/if}
 
-  {#if $profile?.jwt}
+  {#if !isBackendPost && $profile?.jwt}
     <Button
       on:click={async () => {
         if (!$profile?.jwt) return

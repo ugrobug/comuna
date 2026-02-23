@@ -57,6 +57,10 @@ export const buildPostLikeUrl = (id: number | string): string => {
   return `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/like/`
 }
 
+export const buildPostFavoriteUrl = (id: number | string): string => {
+  return `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/favorite/`
+}
+
 export const buildPostReadUrl = (id: number | string): string => {
   return `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/read/`
 }
@@ -207,6 +211,7 @@ export type BackendPost = {
   rubric_icon_url?: string | null
   comments_count?: number
   likes_count?: number
+  is_favorite?: boolean
   tags?: BackendTag[]
   author?: BackendAuthor
 }
@@ -291,7 +296,7 @@ export const backendPostToPostView = (
     creator_is_moderator: false,
     creator_banned_from_community: false,
     subscribed: 'NotSubscribed',
-    saved: false,
+    saved: Boolean(post.is_favorite),
     read: false,
     hidden: false,
     my_vote: 0,

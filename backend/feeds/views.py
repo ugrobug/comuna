@@ -43,6 +43,7 @@ from .models import (
     Post,
     PostComment,
     PostCommentLike,
+    PostFavorite,
     PostLike,
     PostPollVote,
     PostRead,
@@ -2589,6 +2590,9 @@ def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None
         post.author, rubric, post.channel_url
     )
     content, poll_payload = _content_with_live_poll(post, user)
+    is_favorite = (
+        PostFavorite.objects.filter(post=post, user=user).exists() if user else False
+    )
     return {
         "id": post.id,
         "title": _post_display_title(post),
@@ -2602,6 +2606,7 @@ def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None
         "rubric_slug": rubric.slug if rubric else None,
         "rubric_icon_url": _rubric_icon_url(request, rubric),
         "tags": _serialize_tags(post.tags.all()),
+        "is_favorite": is_favorite,
         "author": {
             "username": post.author.username,
             "title": author_title,
@@ -2609,6 +2614,19 @@ def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None
                     "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
         },
     }
+
+
+def _favorite_post_ids_for_user(posts: list[Post], user: User | None) -> set[int]:
+    if not user or not posts:
+        return set()
+    post_ids = [post.id for post in posts if post and post.id]
+    if not post_ids:
+        return set()
+    return set(
+        PostFavorite.objects.filter(user=user, post_id__in=post_ids).values_list(
+            "post_id", flat=True
+        )
+    )
 
 
 def _get_or_create_personal_author(user: User) -> tuple[Author | None, str | None]:
@@ -3145,6 +3163,58 @@ def post_like(request: HttpRequest, post_id: int) -> HttpResponse:
 
 
 @csrf_exempt
+def post_favorite(request: HttpRequest, post_id: int) -> HttpResponse:
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    user = _get_user_from_request(request)
+    if not user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+
+    try:
+        now = timezone.now()
+        post = (
+            Post.objects.filter(is_blocked=False, is_pending=False, author__is_blocked=False)
+            .filter(_publish_ready_filter(now))
+            .get(id=post_id)
+        )
+    except Post.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "post not found"}, status=404)
+
+    favorite_requested: bool | None = None
+    if request.body:
+        try:
+            payload = json.loads(request.body.decode("utf-8"))
+        except json.JSONDecodeError:
+            payload = {}
+        if isinstance(payload, dict) and "favorite" in payload:
+            favorite_requested = bool(payload.get("favorite"))
+
+    existing = PostFavorite.objects.filter(post=post, user=user).first()
+    if favorite_requested is None:
+        favorite_requested = existing is None
+
+    if favorite_requested:
+        if not existing:
+            PostFavorite.objects.create(post=post, user=user)
+        favorited = True
+    else:
+        if existing:
+            existing.delete()
+        favorited = False
+
+    favorites_count = PostFavorite.objects.filter(post=post).count()
+    return JsonResponse(
+        {
+            "ok": True,
+            "favorited": favorited,
+            "is_favorite": favorited,
+            "favorites_count": favorites_count,
+        }
+    )
+
+
+@csrf_exempt
 def post_poll_vote(request: HttpRequest, post_id: int) -> HttpResponse:
     if request.method != "POST":
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
@@ -3271,7 +3341,7 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
     current_user = _get_user_from_request(request)
 
     now = timezone.now()
-    posts = (
+    posts = list(
         Post.objects.filter(author=author, is_blocked=False, is_pending=False)
         .filter(_publish_ready_filter(now))
         .filter(Q(rubric__isnull=True) | Q(rubric__is_hidden=False))
@@ -3279,6 +3349,7 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
         .order_by("-created_at")
         .all()[offset : offset + limit]
     )
+    favorite_post_ids = _favorite_post_ids_for_user(posts, current_user)
 
     posts_count = (
         Post.objects.filter(author=author, is_blocked=False, is_pending=False)
@@ -3309,6 +3380,7 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
                 "comments_count": post.comments_count,
                 "likes_count": post.rating,
                 "tags": _serialize_tags(post.tags.all()),
+                "is_favorite": post.id in favorite_post_ids,
                 "author": {
                     "username": author.username,
                     "title": author_title,
@@ -3383,7 +3455,7 @@ def rubric_posts(request: HttpRequest, slug: str) -> HttpResponse:
     current_user = _get_user_from_request(request)
 
     now = timezone.now()
-    posts = (
+    posts = list(
         Post.objects.filter(
             rubric=rubric,
             is_blocked=False,
@@ -3395,6 +3467,7 @@ def rubric_posts(request: HttpRequest, slug: str) -> HttpResponse:
         .order_by("-created_at")
         .all()[offset : offset + limit]
     )
+    favorite_post_ids = _favorite_post_ids_for_user(posts, current_user)
 
     serialized = []
     for post in posts:
@@ -3417,6 +3490,7 @@ def rubric_posts(request: HttpRequest, slug: str) -> HttpResponse:
                 "comments_count": post.comments_count,
                 "likes_count": post.rating,
                 "tags": _serialize_tags(post.tags.all()),
+                "is_favorite": post.id in favorite_post_ids,
                 "author": {
                     "username": post.author.username,
                     "title": author_title,
@@ -3486,7 +3560,7 @@ def tag_posts(request: HttpRequest, tag: str) -> HttpResponse:
     current_user = _get_user_from_request(request)
 
     now = timezone.now()
-    posts = (
+    posts = list(
         Post.objects.filter(
             tags__in=tags_qs,
             is_blocked=False,
@@ -3499,6 +3573,7 @@ def tag_posts(request: HttpRequest, tag: str) -> HttpResponse:
         .order_by("-created_at")
         .all()[offset : offset + limit]
     )
+    favorite_post_ids = _favorite_post_ids_for_user(posts, current_user)
 
     serialized = []
     for post in posts:
@@ -3524,6 +3599,7 @@ def tag_posts(request: HttpRequest, tag: str) -> HttpResponse:
                 "comments_count": post.comments_count,
                 "likes_count": post.rating,
                 "tags": _serialize_tags(post.tags.all()),
+                "is_favorite": post.id in favorite_post_ids,
                 "author": {
                     "username": post.author.username,
                     "title": author_title,
@@ -3583,6 +3659,11 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
                 "comments_count": post.comments_count,
                 "likes_count": post.rating,
                 "tags": _serialize_tags(post.tags.all()),
+                "is_favorite": (
+                    PostFavorite.objects.filter(post=post, user=current_user).exists()
+                    if current_user
+                    else False
+                ),
                 "author": {
                     "username": post.author.username,
                     "title": author_title,
@@ -3659,12 +3740,13 @@ def home_feed(request: HttpRequest) -> HttpResponse:
         hidden_read_count = base_query.filter(reads__user=read_user).count()
 
     if only_read:
-        posts_page = (
+        posts_page = list(
             base_query.filter(reads__user=read_user)
             .select_related("author", "rubric")
             .prefetch_related("tags")
             .order_by("-created_at")[offset : offset + limit]
         )
+        favorite_post_ids = _favorite_post_ids_for_user(posts_page, current_user)
         serialized = []
         for post in posts_page:
             rubric = post.rubric
@@ -3692,6 +3774,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
                         "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
                     },
                     "tags": _serialize_tags(post.tags.all()),
+                    "is_favorite": post.id in favorite_post_ids,
                     "score": post.rating + post.comments_count * 5 + author_rating,
                     "rating": post.rating,
                     "comments_count": post.comments_count,
@@ -3710,6 +3793,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
         .prefetch_related("tags")
         .order_by("-created_at")[:fetch_size]
     )
+    favorite_post_ids = _favorite_post_ids_for_user(posts, current_user)
     author_ids = {post.author_id for post in posts}
     author_rating_map = {}
     if author_ids:
@@ -3779,6 +3863,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
                     "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
                 },
                 "tags": _serialize_tags(post.tags.all()),
+                "is_favorite": post.id in favorite_post_ids,
                 "score": post.rating + post.comments_count * 5 + author_rating,
                 "rating": post.rating,
                 "comments_count": post.comments_count,
@@ -3837,11 +3922,12 @@ def fresh_feed(request: HttpRequest) -> HttpResponse:
         posts_query = posts_query.filter(reads__user=read_user)
     elif hide_read and read_user:
         posts_query = posts_query.exclude(reads__user=read_user)
-    posts = (
+    posts = list(
         posts_query.select_related("author", "rubric")
         .prefetch_related("tags")
         .order_by("-created_at")[offset : offset + limit]
     )
+    favorite_post_ids = _favorite_post_ids_for_user(posts, current_user)
 
     serialized = []
     for post in posts:
@@ -3869,6 +3955,7 @@ def fresh_feed(request: HttpRequest) -> HttpResponse:
                     "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
                 },
                 "tags": _serialize_tags(post.tags.all()),
+                "is_favorite": post.id in favorite_post_ids,
                 "score": post.rating + post.comments_count * 5,
                 "rating": post.rating,
                 "comments_count": post.comments_count,
@@ -3966,11 +4053,12 @@ def my_feed(request: HttpRequest) -> HttpResponse:
     elif hide_read and read_user:
         posts_query = posts_query.exclude(reads__user=read_user)
 
-    posts = (
+    posts = list(
         posts_query.select_related("author", "rubric")
         .prefetch_related("tags")
         .order_by("-created_at")[offset : offset + limit]
     )
+    favorite_post_ids = _favorite_post_ids_for_user(posts, current_user)
 
     serialized = []
     for post in posts:
@@ -3998,6 +4086,7 @@ def my_feed(request: HttpRequest) -> HttpResponse:
                     "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
                 },
                 "tags": _serialize_tags(post.tags.all()),
+                "is_favorite": post.id in favorite_post_ids,
                 "score": post.rating + post.comments_count * 5,
                 "rating": post.rating,
                 "comments_count": post.comments_count,
@@ -4113,7 +4202,9 @@ def search_content(request: HttpRequest) -> HttpResponse:
             .order_by("-created_at" if sort == "new" else "-created_at")
         )
         total_posts = posts_qs.count()
-        for post in posts_qs[offset : offset + limit]:
+        posts_page = list(posts_qs[offset : offset + limit])
+        favorite_post_ids = _favorite_post_ids_for_user(posts_page, current_user)
+        for post in posts_page:
             rubric = post.rubric
             content, poll_payload = _content_with_live_poll(post, current_user)
             author_channel_url, author_title = _author_display_fields(
@@ -4136,6 +4227,7 @@ def search_content(request: HttpRequest) -> HttpResponse:
                     "comments_count": post.comments_count,
                     "likes_count": post.rating,
                     "tags": _serialize_tags(post.tags.all()),
+                    "is_favorite": post.id in favorite_post_ids,
                     "author": {
                         "username": post.author.username,
                         "title": author_title,

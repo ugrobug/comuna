@@ -83,6 +83,152 @@
   let error: any = undefined
   let loading = false
   let hasMore = true
+  let feedElement: HTMLDivElement | null = null
+  let keyboardActiveIndex: number | null = null
+
+  const isEditableTarget = (target: EventTarget | null): boolean => {
+    const element = target as HTMLElement | null
+    if (!element) return false
+    if (element.isContentEditable) return true
+    return Boolean(
+      element.closest(
+        'input, textarea, select, [contenteditable="true"], [contenteditable=""], .ce-popover, .ce-inline-toolbar'
+      )
+    )
+  }
+
+  const getFeedPostContainers = (): HTMLElement[] => {
+    if (!feedElement) return []
+    return Array.from(feedElement.querySelectorAll('.post-container')) as HTMLElement[]
+  }
+
+  const isVisibleInViewport = (element: HTMLElement): boolean => {
+    const rect = element.getBoundingClientRect()
+    return rect.bottom > 0 && rect.top < window.innerHeight
+  }
+
+  const getNearestVisiblePostIndex = (): number | null => {
+    if (!browser) return null
+    const containers = getFeedPostContainers()
+    if (!containers.length) return null
+
+    const viewportAnchor = window.innerHeight * 0.4
+    let bestIndex = 0
+    let bestDistance = Number.POSITIVE_INFINITY
+    let foundVisible = false
+
+    containers.forEach((container, index) => {
+      const rect = container.getBoundingClientRect()
+      const isVisible = rect.bottom > 0 && rect.top < window.innerHeight
+      if (!isVisible) return
+      foundVisible = true
+      const center = rect.top + rect.height / 2
+      const distance = Math.abs(center - viewportAnchor)
+      if (distance < bestDistance) {
+        bestDistance = distance
+        bestIndex = index
+      }
+    })
+
+    if (foundVisible) return bestIndex
+
+    containers.forEach((container, index) => {
+      const rect = container.getBoundingClientRect()
+      const center = rect.top + rect.height / 2
+      const distance = Math.abs(center - viewportAnchor)
+      if (distance < bestDistance) {
+        bestDistance = distance
+        bestIndex = index
+      }
+    })
+
+    return bestIndex
+  }
+
+  const normalizeKeyboardActiveIndex = (preferNearest = false): number | null => {
+    const containers = getFeedPostContainers()
+    if (!containers.length) {
+      keyboardActiveIndex = null
+      return null
+    }
+
+    if (preferNearest || keyboardActiveIndex === null) {
+      keyboardActiveIndex = getNearestVisiblePostIndex() ?? 0
+      return keyboardActiveIndex
+    }
+
+    const current = containers[keyboardActiveIndex]
+    if (!current) {
+      keyboardActiveIndex = Math.min(Math.max(0, keyboardActiveIndex), containers.length - 1)
+      return keyboardActiveIndex
+    }
+
+    if (!isVisibleInViewport(current)) {
+      keyboardActiveIndex = getNearestVisiblePostIndex() ?? keyboardActiveIndex
+    }
+
+    return keyboardActiveIndex
+  }
+
+  const scrollToKeyboardPost = (index: number) => {
+    const containers = getFeedPostContainers()
+    const target = containers[index]
+    if (!target) return
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  const moveKeyboardSelection = (delta: number) => {
+    const containers = getFeedPostContainers()
+    if (!containers.length) return
+
+    const baseIndex = normalizeKeyboardActiveIndex(false) ?? 0
+    const nextIndex = Math.max(0, Math.min(containers.length - 1, baseIndex + delta))
+    keyboardActiveIndex = nextIndex
+    scrollToKeyboardPost(nextIndex)
+  }
+
+  const clickActivePostAction = (selector: string) => {
+    const index = normalizeKeyboardActiveIndex(true)
+    if (index === null) return
+    const containers = getFeedPostContainers()
+    const activePost = containers[index]
+    if (!activePost) return
+    const action = activePost.querySelector<HTMLElement>(selector)
+    action?.click()
+  }
+
+  const handleKeyboardShortcuts = (event: KeyboardEvent) => {
+    if (!browser) return
+    if (event.defaultPrevented) return
+    if (event.metaKey || event.ctrlKey || event.altKey) return
+    if (event.repeat) return
+    if (isEditableTarget(event.target)) return
+
+    switch (event.code) {
+      case 'KeyW':
+        event.preventDefault()
+        clickActivePostAction('[data-post-action-vote-up]')
+        break
+      case 'KeyS':
+        event.preventDefault()
+        clickActivePostAction('[data-post-action-vote-down]')
+        break
+      case 'KeyA':
+        event.preventDefault()
+        moveKeyboardSelection(-1)
+        break
+      case 'KeyD':
+        event.preventDefault()
+        moveKeyboardSelection(1)
+        break
+      case 'KeyF':
+        event.preventDefault()
+        clickActivePostAction('[data-post-action-toggle-expand]')
+        break
+      default:
+        break
+    }
+  }
 
   async function loadMore() {
     if (loading) return
@@ -332,8 +478,9 @@
     elements.forEach((el) => observer.observe(el))
 
     const postContainer = document.querySelector('#feed')
+    let mutationObserver: MutationObserver | null = null
     if (postContainer) {
-      const mutationObserver = new MutationObserver((mutations) => {
+      mutationObserver = new MutationObserver((mutations) => {
         mutations.forEach((mutation) => {
           if (mutation.type === 'childList') {
             mutation.addedNodes.forEach((node) => {
@@ -361,10 +508,26 @@
         subtree: true,
       })
     }
+
+    return () => {
+      observer.disconnect()
+      mutationObserver?.disconnect()
+    }
+  })
+
+  afterUpdate(() => {
+    const containers = getFeedPostContainers()
+    if (!containers.length) {
+      keyboardActiveIndex = null
+      return
+    }
+    if (keyboardActiveIndex !== null && keyboardActiveIndex >= containers.length) {
+      keyboardActiveIndex = containers.length - 1
+    }
   })
 </script>
 
-<!-- <svelte:window on:keydown={handleKeydown} /> -->
+<svelte:window on:keydown={handleKeyboardShortcuts} />
 
 <div class="mx-auto w-full {$userSettings.newWidth ? 'max-w-screen-sm' : ''} px-3 sm:px-4">
   <ul
@@ -386,7 +549,7 @@
         </Placeholder>
       </div>
     {:else}
-      <div id="feed">
+      <div id="feed" bind:this={feedElement}>
         {#each posts as post, index (post.post.id)}
           <li
             data-index={index}
@@ -394,6 +557,7 @@
             class="relative post-container {index < 7
               ? 'pop-in opacity-0'
               : ''} -mx-4 px-4 sm:px-6 mb-8 bg-white dark:bg-zinc-900 rounded-xl"
+            class:keyboard-post-active={keyboardActiveIndex === index}
           >
             <Post
               hideCommunity={typeof community === 'boolean' ? community : false}
@@ -540,5 +704,13 @@
   .pop-in {
     animation: popIn 0.8s cubic-bezier(0.165, 0.84, 0.44, 1) forwards
       var(--anim-delay);
+  }
+
+  .keyboard-post-active {
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.55);
+  }
+
+  :global(.dark) .keyboard-post-active {
+    box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.75);
   }
 </style>

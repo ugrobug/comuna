@@ -61,6 +61,7 @@
 
   let expanded = false
   let hasOverflow = false
+  let hadOverflow = false
   let element: Element
   let isFirstImage = true;
   let firstImageUrl: string | null = null;
@@ -243,6 +244,26 @@
       await tick()
       setTimeout(setupGalleries, 0)
     }
+  }
+
+  const collapse = async (event?: Event) => {
+    event?.preventDefault()
+    event?.stopPropagation()
+    if (!expanded || !hadOverflow) return
+    expanded = false
+    hasOverflow = true
+    if (browser) {
+      await tick()
+      setTimeout(setupGalleries, 0)
+    }
+  }
+
+  const toggleExpand = async (event?: Event) => {
+    if (expanded) {
+      await collapse(event)
+      return
+    }
+    await expand(event)
   }
 
   const getSelectedPollOptions = (pollElement: HTMLElement): number[] => {
@@ -949,9 +970,11 @@
     if (!showFullBody && collapsible) {
       expanded = false
       hasOverflow = false
+      hadOverflow = false
     } else {
       expanded = true
       hasOverflow = false
+      hadOverflow = false
     }
   }
 
@@ -970,6 +993,9 @@
       }
       // If it doesn't overflow in collapsed mode, show it fully.
       hasOverflow = element.scrollHeight > element.clientHeight + 4
+      if (hasOverflow) {
+        hadOverflow = true
+      }
       if (!hasOverflow) {
         expanded = true
       }
@@ -996,6 +1022,9 @@
         return
       }
       hasOverflow = element.scrollHeight > element.clientHeight + 4
+      if (hasOverflow) {
+        hadOverflow = true
+      }
       if (!hasOverflow) {
         expanded = true
       }
@@ -1037,13 +1066,26 @@
     {@html sanitizeHtml(processedBody)}
   </svelte:element>
 
+  {#if collapsible && !showFullBody && expanded && hadOverflow}
+    <button
+      type="button"
+      class="sr-only"
+      data-post-action-toggle-expand
+      on:click={toggleExpand}
+      aria-label="Свернуть пост"
+    >
+      Свернуть пост
+    </button>
+  {/if}
+
   {#if collapsible && !showFullBody && !expanded && hasOverflow}
     <div class="post-expand-overlay pointer-events-none absolute inset-x-0 bottom-0 flex justify-center pt-16">
       <div class="pointer-events-auto flex justify-center w-full bg-gradient-to-b from-transparent to-white dark:to-zinc-900 pb-3">
         <button
           type="button"
+          data-post-action-toggle-expand
           class="mt-6 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white/95 dark:bg-zinc-900/95 px-4 py-2 text-sm font-medium text-slate-700 dark:text-zinc-200 shadow-sm hover:shadow-md transition"
-          on:click={expand}
+          on:click={toggleExpand}
         >
           Показать полностью
         </button>

@@ -404,6 +404,18 @@ class PostRead(models.Model):
         return f"{self.post_id}:{self.user_id}"
 
 
+class PostFavorite(models.Model):
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="favorites")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="post_favorites")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("post", "user")
+
+    def __str__(self) -> str:
+        return f"{self.post_id}:{self.user_id}"
+
+
 class BotSession(models.Model):
     telegram_user_id = models.BigIntegerField(unique=True)
     auto_publish = models.BooleanField(default=True)

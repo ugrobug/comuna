@@ -80,6 +80,7 @@
   >
     <button
       on:click={() => castVote(vote == 1 ? 0 : 1)}
+      data-post-action-vote-up
       class="flex items-center gap-0.5 transition-colors relative z-0
       {shouldShowVoteColor(vote, 'upvotes')}"
       aria-pressed={vote == 1}
@@ -104,6 +105,7 @@
     {#if $site?.site_view.local_site.enable_downvotes ?? true}
       <button
         on:click={() => castVote(vote == -1 ? 0 : -1)}
+        data-post-action-vote-down
         class="flex items-center flex-row-reverse gap-0.5 transition-colors
         {shouldShowVoteColor(vote, 'downvotes')}"
         aria-pressed={vote == -1}
