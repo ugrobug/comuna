@@ -33,6 +33,7 @@
   import Subscribe from '../../../../routes/communities/Subscribe.svelte'
   import LoginModal from '$lib/components/auth/LoginModal.svelte'
   import { EyeSlash } from 'svelte-hero-icons'
+  import { portalTooltip } from '$lib/actions/portalTooltip'
 
   export let community: Community | undefined = undefined
   export let user: Person | undefined = undefined
@@ -474,11 +475,11 @@
       {#if authorUsername}
         <button
           type="button"
+          use:portalTooltip={{ text: myFeedActionLabel }}
           class="inline-flex items-center justify-center h-8 w-8 rounded-full border transition-colors action-tooltip
           {authorInMyFeed
             ? 'border-blue-300 bg-blue-50 text-blue-600 dark:border-blue-700 dark:bg-blue-950 dark:text-blue-300'
             : 'border-slate-300 bg-white text-slate-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300'}"
-          title={myFeedActionLabel}
           aria-label={myFeedActionLabel}
           data-tooltip={myFeedActionLabel}
           on:click={toggleAuthorMyFeed}
@@ -488,11 +489,11 @@
         </button>
         <button
           type="button"
+          use:portalTooltip={{ text: hiddenActionLabel }}
           class="inline-flex items-center justify-center h-8 w-8 rounded-full border transition-colors action-tooltip
           {authorHidden
             ? 'border-rose-300 bg-rose-50 text-rose-600 dark:border-rose-700 dark:bg-rose-950 dark:text-rose-300'
             : 'border-slate-300 bg-white text-slate-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300'}"
-          title={hiddenActionLabel}
           aria-label={hiddenActionLabel}
           data-tooltip={hiddenActionLabel}
           on:click={toggleHiddenAuthor}

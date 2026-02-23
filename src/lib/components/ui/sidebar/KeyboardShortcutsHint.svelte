@@ -1,5 +1,6 @@
 <script lang="ts">
   import { browser } from '$app/environment'
+  import { portalTooltip } from '$lib/actions/portalTooltip'
   import { siteUser } from '$lib/siteAuth'
 
   export let enabled = true
@@ -73,8 +74,8 @@
         {#each shortcuts as shortcut}
           <div>
             <kbd
+              use:portalTooltip={{ text: shortcut.hint }}
               class="inline-flex items-center justify-center min-w-[2rem] h-8 px-2 rounded-lg border border-slate-300 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-sm font-semibold text-slate-900 dark:text-zinc-100 shadow-sm"
-              title={shortcut.hint}
               aria-label={`${shortcut.key}: ${shortcut.hint}`}
             >
               {shortcut.key}
