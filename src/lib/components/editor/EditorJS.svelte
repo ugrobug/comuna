@@ -502,6 +502,7 @@
     private data: { file: { url: string; alt: string; title: string }; caption: string };
     private config: any;
     private isUploading: boolean = false;
+    private shouldAutoOpenPicker: boolean = false;
 
     static get toolbox() {
       return {
@@ -521,6 +522,7 @@
         caption: data?.caption || ''
       }
       this.config = config || {}
+      this.shouldAutoOpenPicker = !Boolean(data?.file?.url)
     }
 
     render() {
@@ -687,6 +689,18 @@
       wrapper.appendChild(caption)
       wrapper.appendChild(altInput)
       wrapper.appendChild(titleInput)
+
+      // When a new image block is added from the toolbox, immediately open
+      // the file picker to avoid an extra click on the upload button.
+      if (this.shouldAutoOpenPicker && !this.data.file.url) {
+        this.shouldAutoOpenPicker = false
+        button.textContent = 'Выберите изображение'
+        try {
+          input.click()
+        } catch (error) {
+          console.warn('Не удалось автоматически открыть выбор файла:', error)
+        }
+      }
       
       return wrapper
     }
