@@ -2,6 +2,7 @@
   import { browser } from '$app/environment'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import Post from '$lib/components/lemmy/post/Post.svelte'
+  import { feedKeyboardShortcuts } from '$lib/actions/feedKeyboardShortcuts'
   import { backendPostToPostView, buildBackendPostPath, buildRubricPostsUrl } from '$lib/api/backend'
   import { userSettings } from '$lib/settings'
   import { env } from '$env/dynamic/public'
@@ -170,11 +171,12 @@
   </section>
 
   {#if visiblePosts?.length}
-    <div class="flex flex-col gap-6">
+    <div class="flex flex-col gap-6" use:feedKeyboardShortcuts>
       {#each visiblePosts as backendPost (backendPost.id)}
         {@const postView = backendPostToPostView(backendPost)}
         <Post
           post={postView}
+          class="feed-shortcut-post"
           view="cozy"
           actions={true}
           showReadMore={false}

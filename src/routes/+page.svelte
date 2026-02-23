@@ -20,6 +20,7 @@
   import { siteToken, siteUser } from '$lib/siteAuth'
   import { userSettings } from '$lib/settings'
   import { normalizeTag } from '$lib/tags'
+  import { feedKeyboardShortcuts } from '$lib/actions/feedKeyboardShortcuts'
   import { Button } from 'mono-svelte'
   import { onDestroy, onMount } from 'svelte'
   import { Cog6Tooth, Icon } from 'svelte-hero-icons'
@@ -518,11 +519,12 @@
         <div class="text-sm text-slate-500">Загружаем теги настроения...</div>
       {/if}
       {#if filteredMyFeedPosts?.length}
-        <div class="flex flex-col gap-6">
+        <div class="flex flex-col gap-6" use:feedKeyboardShortcuts>
           {#each filteredMyFeedPosts as backendPost (backendPost.id)}
             {@const postView = backendPostToPostView(backendPost, backendPost.author)}
             <Post
               post={postView}
+              class="feed-shortcut-post"
               view="cozy"
               actions={true}
               showReadMore={false}
@@ -543,11 +545,12 @@
       {/if}
     </div>
   {:else if visiblePosts?.length}
-    <div class="flex flex-col gap-6">
+    <div class="flex flex-col gap-6" use:feedKeyboardShortcuts>
       {#each visiblePosts as backendPost (backendPost.id)}
         {@const postView = backendPostToPostView(backendPost, backendPost.author)}
         <Post
           post={postView}
+          class="feed-shortcut-post"
           view="cozy"
           actions={true}
           showReadMore={false}
