@@ -168,99 +168,105 @@
         </p>
       {/if}
       <div class="flex flex-col gap-4">
-        {#if $siteUser.authors.length > 1}
-          <Select bind:value={createAuthor} class="max-w-xs">
-            <option value="" disabled>Выберите канал</option>
-            {#each $siteUser.authors as author}
-              <option value={author.username}>@{author.username}</option>
-            {/each}
-          </Select>
-        {/if}
-        {#if rubricsLoading}
-          <div class="flex items-center gap-2 text-sm text-slate-500 dark:text-zinc-400">
-            <Spinner size="sm" />
-            Загрузка рубрик...
-          </div>
-        {:else}
-          <div class="relative w-full" bind:this={rubricMenuRef}>
-            <button
-              type="button"
-              class="w-full min-w-0 sm:min-w-[22rem] max-w-full rounded-lg border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-3 py-2 text-left shadow-sm flex items-start justify-between gap-3"
-              aria-haspopup="listbox"
-              aria-expanded={rubricMenuOpen}
-              on:click={() => (rubricMenuOpen = !rubricMenuOpen)}
-            >
-              <div class="flex items-start gap-2 min-w-0">
-                <div class="h-7 w-7 rounded-full border border-slate-200 dark:border-zinc-700 bg-slate-100 dark:bg-zinc-800 overflow-hidden flex items-center justify-center text-xs font-semibold text-slate-500 dark:text-zinc-400">
-                  {#if selectedRubric?.icon_thumb_url || selectedRubric?.icon_url}
-                    <img
-                      src={selectedRubric.icon_thumb_url ?? selectedRubric.icon_url}
-                      alt={selectedRubric.name}
-                      class="h-full w-full object-cover"
-                    />
-                  {:else if selectedRubric?.name}
-                    {selectedRubric.name[0]}
-                  {:else}
-                    #
-                  {/if}
-                </div>
-                <span class="text-sm text-slate-700 dark:text-zinc-200 whitespace-normal break-words">
-                  {#if selectedRubric}
-                    {selectedRubric.name}
-                  {:else}
-                    Выберите рубрику
-                  {/if}
-                </span>
-              </div>
-              <svg
-                class="h-4 w-4 text-slate-500 dark:text-zinc-400 flex-shrink-0"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-                aria-hidden="true"
-              >
-                <path
-                  fill-rule="evenodd"
-                  d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.24 4.5a.75.75 0 01-1.08 0l-4.24-4.5a.75.75 0 01.02-1.06z"
-                  clip-rule="evenodd"
-                />
-              </svg>
-            </button>
+        <div
+          class={`grid grid-cols-1 gap-4 items-start ${
+            $siteUser.authors.length > 1 ? 'md:grid-cols-2' : ''
+          }`}
+        >
+          {#if $siteUser.authors.length > 1}
+            <Select bind:value={createAuthor} class="w-full">
+              <option value="" disabled>Выберите канал</option>
+              {#each $siteUser.authors as author}
+                <option value={author.username}>@{author.username}</option>
+              {/each}
+            </Select>
+          {/if}
 
-            {#if rubricMenuOpen}
-              <div
-                class="absolute z-20 mt-2 w-full rounded-lg border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-lg max-h-72 overflow-auto"
-                role="listbox"
+          {#if rubricsLoading}
+            <div class="flex min-h-[42px] items-center gap-2 text-sm text-slate-500 dark:text-zinc-400">
+              <Spinner size="sm" />
+              Загрузка рубрик...
+            </div>
+          {:else}
+            <div class="relative w-full" bind:this={rubricMenuRef}>
+              <button
+                type="button"
+                class="w-full min-w-0 max-w-full rounded-lg border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-3 py-2 text-left shadow-sm flex items-start justify-between gap-3"
+                aria-haspopup="listbox"
+                aria-expanded={rubricMenuOpen}
+                on:click={() => (rubricMenuOpen = !rubricMenuOpen)}
               >
-                {#each rubrics as rubric}
-                  <button
-                    type="button"
-                    class={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-zinc-800 ${
-                      createRubric === rubric.slug ? 'bg-slate-100 dark:bg-zinc-800' : ''
-                    }`}
-                    on:click={() => selectRubric(rubric.slug)}
-                  >
-                    <div class="h-7 w-7 rounded-full border border-slate-200 dark:border-zinc-700 bg-slate-100 dark:bg-zinc-800 overflow-hidden flex items-center justify-center text-xs font-semibold text-slate-500 dark:text-zinc-400 flex-shrink-0">
-                      {#if rubric.icon_thumb_url || rubric.icon_url}
-                        <img
-                          src={rubric.icon_thumb_url ?? rubric.icon_url}
-                          alt={rubric.name}
-                          class="h-full w-full object-cover"
-                        />
-                      {:else}
-                        {rubric.name?.[0] ?? 'R'}
-                      {/if}
-                    </div>
-                    <span class="flex-1 whitespace-normal text-slate-700 dark:text-zinc-200">
-                      {rubric.name}
-                    </span>
-                  </button>
-                {/each}
-              </div>
-            {/if}
-          </div>
-        {/if}
+                <div class="flex items-start gap-2 min-w-0">
+                  <div class="h-7 w-7 rounded-full border border-slate-200 dark:border-zinc-700 bg-slate-100 dark:bg-zinc-800 overflow-hidden flex items-center justify-center text-xs font-semibold text-slate-500 dark:text-zinc-400">
+                    {#if selectedRubric?.icon_thumb_url || selectedRubric?.icon_url}
+                      <img
+                        src={selectedRubric.icon_thumb_url ?? selectedRubric.icon_url}
+                        alt={selectedRubric.name}
+                        class="h-full w-full object-cover"
+                      />
+                    {:else if selectedRubric?.name}
+                      {selectedRubric.name[0]}
+                    {:else}
+                      #
+                    {/if}
+                  </div>
+                  <span class="text-sm text-slate-700 dark:text-zinc-200 whitespace-normal break-words">
+                    {#if selectedRubric}
+                      {selectedRubric.name}
+                    {:else}
+                      Выберите рубрику
+                    {/if}
+                  </span>
+                </div>
+                <svg
+                  class="h-4 w-4 text-slate-500 dark:text-zinc-400 flex-shrink-0"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    fill-rule="evenodd"
+                    d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.24 4.5a.75.75 0 01-1.08 0l-4.24-4.5a.75.75 0 01.02-1.06z"
+                    clip-rule="evenodd"
+                  />
+                </svg>
+              </button>
+
+              {#if rubricMenuOpen}
+                <div
+                  class="absolute z-20 mt-2 w-full rounded-lg border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-lg max-h-72 overflow-auto"
+                  role="listbox"
+                >
+                  {#each rubrics as rubric}
+                    <button
+                      type="button"
+                      class={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-zinc-800 ${
+                        createRubric === rubric.slug ? 'bg-slate-100 dark:bg-zinc-800' : ''
+                      }`}
+                      on:click={() => selectRubric(rubric.slug)}
+                    >
+                      <div class="h-7 w-7 rounded-full border border-slate-200 dark:border-zinc-700 bg-slate-100 dark:bg-zinc-800 overflow-hidden flex items-center justify-center text-xs font-semibold text-slate-500 dark:text-zinc-400 flex-shrink-0">
+                        {#if rubric.icon_thumb_url || rubric.icon_url}
+                          <img
+                            src={rubric.icon_thumb_url ?? rubric.icon_url}
+                            alt={rubric.name}
+                            class="h-full w-full object-cover"
+                          />
+                        {:else}
+                          {rubric.name?.[0] ?? 'R'}
+                        {/if}
+                      </div>
+                      <span class="flex-1 whitespace-normal text-slate-700 dark:text-zinc-200">
+                        {rubric.name}
+                      </span>
+                    </button>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          {/if}
+        </div>
         <TextInput label="Заголовок" bind:value={createTitle} />
-        <TextInput label="Теги (через запятую)" bind:value={createTags} />
         <EditorJS
           bind:value={createContent}
           placeholder="Текст поста"
@@ -268,6 +274,7 @@
           postId={null}
           showPostSettings={false}
         />
+        <TextInput label="Теги (через запятую)" bind:value={createTags} />
         {#if createError}
           <p class="text-sm text-red-600">{createError}</p>
         {/if}

@@ -1205,6 +1205,201 @@
   let element: HTMLElement
   let editor: any
   let markdownOutput = ''
+  let destroyBlockDragAndDrop: (() => void) | null = null
+
+  const setupEditorBlockDragAndDrop = (editorInstance: any, rootElement: HTMLElement) => {
+    const redactor = rootElement.querySelector('.codex-editor__redactor') as HTMLElement | null
+    if (!redactor) {
+      return () => {}
+    }
+
+    let fromIndex: number | null = null
+    let dragSourceBlock: HTMLElement | null = null
+    let currentDropBlock: HTMLElement | null = null
+    let currentDropPosition: 'before' | 'after' | null = null
+
+    const clearDropDecorations = () => {
+      redactor.querySelectorAll('.ce-block.comuna-drop-before, .ce-block.comuna-drop-after').forEach((block) => {
+        block.classList.remove('comuna-drop-before', 'comuna-drop-after')
+      })
+      currentDropBlock = null
+      currentDropPosition = null
+    }
+
+    const clearDragState = () => {
+      clearDropDecorations()
+      if (dragSourceBlock) {
+        dragSourceBlock.classList.remove('comuna-block-dragging')
+      }
+      rootElement
+        .querySelectorAll('.ce-toolbar__settings-btn.editorjs-dnd-dragging')
+        .forEach((button) => button.classList.remove('editorjs-dnd-dragging'))
+      dragSourceBlock = null
+      fromIndex = null
+    }
+
+    const getEditorBlocks = () => Array.from(redactor.querySelectorAll('.ce-block')) as HTMLElement[]
+
+    const getBlockIndex = (block: HTMLElement | null) => {
+      if (!block) return -1
+      return getEditorBlocks().indexOf(block)
+    }
+
+    const ensureSettingsButtonsDraggable = () => {
+      rootElement.querySelectorAll('.ce-toolbar__settings-btn').forEach((button) => {
+        const el = button as HTMLElement
+        if (!el.hasAttribute('draggable')) {
+          el.setAttribute('draggable', 'true')
+        }
+        if (!el.title) {
+          el.title = 'Перетащите, чтобы переместить блок'
+        }
+      })
+    }
+
+    const mutationObserver = new MutationObserver(() => {
+      ensureSettingsButtonsDraggable()
+    })
+
+    const onPointerDown = (event: Event) => {
+      const target = event.target as HTMLElement | null
+      const settingsButton = target?.closest('.ce-toolbar__settings-btn') as HTMLElement | null
+      if (settingsButton) {
+        settingsButton.setAttribute('draggable', 'true')
+      }
+    }
+
+    const onDragStart = (event: DragEvent) => {
+      const target = event.target as HTMLElement | null
+      const settingsButton = target?.closest('.ce-toolbar__settings-btn') as HTMLElement | null
+      if (!settingsButton) return
+
+      const currentIndex = typeof editorInstance?.blocks?.getCurrentBlockIndex === 'function'
+        ? editorInstance.blocks.getCurrentBlockIndex()
+        : -1
+
+      const blocks = getEditorBlocks()
+      const sourceBlock = blocks[currentIndex]
+      if (currentIndex < 0 || !sourceBlock) return
+
+      fromIndex = currentIndex
+      dragSourceBlock = sourceBlock
+
+      dragSourceBlock.classList.add('comuna-block-dragging')
+      settingsButton.classList.add('editorjs-dnd-dragging')
+
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = 'move'
+        event.dataTransfer.setData('text/plain', String(currentIndex))
+      }
+    }
+
+    const resolveDropPosition = (event: DragEvent, block: HTMLElement): 'before' | 'after' => {
+      const rect = block.getBoundingClientRect()
+      return event.clientY >= rect.top + rect.height / 2 ? 'after' : 'before'
+    }
+
+    const paintDropTarget = (block: HTMLElement, position: 'before' | 'after') => {
+      if (currentDropBlock && currentDropBlock !== block) {
+        currentDropBlock.classList.remove('comuna-drop-before', 'comuna-drop-after')
+      }
+      if (currentDropBlock === block && currentDropPosition === position) {
+        return
+      }
+      block.classList.remove('comuna-drop-before', 'comuna-drop-after')
+      block.classList.add(position === 'before' ? 'comuna-drop-before' : 'comuna-drop-after')
+      currentDropBlock = block
+      currentDropPosition = position
+    }
+
+    const onDragOver = (event: DragEvent) => {
+      if (fromIndex == null) return
+      const target = event.target as HTMLElement | null
+      const targetBlock = target?.closest('.ce-block') as HTMLElement | null
+      if (!targetBlock || !redactor.contains(targetBlock)) {
+        return
+      }
+
+      event.preventDefault()
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = 'move'
+      }
+
+      const position = resolveDropPosition(event, targetBlock)
+      paintDropTarget(targetBlock, position)
+    }
+
+    const onDrop = async (event: DragEvent) => {
+      if (fromIndex == null) return
+
+      const target = event.target as HTMLElement | null
+      const targetBlock = target?.closest('.ce-block') as HTMLElement | null
+      if (!targetBlock || !redactor.contains(targetBlock)) {
+        clearDragState()
+        return
+      }
+
+      event.preventDefault()
+
+      const targetIndex = getBlockIndex(targetBlock)
+      if (targetIndex < 0) {
+        clearDragState()
+        return
+      }
+
+      const position = resolveDropPosition(event, targetBlock)
+      const blocksCount = getEditorBlocks().length
+      let toIndex = fromIndex
+
+      if (position === 'before') {
+        toIndex = fromIndex < targetIndex ? targetIndex - 1 : targetIndex
+      } else {
+        toIndex = fromIndex < targetIndex ? targetIndex : targetIndex + 1
+      }
+
+      toIndex = Math.max(0, Math.min(blocksCount - 1, toIndex))
+
+      if (toIndex === fromIndex) {
+        clearDragState()
+        return
+      }
+
+      const sourceIndex = fromIndex
+      clearDragState()
+
+      try {
+        editorInstance.blocks.move(toIndex, sourceIndex)
+        const data = await editorInstance.save()
+        updateMarkdown(data)
+      } catch (error) {
+        console.error('Ошибка при перетаскивании блока EditorJS:', error)
+      } finally {
+        ensureSettingsButtonsDraggable()
+      }
+    }
+
+    const onDragEnd = () => {
+      clearDragState()
+    }
+
+    ensureSettingsButtonsDraggable()
+    mutationObserver.observe(rootElement, { childList: true, subtree: true })
+    rootElement.addEventListener('pointerdown', onPointerDown, true)
+    rootElement.addEventListener('dragstart', onDragStart, true)
+    rootElement.addEventListener('dragend', onDragEnd, true)
+    redactor.addEventListener('dragover', onDragOver)
+    redactor.addEventListener('drop', onDrop)
+
+    return () => {
+      mutationObserver.disconnect()
+      clearDragState()
+      rootElement.removeEventListener('pointerdown', onPointerDown, true)
+      rootElement.removeEventListener('dragstart', onDragStart, true)
+      rootElement.removeEventListener('dragend', onDragEnd, true)
+      redactor.removeEventListener('dragover', onDragOver)
+      redactor.removeEventListener('drop', onDrop)
+    }
+  }
 
   // Функция для автосохранения черновика
   const autosaveDraft = () => {
@@ -1670,6 +1865,9 @@
       },
       onReady: () => {
         console.log('🚀 EditorJS готов к работе');
+
+        destroyBlockDragAndDrop?.()
+        destroyBlockDragAndDrop = setupEditorBlockDragAndDrop(editor, element)
         
         // Добавляем обработчик кликов по ссылкам для их редактирования
         const editorElement = element.querySelector('.codex-editor__redactor');
@@ -1760,6 +1958,8 @@
   }
 
   onDestroy(() => {
+    destroyBlockDragAndDrop?.()
+    destroyBlockDragAndDrop = null
     if (editor) {
       editor.destroy()
     }
@@ -2680,6 +2880,39 @@
 
   :global(.ce-toolbar__actions button:hover img) {
     opacity: 1;
+  }
+
+  :global(.ce-toolbar__settings-btn[draggable='true']) {
+    cursor: grab;
+  }
+
+  :global(.ce-toolbar__settings-btn.editorjs-dnd-dragging) {
+    cursor: grabbing;
+  }
+
+  :global(.ce-block.comuna-block-dragging) {
+    opacity: 0.65;
+  }
+
+  :global(.ce-block.comuna-drop-before),
+  :global(.ce-block.comuna-drop-after) {
+    border-radius: 0.5rem;
+  }
+
+  :global(.ce-block.comuna-drop-before) {
+    box-shadow: inset 0 3px 0 #3b82f6;
+  }
+
+  :global(.ce-block.comuna-drop-after) {
+    box-shadow: inset 0 -3px 0 #3b82f6;
+  }
+
+  :global(.dark .ce-block.comuna-drop-before) {
+    box-shadow: inset 0 3px 0 #60a5fa;
+  }
+
+  :global(.dark .ce-block.comuna-drop-after) {
+    box-shadow: inset 0 -3px 0 #60a5fa;
   }
 
   :global(.ce-block__content img) {
