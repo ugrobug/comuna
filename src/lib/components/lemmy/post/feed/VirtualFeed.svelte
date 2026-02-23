@@ -83,8 +83,9 @@
   let error: any = undefined
   let loading = false
   let hasMore = true
-  let feedElement: HTMLDivElement | null = null
+  let feedElement: HTMLUListElement | null = null
   let keyboardActiveIndex: number | null = null
+  let keyboardViewportSyncQueued = false
 
   const isEditableTarget = (target: EventTarget | null): boolean => {
     const element = target as HTMLElement | null
@@ -99,7 +100,7 @@
 
   const getFeedPostContainers = (): HTMLElement[] => {
     if (!feedElement) return []
-    return Array.from(feedElement.querySelectorAll('.post-container')) as HTMLElement[]
+    return Array.from(feedElement.querySelectorAll('li.post-container')) as HTMLElement[]
   }
 
   const isVisibleInViewport = (element: HTMLElement): boolean => {
@@ -228,6 +229,16 @@
       default:
         break
     }
+  }
+
+  const syncKeyboardActiveToViewport = () => {
+    if (!browser) return
+    if (keyboardViewportSyncQueued) return
+    keyboardViewportSyncQueued = true
+    requestAnimationFrame(() => {
+      keyboardViewportSyncQueued = false
+      normalizeKeyboardActiveIndex(true)
+    })
   }
 
   async function loadMore() {
@@ -474,10 +485,10 @@
       threshold: 0.5,
     })
 
-    const elements = document.querySelectorAll('.post-container')
+    const elements = getFeedPostContainers()
     elements.forEach((el) => observer.observe(el))
 
-    const postContainer = document.querySelector('#feed')
+    const postContainer = feedElement
     let mutationObserver: MutationObserver | null = null
     if (postContainer) {
       mutationObserver = new MutationObserver((mutations) => {
@@ -527,10 +538,15 @@
   })
 </script>
 
-<svelte:window on:keydown={handleKeyboardShortcuts} />
+<svelte:window
+  on:keydown={handleKeyboardShortcuts}
+  on:scroll={syncKeyboardActiveToViewport}
+  on:resize={syncKeyboardActiveToViewport}
+/>
 
 <div class="mx-auto w-full {$userSettings.newWidth ? 'max-w-screen-sm' : ''} px-3 sm:px-4">
   <ul
+    bind:this={feedElement}
     class={`flex flex-col list-none ${
       $userSettings.view == 'card' ? 'gap-3 md:gap-4' : ''
     }`}
@@ -549,7 +565,7 @@
         </Placeholder>
       </div>
     {:else}
-      <div id="feed" bind:this={feedElement}>
+      <div id="feed">
         {#each posts as post, index (post.post.id)}
           <li
             data-index={index}
