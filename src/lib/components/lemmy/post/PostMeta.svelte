@@ -539,28 +539,4 @@
   .action-tooltip {
     position: relative;
   }
-
-  .action-tooltip::after {
-    content: attr(data-tooltip);
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    bottom: calc(100% + 8px);
-    background: rgba(15, 23, 42, 0.95);
-    color: #fff;
-    font-size: 12px;
-    line-height: 1.2;
-    white-space: nowrap;
-    padding: 6px 8px;
-    border-radius: 6px;
-    opacity: 0;
-    pointer-events: none;
-    z-index: 40;
-    transition: opacity 0.12s ease;
-  }
-
-  .action-tooltip:hover::after,
-  .action-tooltip:focus-visible::after {
-    opacity: 1;
-  }
 </style>

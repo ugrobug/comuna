@@ -71,7 +71,7 @@
 
       <div class="mt-1 flex flex-wrap gap-2">
         {#each shortcuts as shortcut}
-          <div class="relative group">
+          <div>
             <kbd
               class="inline-flex items-center justify-center min-w-[2rem] h-8 px-2 rounded-lg border border-slate-300 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-sm font-semibold text-slate-900 dark:text-zinc-100 shadow-sm"
               title={shortcut.hint}
@@ -79,11 +79,6 @@
             >
               {shortcut.key}
             </kbd>
-            <div
-              class="pointer-events-none absolute left-1/2 top-full z-10 mt-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 dark:bg-zinc-100 px-2 py-1 text-[11px] font-medium text-white dark:text-zinc-900 opacity-0 shadow transition-opacity duration-150 group-hover:opacity-100"
-            >
-              {shortcut.hint}
-            </div>
           </div>
         {/each}
       </div>
