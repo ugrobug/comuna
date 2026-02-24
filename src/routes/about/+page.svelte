@@ -43,6 +43,21 @@
     </p>
   </div>
 
+  <a
+    href="https://productradar.ru/product/comuna?utm_source=badge"
+    target="_blank"
+    rel="noopener noreferrer"
+    class="inline-block"
+  >
+    <img
+      src="https://productradar.ru/badge?period=week&amp;rank=1&amp;theme=white"
+      alt="Награда Продукт недели #1 | Product Radar"
+      width="252"
+      height="68"
+      style="object-fit: initial; border: none; margin:0; width: 252px; height: 68px; vertical-align: bottom;"
+    />
+  </a>
+
   <SectionTitle class="text-lg font-semibold">Как это работает</SectionTitle>
   <ol class="list-decimal pl-6 space-y-2 text-base leading-relaxed">
     <li>Вы добавляете нашего бота в админы своего канала.</li>
