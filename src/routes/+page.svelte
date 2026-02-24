@@ -155,10 +155,7 @@
 	        onlyRead: readOnly,
 	      })
 	    } else if (feedType === 'favorites') {
-	      baseUrl = buildFavoritesFeedUrl({
-	        hideRead: effectiveHideRead,
-	        onlyRead: readOnly,
-	      })
+	      baseUrl = buildFavoritesFeedUrl()
 	    } else if (feedType === 'mine') {
 	      baseUrl = buildMyFeedUrl(
 	        selectedRubrics,
@@ -387,7 +384,7 @@
 
   $: if (feedType === 'favorites') {
     const authKey = $siteUser ? 'auth' : 'anon'
-    const key = `favorites:${authKey}:${readOnly ? 'only-read' : effectiveHideRead ? 'hide-read' : 'all-read'}`
+    const key = `favorites:${authKey}`
     if (key !== lastMyFeedKey) {
       lastMyFeedKey = key
       posts = []
@@ -485,7 +482,7 @@
       </Header>
     {/if}
   </header>
-  {#if $siteUser && readOnly}
+  {#if $siteUser && readOnly && feedType !== 'favorites'}
     <div class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-4 py-3 flex items-center justify-between gap-3">
       <div class="text-sm text-slate-600 dark:text-zinc-300">
         Показываем только прочитанные посты
@@ -498,7 +495,7 @@
         Вернуться
       </button>
     </div>
-  {:else if $siteUser && effectiveHideRead && hiddenReadCount > 0}
+  {:else if $siteUser && feedType !== 'favorites' && effectiveHideRead && hiddenReadCount > 0}
     <div class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-4 py-3 flex items-center justify-between gap-3">
       <div class="text-sm text-slate-600 dark:text-zinc-300">
         {hiddenReadCount} прочитанных постов скрыто

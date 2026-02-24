@@ -59,6 +59,7 @@
   $: communityName = post.community?.name || ''
   $: communityTitle = post.community?.title || ''
   $: backendTags = (post.post as { tags?: TagItem[] }).tags ?? []
+  $: backendViewsValue = ((post.counts as { views?: number }).views ?? 0)
   $: autoDisableUserLink =
     disableUserLink ??
     (communityName.toLowerCase() === 'comuna' ||
@@ -309,6 +310,7 @@
       backendPostUrl={isBackendPost ? postUrl : null}
       backendComments={isBackendPost ? post.counts.comments : null}
       backendLikes={isBackendPost ? post.counts.score : null}
+      backendViews={isBackendPost ? backendViewsValue : null}
     />
   {:else if view == 'compact'}
     <div class="flex flex-row items-center gap-2 text-sm">

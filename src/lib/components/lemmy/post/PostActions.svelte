@@ -79,6 +79,7 @@
   export let backendPostUrl: string | null = null
   export let backendComments: number | null = null
   export let backendLikes: number | null = null
+  export let backendViews: number | null = null
 
   const dispatcher = createEventDispatcher<{
     edit: PostView
@@ -97,6 +98,7 @@
   let backendVote = 0
   let backendLikesCount = backendLikes ?? 0
   let backendCommentsCount = backendComments ?? 0
+  let backendViewsCount = backendViews ?? 0
   let backendFavoriteSaving = false
   let backendFavorited = false
 
@@ -106,6 +108,7 @@
   $: if (backendLikes !== null && backendLikes !== undefined) backendLikesCount = backendLikes
   $: if (backendComments !== null && backendComments !== undefined)
     backendCommentsCount = backendComments
+  $: if (backendViews !== null && backendViews !== undefined) backendViewsCount = backendViews
   $: if (isBackendPost) backendFavorited = Boolean(post.saved)
 
   const commentLink = () => {
@@ -439,6 +442,17 @@
     </div>
   {/if}
   <div class="flex-1" />
+
+  {#if isBackendPost}
+    <div
+      class="inline-flex items-center gap-1.5 h-full px-3 rounded-full text-slate-500 dark:text-zinc-400"
+      title="Просмотры"
+      aria-label="Просмотры"
+    >
+      <Icon src={Eye} size="16" mini />
+      <FormattedNumber number={backendViewsCount} />
+    </div>
+  {/if}
 
   {#if $userSettings.debugInfo}
     {#if debug}

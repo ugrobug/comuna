@@ -65,6 +65,10 @@ export const buildPostReadUrl = (id: number | string): string => {
   return `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/read/`
 }
 
+export const buildPostViewUrl = (id: number | string): string => {
+  return `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/view/`
+}
+
 export const buildPostPollVoteUrl = (id: number | string): string => {
   return `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/poll-vote/`
 }
@@ -226,6 +230,7 @@ export type BackendPost = {
   rubric_icon_url?: string | null
   comments_count?: number
   likes_count?: number
+  views_count?: number
   is_favorite?: boolean
   tags?: BackendTag[]
   author?: BackendAuthor
@@ -302,6 +307,7 @@ export const backendPostToPostView = (
       post_id: post.id,
       comments: post.comments_count ?? 0,
       score: post.likes_count ?? 0,
+      views: post.views_count ?? 0,
       upvotes: 0,
       downvotes: 0,
       published: post.created_at,

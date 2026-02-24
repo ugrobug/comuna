@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import hmac
 import hashlib
+import math
 import os
 import re
 import secrets
@@ -59,6 +60,7 @@ User = get_user_model()
 _BOT_ID: int | None = None
 _TOKEN_SIGNER = TimestampSigner(salt="comuna-auth")
 _TOKEN_MAX_AGE = 60 * 60 * 24 * 30
+_FAKE_VIEWS_RAMP_SECONDS = 48 * 60 * 60
 
 
 def _issue_token(user: User) -> str:
@@ -540,6 +542,69 @@ def _author_avatar_url(request: HttpRequest | None, author: Author) -> str | Non
 
 def _author_rating_value(total_rating: int | None) -> float:
     return round((total_rating or 0) * 0.05, 2)
+
+
+def _stable_unit_float(*parts: object) -> float:
+    key = ":".join(str(part) for part in parts).encode("utf-8", "ignore")
+    digest = hashlib.sha256(key).digest()
+    raw = int.from_bytes(digest[:8], "big")
+    return raw / float((1 << 64) - 1)
+
+
+def _post_fake_views_current(post: Post, now=None) -> int:
+    target = max(int(getattr(post, "fake_views_target", 0) or 0), 0)
+    if target <= 0:
+        return 0
+
+    created_at = getattr(post, "created_at", None)
+    if not created_at:
+        return target
+    if now is None:
+        now = timezone.now()
+    if timezone.is_naive(created_at):
+        created_at = timezone.make_aware(created_at, dt_timezone.utc)
+
+    age_seconds = max((now - created_at).total_seconds(), 0.0)
+    if age_seconds <= 0:
+        return 0
+    if age_seconds >= _FAKE_VIEWS_RAMP_SECONDS:
+        return target
+
+    t = min(max(age_seconds / _FAKE_VIEWS_RAMP_SECONDS, 0.0), 1.0)
+    seed_base = getattr(post, "id", 0) or getattr(post, "message_id", 0) or 0
+    u1 = _stable_unit_float("v1", seed_base, target)
+    u2 = _stable_unit_float("v2", seed_base, target)
+    u3 = _stable_unit_float("v3", seed_base, target)
+    u4 = _stable_unit_float("v4", seed_base, target)
+    u5 = _stable_unit_float("v5", seed_base, target)
+    u6 = _stable_unit_float("v6", seed_base, target)
+
+    fast = 1.0 - math.pow(1.0 - t, 1.35 + u1 * 2.25)
+    smooth = t * t * (3.0 - 2.0 * t)
+    late = math.pow(t, 1.4 + u2 * 2.2)
+    slower_tail = 1.0 - math.pow(1.0 - t, 0.8 + u3 * 0.7)
+
+    w_fast = 0.35 + u4 * 0.25
+    w_smooth = 0.15 + u5 * 0.20
+    w_late = 0.10 + u6 * 0.20
+    w_tail = 1.0 - (w_fast + w_smooth + w_late)
+    if w_tail < 0.05:
+        w_tail = 0.05
+        total = w_fast + w_smooth + w_late + w_tail
+        w_fast /= total
+        w_smooth /= total
+        w_late /= total
+        w_tail /= total
+
+    progress = w_fast * fast + w_smooth * smooth + w_late * late + w_tail * slower_tail
+    progress = min(max(progress, 0.0), 1.0)
+    fake_views = int(target * progress)
+    return min(max(fake_views, 0), target)
+
+
+def _post_total_views(post: Post, now=None) -> int:
+    real_views = max(int(getattr(post, "real_views_count", 0) or 0), 0)
+    return real_views + _post_fake_views_current(post, now=now)
 
 
 def _author_posts_rating_filter(now) -> Q:
@@ -2605,6 +2670,9 @@ def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None
         "rubric": rubric.name if rubric else None,
         "rubric_slug": rubric.slug if rubric else None,
         "rubric_icon_url": _rubric_icon_url(request, rubric),
+        "comments_count": post.comments_count,
+        "likes_count": post.rating,
+        "views_count": _post_total_views(post),
         "tags": _serialize_tags(post.tags.all()),
         "is_favorite": is_favorite,
         "author": {
@@ -3158,6 +3226,7 @@ def post_like(request: HttpRequest, post_id: int) -> HttpResponse:
             "liked": liked,
             "vote": new_vote,
             "likes_count": post.rating,
+                "views_count": _post_total_views(post, now),
         }
     )
 
@@ -3379,6 +3448,7 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
                 "created_at": post.created_at.isoformat(),
                 "comments_count": post.comments_count,
                 "likes_count": post.rating,
+                "views_count": _post_total_views(post, now),
                 "tags": _serialize_tags(post.tags.all()),
                 "is_favorite": post.id in favorite_post_ids,
                 "author": {
@@ -3489,6 +3559,7 @@ def rubric_posts(request: HttpRequest, slug: str) -> HttpResponse:
                 "created_at": post.created_at.isoformat(),
                 "comments_count": post.comments_count,
                 "likes_count": post.rating,
+                "views_count": _post_total_views(post, now),
                 "tags": _serialize_tags(post.tags.all()),
                 "is_favorite": post.id in favorite_post_ids,
                 "author": {
@@ -3598,6 +3669,7 @@ def tag_posts(request: HttpRequest, tag: str) -> HttpResponse:
                 "created_at": post.created_at.isoformat(),
                 "comments_count": post.comments_count,
                 "likes_count": post.rating,
+                "views_count": _post_total_views(post, now),
                 "tags": _serialize_tags(post.tags.all()),
                 "is_favorite": post.id in favorite_post_ids,
                 "author": {
@@ -3658,6 +3730,7 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
                 "created_at": post.created_at.isoformat(),
                 "comments_count": post.comments_count,
                 "likes_count": post.rating,
+                "views_count": _post_total_views(post, now),
                 "tags": _serialize_tags(post.tags.all()),
                 "is_favorite": (
                     PostFavorite.objects.filter(post=post, user=current_user).exists()
@@ -3690,6 +3763,25 @@ def post_read(request: HttpRequest, post_id: int) -> HttpResponse:
     return JsonResponse({"ok": True})
 
 
+@csrf_exempt
+def post_view(request: HttpRequest, post_id: int) -> HttpResponse:
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    try:
+        now = timezone.now()
+        post = (
+            Post.objects.filter(is_blocked=False, is_pending=False, author__is_blocked=False)
+            .filter(_publish_ready_filter(now))
+            .get(id=post_id)
+        )
+    except Post.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "post not found"}, status=404)
+
+    Post.objects.filter(id=post.id).update(real_views_count=F("real_views_count") + 1)
+    post.real_views_count = (post.real_views_count or 0) + 1
+    return JsonResponse({"ok": True, "views_count": _post_total_views(post, now)})
+
+
 def home_feed(request: HttpRequest) -> HttpResponse:
     limit_raw = request.GET.get("limit", "10")
     try:
@@ -3703,8 +3795,6 @@ def home_feed(request: HttpRequest) -> HttpResponse:
         offset = 0
 
     now = timezone.now()
-    hide_read = request.GET.get("hide_read") in ("1", "true", "yes")
-    only_read = request.GET.get("only_read") in ("1", "true", "yes")
     read_user = (
         _get_user_from_request(request) if (hide_read or only_read) else None
     )
@@ -3779,6 +3869,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
                     "rating": post.rating,
                     "comments_count": post.comments_count,
                     "likes_count": post.rating,
+                "views_count": _post_total_views(post, now),
                 }
             )
         return JsonResponse(
@@ -3868,6 +3959,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
                 "rating": post.rating,
                 "comments_count": post.comments_count,
                 "likes_count": post.rating,
+                "views_count": _post_total_views(post, now),
             }
         )
         last_author_id = post.author_id
@@ -3960,6 +4052,7 @@ def fresh_feed(request: HttpRequest) -> HttpResponse:
                 "rating": post.rating,
                 "comments_count": post.comments_count,
                 "likes_count": post.rating,
+                "views_count": _post_total_views(post, now),
             }
         )
 
@@ -4003,15 +4096,9 @@ def favorites_feed(request: HttpRequest) -> HttpResponse:
         .order_by("-created_at")
     )
 
+    # "Favorites" always shows all favorited posts, regardless of read-status filters.
     hidden_read_count = 0
-    if hide_read:
-        hidden_read_count = favorites_qs.filter(post__reads__user=user).count()
-
     filtered_favorites = favorites_qs
-    if only_read:
-        filtered_favorites = filtered_favorites.filter(post__reads__user=user)
-    elif hide_read:
-        filtered_favorites = filtered_favorites.exclude(post__reads__user=user)
 
     favorite_rows = list(filtered_favorites[offset : offset + limit])
     posts = [row.post for row in favorite_rows]
@@ -4048,6 +4135,7 @@ def favorites_feed(request: HttpRequest) -> HttpResponse:
                 "rating": post.rating,
                 "comments_count": post.comments_count,
                 "likes_count": post.rating,
+                "views_count": _post_total_views(post, now),
             }
         )
 
@@ -4179,6 +4267,7 @@ def my_feed(request: HttpRequest) -> HttpResponse:
                 "rating": post.rating,
                 "comments_count": post.comments_count,
                 "likes_count": post.rating,
+                "views_count": _post_total_views(post, now),
             }
         )
 
@@ -4314,6 +4403,7 @@ def search_content(request: HttpRequest) -> HttpResponse:
                     "created_at": post.created_at.isoformat(),
                     "comments_count": post.comments_count,
                     "likes_count": post.rating,
+                "views_count": _post_total_views(post, now),
                     "tags": _serialize_tags(post.tags.all()),
                     "is_favorite": post.id in favorite_post_ids,
                     "author": {

@@ -4,13 +4,13 @@
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import Post from '$lib/components/lemmy/post/Post.svelte'
   import PostComments from '$lib/components/site/PostComments.svelte'
-  import { backendPostToPostView, buildBackendPostPath, buildPostReadUrl } from '$lib/api/backend'
+  import { backendPostToPostView, buildBackendPostPath, buildPostReadUrl, buildPostViewUrl } from '$lib/api/backend'
   import { onMount } from 'svelte'
   import { siteToken } from '$lib/siteAuth'
 
   export let data
 
-  const postView = backendPostToPostView(data.post)
+  let postView = backendPostToPostView(data.post)
 
   const stripHtml = (value: string) =>
     value.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
@@ -116,10 +116,35 @@
 
   onMount(async () => {
     if (!data?.post?.id) return
+    const postId = data.post.id
+
+    try {
+      const sessionKey = `comuna:post-view:${postId}`
+      const alreadyCounted = sessionStorage.getItem(sessionKey) === '1'
+      if (!alreadyCounted) {
+        sessionStorage.setItem(sessionKey, '1')
+        const viewResponse = await fetch(buildPostViewUrl(postId), { method: 'POST' })
+        if (viewResponse.ok) {
+          const payload = await viewResponse.json()
+          if (typeof payload?.views_count === 'number') {
+            postView = {
+              ...postView,
+              counts: {
+                ...postView.counts,
+                views: payload.views_count,
+              },
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to record post view:', error)
+    }
+
     const token = $siteToken
     if (!token) return
     try {
-      await fetch(buildPostReadUrl(data.post.id), {
+      await fetch(buildPostReadUrl(postId), {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,

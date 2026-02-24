@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from io import BytesIO
+import random
 import os
 import re
 import inspect
@@ -17,6 +18,10 @@ from PIL import Image, ImageOps
 User = get_user_model()
 
 _MORPH_ANALYZER = None
+
+
+def default_post_fake_views_target() -> int:
+    return random.randint(100, 2500)
 
 
 def _ensure_pymorphy2_compat():
@@ -321,6 +326,8 @@ class Post(models.Model):
     content = models.TextField(blank=True)
     rating = models.IntegerField(default=0)
     comments_count = models.PositiveIntegerField(default=0)
+    fake_views_target = models.PositiveIntegerField(default=default_post_fake_views_target)
+    real_views_count = models.PositiveIntegerField(default=0)
     source_url = models.URLField(max_length=255, blank=True)
     channel_url = models.URLField(max_length=255, blank=True)
     is_pending = models.BooleanField(default=False)
