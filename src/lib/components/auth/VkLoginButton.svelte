@@ -12,7 +12,6 @@
   let container: HTMLDivElement | null = null
   let loading = false
   let scriptLoaded = false
-  let showFallbackWidget = false
   const appId = env.PUBLIC_VK_APP_ID
 
   const renderWidget = () => {
@@ -89,32 +88,6 @@
     document.head.appendChild(script)
   })
 
-  function findWidgetTarget(): HTMLElement | null {
-    if (!container) return null
-    return (
-      (container.querySelector('iframe') as HTMLElement | null) ??
-      (container.querySelector('button') as HTMLElement | null) ??
-      (container.querySelector('a') as HTMLElement | null) ??
-      (container.querySelector('[role=\"button\"]') as HTMLElement | null) ??
-      (container.firstElementChild as HTMLElement | null)
-    )
-  }
-
-  export function triggerLogin() {
-    if (!appId) return
-    if (loading) return
-    const target = findWidgetTarget()
-    if (!target) {
-      if (!scriptLoaded) {
-        toast({ content: 'Загрузка VK‑входа…', type: 'info' })
-      } else {
-        showFallbackWidget = true
-        toast({ content: 'Нажмите кнопку VK ниже', type: 'info' })
-      }
-      return
-    }
-    target.click()
-  }
 </script>
 
 {#if !appId}
@@ -133,54 +106,67 @@
   </button>
 {:else}
   <div class="flex flex-col gap-2">
-    <button
-      type="button"
-      class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-left transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-zinc-600 dark:hover:bg-zinc-800"
-      on:click={triggerLogin}
-      disabled={loading}
-      title={label}
-    >
-      <span class="flex items-center gap-3">
-        <span class="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100 text-blue-700 font-semibold dark:bg-blue-900/40 dark:text-blue-300">
-          VK
+    <div class="relative">
+      <div
+        class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-left transition hover:border-slate-300 hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-zinc-600 dark:hover:bg-zinc-800"
+        title={label}
+        aria-hidden="true"
+      >
+        <span class="flex items-center gap-3">
+          <span class="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100 text-blue-700 font-semibold dark:bg-blue-900/40 dark:text-blue-300">
+            VK
+          </span>
+          <span class="flex min-w-0 flex-col">
+            <span class="text-sm font-semibold text-slate-900 dark:text-zinc-100">{label}</span>
+            {#if helperText}
+              <span class="text-xs text-slate-500 dark:text-zinc-400">{helperText}</span>
+            {/if}
+          </span>
         </span>
-        <span class="flex min-w-0 flex-col">
-          <span class="text-sm font-semibold text-slate-900 dark:text-zinc-100">{label}</span>
-          {#if helperText}
-            <span class="text-xs text-slate-500 dark:text-zinc-400">{helperText}</span>
-          {/if}
-        </span>
-      </span>
-    </button>
+      </div>
 
-    <div
-      bind:this={container}
-      class:hidden-native-widget={!showFallbackWidget}
-      class="vk-widget-host"
-      aria-hidden={!showFallbackWidget}
-    />
+      <div
+        bind:this={container}
+        class="vk-widget-host"
+        class:is-loading={!scriptLoaded || loading}
+        aria-label={label}
+      />
+    </div>
 
     {#if loading}
       <p class="text-xs text-slate-500 dark:text-zinc-400">Вход через VK…</p>
     {:else if !scriptLoaded}
       <p class="text-xs text-slate-500 dark:text-zinc-400">Загрузка VK виджета…</p>
-    {:else if showFallbackWidget}
-      <p class="text-xs text-slate-500 dark:text-zinc-400">Если окно не открылось, нажмите кнопку VK ниже.</p>
     {/if}
   </div>
 {/if}
 
 <style>
-  .hidden-native-widget {
+  .vk-widget-host {
     position: absolute;
-    left: -99999px;
-    width: 1px;
-    height: 1px;
+    inset: 0;
+    z-index: 2;
     overflow: hidden;
   }
 
-  .vk-widget-host:not(.hidden-native-widget) {
+  .vk-widget-host.is-loading {
+    pointer-events: none;
+  }
+
+  .vk-widget-host :global(iframe) {
+    opacity: 0;
+    width: 100% !important;
+    height: 100% !important;
+    cursor: pointer;
+  }
+
+  .vk-widget-host :global(button),
+  .vk-widget-host :global(a),
+  .vk-widget-host :global([role='button']) {
+    opacity: 0;
     width: 100%;
-    min-height: 56px;
+    height: 100%;
+    display: block;
+    cursor: pointer;
   }
 </style>
