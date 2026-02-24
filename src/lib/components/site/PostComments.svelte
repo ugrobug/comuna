@@ -112,21 +112,6 @@
     <span class="text-sm text-slate-500">{comments.filter((c) => !c.is_deleted).length}</span>
   </div>
 
-  {#if !$siteUser}
-    <p class="text-sm text-slate-500 dark:text-zinc-400 mb-4">
-      Войдите, чтобы участвовать в обсуждении.
-    </p>
-  {/if}
-
-  <div class="mb-8">
-    <SiteCommentForm
-      {postId}
-      {commentMasks}
-      placeholder="Поделитесь мнением..."
-      on:comment={(event) => upsertComment(event.detail)}
-    />
-  </div>
-
   {#if error}
     <p class="text-sm text-red-600 mb-4">{error}</p>
   {/if}
@@ -150,4 +135,19 @@
       {/each}
     </ul>
   {/if}
+
+  <div class="mt-8">
+    {#if !$siteUser}
+      <p class="text-sm text-slate-500 dark:text-zinc-400 mb-4">
+        Войдите, чтобы участвовать в обсуждении.
+      </p>
+    {/if}
+
+    <SiteCommentForm
+      {postId}
+      {commentMasks}
+      placeholder="Поделитесь мнением..."
+      on:comment={(event) => upsertComment(event.detail)}
+    />
+  </div>
 </section>
