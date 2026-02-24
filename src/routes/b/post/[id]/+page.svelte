@@ -35,26 +35,24 @@
     return `${baseUrl}/${value}`
   }
 
-  const isReliablePreviewImage = (value: string | null | undefined, baseUrl: string) => {
+  const isPreviewImageCandidate = (value: string | null | undefined) => {
     if (!value) return false
     try {
       const imageUrl = new URL(value)
-      const siteUrl = new URL(baseUrl)
-      const isSameHost = imageUrl.host === siteUrl.host
-      const looksLikeImage = /\.(png|jpe?g|webp|gif)(\?.*)?$/i.test(imageUrl.pathname + imageUrl.search)
-      return isSameHost && looksLikeImage
+      return imageUrl.protocol === 'http:' || imageUrl.protocol === 'https:'
     } catch {
       return false
     }
   }
 
-  const imageMimeByExtension = (value: string) => {
+  const imageMimeByExtension = (value: string | null | undefined) => {
+    if (!value) return ''
     const normalized = value.toLowerCase()
     if (normalized.includes('.png')) return 'image/png'
     if (normalized.includes('.jpg') || normalized.includes('.jpeg')) return 'image/jpeg'
     if (normalized.includes('.webp')) return 'image/webp'
     if (normalized.includes('.gif')) return 'image/gif'
-    return 'image/png'
+    return ''
   }
 
   const toJsonLd = (value: unknown) =>
@@ -75,8 +73,7 @@
     : undefined
   $: firstImage = extractFirstImage(data.post?.content || '')
   $: firstImageAbsolute = firstImage ? ensureAbsoluteUrl(firstImage, siteBaseUrl) : ''
-  $: fallbackOgImage = `${siteBaseUrl}/img/og-image-1200x630.png`
-  $: ogImage = isReliablePreviewImage(firstImageAbsolute, siteBaseUrl) ? firstImageAbsolute : fallbackOgImage
+  $: ogImage = isPreviewImageCandidate(firstImageAbsolute) ? firstImageAbsolute : ''
   $: ogImageType = imageMimeByExtension(ogImage)
   $: postDescription = buildDescription(data.post?.content || '')
   $: metaDescription = postDescription || (env.PUBLIC_SITE_DESCRIPTION || 'Публикация на Comuna')
@@ -112,7 +109,7 @@
               url: `${siteBaseUrl}/favicon_120x120.svg`,
             },
           },
-          image: [ogImage],
+          image: ogImage ? [ogImage] : undefined,
         })
       : ''
   $: articleSchemaTag = buildJsonLdTag(articleSchema)
@@ -147,11 +144,15 @@
     <meta property="og:title" content={postTitle} />
   {/if}
   <meta property="og:description" content={metaDescription} />
-  <meta property="og:image" content={ogImage} />
-  <meta property="og:image:secure_url" content={ogImage} />
-  <meta property="og:image:width" content="1200" />
-  <meta property="og:image:height" content="630" />
-  <meta property="og:image:type" content={ogImageType} />
+  {#if ogImage}
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:secure_url" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    {#if ogImageType}
+      <meta property="og:image:type" content={ogImageType} />
+    {/if}
+  {/if}
   {#if data.post?.created_at}
     <meta property="article:published_time" content={data.post.created_at} />
   {/if}
@@ -159,12 +160,14 @@
     <meta property="article:section" content={data.post.rubric} />
   {/if}
 
-  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:card" content={ogImage ? 'summary_large_image' : 'summary'} />
   {#if postTitle}
     <meta name="twitter:title" content={postTitle} />
   {/if}
   <meta name="twitter:description" content={metaDescription} />
-  <meta name="twitter:image" content={ogImage} />
+  {#if ogImage}
+    <meta name="twitter:image" content={ogImage} />
+  {/if}
 
   {@html articleSchemaTag}
 </svelte:head>

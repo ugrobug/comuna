@@ -108,6 +108,21 @@ export const buildFreshFeedUrl = (options?: {
   return query ? `${base}?${query}` : base
 }
 
+export const buildFavoritesFeedUrl = (options?: {
+  hideRead?: boolean
+  onlyRead?: boolean
+}): string => {
+  const base = `${getBackendBaseUrl()}/api/home/favorites/`
+  const params = new URLSearchParams()
+  if (options?.onlyRead) {
+    params.set('only_read', '1')
+  } else if (options?.hideRead) {
+    params.set('hide_read', '1')
+  }
+  const query = params.toString()
+  return query ? `${base}?${query}` : base
+}
+
 export const buildMyFeedUrl = (
   rubrics?: string[],
   authors?: string[],

@@ -3968,6 +3968,94 @@ def fresh_feed(request: HttpRequest) -> HttpResponse:
     )
 
 
+def favorites_feed(request: HttpRequest) -> HttpResponse:
+    user = _get_user_from_request(request)
+    if not user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+
+    limit_raw = request.GET.get("limit", "10")
+    try:
+        limit = min(max(int(limit_raw), 1), 200)
+    except ValueError:
+        limit = 10
+    offset_raw = request.GET.get("offset", "0")
+    try:
+        offset = max(int(offset_raw), 0)
+    except ValueError:
+        offset = 0
+
+    now = timezone.now()
+    hide_read = request.GET.get("hide_read") in ("1", "true", "yes")
+    only_read = request.GET.get("only_read") in ("1", "true", "yes")
+
+    favorites_qs = (
+        PostFavorite.objects.filter(
+            user=user,
+            post__is_blocked=False,
+            post__is_pending=False,
+            post__author__is_blocked=False,
+        )
+        .filter(Q(post__publish_at__isnull=True) | Q(post__publish_at__lte=now))
+        .filter(Q(post__author__shadow_banned=False) | Q(post__author__force_home=True))
+        .filter(Q(post__rubric__isnull=True) | Q(post__rubric__is_hidden=False))
+        .select_related("post__author", "post__rubric")
+        .prefetch_related("post__tags")
+        .order_by("-created_at")
+    )
+
+    hidden_read_count = 0
+    if hide_read:
+        hidden_read_count = favorites_qs.filter(post__reads__user=user).count()
+
+    filtered_favorites = favorites_qs
+    if only_read:
+        filtered_favorites = filtered_favorites.filter(post__reads__user=user)
+    elif hide_read:
+        filtered_favorites = filtered_favorites.exclude(post__reads__user=user)
+
+    favorite_rows = list(filtered_favorites[offset : offset + limit])
+    posts = [row.post for row in favorite_rows]
+    favorite_post_ids = {post.id for post in posts}
+
+    serialized = []
+    for post in posts:
+        rubric = post.rubric
+        content, poll_payload = _content_with_live_poll(post, user)
+        author_channel_url, author_title = _author_display_fields(
+            post.author, rubric, post.channel_url
+        )
+        serialized.append(
+            {
+                "id": post.id,
+                "title": _post_display_title(post),
+                "rubric": rubric.name if rubric else None,
+                "rubric_slug": rubric.slug if rubric else None,
+                "rubric_icon_url": _rubric_icon_url(request, rubric),
+                "content": content,
+                "poll": poll_payload,
+                "source_url": post.source_url,
+                "channel_url": author_channel_url,
+                "created_at": post.created_at.isoformat(),
+                "author": {
+                    "username": post.author.username,
+                    "title": author_title,
+                    "channel_url": author_channel_url,
+                    "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
+                },
+                "tags": _serialize_tags(post.tags.all()),
+                "is_favorite": post.id in favorite_post_ids,
+                "score": post.rating + post.comments_count * 5,
+                "rating": post.rating,
+                "comments_count": post.comments_count,
+                "likes_count": post.rating,
+            }
+        )
+
+    return JsonResponse(
+        {"ok": True, "posts": serialized, "hidden_read_count": hidden_read_count}
+    )
+
+
 def my_feed(request: HttpRequest) -> HttpResponse:
     limit_raw = request.GET.get("limit", "10")
     try:

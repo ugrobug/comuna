@@ -11,6 +11,7 @@
   import Post from '$lib/components/lemmy/post/Post.svelte'
   import {
     backendPostToPostView,
+    buildFavoritesFeedUrl,
     buildBackendPostPath,
     buildFreshFeedUrl,
     buildHomeFeedUrl,
@@ -59,7 +60,12 @@
   let tagMoodLoading = false
   let moodExpiryTimer: ReturnType<typeof setTimeout> | null = null
   $: if (data?.posts) {
-    if (data.posts !== lastPostsRef && data.feedType === feedType && data.feedType !== 'mine') {
+    if (
+      data.posts !== lastPostsRef &&
+      data.feedType === feedType &&
+      data.feedType !== 'mine' &&
+      data.feedType !== 'favorites'
+    ) {
       lastPostsRef = data.posts
       posts = data.posts ?? []
       offset = posts.length
@@ -73,7 +79,7 @@
 	  $: if (data?.feedType && data.feedType !== lastFeedType && feedParam) {
 	    lastFeedType = data.feedType
 	    feedType = data.feedType ?? 'hot'
-	    if (feedType === 'mine') {
+	    if (feedType === 'mine' || feedType === 'favorites') {
 	      posts = []
 	      offset = 0
 	      hasMore = false
@@ -93,7 +99,7 @@
 	    if (preferredFeed !== feedType) {
 	      feedType = preferredFeed
 	      lastFeedType = preferredFeed
-	      if (feedType === 'mine') {
+	      if (feedType === 'mine' || feedType === 'favorites') {
 	        posts = []
 	        offset = 0
 	        hasMore = false
@@ -148,6 +154,11 @@
 	        hideRead: effectiveHideRead,
 	        onlyRead: readOnly,
 	      })
+	    } else if (feedType === 'favorites') {
+	      baseUrl = buildFavoritesFeedUrl({
+	        hideRead: effectiveHideRead,
+	        onlyRead: readOnly,
+	      })
 	    } else if (feedType === 'mine') {
 	      baseUrl = buildMyFeedUrl(
 	        selectedRubrics,
@@ -172,7 +183,7 @@
     return !hiddenAuthorKeys.has(key)
   }
 
-	  $: if (feedType !== 'mine') {
+	  $: if (feedType !== 'mine' && feedType !== 'favorites') {
 	    const feedKey = [
 	      feedType,
 	      readOnly ? 'only-read' : effectiveHideRead ? 'hide-read' : 'all',
@@ -204,6 +215,7 @@
 	  const loadMore = async () => {
 	    if (!browser || loadingMore || !hasMore) return
 	    if (feedType === 'mine' && !canLoadMyFeed) return
+	    if (feedType === 'favorites' && !$siteUser) return
 	    if (readOnly && !$siteUser) return
 	    loadingMore = true
 	    try {
@@ -373,6 +385,22 @@
     }
   }
 
+  $: if (feedType === 'favorites') {
+    const authKey = $siteUser ? 'auth' : 'anon'
+    const key = `favorites:${authKey}:${readOnly ? 'only-read' : effectiveHideRead ? 'hide-read' : 'all-read'}`
+    if (key !== lastMyFeedKey) {
+      lastMyFeedKey = key
+      posts = []
+      offset = 0
+      hasMore = !!$siteUser
+      loadingMore = false
+      hiddenReadCount = 0
+      if ($siteUser && browser) {
+        loadMore()
+      }
+    }
+  }
+
   const maybeLoadMore = () => {
     if (!browser || loadingMore || !hasMore) return
     const viewportBottom = window.scrollY + window.innerHeight
@@ -447,6 +475,10 @@
           <span>Настроить</span>
         </button>
       {/if}
+    {:else if feedType === 'favorites'}
+      <h1 class="text-2xl font-semibold text-slate-900 dark:text-zinc-100">
+        Избранное
+      </h1>
     {:else}
       <Header pageHeader>
         {$t('routes.frontpage.title')}
@@ -483,6 +515,10 @@
   {#if feedType === 'mine' && !$siteUser}
     <div class="text-base text-slate-500">
       После регистрации вы получите доступ к персонализируемой ленте, которую сможете настроить и видеть только интересные вам посты.
+    </div>
+  {:else if feedType === 'favorites' && !$siteUser}
+    <div class="text-base text-slate-500">
+      После регистрации вы сможете добавлять посты в избранное и видеть их в отдельной ленте.
     </div>
   {:else if feedType === 'mine' && $siteUser}
     <div class="flex flex-col gap-4">

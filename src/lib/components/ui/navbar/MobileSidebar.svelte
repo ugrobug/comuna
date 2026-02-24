@@ -12,6 +12,7 @@
     InformationCircle,
     PencilSquare,
     ClipboardDocumentList,
+    Bookmark,
   } from 'svelte-hero-icons'
   import { notifications, profile } from '$lib/auth.js'
   import SidebarButton from '$lib/components/ui/sidebar/SidebarButton.svelte'
@@ -125,6 +126,14 @@
       on:click={handleNavigation}
     >
       <span slot="label">Моя лента</span>
+    </SidebarButton>
+    <SidebarButton
+      icon={Bookmark}
+      href="/?feed=favorites"
+      active={currentFeed === 'favorites'}
+      on:click={handleNavigation}
+    >
+      <span slot="label">Избранное</span>
     </SidebarButton>
   </div>
 

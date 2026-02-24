@@ -11,6 +11,7 @@
     ChevronDown,
     PencilSquare,
     ClipboardDocumentList,
+    Bookmark,
   } from 'svelte-hero-icons'
   import { notifications, profile } from '$lib/auth.js'
   import SidebarButton from '$lib/components/ui/sidebar/SidebarButton.svelte'
@@ -203,6 +204,9 @@
     </SidebarButton>
     <SidebarButton icon={UserGroup} href="/?feed=mine" active={currentFeed === 'mine'}>
       <span slot="label">Моя лента</span>
+    </SidebarButton>
+    <SidebarButton icon={Bookmark} href="/?feed=favorites" active={currentFeed === 'favorites'}>
+      <span slot="label">Избранное</span>
     </SidebarButton>
   </div>
 

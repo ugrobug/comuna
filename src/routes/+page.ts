@@ -5,10 +5,16 @@ const PAGE_SIZE = 10
 export async function load({ fetch, url }) {
   const feedParam = url.searchParams.get('feed')
   const feedType =
-    feedParam === 'fresh' ? 'fresh' : feedParam === 'mine' ? 'mine' : 'hot'
+    feedParam === 'fresh'
+      ? 'fresh'
+      : feedParam === 'mine'
+        ? 'mine'
+        : feedParam === 'favorites'
+          ? 'favorites'
+          : 'hot'
 
   let posts: any[] = []
-  if (feedType !== 'mine') {
+  if (feedType === 'hot' || feedType === 'fresh') {
     try {
       const feedUrl =
         feedType === 'fresh' ? buildFreshFeedUrl() : buildHomeFeedUrl()

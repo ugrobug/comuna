@@ -25,7 +25,8 @@
     InformationCircle,
     Megaphone,
     ClipboardDocumentList,
-    ChevronDown
+    ChevronDown,
+    Bookmark
   } from 'svelte-hero-icons'
   import Profile from './Profile.svelte'
   import NavButton from './NavButton.svelte'
@@ -362,6 +363,14 @@
           on:click={() => { sidebarOpen = false; }}
         >
           <span slot="label">Моя лента</span>
+        </SidebarButton>
+        <SidebarButton
+          icon={Bookmark}
+          href="/?feed=favorites"
+          active={currentFeed === 'favorites'}
+          on:click={() => { sidebarOpen = false; }}
+        >
+          <span slot="label">Избранное</span>
         </SidebarButton>
       </div>
 
