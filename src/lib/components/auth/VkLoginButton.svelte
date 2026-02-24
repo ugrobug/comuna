@@ -6,10 +6,13 @@
   import { loginVK } from '$lib/siteAuth'
 
   export let onSuccess: (() => void) | null = null
+  export let label = 'Продолжить с VK'
+  export let helperText = ''
 
   let container: HTMLDivElement | null = null
   let loading = false
   let scriptLoaded = false
+  let showFallbackWidget = false
   const appId = env.PUBLIC_VK_APP_ID
 
   const renderWidget = () => {
@@ -85,19 +88,99 @@
     }
     document.head.appendChild(script)
   })
+
+  function findWidgetTarget(): HTMLElement | null {
+    if (!container) return null
+    return (
+      (container.querySelector('iframe') as HTMLElement | null) ??
+      (container.querySelector('button') as HTMLElement | null) ??
+      (container.querySelector('a') as HTMLElement | null) ??
+      (container.querySelector('[role=\"button\"]') as HTMLElement | null) ??
+      (container.firstElementChild as HTMLElement | null)
+    )
+  }
+
+  export function triggerLogin() {
+    if (!appId) return
+    if (loading) return
+    const target = findWidgetTarget()
+    if (!target) {
+      if (!scriptLoaded) {
+        toast({ content: 'Загрузка VK‑входа…', type: 'info' })
+      } else {
+        showFallbackWidget = true
+        toast({ content: 'Нажмите кнопку VK ниже', type: 'info' })
+      }
+      return
+    }
+    target.click()
+  }
 </script>
 
 {#if !appId}
-  <p class="text-sm text-slate-500 dark:text-zinc-400">
-    VK‑вход временно недоступен.
-  </p>
+  <button
+    type="button"
+    disabled
+    class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-left text-sm text-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-500"
+    title="VK‑вход временно недоступен"
+  >
+    <span class="flex items-center gap-3">
+      <span class="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100 text-blue-700 font-semibold dark:bg-blue-900/40 dark:text-blue-300">
+        VK
+      </span>
+      <span class="font-medium">VK недоступен</span>
+    </span>
+  </button>
 {:else}
   <div class="flex flex-col gap-2">
-    <div bind:this={container} />
+    <button
+      type="button"
+      class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-left transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-zinc-600 dark:hover:bg-zinc-800"
+      on:click={triggerLogin}
+      disabled={loading}
+      title={label}
+    >
+      <span class="flex items-center gap-3">
+        <span class="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100 text-blue-700 font-semibold dark:bg-blue-900/40 dark:text-blue-300">
+          VK
+        </span>
+        <span class="flex min-w-0 flex-col">
+          <span class="text-sm font-semibold text-slate-900 dark:text-zinc-100">{label}</span>
+          {#if helperText}
+            <span class="text-xs text-slate-500 dark:text-zinc-400">{helperText}</span>
+          {/if}
+        </span>
+      </span>
+    </button>
+
+    <div
+      bind:this={container}
+      class:hidden-native-widget={!showFallbackWidget}
+      class="vk-widget-host"
+      aria-hidden={!showFallbackWidget}
+    />
+
     {#if loading}
       <p class="text-xs text-slate-500 dark:text-zinc-400">Вход через VK…</p>
     {:else if !scriptLoaded}
       <p class="text-xs text-slate-500 dark:text-zinc-400">Загрузка VK виджета…</p>
+    {:else if showFallbackWidget}
+      <p class="text-xs text-slate-500 dark:text-zinc-400">Если окно не открылось, нажмите кнопку VK ниже.</p>
     {/if}
   </div>
 {/if}
+
+<style>
+  .hidden-native-widget {
+    position: absolute;
+    left: -99999px;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+  }
+
+  .vk-widget-host:not(.hidden-native-widget) {
+    width: 100%;
+    min-height: 56px;
+  }
+</style>

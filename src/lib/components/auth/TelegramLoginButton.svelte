@@ -6,10 +6,13 @@
   import { loginTelegram, type TelegramAuthPayload } from '$lib/siteAuth'
 
   export let onSuccess: (() => void) | null = null
+  export let label = 'Продолжить с Telegram'
+  export let helperText = ''
 
   let container: HTMLDivElement | null = null
   let loading = false
   let scriptLoaded = false
+  let showFallbackWidget = false
   const botName = (env.PUBLIC_TELEGRAM_LOGIN_BOT || '').replace(/^@/, '')
   let authUrl = ''
 
@@ -62,19 +65,100 @@
       }
     }
   })
+
+  function findWidgetTarget(): HTMLElement | null {
+    if (!container) return null
+    return (
+      (container.querySelector('iframe') as HTMLElement | null) ??
+      (container.querySelector('button') as HTMLElement | null) ??
+      (container.querySelector('a') as HTMLElement | null) ??
+      (container.firstElementChild as HTMLElement | null)
+    )
+  }
+
+  export function triggerLogin() {
+    if (!botName) return
+    if (loading) return
+    const target = findWidgetTarget()
+    if (!target) {
+      if (!scriptLoaded) {
+        toast({ content: 'Загрузка Telegram‑входа…', type: 'info' })
+      } else {
+        showFallbackWidget = true
+        toast({ content: 'Нажмите кнопку Telegram ниже', type: 'info' })
+      }
+      return
+    }
+    target.click()
+  }
 </script>
 
 {#if !botName}
-  <p class="text-sm text-slate-500 dark:text-zinc-400">
-    Telegram‑вход временно недоступен.
-  </p>
+  <button
+    type="button"
+    disabled
+    class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-left text-sm text-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-500"
+    title="Telegram‑вход временно недоступен"
+  >
+    <span class="flex items-center gap-3">
+      <span class="flex h-9 w-9 items-center justify-center rounded-full bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">
+        <img src="/img/logos/telegram_logo.svg" alt="" class="h-5 w-5 object-contain" />
+      </span>
+      <span class="font-medium">Telegram недоступен</span>
+    </span>
+  </button>
 {:else}
   <div class="flex flex-col gap-2">
-    <div bind:this={container} />
+    <button
+      type="button"
+      class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-left transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-zinc-600 dark:hover:bg-zinc-800"
+      on:click={triggerLogin}
+      disabled={loading}
+      title={label}
+    >
+      <span class="flex items-center gap-3">
+        <span class="flex h-9 w-9 items-center justify-center rounded-full bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">
+          <img src="/img/logos/telegram_logo.svg" alt="" class="h-5 w-5 object-contain" />
+        </span>
+        <span class="flex min-w-0 flex-col">
+          <span class="text-sm font-semibold text-slate-900 dark:text-zinc-100">{label}</span>
+          {#if helperText}
+            <span class="text-xs text-slate-500 dark:text-zinc-400">{helperText}</span>
+          {/if}
+        </span>
+      </span>
+    </button>
+
+    <div
+      bind:this={container}
+      class:hidden-native-widget={!showFallbackWidget}
+      class="telegram-widget-host"
+      aria-hidden={!showFallbackWidget}
+    />
+
     {#if loading}
       <p class="text-xs text-slate-500 dark:text-zinc-400">Вход через Telegram…</p>
     {:else if !scriptLoaded}
-      <p class="text-xs text-slate-500 dark:text-zinc-400">Загрузка виджета Telegram…</p>
+      <p class="text-xs text-slate-500 dark:text-zinc-400">Загрузка Telegram‑входа…</p>
+    {:else if showFallbackWidget}
+      <p class="text-xs text-slate-500 dark:text-zinc-400">Если окно не открылось, нажмите кнопку Telegram ниже.</p>
     {/if}
   </div>
 {/if}
+
+<style>
+  .hidden-native-widget {
+    position: absolute;
+    left: -99999px;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+  }
+
+  .telegram-widget-host:not(.hidden-native-widget) {
+    width: 100%;
+    min-height: 50px;
+    display: flex;
+    justify-content: center;
+  }
+</style>
