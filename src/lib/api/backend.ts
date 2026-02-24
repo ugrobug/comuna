@@ -193,6 +193,7 @@ export type BackendAuthor = {
   description?: string | null
   subscribers_count?: number
   posts_count?: number
+  notify_comments_enabled?: boolean
 }
 
 export type BackendTag = {
@@ -280,6 +281,7 @@ export const backendPostToPostView = (
       display_name: authorTitle,
       avatar: author?.avatar_url ?? undefined,
       actor_id: author?.channel_url ?? `https://t.me/${authorName}`,
+      comuna_notify_comments: author?.notify_comments_enabled,
       local: true,
       admin: false,
       bot_account: false,

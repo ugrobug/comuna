@@ -60,6 +60,9 @@
   $: communityTitle = post.community?.title || ''
   $: backendTags = (post.post as { tags?: TagItem[] }).tags ?? []
   $: backendViewsValue = ((post.counts as { views?: number }).views ?? 0)
+  $: backendAuthorNotifyCommentsEnabled = (
+    post.creator as { comuna_notify_comments?: boolean }
+  ).comuna_notify_comments
   $: autoDisableUserLink =
     disableUserLink ??
     (communityName.toLowerCase() === 'comuna' ||
@@ -155,6 +158,7 @@
     disableUserLink={autoDisableUserLink}
     {subscribeUrl}
     {subscribeLabel}
+    authorNotifyCommentsEnabled={isBackendPost ? backendAuthorNotifyCommentsEnabled : undefined}
   >
     <slot name="badges" slot="badges" />
   </PostMeta>

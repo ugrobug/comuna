@@ -15,6 +15,8 @@
     RocketLaunch,
     Trash,
     PaperAirplane,
+    Bell,
+    BellSlash,
   } from 'svelte-hero-icons'
   import { getInstance, getClient } from '$lib/lemmy.js'
   import ShieldIcon from '../moderation/ShieldIcon.svelte'
@@ -48,6 +50,7 @@
   export let subscribeUrl: string | undefined = undefined
   export let subscribeLabel: string = 'Подписаться'
   export let disableUserLink: boolean = false
+  export let authorNotifyCommentsEnabled: boolean | undefined = undefined
 
   // Badges
   export let badges = {
@@ -76,6 +79,12 @@
   $: authorHidden = Boolean(authorKey && hiddenAuthorKeys.has(authorKey))
   $: myFeedActionLabel = authorInMyFeed ? 'Убрать автора из моей ленты' : 'Добавить автора в мою ленту'
   $: hiddenActionLabel = authorHidden ? 'Показывать автора' : 'Скрыть автора'
+  $: showAdminNotifyCommentsIcon = Boolean(
+    $siteUser?.is_staff && authorUsername && typeof authorNotifyCommentsEnabled === 'boolean'
+  )
+  $: notifyCommentsLabel = authorNotifyCommentsEnabled
+    ? 'Оповещения о комментариях автору в Telegram включены'
+    : 'Оповещения о комментариях автору в Telegram выключены'
 
   // Функция для безопасного получения hostname
   function getInstanceFromActorId(actorId: string | undefined, isLocal: boolean | undefined): string {
@@ -473,6 +482,21 @@
         {/if}
       {/if}
       {#if authorUsername}
+        {#if showAdminNotifyCommentsIcon}
+          <div
+            use:portalTooltip={{ text: notifyCommentsLabel }}
+            class="inline-flex items-center justify-center h-8 w-8 rounded-full border action-tooltip
+            {authorNotifyCommentsEnabled
+              ? 'border-emerald-300 bg-emerald-50 text-emerald-600 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+              : 'border-amber-300 bg-amber-50 text-amber-600 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-300'}"
+            aria-label={notifyCommentsLabel}
+            data-tooltip={notifyCommentsLabel}
+            role="img"
+          >
+            <Icon src={authorNotifyCommentsEnabled ? Bell : BellSlash} size="16" mini />
+            <span class="sr-only">{notifyCommentsLabel}</span>
+          </div>
+        {/if}
         <button
           type="button"
           use:portalTooltip={{ text: myFeedActionLabel }}

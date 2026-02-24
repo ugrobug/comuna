@@ -188,6 +188,16 @@ def _author_avatar_for_rubric(
     return _author_avatar_url(request, author)
 
 
+def _author_admin_fields_for_user(
+    user: User | None,
+    author: Author,
+    rubric: Rubric | None = None,
+) -> dict[str, bool]:
+    if not user or not user.is_staff or _is_comuna_rubric(rubric):
+        return {}
+    return {"notify_comments_enabled": bool(author.notify_comments)}
+
+
 def _fetch_vk_json(method: str, payload: dict) -> dict | None:
     url = f"https://api.vk.com/method/{method}"
     data = urllib.parse.urlencode(payload)
@@ -2707,7 +2717,8 @@ def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None
             "username": post.author.username,
             "title": author_title,
             "channel_url": author_channel_url,
-                    "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
+            "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
+            **_author_admin_fields_for_user(user, post.author, rubric),
         },
     }
 
@@ -3508,6 +3519,7 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
                     "avatar_url": _author_avatar_for_rubric(request, author, rubric),
                     "description": author.description,
                     "subscribers_count": author.subscribers_count,
+                    **_author_admin_fields_for_user(current_user, author, rubric),
                 },
             }
         )
@@ -3617,6 +3629,7 @@ def rubric_posts(request: HttpRequest, slug: str) -> HttpResponse:
                     "title": author_title,
                     "channel_url": author_channel_url,
                     "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
+                    **_author_admin_fields_for_user(current_user, post.author, rubric),
                 },
             }
         )
@@ -3729,6 +3742,7 @@ def tag_posts(request: HttpRequest, tag: str) -> HttpResponse:
                     "avatar_url": _author_avatar_for_rubric(
                         request, post.author, rubric
                     ),
+                    **_author_admin_fields_for_user(current_user, post.author, rubric),
                 },
             }
         )
@@ -3792,6 +3806,7 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
                     "title": author_title,
                     "channel_url": author_channel_url,
                     "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
+                    **_author_admin_fields_for_user(current_user, post.author, rubric),
                 },
             },
         }
@@ -3914,6 +3929,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
                         "title": author_title,
                         "channel_url": author_channel_url,
                         "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
+                        **_author_admin_fields_for_user(current_user, post.author, rubric),
                     },
                     "tags": _serialize_tags(post.tags.all()),
                     "is_favorite": post.id in favorite_post_ids,
@@ -4004,6 +4020,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
                     "title": author_title,
                     "channel_url": author_channel_url,
                     "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
+                    **_author_admin_fields_for_user(current_user, post.author, rubric),
                 },
                 "tags": _serialize_tags(post.tags.all()),
                 "is_favorite": post.id in favorite_post_ids,
@@ -4097,6 +4114,7 @@ def fresh_feed(request: HttpRequest) -> HttpResponse:
                     "title": author_title,
                     "channel_url": author_channel_url,
                     "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
+                    **_author_admin_fields_for_user(current_user, post.author, rubric),
                 },
                 "tags": _serialize_tags(post.tags.all()),
                 "is_favorite": post.id in favorite_post_ids,
@@ -4180,6 +4198,7 @@ def favorites_feed(request: HttpRequest) -> HttpResponse:
                     "title": author_title,
                     "channel_url": author_channel_url,
                     "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
+                    **_author_admin_fields_for_user(user, post.author, rubric),
                 },
                 "tags": _serialize_tags(post.tags.all()),
                 "is_favorite": post.id in favorite_post_ids,
@@ -4312,6 +4331,7 @@ def my_feed(request: HttpRequest) -> HttpResponse:
                     "title": author_title,
                     "channel_url": author_channel_url,
                     "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
+                    **_author_admin_fields_for_user(current_user, post.author, rubric),
                 },
                 "tags": _serialize_tags(post.tags.all()),
                 "is_favorite": post.id in favorite_post_ids,
@@ -4465,6 +4485,7 @@ def search_content(request: HttpRequest) -> HttpResponse:
                         "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
                         "description": post.author.description,
                         "subscribers_count": post.author.subscribers_count,
+                        **_author_admin_fields_for_user(current_user, post.author, rubric),
                     },
                 }
             )
