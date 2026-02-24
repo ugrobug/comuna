@@ -91,6 +91,7 @@
     <div class="mt-4 flex flex-col gap-3">
       <TelegramLoginButton
         onSuccess={handleSuccessfulAuth}
+        active={open}
         label={authMode === 'signup' ? 'Зарегистрироваться через Telegram' : 'Войти через Telegram'}
       />
       <VkLoginButton

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onMount, tick } from 'svelte'
   import { browser } from '$app/environment'
   import { env } from '$env/dynamic/public'
   import { toast } from 'mono-svelte'
@@ -8,15 +8,18 @@
   export let onSuccess: (() => void) | null = null
   export let label = 'Продолжить с Telegram'
   export let helperText = ''
+  export let active = true
 
   let container: HTMLDivElement | null = null
   let loading = false
   let scriptLoaded = false
+  let lastActive = active
   const botName = (env.PUBLIC_TELEGRAM_LOGIN_BOT || '').replace(/^@/, '')
   let authUrl = ''
 
   const mountWidget = () => {
     if (!browser || !container || !botName) return
+    scriptLoaded = false
     if (!authUrl) {
       const origin = env.PUBLIC_SITE_URL || window.location.origin
       const next = `${window.location.pathname}${window.location.search}`
@@ -38,6 +41,16 @@
     container.appendChild(script)
   }
 
+  const remountWhenVisible = async () => {
+    if (!browser || !active) return
+    await tick()
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        mountWidget()
+      })
+    })
+  }
+
   onMount(() => {
     if (!browser) return
     ;(window as any).onTelegramAuth = async (user: TelegramAuthPayload) => {
@@ -56,7 +69,7 @@
       }
     }
 
-    mountWidget()
+    remountWhenVisible()
 
     return () => {
       if ((window as any).onTelegramAuth) {
@@ -64,6 +77,13 @@
       }
     }
   })
+
+  $: if (browser && active !== lastActive) {
+    lastActive = active
+    if (active) {
+      remountWhenVisible()
+    }
+  }
 
 </script>
 
@@ -134,7 +154,7 @@
   }
 
   .telegram-widget-host :global(iframe) {
-    opacity: 0;
+    opacity: 0.02;
     width: 100% !important;
     height: 100% !important;
     border-radius: 0.75rem;
