@@ -352,6 +352,8 @@ class PostComment(models.Model):
         "self", on_delete=models.CASCADE, null=True, blank=True, related_name="replies"
     )
     body = models.TextField()
+    persona_key = models.CharField(max_length=64, blank=True, default="")
+    persona_username = models.CharField(max_length=150, blank=True, default="")
     is_deleted = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

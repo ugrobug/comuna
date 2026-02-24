@@ -61,6 +61,19 @@ _BOT_ID: int | None = None
 _TOKEN_SIGNER = TimestampSigner(salt="comuna-auth")
 _TOKEN_MAX_AGE = 60 * 60 * 24 * 30
 _FAKE_VIEWS_RAMP_SECONDS = 48 * 60 * 60
+_COMMENT_PERSONAS = (
+    {"key": "persona_1", "username": "anna_m"},
+    {"key": "persona_2", "username": "igor_p"},
+    {"key": "persona_3", "username": "olga_v"},
+    {"key": "persona_4", "username": "sergey_k"},
+    {"key": "persona_5", "username": "maria_t"},
+    {"key": "persona_6", "username": "nikita_l"},
+    {"key": "persona_7", "username": "elena_s"},
+    {"key": "persona_8", "username": "denis_r"},
+    {"key": "persona_9", "username": "kate_n"},
+    {"key": "persona_10", "username": "alex_b"},
+)
+_COMMENT_PERSONAS_BY_KEY = {item["key"]: item for item in _COMMENT_PERSONAS}
 
 
 def _issue_token(user: User) -> str:
@@ -493,6 +506,20 @@ def _comment_preview(text: str, max_length: int = 220) -> str:
     return preview[: max_length - 1].rstrip() + "…"
 
 
+def _comment_display_username(comment: PostComment) -> str:
+    masked = (getattr(comment, "persona_username", "") or "").strip()
+    if masked:
+        return masked
+    username = (getattr(comment.user, "username", "") or "").strip()
+    return username or "user"
+
+
+def _comment_personas_for_user(user: User | None) -> list[dict]:
+    if not user or not user.is_staff:
+        return []
+    return [{"key": item["key"], "username": item["username"]} for item in _COMMENT_PERSONAS]
+
+
 def _maybe_notify_author_comment(post: Post, comment: PostComment) -> None:
     author = post.author
     if not author.notify_comments or not author.admin_chat_id:
@@ -506,7 +533,8 @@ def _maybe_notify_author_comment(post: Post, comment: PostComment) -> None:
 
     site_base = (getattr(settings, "SITE_BASE_URL", "") or "").rstrip("/")
     post_link = f"{site_base}/b/post/{post.id}#comments" if site_base else ""
-    commenter = f"@{comment.user.username}" if comment.user.username else "Пользователь"
+    commenter_name = _comment_display_username(comment)
+    commenter = f"@{commenter_name}" if commenter_name else "Пользователь"
     text = (
         "Новый комментарий к вашему посту на Comuna.\n"
         f"Пост: {_post_display_title(post)}\n"
@@ -2994,11 +3022,17 @@ def post_comments(request: HttpRequest, post_id: int) -> HttpResponse:
                 "likes_count": comment.likes_count,
                 "liked_by_me": comment.id in liked_ids,
                 "can_edit": bool(user and comment.user_id == user.id and not comment.is_deleted),
-                "user": {"username": comment.user.username},
+                "user": {"username": _comment_display_username(comment)},
             }
             for comment in comments
         ]
-        return JsonResponse({"ok": True, "comments": serialized})
+        return JsonResponse(
+            {
+                "ok": True,
+                "comments": serialized,
+                "comment_masks": _comment_personas_for_user(user),
+            }
+        )
 
     if request.method != "POST":
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
@@ -3014,6 +3048,7 @@ def post_comments(request: HttpRequest, post_id: int) -> HttpResponse:
 
     body = (payload.get("body") or "").strip()
     parent_id = payload.get("parent_id")
+    mask_key = str(payload.get("mask_key") or "").strip()
     if not body:
         return JsonResponse({"ok": False, "error": "comment is empty"}, status=400)
     if len(body) > 2000:
@@ -3026,7 +3061,22 @@ def post_comments(request: HttpRequest, post_id: int) -> HttpResponse:
         except (PostComment.DoesNotExist, ValueError, TypeError):
             return JsonResponse({"ok": False, "error": "parent comment not found"}, status=404)
 
-    comment = PostComment.objects.create(post=post, user=user, body=body, parent=parent)
+    persona = None
+    if mask_key:
+        if not user.is_staff:
+            return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+        persona = _COMMENT_PERSONAS_BY_KEY.get(mask_key)
+        if not persona:
+            return JsonResponse({"ok": False, "error": "invalid comment mask"}, status=400)
+
+    comment = PostComment.objects.create(
+        post=post,
+        user=user,
+        body=body,
+        parent=parent,
+        persona_key=(persona or {}).get("key", ""),
+        persona_username=(persona or {}).get("username", ""),
+    )
     Post.objects.filter(id=post.id).update(comments_count=F("comments_count") + 1)
     post.refresh_from_db(fields=["comments_count"])
     _maybe_notify_author_comment(post, comment)
@@ -3044,7 +3094,7 @@ def post_comments(request: HttpRequest, post_id: int) -> HttpResponse:
                 "likes_count": 0,
                 "liked_by_me": False,
                 "can_edit": True,
-                "user": {"username": user.username},
+                "user": {"username": _comment_display_username(comment)},
             },
             "comments_count": post.comments_count,
         }
@@ -3101,7 +3151,7 @@ def comment_detail(request: HttpRequest, comment_id: int) -> HttpResponse:
                     "likes_count": likes_count,
                     "liked_by_me": liked_by_me,
                     "can_edit": True,
-                    "user": {"username": comment.user.username},
+                    "user": {"username": _comment_display_username(comment)},
                 },
             }
         )
@@ -3379,7 +3429,7 @@ def recent_comments(request: HttpRequest) -> HttpResponse:
             "id": comment.id,
             "body": comment.body,
             "created_at": comment.created_at.isoformat(),
-            "user": {"username": comment.user.username},
+            "user": {"username": _comment_display_username(comment)},
             "post": {"id": comment.post_id, "title": _post_display_title(comment.post)},
         }
         for comment in comments

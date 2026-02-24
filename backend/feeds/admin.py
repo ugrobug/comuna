@@ -134,9 +134,9 @@ class RubricAdmin(admin.ModelAdmin):
 
 @admin.register(PostComment)
 class PostCommentAdmin(admin.ModelAdmin):
-    list_display = ("post", "user", "parent", "created_at", "is_deleted")
+    list_display = ("post", "user", "persona_username", "parent", "created_at", "is_deleted")
     list_filter = ("is_deleted",)
-    search_fields = ("body", "user__username", "post__title")
+    search_fields = ("body", "user__username", "persona_username", "post__title")
     raw_id_fields = ("post", "user", "parent")
 
 

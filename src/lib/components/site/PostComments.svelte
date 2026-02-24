@@ -5,7 +5,7 @@
   import { siteToken, siteUser } from '$lib/siteAuth'
   import SiteCommentForm from '$lib/components/site/comments/SiteCommentForm.svelte'
   import SiteCommentItem from '$lib/components/site/comments/SiteCommentItem.svelte'
-  import type { SiteComment, SiteCommentNode } from '$lib/components/site/comments/types'
+  import type { SiteComment, SiteCommentMask, SiteCommentNode } from '$lib/components/site/comments/types'
 
   export let postId: number
   export let postAuthor: string | null = null
@@ -14,6 +14,7 @@
   let commentTree: SiteCommentNode[] = []
   let loading = false
   let error = ''
+  let commentMasks: SiteCommentMask[] = []
   let lastToken: string | null = null
   let lastPostId = postId
 
@@ -62,6 +63,10 @@
       }
       const data = await response.json()
       comments = normalizeList((data.comments ?? []) as SiteComment[])
+      commentMasks =
+        $siteUser?.is_staff && Array.isArray(data.comment_masks)
+          ? ((data.comment_masks as SiteCommentMask[]) ?? [])
+          : []
       rebuildTree()
     } catch (err) {
       error = (err as Error)?.message ?? 'Ошибка загрузки'
@@ -116,6 +121,7 @@
   <div class="mb-8">
     <SiteCommentForm
       {postId}
+      {commentMasks}
       placeholder="Поделитесь мнением..."
       on:comment={(event) => upsertComment(event.detail)}
     />
@@ -136,6 +142,7 @@
           {node}
           {postId}
           {postAuthor}
+          {commentMasks}
           on:reply={(event) => upsertComment(event.detail)}
           on:update={(event) => upsertComment(event.detail)}
           on:remove={(event) => markDeleted(event.detail)}

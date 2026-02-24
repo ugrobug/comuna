@@ -1,11 +1,12 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte'
+  import { browser } from '$app/environment'
   import { Button } from 'mono-svelte'
   import MarkdownEditor from '$lib/components/markdown/MarkdownEditor.svelte'
   import LoginModal from '$lib/components/auth/LoginModal.svelte'
   import { buildCommentDetailUrl, buildPostCommentsUrl } from '$lib/api/backend'
-  import { siteToken } from '$lib/siteAuth'
-  import type { SiteComment } from './types'
+  import { siteToken, siteUser } from '$lib/siteAuth'
+  import type { SiteComment, SiteCommentMask } from './types'
 
   export let postId: number
   export let parentId: number | null = null
@@ -15,6 +16,7 @@
   export let submitLabel = 'Отправить'
   export let autoFocus = false
   export let showCancel = false
+  export let commentMasks: SiteCommentMask[] = []
 
   const dispatch = createEventDispatcher<{
     comment: SiteComment
@@ -26,11 +28,46 @@
   let error = ''
   let showLoginModal = false
   let lastCommentId = commentId
+  let selectedMaskKey = ''
+  let masksInitialized = false
+  const COMMENT_MASK_STORAGE_KEY = 'comuna.admin.comment.mask'
+
+  $: canChooseMask = Boolean($siteUser?.is_staff && !commentId && commentMasks.length > 0)
 
   $: if (commentId !== lastCommentId) {
     lastCommentId = commentId
     value = initialBody
     error = ''
+  }
+
+  $: if (canChooseMask && !masksInitialized) {
+    masksInitialized = true
+    if (browser) {
+      const saved = localStorage.getItem(COMMENT_MASK_STORAGE_KEY) || ''
+      if (saved && commentMasks.some((mask) => mask.key === saved)) {
+        selectedMaskKey = saved
+      }
+    }
+  }
+
+  $: if (!canChooseMask) {
+    selectedMaskKey = ''
+    masksInitialized = false
+  }
+
+  function updateMaskSelection(nextKey: string) {
+    selectedMaskKey = nextKey
+    if (!browser) return
+    if (nextKey) {
+      localStorage.setItem(COMMENT_MASK_STORAGE_KEY, nextKey)
+    } else {
+      localStorage.removeItem(COMMENT_MASK_STORAGE_KEY)
+    }
+  }
+
+  function handleMaskChange(event: Event) {
+    const target = event.currentTarget as HTMLSelectElement | null
+    updateMaskSelection(target?.value || '')
   }
 
   async function submit() {
@@ -52,6 +89,9 @@
       }
       if (parentId) {
         payload.parent_id = parentId
+      }
+      if (canChooseMask && selectedMaskKey) {
+        payload.mask_key = selectedMaskKey
       }
 
       const response = await fetch(
@@ -88,6 +128,28 @@
 <LoginModal bind:open={showLoginModal} />
 
 <div class="flex flex-col gap-3">
+  {#if canChooseMask}
+    <div class="flex flex-col gap-1">
+      <label for={`comment-mask-${postId}-${parentId ?? 'root'}-${commentId ?? 'new'}`} class="text-xs font-medium text-slate-600 dark:text-zinc-400">
+        Писать как
+      </label>
+      <select
+        id={`comment-mask-${postId}-${parentId ?? 'root'}-${commentId ?? 'new'}`}
+        class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+        value={selectedMaskKey}
+        on:change={handleMaskChange}
+      >
+        <option value="">Мой аккаунт (@{$siteUser?.username})</option>
+        {#each commentMasks as mask}
+          <option value={mask.key}>@{mask.username}</option>
+        {/each}
+      </select>
+      <p class="text-xs text-slate-500 dark:text-zinc-500">
+        Только для администраторов. Выбранная маска сохранится для следующих комментариев.
+      </p>
+    </div>
+  {/if}
+
   <MarkdownEditor
     bind:value
     placeholder={placeholder}

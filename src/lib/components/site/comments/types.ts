@@ -13,6 +13,11 @@ export type SiteComment = {
   }
 }
 
+export type SiteCommentMask = {
+  key: string
+  username: string
+}
+
 export type SiteCommentNode = {
   comment: SiteComment
   children: SiteCommentNode[]

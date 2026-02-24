@@ -8,12 +8,13 @@
   import { buildCommentLikeUrl, buildCommentDetailUrl } from '$lib/api/backend'
   import { siteToken } from '$lib/siteAuth'
   import SiteCommentForm from './SiteCommentForm.svelte'
-  import type { SiteComment, SiteCommentNode } from './types'
+  import type { SiteComment, SiteCommentMask, SiteCommentNode } from './types'
 
   export let node: SiteCommentNode
   export let depth = 0
   export let postId: number
   export let postAuthor: string | null = null
+  export let commentMasks: SiteCommentMask[] = []
 
   const dispatch = createEventDispatcher<{
     reply: SiteComment
@@ -122,6 +123,7 @@
         <div class="mt-3">
           <SiteCommentForm
             {postId}
+            {commentMasks}
             commentId={node.comment.id}
             initialBody={node.comment.body}
             submitLabel="Сохранить"
@@ -194,6 +196,7 @@
         <div class="mt-3">
           <SiteCommentForm
             {postId}
+            {commentMasks}
             parentId={node.comment.id}
             placeholder="Ответить..."
             submitLabel="Ответить"
@@ -218,6 +221,7 @@
           depth={depth + 1}
           {postId}
           {postAuthor}
+          {commentMasks}
           on:reply={forward}
           on:update={forward}
           on:remove={forward}
