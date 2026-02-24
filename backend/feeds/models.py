@@ -21,7 +21,7 @@ _MORPH_ANALYZER = None
 
 
 def default_post_fake_views_target() -> int:
-    return random.randint(100, 2500)
+    return random.randint(100, 700)
 
 
 def _ensure_pymorphy2_compat():
