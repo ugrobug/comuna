@@ -3794,6 +3794,8 @@ def home_feed(request: HttpRequest) -> HttpResponse:
     except ValueError:
         offset = 0
 
+    hide_read = request.GET.get("hide_read") in {"1", "true", "True"}
+    only_read = request.GET.get("only_read") in {"1", "true", "True"}
     now = timezone.now()
     read_user = (
         _get_user_from_request(request) if (hide_read or only_read) else None
