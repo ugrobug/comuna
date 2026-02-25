@@ -260,6 +260,13 @@
     </SidebarButton>
     {#if thematicFeedsOpen && (thematicFeeds.length || $siteUser)}
       <div class="ml-6 flex flex-col gap-1">
+        {#if $siteUser?.is_staff}
+          <SidebarButton href="/folders?create=1" isExpandable={true} class="h-auto py-2">
+            <div slot="label" class="flex flex-col min-w-0 leading-tight">
+              <span class="truncate text-sm">Создать папку</span>
+            </div>
+          </SidebarButton>
+        {/if}
         {#if $siteUser}
           <SidebarButton href="/folders" isExpandable={true} class="h-auto py-2">
             <div slot="label" class="flex flex-col min-w-0 leading-tight">

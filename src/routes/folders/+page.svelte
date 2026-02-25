@@ -1,13 +1,16 @@
 <script lang="ts">
+  import { browser } from '$app/environment'
+  import { page } from '$app/stores'
   import { onMount } from 'svelte'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
-  import { Button } from 'mono-svelte'
+  import { Button, Modal } from 'mono-svelte'
   import {
     buildThematicFeedsManageUrl,
     type BackendThematicFeed,
   } from '$lib/api/backend'
   import { siteToken, siteUser } from '$lib/siteAuth'
   import { goto } from '$app/navigation'
+  import { Plus, Icon } from 'svelte-hero-icons'
 
   type UserOption = { id: number; username: string }
   type AuthorOption = { id: number; username: string; title?: string | null; rubric?: string | null }
@@ -16,6 +19,7 @@
   let loading = true
   let saving = false
   let creating = false
+  let createModalOpen = false
   let errorMessage = ''
   let successMessage = ''
 
@@ -35,6 +39,26 @@
   let createModeratorIds: number[] = []
 
   const isStaff = () => !!$siteUser?.is_staff
+
+  const resetCreateDraft = () => {
+    createName = ''
+    createSlug = ''
+    createDescription = ''
+    createSortOrder = 0
+    createIsActive = true
+    createModeratorIds = []
+  }
+
+  const openCreateModal = () => {
+    if (!isStaff()) return
+    createModalOpen = true
+    errorMessage = ''
+    successMessage = ''
+  }
+
+  const closeCreateModal = () => {
+    createModalOpen = false
+  }
 
   const authHeaders = () => {
     if (!$siteToken) throw new Error('Нужна авторизация')
@@ -129,16 +153,12 @@
       if (!response.ok) {
         throw new Error(payload?.error || 'Не удалось создать папку')
       }
-      createName = ''
-      createSlug = ''
-      createDescription = ''
-      createSortOrder = 0
-      createIsActive = true
-      createModeratorIds = []
+      resetCreateDraft()
       await loadFolders()
       if (payload?.folder?.slug) {
         setSelectedFolder(payload.folder.slug)
       }
+      createModalOpen = false
       successMessage = 'Папка создана'
     } catch (error) {
       errorMessage = error instanceof Error ? error.message : 'Ошибка создания'
@@ -197,10 +217,31 @@
     }
     await loadFolders()
   })
+
+  $: if (
+    browser &&
+    isStaff() &&
+    $page.url.pathname === '/folders' &&
+    $page.url.searchParams.get('create') === '1' &&
+    !createModalOpen
+  ) {
+    createModalOpen = true
+    goto('/folders', { replaceState: true, noScroll: true, keepFocus: true })
+  }
 </script>
 
 <div class="flex flex-col gap-4 max-w-full min-w-0">
-  <Header pageHeader>Папки</Header>
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <Header pageHeader>Папки</Header>
+    {#if $siteUser?.is_staff}
+      <Button on:click={openCreateModal}>
+        <span class="inline-flex items-center gap-2">
+          <Icon src={Plus} size="16" mini />
+          <span>Создать папку</span>
+        </span>
+      </Button>
+    {/if}
+  </div>
 
   {#if !$siteUser}
     <div class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 text-sm text-slate-600 dark:text-zinc-300">
@@ -227,40 +268,58 @@
       </div>
     {/if}
 
-    <div class="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
-      <div class="flex flex-col gap-4">
-        {#if isStaff()}
-          <section class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 flex flex-col gap-3">
-            <h2 class="text-base font-semibold text-slate-900 dark:text-zinc-100">Создать папку</h2>
-            <input class="px-3 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950" bind:value={createName} placeholder="Название" />
-            <input class="px-3 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950" bind:value={createSlug} placeholder="slug (необязательно)" />
-            <textarea class="px-3 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950 min-h-[80px]" bind:value={createDescription} placeholder="Описание" />
-            <div class="grid grid-cols-2 gap-3">
-              <label class="flex flex-col gap-1 text-sm">
-                <span>Порядок</span>
-                <input type="number" class="px-3 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950" bind:value={createSortOrder} />
-              </label>
-              <label class="flex items-center gap-2 text-sm pt-6">
-                <input type="checkbox" bind:checked={createIsActive} />
-                <span>Активна</span>
-              </label>
-            </div>
-            <label class="flex flex-col gap-1 text-sm">
-              <span>Модераторы</span>
-              <select multiple size="6" class="px-2 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950" on:change={(e) => {
-                createModeratorIds = readSelectedIds(e)
-              }}>
-                {#each userOptions as user}
-                  <option value={user.id}>{user.username}</option>
-                {/each}
-              </select>
-            </label>
-            <Button disabled={creating} on:click={createFolder}>
-              {creating ? 'Создаем...' : 'Создать папку'}
-            </Button>
-          </section>
+    <Modal bind:open={createModalOpen} on:close={closeCreateModal}>
+      <div class="w-full max-w-[36rem] flex flex-col gap-4">
+        <div>
+          <h2 class="text-xl font-semibold text-slate-900 dark:text-zinc-100">Создать папку</h2>
+          <p class="mt-1 text-sm text-slate-500 dark:text-zinc-400">
+            Настройте базовые параметры и назначьте модераторов. Авторов и теги можно потом редактировать на странице папки.
+          </p>
+        </div>
+
+        {#if errorMessage && createModalOpen}
+          <div class="rounded-xl border border-rose-200 dark:border-rose-900 bg-rose-50/70 dark:bg-rose-950/20 p-3 text-sm text-rose-700 dark:text-rose-300">
+            {errorMessage}
+          </div>
         {/if}
 
+        <div class="grid gap-3">
+          <input class="px-3 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950" bind:value={createName} placeholder="Название" />
+          <input class="px-3 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950" bind:value={createSlug} placeholder="slug (необязательно)" />
+          <textarea class="px-3 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950 min-h-[80px]" bind:value={createDescription} placeholder="Описание" />
+          <div class="grid grid-cols-2 gap-3">
+            <label class="flex flex-col gap-1 text-sm">
+              <span>Порядок</span>
+              <input type="number" class="px-3 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950" bind:value={createSortOrder} />
+            </label>
+            <label class="flex items-center gap-2 text-sm pt-6">
+              <input type="checkbox" bind:checked={createIsActive} />
+              <span>Активна</span>
+            </label>
+          </div>
+          <label class="flex flex-col gap-1 text-sm">
+            <span>Модераторы</span>
+            <select multiple size="8" class="px-2 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950" on:change={(e) => {
+              createModeratorIds = readSelectedIds(e)
+            }}>
+              {#each userOptions as user}
+                <option value={user.id} selected={createModeratorIds.includes(user.id)}>{user.username}</option>
+              {/each}
+            </select>
+          </label>
+        </div>
+
+        <div class="flex justify-end gap-2">
+          <Button color="ghost" on:click={closeCreateModal}>Отмена</Button>
+          <Button disabled={creating} on:click={createFolder}>
+            {creating ? 'Создаем...' : 'Создать папку'}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+
+    <div class="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
+      <div class="flex flex-col gap-4">
         <section class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 flex flex-col gap-2">
           <h2 class="text-base font-semibold text-slate-900 dark:text-zinc-100">Список папок</h2>
           {#if folders.length}

@@ -17,6 +17,8 @@
     buildFreshFeedUrl,
     buildHomeFeedUrl,
     buildMyFeedUrl,
+    buildThematicFeedsListUrl,
+    buildThematicFeedsManageUrl,
     buildThematicFeedPostsUrl,
     buildTagsListUrl,
   } from '$lib/api/backend'
@@ -24,7 +26,7 @@
   import { userSettings } from '$lib/settings'
   import { normalizeTag } from '$lib/tags'
   import { feedKeyboardShortcuts } from '$lib/actions/feedKeyboardShortcuts'
-  import { Button } from 'mono-svelte'
+  import { Button, Modal } from 'mono-svelte'
   import { onDestroy, onMount } from 'svelte'
   import { Cog6Tooth, Icon } from 'svelte-hero-icons'
 
@@ -42,6 +44,29 @@
   let lastMyFeedKey = ''
   let thematicFeedSlug = data.thematicSlug ?? ''
   let thematicFeedMeta: BackendThematicFeed | null = data.thematicFeed ?? null
+  type FolderManageAuthorOption = {
+    id: number
+    username: string
+    title?: string | null
+    rubric?: string | null
+  }
+  type FolderManageTagOption = {
+    id: number
+    name: string
+    lemma?: string | null
+  }
+  let folderSettingsOpen = false
+  let folderSettingsLoading = false
+  let folderSettingsSaving = false
+  let folderSettingsError = ''
+  let folderSettingsSuccess = ''
+  let folderSettingsDraft: BackendThematicFeed | null = null
+  let folderSettingsAuthorOptions: FolderManageAuthorOption[] = []
+  let folderSettingsTagOptions: FolderManageTagOption[] = []
+  let myFeedSuggestedFolders: BackendThematicFeed[] = []
+  let myFeedSuggestedFoldersLoading = false
+  let myFeedSuggestedFoldersLoaded = false
+  let myFeedSuggestedFoldersError = ''
 	  let lastFeedKey: string | null = null
 	  let myFeedSettingsOpen = false
 	  let feedParam: string | null = null
@@ -58,11 +83,157 @@
   let myFeedMoodExpiresAt: number | null = null
   let moodActive = false
   let effectiveMood: 'funny' | 'serious' | 'sad' | null = null
+  let myFeedHasBaseSettings = false
   let moodTagSet = new Set<string>()
   let tagMoodMap = new Map<string, string>()
   let tagLemmaMap = new Map<string, string>()
   let tagMoodLoading = false
   let moodExpiryTimer: ReturnType<typeof setTimeout> | null = null
+
+  const cloneFolderSettingsDraft = (folder: BackendThematicFeed | null): BackendThematicFeed | null =>
+    folder ? JSON.parse(JSON.stringify(folder)) : null
+
+  const canManageCurrentFolder = () => {
+    if (!$siteUser || !thematicFeedMeta) return false
+    if ($siteUser.is_staff) return true
+    const currentUsername = ($siteUser.username ?? '').trim().toLowerCase()
+    if (!currentUsername) return false
+    return (thematicFeedMeta.moderators ?? []).some(
+      (moderator) => (moderator?.username ?? '').trim().toLowerCase() === currentUsername
+    )
+  }
+
+  const readMultiSelectIds = (event: Event): number[] => {
+    const target = event.currentTarget as HTMLSelectElement
+    return Array.from(target.selectedOptions)
+      .map((option) => Number(option.value))
+      .filter((value) => Number.isFinite(value) && value > 0)
+  }
+
+  const updateFolderSettingsSelection = (
+    event: Event,
+    key: 'author_ids' | 'excluded_author_ids' | 'tag_ids' | 'excluded_tag_ids'
+  ) => {
+    if (!folderSettingsDraft) return
+    ;(folderSettingsDraft as any)[key] = readMultiSelectIds(event)
+  }
+
+  const loadCurrentFolderSettings = async () => {
+    if (!browser || !$siteToken) return
+    if (!thematicFeedSlug) return
+    folderSettingsLoading = true
+    folderSettingsError = ''
+    folderSettingsSuccess = ''
+    try {
+      const response = await fetch(buildThematicFeedsManageUrl(), {
+        headers: {
+          Authorization: `Bearer ${$siteToken}`,
+        },
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Не удалось загрузить настройки папки')
+      }
+      folderSettingsAuthorOptions = payload.options?.authors ?? []
+      folderSettingsTagOptions = payload.options?.tags ?? []
+      const currentFolder =
+        (payload.folders ?? []).find(
+          (folder: BackendThematicFeed) => folder.slug === thematicFeedSlug
+        ) ?? null
+      if (!currentFolder) {
+        throw new Error('Папка недоступна для редактирования')
+      }
+      folderSettingsDraft = cloneFolderSettingsDraft(currentFolder)
+    } catch (error) {
+      folderSettingsError =
+        error instanceof Error ? error.message : 'Ошибка загрузки настроек папки'
+    } finally {
+      folderSettingsLoading = false
+    }
+  }
+
+  const loadMyFeedSuggestedFolders = async () => {
+    if (!browser || myFeedSuggestedFoldersLoading) return
+    myFeedSuggestedFoldersLoading = true
+    myFeedSuggestedFoldersError = ''
+    try {
+      const response = await fetch(buildThematicFeedsListUrl())
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Не удалось загрузить список папок')
+      }
+      myFeedSuggestedFolders = payload.folders ?? payload.feeds ?? []
+      myFeedSuggestedFoldersLoaded = true
+    } catch (error) {
+      myFeedSuggestedFoldersError =
+        error instanceof Error ? error.message : 'Ошибка загрузки папок'
+      myFeedSuggestedFoldersLoaded = true
+    } finally {
+      myFeedSuggestedFoldersLoading = false
+    }
+  }
+
+  const openCurrentFolderSettings = async () => {
+    if (!thematicFeedSlug) return
+    if (!$siteUser) {
+      const next = encodeURIComponent(`${$page.url.pathname}${$page.url.search}`)
+      goto(`/account?next=${next}`)
+      return
+    }
+    folderSettingsOpen = true
+    await loadCurrentFolderSettings()
+  }
+
+  const closeCurrentFolderSettings = () => {
+    folderSettingsOpen = false
+    folderSettingsError = ''
+    folderSettingsSuccess = ''
+  }
+
+  const saveCurrentFolderSettings = async () => {
+    if (!folderSettingsDraft || !thematicFeedSlug || !$siteToken) return
+    folderSettingsSaving = true
+    folderSettingsError = ''
+    folderSettingsSuccess = ''
+    try {
+      const response = await fetch(buildThematicFeedsManageUrl(thematicFeedSlug), {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${$siteToken}`,
+        },
+        body: JSON.stringify({
+          author_ids: folderSettingsDraft.author_ids ?? [],
+          excluded_author_ids: folderSettingsDraft.excluded_author_ids ?? [],
+          tag_ids: folderSettingsDraft.tag_ids ?? [],
+          excluded_tag_ids: folderSettingsDraft.excluded_tag_ids ?? [],
+        }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Не удалось сохранить настройки папки')
+      }
+      const updatedFolder = (payload.folder ?? null) as BackendThematicFeed | null
+      if (updatedFolder) {
+        thematicFeedMeta = updatedFolder
+        folderSettingsDraft = cloneFolderSettingsDraft(updatedFolder)
+      }
+      folderSettingsSuccess = 'Настройки папки сохранены'
+      posts = []
+      offset = 0
+      hasMore = true
+      loadingMore = false
+      hiddenReadCount = 0
+      if (browser) {
+        await loadMore()
+      }
+    } catch (error) {
+      folderSettingsError =
+        error instanceof Error ? error.message : 'Ошибка сохранения настроек папки'
+    } finally {
+      folderSettingsSaving = false
+    }
+  }
   $: if (data?.posts) {
     if (
       data.posts !== lastPostsRef &&
@@ -143,13 +314,15 @@
   $: selectedRubrics = $userSettings.myFeedRubrics ?? []
   $: selectedAuthors = $userSettings.myFeedAuthors ?? []
   $: selectedMyFeedTags = $userSettings.myFeedTags ?? []
+  $: myFeedHasBaseSettings =
+    selectedRubrics.length > 0 || selectedAuthors.length > 0 || selectedMyFeedTags.length > 0
   $: hiddenAuthorKeys = new Set(
     ($userSettings.hiddenAuthors ?? []).map((value) => value.toLowerCase())
   )
   $: canLoadMyFeed =
     feedType === 'mine' &&
     $siteUser &&
-    (selectedRubrics.length > 0 || selectedAuthors.length > 0 || selectedMyFeedTags.length > 0)
+    myFeedHasBaseSettings
 	  $: hideNegativeMyFeed = $userSettings.myFeedHideNegative ?? true
 	  $: hideReadPosts = ($userSettings.hideReadPosts ?? false) && !!$siteUser
 	  $: effectiveHideRead = hideReadPosts && !readOnly
@@ -413,6 +586,17 @@
     }
   }
 
+  $: if (browser && feedType === 'mine' && !!$siteUser && !myFeedHasBaseSettings && !myFeedSuggestedFoldersLoaded) {
+    loadMyFeedSuggestedFolders()
+  }
+
+  $: if (!$siteUser) {
+    myFeedSuggestedFolders = []
+    myFeedSuggestedFoldersLoaded = false
+    myFeedSuggestedFoldersLoading = false
+    myFeedSuggestedFoldersError = ''
+  }
+
   $: if (feedType === 'favorites') {
     const authKey = $siteUser ? 'auth' : 'anon'
     const key = `favorites:${authKey}`
@@ -486,30 +670,51 @@
     goto(`${url.pathname}?${url.searchParams.toString()}`)
   }
 
-  const applyThematicFeedToMyFeed = async () => {
-    if (!thematicFeedMeta) return
+  const hasMyFeedCustomizations = () => {
+    const rubrics = $userSettings.myFeedRubrics ?? []
+    const authors = $userSettings.myFeedAuthors ?? []
+    const tags = $userSettings.myFeedTags ?? []
+    const hiddenAuthors = $userSettings.hiddenAuthors ?? []
+    const tagRules = $userSettings.tagRules ?? {}
+    return (
+      rubrics.length > 0 ||
+      authors.length > 0 ||
+      tags.length > 0 ||
+      hiddenAuthors.length > 0 ||
+      Object.keys(tagRules).length > 0
+    )
+  }
+
+  const applyFolderPresetToMyFeed = async (folderPreset: BackendThematicFeed | null) => {
+    if (!folderPreset) return
     if (!$siteUser) {
       const next = encodeURIComponent(`${$page.url.pathname}${$page.url.search}`)
       goto(`/account?next=${next}`)
       return
     }
+    if (browser && hasMyFeedCustomizations()) {
+      const confirmed = window.confirm(
+        'У вас уже настроена "Моя лента". Нажатие на кнопку заменит текущие настройки настройками папки. После этого вы сможете дополнительно настроить свою ленту. Продолжить?'
+      )
+      if (!confirmed) return
+    }
     const authors = Array.from(
       new Set(
-        (thematicFeedMeta.authors ?? [])
+        (folderPreset.authors ?? [])
           .map((author) => (author?.username ?? '').trim())
           .filter(Boolean)
       )
     )
     const excludedAuthors = Array.from(
       new Set(
-        (thematicFeedMeta.excluded_authors ?? [])
+        (folderPreset.excluded_authors ?? [])
           .map((author) => (author?.username ?? '').trim())
           .filter(Boolean)
       )
     )
     const includedTags = Array.from(
       new Set(
-        (thematicFeedMeta.tags ?? [])
+        (folderPreset.tags ?? [])
           .map((tag) => normalizeTag(tag?.lemma ?? tag?.name ?? ''))
           .filter(Boolean)
       )
@@ -522,7 +727,7 @@
         delete nextTagRules[key]
       }
     }
-    for (const tag of thematicFeedMeta.blocked_tags ?? []) {
+    for (const tag of folderPreset.blocked_tags ?? []) {
       const normalized = normalizeTag(tag?.lemma ?? tag?.name ?? '')
       if (!normalized) continue
       nextTagRules[normalized] = 'hide'
@@ -536,6 +741,10 @@
       tagRules: nextTagRules,
     }
     goto('/?feed=mine')
+  }
+
+  const applyThematicFeedToMyFeed = async () => {
+    await applyFolderPresetToMyFeed(thematicFeedMeta)
   }
 </script>
 <div class="flex flex-col gap-2 max-w-full w-full min-w-0">
@@ -583,10 +792,18 @@
           </div>
         {/if}
         {#if thematicFeedMeta}
-          <div class="pt-1">
+          <div class="pt-1 flex flex-wrap gap-2">
             <Button on:click={applyThematicFeedToMyFeed}>
               Сделать моей лентой
             </Button>
+            {#if canManageCurrentFolder()}
+              <Button color="ghost" on:click={openCurrentFolderSettings}>
+                <span class="inline-flex items-center gap-2">
+                  <Icon src={Cog6Tooth} size="16" mini />
+                  <span>Настройки</span>
+                </span>
+              </Button>
+            {/if}
           </div>
         {/if}
       </div>
@@ -596,6 +813,113 @@
       </Header>
     {/if}
   </header>
+  <Modal bind:open={folderSettingsOpen} on:close={closeCurrentFolderSettings}>
+    <div class="w-full max-w-[48rem] flex flex-col gap-4">
+      <div>
+        <h2 class="text-xl font-semibold text-slate-900 dark:text-zinc-100">
+          Настройки папки
+        </h2>
+        <p class="mt-1 text-sm text-slate-500 dark:text-zinc-400">
+          Добавляйте и исключайте авторов и теги для текущей папки.
+        </p>
+      </div>
+
+      {#if folderSettingsError}
+        <div class="rounded-xl border border-rose-200 dark:border-rose-900 bg-rose-50/70 dark:bg-rose-950/20 p-3 text-sm text-rose-700 dark:text-rose-300">
+          {folderSettingsError}
+        </div>
+      {/if}
+      {#if folderSettingsSuccess}
+        <div class="rounded-xl border border-emerald-200 dark:border-emerald-900 bg-emerald-50/70 dark:bg-emerald-950/20 p-3 text-sm text-emerald-700 dark:text-emerald-300">
+          {folderSettingsSuccess}
+        </div>
+      {/if}
+
+      {#if folderSettingsLoading}
+        <div class="text-sm text-slate-500 dark:text-zinc-400">Загружаем настройки папки...</div>
+      {:else if folderSettingsDraft}
+        <div class="grid gap-4 md:grid-cols-2">
+          <label class="flex flex-col gap-1 text-sm min-w-0">
+            <span>Авторы</span>
+            <select
+              multiple
+              size="12"
+              class="px-2 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950"
+              on:change={(e) => updateFolderSettingsSelection(e, 'author_ids')}
+            >
+              {#each folderSettingsAuthorOptions as author}
+                <option value={author.id} selected={(folderSettingsDraft.author_ids ?? []).includes(author.id)}>
+                  @{author.username}{author.rubric ? ` · ${author.rubric}` : ''}
+                </option>
+              {/each}
+            </select>
+          </label>
+
+          <label class="flex flex-col gap-1 text-sm min-w-0">
+            <span>Исключенные авторы</span>
+            <select
+              multiple
+              size="12"
+              class="px-2 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950"
+              on:change={(e) => updateFolderSettingsSelection(e, 'excluded_author_ids')}
+            >
+              {#each folderSettingsAuthorOptions as author}
+                <option value={author.id} selected={(folderSettingsDraft.excluded_author_ids ?? []).includes(author.id)}>
+                  @{author.username}{author.rubric ? ` · ${author.rubric}` : ''}
+                </option>
+              {/each}
+            </select>
+          </label>
+
+          <label class="flex flex-col gap-1 text-sm min-w-0">
+            <span>Теги</span>
+            <select
+              multiple
+              size="12"
+              class="px-2 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950"
+              on:change={(e) => updateFolderSettingsSelection(e, 'tag_ids')}
+            >
+              {#each folderSettingsTagOptions as tag}
+                <option value={tag.id} selected={(folderSettingsDraft.tag_ids ?? []).includes(tag.id)}>
+                  {tag.name}
+                </option>
+              {/each}
+            </select>
+          </label>
+
+          <label class="flex flex-col gap-1 text-sm min-w-0">
+            <span>Исключенные теги</span>
+            <select
+              multiple
+              size="12"
+              class="px-2 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950"
+              on:change={(e) => updateFolderSettingsSelection(e, 'excluded_tag_ids')}
+            >
+              {#each folderSettingsTagOptions as tag}
+                <option value={tag.id} selected={(folderSettingsDraft.excluded_tag_ids ?? []).includes(tag.id)}>
+                  {tag.name}
+                </option>
+              {/each}
+            </select>
+          </label>
+        </div>
+      {:else}
+        <div class="text-sm text-slate-500 dark:text-zinc-400">
+          Не удалось открыть настройки текущей папки.
+        </div>
+      {/if}
+
+      <div class="flex justify-end gap-2">
+        <Button color="ghost" on:click={closeCurrentFolderSettings}>Закрыть</Button>
+        <Button
+          disabled={folderSettingsLoading || folderSettingsSaving || !folderSettingsDraft}
+          on:click={saveCurrentFolderSettings}
+        >
+          {folderSettingsSaving ? 'Сохраняем...' : 'Сохранить'}
+        </Button>
+      </div>
+    </div>
+  </Modal>
   {#if $siteUser && readOnly && feedType !== 'favorites'}
     <div class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-4 py-3 flex items-center justify-between gap-3">
       <div class="text-sm text-slate-600 dark:text-zinc-300">
@@ -660,9 +984,69 @@
           </a>
         </div>
       {:else}
-        {#if !selectedRubrics.length && !selectedAuthors.length}
-          <div class="text-sm text-slate-500 dark:text-zinc-400">
-            Чтобы лента заработала, выберите рубрики в настройках сайта или добавьте авторов на их страницах.
+        {#if !myFeedHasBaseSettings}
+          <div class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 flex flex-col gap-4">
+            <div class="flex flex-col gap-2">
+              <div class="text-sm text-slate-700 dark:text-zinc-200">
+                Ваша лента пока не настроена.
+              </div>
+              <div class="text-sm text-slate-500 dark:text-zinc-400">
+                Вы можете настроить ее вручную или выбрать готовую папку, которая станет вашей лентой, чтобы не начинать с нуля.
+              </div>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <Button color="ghost" on:click={openMyFeedSettings}>
+                Настроить мою ленту
+              </Button>
+              <a href="/settings" class="inline-flex items-center text-sm text-blue-600 dark:text-blue-400 hover:underline">
+                Открыть настройки сайта
+              </a>
+            </div>
+            <div class="flex flex-col gap-3">
+              <div class="text-sm font-medium text-slate-800 dark:text-zinc-200">
+                Или выберите готовую папку
+              </div>
+              {#if myFeedSuggestedFoldersLoading}
+                <div class="text-sm text-slate-500 dark:text-zinc-400">Загружаем папки...</div>
+              {:else if myFeedSuggestedFoldersError}
+                <div class="text-sm text-rose-600 dark:text-rose-300">{myFeedSuggestedFoldersError}</div>
+              {:else if myFeedSuggestedFolders.length}
+                <div class="grid gap-2 md:grid-cols-2">
+                  {#each myFeedSuggestedFolders as folder}
+                    <div class="rounded-xl border border-slate-200 dark:border-zinc-800 p-3 flex flex-col gap-2 min-w-0">
+                      <div class="min-w-0">
+                        <div class="text-sm font-medium text-slate-900 dark:text-zinc-100 truncate">
+                          {folder.name}
+                        </div>
+                        {#if folder.description}
+                          <div class="text-xs text-slate-500 dark:text-zinc-400 line-clamp-2">
+                            {folder.description}
+                          </div>
+                        {/if}
+                      </div>
+                      <div class="text-xs text-slate-500 dark:text-zinc-400">
+                        {folder.authors_count ?? 0} авторов · {folder.tags_count ?? 0} тегов · {folder.blocked_tags_count ?? 0} искл. тегов
+                      </div>
+                      <div class="flex flex-wrap gap-2">
+                        <Button on:click={() => applyFolderPresetToMyFeed(folder)}>
+                          Сделать моей лентой
+                        </Button>
+                        <a
+                          href={`/?feed=thematic&theme=${encodeURIComponent(folder.slug)}`}
+                          class="inline-flex items-center text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                        >
+                          Открыть папку
+                        </a>
+                      </div>
+                    </div>
+                  {/each}
+                </div>
+              {:else}
+                <div class="text-sm text-slate-500 dark:text-zinc-400">
+                  Пока нет готовых папок. Можно настроить ленту вручную.
+                </div>
+              {/if}
+            </div>
           </div>
         {/if}
       {/if}
@@ -691,6 +1075,8 @@
         {#if loadingMore}
           <div class="text-sm text-slate-500">Загрузка...</div>
         {/if}
+      {:else if !myFeedHasBaseSettings}
+        <div class="text-base text-slate-500">Выберите настройки или папку, чтобы запустить “Мою ленту”.</div>
       {:else}
         <div class="text-base text-slate-500">Пока нет публикаций.</div>
       {/if}
