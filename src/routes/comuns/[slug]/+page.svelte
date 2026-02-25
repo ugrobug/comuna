@@ -18,7 +18,7 @@
     type BackendPost,
     type BackendTag,
   } from '$lib/api/backend'
-  import { siteToken, siteUser } from '$lib/siteAuth'
+  import { siteToken, uploadSiteImage } from '$lib/siteAuth'
   import { env } from '$env/dynamic/public'
   import { userSettings } from '$lib/settings'
 
@@ -40,9 +40,11 @@
   let settingsOpen = false
   let settingsLoading = false
   let settingsSaving = false
+  let settingsLogoUploading = false
   let settingsError = ''
   let settingsTagSearch = ''
   let settingsDraft: BackendComun | null = null
+  let settingsLogoInput: HTMLInputElement | null = null
   let settingsCategoryOptions: BackendComunCategory[] = []
   type ComunTagOption = BackendTag & { id: number }
   let settingsTagOptions: ComunTagOption[] = []
@@ -266,6 +268,29 @@
       settingsError = error instanceof Error ? error.message : 'Ошибка сохранения'
     } finally {
       settingsSaving = false
+    }
+  }
+
+  const pickSettingsLogo = () => {
+    if (!isModerator()) return
+    settingsLogoInput?.click()
+  }
+
+  const onSettingsLogoSelected = async (event: Event) => {
+    const input = event.currentTarget as HTMLInputElement | null
+    const file = input?.files?.[0]
+    if (!file || !settingsDraft) return
+
+    settingsLogoUploading = true
+    try {
+      const uploadedUrl = await uploadSiteImage(file)
+      settingsDraft = { ...settingsDraft, logo_url: uploadedUrl }
+      toast('Логотип загружен. Нажмите «Сохранить» для применения.')
+    } catch (error) {
+      toast(error instanceof Error ? error.message : 'Не удалось загрузить логотип')
+    } finally {
+      settingsLogoUploading = false
+      if (input) input.value = ''
     }
   }
 
@@ -539,10 +564,56 @@
           <input bind:value={settingsDraft.website_url} type="url" class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2" />
         </label>
 
-        <label class="flex flex-col gap-1">
-          <span class="text-sm text-slate-700 dark:text-zinc-300">Логотип (URL)</span>
-          <input bind:value={settingsDraft.logo_url} type="url" class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2" />
-        </label>
+        <div class="flex flex-col gap-2">
+          <span class="text-sm text-slate-700 dark:text-zinc-300">Логотип</span>
+          <input
+            bind:this={settingsLogoInput}
+            type="file"
+            accept="image/*"
+            class="hidden"
+            on:change={onSettingsLogoSelected}
+          />
+          <div class="flex items-center gap-3 rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-3">
+            <div class="h-14 w-14 rounded-xl overflow-hidden border border-slate-200 dark:border-zinc-800 bg-slate-100 dark:bg-zinc-800 shrink-0">
+              {#if settingsDraft.logo_url}
+                <img src={settingsDraft.logo_url} alt="Предпросмотр логотипа" class="h-full w-full object-cover" />
+              {:else}
+                <div class="h-full w-full grid place-items-center text-slate-400 dark:text-zinc-500 text-xs text-center px-1">
+                  Нет лого
+                </div>
+              {/if}
+            </div>
+            <div class="min-w-0 flex-1 flex flex-col gap-1">
+              <div class="text-sm text-slate-700 dark:text-zinc-300">
+                {#if settingsLogoUploading}
+                  Загрузка логотипа...
+                {:else if settingsDraft.logo_url}
+                  Логотип выбран
+                {:else}
+                  Загрузите файл изображения
+                {/if}
+              </div>
+              <div class="text-xs text-slate-500 dark:text-zinc-400">
+                PNG, JPG, WEBP, GIF
+              </div>
+            </div>
+            <div class="flex flex-wrap gap-2 justify-end">
+              <Button size="sm" on:click={pickSettingsLogo} disabled={settingsSaving || settingsLogoUploading}>
+                {settingsDraft.logo_url ? 'Заменить' : 'Выбрать файл'}
+              </Button>
+              {#if settingsDraft.logo_url}
+                <Button
+                  color="ghost"
+                  size="sm"
+                  on:click={() => (settingsDraft = { ...settingsDraft, logo_url: '' })}
+                  disabled={settingsSaving || settingsLogoUploading}
+                >
+                  Убрать
+                </Button>
+              {/if}
+            </div>
+          </div>
+        </div>
 
         <label class="flex flex-col gap-1">
           <span class="text-sm text-slate-700 dark:text-zinc-300">Описание продукта</span>
@@ -624,7 +695,7 @@
 
       <div class="flex justify-end gap-2 pt-2">
         <Button color="ghost" on:click={() => (settingsOpen = false)} disabled={settingsSaving}>Закрыть</Button>
-        <Button on:click={saveSettings} disabled={settingsSaving}>
+        <Button on:click={saveSettings} disabled={settingsSaving || settingsLogoUploading}>
           {settingsSaving ? 'Сохраняем...' : 'Сохранить'}
         </Button>
       </div>
