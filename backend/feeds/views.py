@@ -2764,7 +2764,7 @@ def login_user(request: HttpRequest) -> HttpResponse:
     token = _issue_token(user)
     return JsonResponse({"ok": True, "token": token, "user": _serialize_user(user)})
 
-
+@csrf_exempt
 def auth_me(request: HttpRequest) -> HttpResponse:
     user = _get_user_from_request(request)
     if not user:
