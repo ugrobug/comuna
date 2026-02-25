@@ -1605,7 +1605,7 @@
             {@const postView = backendPostToPostView(backendPost, backendPost.author)}
             <Post
               post={postView}
-              class="feed-shortcut-post"
+              class="feed-shortcut-post rounded-2xl border border-slate-200/80 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 shadow-sm px-4 sm:px-5"
               view="cozy"
               actions={true}
               showReadMore={false}
@@ -1633,7 +1633,7 @@
         {@const postView = backendPostToPostView(backendPost, backendPost.author)}
         <Post
           post={postView}
-          class="feed-shortcut-post"
+          class="feed-shortcut-post rounded-2xl border border-slate-200/80 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 shadow-sm px-4 sm:px-5"
           view="cozy"
           actions={true}
           showReadMore={false}
