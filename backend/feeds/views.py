@@ -41,6 +41,9 @@ from .models import (
     AuthorAdmin,
     AuthorVerificationCode,
     BotSession,
+    Comun,
+    ComunCategory,
+    ComunPostCategoryAssignment,
     Post,
     PostComment,
     PostCommentLike,
@@ -4840,6 +4843,549 @@ def thematic_feed_posts(request: HttpRequest, slug: str) -> HttpResponse:
             "thematic_feed": _serialize_thematic_feed(thematic_feed),
             "posts": serialized,
             "hidden_read_count": hidden_read_count,
+        }
+    )
+
+
+def _comun_is_moderator(user: User | None, comun: Comun) -> bool:
+    if not user:
+        return False
+    if user.is_staff:
+        return True
+    if comun.creator_id == user.id:
+        return True
+    return comun.moderators.filter(id=user.id).exists()
+
+
+def _serialize_comun_category(category: ComunCategory) -> dict:
+    return {
+        "id": category.id,
+        "name": category.name,
+        "slug": category.slug,
+        "description": category.description,
+        "sort_order": category.sort_order,
+    }
+
+
+def _parse_post_reference_to_id(value: object) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value if value > 0 else None
+    raw = str(value).strip()
+    if not raw:
+        return None
+    if raw.isdigit():
+        parsed = int(raw)
+        return parsed if parsed > 0 else None
+    match = re.search(r"/b/post/(\d+)", raw)
+    if match:
+        return int(match.group(1))
+    return None
+
+
+def _serialize_comun(
+    request: HttpRequest,
+    comun: Comun,
+    *,
+    current_user: User | None = None,
+    include_manage_fields: bool = False,
+    include_options: bool = False,
+) -> dict:
+    categories = list(comun.categories.filter(is_active=True).order_by("sort_order", "name"))
+    moderators = list(comun.moderators.order_by("username"))
+    product_tag = comun.product_tag
+    welcome_post_payload = None
+    if comun.welcome_post_id:
+        welcome_post = (
+            Post.objects.select_related("author", "rubric")
+            .prefetch_related("tags")
+            .filter(id=comun.welcome_post_id, is_blocked=False, author__is_blocked=False)
+            .first()
+        )
+        if welcome_post:
+            welcome_post_payload = _serialize_post_for_user(request, welcome_post, current_user)
+
+    payload = {
+        "id": comun.id,
+        "name": comun.name,
+        "slug": comun.slug,
+        "website_url": comun.website_url,
+        "logo_url": comun.logo_url,
+        "product_description": comun.product_description,
+        "target_audience": comun.target_audience,
+        "is_active": comun.is_active,
+        "sort_order": comun.sort_order,
+        "creator": {
+            "id": comun.creator_id,
+            "username": comun.creator.username if getattr(comun, "creator", None) else None,
+        },
+        "moderators": [
+            {"id": moderator.id, "username": moderator.username} for moderator in moderators
+        ],
+        "moderators_count": len(moderators),
+        "categories": [_serialize_comun_category(category) for category in categories],
+        "categories_count": len(categories),
+        "product_tag": (
+            {
+                "id": product_tag.id,
+                "name": product_tag.name,
+                "lemma": product_tag.lemma or _lemmatize_tag(product_tag.name) or product_tag.name,
+            }
+            if product_tag
+            else None
+        ),
+        "welcome_post_id": comun.welcome_post_id,
+        "welcome_post": welcome_post_payload,
+        "can_moderate": _comun_is_moderator(current_user, comun),
+    }
+    if include_manage_fields:
+        payload["category_ids"] = [category.id for category in categories]
+        payload["product_tag_id"] = comun.product_tag_id
+        payload["welcome_post_ref"] = str(comun.welcome_post_id or "")
+    if include_options:
+        payload["options"] = {
+            "categories": [
+                _serialize_comun_category(category)
+                for category in ComunCategory.objects.filter(is_active=True).order_by("sort_order", "name")
+            ],
+            "tags": [
+                {
+                    "id": tag.id,
+                    "name": tag.name,
+                    "lemma": tag.lemma or _lemmatize_tag(tag.name) or tag.name,
+                }
+                for tag in Tag.objects.filter(is_active=True).order_by("name")
+            ],
+        }
+    return payload
+
+
+def _comun_product_tag_filter(product_tag: Tag | None) -> Q | None:
+    if not product_tag:
+        return None
+    filters = Q(tags__id=product_tag.id)
+    tag_name = _normalize_tag_value(product_tag.name)
+    if tag_name:
+        filters |= Q(tags__name__iexact=tag_name)
+    tag_lemma = (product_tag.lemma or _lemmatize_tag(product_tag.name) or "").strip()
+    if tag_lemma:
+        filters |= Q(tags__lemma__iexact=tag_lemma)
+    return filters
+
+
+def _serialize_backend_post_card(
+    request: HttpRequest,
+    post: Post,
+    current_user: User | None,
+    *,
+    now=None,
+    is_favorite: bool = False,
+) -> dict:
+    now = now or timezone.now()
+    rubric = post.rubric
+    content, poll_payload = _content_with_live_poll(post, current_user)
+    author_channel_url, author_title = _author_display_fields(post.author, rubric, post.channel_url)
+    return {
+        "id": post.id,
+        "title": _post_display_title(post),
+        "rubric": rubric.name if rubric else None,
+        "rubric_slug": rubric.slug if rubric else None,
+        "rubric_icon_url": _rubric_icon_url(request, rubric),
+        "content": content,
+        "poll": poll_payload,
+        "source_url": post.source_url,
+        "channel_url": author_channel_url,
+        "created_at": post.created_at.isoformat(),
+        "author": {
+            "username": post.author.username,
+            "title": author_title,
+            "channel_url": author_channel_url,
+            "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
+            **_author_admin_fields_for_user(current_user, post.author, rubric),
+        },
+        "tags": _serialize_tags(post.tags.all()),
+        "is_favorite": is_favorite,
+        "score": post.rating + post.comments_count * 5,
+        "rating": post.rating,
+        "comments_count": post.comments_count,
+        "likes_count": post.rating,
+        "views_count": _post_total_views(post, now),
+    }
+
+
+@csrf_exempt
+def comuns_list_create(request: HttpRequest) -> HttpResponse:
+    current_user = _get_user_from_request(request)
+
+    if request.method == "GET":
+        comuns = list(
+            Comun.objects.filter(is_active=True)
+            .select_related("creator", "product_tag")
+            .prefetch_related("moderators", "categories")
+            .order_by("sort_order", "name")
+        )
+        payload = [
+            _serialize_comun(request, comun, current_user=current_user)
+            for comun in comuns
+        ]
+        return JsonResponse({"ok": True, "comuns": payload})
+
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    if not current_user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+
+    try:
+        body = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+
+    name = str(body.get("name") or "").strip()
+    if not name:
+        return JsonResponse({"ok": False, "error": "name required"}, status=400)
+    slug_raw = str(body.get("slug") or "").strip()
+    slug = slugify(slug_raw or name)[:160]
+    if not slug:
+        return JsonResponse({"ok": False, "error": "slug required"}, status=400)
+    if Comun.objects.filter(slug=slug).exists():
+        return JsonResponse({"ok": False, "error": "slug already exists"}, status=400)
+    if Comun.objects.filter(name__iexact=name).exists():
+        return JsonResponse({"ok": False, "error": "name already exists"}, status=400)
+
+    website_url = str(body.get("website_url") or "").strip()
+    logo_url = str(body.get("logo_url") or "").strip()
+    product_description = str(body.get("product_description") or "").strip()
+    target_audience = str(body.get("target_audience") or "").strip()
+    category_ids = _parse_int_list(body.get("category_ids"))
+    product_tag_id = _parse_post_reference_to_id(body.get("product_tag_id"))
+    welcome_post_id = _parse_post_reference_to_id(body.get("welcome_post_id") or body.get("welcome_post_ref"))
+
+    comun = Comun.objects.create(
+        name=name,
+        slug=slug,
+        creator=current_user,
+        website_url=website_url,
+        logo_url=logo_url,
+        product_description=product_description,
+        target_audience=target_audience,
+    )
+    comun.moderators.add(current_user)
+    if category_ids:
+        comun.categories.set(ComunCategory.objects.filter(id__in=category_ids, is_active=True))
+    if product_tag_id:
+        product_tag = Tag.objects.filter(id=product_tag_id, is_active=True).first()
+        if product_tag:
+            comun.product_tag = product_tag
+    if welcome_post_id:
+        welcome_post = Post.objects.filter(id=welcome_post_id, is_blocked=False, author__is_blocked=False).first()
+        if welcome_post:
+            comun.welcome_post = welcome_post
+    comun.save()
+
+    comun = (
+        Comun.objects.filter(id=comun.id)
+        .select_related("creator", "product_tag", "welcome_post")
+        .prefetch_related("moderators", "categories")
+        .get()
+    )
+    return JsonResponse({"ok": True, "comun": _serialize_comun(request, comun, current_user=current_user, include_manage_fields=True)})
+
+
+@csrf_exempt
+def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
+    current_user = _get_user_from_request(request)
+    try:
+        comun = (
+            Comun.objects.filter(slug=slug)
+            .select_related("creator", "product_tag", "welcome_post")
+            .prefetch_related("moderators", "categories")
+            .get()
+        )
+    except Comun.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "comun not found"}, status=404)
+
+    if not comun.is_active and not _comun_is_moderator(current_user, comun):
+        return JsonResponse({"ok": False, "error": "comun not found"}, status=404)
+
+    if request.method == "GET":
+        return JsonResponse(
+            {
+                "ok": True,
+                "comun": _serialize_comun(
+                    request,
+                    comun,
+                    current_user=current_user,
+                    include_manage_fields=True,
+                    include_options=_comun_is_moderator(current_user, comun),
+                ),
+            }
+        )
+
+    if request.method not in ("PATCH", "POST"):
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    if not _comun_is_moderator(current_user, comun):
+        return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+
+    try:
+        body = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+
+    if "name" in body and (current_user and current_user.is_staff):
+        name = str(body.get("name") or "").strip()
+        if not name:
+            return JsonResponse({"ok": False, "error": "name required"}, status=400)
+        if Comun.objects.exclude(id=comun.id).filter(name__iexact=name).exists():
+            return JsonResponse({"ok": False, "error": "name already exists"}, status=400)
+        comun.name = name
+    if "slug" in body and (current_user and current_user.is_staff):
+        next_slug = slugify(str(body.get("slug") or "").strip())[:160]
+        if not next_slug:
+            return JsonResponse({"ok": False, "error": "slug required"}, status=400)
+        if Comun.objects.exclude(id=comun.id).filter(slug=next_slug).exists():
+            return JsonResponse({"ok": False, "error": "slug already exists"}, status=400)
+        comun.slug = next_slug
+    if "website_url" in body:
+        comun.website_url = str(body.get("website_url") or "").strip()
+    if "logo_url" in body:
+        comun.logo_url = str(body.get("logo_url") or "").strip()
+    if "product_description" in body:
+        comun.product_description = str(body.get("product_description") or "").strip()
+    if "target_audience" in body:
+        comun.target_audience = str(body.get("target_audience") or "").strip()
+    if "is_active" in body and (current_user and current_user.is_staff):
+        comun.is_active = bool(body.get("is_active"))
+    if "sort_order" in body and (current_user and current_user.is_staff):
+        try:
+            comun.sort_order = max(int(body.get("sort_order", 0)), 0)
+        except (TypeError, ValueError):
+            pass
+
+    if "product_tag_id" in body:
+        product_tag_id = _parse_post_reference_to_id(body.get("product_tag_id"))
+        if product_tag_id:
+            product_tag = Tag.objects.filter(id=product_tag_id, is_active=True).first()
+            if not product_tag:
+                return JsonResponse({"ok": False, "error": "tag not found"}, status=400)
+            comun.product_tag = product_tag
+        else:
+            comun.product_tag = None
+
+    if "welcome_post_id" in body or "welcome_post_ref" in body:
+        welcome_post_id = _parse_post_reference_to_id(
+            body.get("welcome_post_id") if "welcome_post_id" in body else body.get("welcome_post_ref")
+        )
+        if welcome_post_id:
+            welcome_post = (
+                Post.objects.filter(id=welcome_post_id, is_blocked=False, author__is_blocked=False)
+                .filter(_publish_ready_filter(timezone.now()))
+                .first()
+            )
+            if not welcome_post:
+                return JsonResponse({"ok": False, "error": "post not found"}, status=400)
+            comun.welcome_post = welcome_post
+        else:
+            comun.welcome_post = None
+
+    comun.save()
+
+    if "category_ids" in body:
+        comun.categories.set(
+            ComunCategory.objects.filter(id__in=_parse_int_list(body.get("category_ids")), is_active=True)
+        )
+
+    comun = (
+        Comun.objects.filter(id=comun.id)
+        .select_related("creator", "product_tag", "welcome_post")
+        .prefetch_related("moderators", "categories")
+        .get()
+    )
+    return JsonResponse(
+        {
+            "ok": True,
+            "comun": _serialize_comun(
+                request,
+                comun,
+                current_user=current_user,
+                include_manage_fields=True,
+                include_options=True,
+            ),
+        }
+    )
+
+
+def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
+    current_user = _get_user_from_request(request)
+    try:
+        comun = (
+            Comun.objects.filter(slug=slug)
+            .select_related("creator", "product_tag", "welcome_post")
+            .prefetch_related("moderators", "categories")
+            .get()
+        )
+    except Comun.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "comun not found"}, status=404)
+
+    if not comun.is_active and not _comun_is_moderator(current_user, comun):
+        return JsonResponse({"ok": False, "error": "comun not found"}, status=404)
+
+    limit_raw = request.GET.get("limit", "10")
+    try:
+        limit = min(max(int(limit_raw), 1), 200)
+    except ValueError:
+        limit = 10
+    offset_raw = request.GET.get("offset", "0")
+    try:
+        offset = max(int(offset_raw), 0)
+    except ValueError:
+        offset = 0
+
+    selected_category_slug = str(request.GET.get("category") or "").strip()
+    selected_category = None
+    if selected_category_slug:
+        selected_category = (
+            comun.categories.filter(slug=selected_category_slug, is_active=True).first()
+        )
+        if not selected_category:
+            return JsonResponse({"ok": False, "error": "category not found"}, status=404)
+
+    now = timezone.now()
+    tag_filter = _comun_product_tag_filter(comun.product_tag)
+    if not tag_filter:
+        return JsonResponse(
+            {
+                "ok": True,
+                "comun": _serialize_comun(request, comun, current_user=current_user),
+                "posts": [],
+                "selected_category": _serialize_comun_category(selected_category) if selected_category else None,
+            }
+        )
+
+    base_query = (
+        Post.objects.filter(
+            tag_filter,
+            is_blocked=False,
+            is_pending=False,
+            author__is_blocked=False,
+        )
+        .filter(_publish_ready_filter(now))
+        .filter(Q(author__shadow_banned=False) | Q(author__force_home=True))
+        .filter(Q(rubric__isnull=True) | Q(rubric__is_hidden=False))
+    )
+    if comun.welcome_post_id:
+        base_query = base_query.exclude(id=comun.welcome_post_id)
+    if selected_category:
+        base_query = base_query.filter(
+            comun_category_assignments__comun_id=comun.id,
+            comun_category_assignments__category_id=selected_category.id,
+        )
+
+    posts = list(
+        base_query.select_related("author", "rubric")
+        .prefetch_related("tags")
+        .distinct()
+        .order_by("-created_at")[offset : offset + limit]
+    )
+
+    favorite_post_ids = _favorite_post_ids_for_user(posts, current_user)
+    assignments = {
+        assignment.post_id: assignment
+        for assignment in ComunPostCategoryAssignment.objects.select_related("category")
+        .filter(comun_id=comun.id, post_id__in=[post.id for post in posts])
+    }
+
+    serialized_posts = []
+    for post in posts:
+        item = _serialize_backend_post_card(
+            request,
+            post,
+            current_user,
+            now=now,
+            is_favorite=post.id in favorite_post_ids,
+        )
+        assignment = assignments.get(post.id)
+        if assignment and assignment.category_id:
+            item["comun_category"] = _serialize_comun_category(assignment.category)
+            item["comun_category_id"] = assignment.category_id
+        else:
+            item["comun_category"] = None
+            item["comun_category_id"] = None
+        serialized_posts.append(item)
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "comun": _serialize_comun(request, comun, current_user=current_user),
+            "posts": serialized_posts,
+            "selected_category": _serialize_comun_category(selected_category) if selected_category else None,
+        }
+    )
+
+
+@csrf_exempt
+def comun_post_category_update(request: HttpRequest, slug: str, post_id: int) -> HttpResponse:
+    if request.method not in ("PATCH", "POST"):
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    current_user = _get_user_from_request(request)
+    if not current_user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    try:
+        comun = (
+            Comun.objects.filter(slug=slug)
+            .select_related("creator", "product_tag")
+            .prefetch_related("moderators", "categories")
+            .get()
+        )
+    except Comun.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "comun not found"}, status=404)
+    if not _comun_is_moderator(current_user, comun):
+        return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+
+    try:
+        body = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+
+    category_id = _parse_post_reference_to_id(body.get("category_id"))
+    category = None
+    if category_id:
+        category = comun.categories.filter(id=category_id, is_active=True).first()
+        if not category:
+            return JsonResponse({"ok": False, "error": "category not found"}, status=400)
+
+    tag_filter = _comun_product_tag_filter(comun.product_tag)
+    if not tag_filter:
+        return JsonResponse({"ok": False, "error": "product tag not set"}, status=400)
+
+    post = (
+        Post.objects.filter(id=post_id, is_blocked=False, is_pending=False, author__is_blocked=False)
+        .filter(_publish_ready_filter(timezone.now()))
+        .filter(tag_filter)
+        .distinct()
+        .first()
+    )
+    if not post:
+        return JsonResponse({"ok": False, "error": "post not found in comun"}, status=404)
+
+    if category is None:
+        ComunPostCategoryAssignment.objects.filter(comun=comun, post=post).delete()
+        return JsonResponse({"ok": True, "assignment": None})
+
+    assignment, _ = ComunPostCategoryAssignment.objects.update_or_create(
+        comun=comun,
+        post=post,
+        defaults={"category": category, "assigned_by": current_user},
+    )
+    return JsonResponse(
+        {
+            "ok": True,
+            "assignment": {
+                "post_id": post.id,
+                "category_id": assignment.category_id,
+                "category": _serialize_comun_category(category),
+            },
         }
     )
 

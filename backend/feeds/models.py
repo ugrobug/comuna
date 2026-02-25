@@ -371,6 +371,81 @@ class ThematicFeed(models.Model):
         return self.name
 
 
+class ComunCategory(models.Model):
+    name = models.CharField(max_length=120, unique=True)
+    slug = models.SlugField(max_length=120, unique=True)
+    description = models.TextField(blank=True)
+    sort_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["sort_order", "name"]
+        verbose_name = "Категория комуны"
+        verbose_name_plural = "Категории коммун"
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class Comun(models.Model):
+    name = models.CharField(max_length=160, unique=True)
+    slug = models.SlugField(max_length=160, unique=True)
+    creator = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="created_comuns",
+        verbose_name="Создатель",
+    )
+    moderators = models.ManyToManyField(
+        User,
+        blank=True,
+        related_name="moderated_comuns",
+        verbose_name="Модераторы",
+        help_text="Пользователи, которые могут редактировать карточку комуны и категоризировать посты.",
+    )
+    product_tag = models.ForeignKey(
+        Tag,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="comuns",
+        verbose_name="Тег продукта",
+        help_text="Все посты с этим тегом попадут в коммуну.",
+    )
+    welcome_post = models.ForeignKey(
+        "Post",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="welcome_for_comuns",
+        verbose_name="Приветственный пост",
+    )
+    categories = models.ManyToManyField(
+        ComunCategory,
+        blank=True,
+        related_name="comuns",
+        verbose_name="Внутренние категории",
+    )
+    website_url = models.URLField(max_length=500, blank=True, verbose_name="Веб-сайт")
+    logo_url = models.URLField(max_length=500, blank=True, verbose_name="Логотип (URL)")
+    product_description = models.TextField(blank=True, verbose_name="Описание продукта")
+    target_audience = models.TextField(blank=True, verbose_name="Целевая аудитория")
+    is_active = models.BooleanField(default=True)
+    sort_order = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["sort_order", "name"]
+        verbose_name = "Комуна"
+        verbose_name_plural = "Комуны"
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class Post(models.Model):
     author = models.ForeignKey(Author, on_delete=models.CASCADE, related_name="posts")
     message_id = models.BigIntegerField()
@@ -400,6 +475,39 @@ class Post(models.Model):
 
     def __str__(self) -> str:
         return f"{self.author.username}:{self.message_id}"
+
+
+class ComunPostCategoryAssignment(models.Model):
+    comun = models.ForeignKey(
+        Comun, on_delete=models.CASCADE, related_name="post_category_assignments"
+    )
+    post = models.ForeignKey(
+        Post, on_delete=models.CASCADE, related_name="comun_category_assignments"
+    )
+    category = models.ForeignKey(
+        ComunCategory,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="post_assignments",
+    )
+    assigned_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="assigned_comun_post_categories",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("comun", "post")
+        verbose_name = "Категория поста в комуне"
+        verbose_name_plural = "Категории постов в коммунах"
+
+    def __str__(self) -> str:
+        return f"{self.comun_id}:{self.post_id}:{self.category_id or 0}"
 
 
 class PostComment(models.Model):

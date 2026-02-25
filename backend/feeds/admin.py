@@ -4,6 +4,9 @@ from .models import (
     Author,
     AuthorAdmin as AuthorAdminLink,
     AuthorVerificationCode,
+    Comun,
+    ComunCategory,
+    ComunPostCategoryAssignment,
     Post,
     PostComment,
     PostCommentLike,
@@ -201,6 +204,68 @@ class ThematicFeedAdmin(admin.ModelAdmin):
         return obj.blocked_tags.count()
 
     blocked_tags_count.short_description = "Искл. тегов"
+
+
+@admin.register(ComunCategory)
+class ComunCategoryAdmin(admin.ModelAdmin):
+    list_display = ("name", "slug", "is_active", "sort_order")
+    list_filter = ("is_active",)
+    search_fields = ("name", "slug", "description")
+    prepopulated_fields = {"slug": ("name",)}
+    fields = ("name", "slug", "description", "sort_order", "is_active")
+
+
+@admin.register(Comun)
+class ComunAdmin(admin.ModelAdmin):
+    list_display = (
+        "name",
+        "slug",
+        "creator",
+        "product_tag",
+        "welcome_post",
+        "is_active",
+        "sort_order",
+        "moderators_count",
+        "categories_count",
+    )
+    list_filter = ("is_active", "categories")
+    search_fields = ("name", "slug", "product_description", "target_audience")
+    prepopulated_fields = {"slug": ("name",)}
+    filter_horizontal = ("moderators", "categories")
+    raw_id_fields = ("creator", "product_tag", "welcome_post")
+    fields = (
+        "name",
+        "slug",
+        "creator",
+        "moderators",
+        "product_tag",
+        "welcome_post",
+        "website_url",
+        "logo_url",
+        "product_description",
+        "target_audience",
+        "categories",
+        "sort_order",
+        "is_active",
+    )
+
+    def moderators_count(self, obj):
+        return obj.moderators.count()
+
+    moderators_count.short_description = "Модераторов"
+
+    def categories_count(self, obj):
+        return obj.categories.count()
+
+    categories_count.short_description = "Категорий"
+
+
+@admin.register(ComunPostCategoryAssignment)
+class ComunPostCategoryAssignmentAdmin(admin.ModelAdmin):
+    list_display = ("comun", "post", "category", "assigned_by", "updated_at")
+    list_filter = ("comun", "category")
+    search_fields = ("comun__name", "post__title", "post__author__username")
+    raw_id_fields = ("comun", "post", "category", "assigned_by")
 
 
 @admin.register(PostComment)

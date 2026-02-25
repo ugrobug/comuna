@@ -81,6 +81,33 @@ export const buildThematicFeedsListUrl = (): string => {
   return `${getBackendBaseUrl()}/api/thematic-feeds/`
 }
 
+export const buildComunsUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/comuns/`
+}
+
+export const buildComunUrl = (slug: string): string => {
+  return `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/`
+}
+
+export const buildComunPostsUrl = (
+  slug: string,
+  options?: {
+    categorySlug?: string
+  }
+): string => {
+  const base = `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/posts/`
+  const params = new URLSearchParams()
+  if (options?.categorySlug) {
+    params.set('category', options.categorySlug)
+  }
+  const query = params.toString()
+  return query ? `${base}?${query}` : base
+}
+
+export const buildComunPostCategoryUrl = (slug: string, postId: number | string): string => {
+  return `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/posts/${encodeURIComponent(postId)}/category/`
+}
+
 export const buildThematicFeedPostsUrl = (
   slug: string,
   options?: {
@@ -275,6 +302,42 @@ export type BackendThematicFeed = {
   excluded_tag_ids?: number[]
 }
 
+export type BackendComunCategory = {
+  id: number
+  name: string
+  slug: string
+  description?: string | null
+  sort_order?: number
+}
+
+export type BackendComun = {
+  id: number
+  name: string
+  slug: string
+  website_url?: string | null
+  logo_url?: string | null
+  product_description?: string | null
+  target_audience?: string | null
+  is_active?: boolean
+  sort_order?: number
+  can_moderate?: boolean
+  creator?: { id?: number; username?: string | null }
+  moderators?: Array<{ id: number; username: string }>
+  moderators_count?: number
+  categories?: BackendComunCategory[]
+  categories_count?: number
+  category_ids?: number[]
+  product_tag?: { id: number; name: string; lemma?: string | null } | null
+  product_tag_id?: number | null
+  welcome_post_id?: number | null
+  welcome_post_ref?: string
+  welcome_post?: BackendPost | null
+  options?: {
+    categories?: BackendComunCategory[]
+    tags?: BackendTag[]
+  }
+}
+
 export type BackendPollOption = {
   index: number
   text: string
@@ -308,6 +371,8 @@ export type BackendPost = {
   views_count?: number
   is_favorite?: boolean
   tags?: BackendTag[]
+  comun_category?: BackendComunCategory | null
+  comun_category_id?: number | null
   author?: BackendAuthor
 }
 
