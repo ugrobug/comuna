@@ -77,6 +77,34 @@ export const buildTagsListUrl = (): string => {
   return `${getBackendBaseUrl()}/api/tags/`
 }
 
+export const buildThematicFeedsListUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/thematic-feeds/`
+}
+
+export const buildThematicFeedPostsUrl = (
+  slug: string,
+  options?: {
+    hideRead?: boolean
+    onlyRead?: boolean
+  }
+): string => {
+  const base = `${getBackendBaseUrl()}/api/thematic-feeds/${encodeURIComponent(slug)}/posts/`
+  const params = new URLSearchParams()
+  if (options?.onlyRead) {
+    params.set('only_read', '1')
+  } else if (options?.hideRead) {
+    params.set('hide_read', '1')
+  }
+  const query = params.toString()
+  return query ? `${base}?${query}` : base
+}
+
+export const buildThematicFeedsManageUrl = (slug?: string): string => {
+  const base = `${getBackendBaseUrl()}/api/thematic-feeds/manage/`
+  if (!slug) return base
+  return `${base}${encodeURIComponent(slug)}/`
+}
+
 export const buildBackendPostPath = (post: { id: number; title: string }): string => {
   const slug = slugifyTitle(post.title)
   return slug ? `/b/post/${post.id}-${slug}` : `/b/post/${post.id}`
@@ -130,6 +158,7 @@ export const buildFavoritesFeedUrl = (options?: {
 export const buildMyFeedUrl = (
   rubrics?: string[],
   authors?: string[],
+  tags?: string[],
   hideNegative: boolean = true,
   hideRead: boolean = false,
   onlyRead: boolean = false
@@ -141,6 +170,9 @@ export const buildMyFeedUrl = (
   }
   if (authors?.length) {
     params.set('authors', authors.join(','))
+  }
+  if (tags?.length) {
+    params.set('tags', tags.join(','))
   }
   if (!hideNegative) {
     params.set('hide_negative', '0')
@@ -199,6 +231,38 @@ export type BackendAuthor = {
 export type BackendTag = {
   name: string
   lemma?: string | null
+  mood?: string
+}
+
+export type BackendThematicFeedAuthor = {
+  id?: number
+  username: string
+  title?: string | null
+}
+
+export type BackendThematicFeed = {
+  id?: number
+  name: string
+  slug: string
+  description?: string | null
+  is_active?: boolean
+  sort_order?: number
+  moderators_count?: number
+  authors_count?: number
+  excluded_authors_count?: number
+  tags_count?: number
+  blocked_tags_count?: number
+  moderators?: Array<{ id: number; username: string }>
+  authors?: BackendThematicFeedAuthor[]
+  excluded_authors?: BackendThematicFeedAuthor[]
+  tags?: BackendTag[]
+  blocked_tags?: BackendTag[]
+  excluded_tags?: BackendTag[]
+  moderator_ids?: number[]
+  author_ids?: number[]
+  excluded_author_ids?: number[]
+  tag_ids?: number[]
+  excluded_tag_ids?: number[]
 }
 
 export type BackendPollOption = {

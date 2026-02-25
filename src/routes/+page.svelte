@@ -10,12 +10,14 @@
   import { t } from '$lib/translations.js'
   import Post from '$lib/components/lemmy/post/Post.svelte'
   import {
+    type BackendThematicFeed,
     backendPostToPostView,
     buildFavoritesFeedUrl,
     buildBackendPostPath,
     buildFreshFeedUrl,
     buildHomeFeedUrl,
     buildMyFeedUrl,
+    buildThematicFeedPostsUrl,
     buildTagsListUrl,
   } from '$lib/api/backend'
   import { siteToken, siteUser } from '$lib/siteAuth'
@@ -38,6 +40,8 @@
   let lastPostsRef = data.posts
   let lastFeedType = feedType
   let lastMyFeedKey = ''
+  let thematicFeedSlug = data.thematicSlug ?? ''
+  let thematicFeedMeta: BackendThematicFeed | null = data.thematicFeed ?? null
 	  let lastFeedKey: string | null = null
 	  let myFeedSettingsOpen = false
 	  let feedParam: string | null = null
@@ -68,30 +72,40 @@
     ) {
       lastPostsRef = data.posts
       posts = data.posts ?? []
+      if (data.feedType === 'thematic') {
+        thematicFeedMeta = data.thematicFeed ?? null
+      }
       offset = posts.length
       hasMore = posts.length === pageSize
       loadingMore = false
     }
   }
 	  $: feedParam = $page.url.searchParams.get('feed')
+	  $: thematicFeedSlug = ($page.url.searchParams.get('theme') ?? '').trim()
 	  $: readParam = $page.url.searchParams.get('read')
 	  $: readOnly = readParam === '1' || readParam === 'true' || readParam === 'yes'
 	  $: if (data?.feedType && data.feedType !== lastFeedType && feedParam) {
 	    lastFeedType = data.feedType
 	    feedType = data.feedType ?? 'hot'
+	    thematicFeedMeta = feedType === 'thematic' ? null : thematicFeedMeta
 	    if (feedType === 'mine' || feedType === 'favorites') {
 	      posts = []
 	      offset = 0
 	      hasMore = false
 	      loadingMore = false
 	      hiddenReadCount = 0
+	      thematicFeedMeta = null
 	      lastMyFeedKey = ''
 	    } else {
 	      posts = data.posts ?? []
+	      thematicFeedMeta = feedType === 'thematic' ? (data.thematicFeed ?? null) : thematicFeedMeta
 	      offset = posts.length
 	      hasMore = posts.length === pageSize
 	      loadingMore = false
 	      hiddenReadCount = 0
+	      if (feedType !== 'thematic') {
+	        thematicFeedMeta = null
+	      }
 	    }
 	  }
 	  $: if (!feedParam) {
@@ -99,12 +113,14 @@
 	    if (preferredFeed !== feedType) {
 	      feedType = preferredFeed
 	      lastFeedType = preferredFeed
+	      thematicFeedMeta = feedType === 'thematic' ? null : thematicFeedMeta
 	      if (feedType === 'mine' || feedType === 'favorites') {
 	        posts = []
 	        offset = 0
 	        hasMore = false
 	        loadingMore = false
 	        hiddenReadCount = 0
+	        thematicFeedMeta = null
 	        lastMyFeedKey = ''
 	      } else {
 	        posts = []
@@ -112,6 +128,9 @@
 	        hasMore = true
 	        loadingMore = false
 	        hiddenReadCount = 0
+	        if (feedType !== 'thematic') {
+	          thematicFeedMeta = null
+	        }
 	        if (browser) {
 	          loadMore()
 	        }
@@ -123,13 +142,14 @@
 
   $: selectedRubrics = $userSettings.myFeedRubrics ?? []
   $: selectedAuthors = $userSettings.myFeedAuthors ?? []
+  $: selectedMyFeedTags = $userSettings.myFeedTags ?? []
   $: hiddenAuthorKeys = new Set(
     ($userSettings.hiddenAuthors ?? []).map((value) => value.toLowerCase())
   )
   $: canLoadMyFeed =
     feedType === 'mine' &&
     $siteUser &&
-    (selectedRubrics.length > 0 || selectedAuthors.length > 0)
+    (selectedRubrics.length > 0 || selectedAuthors.length > 0 || selectedMyFeedTags.length > 0)
 	  $: hideNegativeMyFeed = $userSettings.myFeedHideNegative ?? true
 	  $: hideReadPosts = ($userSettings.hideReadPosts ?? false) && !!$siteUser
 	  $: effectiveHideRead = hideReadPosts && !readOnly
@@ -156,10 +176,16 @@
 	      })
 	    } else if (feedType === 'favorites') {
 	      baseUrl = buildFavoritesFeedUrl()
+	    } else if (feedType === 'thematic') {
+	      baseUrl = buildThematicFeedPostsUrl(thematicFeedSlug, {
+	        hideRead: effectiveHideRead,
+	        onlyRead: readOnly,
+	      })
 	    } else if (feedType === 'mine') {
 	      baseUrl = buildMyFeedUrl(
 	        selectedRubrics,
 	        selectedAuthors,
+	        selectedMyFeedTags,
 	        hideNegativeMyFeed,
 	        effectiveHideRead,
 	        readOnly
@@ -183,6 +209,7 @@
 	  $: if (feedType !== 'mine' && feedType !== 'favorites') {
 	    const feedKey = [
 	      feedType,
+	      feedType === 'thematic' ? thematicFeedSlug || '(none)' : '',
 	      readOnly ? 'only-read' : effectiveHideRead ? 'hide-read' : 'all',
 	      hideNegativeMyFeed ? 'hide-neg' : 'show-neg',
 	    ].join('|')
@@ -213,6 +240,7 @@
 	    if (!browser || loadingMore || !hasMore) return
 	    if (feedType === 'mine' && !canLoadMyFeed) return
 	    if (feedType === 'favorites' && !$siteUser) return
+	    if (feedType === 'thematic' && !thematicFeedSlug) return
 	    if (readOnly && !$siteUser) return
 	    loadingMore = true
 	    try {
@@ -226,6 +254,9 @@
         return
 	      }
 	      const payload = await response.json()
+	      if (payload?.thematic_feed && feedType === 'thematic') {
+	        thematicFeedMeta = payload.thematic_feed
+	      }
 	      if (typeof payload.hidden_read_count === 'number') {
 	        hiddenReadCount = payload.hidden_read_count
 	      }
@@ -372,7 +403,7 @@
 
   $: if (feedType === 'mine') {
     const authKey = $siteUser ? 'auth' : 'anon'
-	    const key = `${authKey}:${selectedRubrics.join(',')}:${selectedAuthors.join(',')}:${hideNegativeMyFeed ? 'no-negative' : 'all'}:${readOnly ? 'only-read' : effectiveHideRead ? 'hide-read' : 'all-read'}`
+	    const key = `${authKey}:${selectedRubrics.join(',')}:${selectedAuthors.join(',')}:${selectedMyFeedTags.join(',')}:${hideNegativeMyFeed ? 'no-negative' : 'all'}:${readOnly ? 'only-read' : effectiveHideRead ? 'hide-read' : 'all-read'}`
     if (key !== lastMyFeedKey) {
       lastMyFeedKey = key
       resetMyFeed()
@@ -454,6 +485,58 @@
     url.searchParams.set('feed', feedType)
     goto(`${url.pathname}?${url.searchParams.toString()}`)
   }
+
+  const applyThematicFeedToMyFeed = async () => {
+    if (!thematicFeedMeta) return
+    if (!$siteUser) {
+      const next = encodeURIComponent(`${$page.url.pathname}${$page.url.search}`)
+      goto(`/account?next=${next}`)
+      return
+    }
+    const authors = Array.from(
+      new Set(
+        (thematicFeedMeta.authors ?? [])
+          .map((author) => (author?.username ?? '').trim())
+          .filter(Boolean)
+      )
+    )
+    const excludedAuthors = Array.from(
+      new Set(
+        (thematicFeedMeta.excluded_authors ?? [])
+          .map((author) => (author?.username ?? '').trim())
+          .filter(Boolean)
+      )
+    )
+    const includedTags = Array.from(
+      new Set(
+        (thematicFeedMeta.tags ?? [])
+          .map((tag) => normalizeTag(tag?.lemma ?? tag?.name ?? ''))
+          .filter(Boolean)
+      )
+    )
+    const nextTagRules: Record<string, 'hide' | 'blur'> = {
+      ...($userSettings.tagRules ?? {}),
+    }
+    for (const [key, value] of Object.entries(nextTagRules)) {
+      if (value === 'hide') {
+        delete nextTagRules[key]
+      }
+    }
+    for (const tag of thematicFeedMeta.blocked_tags ?? []) {
+      const normalized = normalizeTag(tag?.lemma ?? tag?.name ?? '')
+      if (!normalized) continue
+      nextTagRules[normalized] = 'hide'
+    }
+    $userSettings = {
+      ...$userSettings,
+      myFeedRubrics: [],
+      myFeedAuthors: authors,
+      myFeedTags: includedTags,
+      hiddenAuthors: excludedAuthors,
+      tagRules: nextTagRules,
+    }
+    goto('/?feed=mine')
+  }
 </script>
 <div class="flex flex-col gap-2 max-w-full w-full min-w-0">
   <header class="flex flex-col gap-2 relative">
@@ -476,6 +559,37 @@
       <h1 class="text-2xl font-semibold text-slate-900 dark:text-zinc-100">
         Избранное
       </h1>
+    {:else if feedType === 'thematic'}
+      <div class="flex flex-col gap-2">
+        <h1 class="text-2xl font-semibold text-slate-900 dark:text-zinc-100">
+          {#if thematicFeedMeta?.name}
+            Папка: {thematicFeedMeta.name}
+          {:else}
+            Папка
+          {/if}
+        </h1>
+        {#if thematicFeedMeta?.description}
+          <div class="text-sm text-slate-600 dark:text-zinc-300">
+            {thematicFeedMeta.description}
+          </div>
+        {/if}
+        {#if thematicFeedMeta}
+          <div class="flex flex-wrap items-center gap-2 text-sm text-slate-600 dark:text-zinc-300">
+            <span>Авторов: {thematicFeedMeta.authors_count ?? thematicFeedMeta.authors?.length ?? 0}</span>
+            <span>•</span>
+            <span>Тегов: {thematicFeedMeta.tags_count ?? thematicFeedMeta.tags?.length ?? 0}</span>
+            <span>•</span>
+            <span>Искл. тегов: {thematicFeedMeta.blocked_tags_count ?? thematicFeedMeta.blocked_tags?.length ?? 0}</span>
+          </div>
+        {/if}
+        {#if thematicFeedMeta}
+          <div class="pt-1">
+            <Button on:click={applyThematicFeedToMyFeed}>
+              Сделать моей лентой
+            </Button>
+          </div>
+        {/if}
+      </div>
     {:else}
       <Header pageHeader>
         {$t('routes.frontpage.title')}
@@ -516,6 +630,10 @@
   {:else if feedType === 'favorites' && !$siteUser}
     <div class="text-base text-slate-500">
       После регистрации вы сможете добавлять посты в избранное и видеть их в отдельной ленте.
+    </div>
+  {:else if feedType === 'thematic' && !thematicFeedSlug}
+    <div class="text-base text-slate-500">
+      Выберите папку в левом меню, чтобы посмотреть готовую подборку авторов и фильтров по тегам.
     </div>
   {:else if feedType === 'mine' && $siteUser}
     <div class="flex flex-col gap-4">

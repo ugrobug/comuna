@@ -16,7 +16,7 @@ except ImportError:  # optional dependency for lemmatization
     pymorphy2 = None
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
-from django.utils.text import get_valid_filename
+from django.utils.text import get_valid_filename, slugify
 from django.core.signing import BadSignature, SignatureExpired, TimestampSigner
 import urllib.error
 import urllib.parse
@@ -50,6 +50,7 @@ from .models import (
     PostRead,
     Rubric,
     Tag,
+    ThematicFeed,
     TelegramAccount,
     VkAccount,
 )
@@ -3664,6 +3665,298 @@ def tags_list(request: HttpRequest) -> HttpResponse:
     )
 
 
+def _thematic_feed_is_moderator(user: User | None, feed: ThematicFeed) -> bool:
+    if not user:
+        return False
+    if user.is_staff:
+        return True
+    return feed.moderators.filter(id=user.id).exists()
+
+
+def _serialize_thematic_feed(feed: ThematicFeed, *, include_manage_fields: bool = False) -> dict:
+    moderators = list(feed.moderators.order_by("username"))
+    authors = list(feed.authors.filter(is_blocked=False).order_by("username"))
+    excluded_authors = list(feed.excluded_authors.filter(is_blocked=False).order_by("username"))
+    tags = list(feed.tags.filter(is_active=True).order_by("name"))
+    blocked_tags = list(feed.blocked_tags.filter(is_active=True).order_by("name"))
+
+    payload = {
+        "id": feed.id,
+        "name": feed.name,
+        "slug": feed.slug,
+        "description": feed.description,
+        "is_active": feed.is_active,
+        "sort_order": feed.sort_order,
+        "moderators_count": len(moderators),
+        "authors_count": len(authors),
+        "excluded_authors_count": len(excluded_authors),
+        "tags_count": len(tags),
+        "blocked_tags_count": len(blocked_tags),
+        "moderators": [
+            {
+                "id": moderator.id,
+                "username": moderator.username,
+            }
+            for moderator in moderators
+        ],
+        "authors": [
+            {
+                "id": author.id,
+                "username": author.username,
+                "title": author.title,
+            }
+            for author in authors
+        ],
+        "excluded_authors": [
+            {
+                "id": author.id,
+                "username": author.username,
+                "title": author.title,
+            }
+            for author in excluded_authors
+        ],
+        "tags": [
+            {
+                "id": tag.id,
+                "name": tag.name,
+                "lemma": tag.lemma or _lemmatize_tag(tag.name) or tag.name,
+            }
+            for tag in tags
+        ],
+        "blocked_tags": [
+            {
+                "id": tag.id,
+                "name": tag.name,
+                "lemma": tag.lemma or _lemmatize_tag(tag.name) or tag.name,
+            }
+            for tag in blocked_tags
+        ],
+        "excluded_tags": [
+            {
+                "id": tag.id,
+                "name": tag.name,
+                "lemma": tag.lemma or _lemmatize_tag(tag.name) or tag.name,
+            }
+            for tag in blocked_tags
+        ],
+    }
+    if include_manage_fields:
+        payload["moderator_ids"] = [moderator.id for moderator in moderators]
+        payload["author_ids"] = [author.id for author in authors]
+        payload["excluded_author_ids"] = [author.id for author in excluded_authors]
+        payload["tag_ids"] = [tag.id for tag in tags]
+        payload["excluded_tag_ids"] = [tag.id for tag in blocked_tags]
+    return payload
+
+
+def _parse_int_list(value: object) -> list[int]:
+    if not isinstance(value, list):
+        return []
+    result: list[int] = []
+    seen: set[int] = set()
+    for item in value:
+        try:
+            parsed = int(item)
+        except (TypeError, ValueError):
+            continue
+        if parsed <= 0 or parsed in seen:
+            continue
+        seen.add(parsed)
+        result.append(parsed)
+    return result
+
+
+def _can_access_thematic_folders_page(user: User | None) -> bool:
+    if not user:
+        return False
+    if user.is_staff:
+        return True
+    return ThematicFeed.objects.filter(moderators=user).exists()
+
+
+def thematic_feeds_list(request: HttpRequest) -> HttpResponse:
+    feeds = (
+        ThematicFeed.objects.filter(is_active=True)
+        .prefetch_related("moderators", "authors", "excluded_authors", "tags", "blocked_tags")
+        .order_by("sort_order", "name")
+    )
+    serialized = [_serialize_thematic_feed(feed) for feed in feeds]
+    return JsonResponse({"ok": True, "feeds": serialized, "folders": serialized})
+
+
+@csrf_exempt
+def thematic_feeds_manage(request: HttpRequest) -> HttpResponse:
+    user = _get_user_from_request(request)
+    if not user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    if not _can_access_thematic_folders_page(user):
+        return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+
+    if request.method == "GET":
+        if user.is_staff:
+            folders_qs = ThematicFeed.objects.all()
+        else:
+            folders_qs = ThematicFeed.objects.filter(moderators=user)
+        folders = list(
+            folders_qs.prefetch_related(
+                "moderators", "authors", "excluded_authors", "tags", "blocked_tags"
+            ).order_by("sort_order", "name")
+        )
+        authors = list(
+            Author.objects.filter(is_blocked=False)
+            .select_related("rubric")
+            .order_by("username")
+        )
+        tags = list(Tag.objects.filter(is_active=True).order_by("name"))
+        users = (
+            list(User.objects.order_by("username").values("id", "username"))
+            if user.is_staff
+            else []
+        )
+        return JsonResponse(
+            {
+                "ok": True,
+                "folders": [
+                    _serialize_thematic_feed(folder, include_manage_fields=True)
+                    for folder in folders
+                ],
+                "options": {
+                    "users": users,
+                    "authors": [
+                        {
+                            "id": author.id,
+                            "username": author.username,
+                            "title": author.title,
+                            "rubric": author.rubric.name if author.rubric else None,
+                        }
+                        for author in authors
+                    ],
+                    "tags": [
+                        {
+                            "id": tag.id,
+                            "name": tag.name,
+                            "lemma": tag.lemma or _lemmatize_tag(tag.name) or tag.name,
+                        }
+                        for tag in tags
+                    ],
+                },
+            }
+        )
+
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    if not user.is_staff:
+        return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+
+    name = str(payload.get("name") or "").strip()
+    description = str(payload.get("description") or "").strip()
+    slug_raw = str(payload.get("slug") or "").strip()
+    folder_slug = slugify(slug_raw or name)[:120]
+    if not name:
+        return JsonResponse({"ok": False, "error": "name required"}, status=400)
+    if not folder_slug:
+        return JsonResponse({"ok": False, "error": "slug required"}, status=400)
+    if ThematicFeed.objects.filter(slug=folder_slug).exists():
+        return JsonResponse({"ok": False, "error": "slug already exists"}, status=400)
+    try:
+        sort_order = max(int(payload.get("sort_order", 0)), 0)
+    except (TypeError, ValueError):
+        sort_order = 0
+    is_active = bool(payload.get("is_active", True))
+    moderator_ids = _parse_int_list(payload.get("moderator_ids"))
+
+    folder = ThematicFeed.objects.create(
+        name=name,
+        slug=folder_slug,
+        description=description,
+        sort_order=sort_order,
+        is_active=is_active,
+    )
+    if moderator_ids:
+        folder.moderators.set(User.objects.filter(id__in=moderator_ids))
+    folder = (
+        ThematicFeed.objects.filter(id=folder.id)
+        .prefetch_related("moderators", "authors", "excluded_authors", "tags", "blocked_tags")
+        .get()
+    )
+    return JsonResponse({"ok": True, "folder": _serialize_thematic_feed(folder, include_manage_fields=True)})
+
+
+@csrf_exempt
+def thematic_feed_manage_detail(request: HttpRequest, slug: str) -> HttpResponse:
+    user = _get_user_from_request(request)
+    if not user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    try:
+        folder = (
+            ThematicFeed.objects.filter(slug=slug)
+            .prefetch_related("moderators", "authors", "excluded_authors", "tags", "blocked_tags")
+            .get()
+        )
+    except ThematicFeed.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "folder not found"}, status=404)
+    if not _thematic_feed_is_moderator(user, folder):
+        return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+    if request.method not in ("PATCH", "POST"):
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+
+    if user.is_staff:
+        if "name" in payload:
+            name = str(payload.get("name") or "").strip()
+            if not name:
+                return JsonResponse({"ok": False, "error": "name required"}, status=400)
+            folder.name = name
+        if "slug" in payload:
+            next_slug = slugify(str(payload.get("slug") or "").strip())[:120]
+            if not next_slug:
+                return JsonResponse({"ok": False, "error": "slug required"}, status=400)
+            if ThematicFeed.objects.exclude(id=folder.id).filter(slug=next_slug).exists():
+                return JsonResponse({"ok": False, "error": "slug already exists"}, status=400)
+            folder.slug = next_slug
+        if "description" in payload:
+            folder.description = str(payload.get("description") or "").strip()
+        if "sort_order" in payload:
+            try:
+                folder.sort_order = max(int(payload.get("sort_order", 0)), 0)
+            except (TypeError, ValueError):
+                pass
+        if "is_active" in payload:
+            folder.is_active = bool(payload.get("is_active"))
+        folder.save()
+        if "moderator_ids" in payload:
+            folder.moderators.set(User.objects.filter(id__in=_parse_int_list(payload.get("moderator_ids"))))
+
+    if "author_ids" in payload:
+        folder.authors.set(Author.objects.filter(id__in=_parse_int_list(payload.get("author_ids")), is_blocked=False))
+    if "excluded_author_ids" in payload:
+        folder.excluded_authors.set(
+            Author.objects.filter(id__in=_parse_int_list(payload.get("excluded_author_ids")), is_blocked=False)
+        )
+    if "tag_ids" in payload:
+        folder.tags.set(Tag.objects.filter(id__in=_parse_int_list(payload.get("tag_ids")), is_active=True))
+    if "excluded_tag_ids" in payload:
+        folder.blocked_tags.set(
+            Tag.objects.filter(id__in=_parse_int_list(payload.get("excluded_tag_ids")), is_active=True)
+        )
+
+    folder = (
+        ThematicFeed.objects.filter(id=folder.id)
+        .prefetch_related("moderators", "authors", "excluded_authors", "tags", "blocked_tags")
+        .get()
+    )
+    return JsonResponse({"ok": True, "folder": _serialize_thematic_feed(folder, include_manage_fields=True)})
+
+
 def tag_posts(request: HttpRequest, tag: str) -> HttpResponse:
     if not tag:
         return JsonResponse({"ok": False, "error": "tag not found"}, status=404)
@@ -4235,7 +4528,9 @@ def my_feed(request: HttpRequest) -> HttpResponse:
         for username in authors_raw.split(",")
         if username.strip().lstrip("@")
     ]
-    if not rubric_slugs and not author_usernames:
+    tags_raw = request.GET.get("tags", "")
+    tag_values = [value.strip() for value in tags_raw.split(",") if value.strip()]
+    if not rubric_slugs and not author_usernames and not tag_values:
         return JsonResponse({"ok": True, "posts": []})
 
     hide_negative_raw = request.GET.get("hide_negative", "1").lower()
@@ -4259,7 +4554,17 @@ def my_feed(request: HttpRequest) -> HttpResponse:
                 Author.objects.filter(username_filter, is_blocked=False).values_list("id", flat=True)
             )
 
-    if not rubric_ids and not author_ids:
+    tag_selection_q = Q()
+    has_tag_selection = False
+    for raw_tag in tag_values[:200]:
+        normalized = _normalize_tag_value(raw_tag)
+        if not normalized:
+            continue
+        lemma = _lemmatize_tag(normalized) or normalized
+        tag_selection_q |= Q(tags__name__iexact=normalized) | Q(tags__lemma__iexact=lemma)
+        has_tag_selection = True
+
+    if not rubric_ids and not author_ids and not has_tag_selection:
         return JsonResponse({"ok": True, "posts": []})
 
     now = timezone.now()
@@ -4276,6 +4581,8 @@ def my_feed(request: HttpRequest) -> HttpResponse:
         selection_filter |= Q(rubric_id__in=rubric_ids)
     if author_ids:
         selection_filter |= Q(author_id__in=author_ids)
+    if has_tag_selection:
+        selection_filter |= tag_selection_q
 
     base_query = (
         Post.objects.filter(
@@ -4289,6 +4596,8 @@ def my_feed(request: HttpRequest) -> HttpResponse:
     )
     if hide_negative:
         base_query = base_query.filter(rating__gte=0)
+    if has_tag_selection:
+        base_query = base_query.distinct()
 
     hidden_read_count = 0
     if hide_read and read_user:
@@ -4345,6 +4654,161 @@ def my_feed(request: HttpRequest) -> HttpResponse:
 
     return JsonResponse(
         {"ok": True, "posts": serialized, "hidden_read_count": hidden_read_count}
+    )
+
+
+def thematic_feed_posts(request: HttpRequest, slug: str) -> HttpResponse:
+    try:
+        thematic_feed = (
+            ThematicFeed.objects.filter(is_active=True)
+            .prefetch_related(
+                "moderators", "authors", "excluded_authors", "tags", "blocked_tags"
+            )
+            .get(slug=slug)
+        )
+    except ThematicFeed.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "thematic feed not found"}, status=404)
+
+    limit_raw = request.GET.get("limit", "10")
+    try:
+        limit = min(max(int(limit_raw), 1), 200)
+    except ValueError:
+        limit = 10
+    offset_raw = request.GET.get("offset", "0")
+    try:
+        offset = max(int(offset_raw), 0)
+    except ValueError:
+        offset = 0
+
+    include_author_ids = list(
+        thematic_feed.authors.filter(is_blocked=False).values_list("id", flat=True)
+    )
+    excluded_author_ids = list(
+        thematic_feed.excluded_authors.filter(is_blocked=False).values_list("id", flat=True)
+    )
+    include_tags = list(thematic_feed.tags.filter(is_active=True))
+    include_tag_ids = [tag.id for tag in include_tags]
+    include_tag_lemmas = [
+        (tag.lemma or _lemmatize_tag(tag.name) or "").strip().lower()
+        for tag in include_tags
+        if (tag.lemma or _lemmatize_tag(tag.name) or "").strip()
+    ]
+    if not include_author_ids and not include_tag_ids and not include_tag_lemmas:
+        return JsonResponse(
+            {
+                "ok": True,
+                "thematic_feed": _serialize_thematic_feed(thematic_feed),
+                "posts": [],
+                "hidden_read_count": 0,
+            }
+        )
+
+    blocked_tags = list(thematic_feed.blocked_tags.filter(is_active=True))
+    blocked_tag_ids = [tag.id for tag in blocked_tags]
+    blocked_tag_lemmas = [
+        (tag.lemma or _lemmatize_tag(tag.name) or "").strip().lower()
+        for tag in blocked_tags
+        if (tag.lemma or _lemmatize_tag(tag.name) or "").strip()
+    ]
+
+    now = timezone.now()
+    hide_read = request.GET.get("hide_read") in ("1", "true", "yes")
+    only_read = request.GET.get("only_read") in ("1", "true", "yes")
+    read_user = _get_user_from_request(request) if (hide_read or only_read) else None
+    current_user = read_user or _get_user_from_request(request)
+    if only_read and not read_user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+
+    selection_filter = Q()
+    if include_author_ids:
+        selection_filter |= Q(author_id__in=include_author_ids)
+    if include_tag_ids:
+        selection_filter |= Q(tags__id__in=include_tag_ids)
+    if include_tag_lemmas:
+        selection_filter |= Q(tags__lemma__in=include_tag_lemmas)
+
+    base_query = (
+        Post.objects.filter(
+            selection_filter,
+            is_blocked=False,
+            is_pending=False,
+            author__is_blocked=False,
+        )
+        .filter(_publish_ready_filter(now))
+        .filter(Q(author__shadow_banned=False) | Q(author__force_home=True))
+    )
+    if include_tag_ids or include_tag_lemmas:
+        base_query = base_query.distinct()
+    if excluded_author_ids:
+        base_query = base_query.exclude(author_id__in=excluded_author_ids)
+    if blocked_tag_ids or blocked_tag_lemmas:
+        blocked_tags_filter = Q()
+        if blocked_tag_ids:
+            blocked_tags_filter |= Q(tags__id__in=blocked_tag_ids)
+        if blocked_tag_lemmas:
+            blocked_tags_filter |= Q(tags__lemma__in=blocked_tag_lemmas)
+        base_query = base_query.exclude(blocked_tags_filter).distinct()
+
+    hidden_read_count = 0
+    if hide_read and read_user:
+        hidden_read_count = base_query.filter(reads__user=read_user).count()
+
+    posts_query = base_query
+    if only_read:
+        posts_query = posts_query.filter(reads__user=read_user)
+    elif hide_read and read_user:
+        posts_query = posts_query.exclude(reads__user=read_user)
+
+    posts = list(
+        posts_query.select_related("author", "rubric")
+        .prefetch_related("tags")
+        .order_by("-created_at")[offset : offset + limit]
+    )
+    favorite_post_ids = _favorite_post_ids_for_user(posts, current_user)
+
+    serialized = []
+    for post in posts:
+        rubric = post.rubric
+        content, poll_payload = _content_with_live_poll(post, current_user)
+        author_channel_url, author_title = _author_display_fields(
+            post.author, rubric, post.channel_url
+        )
+        serialized.append(
+            {
+                "id": post.id,
+                "title": _post_display_title(post),
+                "rubric": rubric.name if rubric else None,
+                "rubric_slug": rubric.slug if rubric else None,
+                "rubric_icon_url": _rubric_icon_url(request, rubric),
+                "content": content,
+                "poll": poll_payload,
+                "source_url": post.source_url,
+                "channel_url": author_channel_url,
+                "created_at": post.created_at.isoformat(),
+                "author": {
+                    "username": post.author.username,
+                    "title": author_title,
+                    "channel_url": author_channel_url,
+                    "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
+                    **_author_admin_fields_for_user(current_user, post.author, rubric),
+                },
+                "tags": _serialize_tags(post.tags.all()),
+                "is_favorite": post.id in favorite_post_ids,
+                "score": post.rating + post.comments_count * 5,
+                "rating": post.rating,
+                "comments_count": post.comments_count,
+                "likes_count": post.rating,
+                "views_count": _post_total_views(post, now),
+            }
+        )
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "thematic_feed": _serialize_thematic_feed(thematic_feed),
+            "posts": serialized,
+            "hidden_read_count": hidden_read_count,
+        }
     )
 
 

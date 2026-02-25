@@ -13,6 +13,7 @@
     PencilSquare,
     ClipboardDocumentList,
     Bookmark,
+    ChevronDown,
   } from 'svelte-hero-icons'
   import { notifications, profile } from '$lib/auth.js'
   import SidebarButton from '$lib/components/ui/sidebar/SidebarButton.svelte'
@@ -24,7 +25,7 @@
   import LoginModal from '$lib/components/auth/LoginModal.svelte'
   import { env } from '$env/dynamic/public'
   import { createEventDispatcher } from 'svelte'
-  import { buildRubricsUrl } from '$lib/api/backend'
+  import { buildRubricsUrl, buildThematicFeedsListUrl } from '$lib/api/backend'
   import { siteUser, logout as siteLogout } from '$lib/siteAuth'
   import { userSettings } from '$lib/settings'
 
@@ -38,6 +39,15 @@
 
   let loginModalOpen = false;
   let rubrics: Array<{ name: string; slug: string; icon_url?: string | null; icon_thumb_url?: string | null }> = [];
+  let thematicFeeds: Array<{
+    name: string
+    slug: string
+    description?: string | null
+    authors_count?: number
+    tags_count?: number
+    blocked_tags_count?: number
+  }> = [];
+  let thematicFeedsOpen = false;
 
   function handleAuthRequired(e: MouseEvent) {
     if (!$profile?.jwt) {
@@ -61,14 +71,30 @@
     }
   }
 
+  async function loadThematicFeeds() {
+    try {
+      const response = await fetch(buildThematicFeedsListUrl());
+      if (!response.ok) return;
+      const data = await response.json();
+      thematicFeeds = data.folders ?? data.feeds ?? [];
+    } catch (e) {
+      thematicFeeds = [];
+    }
+  }
+
   onMount(async () => {
     loadRubrics();
+    loadThematicFeeds();
   });
 
   $: searchParams = new URLSearchParams($page.url.search);
   $: isPostFormRoute = $page.url.pathname.includes('/create/post') || 
                        $page.url.pathname.includes('/edit/post')
   $: currentFeed = $page.url.searchParams.get('feed') ?? ($userSettings.homeFeed ?? 'hot')
+  $: currentThematicSlug = $page.url.searchParams.get('theme') ?? ''
+  $: if (currentFeed === 'thematic') {
+    thematicFeedsOpen = true
+  }
 </script>
 
 <div style="background: #ffe; color: #b00; font-weight: bold; padding: 8px; text-align: center;">SIDEBAR TEST</div>
@@ -135,6 +161,50 @@
     >
       <span slot="label">Избранное</span>
     </SidebarButton>
+    <SidebarButton
+      icon={ClipboardDocumentList}
+      href="javascript:void(0)"
+      active={currentFeed === 'thematic'}
+      on:click={(e) => {
+        e.preventDefault();
+        thematicFeedsOpen = !thematicFeedsOpen;
+      }}
+    >
+      <div slot="label" class="flex items-center gap-2 w-full">
+        <span class="truncate">Папки</span>
+        <span class="ml-auto transition-transform duration-150" class:rotate-180={thematicFeedsOpen}>
+          <Icon src={ChevronDown} size="16" mini />
+        </span>
+      </div>
+    </SidebarButton>
+    {#if thematicFeedsOpen && (thematicFeeds.length || $siteUser)}
+      <div class="ml-6 flex flex-col gap-1">
+        {#if $siteUser}
+          <SidebarButton href="/folders" isExpandable={true} class="h-auto py-2" on:click={handleNavigation}>
+            <div slot="label" class="flex flex-col min-w-0 leading-tight">
+              <span class="truncate text-sm">Управление папками</span>
+            </div>
+          </SidebarButton>
+        {/if}
+        {#each thematicFeeds as feed}
+          <SidebarButton
+            href={`/?feed=thematic&theme=${encodeURIComponent(feed.slug)}`}
+            active={currentFeed === 'thematic' && currentThematicSlug === feed.slug}
+            isExpandable={true}
+            class="h-auto py-2"
+            on:click={handleNavigation}
+            title={feed.description || feed.name}
+          >
+            <div slot="label" class="flex flex-col min-w-0 leading-tight">
+              <span class="truncate text-sm">{feed.name}</span>
+              <span class="truncate text-xs text-slate-500 dark:text-zinc-400">
+                {feed.authors_count ?? 0} авторов · {feed.tags_count ?? 0} тегов
+              </span>
+            </div>
+          </SidebarButton>
+        {/each}
+      </div>
+    {/if}
   </div>
 
   {#if $profile?.jwt}
