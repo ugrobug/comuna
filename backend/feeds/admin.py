@@ -143,6 +143,7 @@ class ThematicFeedAdmin(admin.ModelAdmin):
         "moderators_count",
         "authors_count",
         "excluded_authors_count",
+        "rubrics_count",
         "tags_count",
         "blocked_tags_count",
     )
@@ -153,6 +154,7 @@ class ThematicFeedAdmin(admin.ModelAdmin):
         "moderators",
         "authors",
         "excluded_authors",
+        "rubrics",
         "tags",
         "blocked_tags",
     )
@@ -163,6 +165,7 @@ class ThematicFeedAdmin(admin.ModelAdmin):
         "moderators",
         "authors",
         "excluded_authors",
+        "rubrics",
         "tags",
         "blocked_tags",
         "sort_order",
@@ -188,6 +191,11 @@ class ThematicFeedAdmin(admin.ModelAdmin):
         return obj.tags.count()
 
     tags_count.short_description = "Тегов"
+
+    def rubrics_count(self, obj):
+        return obj.rubrics.count()
+
+    rubrics_count.short_description = "Рубрик"
 
     def blocked_tags_count(self, obj):
         return obj.blocked_tags.count()

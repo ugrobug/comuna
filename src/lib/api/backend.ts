@@ -240,6 +240,13 @@ export type BackendThematicFeedAuthor = {
   title?: string | null
 }
 
+export type BackendThematicFeedRubric = {
+  id?: number
+  name: string
+  slug?: string | null
+  description?: string | null
+}
+
 export type BackendThematicFeed = {
   id?: number
   name: string
@@ -250,17 +257,20 @@ export type BackendThematicFeed = {
   moderators_count?: number
   authors_count?: number
   excluded_authors_count?: number
+  rubrics_count?: number
   tags_count?: number
   blocked_tags_count?: number
   moderators?: Array<{ id: number; username: string }>
   authors?: BackendThematicFeedAuthor[]
   excluded_authors?: BackendThematicFeedAuthor[]
+  rubrics?: BackendThematicFeedRubric[]
   tags?: BackendTag[]
   blocked_tags?: BackendTag[]
   excluded_tags?: BackendTag[]
   moderator_ids?: number[]
   author_ids?: number[]
   excluded_author_ids?: number[]
+  rubric_ids?: number[]
   tag_ids?: number[]
   excluded_tag_ids?: number[]
 }

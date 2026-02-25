@@ -3677,6 +3677,7 @@ def _serialize_thematic_feed(feed: ThematicFeed, *, include_manage_fields: bool 
     moderators = list(feed.moderators.order_by("username"))
     authors = list(feed.authors.filter(is_blocked=False).order_by("username"))
     excluded_authors = list(feed.excluded_authors.filter(is_blocked=False).order_by("username"))
+    rubrics = list(feed.rubrics.filter(is_active=True, is_hidden=False).order_by("sort_order", "name"))
     tags = list(feed.tags.filter(is_active=True).order_by("name"))
     blocked_tags = list(feed.blocked_tags.filter(is_active=True).order_by("name"))
 
@@ -3690,6 +3691,7 @@ def _serialize_thematic_feed(feed: ThematicFeed, *, include_manage_fields: bool 
         "moderators_count": len(moderators),
         "authors_count": len(authors),
         "excluded_authors_count": len(excluded_authors),
+        "rubrics_count": len(rubrics),
         "tags_count": len(tags),
         "blocked_tags_count": len(blocked_tags),
         "moderators": [
@@ -3723,6 +3725,15 @@ def _serialize_thematic_feed(feed: ThematicFeed, *, include_manage_fields: bool 
             }
             for tag in tags
         ],
+        "rubrics": [
+            {
+                "id": rubric.id,
+                "name": rubric.name,
+                "slug": rubric.slug,
+                "description": rubric.description,
+            }
+            for rubric in rubrics
+        ],
         "blocked_tags": [
             {
                 "id": tag.id,
@@ -3744,6 +3755,7 @@ def _serialize_thematic_feed(feed: ThematicFeed, *, include_manage_fields: bool 
         payload["moderator_ids"] = [moderator.id for moderator in moderators]
         payload["author_ids"] = [author.id for author in authors]
         payload["excluded_author_ids"] = [author.id for author in excluded_authors]
+        payload["rubric_ids"] = [rubric.id for rubric in rubrics]
         payload["tag_ids"] = [tag.id for tag in tags]
         payload["excluded_tag_ids"] = [tag.id for tag in blocked_tags]
     return payload
@@ -3777,7 +3789,7 @@ def _can_access_thematic_folders_page(user: User | None) -> bool:
 def thematic_feeds_list(request: HttpRequest) -> HttpResponse:
     feeds = (
         ThematicFeed.objects.filter(is_active=True)
-        .prefetch_related("moderators", "authors", "excluded_authors", "tags", "blocked_tags")
+        .prefetch_related("moderators", "authors", "excluded_authors", "rubrics", "tags", "blocked_tags")
         .order_by("sort_order", "name")
     )
     serialized = [_serialize_thematic_feed(feed) for feed in feeds]
@@ -3799,7 +3811,7 @@ def thematic_feeds_manage(request: HttpRequest) -> HttpResponse:
             folders_qs = ThematicFeed.objects.filter(moderators=user)
         folders = list(
             folders_qs.prefetch_related(
-                "moderators", "authors", "excluded_authors", "tags", "blocked_tags"
+                "moderators", "authors", "excluded_authors", "rubrics", "tags", "blocked_tags"
             ).order_by("sort_order", "name")
         )
         authors = list(
@@ -3808,6 +3820,7 @@ def thematic_feeds_manage(request: HttpRequest) -> HttpResponse:
             .order_by("username")
         )
         tags = list(Tag.objects.filter(is_active=True).order_by("name"))
+        rubrics = list(Rubric.objects.filter(is_active=True, is_hidden=False).order_by("sort_order", "name"))
         users = (
             list(User.objects.order_by("username").values("id", "username"))
             if user.is_staff
@@ -3839,6 +3852,15 @@ def thematic_feeds_manage(request: HttpRequest) -> HttpResponse:
                             "lemma": tag.lemma or _lemmatize_tag(tag.name) or tag.name,
                         }
                         for tag in tags
+                    ],
+                    "rubrics": [
+                        {
+                            "id": rubric.id,
+                            "name": rubric.name,
+                            "slug": rubric.slug,
+                            "description": rubric.description,
+                        }
+                        for rubric in rubrics
                     ],
                 },
             }
@@ -3882,7 +3904,7 @@ def thematic_feeds_manage(request: HttpRequest) -> HttpResponse:
         folder.moderators.set(User.objects.filter(id__in=moderator_ids))
     folder = (
         ThematicFeed.objects.filter(id=folder.id)
-        .prefetch_related("moderators", "authors", "excluded_authors", "tags", "blocked_tags")
+        .prefetch_related("moderators", "authors", "excluded_authors", "rubrics", "tags", "blocked_tags")
         .get()
     )
     return JsonResponse({"ok": True, "folder": _serialize_thematic_feed(folder, include_manage_fields=True)})
@@ -3896,7 +3918,7 @@ def thematic_feed_manage_detail(request: HttpRequest, slug: str) -> HttpResponse
     try:
         folder = (
             ThematicFeed.objects.filter(slug=slug)
-            .prefetch_related("moderators", "authors", "excluded_authors", "tags", "blocked_tags")
+            .prefetch_related("moderators", "authors", "excluded_authors", "rubrics", "tags", "blocked_tags")
             .get()
         )
     except ThematicFeed.DoesNotExist:
@@ -3943,6 +3965,10 @@ def thematic_feed_manage_detail(request: HttpRequest, slug: str) -> HttpResponse
         folder.excluded_authors.set(
             Author.objects.filter(id__in=_parse_int_list(payload.get("excluded_author_ids")), is_blocked=False)
         )
+    if "rubric_ids" in payload:
+        folder.rubrics.set(
+            Rubric.objects.filter(id__in=_parse_int_list(payload.get("rubric_ids")), is_active=True, is_hidden=False)
+        )
     if "tag_ids" in payload:
         folder.tags.set(Tag.objects.filter(id__in=_parse_int_list(payload.get("tag_ids")), is_active=True))
     if "excluded_tag_ids" in payload:
@@ -3952,7 +3978,7 @@ def thematic_feed_manage_detail(request: HttpRequest, slug: str) -> HttpResponse
 
     folder = (
         ThematicFeed.objects.filter(id=folder.id)
-        .prefetch_related("moderators", "authors", "excluded_authors", "tags", "blocked_tags")
+        .prefetch_related("moderators", "authors", "excluded_authors", "rubrics", "tags", "blocked_tags")
         .get()
     )
     return JsonResponse({"ok": True, "folder": _serialize_thematic_feed(folder, include_manage_fields=True)})
@@ -4663,7 +4689,7 @@ def thematic_feed_posts(request: HttpRequest, slug: str) -> HttpResponse:
         thematic_feed = (
             ThematicFeed.objects.filter(is_active=True)
             .prefetch_related(
-                "moderators", "authors", "excluded_authors", "tags", "blocked_tags"
+                "moderators", "authors", "excluded_authors", "rubrics", "tags", "blocked_tags"
             )
             .get(slug=slug)
         )
@@ -4684,6 +4710,9 @@ def thematic_feed_posts(request: HttpRequest, slug: str) -> HttpResponse:
     include_author_ids = list(
         thematic_feed.authors.filter(is_blocked=False).values_list("id", flat=True)
     )
+    include_rubric_ids = list(
+        thematic_feed.rubrics.filter(is_active=True, is_hidden=False).values_list("id", flat=True)
+    )
     excluded_author_ids = list(
         thematic_feed.excluded_authors.filter(is_blocked=False).values_list("id", flat=True)
     )
@@ -4694,7 +4723,7 @@ def thematic_feed_posts(request: HttpRequest, slug: str) -> HttpResponse:
         for tag in include_tags
         if (tag.lemma or _lemmatize_tag(tag.name) or "").strip()
     ]
-    if not include_author_ids and not include_tag_ids and not include_tag_lemmas:
+    if not include_author_ids and not include_rubric_ids and not include_tag_ids and not include_tag_lemmas:
         return JsonResponse(
             {
                 "ok": True,
@@ -4723,6 +4752,8 @@ def thematic_feed_posts(request: HttpRequest, slug: str) -> HttpResponse:
     selection_filter = Q()
     if include_author_ids:
         selection_filter |= Q(author_id__in=include_author_ids)
+    if include_rubric_ids:
+        selection_filter |= Q(rubric_id__in=include_rubric_ids)
     if include_tag_ids:
         selection_filter |= Q(tags__id__in=include_tag_ids)
     if include_tag_lemmas:

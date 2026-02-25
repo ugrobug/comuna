@@ -56,20 +56,31 @@
     name: string
     lemma?: string | null
   }
+  type FolderManageRubricOption = {
+    id: number
+    name: string
+    slug?: string | null
+    description?: string | null
+  }
   let folderSettingsOpen = false
   let folderSettingsLoading = false
   let folderSettingsSaving = false
+  let folderSettingsSaveQueued = false
+  let folderSettingsShouldRefreshFeed = false
   let folderSettingsError = ''
   let folderSettingsSuccess = ''
   let folderSettingsDraft: BackendThematicFeed | null = null
   let folderSettingsAuthorOptions: FolderManageAuthorOption[] = []
   let folderSettingsTagOptions: FolderManageTagOption[] = []
+  let folderSettingsRubricOptions: FolderManageRubricOption[] = []
   let filteredFolderAuthorOptions: FolderManageAuthorOption[] = []
   let filteredFolderExcludedAuthorOptions: FolderManageAuthorOption[] = []
+  let filteredFolderRubricOptions: FolderManageRubricOption[] = []
   let filteredFolderTagOptions: FolderManageTagOption[] = []
   let filteredFolderExcludedTagOptions: FolderManageTagOption[] = []
   let folderSettingsAuthorSearch = ''
   let folderSettingsExcludedAuthorSearch = ''
+  let folderSettingsRubricSearch = ''
   let folderSettingsTagSearch = ''
   let folderSettingsExcludedTagSearch = ''
   let myFeedSuggestedFolders: BackendThematicFeed[] = []
@@ -125,6 +136,14 @@
       .includes(query)
   }
 
+  const matchesFolderRubricSearch = (rubric: FolderManageRubricOption, query: string) => {
+    if (!query) return true
+    return [rubric.name, rubric.slug ?? '', rubric.description ?? '']
+      .join(' ')
+      .toLowerCase()
+      .includes(query)
+  }
+
   const formatFolderAuthorOptionLabel = (author: FolderManageAuthorOption) => {
     const title = (author.title ?? '').trim()
     const description = (author.description ?? '').trim()
@@ -154,14 +173,26 @@
   }
 
   type FolderAuthorSelectionKey = 'author_ids' | 'excluded_author_ids'
+  type FolderTagSelectionKey = 'tag_ids' | 'excluded_tag_ids'
+  type FolderRubricSelectionKey = 'rubric_ids'
+  type FolderSettingsSelectionKey =
+    | FolderAuthorSelectionKey
+    | FolderTagSelectionKey
+    | FolderRubricSelectionKey
+
+  const getFolderSelectedIds = (key: FolderSettingsSelectionKey): number[] => {
+    if (!folderSettingsDraft) return []
+    const values = (folderSettingsDraft as any)[key]
+    return Array.isArray(values)
+      ? values.filter((value) => Number.isFinite(value) && value > 0)
+      : []
+  }
 
   const getFolderAuthorOptionById = (id: number): FolderManageAuthorOption | null =>
     folderSettingsAuthorOptions.find((author) => author.id === id) ?? null
 
   const getFolderSelectedAuthorIds = (key: FolderAuthorSelectionKey): number[] => {
-    if (!folderSettingsDraft) return []
-    const values = (folderSettingsDraft as any)[key]
-    return Array.isArray(values) ? values.filter((value) => Number.isFinite(value)) : []
+    return getFolderSelectedIds(key)
   }
 
   const getFolderSelectedAuthors = (key: FolderAuthorSelectionKey): FolderManageAuthorOption[] =>
@@ -179,12 +210,14 @@
     next.add(authorId)
     ;(folderSettingsDraft as any)[key] = Array.from(next)
     touchFolderSettingsDraft()
+    queueCurrentFolderSettingsSave()
   }
 
   const removeFolderAuthorFromSelection = (key: FolderAuthorSelectionKey, authorId: number) => {
     if (!folderSettingsDraft) return
     ;(folderSettingsDraft as any)[key] = getFolderSelectedAuthorIds(key).filter((id) => id !== authorId)
     touchFolderSettingsDraft()
+    queueCurrentFolderSettingsSave()
   }
 
   const getFolderAvailableAuthors = (
@@ -192,9 +225,72 @@
     candidates: FolderManageAuthorOption[]
   ): FolderManageAuthorOption[] => candidates.filter((author) => !isFolderAuthorSelected(key, author.id))
 
+  const getFolderTagOptionById = (id: number): FolderManageTagOption | null =>
+    folderSettingsTagOptions.find((tag) => tag.id === id) ?? null
+
+  const getFolderSelectedTags = (key: FolderTagSelectionKey): FolderManageTagOption[] =>
+    getFolderSelectedIds(key)
+      .map((id) => getFolderTagOptionById(id))
+      .filter(Boolean) as FolderManageTagOption[]
+
+  const isFolderTagSelected = (key: FolderTagSelectionKey, tagId: number) =>
+    getFolderSelectedIds(key).includes(tagId)
+
+  const getFolderAvailableTags = (
+    key: FolderTagSelectionKey,
+    candidates: FolderManageTagOption[]
+  ): FolderManageTagOption[] => candidates.filter((tag) => !isFolderTagSelected(key, tag.id))
+
+  const getFolderRubricOptionById = (id: number): FolderManageRubricOption | null =>
+    folderSettingsRubricOptions.find((rubric) => rubric.id === id) ?? null
+
+  const getFolderSelectedRubrics = (): FolderManageRubricOption[] =>
+    getFolderSelectedIds('rubric_ids')
+      .map((id) => getFolderRubricOptionById(id))
+      .filter(Boolean) as FolderManageRubricOption[]
+
+  const isFolderRubricSelected = (rubricId: number) => getFolderSelectedIds('rubric_ids').includes(rubricId)
+
+  const getFolderAvailableRubrics = (candidates: FolderManageRubricOption[]): FolderManageRubricOption[] =>
+    candidates.filter((rubric) => !isFolderRubricSelected(rubric.id))
+
   const touchFolderSettingsDraft = () => {
     if (!folderSettingsDraft) return
     folderSettingsDraft = { ...folderSettingsDraft }
+  }
+
+  const addFolderTagToSelection = (key: FolderTagSelectionKey, tagId: number) => {
+    if (!folderSettingsDraft) return
+    if (!Number.isFinite(tagId) || tagId <= 0) return
+    const next = new Set(getFolderSelectedIds(key))
+    next.add(tagId)
+    ;(folderSettingsDraft as any)[key] = Array.from(next)
+    touchFolderSettingsDraft()
+    queueCurrentFolderSettingsSave()
+  }
+
+  const removeFolderTagFromSelection = (key: FolderTagSelectionKey, tagId: number) => {
+    if (!folderSettingsDraft) return
+    ;(folderSettingsDraft as any)[key] = getFolderSelectedIds(key).filter((id) => id !== tagId)
+    touchFolderSettingsDraft()
+    queueCurrentFolderSettingsSave()
+  }
+
+  const addFolderRubricToSelection = (rubricId: number) => {
+    if (!folderSettingsDraft) return
+    if (!Number.isFinite(rubricId) || rubricId <= 0) return
+    const next = new Set(getFolderSelectedIds('rubric_ids'))
+    next.add(rubricId)
+    ;(folderSettingsDraft as any).rubric_ids = Array.from(next)
+    touchFolderSettingsDraft()
+    queueCurrentFolderSettingsSave()
+  }
+
+  const removeFolderRubricFromSelection = (rubricId: number) => {
+    if (!folderSettingsDraft) return
+    ;(folderSettingsDraft as any).rubric_ids = getFolderSelectedIds('rubric_ids').filter((id) => id !== rubricId)
+    touchFolderSettingsDraft()
+    queueCurrentFolderSettingsSave()
   }
 
   const readMultiSelectIds = (event: Event): number[] => {
@@ -211,6 +307,7 @@
     if (!folderSettingsDraft) return
     ;(folderSettingsDraft as any)[key] = readMultiSelectIds(event)
     touchFolderSettingsDraft()
+    queueCurrentFolderSettingsSave()
   }
 
   const loadCurrentFolderSettings = async () => {
@@ -231,8 +328,12 @@
       }
       folderSettingsAuthorOptions = payload.options?.authors ?? []
       folderSettingsTagOptions = payload.options?.tags ?? []
+      folderSettingsRubricOptions = payload.options?.rubrics ?? []
+      folderSettingsSaveQueued = false
+      folderSettingsShouldRefreshFeed = false
       folderSettingsAuthorSearch = ''
       folderSettingsExcludedAuthorSearch = ''
+      folderSettingsRubricSearch = ''
       folderSettingsTagSearch = ''
       folderSettingsExcludedTagSearch = ''
       const currentFolder =
@@ -285,6 +386,8 @@
 
   const closeCurrentFolderSettings = () => {
     folderSettingsOpen = false
+    folderSettingsSaveQueued = false
+    folderSettingsShouldRefreshFeed = false
     folderSettingsError = ''
     folderSettingsSuccess = ''
   }
@@ -295,6 +398,9 @@
   $: filteredFolderExcludedAuthorOptions = folderSettingsAuthorOptions.filter((author) =>
     matchesFolderAuthorSearch(author, normalizeFolderSearch(folderSettingsExcludedAuthorSearch))
   )
+  $: filteredFolderRubricOptions = folderSettingsRubricOptions.filter((rubric) =>
+    matchesFolderRubricSearch(rubric, normalizeFolderSearch(folderSettingsRubricSearch))
+  )
   $: filteredFolderTagOptions = folderSettingsTagOptions.filter((tag) =>
     matchesFolderTagSearch(tag, normalizeFolderSearch(folderSettingsTagSearch))
   )
@@ -302,49 +408,73 @@
     matchesFolderTagSearch(tag, normalizeFolderSearch(folderSettingsExcludedTagSearch))
   )
 
-  const saveCurrentFolderSettings = async () => {
+  const refreshCurrentFolderFeedAfterSettingsSave = async () => {
+    if (!browser) return
+    posts = []
+    offset = 0
+    hasMore = true
+    loadingMore = false
+    hiddenReadCount = 0
+    await loadMore()
+  }
+
+  const flushCurrentFolderSettingsSaveQueue = async () => {
+    if (folderSettingsSaving || !folderSettingsSaveQueued) return
     if (!folderSettingsDraft || !thematicFeedSlug || !$siteToken) return
     folderSettingsSaving = true
     folderSettingsError = ''
-    folderSettingsSuccess = ''
+    let refreshFeedAfterSave = false
     try {
-      const response = await fetch(buildThematicFeedsManageUrl(thematicFeedSlug), {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${$siteToken}`,
-        },
-        body: JSON.stringify({
-          author_ids: folderSettingsDraft.author_ids ?? [],
-          excluded_author_ids: folderSettingsDraft.excluded_author_ids ?? [],
-          tag_ids: folderSettingsDraft.tag_ids ?? [],
-          excluded_tag_ids: folderSettingsDraft.excluded_tag_ids ?? [],
-        }),
-      })
-      const payload = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        throw new Error(payload?.error || 'Не удалось сохранить настройки папки')
+      while (folderSettingsSaveQueued) {
+        folderSettingsSaveQueued = false
+        refreshFeedAfterSave = refreshFeedAfterSave || folderSettingsShouldRefreshFeed
+        folderSettingsShouldRefreshFeed = false
+        const draft = folderSettingsDraft
+        if (!draft) break
+        const response = await fetch(buildThematicFeedsManageUrl(thematicFeedSlug), {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${$siteToken}`,
+          },
+          body: JSON.stringify({
+            author_ids: draft.author_ids ?? [],
+            excluded_author_ids: draft.excluded_author_ids ?? [],
+            rubric_ids: draft.rubric_ids ?? [],
+            tag_ids: draft.tag_ids ?? [],
+            excluded_tag_ids: draft.excluded_tag_ids ?? [],
+          }),
+        })
+        const payload = await response.json().catch(() => ({}))
+        if (!response.ok) {
+          throw new Error(payload?.error || 'Не удалось сохранить настройки папки')
+        }
+        const updatedFolder = (payload.folder ?? null) as BackendThematicFeed | null
+        if (updatedFolder) {
+          thematicFeedMeta = updatedFolder
+        }
+        folderSettingsSuccess = 'Изменения сохранены'
       }
-      const updatedFolder = (payload.folder ?? null) as BackendThematicFeed | null
-      if (updatedFolder) {
-        thematicFeedMeta = updatedFolder
-        folderSettingsDraft = cloneFolderSettingsDraft(updatedFolder)
-      }
-      folderSettingsSuccess = 'Настройки папки сохранены'
-      posts = []
-      offset = 0
-      hasMore = true
-      loadingMore = false
-      hiddenReadCount = 0
-      if (browser) {
-        await loadMore()
+      if (refreshFeedAfterSave && feedType === 'thematic') {
+        await refreshCurrentFolderFeedAfterSettingsSave()
       }
     } catch (error) {
       folderSettingsError =
         error instanceof Error ? error.message : 'Ошибка сохранения настроек папки'
     } finally {
       folderSettingsSaving = false
+      if (folderSettingsSaveQueued) {
+        void flushCurrentFolderSettingsSaveQueue()
+      }
     }
+  }
+
+  const queueCurrentFolderSettingsSave = (refreshFeed = true) => {
+    folderSettingsSaveQueued = true
+    if (refreshFeed) {
+      folderSettingsShouldRefreshFeed = true
+    }
+    void flushCurrentFolderSettingsSaveQueue()
   }
   $: if (data?.posts) {
     if (
@@ -824,6 +954,13 @@
           .filter(Boolean)
       )
     )
+    const rubrics = Array.from(
+      new Set(
+        (folderPreset.rubrics ?? [])
+          .map((rubric) => (rubric?.slug ?? '').trim())
+          .filter(Boolean)
+      )
+    )
     const includedTags = Array.from(
       new Set(
         (folderPreset.tags ?? [])
@@ -846,7 +983,7 @@
     }
     $userSettings = {
       ...$userSettings,
-      myFeedRubrics: [],
+      myFeedRubrics: rubrics,
       myFeedAuthors: authors,
       myFeedTags: includedTags,
       hiddenAuthors: excludedAuthors,
@@ -923,7 +1060,7 @@
           Настройки папки
         </h2>
         <p class="mt-1 text-sm text-slate-500 dark:text-zinc-400">
-          Добавляйте и исключайте авторов и теги для текущей папки.
+          Добавляйте и исключайте авторов, рубрики и теги для текущей папки. Изменения сохраняются автоматически.
         </p>
       </div>
 
@@ -935,6 +1072,11 @@
       {#if folderSettingsSuccess}
         <div class="rounded-xl border border-emerald-200 dark:border-emerald-900 bg-emerald-50/70 dark:bg-emerald-950/20 p-3 text-sm text-emerald-700 dark:text-emerald-300">
           {folderSettingsSuccess}
+        </div>
+      {/if}
+      {#if folderSettingsSaving}
+        <div class="text-xs text-slate-500 dark:text-zinc-400">
+          Сохраняем изменения...
         </div>
       {/if}
 
@@ -1103,6 +1245,83 @@
           </label>
 
           <label class="flex flex-col gap-1 text-sm min-w-0">
+            <span>Рубрики</span>
+            <input
+              type="text"
+              bind:value={folderSettingsRubricSearch}
+              placeholder="Поиск по названию, slug или описанию"
+              class="px-3 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950"
+            />
+            <div class="rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950 max-h-72 overflow-y-auto">
+              {#each getFolderAvailableRubrics(filteredFolderRubricOptions).slice(0, 30) as rubric}
+                <div class="flex items-start justify-between gap-3 px-3 py-2 border-b last:border-b-0 border-slate-100 dark:border-zinc-800">
+                  <div class="min-w-0">
+                    <div class="text-sm font-medium text-slate-900 dark:text-zinc-100 truncate">
+                      {rubric.name}
+                    </div>
+                    {#if rubric.slug}
+                      <div class="text-xs text-slate-500 dark:text-zinc-400">
+                        {rubric.slug}
+                      </div>
+                    {/if}
+                    {#if rubric.description}
+                      <div class="text-xs text-slate-500 dark:text-zinc-400 line-clamp-2">
+                        {rubric.description}
+                      </div>
+                    {/if}
+                  </div>
+                  <button
+                    type="button"
+                    class="shrink-0 px-2 py-1 rounded-md border border-slate-200 dark:border-zinc-700 text-xs font-medium hover:bg-slate-50 dark:hover:bg-zinc-800"
+                    on:click={() => addFolderRubricToSelection(rubric.id)}
+                  >
+                    Добавить
+                  </button>
+                </div>
+              {:else}
+                <div class="px-3 py-3 text-xs text-slate-500 dark:text-zinc-400">
+                  Ничего не найдено
+                </div>
+              {/each}
+            </div>
+            <div class="mt-2 flex flex-col gap-2">
+              <div class="text-xs uppercase tracking-wide text-slate-500 dark:text-zinc-400">
+                Выбранные рубрики
+              </div>
+              {#each getFolderSelectedRubrics() as rubric}
+                <div class="flex items-start justify-between gap-3 rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-50/70 dark:bg-zinc-900/60 px-3 py-2">
+                  <div class="min-w-0">
+                    <div class="text-sm font-medium text-slate-900 dark:text-zinc-100 truncate">
+                      {rubric.name}
+                    </div>
+                    {#if rubric.slug}
+                      <div class="text-xs text-slate-500 dark:text-zinc-400">
+                        {rubric.slug}
+                      </div>
+                    {/if}
+                    {#if rubric.description}
+                      <div class="text-xs text-slate-500 dark:text-zinc-400 line-clamp-2">
+                        {rubric.description}
+                      </div>
+                    {/if}
+                  </div>
+                  <button
+                    type="button"
+                    class="shrink-0 px-2 py-1 rounded-md border border-slate-200 dark:border-zinc-700 text-xs hover:bg-white dark:hover:bg-zinc-800"
+                    on:click={() => removeFolderRubricFromSelection(rubric.id)}
+                  >
+                    Убрать
+                  </button>
+                </div>
+              {:else}
+                <div class="text-xs text-slate-500 dark:text-zinc-400">
+                  Пока рубрики не выбраны
+                </div>
+              {/each}
+            </div>
+          </label>
+
+          <label class="flex flex-col gap-1 text-sm min-w-0">
             <span>Теги</span>
             <input
               type="text"
@@ -1110,18 +1329,63 @@
               placeholder="Поиск по тегу или лемме"
               class="px-3 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950"
             />
-            <select
-              multiple
-              size="12"
-              class="px-2 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950"
-              on:change={(e) => updateFolderSettingsSelection(e, 'tag_ids')}
-            >
-              {#each filteredFolderTagOptions as tag}
-                <option value={tag.id} selected={(folderSettingsDraft.tag_ids ?? []).includes(tag.id)}>
-                  {formatFolderTagOptionLabel(tag)}
-                </option>
+            <div class="rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950 max-h-72 overflow-y-auto">
+              {#each getFolderAvailableTags('tag_ids', filteredFolderTagOptions).slice(0, 40) as tag}
+                <div class="flex items-start justify-between gap-3 px-3 py-2 border-b last:border-b-0 border-slate-100 dark:border-zinc-800">
+                  <div class="min-w-0">
+                    <div class="text-sm font-medium text-slate-900 dark:text-zinc-100 truncate">
+                      {tag.name}
+                    </div>
+                    {#if tag.lemma && tag.lemma.toLowerCase() !== tag.name.toLowerCase()}
+                      <div class="text-xs text-slate-500 dark:text-zinc-400">
+                        Лемма: {tag.lemma}
+                      </div>
+                    {/if}
+                  </div>
+                  <button
+                    type="button"
+                    class="shrink-0 px-2 py-1 rounded-md border border-slate-200 dark:border-zinc-700 text-xs font-medium hover:bg-slate-50 dark:hover:bg-zinc-800"
+                    on:click={() => addFolderTagToSelection('tag_ids', tag.id)}
+                  >
+                    Добавить
+                  </button>
+                </div>
+              {:else}
+                <div class="px-3 py-3 text-xs text-slate-500 dark:text-zinc-400">
+                  Ничего не найдено
+                </div>
               {/each}
-            </select>
+            </div>
+            <div class="mt-2 flex flex-col gap-2">
+              <div class="text-xs uppercase tracking-wide text-slate-500 dark:text-zinc-400">
+                Выбранные теги
+              </div>
+              {#each getFolderSelectedTags('tag_ids') as tag}
+                <div class="flex items-start justify-between gap-3 rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-50/70 dark:bg-zinc-900/60 px-3 py-2">
+                  <div class="min-w-0">
+                    <div class="text-sm font-medium text-slate-900 dark:text-zinc-100 truncate">
+                      {tag.name}
+                    </div>
+                    {#if tag.lemma && tag.lemma.toLowerCase() !== tag.name.toLowerCase()}
+                      <div class="text-xs text-slate-500 dark:text-zinc-400">
+                        Лемма: {tag.lemma}
+                      </div>
+                    {/if}
+                  </div>
+                  <button
+                    type="button"
+                    class="shrink-0 px-2 py-1 rounded-md border border-slate-200 dark:border-zinc-700 text-xs hover:bg-white dark:hover:bg-zinc-800"
+                    on:click={() => removeFolderTagFromSelection('tag_ids', tag.id)}
+                  >
+                    Убрать
+                  </button>
+                </div>
+              {:else}
+                <div class="text-xs text-slate-500 dark:text-zinc-400">
+                  Пока теги не выбраны
+                </div>
+              {/each}
+            </div>
           </label>
 
           <label class="flex flex-col gap-1 text-sm min-w-0">
@@ -1132,18 +1396,63 @@
               placeholder="Поиск по тегу или лемме"
               class="px-3 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950"
             />
-            <select
-              multiple
-              size="12"
-              class="px-2 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950"
-              on:change={(e) => updateFolderSettingsSelection(e, 'excluded_tag_ids')}
-            >
-              {#each filteredFolderExcludedTagOptions as tag}
-                <option value={tag.id} selected={(folderSettingsDraft.excluded_tag_ids ?? []).includes(tag.id)}>
-                  {formatFolderTagOptionLabel(tag)}
-                </option>
+            <div class="rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950 max-h-72 overflow-y-auto">
+              {#each getFolderAvailableTags('excluded_tag_ids', filteredFolderExcludedTagOptions).slice(0, 40) as tag}
+                <div class="flex items-start justify-between gap-3 px-3 py-2 border-b last:border-b-0 border-slate-100 dark:border-zinc-800">
+                  <div class="min-w-0">
+                    <div class="text-sm font-medium text-slate-900 dark:text-zinc-100 truncate">
+                      {tag.name}
+                    </div>
+                    {#if tag.lemma && tag.lemma.toLowerCase() !== tag.name.toLowerCase()}
+                      <div class="text-xs text-slate-500 dark:text-zinc-400">
+                        Лемма: {tag.lemma}
+                      </div>
+                    {/if}
+                  </div>
+                  <button
+                    type="button"
+                    class="shrink-0 px-2 py-1 rounded-md border border-slate-200 dark:border-zinc-700 text-xs font-medium hover:bg-slate-50 dark:hover:bg-zinc-800"
+                    on:click={() => addFolderTagToSelection('excluded_tag_ids', tag.id)}
+                  >
+                    Добавить
+                  </button>
+                </div>
+              {:else}
+                <div class="px-3 py-3 text-xs text-slate-500 dark:text-zinc-400">
+                  Ничего не найдено
+                </div>
               {/each}
-            </select>
+            </div>
+            <div class="mt-2 flex flex-col gap-2">
+              <div class="text-xs uppercase tracking-wide text-slate-500 dark:text-zinc-400">
+                Исключенные теги
+              </div>
+              {#each getFolderSelectedTags('excluded_tag_ids') as tag}
+                <div class="flex items-start justify-between gap-3 rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-50/70 dark:bg-zinc-900/60 px-3 py-2">
+                  <div class="min-w-0">
+                    <div class="text-sm font-medium text-slate-900 dark:text-zinc-100 truncate">
+                      {tag.name}
+                    </div>
+                    {#if tag.lemma && tag.lemma.toLowerCase() !== tag.name.toLowerCase()}
+                      <div class="text-xs text-slate-500 dark:text-zinc-400">
+                        Лемма: {tag.lemma}
+                      </div>
+                    {/if}
+                  </div>
+                  <button
+                    type="button"
+                    class="shrink-0 px-2 py-1 rounded-md border border-slate-200 dark:border-zinc-700 text-xs hover:bg-white dark:hover:bg-zinc-800"
+                    on:click={() => removeFolderTagFromSelection('excluded_tag_ids', tag.id)}
+                  >
+                    Убрать
+                  </button>
+                </div>
+              {:else}
+                <div class="text-xs text-slate-500 dark:text-zinc-400">
+                  Пока нет исключенных тегов
+                </div>
+              {/each}
+            </div>
           </label>
         </div>
       {:else}
@@ -1154,12 +1463,6 @@
 
       <div class="flex justify-end gap-2">
         <Button color="ghost" on:click={closeCurrentFolderSettings}>Закрыть</Button>
-        <Button
-          disabled={folderSettingsLoading || folderSettingsSaving || !folderSettingsDraft}
-          on:click={saveCurrentFolderSettings}
-        >
-          {folderSettingsSaving ? 'Сохраняем...' : 'Сохранить'}
-        </Button>
       </div>
     </div>
   </Modal>

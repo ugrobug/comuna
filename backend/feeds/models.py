@@ -336,6 +336,13 @@ class ThematicFeed(models.Model):
         related_name="thematic_feeds_excluded",
         help_text="Авторы, посты которых будут исключены из папки.",
     )
+    rubrics = models.ManyToManyField(
+        "Rubric",
+        blank=True,
+        related_name="thematic_feeds_included",
+        verbose_name="Рубрики",
+        help_text="Посты этих рубрик будут добавляться в папку.",
+    )
     tags = models.ManyToManyField(
         Tag,
         blank=True,
