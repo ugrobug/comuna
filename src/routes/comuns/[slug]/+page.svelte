@@ -423,7 +423,10 @@
           <div class="min-w-0">
             <Header noMargin>{comun?.name ?? 'Комуна'}</Header>
             {#if comun?.product_tag}
-              <div class="mt-1 text-sm text-slate-600 dark:text-zinc-400">
+              <div
+                class="mt-1 text-sm text-slate-600 dark:text-zinc-400"
+                title="Записи опубликованные с данным тегом на всем сайте будут отображаться в этой комуне"
+              >
                 Тег продукта: <span class="font-medium">#{comun.product_tag.name}</span>
               </div>
             {:else}
