@@ -104,6 +104,7 @@ interface Settings {
   myFeedRubrics: string[]
   myFeedAuthors: string[]
   myFeedTags: string[]
+  myFeedComuns: string[]
   hiddenAuthors: string[]
   myFeedHideNegative: boolean
   myFeedMood: 'funny' | 'serious' | 'sad' | null
@@ -193,6 +194,7 @@ export const defaultSettings: Settings = {
   myFeedRubrics: [],
   myFeedAuthors: [],
   myFeedTags: [],
+  myFeedComuns: [],
   hiddenAuthors: [],
   myFeedHideNegative: true,
   myFeedMood: null,
@@ -246,6 +248,19 @@ const migrate = (settings: any): Settings => {
       .filter((tag: string) => {
         if (seen.has(tag)) return false
         seen.add(tag)
+        return true
+      })
+  }
+  if (!Array.isArray(settings?.myFeedComuns)) {
+    settings.myFeedComuns = []
+  } else {
+    const seen = new Set<string>()
+    settings.myFeedComuns = settings.myFeedComuns
+      .map((slug: unknown) => (typeof slug === 'string' ? slug.trim() : ''))
+      .filter((slug: string) => !!slug)
+      .filter((slug: string) => {
+        if (seen.has(slug)) return false
+        seen.add(slug)
         return true
       })
   }

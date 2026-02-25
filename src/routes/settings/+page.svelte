@@ -18,6 +18,13 @@
   import { profile } from '$lib/auth'
   import { buildRubricsUrl, buildTagsListUrl } from '$lib/api/backend'
   import { normalizeTag } from '$lib/tags'
+  import {
+    refreshSiteUser,
+    siteToken,
+    siteUser,
+    updateSiteProfile,
+    uploadSiteImage,
+  } from '$lib/siteAuth'
   import { onMount } from 'svelte'
   import { colorScheme, inDarkColorScheme } from '$lib/ui/colors'
   let importing = false
@@ -26,6 +33,12 @@
   let myFeedRubricsLoading = false
   let manualBlacklistTag = ''
   let tagLemmaMap = new Map<string, string>()
+  let siteProfileDisplayName = ''
+  let siteProfileAvatarUrl = ''
+  let siteProfileSaving = false
+  let siteProfileAvatarUploading = false
+  let siteProfileFileInput: HTMLInputElement | null = null
+  let lastSiteUserSnapshot: string | null = null
   $: myFeedAuthors = $userSettings.myFeedAuthors ?? []
   $: hiddenAuthors = $userSettings.hiddenAuthors ?? []
   $: blacklistedTags = Object.entries($userSettings.tagRules ?? {})
@@ -137,9 +150,72 @@
     $userSettings = { ...$userSettings, hiddenAuthors: [] }
   }
 
+  const syncSiteProfileForm = () => {
+    const nextSnapshot = JSON.stringify({
+      id: $siteUser?.id ?? null,
+      display_name: $siteUser?.display_name ?? '',
+      avatar_url: $siteUser?.avatar_url ?? '',
+    })
+    if (nextSnapshot === lastSiteUserSnapshot) return
+    lastSiteUserSnapshot = nextSnapshot
+    siteProfileDisplayName = $siteUser?.display_name ?? ''
+    siteProfileAvatarUrl = $siteUser?.avatar_url ?? ''
+  }
+
+  $: syncSiteProfileForm()
+
+  const pickSiteProfileAvatar = () => {
+    siteProfileFileInput?.click()
+  }
+
+  const onSiteProfileAvatarSelected = async (event: Event) => {
+    const input = event.currentTarget as HTMLInputElement | null
+    const file = input?.files?.[0]
+    if (!file) return
+    siteProfileAvatarUploading = true
+    try {
+      const uploadedUrl = await uploadSiteImage(file)
+      siteProfileAvatarUrl = uploadedUrl
+      toast({ content: 'Аватар загружен. Нажмите «Сохранить»', type: 'success' })
+    } catch (error) {
+      toast({
+        content: (error as Error)?.message ?? 'Не удалось загрузить аватар',
+        type: 'error',
+      })
+    } finally {
+      siteProfileAvatarUploading = false
+      if (input) input.value = ''
+    }
+  }
+
+  const saveSiteProfileSettings = async () => {
+    if (!$siteUser) {
+      toast({ content: 'Нужна авторизация', type: 'error' })
+      return
+    }
+    siteProfileSaving = true
+    try {
+      await updateSiteProfile({
+        display_name: siteProfileDisplayName.trim(),
+        avatar_url: siteProfileAvatarUrl.trim() || '',
+      })
+      toast({ content: 'Профиль Comuna обновлен', type: 'success' })
+    } catch (error) {
+      toast({
+        content: (error as Error)?.message ?? 'Не удалось обновить профиль',
+        type: 'error',
+      })
+    } finally {
+      siteProfileSaving = false
+    }
+  }
+
   onMount(() => {
     loadMyFeedRubrics()
     loadTagLemmas()
+    if ($siteToken) {
+      refreshSiteUser().catch(() => {})
+    }
     if ($colorScheme === 'system') {
       $colorScheme = inDarkColorScheme() ? 'dark' : 'light'
     }
@@ -246,6 +322,79 @@
           {$t('profile.profile')}
           <Icon src={ArrowRight} micro size="16" slot="suffix" />
         </Button>
+      </div>
+    </Section>
+  {/if}
+  {#if $siteUser}
+    <Section id="comuna-profile" title="Профиль Comuna">
+      <div class="flex flex-col gap-4">
+        <div class="text-sm text-slate-500 dark:text-zinc-400">
+          Это профиль, который отображается на сайте в комментариях и на странице пользователя.
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-4 items-start">
+          <div class="w-20 h-20 rounded-full overflow-hidden border border-slate-200 dark:border-zinc-800 bg-slate-100 dark:bg-zinc-800 shrink-0">
+            {#if siteProfileAvatarUrl}
+              <img src={siteProfileAvatarUrl} alt="Аватар профиля" class="w-full h-full object-cover" />
+            {:else}
+              <div class="w-full h-full grid place-items-center text-lg font-semibold text-slate-500 dark:text-zinc-400">
+                {($siteUser.display_name || $siteUser.username || '?').slice(0, 1).toUpperCase()}
+              </div>
+            {/if}
+          </div>
+
+          <div class="flex-1 min-w-0 flex flex-col gap-3">
+            <input
+              bind:this={siteProfileFileInput}
+              type="file"
+              accept="image/*"
+              class="hidden"
+              on:change={onSiteProfileAvatarSelected}
+            />
+
+            <TextInput
+              bind:value={siteProfileDisplayName}
+              label="Имя отображаемое на сайте"
+              placeholder={`Например: ${$siteUser.username}`}
+              maxLength={120}
+            />
+
+            <div class="flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                on:click={pickSiteProfileAvatar}
+                disabled={siteProfileSaving || siteProfileAvatarUploading}
+              >
+                {siteProfileAvatarUrl ? 'Заменить аватарку' : 'Загрузить аватарку'}
+              </Button>
+              {#if siteProfileAvatarUrl}
+                <Button
+                  size="sm"
+                  color="ghost"
+                  on:click={() => (siteProfileAvatarUrl = '')}
+                  disabled={siteProfileSaving || siteProfileAvatarUploading}
+                >
+                  Убрать аватарку
+                </Button>
+              {/if}
+              {#if siteProfileAvatarUploading}
+                <span class="text-xs text-slate-500 dark:text-zinc-400">Загрузка...</span>
+              {/if}
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <Button
+                on:click={saveSiteProfileSettings}
+                disabled={siteProfileSaving || siteProfileAvatarUploading}
+              >
+                {siteProfileSaving ? 'Сохраняем...' : 'Сохранить'}
+              </Button>
+              <div class="text-xs text-slate-500 dark:text-zinc-400">
+                Логин @{ $siteUser.username } не меняется и используется для входа.
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </Section>
   {/if}

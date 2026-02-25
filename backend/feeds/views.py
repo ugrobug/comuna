@@ -52,6 +52,7 @@ from .models import (
     PostPollVote,
     PostRead,
     Rubric,
+    SiteUserProfile,
     Tag,
     ThematicFeed,
     TelegramAccount,
@@ -65,6 +66,15 @@ _BOT_ID: int | None = None
 _TOKEN_SIGNER = TimestampSigner(salt="comuna-auth")
 _TOKEN_MAX_AGE = 60 * 60 * 24 * 30
 _FAKE_VIEWS_RAMP_SECONDS = 48 * 60 * 60
+_COMUN_ACTIVITY_POINTS = {
+    "post": 10,
+    "comment": 5,
+    "post_vote": 2,
+    "comment_like": 1,
+    "poll_vote": 2,
+    "favorite": 2,
+    "read": 1,
+}
 _COMMENT_PERSONAS = (
     {"key": "persona_1", "username": "anna_m"},
     {"key": "persona_2", "username": "igor_p"},
@@ -352,6 +362,11 @@ def vk_auth(request: HttpRequest) -> HttpResponse:
 
 
 def _serialize_user(user: User) -> dict:
+    site_profile = None
+    try:
+        site_profile = user.site_profile
+    except Exception:
+        site_profile = None
     author_links = (
         AuthorAdmin.objects.select_related("author", "author__rubric")
         .filter(user=user, verified_at__isnull=False)
@@ -382,10 +397,94 @@ def _serialize_user(user: User) -> dict:
         "id": user.id,
         "username": user.username,
         "email": user.email,
-        "avatar_url": avatar_url,
+        "display_name": (site_profile.display_name if site_profile else "") or None,
+        "avatar_url": (site_profile.avatar_url if site_profile else "") or avatar_url,
         "is_staff": user.is_staff,
         "is_author": bool(authors),
         "authors": authors,
+    }
+
+
+def _public_user_author_ids(user: User) -> tuple[list[int], list[AuthorAdmin]]:
+    author_links = list(
+        AuthorAdmin.objects.filter(user=user, verified_at__isnull=False)
+        .select_related("author")
+        .order_by("author__username")
+    )
+    author_ids = [link.author_id for link in author_links]
+    personal_author = Author.objects.filter(
+        username__iexact=(user.username or "").strip(),
+        channel_url="",
+        channel_id__isnull=True,
+    ).first()
+    if personal_author and personal_author.id not in author_ids:
+        author_ids.append(personal_author.id)
+    return author_ids, author_links
+
+
+def _serialize_public_site_user_profile(
+    request: HttpRequest,
+    user: User,
+    *,
+    author_links: list[AuthorAdmin] | None = None,
+    posts_count: int = 0,
+    comuns_count: int = 0,
+) -> dict:
+    author_links = author_links or []
+    fallback_author_avatars: dict[int, str | None] = {}
+    for link in author_links:
+        if link.user_id in fallback_author_avatars:
+            continue
+        fallback_author_avatars[link.user_id] = _author_avatar_url(request, link.author)
+    return {
+        "id": user.id,
+        "username": user.username,
+        "display_name": (
+            (getattr(getattr(user, "site_profile", None), "display_name", "") or "").strip()
+            or None
+        ),
+        "avatar_url": _site_user_avatar_url(
+            request, user, fallback_author_avatars=fallback_author_avatars
+        ),
+        "posts_count": int(posts_count or 0),
+        "comuns_count": int(comuns_count or 0),
+        "authors_count": len(author_links),
+        "is_staff": bool(user.is_staff),
+        "first_name": (getattr(user, "first_name", "") or "").strip() or None,
+        "last_name": (getattr(user, "last_name", "") or "").strip() or None,
+    }
+
+
+def _serialize_comun_profile_card(
+    request: HttpRequest,
+    comun: Comun,
+    *,
+    current_user: User | None = None,
+    role: str = "moderator",
+) -> dict:
+    product_tag = comun.product_tag
+    return {
+        "id": comun.id,
+        "name": comun.name,
+        "slug": comun.slug,
+        "website_url": comun.website_url,
+        "logo_url": comun.logo_url,
+        "product_description": comun.product_description,
+        "target_audience": comun.target_audience,
+        "role": role,
+        "can_moderate": _comun_is_moderator(current_user, comun),
+        "product_tag": (
+            {
+                "id": product_tag.id,
+                "name": product_tag.name,
+                "lemma": product_tag.lemma or _lemmatize_tag(product_tag.name) or product_tag.name,
+            }
+            if product_tag
+            else None
+        ),
+        "categories_count": comun.categories.filter(is_active=True).count()
+        if not hasattr(comun, "_prefetched_objects_cache") or "categories" not in comun._prefetched_objects_cache
+        else len([cat for cat in comun.categories.all() if getattr(cat, "is_active", True)]),
     }
 
 
@@ -524,6 +623,12 @@ def _comment_display_username(comment: PostComment) -> str:
     masked = (getattr(comment, "persona_username", "") or "").strip()
     if masked:
         return masked
+    try:
+        display_name = (getattr(comment.user.site_profile, "display_name", "") or "").strip()
+        if display_name:
+            return display_name
+    except Exception:
+        pass
     username = (getattr(comment.user, "username", "") or "").strip()
     return username or "user"
 
@@ -2664,7 +2769,134 @@ def auth_me(request: HttpRequest) -> HttpResponse:
     user = _get_user_from_request(request)
     if not user:
         return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    if request.method == "GET":
+        return JsonResponse({"ok": True, "user": _serialize_user(user)})
+    if request.method not in ("PATCH", "POST"):
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+
+    display_name = payload.get("display_name")
+    avatar_url = payload.get("avatar_url")
+    if display_name is None and avatar_url is None:
+        return JsonResponse({"ok": False, "error": "nothing to update"}, status=400)
+
+    profile, _ = SiteUserProfile.objects.get_or_create(user=user)
+
+    if display_name is not None:
+        next_display_name = str(display_name or "").strip()
+        if len(next_display_name) > 120:
+            return JsonResponse({"ok": False, "error": "display_name too long"}, status=400)
+        profile.display_name = next_display_name
+
+    if avatar_url is not None:
+        next_avatar_url = str(avatar_url or "").strip()
+        if next_avatar_url and not re.match(r"^https?://", next_avatar_url):
+            return JsonResponse({"ok": False, "error": "invalid avatar_url"}, status=400)
+        if len(next_avatar_url) > 500:
+            return JsonResponse({"ok": False, "error": "avatar_url too long"}, status=400)
+        profile.avatar_url = next_avatar_url
+
+    profile.save()
     return JsonResponse({"ok": True, "user": _serialize_user(user)})
+
+
+def public_user_profile(request: HttpRequest, user_id: int) -> HttpResponse:
+    if request.method != "GET":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    limit_raw = request.GET.get("limit", "10")
+    offset_raw = request.GET.get("offset", "0")
+    try:
+        limit = min(max(int(limit_raw), 1), 100)
+    except ValueError:
+        limit = 10
+    try:
+        offset = max(int(offset_raw), 0)
+    except ValueError:
+        offset = 0
+
+    profile_user = (
+        User.objects.filter(id=user_id)
+        .select_related("site_profile", "telegram_account", "vk_account")
+        .first()
+    )
+    if not profile_user:
+        return JsonResponse({"ok": False, "error": "user not found"}, status=404)
+
+    current_user = _get_user_from_request(request)
+    now = timezone.now()
+    author_ids, author_links = _public_user_author_ids(profile_user)
+
+    public_posts_qs = Post.objects.none()
+    if author_ids:
+        public_posts_qs = (
+            Post.objects.filter(
+                author_id__in=author_ids,
+                is_blocked=False,
+                is_pending=False,
+                author__is_blocked=False,
+            )
+            .filter(_publish_ready_filter(now))
+            .filter(Q(author__shadow_banned=False) | Q(author__force_home=True))
+            .select_related("author", "rubric")
+            .prefetch_related("tags")
+            .order_by("-created_at")
+        )
+    total_posts = public_posts_qs.count() if author_ids else 0
+    posts = list(public_posts_qs[offset : offset + limit]) if author_ids else []
+    favorite_post_ids = _favorite_post_ids_for_user(posts, current_user)
+
+    comuns = list(
+        Comun.objects.filter(Q(creator_id=profile_user.id) | Q(moderators__id=profile_user.id), is_active=True)
+        .select_related("creator", "product_tag")
+        .prefetch_related("moderators", "categories")
+        .distinct()
+        .order_by("sort_order", "name")
+    )
+    total_comuns = len(comuns)
+
+    comun_cards = []
+    for comun in comuns:
+        role = "creator" if comun.creator_id == profile_user.id else "moderator"
+        comun_cards.append(
+            _serialize_comun_profile_card(
+                request,
+                comun,
+                current_user=current_user,
+                role=role,
+            )
+        )
+
+    posts_payload = [
+        _serialize_backend_post_card(
+            request,
+            post,
+            current_user,
+            now=now,
+            is_favorite=post.id in favorite_post_ids,
+        )
+        for post in posts
+    ]
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "user": _serialize_public_site_user_profile(
+                request,
+                profile_user,
+                author_links=author_links,
+                posts_count=total_posts,
+                comuns_count=total_comuns,
+            ),
+            "comuns": comun_cards,
+            "posts": posts_payload,
+            "total_posts": total_posts,
+        }
+    )
 
 
 @csrf_exempt
@@ -4560,7 +4792,9 @@ def my_feed(request: HttpRequest) -> HttpResponse:
     ]
     tags_raw = request.GET.get("tags", "")
     tag_values = [value.strip() for value in tags_raw.split(",") if value.strip()]
-    if not rubric_slugs and not author_usernames and not tag_values:
+    comuns_raw = request.GET.get("comuns", "")
+    comun_slugs = [slug.strip() for slug in comuns_raw.split(",") if slug.strip()]
+    if not rubric_slugs and not author_usernames and not tag_values and not comun_slugs:
         return JsonResponse({"ok": True, "posts": []})
 
     hide_negative_raw = request.GET.get("hide_negative", "1").lower()
@@ -4594,7 +4828,22 @@ def my_feed(request: HttpRequest) -> HttpResponse:
         tag_selection_q |= Q(tags__name__iexact=normalized) | Q(tags__lemma__iexact=lemma)
         has_tag_selection = True
 
-    if not rubric_ids and not author_ids and not has_tag_selection:
+    comun_tag_selection_q = Q()
+    has_comun_selection = False
+    if comun_slugs:
+        comuns = list(
+            Comun.objects.filter(is_active=True, slug__in=comun_slugs)
+            .select_related("product_tag")
+            .only("id", "slug", "product_tag_id", "product_tag__id", "product_tag__name", "product_tag__lemma")
+        )
+        for comun in comuns:
+            comun_filter = _comun_product_tag_filter(comun.product_tag)
+            if comun_filter is None:
+                continue
+            comun_tag_selection_q |= comun_filter
+            has_comun_selection = True
+
+    if not rubric_ids and not author_ids and not has_tag_selection and not has_comun_selection:
         return JsonResponse({"ok": True, "posts": []})
 
     now = timezone.now()
@@ -4613,6 +4862,8 @@ def my_feed(request: HttpRequest) -> HttpResponse:
         selection_filter |= Q(author_id__in=author_ids)
     if has_tag_selection:
         selection_filter |= tag_selection_q
+    if has_comun_selection:
+        selection_filter |= comun_tag_selection_q
 
     base_query = (
         Post.objects.filter(
@@ -4626,7 +4877,7 @@ def my_feed(request: HttpRequest) -> HttpResponse:
     )
     if hide_negative:
         base_query = base_query.filter(rating__gte=0)
-    if has_tag_selection:
+    if has_tag_selection or has_comun_selection:
         base_query = base_query.distinct()
 
     hidden_read_count = 0
@@ -4891,6 +5142,7 @@ def _serialize_comun(
     current_user: User | None = None,
     include_manage_fields: bool = False,
     include_options: bool = False,
+    include_activity: bool = False,
 ) -> dict:
     categories = list(comun.categories.filter(is_active=True).order_by("sort_order", "name"))
     moderators = list(comun.moderators.order_by("username"))
@@ -4939,6 +5191,8 @@ def _serialize_comun(
         "welcome_post": welcome_post_payload,
         "can_moderate": _comun_is_moderator(current_user, comun),
     }
+    if include_activity:
+        payload["activity"] = _serialize_comun_activity(request, comun)
     if include_manage_fields:
         payload["category_ids"] = [category.id for category in categories]
         payload["product_tag_id"] = comun.product_tag_id
@@ -4972,6 +5226,189 @@ def _comun_product_tag_filter(product_tag: Tag | None) -> Q | None:
     if tag_lemma:
         filters |= Q(tags__lemma__iexact=tag_lemma)
     return filters
+
+
+def _site_user_avatar_url(
+    request: HttpRequest | None,
+    user: User,
+    *,
+    fallback_author_avatars: dict[int, str | None] | None = None,
+) -> str | None:
+    try:
+        site_profile = user.site_profile
+        if site_profile and site_profile.avatar_url:
+            return site_profile.avatar_url
+    except Exception:
+        pass
+    try:
+        tg = user.telegram_account
+        if tg and tg.avatar_url:
+            return tg.avatar_url
+    except Exception:
+        pass
+    try:
+        vk = user.vk_account
+        if vk and vk.avatar_url:
+            return vk.avatar_url
+    except Exception:
+        pass
+    if fallback_author_avatars and user.id in fallback_author_avatars:
+        return fallback_author_avatars.get(user.id)
+    return None
+
+
+def _comun_posts_base_queryset(comun: Comun, now=None):
+    now = now or timezone.now()
+    tag_filter = _comun_product_tag_filter(comun.product_tag)
+    if not tag_filter:
+        return Post.objects.none()
+    return (
+        Post.objects.filter(
+            tag_filter,
+            is_blocked=False,
+            is_pending=False,
+            author__is_blocked=False,
+        )
+        .filter(_publish_ready_filter(now))
+        .filter(Q(author__shadow_banned=False) | Q(author__force_home=True))
+        .filter(Q(rubric__isnull=True) | Q(rubric__is_hidden=False))
+        .distinct()
+    )
+
+
+def _serialize_comun_activity(
+    request: HttpRequest,
+    comun: Comun,
+    *,
+    top_limit: int = 8,
+) -> dict:
+    base_posts = _comun_posts_base_queryset(comun)
+    if not base_posts.exists():
+        return {
+            "participants_count": 0,
+            "top_members": [],
+            "points": dict(_COMUN_ACTIVITY_POINTS),
+        }
+
+    points_by_user: dict[int, int] = defaultdict(int)
+    stats_by_user: dict[int, dict[str, int]] = defaultdict(dict)
+
+    def _add_points(user_id: int | None, key: str, count: int) -> None:
+        if not user_id or count <= 0:
+            return
+        multiplier = int(_COMUN_ACTIVITY_POINTS.get(key, 0) or 0)
+        if multiplier <= 0:
+            return
+        points_by_user[user_id] += count * multiplier
+        stats_by_user[user_id][key] = stats_by_user[user_id].get(key, 0) + count
+
+    for row in (
+        PostComment.objects.filter(post__in=base_posts, is_deleted=False)
+        .values("user_id")
+        .annotate(count=Count("id"))
+    ):
+        _add_points(row.get("user_id"), "comment", int(row.get("count") or 0))
+
+    for row in (
+        PostLike.objects.filter(post__in=base_posts)
+        .values("user_id")
+        .annotate(count=Count("id"))
+    ):
+        _add_points(row.get("user_id"), "post_vote", int(row.get("count") or 0))
+
+    for row in (
+        PostCommentLike.objects.filter(comment__post__in=base_posts)
+        .values("user_id")
+        .annotate(count=Count("id"))
+    ):
+        _add_points(row.get("user_id"), "comment_like", int(row.get("count") or 0))
+
+    for row in (
+        PostPollVote.objects.filter(post__in=base_posts)
+        .values("user_id")
+        .annotate(count=Count("id"))
+    ):
+        _add_points(row.get("user_id"), "poll_vote", int(row.get("count") or 0))
+
+    for row in (
+        PostFavorite.objects.filter(post__in=base_posts)
+        .values("user_id")
+        .annotate(count=Count("id"))
+    ):
+        _add_points(row.get("user_id"), "favorite", int(row.get("count") or 0))
+
+    for row in (
+        PostRead.objects.filter(post__in=base_posts)
+        .values("user_id")
+        .annotate(count=Count("id"))
+    ):
+        _add_points(row.get("user_id"), "read", int(row.get("count") or 0))
+
+    for row in (
+        AuthorAdmin.objects.filter(verified_at__isnull=False, author__posts__in=base_posts)
+        .values("user_id")
+        .annotate(count=Count("author__posts", distinct=True))
+    ):
+        _add_points(row.get("user_id"), "post", int(row.get("count") or 0))
+
+    if not points_by_user:
+        return {
+            "participants_count": 0,
+            "top_members": [],
+            "points": dict(_COMUN_ACTIVITY_POINTS),
+        }
+
+    user_ids_sorted = sorted(points_by_user.keys(), key=lambda uid: (-points_by_user[uid], uid))
+    top_user_ids = user_ids_sorted[: max(int(top_limit or 0), 1)]
+
+    users = list(
+        User.objects.filter(id__in=top_user_ids)
+        .select_related("telegram_account", "vk_account")
+        .order_by("id")
+    )
+    users_by_id = {user.id: user for user in users}
+
+    fallback_author_avatars: dict[int, str | None] = {}
+    for link in (
+        AuthorAdmin.objects.select_related("author")
+        .filter(user_id__in=top_user_ids, verified_at__isnull=False)
+        .order_by("user_id", "id")
+    ):
+        if link.user_id in fallback_author_avatars:
+            continue
+        fallback_author_avatars[link.user_id] = _author_avatar_url(request, link.author)
+
+    top_members = []
+    rank = 0
+    last_points = None
+    for index, user_id in enumerate(top_user_ids, start=1):
+        user = users_by_id.get(user_id)
+        if not user:
+            continue
+        points = int(points_by_user.get(user_id) or 0)
+        if points <= 0:
+            continue
+        if last_points != points:
+            rank = index
+            last_points = points
+        top_members.append(
+            {
+                "user_id": user.id,
+                "username": user.username,
+                "avatar_url": _site_user_avatar_url(
+                    request, user, fallback_author_avatars=fallback_author_avatars
+                ),
+                "points": points,
+                "rank": rank,
+                "stats": stats_by_user.get(user_id, {}),
+            }
+        )
+
+    return {
+        "participants_count": len(points_by_user),
+        "top_members": top_members,
+        "points": dict(_COMUN_ACTIVITY_POINTS),
+    }
 
 
 def _serialize_backend_post_card(
@@ -5119,6 +5556,7 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
                     current_user=current_user,
                     include_manage_fields=True,
                     include_options=_comun_is_moderator(current_user, comun),
+                    include_activity=True,
                 ),
             }
         )
@@ -5211,6 +5649,7 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
                 current_user=current_user,
                 include_manage_fields=True,
                 include_options=True,
+                include_activity=True,
             ),
         }
     )
@@ -5252,28 +5691,18 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
             return JsonResponse({"ok": False, "error": "category not found"}, status=404)
 
     now = timezone.now()
-    tag_filter = _comun_product_tag_filter(comun.product_tag)
-    if not tag_filter:
+    base_query = _comun_posts_base_queryset(comun, now)
+    if not comun.product_tag_id:
         return JsonResponse(
             {
                 "ok": True,
-                "comun": _serialize_comun(request, comun, current_user=current_user),
+                "comun": _serialize_comun(
+                    request, comun, current_user=current_user, include_activity=True
+                ),
                 "posts": [],
                 "selected_category": _serialize_comun_category(selected_category) if selected_category else None,
             }
         )
-
-    base_query = (
-        Post.objects.filter(
-            tag_filter,
-            is_blocked=False,
-            is_pending=False,
-            author__is_blocked=False,
-        )
-        .filter(_publish_ready_filter(now))
-        .filter(Q(author__shadow_banned=False) | Q(author__force_home=True))
-        .filter(Q(rubric__isnull=True) | Q(rubric__is_hidden=False))
-    )
     if comun.welcome_post_id:
         base_query = base_query.exclude(id=comun.welcome_post_id)
     if selected_category:
@@ -5317,7 +5746,9 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
     return JsonResponse(
         {
             "ok": True,
-            "comun": _serialize_comun(request, comun, current_user=current_user),
+            "comun": _serialize_comun(
+                request, comun, current_user=current_user, include_activity=True
+            ),
             "posts": serialized_posts,
             "selected_category": _serialize_comun_category(selected_category) if selected_category else None,
         }

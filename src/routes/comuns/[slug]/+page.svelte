@@ -80,6 +80,11 @@
   $: siteTitle = env.PUBLIC_SITE_TITLE || 'Comuna'
   $: comunName = comun?.name || 'Комуна'
   $: welcomePostView = comun?.welcome_post ? backendPostToPostView(comun.welcome_post) : null
+  $: comunTopMembers = comun?.activity?.top_members ?? []
+  $: comunParticipantsCount = comun?.activity?.participants_count ?? comunTopMembers.length
+  $: myFeedComunSlugs = ($userSettings.myFeedComuns ?? []).map((slug) => slug.trim()).filter(Boolean)
+  $: currentComunSlug = (comun?.slug ?? '').trim()
+  $: isSubscribedToComun = !!currentComunSlug && myFeedComunSlugs.includes(currentComunSlug)
   $: title = `${comunName} — ${siteTitle}`
   $: description =
     comun?.product_description || `Посты и обсуждения продукта «${comunName}» на ${siteTitle}.`
@@ -90,6 +95,35 @@
 
   const cloneComun = (value: BackendComun | null): BackendComun | null =>
     value ? JSON.parse(JSON.stringify(value)) : null
+
+  const userInitials = (username?: string | null) =>
+    (username || '?').trim().slice(0, 1).toUpperCase() || '?'
+
+  const toggleComunInMyFeed = async () => {
+    const slug = (comun?.slug ?? '').trim()
+    if (!slug) return
+    if (!$siteToken) {
+      const next = encodeURIComponent(`${$page.url.pathname}${$page.url.search}`)
+      goto(`/account?next=${next}`)
+      return
+    }
+    const next = new Set<string>(myFeedComunSlugs)
+    if (next.has(slug)) {
+      next.delete(slug)
+      $userSettings = {
+        ...$userSettings,
+        myFeedComuns: Array.from(next),
+      }
+      toast('Комуна убрана из "Моей ленты"')
+      return
+    }
+    next.add(slug)
+    $userSettings = {
+      ...$userSettings,
+      myFeedComuns: Array.from(next),
+    }
+    toast('Посты этой комуны будут попадать в "Мою ленту"')
+  }
 
   const authHeaders = () => {
     if (!$siteToken) throw new Error('Нужна авторизация')
@@ -442,6 +476,13 @@
           </div>
         </div>
         <div class="flex flex-wrap items-center gap-2">
+          <Button
+            color={isSubscribedToComun ? 'ghost' : undefined}
+            on:click={toggleComunInMyFeed}
+            title={isSubscribedToComun ? 'Убрать коммуну из Моей ленты' : 'Добавить коммуну в Мою ленту'}
+          >
+            {isSubscribedToComun ? 'В моей ленте' : 'В мою ленту'}
+          </Button>
           {#if comun?.website_url}
             <a
               href={comun.website_url}
@@ -468,6 +509,36 @@
         <div class="text-sm text-slate-600 dark:text-zinc-400">
           <span class="font-medium text-slate-800 dark:text-zinc-200">Целевая аудитория:</span>
           {comun.target_audience}
+        </div>
+      {/if}
+
+      {#if comunTopMembers.length}
+        <div class="flex flex-col gap-2 pt-1">
+          <div class="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-zinc-400">
+            <span class="uppercase tracking-wide">Рейтинг активности</span>
+            <span>•</span>
+            <span>{comunParticipantsCount} участников</span>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            {#each comunTopMembers as member}
+              <div
+                class="inline-flex items-center justify-center h-9 w-9 rounded-full overflow-hidden border border-slate-200 dark:border-zinc-800 bg-slate-100 dark:bg-zinc-800 text-xs font-semibold text-slate-700 dark:text-zinc-200"
+                title={`#${member.rank} @${member.username} — ${member.points} баллов`}
+                aria-label={`#${member.rank} ${member.username}, ${member.points} баллов`}
+              >
+                {#if member.avatar_url}
+                  <img
+                    src={member.avatar_url}
+                    alt={`Аватар @${member.username}`}
+                    class="h-full w-full object-cover"
+                    loading="lazy"
+                  />
+                {:else}
+                  {userInitials(member.username)}
+                {/if}
+              </div>
+            {/each}
+          </div>
         </div>
       {/if}
 

@@ -663,3 +663,18 @@ class VkAccount(models.Model):
 
     def __str__(self) -> str:
         return f"vk:{self.vk_id}"
+
+
+class SiteUserProfile(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="site_profile")
+    display_name = models.CharField(max_length=120, blank=True)
+    avatar_url = models.URLField(max_length=500, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Профиль пользователя сайта"
+        verbose_name_plural = "Профили пользователей сайта"
+
+    def __str__(self) -> str:
+        return f"site-profile:{self.user_id}"

@@ -108,6 +108,22 @@ export const buildComunPostCategoryUrl = (slug: string, postId: number | string)
   return `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/posts/${encodeURIComponent(postId)}/category/`
 }
 
+export const buildPublicUserProfileUrl = (
+  userId: number | string,
+  options?: { limit?: number; offset?: number }
+): string => {
+  const base = `${getBackendBaseUrl()}/api/site-users/${encodeURIComponent(userId)}/profile/`
+  const params = new URLSearchParams()
+  if (typeof options?.limit === 'number') {
+    params.set('limit', String(options.limit))
+  }
+  if (typeof options?.offset === 'number') {
+    params.set('offset', String(options.offset))
+  }
+  const query = params.toString()
+  return query ? `${base}?${query}` : base
+}
+
 export const buildThematicFeedPostsUrl = (
   slug: string,
   options?: {
@@ -186,6 +202,7 @@ export const buildMyFeedUrl = (
   rubrics?: string[],
   authors?: string[],
   tags?: string[],
+  comuns?: string[],
   hideNegative: boolean = true,
   hideRead: boolean = false,
   onlyRead: boolean = false
@@ -200,6 +217,9 @@ export const buildMyFeedUrl = (
   }
   if (tags?.length) {
     params.set('tags', tags.join(','))
+  }
+  if (comuns?.length) {
+    params.set('comuns', comuns.join(','))
   }
   if (!hideNegative) {
     params.set('hide_negative', '0')
@@ -310,6 +330,21 @@ export type BackendComunCategory = {
   sort_order?: number
 }
 
+export type BackendComunActivityMember = {
+  user_id: number
+  username: string
+  avatar_url?: string | null
+  points: number
+  rank: number
+  stats?: Record<string, number>
+}
+
+export type BackendComunActivity = {
+  participants_count?: number
+  top_members?: BackendComunActivityMember[]
+  points?: Record<string, number>
+}
+
 export type BackendComun = {
   id: number
   name: string
@@ -332,10 +367,38 @@ export type BackendComun = {
   welcome_post_id?: number | null
   welcome_post_ref?: string
   welcome_post?: BackendPost | null
+  activity?: BackendComunActivity | null
   options?: {
     categories?: BackendComunCategory[]
     tags?: BackendTag[]
   }
+}
+
+export type BackendPublicSiteUser = {
+  id: number
+  username: string
+  display_name?: string | null
+  avatar_url?: string | null
+  posts_count?: number
+  comuns_count?: number
+  authors_count?: number
+  is_staff?: boolean
+  first_name?: string | null
+  last_name?: string | null
+}
+
+export type BackendPublicSiteUserComun = {
+  id: number
+  name: string
+  slug: string
+  website_url?: string | null
+  logo_url?: string | null
+  product_description?: string | null
+  target_audience?: string | null
+  role?: 'creator' | 'moderator' | string
+  can_moderate?: boolean
+  categories_count?: number
+  product_tag?: { id: number; name: string; lemma?: string | null } | null
 }
 
 export type BackendPollOption = {

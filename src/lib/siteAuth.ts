@@ -19,6 +19,7 @@ export type SiteAuthorLink = {
 export type SiteUser = {
   id: number
   username: string
+  display_name?: string | null
   email?: string | null
   avatar_url?: string | null
   is_staff?: boolean
@@ -89,6 +90,33 @@ export const refreshSiteUser = async () => {
     return data.user as SiteUser
   }
   return null
+}
+
+export const updateSiteProfile = async (payload: {
+  display_name?: string
+  avatar_url?: string | null
+}) => {
+  const token = get(siteToken)
+  if (!token) {
+    throw new Error('Нужна авторизация')
+  }
+
+  const response = await fetch(buildUrl('/api/auth/me/'), {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  })
+
+  const data = await response.json()
+  if (!response.ok || !data?.user) {
+    throw new Error(data?.error || 'Не удалось обновить профиль')
+  }
+
+  siteUser.set(data.user)
+  return data.user as SiteUser
 }
 
 export const login = async (username: string, password: string) => {

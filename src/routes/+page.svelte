@@ -556,8 +556,12 @@
   $: selectedRubrics = $userSettings.myFeedRubrics ?? []
   $: selectedAuthors = $userSettings.myFeedAuthors ?? []
   $: selectedMyFeedTags = $userSettings.myFeedTags ?? []
+  $: selectedMyFeedComuns = $userSettings.myFeedComuns ?? []
   $: myFeedHasBaseSettings =
-    selectedRubrics.length > 0 || selectedAuthors.length > 0 || selectedMyFeedTags.length > 0
+    selectedRubrics.length > 0 ||
+    selectedAuthors.length > 0 ||
+    selectedMyFeedTags.length > 0 ||
+    selectedMyFeedComuns.length > 0
   $: hiddenAuthorKeys = new Set(
     ($userSettings.hiddenAuthors ?? []).map((value) => value.toLowerCase())
   )
@@ -601,6 +605,7 @@
 	        selectedRubrics,
 	        selectedAuthors,
 	        selectedMyFeedTags,
+	        selectedMyFeedComuns,
 	        hideNegativeMyFeed,
 	        effectiveHideRead,
 	        readOnly
@@ -818,7 +823,7 @@
 
   $: if (feedType === 'mine') {
     const authKey = $siteUser ? 'auth' : 'anon'
-	    const key = `${authKey}:${selectedRubrics.join(',')}:${selectedAuthors.join(',')}:${selectedMyFeedTags.join(',')}:${hideNegativeMyFeed ? 'no-negative' : 'all'}:${readOnly ? 'only-read' : effectiveHideRead ? 'hide-read' : 'all-read'}`
+	    const key = `${authKey}:${selectedRubrics.join(',')}:${selectedAuthors.join(',')}:${selectedMyFeedTags.join(',')}:${selectedMyFeedComuns.join(',')}:${hideNegativeMyFeed ? 'no-negative' : 'all'}:${readOnly ? 'only-read' : effectiveHideRead ? 'hide-read' : 'all-read'}`
     if (key !== lastMyFeedKey) {
       lastMyFeedKey = key
       resetMyFeed()
@@ -916,12 +921,14 @@
     const rubrics = $userSettings.myFeedRubrics ?? []
     const authors = $userSettings.myFeedAuthors ?? []
     const tags = $userSettings.myFeedTags ?? []
+    const comuns = $userSettings.myFeedComuns ?? []
     const hiddenAuthors = $userSettings.hiddenAuthors ?? []
     const tagRules = $userSettings.tagRules ?? {}
     return (
       rubrics.length > 0 ||
       authors.length > 0 ||
       tags.length > 0 ||
+      comuns.length > 0 ||
       hiddenAuthors.length > 0 ||
       Object.keys(tagRules).length > 0
     )
