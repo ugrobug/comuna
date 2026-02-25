@@ -100,7 +100,7 @@
       createOpen = false
       resetForm()
       toast('Комуна создана')
-      goto(`/comuns/${payload.comun.slug}`)
+      goto(`/comuns/${payload.comun.slug}/settings`)
     } catch (error) {
       toast(error instanceof Error ? error.message : 'Ошибка создания')
     } finally {

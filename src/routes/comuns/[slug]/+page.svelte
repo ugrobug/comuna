@@ -45,6 +45,9 @@
   let settingsTagSearch = ''
   let settingsDraft: BackendComun | null = null
   let settingsLogoInput: HTMLInputElement | null = null
+  let lastAuthRefreshToken: string | null = null
+  let autoSettingsOpenHandled = false
+  let wantsSettingsOpenFromUrl = false
   let settingsCategoryOptions: BackendComunCategory[] = []
   type ComunTagOption = BackendTag & { id: number }
   let settingsTagOptions: ComunTagOption[] = []
@@ -197,11 +200,19 @@
   }
 
   const openSettings = async () => {
-    if (!isModerator()) return
-    settingsOpen = true
+    if (!$siteToken) {
+      const next = `${$page.url.pathname}?settings=1`
+      goto(`/account?next=${encodeURIComponent(next)}`)
+      return
+    }
     settingsTagSearch = ''
     settingsDraft = cloneComun(comun)
     await refreshComunManage()
+    if (!comun?.can_moderate) {
+      toast('Настройки доступны только модераторам комуны')
+      return
+    }
+    settingsOpen = true
   }
 
   const toggleDraftCategory = (categoryId: number) => {
@@ -350,11 +361,36 @@
     void updatePostCategory(postId, value)
   }
 
+  $: wantsSettingsOpenFromUrl = $page.url.searchParams.get('settings') === '1'
+
+  $: if (browser && comun?.slug && $siteToken && $siteToken !== lastAuthRefreshToken) {
+    lastAuthRefreshToken = $siteToken
+    void refreshComunManage()
+  }
+
+  $: if (!$siteToken) {
+    lastAuthRefreshToken = null
+    autoSettingsOpenHandled = false
+  }
+
+  $: if (!wantsSettingsOpenFromUrl) {
+    autoSettingsOpenHandled = false
+  }
+
+  $: if (
+    browser &&
+    wantsSettingsOpenFromUrl &&
+    $siteToken &&
+    !settingsOpen &&
+    !autoSettingsOpenHandled &&
+    !settingsLoading
+  ) {
+    autoSettingsOpenHandled = true
+    void openSettings()
+  }
+
   onMount(() => {
     if (!browser) return
-    if ($siteToken) {
-      void refreshComunManage()
-    }
     maybeLoadMore()
     window.addEventListener('scroll', onScroll, { passive: true })
   })
