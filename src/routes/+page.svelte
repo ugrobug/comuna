@@ -178,17 +178,24 @@
     const next = new Set(getFolderSelectedAuthorIds(key))
     next.add(authorId)
     ;(folderSettingsDraft as any)[key] = Array.from(next)
+    touchFolderSettingsDraft()
   }
 
   const removeFolderAuthorFromSelection = (key: FolderAuthorSelectionKey, authorId: number) => {
     if (!folderSettingsDraft) return
     ;(folderSettingsDraft as any)[key] = getFolderSelectedAuthorIds(key).filter((id) => id !== authorId)
+    touchFolderSettingsDraft()
   }
 
   const getFolderAvailableAuthors = (
     key: FolderAuthorSelectionKey,
     candidates: FolderManageAuthorOption[]
   ): FolderManageAuthorOption[] => candidates.filter((author) => !isFolderAuthorSelected(key, author.id))
+
+  const touchFolderSettingsDraft = () => {
+    if (!folderSettingsDraft) return
+    folderSettingsDraft = { ...folderSettingsDraft }
+  }
 
   const readMultiSelectIds = (event: Event): number[] => {
     const target = event.currentTarget as HTMLSelectElement
@@ -203,6 +210,7 @@
   ) => {
     if (!folderSettingsDraft) return
     ;(folderSettingsDraft as any)[key] = readMultiSelectIds(event)
+    touchFolderSettingsDraft()
   }
 
   const loadCurrentFolderSettings = async () => {
