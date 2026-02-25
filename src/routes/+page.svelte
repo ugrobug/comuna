@@ -153,6 +153,43 @@
     )
   }
 
+  type FolderAuthorSelectionKey = 'author_ids' | 'excluded_author_ids'
+
+  const getFolderAuthorOptionById = (id: number): FolderManageAuthorOption | null =>
+    folderSettingsAuthorOptions.find((author) => author.id === id) ?? null
+
+  const getFolderSelectedAuthorIds = (key: FolderAuthorSelectionKey): number[] => {
+    if (!folderSettingsDraft) return []
+    const values = (folderSettingsDraft as any)[key]
+    return Array.isArray(values) ? values.filter((value) => Number.isFinite(value)) : []
+  }
+
+  const getFolderSelectedAuthors = (key: FolderAuthorSelectionKey): FolderManageAuthorOption[] =>
+    getFolderSelectedAuthorIds(key)
+      .map((id) => getFolderAuthorOptionById(id))
+      .filter(Boolean) as FolderManageAuthorOption[]
+
+  const isFolderAuthorSelected = (key: FolderAuthorSelectionKey, authorId: number) =>
+    getFolderSelectedAuthorIds(key).includes(authorId)
+
+  const addFolderAuthorToSelection = (key: FolderAuthorSelectionKey, authorId: number) => {
+    if (!folderSettingsDraft) return
+    if (!Number.isFinite(authorId) || authorId <= 0) return
+    const next = new Set(getFolderSelectedAuthorIds(key))
+    next.add(authorId)
+    ;(folderSettingsDraft as any)[key] = Array.from(next)
+  }
+
+  const removeFolderAuthorFromSelection = (key: FolderAuthorSelectionKey, authorId: number) => {
+    if (!folderSettingsDraft) return
+    ;(folderSettingsDraft as any)[key] = getFolderSelectedAuthorIds(key).filter((id) => id !== authorId)
+  }
+
+  const getFolderAvailableAuthors = (
+    key: FolderAuthorSelectionKey,
+    candidates: FolderManageAuthorOption[]
+  ): FolderManageAuthorOption[] => candidates.filter((author) => !isFolderAuthorSelected(key, author.id))
+
   const readMultiSelectIds = (event: Event): number[] => {
     const target = event.currentTarget as HTMLSelectElement
     return Array.from(target.selectedOptions)
@@ -905,18 +942,76 @@
               placeholder="Поиск по нику, названию канала, описанию"
               class="px-3 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950"
             />
-            <select
-              multiple
-              size="12"
-              class="px-2 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950"
-              on:change={(e) => updateFolderSettingsSelection(e, 'author_ids')}
-            >
-              {#each filteredFolderAuthorOptions as author}
-                <option value={author.id} selected={(folderSettingsDraft.author_ids ?? []).includes(author.id)}>
-                  {formatFolderAuthorOptionLabel(author)}
-                </option>
+            <div class="rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950 max-h-72 overflow-y-auto">
+              {#each getFolderAvailableAuthors('author_ids', filteredFolderAuthorOptions).slice(0, 30) as author}
+                <div class="flex items-start justify-between gap-3 px-3 py-2 border-b last:border-b-0 border-slate-100 dark:border-zinc-800">
+                  <div class="min-w-0">
+                    <div class="text-sm font-medium text-slate-900 dark:text-zinc-100 truncate">
+                      @{author.username}
+                    </div>
+                    {#if author.title}
+                      <div class="text-xs text-slate-700 dark:text-zinc-300 line-clamp-2">
+                        {author.title}
+                      </div>
+                    {/if}
+                    <div class="text-xs text-slate-500 dark:text-zinc-400">
+                      {author.rubric ? `Рубрика: ${author.rubric}` : 'Без рубрики'}
+                    </div>
+                    {#if author.description}
+                      <div class="text-xs text-slate-500 dark:text-zinc-400 line-clamp-2">
+                        {author.description}
+                      </div>
+                    {/if}
+                  </div>
+                  <button
+                    type="button"
+                    class="shrink-0 px-2 py-1 rounded-md border border-slate-200 dark:border-zinc-700 text-xs font-medium hover:bg-slate-50 dark:hover:bg-zinc-800"
+                    on:click={() => addFolderAuthorToSelection('author_ids', author.id)}
+                  >
+                    Добавить
+                  </button>
+                </div>
+              {:else}
+                <div class="px-3 py-3 text-xs text-slate-500 dark:text-zinc-400">
+                  Ничего не найдено
+                </div>
               {/each}
-            </select>
+            </div>
+            <div class="mt-2 flex flex-col gap-2">
+              <div class="text-xs uppercase tracking-wide text-slate-500 dark:text-zinc-400">
+                Добавленные авторы
+              </div>
+              {#each getFolderSelectedAuthors('author_ids') as author}
+                <div class="flex items-start justify-between gap-3 rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-50/70 dark:bg-zinc-900/60 px-3 py-2">
+                  <div class="min-w-0">
+                    <div class="text-sm font-medium text-slate-900 dark:text-zinc-100 truncate">
+                      @{author.username}
+                    </div>
+                    {#if author.title}
+                      <div class="text-xs text-slate-700 dark:text-zinc-300 line-clamp-2">
+                        {author.title}
+                      </div>
+                    {/if}
+                    {#if author.description}
+                      <div class="text-xs text-slate-500 dark:text-zinc-400 line-clamp-2">
+                        {author.description}
+                      </div>
+                    {/if}
+                  </div>
+                  <button
+                    type="button"
+                    class="shrink-0 px-2 py-1 rounded-md border border-slate-200 dark:border-zinc-700 text-xs hover:bg-white dark:hover:bg-zinc-800"
+                    on:click={() => removeFolderAuthorFromSelection('author_ids', author.id)}
+                  >
+                    Убрать
+                  </button>
+                </div>
+              {:else}
+                <div class="text-xs text-slate-500 dark:text-zinc-400">
+                  Пока никто не добавлен
+                </div>
+              {/each}
+            </div>
           </label>
 
           <label class="flex flex-col gap-1 text-sm min-w-0">
@@ -927,18 +1022,76 @@
               placeholder="Поиск по нику, названию канала, описанию"
               class="px-3 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950"
             />
-            <select
-              multiple
-              size="12"
-              class="px-2 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950"
-              on:change={(e) => updateFolderSettingsSelection(e, 'excluded_author_ids')}
-            >
-              {#each filteredFolderExcludedAuthorOptions as author}
-                <option value={author.id} selected={(folderSettingsDraft.excluded_author_ids ?? []).includes(author.id)}>
-                  {formatFolderAuthorOptionLabel(author)}
-                </option>
+            <div class="rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950 max-h-72 overflow-y-auto">
+              {#each getFolderAvailableAuthors('excluded_author_ids', filteredFolderExcludedAuthorOptions).slice(0, 30) as author}
+                <div class="flex items-start justify-between gap-3 px-3 py-2 border-b last:border-b-0 border-slate-100 dark:border-zinc-800">
+                  <div class="min-w-0">
+                    <div class="text-sm font-medium text-slate-900 dark:text-zinc-100 truncate">
+                      @{author.username}
+                    </div>
+                    {#if author.title}
+                      <div class="text-xs text-slate-700 dark:text-zinc-300 line-clamp-2">
+                        {author.title}
+                      </div>
+                    {/if}
+                    <div class="text-xs text-slate-500 dark:text-zinc-400">
+                      {author.rubric ? `Рубрика: ${author.rubric}` : 'Без рубрики'}
+                    </div>
+                    {#if author.description}
+                      <div class="text-xs text-slate-500 dark:text-zinc-400 line-clamp-2">
+                        {author.description}
+                      </div>
+                    {/if}
+                  </div>
+                  <button
+                    type="button"
+                    class="shrink-0 px-2 py-1 rounded-md border border-slate-200 dark:border-zinc-700 text-xs font-medium hover:bg-slate-50 dark:hover:bg-zinc-800"
+                    on:click={() => addFolderAuthorToSelection('excluded_author_ids', author.id)}
+                  >
+                    Добавить
+                  </button>
+                </div>
+              {:else}
+                <div class="px-3 py-3 text-xs text-slate-500 dark:text-zinc-400">
+                  Ничего не найдено
+                </div>
               {/each}
-            </select>
+            </div>
+            <div class="mt-2 flex flex-col gap-2">
+              <div class="text-xs uppercase tracking-wide text-slate-500 dark:text-zinc-400">
+                Исключенные авторы
+              </div>
+              {#each getFolderSelectedAuthors('excluded_author_ids') as author}
+                <div class="flex items-start justify-between gap-3 rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-50/70 dark:bg-zinc-900/60 px-3 py-2">
+                  <div class="min-w-0">
+                    <div class="text-sm font-medium text-slate-900 dark:text-zinc-100 truncate">
+                      @{author.username}
+                    </div>
+                    {#if author.title}
+                      <div class="text-xs text-slate-700 dark:text-zinc-300 line-clamp-2">
+                        {author.title}
+                      </div>
+                    {/if}
+                    {#if author.description}
+                      <div class="text-xs text-slate-500 dark:text-zinc-400 line-clamp-2">
+                        {author.description}
+                      </div>
+                    {/if}
+                  </div>
+                  <button
+                    type="button"
+                    class="shrink-0 px-2 py-1 rounded-md border border-slate-200 dark:border-zinc-700 text-xs hover:bg-white dark:hover:bg-zinc-800"
+                    on:click={() => removeFolderAuthorFromSelection('excluded_author_ids', author.id)}
+                  >
+                    Убрать
+                  </button>
+                </div>
+              {:else}
+                <div class="text-xs text-slate-500 dark:text-zinc-400">
+                  Пока никого нет в исключениях
+                </div>
+              {/each}
+            </div>
           </label>
 
           <label class="flex flex-col gap-1 text-sm min-w-0">
