@@ -48,6 +48,7 @@
     id: number
     username: string
     title?: string | null
+    description?: string | null
     rubric?: string | null
   }
   type FolderManageTagOption = {
@@ -63,6 +64,14 @@
   let folderSettingsDraft: BackendThematicFeed | null = null
   let folderSettingsAuthorOptions: FolderManageAuthorOption[] = []
   let folderSettingsTagOptions: FolderManageTagOption[] = []
+  let filteredFolderAuthorOptions: FolderManageAuthorOption[] = []
+  let filteredFolderExcludedAuthorOptions: FolderManageAuthorOption[] = []
+  let filteredFolderTagOptions: FolderManageTagOption[] = []
+  let filteredFolderExcludedTagOptions: FolderManageTagOption[] = []
+  let folderSettingsAuthorSearch = ''
+  let folderSettingsExcludedAuthorSearch = ''
+  let folderSettingsTagSearch = ''
+  let folderSettingsExcludedTagSearch = ''
   let myFeedSuggestedFolders: BackendThematicFeed[] = []
   let myFeedSuggestedFoldersLoading = false
   let myFeedSuggestedFoldersLoaded = false
@@ -92,6 +101,47 @@
 
   const cloneFolderSettingsDraft = (folder: BackendThematicFeed | null): BackendThematicFeed | null =>
     folder ? JSON.parse(JSON.stringify(folder)) : null
+
+  const normalizeFolderSearch = (value: string) => value.trim().toLowerCase()
+
+  const matchesFolderAuthorSearch = (author: FolderManageAuthorOption, query: string) => {
+    if (!query) return true
+    const haystack = [
+      author.username,
+      author.title ?? '',
+      author.description ?? '',
+      author.rubric ?? '',
+    ]
+      .join(' ')
+      .toLowerCase()
+    return haystack.includes(query)
+  }
+
+  const matchesFolderTagSearch = (tag: FolderManageTagOption, query: string) => {
+    if (!query) return true
+    return [tag.name, tag.lemma ?? '']
+      .join(' ')
+      .toLowerCase()
+      .includes(query)
+  }
+
+  const formatFolderAuthorOptionLabel = (author: FolderManageAuthorOption) => {
+    const title = (author.title ?? '').trim()
+    const description = (author.description ?? '').trim()
+    const rubric = (author.rubric ?? '').trim()
+    const parts = [`@${author.username}`]
+    if (title) parts.push(title)
+    if (rubric) parts.push(`Рубрика: ${rubric}`)
+    if (description) parts.push(description)
+    return parts.join(' · ')
+  }
+
+  const formatFolderTagOptionLabel = (tag: FolderManageTagOption) => {
+    const lemma = (tag.lemma ?? '').trim()
+    return lemma && lemma.toLowerCase() !== tag.name.toLowerCase()
+      ? `${tag.name} · лемма: ${lemma}`
+      : tag.name
+  }
 
   const canManageCurrentFolder = () => {
     if (!$siteUser || !thematicFeedMeta) return false
@@ -136,6 +186,10 @@
       }
       folderSettingsAuthorOptions = payload.options?.authors ?? []
       folderSettingsTagOptions = payload.options?.tags ?? []
+      folderSettingsAuthorSearch = ''
+      folderSettingsExcludedAuthorSearch = ''
+      folderSettingsTagSearch = ''
+      folderSettingsExcludedTagSearch = ''
       const currentFolder =
         (payload.folders ?? []).find(
           (folder: BackendThematicFeed) => folder.slug === thematicFeedSlug
@@ -189,6 +243,19 @@
     folderSettingsError = ''
     folderSettingsSuccess = ''
   }
+
+  $: filteredFolderAuthorOptions = folderSettingsAuthorOptions.filter((author) =>
+    matchesFolderAuthorSearch(author, normalizeFolderSearch(folderSettingsAuthorSearch))
+  )
+  $: filteredFolderExcludedAuthorOptions = folderSettingsAuthorOptions.filter((author) =>
+    matchesFolderAuthorSearch(author, normalizeFolderSearch(folderSettingsExcludedAuthorSearch))
+  )
+  $: filteredFolderTagOptions = folderSettingsTagOptions.filter((tag) =>
+    matchesFolderTagSearch(tag, normalizeFolderSearch(folderSettingsTagSearch))
+  )
+  $: filteredFolderExcludedTagOptions = folderSettingsTagOptions.filter((tag) =>
+    matchesFolderTagSearch(tag, normalizeFolderSearch(folderSettingsExcludedTagSearch))
+  )
 
   const saveCurrentFolderSettings = async () => {
     if (!folderSettingsDraft || !thematicFeedSlug || !$siteToken) return
@@ -783,15 +850,6 @@
           </div>
         {/if}
         {#if thematicFeedMeta}
-          <div class="flex flex-wrap items-center gap-2 text-sm text-slate-600 dark:text-zinc-300">
-            <span>Авторов: {thematicFeedMeta.authors_count ?? thematicFeedMeta.authors?.length ?? 0}</span>
-            <span>•</span>
-            <span>Тегов: {thematicFeedMeta.tags_count ?? thematicFeedMeta.tags?.length ?? 0}</span>
-            <span>•</span>
-            <span>Искл. тегов: {thematicFeedMeta.blocked_tags_count ?? thematicFeedMeta.blocked_tags?.length ?? 0}</span>
-          </div>
-        {/if}
-        {#if thematicFeedMeta}
           <div class="pt-1 flex flex-wrap gap-2">
             <Button on:click={applyThematicFeedToMyFeed}>
               Сделать моей лентой
@@ -838,18 +896,24 @@
       {#if folderSettingsLoading}
         <div class="text-sm text-slate-500 dark:text-zinc-400">Загружаем настройки папки...</div>
       {:else if folderSettingsDraft}
-        <div class="grid gap-4 md:grid-cols-2">
+        <div class="flex flex-col gap-4">
           <label class="flex flex-col gap-1 text-sm min-w-0">
             <span>Авторы</span>
+            <input
+              type="text"
+              bind:value={folderSettingsAuthorSearch}
+              placeholder="Поиск по нику, названию канала, описанию"
+              class="px-3 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950"
+            />
             <select
               multiple
               size="12"
               class="px-2 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950"
               on:change={(e) => updateFolderSettingsSelection(e, 'author_ids')}
             >
-              {#each folderSettingsAuthorOptions as author}
+              {#each filteredFolderAuthorOptions as author}
                 <option value={author.id} selected={(folderSettingsDraft.author_ids ?? []).includes(author.id)}>
-                  @{author.username}{author.rubric ? ` · ${author.rubric}` : ''}
+                  {formatFolderAuthorOptionLabel(author)}
                 </option>
               {/each}
             </select>
@@ -857,15 +921,21 @@
 
           <label class="flex flex-col gap-1 text-sm min-w-0">
             <span>Исключенные авторы</span>
+            <input
+              type="text"
+              bind:value={folderSettingsExcludedAuthorSearch}
+              placeholder="Поиск по нику, названию канала, описанию"
+              class="px-3 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950"
+            />
             <select
               multiple
               size="12"
               class="px-2 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950"
               on:change={(e) => updateFolderSettingsSelection(e, 'excluded_author_ids')}
             >
-              {#each folderSettingsAuthorOptions as author}
+              {#each filteredFolderExcludedAuthorOptions as author}
                 <option value={author.id} selected={(folderSettingsDraft.excluded_author_ids ?? []).includes(author.id)}>
-                  @{author.username}{author.rubric ? ` · ${author.rubric}` : ''}
+                  {formatFolderAuthorOptionLabel(author)}
                 </option>
               {/each}
             </select>
@@ -873,15 +943,21 @@
 
           <label class="flex flex-col gap-1 text-sm min-w-0">
             <span>Теги</span>
+            <input
+              type="text"
+              bind:value={folderSettingsTagSearch}
+              placeholder="Поиск по тегу или лемме"
+              class="px-3 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950"
+            />
             <select
               multiple
               size="12"
               class="px-2 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950"
               on:change={(e) => updateFolderSettingsSelection(e, 'tag_ids')}
             >
-              {#each folderSettingsTagOptions as tag}
+              {#each filteredFolderTagOptions as tag}
                 <option value={tag.id} selected={(folderSettingsDraft.tag_ids ?? []).includes(tag.id)}>
-                  {tag.name}
+                  {formatFolderTagOptionLabel(tag)}
                 </option>
               {/each}
             </select>
@@ -889,15 +965,21 @@
 
           <label class="flex flex-col gap-1 text-sm min-w-0">
             <span>Исключенные теги</span>
+            <input
+              type="text"
+              bind:value={folderSettingsExcludedTagSearch}
+              placeholder="Поиск по тегу или лемме"
+              class="px-3 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950"
+            />
             <select
               multiple
               size="12"
               class="px-2 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950"
               on:change={(e) => updateFolderSettingsSelection(e, 'excluded_tag_ids')}
             >
-              {#each folderSettingsTagOptions as tag}
+              {#each filteredFolderExcludedTagOptions as tag}
                 <option value={tag.id} selected={(folderSettingsDraft.excluded_tag_ids ?? []).includes(tag.id)}>
-                  {tag.name}
+                  {formatFolderTagOptionLabel(tag)}
                 </option>
               {/each}
             </select>

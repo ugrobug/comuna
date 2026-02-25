@@ -3827,6 +3827,7 @@ def thematic_feeds_manage(request: HttpRequest) -> HttpResponse:
                             "id": author.id,
                             "username": author.username,
                             "title": author.title,
+                            "description": author.description,
                             "rubric": author.rubric.name if author.rubric else None,
                         }
                         for author in authors
