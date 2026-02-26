@@ -19,7 +19,7 @@
     type BackendPost,
     type BackendTag,
   } from '$lib/api/backend'
-  import { siteToken, uploadSiteImage } from '$lib/siteAuth'
+  import { refreshSiteUser, siteToken, siteUser, uploadSiteImage } from '$lib/siteAuth'
   import { env } from '$env/dynamic/public'
   import { userSettings } from '$lib/settings'
 
@@ -84,6 +84,8 @@
 
   const isModerator = () => Boolean(comun?.can_moderate && $siteToken)
   const canManageComunModerators = () => Boolean(comun?.can_manage_moderators && $siteToken)
+  const isComunCreator = () =>
+    Boolean($siteToken && $siteUser?.id && comun?.creator?.id && $siteUser.id === comun.creator.id)
 
   $: siteTitle = env.PUBLIC_SITE_TITLE || 'Comuna'
   $: comunName = comun?.name || 'Комуна'
@@ -622,6 +624,9 @@
 
   onMount(() => {
     if (!browser) return
+    if ($siteToken && !$siteUser) {
+      void refreshSiteUser().catch(() => null)
+    }
     maybeLoadMore()
     window.addEventListener('scroll', onScroll, { passive: true })
   })
@@ -704,8 +709,10 @@
               Сайт
             </a>
           {/if}
-          {#if isModerator()}
-            <Button color="ghost" on:click={openSettings}>Настройки комуны</Button>
+          {#if isComunCreator() && comun?.slug}
+            <Button color="ghost" on:click={() => goto(`/comuns/${comun.slug}/settings`)}>
+              Настройки комуны
+            </Button>
           {/if}
         </div>
       </div>
