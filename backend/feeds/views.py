@@ -4497,6 +4497,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
         .filter(has_hidden_home_tag=False)
         .filter(combined_scaled__gte=0)
     )
+    base_query = _exclude_hidden_comun_posts_from_public_feeds(base_query)
     hidden_read_count = 0
     if hide_read and read_user:
         hidden_read_count = base_query.filter(reads__user=read_user).count()
@@ -4678,6 +4679,7 @@ def fresh_feed(request: HttpRequest) -> HttpResponse:
         .filter(Q(author__shadow_banned=False) | Q(author__force_home=True))
         .filter(Q(rubric__isnull=True) | Q(rubric__is_hidden=False))
     )
+    base_query = _exclude_hidden_comun_posts_from_public_feeds(base_query)
 
     hidden_read_count = 0
     if hide_read and read_user:
@@ -5224,6 +5226,7 @@ def _serialize_comun(
         "logo_url": comun.logo_url,
         "product_description": comun.product_description,
         "target_audience": comun.target_audience,
+        "include_in_public_feeds": bool(comun.include_in_public_feeds),
         "is_active": comun.is_active,
         "sort_order": comun.sort_order,
         "creator": {
@@ -5366,6 +5369,18 @@ def _comun_posts_base_queryset(comun: Comun, now=None):
         .filter(Q(author__shadow_banned=False) | Q(author__force_home=True))
         .filter(Q(rubric__isnull=True) | Q(rubric__is_hidden=False))
         .distinct()
+    )
+
+
+def _exclude_hidden_comun_posts_from_public_feeds(posts_qs):
+    hidden_comun_slugs = list(
+        Comun.objects.filter(include_in_public_feeds=False).values_list("slug", flat=True)
+    )
+    if not hidden_comun_slugs:
+        return posts_qs
+    return posts_qs.exclude(
+        raw_data__source="manual_comun",
+        raw_data__comun_slug__in=hidden_comun_slugs,
     )
 
 
@@ -5691,6 +5706,10 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
         comun.product_description = str(body.get("product_description") or "").strip()
     if "target_audience" in body:
         comun.target_audience = str(body.get("target_audience") or "").strip()
+    if "include_in_public_feeds" in body:
+        if not _comun_can_manage_moderators(current_user, comun):
+            return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+        comun.include_in_public_feeds = bool(body.get("include_in_public_feeds"))
     if "is_active" in body and (current_user and current_user.is_staff):
         comun.is_active = bool(body.get("is_active"))
     if "sort_order" in body and (current_user and current_user.is_staff):
