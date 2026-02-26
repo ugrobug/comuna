@@ -1,7 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
-  import { Button, Select, Spinner, TextInput, toast } from 'mono-svelte'
+  import { Button, Spinner, TextInput, toast } from 'mono-svelte'
   import EditorJS from '$lib/components/editor/EditorJS.svelte'
   import { deserializeEditorModel } from '$lib/util'
   import { buildComunUrl, type BackendComun } from '$lib/api/backend'
@@ -164,12 +164,18 @@
         </div>
 
         {#if comunCategories.length}
-          <Select bind:value={createCategoryId} class="w-full">
-            <option value="">Без категории</option>
-            {#each comunCategories as category}
-              <option value={String(category.id)}>{category.name}</option>
-            {/each}
-          </Select>
+          <label class="flex flex-col gap-1">
+            <span class="text-sm text-slate-700 dark:text-zinc-300">Категория внутри комуны</span>
+            <select
+              bind:value={createCategoryId}
+              class="w-full rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"
+            >
+              <option value="">Без категории</option>
+              {#each comunCategories as category}
+                <option value={String(category.id)}>{category.name}</option>
+              {/each}
+            </select>
+          </label>
         {/if}
 
         <TextInput label="Заголовок" bind:value={createTitle} />
