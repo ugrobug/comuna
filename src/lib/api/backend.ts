@@ -448,6 +448,8 @@ export const backendPostToPostView = (
   const authorTitle = author?.title ?? authorName
   const rubricName = post.rubric ?? undefined
   const rubricSlug = post.rubric_slug ?? undefined
+  const sourceUrl = typeof post.source_url === 'string' ? post.source_url.trim() : ''
+  const authorChannelUrl = typeof author?.channel_url === 'string' ? author.channel_url.trim() : ''
 
   const titleWithTags = post.title
 
@@ -472,7 +474,7 @@ export const backendPostToPostView = (
       local: true,
       creator_id: creatorId,
       community_id: communityId,
-      ap_id: post.source_url ?? `https://post.local/${post.id}`,
+      ap_id: sourceUrl || `https://post.local/${post.id}`,
       embed_description: '',
       thumbnail_url: null,
       language_id: 0,
@@ -482,7 +484,7 @@ export const backendPostToPostView = (
       name: authorName,
       display_name: authorTitle,
       avatar: author?.avatar_url ?? undefined,
-      actor_id: author?.channel_url ?? `https://t.me/${authorName}`,
+      actor_id: authorChannelUrl || `https://t.me/${authorName}`,
       comuna_notify_comments: author?.notify_comments_enabled,
       local: true,
       admin: false,
