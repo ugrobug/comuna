@@ -4662,10 +4662,11 @@ def home_feed(request: HttpRequest) -> HttpResponse:
         .filter(combined_scaled__gte=0)
     )
     if hidden_home_comun_slugs:
-        base_query = base_query.exclude(
+        hidden_home_comun_post_ids = Post.objects.filter(
             raw_data__source="manual_comun",
             raw_data__comun_slug__in=hidden_home_comun_slugs,
-        )
+        ).values("id")
+        base_query = base_query.exclude(id__in=hidden_home_comun_post_ids)
     hidden_read_count = 0
     if hide_read and read_user:
         hidden_read_count = base_query.filter(reads__user=read_user).count()
@@ -4851,10 +4852,11 @@ def fresh_feed(request: HttpRequest) -> HttpResponse:
         Comun.objects.filter(hide_from_fresh=True).values_list("slug", flat=True)
     )
     if hidden_fresh_comun_slugs:
-        base_query = base_query.exclude(
+        hidden_fresh_comun_post_ids = Post.objects.filter(
             raw_data__source="manual_comun",
             raw_data__comun_slug__in=hidden_fresh_comun_slugs,
-        )
+        ).values("id")
+        base_query = base_query.exclude(id__in=hidden_fresh_comun_post_ids)
 
     hidden_read_count = 0
     if hide_read and read_user:
