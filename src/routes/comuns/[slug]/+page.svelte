@@ -4,6 +4,7 @@
   import { page } from '$app/stores'
   import { onDestroy, onMount } from 'svelte'
   import { Button, Modal, toast } from 'mono-svelte'
+  import Portal from '$lib/mono/popover/Portal.svelte'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import Post from '$lib/components/lemmy/post/Post.svelte'
   import { feedKeyboardShortcuts } from '$lib/actions/feedKeyboardShortcuts'
@@ -1234,16 +1235,6 @@
           >
             {isSubscribedToComun ? 'В моей ленте' : 'В мою ленту'}
           </Button>
-          {#if comun?.slug}
-            <a
-              href={publicRoadmapUrl}
-              on:click={onPublicRoadmapLinkClick}
-              class="inline-flex items-center rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-zinc-800/60"
-              title="Публичная дорожная карта и беклог"
-            >
-              Публичный roadmap
-            </a>
-          {/if}
           {#if comun?.website_url}
             <a
               href={comun.website_url}
@@ -1358,19 +1349,18 @@
               </p>
             </div>
             <div class="flex flex-wrap gap-2">
-              <Button on:click={openRoadmapSubmitFlow}>
-                {isModerator() ? 'Добавить карточку в коммуну' : 'Предложить идею'}
-              </Button>
               {#if roadmapSelectedStage}
                 <Button color="ghost" on:click={() => void setCategoryFilter('')}>Показать все посты</Button>
               {/if}
-              {#if roadmapStages.find((stage) => stage.key === 'backlog')}
-                {@const backlogStage = roadmapStages.find((stage) => stage.key === 'backlog')}
-                {#if backlogStage && selectedCategorySlug !== backlogStage.category.slug}
-                  <Button color="ghost" on:click={() => void setCategoryFilter(backlogStage.category.slug)}>
-                    Открыть беклог
-                  </Button>
-                {/if}
+              {#if publicRoadmapUrl}
+                <a
+                  href={publicRoadmapUrl}
+                  on:click={onPublicRoadmapLinkClick}
+                  class="inline-flex items-center rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-zinc-800/60"
+                  title="Открыть публичную дорожную карту во всплывающем окне"
+                >
+                  Публичный roadmap
+                </a>
               {/if}
             </div>
             <div class="roadmap-help rounded-xl p-3 text-sm">
@@ -1657,61 +1647,63 @@
 </div>
 
 {#if publicRoadmapModalOpen && publicRoadmapUrl}
-  <div
-    class="public-roadmap-modal fixed inset-0 z-[1200] flex items-stretch justify-center p-0 sm:p-4"
-    role="dialog"
-    aria-modal="true"
-    aria-label="Публичная дорожная карта"
-  >
-    <button
-      type="button"
-      class="public-roadmap-modal__backdrop absolute inset-0"
-      on:click={closePublicRoadmapModal}
-      aria-label="Закрыть дорожную карту"
-    ></button>
-    <section
-      class="public-roadmap-modal__panel relative z-10 flex h-full w-full flex-col overflow-hidden sm:rounded-2xl"
+  <Portal>
+    <div
+      class="public-roadmap-modal fixed inset-0 z-[1200] flex h-screen w-screen items-stretch justify-stretch p-0"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Публичная дорожная карта"
     >
-      <header class="public-roadmap-modal__header flex items-center justify-between gap-3 px-3 py-2 sm:px-4">
-        <div class="min-w-0">
-          <div class="truncate text-sm font-semibold text-slate-900 dark:text-zinc-100">
-            Публичная дорожная карта
+      <button
+        type="button"
+        class="public-roadmap-modal__backdrop absolute inset-0"
+        on:click={closePublicRoadmapModal}
+        aria-label="Закрыть дорожную карту"
+      ></button>
+      <section
+        class="public-roadmap-modal__panel relative z-10 flex h-screen w-screen flex-col overflow-hidden"
+      >
+        <header class="public-roadmap-modal__header flex items-center justify-between gap-3 px-3 py-2 sm:px-4">
+          <div class="min-w-0">
+            <div class="truncate text-sm font-semibold text-slate-900 dark:text-zinc-100">
+              Публичная дорожная карта
+            </div>
+            <div class="truncate text-xs text-slate-500 dark:text-zinc-400">
+              {comun?.name ?? 'Комуна'} · Полноэкранный режим
+            </div>
           </div>
-          <div class="truncate text-xs text-slate-500 dark:text-zinc-400">
-            {comun?.name ?? 'Комуна'} · Полноэкранный режим
+          <div class="flex items-center gap-2">
+            <a
+              href={publicRoadmapUrl}
+              target="_blank"
+              rel="noopener"
+              class="inline-flex items-center rounded-lg border border-slate-200 dark:border-zinc-700 px-3 py-1.5 text-xs sm:text-sm hover:bg-slate-50 dark:hover:bg-zinc-800/60"
+              title="Открыть отдельную страницу в новой вкладке"
+            >
+              Открыть отдельно
+            </a>
+            <button
+              type="button"
+              class="inline-flex items-center rounded-lg border border-slate-200 dark:border-zinc-700 px-3 py-1.5 text-xs sm:text-sm hover:bg-slate-50 dark:hover:bg-zinc-800/60"
+              on:click={closePublicRoadmapModal}
+              aria-label="Закрыть дорожную карту"
+              title="Закрыть (Esc)"
+            >
+              Закрыть
+            </button>
           </div>
+        </header>
+        <div class="public-roadmap-modal__frame-wrap min-h-0 flex-1">
+          <iframe
+            src={publicRoadmapUrl}
+            title={`Публичная дорожная карта ${comun?.name ?? ''}`.trim()}
+            class="public-roadmap-modal__frame h-full w-full"
+            loading="eager"
+          ></iframe>
         </div>
-        <div class="flex items-center gap-2">
-          <a
-            href={publicRoadmapUrl}
-            target="_blank"
-            rel="noopener"
-            class="inline-flex items-center rounded-lg border border-slate-200 dark:border-zinc-700 px-3 py-1.5 text-xs sm:text-sm hover:bg-slate-50 dark:hover:bg-zinc-800/60"
-            title="Открыть отдельную страницу в новой вкладке"
-          >
-            Открыть отдельно
-          </a>
-          <button
-            type="button"
-            class="inline-flex items-center rounded-lg border border-slate-200 dark:border-zinc-700 px-3 py-1.5 text-xs sm:text-sm hover:bg-slate-50 dark:hover:bg-zinc-800/60"
-            on:click={closePublicRoadmapModal}
-            aria-label="Закрыть дорожную карту"
-            title="Закрыть (Esc)"
-          >
-            Закрыть
-          </button>
-        </div>
-      </header>
-      <div class="public-roadmap-modal__frame-wrap min-h-0 flex-1">
-        <iframe
-          src={publicRoadmapUrl}
-          title={`Публичная дорожная карта ${comun?.name ?? ''}`.trim()}
-          class="public-roadmap-modal__frame h-full w-full"
-          loading="eager"
-        ></iframe>
-      </div>
-    </section>
-  </div>
+      </section>
+    </div>
+  </Portal>
 {/if}
 
 <Modal bind:open={settingsOpen} dismissable={settingsCanDismiss} dismissOnBackdrop={true}>
