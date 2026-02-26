@@ -344,6 +344,40 @@ export const createUserPost = async (payload: {
   return data?.post as SiteUserPost
 }
 
+export const createComunPost = async (
+  comunSlug: string,
+  payload: {
+    title: string
+    content: string
+    comun_category_id?: number | null
+    tags?: string[]
+  }
+) => {
+  const token = get(siteToken)
+  if (!token) {
+    throw new Error('Нужна авторизация')
+  }
+
+  const response = await fetch(
+    buildUrl(`/api/comuns/${encodeURIComponent(comunSlug)}/posts/`),
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    }
+  )
+
+  const data = await response.json()
+  if (!response.ok) {
+    throw new Error(data?.error || 'Не удалось создать пост в комуне')
+  }
+
+  return data?.post as SiteUserPost
+}
+
 export const uploadSiteImage = async (image: File) => {
   const token = get(siteToken)
   if (!token) {

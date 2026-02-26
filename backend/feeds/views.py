@@ -5655,6 +5655,7 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
     )
 
 
+@csrf_exempt
 def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
     current_user = _get_user_from_request(request)
     try:
@@ -5669,6 +5670,105 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
 
     if not comun.is_active and not _comun_is_moderator(current_user, comun):
         return JsonResponse({"ok": False, "error": "comun not found"}, status=404)
+
+    if request.method == "POST":
+        if not current_user:
+            return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+        if not _comun_is_moderator(current_user, comun):
+            return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+        if not comun.product_tag_id:
+            return JsonResponse(
+                {
+                    "ok": False,
+                    "error": "product tag not set",
+                },
+                status=400,
+            )
+
+        try:
+            payload = json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+
+        title = str(payload.get("title") or "").strip()
+        content = str(payload.get("content") or "").strip()
+        if not title:
+            return JsonResponse({"ok": False, "error": "title is required"}, status=400)
+        if not content:
+            return JsonResponse({"ok": False, "error": "content is required"}, status=400)
+
+        category_id = _parse_post_reference_to_id(
+            payload.get("comun_category_id") or payload.get("category_id")
+        )
+        category = None
+        if category_id:
+            category = comun.categories.filter(id=category_id, is_active=True).first()
+            if not category:
+                return JsonResponse(
+                    {"ok": False, "error": "category not found"},
+                    status=400,
+                )
+
+        author, personal_author_error = _get_or_create_personal_author(current_user)
+        if personal_author_error:
+            return JsonResponse({"ok": False, "error": personal_author_error}, status=400)
+        if not author:
+            return JsonResponse({"ok": False, "error": "author not found"}, status=400)
+
+        try:
+            message_id = _generate_manual_message_id(author)
+        except ValueError:
+            return JsonResponse({"ok": False, "error": "unable to create post"}, status=500)
+
+        raw_explicit_tags = _parse_tag_payload(payload.get("tags"))
+        explicit_tags: list[str] = []
+        seen_tag_keys: set[str] = set()
+        product_tag_name = (comun.product_tag.name if comun.product_tag else "").strip()
+        if product_tag_name:
+            product_tag_key = product_tag_name.lower()
+            explicit_tags.append(product_tag_name)
+            seen_tag_keys.add(product_tag_key)
+        for tag_name in raw_explicit_tags:
+            key = (tag_name or "").strip().lower()
+            if not key or key in seen_tag_keys:
+                continue
+            seen_tag_keys.add(key)
+            explicit_tags.append(tag_name)
+
+        post = Post.objects.create(
+            author=author,
+            message_id=message_id,
+            title=title,
+            content=content,
+            rubric=author.rubric if author and author.rubric_id else None,
+            channel_url="",
+            source_url="",
+            raw_data={
+                "source": "manual_comun",
+                "comun_slug": comun.slug,
+                "comun_category_id": category.id if category else None,
+            },
+            is_pending=False,
+            is_blocked=False,
+            publish_at=None,
+        )
+        _apply_post_tags(post, explicit_tags)
+        if category:
+            ComunPostCategoryAssignment.objects.update_or_create(
+                comun=comun,
+                post=post,
+                defaults={"category": category, "assigned_by": current_user},
+            )
+        _maybe_notify_new_author(author, post)
+        serialized_post = _serialize_post_for_user(request, post, current_user)
+        serialized_post["comun_category_id"] = category.id if category else None
+        serialized_post["comun_category"] = (
+            _serialize_comun_category(category) if category else None
+        )
+        return JsonResponse({"ok": True, "post": serialized_post})
+
+    if request.method != "GET":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
 
     limit_raw = request.GET.get("limit", "10")
     try:

@@ -114,7 +114,7 @@
         ...$userSettings,
         myFeedComuns: Array.from(next),
       }
-      toast('Комуна убрана из "Моей ленты"')
+      toast({ content: 'Комуна убрана из "Моей ленты"' })
       return
     }
     next.add(slug)
@@ -122,7 +122,7 @@
       ...$userSettings,
       myFeedComuns: Array.from(next),
     }
-    toast('Посты этой комуны будут попадать в "Мою ленту"')
+    toast({ content: 'Посты этой комуны будут попадать в "Мою ленту"' })
   }
 
   const authHeaders = () => {
@@ -172,7 +172,7 @@
       applyPostsPayload(payload, reset)
     } catch (error) {
       console.error(error)
-      toast(error instanceof Error ? error.message : 'Ошибка загрузки')
+      toast({ content: error instanceof Error ? error.message : 'Ошибка загрузки', type: 'error' })
     } finally {
       loadingMore = false
       loadingCategory = false
@@ -243,7 +243,7 @@
     settingsDraft = cloneComun(comun)
     await refreshComunManage()
     if (!comun?.can_moderate) {
-      toast('Настройки доступны только модераторам комуны')
+      toast({ content: 'Настройки доступны только модераторам комуны', type: 'warning' })
       return
     }
     settingsOpen = true
@@ -307,7 +307,7 @@
       }
       comun = payload.comun ?? comun
       settingsDraft = cloneComun(comun)
-      toast('Настройки комуны сохранены')
+      toast({ content: 'Настройки комуны сохранены', type: 'success' })
       await loadPosts(true)
     } catch (error) {
       settingsError = error instanceof Error ? error.message : 'Ошибка сохранения'
@@ -330,9 +330,9 @@
     try {
       const uploadedUrl = await uploadSiteImage(file)
       settingsDraft = { ...settingsDraft, logo_url: uploadedUrl }
-      toast('Логотип загружен. Нажмите «Сохранить» для применения.')
+      toast({ content: 'Логотип загружен. Нажмите «Сохранить» для применения.', type: 'success' })
     } catch (error) {
-      toast(error instanceof Error ? error.message : 'Не удалось загрузить логотип')
+      toast({ content: error instanceof Error ? error.message : 'Не удалось загрузить логотип', type: 'error' })
     } finally {
       settingsLogoUploading = false
       if (input) input.value = ''
@@ -350,10 +350,10 @@
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload?.error || 'Не удалось выбрать приветственный пост')
       comun = payload.comun ?? comun
-      toast('Приветственный пост обновлен')
+      toast({ content: 'Приветственный пост обновлен', type: 'success' })
       await loadPosts(true)
     } catch (error) {
-      toast(error instanceof Error ? error.message : 'Ошибка обновления')
+      toast({ content: error instanceof Error ? error.message : 'Ошибка обновления', type: 'error' })
     }
   }
 
@@ -380,7 +380,7 @@
         }
       })
     } catch (error) {
-      toast(error instanceof Error ? error.message : 'Ошибка обновления категории')
+      toast({ content: error instanceof Error ? error.message : 'Ошибка обновления категории', type: 'error' })
     } finally {
       const next = new Set(categorySavingPostIds)
       next.delete(postId)
@@ -565,6 +565,19 @@
       </div>
     </div>
   </section>
+
+  {#if isModerator() && comun?.slug}
+    <section class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-4 sm:p-5">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div class="text-sm text-slate-600 dark:text-zinc-400">
+          Опубликуйте запись прямо в коммуну. Тег продукта будет подставлен автоматически.
+        </div>
+        <Button on:click={() => goto(`/comuns/${comun.slug}/new-post`)}>
+          Добавить
+        </Button>
+      </div>
+    </section>
+  {/if}
 
   {#if comun?.welcome_post}
     <section class="rounded-2xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/60 dark:bg-blue-950/20 p-4 sm:p-5">
