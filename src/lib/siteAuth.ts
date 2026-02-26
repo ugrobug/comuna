@@ -416,6 +416,10 @@ export const uploadSiteImage = async (image: File) => {
   if (!token) {
     throw new Error('Нужна авторизация')
   }
+  const maxBytes = 10 * 1024 * 1024
+  if (image.size > maxBytes) {
+    throw new Error('Файл слишком большой (максимум 10 МБ)')
+  }
   const formData = new FormData()
   formData.append('image', image)
 
@@ -427,7 +431,20 @@ export const uploadSiteImage = async (image: File) => {
     body: formData,
   })
 
-  const data = await response.json()
+  const contentType = (response.headers.get('content-type') || '').toLowerCase()
+  let data: any = null
+  if (contentType.includes('application/json')) {
+    data = await response.json()
+  } else {
+    await response.text()
+    if (!response.ok) {
+      if (response.status === 413) {
+        throw new Error('Файл слишком большой (максимум 10 МБ)')
+      }
+      throw new Error('Сервер вернул некорректный ответ при загрузке изображения')
+    }
+    throw new Error('Сервер вернул некорректный ответ при загрузке изображения')
+  }
   if (!response.ok || !data?.url) {
     throw new Error(data?.error || 'Не удалось загрузить изображение')
   }
