@@ -211,7 +211,6 @@
               bind:value={createAuthorChoice}
               class="w-full rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"
             >
-              <option value="" disabled>Выберите автора публикации</option>
               {#each publishIdentityOptions as authorOption}
                 <option value={authorOption.value}>{authorOption.label}</option>
               {/each}

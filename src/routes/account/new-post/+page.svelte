@@ -1,6 +1,6 @@
 <script lang="ts">
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
-  import { Button, Spinner, TextInput, Select, toast } from 'mono-svelte'
+  import { Button, Spinner, TextInput, toast } from 'mono-svelte'
   import EditorJS from '$lib/components/editor/EditorJS.svelte'
   import { onMount } from 'svelte'
   import { deserializeEditorModel } from '$lib/util'
@@ -211,12 +211,17 @@
           }`}
         >
           {#if publishIdentityOptions.length > 1}
-            <Select bind:value={createAuthor} class="w-full">
-              <option value="" disabled>Выберите автора публикации</option>
-              {#each publishIdentityOptions as authorOption}
-                <option value={authorOption.value}>{authorOption.label}</option>
-              {/each}
-            </Select>
+            <label class="flex flex-col gap-1 w-full">
+              <span class="text-sm text-slate-700 dark:text-zinc-300">Публиковать от имени</span>
+              <select
+                bind:value={createAuthor}
+                class="w-full rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm text-slate-900 dark:text-zinc-100"
+              >
+                {#each publishIdentityOptions as authorOption}
+                  <option value={authorOption.value}>{authorOption.label}</option>
+                {/each}
+              </select>
+            </label>
           {/if}
 
           {#if rubricsLoading}
