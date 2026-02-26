@@ -63,6 +63,7 @@
   const COMUN_BACKLOG_CATEGORY_SLUG = 'backlog'
   const ROADMAP_PREVIEW_LIMIT = 4
   const ROADMAP_PREVIEW_FETCH_LIMIT = 8
+  const SHOW_INLINE_ROADMAP_ON_COMUN_PAGE = false
 
   type ComunCategoryCount = {
     category_id?: number | null
@@ -562,7 +563,8 @@
   $: roadmapStages = buildRoadmapStages(comun?.categories ?? [], categoryCountById)
   $: roadmapStageSlugSet = new Set(roadmapStages.map((stage) => stage.category.slug))
   $: roadmapHasBacklog = roadmapStages.some((stage) => stage.key === 'backlog')
-  $: roadmapIsVisible = roadmapHasBacklog || roadmapStages.length >= 2
+  $: roadmapCanOpenModal = roadmapHasBacklog || roadmapStages.length >= 2
+  $: roadmapIsVisible = SHOW_INLINE_ROADMAP_ON_COMUN_PAGE && roadmapCanOpenModal
   $: roadmapTrackedCount = roadmapStages.reduce((sum, stage) => sum + Math.max(stage.count, 0), 0)
   $: roadmapSelectedStage =
     roadmapStages.find((stage) => stage.category.slug === selectedCategorySlug) ?? null
@@ -1235,6 +1237,16 @@
           >
             {isSubscribedToComun ? 'В моей ленте' : 'В мою ленту'}
           </Button>
+          {#if publicRoadmapUrl && roadmapCanOpenModal}
+            <a
+              href={publicRoadmapUrl}
+              on:click={onPublicRoadmapLinkClick}
+              class="inline-flex items-center rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-zinc-800/60"
+              title="Открыть публичную дорожную карту во всплывающем окне"
+            >
+              Публичный roadmap
+            </a>
+          {/if}
           {#if comun?.website_url}
             <a
               href={comun.website_url}
