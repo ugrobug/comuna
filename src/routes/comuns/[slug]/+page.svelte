@@ -102,6 +102,20 @@
   const cloneComun = (value: BackendComun | null): BackendComun | null =>
     value ? JSON.parse(JSON.stringify(value)) : null
 
+  const hashString = (value?: string | null) => {
+    const source = (value ?? '').trim() || 'comuna'
+    let hash = 0
+    for (let i = 0; i < source.length; i += 1) {
+      hash = (hash * 31 + source.charCodeAt(i)) % 360
+    }
+    return Math.abs(hash)
+  }
+
+  const comunPlaceholderStyle = (name?: string | null) => `--comun-h:${hashString(name)}`
+
+  const comunInitial = (name?: string | null) =>
+    (name ?? '').trim().slice(0, 1).toUpperCase() || 'C'
+
   const normalizeIds = (values: Array<number | null | undefined>) =>
     Array.from(new Set(values.filter((value): value is number => Number.isFinite(value as number) && Number(value) > 0).map(Number))).sort((a, b) => a - b)
 
@@ -603,8 +617,11 @@
             {#if comun?.logo_url}
               <img src={comun.logo_url} alt={comun?.name ?? 'Логотип'} class="h-full w-full object-cover" />
             {:else}
-              <div class="h-full w-full grid place-items-center text-2xl font-bold text-slate-400 dark:text-zinc-500">
-                {comun?.name?.[0] ?? 'C'}
+              <div
+                class="comun-logo-fallback h-full w-full grid place-items-center text-2xl font-bold"
+                style={comunPlaceholderStyle(comun?.name)}
+              >
+                {comunInitial(comun?.name)}
               </div>
             {/if}
           </div>
@@ -1086,3 +1103,15 @@
   {/if}
   <link rel="canonical" href={canonicalUrl} />
 </svelte:head>
+
+<style>
+  .comun-logo-fallback {
+    background: hsl(var(--comun-h, 220) 60% 92%);
+    color: hsl(var(--comun-h, 220) 70% 34%);
+  }
+
+  :global(.dark) .comun-logo-fallback {
+    background: hsl(var(--comun-h, 220) 35% 20%);
+    color: hsl(var(--comun-h, 220) 78% 72%);
+  }
+</style>
