@@ -360,8 +360,9 @@ export type BackendComun = {
   is_active?: boolean
   sort_order?: number
   can_moderate?: boolean
-  creator?: { id?: number; username?: string | null }
-  moderators?: Array<{ id: number; username: string }>
+  can_manage_moderators?: boolean
+  creator?: { id?: number; username?: string | null; display_name?: string | null }
+  moderators?: Array<{ id: number; username: string; display_name?: string | null }>
   moderators_count?: number
   categories?: BackendComunCategory[]
   categories_count?: number
@@ -375,6 +376,7 @@ export type BackendComun = {
   options?: {
     categories?: BackendComunCategory[]
     tags?: BackendTag[]
+    users?: Array<{ id: number; username: string; display_name?: string | null }>
   }
 }
 

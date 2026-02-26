@@ -5158,6 +5158,14 @@ def _comun_is_moderator(user: User | None, comun: Comun) -> bool:
     return comun.moderators.filter(id=user.id).exists()
 
 
+def _comun_can_manage_moderators(user: User | None, comun: Comun) -> bool:
+    if not user:
+        return False
+    if user.is_staff:
+        return True
+    return comun.creator_id == user.id
+
+
 def _serialize_comun_category(category: ComunCategory) -> dict:
     return {
         "id": category.id,
@@ -5195,7 +5203,7 @@ def _serialize_comun(
     include_activity: bool = False,
 ) -> dict:
     categories = list(comun.categories.filter(is_active=True).order_by("sort_order", "name"))
-    moderators = list(comun.moderators.order_by("username"))
+    moderators = list(comun.moderators.select_related("site_profile").order_by("username"))
     product_tag = comun.product_tag
     welcome_post_payload = None
     if comun.welcome_post_id:
@@ -5221,9 +5229,28 @@ def _serialize_comun(
         "creator": {
             "id": comun.creator_id,
             "username": comun.creator.username if getattr(comun, "creator", None) else None,
+            "display_name": (
+                (
+                    getattr(
+                        getattr(getattr(comun, "creator", None), "site_profile", None),
+                        "display_name",
+                        "",
+                    )
+                    or ""
+                ).strip()
+                or None
+            ),
         },
         "moderators": [
-            {"id": moderator.id, "username": moderator.username} for moderator in moderators
+            {
+                "id": moderator.id,
+                "username": moderator.username,
+                "display_name": (
+                    (getattr(getattr(moderator, "site_profile", None), "display_name", "") or "").strip()
+                    or None
+                ),
+            }
+            for moderator in moderators
         ],
         "moderators_count": len(moderators),
         "categories": [_serialize_comun_category(category) for category in categories],
@@ -5240,11 +5267,13 @@ def _serialize_comun(
         "welcome_post_id": comun.welcome_post_id,
         "welcome_post": welcome_post_payload,
         "can_moderate": _comun_is_moderator(current_user, comun),
+        "can_manage_moderators": _comun_can_manage_moderators(current_user, comun),
     }
     if include_activity:
         payload["activity"] = _serialize_comun_activity(request, comun)
     if include_manage_fields:
         payload["category_ids"] = [category.id for category in categories]
+        payload["moderator_ids"] = [moderator.id for moderator in moderators]
         payload["product_tag_id"] = comun.product_tag_id
         payload["welcome_post_ref"] = str(comun.welcome_post_id or "")
     if include_options:
@@ -5262,6 +5291,20 @@ def _serialize_comun(
                 for tag in Tag.objects.filter(is_active=True).order_by("name")
             ],
         }
+        if _comun_can_manage_moderators(current_user, comun):
+            payload["options"]["users"] = [
+                {
+                    "id": user.id,
+                    "username": user.username,
+                    "display_name": (
+                        (getattr(getattr(user, "site_profile", None), "display_name", "") or "").strip()
+                        or None
+                    ),
+                }
+                for user in User.objects.filter(is_active=True)
+                .select_related("site_profile")
+                .order_by("username")
+            ]
     return payload
 
 
@@ -5655,6 +5698,14 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
             comun.sort_order = max(int(body.get("sort_order", 0)), 0)
         except (TypeError, ValueError):
             pass
+
+    if "moderator_ids" in body:
+        if not _comun_can_manage_moderators(current_user, comun):
+            return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+        moderator_ids = set(_parse_int_list(body.get("moderator_ids")))
+        moderator_ids.add(comun.creator_id)
+        moderator_ids = {int(user_id) for user_id in moderator_ids if int(user_id) > 0}
+        comun.moderators.set(User.objects.filter(id__in=moderator_ids, is_active=True))
 
     if "product_tag_id" in body or "product_tag_name" in body:
         product_tag_id = _parse_post_reference_to_id(body.get("product_tag_id"))
