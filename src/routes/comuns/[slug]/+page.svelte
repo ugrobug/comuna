@@ -707,8 +707,9 @@
           </div>
           <div class="flex flex-wrap items-center gap-2">
             {#each comunTopMembers as member}
-              <div
-                class="inline-flex items-center justify-center h-9 w-9 rounded-full overflow-hidden border border-slate-200 dark:border-zinc-800 bg-slate-100 dark:bg-zinc-800 text-xs font-semibold text-slate-700 dark:text-zinc-200"
+              <a
+                href={`/id${member.user_id}`}
+                class="inline-flex items-center justify-center h-9 w-9 rounded-full overflow-hidden border border-slate-200 dark:border-zinc-800 bg-slate-100 dark:bg-zinc-800 text-xs font-semibold text-slate-700 dark:text-zinc-200 hover:ring-2 hover:ring-blue-300/70 dark:hover:ring-blue-700/70 focus:outline-none focus:ring-2 focus:ring-blue-400/80 dark:focus:ring-blue-600/80 transition-shadow"
                 title={`#${member.rank} @${member.username} — ${member.points} баллов`}
                 aria-label={`#${member.rank} ${member.username}, ${member.points} баллов`}
               >
@@ -722,7 +723,7 @@
                 {:else}
                   {userInitials(member.username)}
                 {/if}
-              </div>
+              </a>
             {/each}
           </div>
         </div>
