@@ -60,6 +60,103 @@
   let settingsUserOptions: ComunUserOption[] = []
   const COMUN_SUGGESTIONS_CATEGORY_SLUGS = new Set(['feature-ideas', 'suggestions'])
   const COMUN_BACKLOG_CATEGORY_SLUG = 'backlog'
+  const ROADMAP_PREVIEW_LIMIT = 4
+  const ROADMAP_PREVIEW_FETCH_LIMIT = 8
+
+  type ComunCategoryCount = {
+    category_id?: number | null
+    slug?: string | null
+    count?: number | null
+  }
+
+  type RoadmapStageKey = 'suggestions' | 'backlog' | 'planned' | 'in_progress' | 'released'
+
+  type RoadmapStageDefinition = {
+    key: RoadmapStageKey
+    label: string
+    shortLabel: string
+    description: string
+    exactSlugs: string[]
+    slugKeywords: string[]
+    nameKeywords: string[]
+    emptyState: string
+  }
+
+  type RoadmapStage = RoadmapStageDefinition & {
+    category: BackendComunCategory
+    count: number
+  }
+
+  type RoadmapPreviewState = {
+    loading: boolean
+    error: string | null
+    posts: BackendPost[]
+  }
+
+  const ROADMAP_STAGE_DEFINITIONS: RoadmapStageDefinition[] = [
+    {
+      key: 'suggestions',
+      label: 'Идеи от пользователей',
+      shortLabel: 'Идеи',
+      description: 'Сюда попадают предложения и запросы на новые возможности.',
+      exactSlugs: ['feature-ideas', 'suggestions', 'ideas', 'feature-requests', 'requests'],
+      slugKeywords: ['idea', 'suggest', 'request', 'feedback', 'feature'],
+      nameKeywords: ['иде', 'предлож', 'запрос', 'фидбек', 'улучш'],
+      emptyState: 'Пока нет новых идей. Можно пригласить пользователей написать первый запрос.',
+    },
+    {
+      key: 'backlog',
+      label: 'Беклог',
+      shortLabel: 'Беклог',
+      description: 'Отобранные идеи, которые команда рассматривает и приоритизирует.',
+      exactSlugs: ['backlog'],
+      slugKeywords: ['backlog', 'queue'],
+      nameKeywords: ['беклог', 'очеред', 'очередь', 'приорит'],
+      emptyState: 'Беклог пока пуст. Перенесите сюда лучшие предложения из идей.',
+    },
+    {
+      key: 'planned',
+      label: 'Запланировано',
+      shortLabel: 'План',
+      description: 'Функции и изменения, которые команда собирается сделать дальше.',
+      exactSlugs: ['planned', 'plan', 'next', 'up-next', 'next-up'],
+      slugKeywords: ['plan', 'planned', 'next', 'up-next', 'queue'],
+      nameKeywords: ['план', 'заплан', 'далее', 'следующ'],
+      emptyState: 'Пока нет публично запланированных задач.',
+    },
+    {
+      key: 'in_progress',
+      label: 'В работе',
+      shortLabel: 'В работе',
+      description: 'То, что уже взяли в разработку и над чем команда работает прямо сейчас.',
+      exactSlugs: ['in-progress', 'in_progress', 'progress', 'doing', 'wip', 'active-work'],
+      slugKeywords: ['progress', 'doing', 'wip', 'active', 'work', 'develop'],
+      nameKeywords: ['в работе', 'делаем', 'разработ', 'работаем', 'реализ'],
+      emptyState: 'Сейчас нет задач в активной разработке.',
+    },
+    {
+      key: 'released',
+      label: 'Сделано / релизы',
+      shortLabel: 'Готово',
+      description: 'Что уже доставлено пользователям и можно обсуждать качество реализации.',
+      exactSlugs: ['done', 'completed', 'shipped', 'released', 'changelog'],
+      slugKeywords: ['done', 'complete', 'ship', 'release', 'changelog', 'live'],
+      nameKeywords: ['сделан', 'готов', 'релиз', 'выпущ', 'готово'],
+      emptyState: 'В этом столбце пока нет завершённых изменений.',
+    },
+  ]
+
+  let categoryCounts: ComunCategoryCount[] = Array.isArray(data?.categoryCounts) ? data.categoryCounts : []
+  let totalPostsCount: number | null =
+    typeof data?.totalCount === 'number' ? Number(data.totalCount) : null
+  let uncategorizedPostsCount: number =
+    typeof data?.uncategorizedCount === 'number' ? Math.max(Number(data.uncategorizedCount), 0) : 0
+  let lastCategoryCountsRef = data?.categoryCounts
+  let lastTotalCountRef = data?.totalCount
+  let lastUncategorizedCountRef = data?.uncategorizedCount
+  let roadmapPreviewStates: Partial<Record<RoadmapStageKey, RoadmapPreviewState>> = {}
+  let lastRoadmapPreviewSignature = ''
+  let roadmapPreviewRequestSeq = 0
 
   $: if (data?.posts && data.posts !== lastPostsRef) {
     lastPostsRef = data.posts
@@ -70,6 +167,21 @@
   $: if (data?.comun && data.comun !== lastComunRef) {
     lastComunRef = data.comun
     comun = data.comun ?? null
+  }
+  $: if (Array.isArray(data?.categoryCounts) && data.categoryCounts !== lastCategoryCountsRef) {
+    lastCategoryCountsRef = data.categoryCounts
+    categoryCounts = data.categoryCounts
+  }
+  $: if (data && data.totalCount !== lastTotalCountRef) {
+    lastTotalCountRef = data.totalCount
+    totalPostsCount = typeof data.totalCount === 'number' ? Number(data.totalCount) : totalPostsCount
+  }
+  $: if (data && data.uncategorizedCount !== lastUncategorizedCountRef) {
+    lastUncategorizedCountRef = data.uncategorizedCount
+    uncategorizedPostsCount =
+      typeof data.uncategorizedCount === 'number'
+        ? Math.max(Number(data.uncategorizedCount), 0)
+        : uncategorizedPostsCount
   }
 
   $: hiddenAuthorKeys = new Set(
@@ -179,6 +291,240 @@
         post.comun_category_id !== comunBacklogCategory.id
     )
 
+  const normalizeRoadmapToken = (value?: string | null) =>
+    (value ?? '')
+      .toLowerCase()
+      .replace(/[_\s]+/g, '-')
+      .replace(/-+/g, '-')
+      .trim()
+
+  const normalizeRoadmapText = (value?: string | null) =>
+    (value ?? '')
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .trim()
+
+  const scoreRoadmapCategoryCandidate = (
+    stage: RoadmapStageDefinition,
+    category: BackendComunCategory
+  ): number => {
+    const slug = normalizeRoadmapToken(category.slug)
+    const name = normalizeRoadmapText(category.name)
+    if (!slug && !name) return 0
+    if (stage.exactSlugs.includes(slug)) return 100
+    if (stage.key === 'suggestions' && COMUN_SUGGESTIONS_CATEGORY_SLUGS.has(slug)) return 95
+    let score = 0
+    if (stage.slugKeywords.some((keyword) => slug.includes(keyword))) score = Math.max(score, 70)
+    if (stage.nameKeywords.some((keyword) => name.includes(keyword))) score = Math.max(score, 60)
+    return score
+  }
+
+  const buildRoadmapStages = (
+    categories: BackendComunCategory[],
+    countById: Map<number, number>
+  ): RoadmapStage[] => {
+    const usedCategoryIds = new Set<number>()
+    const nextStages: RoadmapStage[] = []
+    for (const stage of ROADMAP_STAGE_DEFINITIONS) {
+      const candidates = categories
+        .filter((category) => !usedCategoryIds.has(category.id))
+        .map((category) => ({
+          category,
+          score: scoreRoadmapCategoryCandidate(stage, category),
+        }))
+        .filter((entry) => entry.score > 0)
+        .sort((a, b) => {
+          if (b.score !== a.score) return b.score - a.score
+          const countDiff = (countById.get(b.category.id) ?? 0) - (countById.get(a.category.id) ?? 0)
+          if (countDiff !== 0) return countDiff
+          const sortDiff = Number(a.category.sort_order ?? 0) - Number(b.category.sort_order ?? 0)
+          if (sortDiff !== 0) return sortDiff
+          return a.category.name.localeCompare(b.category.name, 'ru')
+        })
+      const best = candidates[0]
+      if (!best) continue
+      usedCategoryIds.add(best.category.id)
+      nextStages.push({
+        ...stage,
+        category: best.category,
+        count: Math.max(0, Number(countById.get(best.category.id) ?? 0)),
+      })
+    }
+    return nextStages
+  }
+
+  const roadmapStageStyleVars = (stageKey: RoadmapStageKey) => {
+    switch (stageKey) {
+      case 'suggestions':
+        return '--roadmap-stage-h: 201; --roadmap-stage-s: 88%; --roadmap-stage-l: 47%;'
+      case 'backlog':
+        return '--roadmap-stage-h: 262; --roadmap-stage-s: 72%; --roadmap-stage-l: 52%;'
+      case 'planned':
+        return '--roadmap-stage-h: 34; --roadmap-stage-s: 88%; --roadmap-stage-l: 50%;'
+      case 'in_progress':
+        return '--roadmap-stage-h: 153; --roadmap-stage-s: 77%; --roadmap-stage-l: 40%;'
+      case 'released':
+        return '--roadmap-stage-h: 340; --roadmap-stage-s: 78%; --roadmap-stage-l: 52%;'
+      default:
+        return '--roadmap-stage-h: 220; --roadmap-stage-s: 70%; --roadmap-stage-l: 50%;'
+    }
+  }
+
+  const roadmapStagePillLabel = (stageKey: RoadmapStageKey) => {
+    switch (stageKey) {
+      case 'suggestions':
+        return 'Собираем идеи'
+      case 'backlog':
+        return 'Приоритизируем'
+      case 'planned':
+        return 'Планируем'
+      case 'in_progress':
+        return 'Делаем'
+      case 'released':
+        return 'Доставили'
+      default:
+        return 'Этап'
+    }
+  }
+
+  const stripRoadmapHtml = (value?: string | null) =>
+    (value ?? '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+  const roadmapSnippet = (post: BackendPost, maxLength = 150) => {
+    const text = stripRoadmapHtml(post.content)
+    if (!text) return ''
+    if (text.length <= maxLength) return text
+    return `${text.slice(0, maxLength - 1).trimEnd()}…`
+  }
+
+  const roadmapPreviewScore = (post: BackendPost) =>
+    Number(post.likes_count ?? 0) * 3 +
+    Number(post.comments_count ?? 0) * 4 +
+    Number(post.views_count ?? 0) * 0.02
+
+  const sortRoadmapPreviewPosts = (items: BackendPost[]) =>
+    [...items]
+      .sort((a, b) => {
+        const scoreDiff = roadmapPreviewScore(b) - roadmapPreviewScore(a)
+        if (scoreDiff !== 0) return scoreDiff
+        return String(b.created_at ?? '').localeCompare(String(a.created_at ?? ''))
+      })
+      .slice(0, ROADMAP_PREVIEW_LIMIT)
+
+  const formatRoadmapDate = (value?: string | null) => {
+    if (!value) return ''
+    const parsed = new Date(value)
+    if (Number.isNaN(parsed.getTime())) return ''
+    return new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: 'short' }).format(parsed)
+  }
+
+  const formatRoadmapCount = (value?: number | null) => {
+    const normalized = Math.max(0, Number(value ?? 0) || 0)
+    return new Intl.NumberFormat('ru-RU').format(normalized)
+  }
+
+  const getRoadmapPreviewState = (stageKey: RoadmapStageKey): RoadmapPreviewState =>
+    roadmapPreviewStates[stageKey] ?? { loading: false, error: null, posts: [] }
+
+  const openRoadmapSubmitFlow = () => {
+    if (!comun?.slug) return
+    if (isModerator()) {
+      goto(`/comuns/${comun.slug}/new-post`)
+      return
+    }
+    if (!$siteToken) {
+      const next = encodeURIComponent(`${$page.url.pathname}${$page.url.search}`)
+      goto(`/account?next=${next}`)
+      return
+    }
+    goto('/create/post')
+  }
+
+  const loadRoadmapPreviews = async () => {
+    const slug = (comun?.slug ?? '').trim()
+    const stagesSnapshot = roadmapStages
+    if (!slug || !stagesSnapshot.length) {
+      roadmapPreviewStates = {}
+      return
+    }
+
+    const requestId = ++roadmapPreviewRequestSeq
+    const nextStates: Partial<Record<RoadmapStageKey, RoadmapPreviewState>> = {}
+    for (const stage of stagesSnapshot) {
+      nextStates[stage.key] = { loading: true, error: null, posts: [] }
+    }
+    roadmapPreviewStates = nextStates
+
+    try {
+      const headers = $siteToken ? { Authorization: `Bearer ${$siteToken}` } : undefined
+      const results = await Promise.all(
+        stagesSnapshot.map(async (stage) => {
+          const url = new URL(buildComunPostsUrl(slug, { categorySlug: stage.category.slug }))
+          url.searchParams.set('limit', String(ROADMAP_PREVIEW_FETCH_LIMIT))
+          url.searchParams.set('offset', '0')
+          const response = await fetch(url.toString(), headers ? { headers } : undefined)
+          const payload = await response.json().catch(() => ({}))
+          if (!response.ok) {
+            throw new Error(
+              typeof payload?.error === 'string' && payload.error
+                ? payload.error
+                : 'Не удалось загрузить превью'
+            )
+          }
+          return {
+            stageKey: stage.key,
+            posts: sortRoadmapPreviewPosts((payload?.posts ?? []) as BackendPost[]),
+          }
+        })
+      )
+      if (requestId !== roadmapPreviewRequestSeq) return
+      const completedStates: Partial<Record<RoadmapStageKey, RoadmapPreviewState>> = {}
+      for (const stage of stagesSnapshot) {
+        completedStates[stage.key] = { loading: false, error: null, posts: [] }
+      }
+      for (const result of results) {
+        completedStates[result.stageKey] = {
+          loading: false,
+          error: null,
+          posts: result.posts,
+        }
+      }
+      roadmapPreviewStates = completedStates
+    } catch (error) {
+      if (requestId !== roadmapPreviewRequestSeq) return
+      const failedStates: Partial<Record<RoadmapStageKey, RoadmapPreviewState>> = {}
+      for (const stage of stagesSnapshot) {
+        failedStates[stage.key] = {
+          loading: false,
+          error: error instanceof Error ? error.message : 'Ошибка загрузки',
+          posts: [],
+        }
+      }
+      roadmapPreviewStates = failedStates
+    }
+  }
+
+  $: categoryCountById = new Map<number, number>(
+    (categoryCounts ?? [])
+      .map((row) => [Number(row?.category_id ?? 0), Math.max(0, Number(row?.count ?? 0) || 0)] as const)
+      .filter(([categoryId]) => categoryId > 0)
+  )
+  $: roadmapStages = buildRoadmapStages(comun?.categories ?? [], categoryCountById)
+  $: roadmapStageSlugSet = new Set(roadmapStages.map((stage) => stage.category.slug))
+  $: roadmapHasBacklog = roadmapStages.some((stage) => stage.key === 'backlog')
+  $: roadmapIsVisible = roadmapHasBacklog || roadmapStages.length >= 2
+  $: roadmapTrackedCount = roadmapStages.reduce((sum, stage) => sum + Math.max(stage.count, 0), 0)
+  $: roadmapSelectedStage =
+    roadmapStages.find((stage) => stage.category.slug === selectedCategorySlug) ?? null
+  $: roadmapSignature =
+    (comun?.slug ?? '').trim() && roadmapStages.length
+      ? `${comun?.slug}:${roadmapStages.map((stage) => `${stage.key}:${stage.category.slug}`).join('|')}`
+      : ''
+
   const toggleComunInMyFeed = async () => {
     const slug = (comun?.slug ?? '').trim()
     if (!slug) return
@@ -271,6 +617,15 @@
   const applyPostsPayload = (payload: any, reset = false) => {
     if (payload?.comun) {
       comun = payload.comun
+    }
+    if (Array.isArray(payload?.category_counts)) {
+      categoryCounts = payload.category_counts
+    }
+    if (typeof payload?.total_count === 'number') {
+      totalPostsCount = Math.max(Number(payload.total_count), 0)
+    }
+    if (typeof payload?.uncategorized_count === 'number') {
+      uncategorizedPostsCount = Math.max(Number(payload.uncategorized_count), 0)
     }
     const nextPosts = (payload?.posts ?? []) as BackendPost[]
     if (reset) {
@@ -602,6 +957,11 @@
 
   const updatePostCategory = async (postId: number, categoryId: number | null) => {
     if (!comun?.slug || !isModerator()) return false
+    const previousPost = posts.find((post) => post.id === postId) ?? null
+    const previousCategoryId =
+      previousPost && Number(previousPost.comun_category_id ?? 0) > 0
+        ? Number(previousPost.comun_category_id)
+        : null
     categorySavingPostIds = new Set([...categorySavingPostIds, postId])
     try {
       const response = await fetch(buildComunPostCategoryUrl(comun.slug, postId), {
@@ -614,14 +974,37 @@
         throw new Error(payload?.error || 'Не удалось обновить категорию')
       }
       const assignment = payload?.assignment
+      const nextCategoryId =
+        assignment && Number(assignment?.category_id ?? 0) > 0 ? Number(assignment.category_id) : null
       posts = posts.map((post) => {
         if (post.id !== postId) return post
         return {
           ...post,
-          comun_category_id: assignment?.category_id ?? null,
+          comun_category_id: nextCategoryId,
           comun_category: assignment?.category ?? null,
         }
       })
+      if (previousCategoryId !== nextCategoryId && (categoryCounts ?? []).length) {
+        categoryCounts = (categoryCounts ?? []).map((row) => {
+          const rowCategoryId = Number(row?.category_id ?? 0)
+          let nextCount = Math.max(0, Number(row?.count ?? 0) || 0)
+          if (previousCategoryId && rowCategoryId === previousCategoryId) {
+            nextCount = Math.max(nextCount - 1, 0)
+          }
+          if (nextCategoryId && rowCategoryId === nextCategoryId) {
+            nextCount += 1
+          }
+          return { ...row, count: nextCount }
+        })
+        if (!previousCategoryId && nextCategoryId) {
+          uncategorizedPostsCount = Math.max(uncategorizedPostsCount - 1, 0)
+        } else if (previousCategoryId && !nextCategoryId) {
+          uncategorizedPostsCount += 1
+        }
+      }
+      if (roadmapIsVisible) {
+        void loadRoadmapPreviews()
+      }
       return true
     } catch (error) {
       toast({ content: error instanceof Error ? error.message : 'Ошибка обновления категории', type: 'error' })
@@ -662,6 +1045,21 @@
 
   $: if (!wantsSettingsOpenFromUrl) {
     autoSettingsOpenHandled = false
+  }
+
+  $: if (!roadmapSignature) {
+    lastRoadmapPreviewSignature = ''
+    roadmapPreviewStates = {}
+  }
+
+  $: if (
+    browser &&
+    roadmapSignature &&
+    roadmapSignature !== lastRoadmapPreviewSignature &&
+    roadmapIsVisible
+  ) {
+    lastRoadmapPreviewSignature = roadmapSignature
+    void loadRoadmapPreviews()
   }
 
   $: if (
@@ -785,6 +1183,15 @@
           >
             {isSubscribedToComun ? 'В моей ленте' : 'В мою ленту'}
           </Button>
+          {#if comun?.slug}
+            <a
+              href={`/comuns/${comun.slug}/roadmap`}
+              class="inline-flex items-center rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-zinc-800/60"
+              title="Публичная дорожная карта и беклог"
+            >
+              Публичный roadmap
+            </a>
+          {/if}
           {#if comun?.website_url}
             <a
               href={comun.website_url}
@@ -870,6 +1277,218 @@
       </div>
     </div>
   </section>
+
+  {#if roadmapIsVisible}
+    <section class="roadmap-shell rounded-3xl overflow-hidden">
+      <div class="roadmap-glow"></div>
+      <div class="roadmap-content p-4 sm:p-5 md:p-6 flex flex-col gap-5">
+        <div class="roadmap-hero grid gap-4 lg:grid-cols-[1.2fr_minmax(240px,0.8fr)]">
+          <div class="roadmap-hero-card rounded-2xl p-4 sm:p-5 flex flex-col gap-3">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="roadmap-badge">Публичная дорожная карта</span>
+              {#if roadmapSelectedStage}
+                <span
+                  class="roadmap-badge roadmap-badge--muted"
+                  style={roadmapStageStyleVars(roadmapSelectedStage.key)}
+                >
+                  Сейчас открыт: {roadmapSelectedStage.shortLabel}
+                </span>
+              {/if}
+            </div>
+            <div class="space-y-2">
+              <h2 class="roadmap-title">
+                Показывайте, что будет дальше, и собирайте обратную связь в одном месте
+              </h2>
+              <p class="roadmap-subtitle">
+                По паттерну публичных roadmap-сервисов: идеи собираются, голосуются, переходят в беклог и
+                затем двигаются по этапам. У вас это уже работает на базе постов комуны, лайков и
+                комментариев.
+              </p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <Button on:click={openRoadmapSubmitFlow}>
+                {isModerator() ? 'Добавить карточку в коммуну' : 'Предложить идею'}
+              </Button>
+              {#if roadmapSelectedStage}
+                <Button color="ghost" on:click={() => void setCategoryFilter('')}>Показать все посты</Button>
+              {/if}
+              {#if roadmapStages.find((stage) => stage.key === 'backlog')}
+                {@const backlogStage = roadmapStages.find((stage) => stage.key === 'backlog')}
+                {#if backlogStage && selectedCategorySlug !== backlogStage.category.slug}
+                  <Button color="ghost" on:click={() => void setCategoryFilter(backlogStage.category.slug)}>
+                    Открыть беклог
+                  </Button>
+                {/if}
+              {/if}
+            </div>
+            <div class="roadmap-help rounded-xl p-3 text-sm">
+              Голосование и обсуждение происходят прямо в карточках постов: пользователи ставят лайки и
+              пишут комментарии, а команда переводит лучшие идеи в нужный этап.
+            </div>
+          </div>
+
+          <div class="roadmap-insights rounded-2xl p-4 sm:p-5 flex flex-col gap-3">
+            <div class="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-zinc-400">
+              Сводка
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div class="roadmap-stat-card rounded-xl p-3">
+                <div class="roadmap-stat-label">В дорожной карте</div>
+                <div class="roadmap-stat-value">{formatRoadmapCount(roadmapTrackedCount)}</div>
+                <div class="roadmap-stat-note">карточек по этапам</div>
+              </div>
+              <div class="roadmap-stat-card rounded-xl p-3">
+                <div class="roadmap-stat-label">В текущем фильтре</div>
+                <div class="roadmap-stat-value">{formatRoadmapCount(totalPostsCount ?? visiblePosts.length)}</div>
+                <div class="roadmap-stat-note">
+                  {selectedCategorySlug ? 'по выбранной категории' : 'во всей комуне'}
+                </div>
+              </div>
+              <div class="roadmap-stat-card rounded-xl p-3">
+                <div class="roadmap-stat-label">Без категории</div>
+                <div class="roadmap-stat-value">{formatRoadmapCount(uncategorizedPostsCount)}</div>
+                <div class="roadmap-stat-note">можно разобрать модератором</div>
+              </div>
+              <div class="roadmap-stat-card rounded-xl p-3">
+                <div class="roadmap-stat-label">Участвуйте</div>
+                <div class="roadmap-stat-value">Лайки + обсуждение</div>
+                <div class="roadmap-stat-note">формируют приоритеты</div>
+              </div>
+            </div>
+            <div class="roadmap-steps grid gap-2">
+              <div class="roadmap-step">
+                <span>1</span>
+                <div>Идея или запрос от пользователя</div>
+              </div>
+              <div class="roadmap-step">
+                <span>2</span>
+                <div>Голосование и комментарии помогают выбрать приоритет</div>
+              </div>
+              <div class="roadmap-step">
+                <span>3</span>
+                <div>Команда переносит в беклог, план и далее в релизы</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          {#each roadmapStages as stage}
+            <button
+              type="button"
+              class="roadmap-stage-tile rounded-2xl p-4 text-left {selectedCategorySlug === stage.category.slug ? 'is-selected' : ''}"
+              data-stage={stage.key}
+              style={roadmapStageStyleVars(stage.key)}
+              on:click={() => void setCategoryFilter(stage.category.slug)}
+              title={`Открыть категорию «${stage.category.name}»`}
+            >
+              <div class="flex items-center justify-between gap-2">
+                <span class="roadmap-stage-pill">{roadmapStagePillLabel(stage.key)}</span>
+                <span class="roadmap-stage-count">{formatRoadmapCount(stage.count)}</span>
+              </div>
+              <div class="mt-3 text-sm font-semibold text-slate-900 dark:text-zinc-100">
+                {stage.label}
+              </div>
+              <div class="mt-1 text-xs text-slate-600 dark:text-zinc-400 leading-relaxed">
+                {stage.description}
+              </div>
+              <div class="mt-3 text-xs font-medium text-slate-700 dark:text-zinc-300">
+                {selectedCategorySlug === stage.category.slug ? 'Открыто сейчас' : 'Открыть ленту'}
+              </div>
+            </button>
+          {/each}
+        </div>
+
+        <div class="grid gap-3 xl:grid-cols-2 2xl:grid-cols-3">
+          {#each roadmapStages as stage}
+            {@const preview = getRoadmapPreviewState(stage.key)}
+            <section
+              class="roadmap-lane rounded-2xl p-4 flex flex-col gap-3"
+              data-stage={stage.key}
+              style={roadmapStageStyleVars(stage.key)}
+            >
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="roadmap-lane-kicker">{stage.shortLabel}</div>
+                  <div class="text-sm font-semibold text-slate-900 dark:text-zinc-100 truncate">
+                    {stage.category.name}
+                  </div>
+                  <div class="text-xs text-slate-500 dark:text-zinc-400">
+                    {formatRoadmapCount(stage.count)} карточек
+                  </div>
+                </div>
+                <Button size="sm" color="ghost" on:click={() => void setCategoryFilter(stage.category.slug)}>
+                  Все
+                </Button>
+              </div>
+
+              {#if preview.loading}
+                <div class="roadmap-lane-state">Загружаем превью…</div>
+              {:else if preview.error}
+                <div class="roadmap-lane-state roadmap-lane-state--error">{preview.error}</div>
+              {:else if preview.posts.length}
+                <div class="flex flex-col gap-2">
+                  {#each preview.posts as item}
+                    {@const itemSnippet = roadmapSnippet(item)}
+                    {@const itemDate = formatRoadmapDate(item.created_at)}
+                    <a
+                      href={buildBackendPostPath(item)}
+                      class="roadmap-mini-card rounded-xl p-3 flex flex-col gap-2"
+                      title="Открыть карточку и обсуждение"
+                    >
+                      <div class="roadmap-mini-title">{item.title || 'Без заголовка'}</div>
+                      {#if itemSnippet}
+                        <div class="roadmap-mini-snippet">{itemSnippet}</div>
+                      {/if}
+                      <div class="roadmap-mini-meta">
+                        <span>Голоса: {formatRoadmapCount(item.likes_count ?? 0)}</span>
+                        <span>Комментарии: {formatRoadmapCount(item.comments_count ?? 0)}</span>
+                        {#if itemDate}
+                          <span>{itemDate}</span>
+                        {/if}
+                      </div>
+                    </a>
+                  {/each}
+                </div>
+              {:else}
+                <div class="roadmap-lane-state">{stage.emptyState}</div>
+              {/if}
+            </section>
+          {/each}
+        </div>
+
+        <div class="roadmap-footer rounded-2xl p-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div class="min-w-0">
+            <div class="text-sm font-semibold text-slate-900 dark:text-zinc-100">
+              Хотите больше сигналов от пользователей?
+            </div>
+            <div class="text-sm text-slate-600 dark:text-zinc-400">
+              Просите пользователей голосовать и комментировать карточки в колонках. Так проще понять,
+              что реально важно, а не просто часто обсуждается в чате.
+              {#if comun?.product_tag?.name}
+                <span class="block mt-1">
+                  Для новых идей можно использовать тег продукта <span class="font-semibold">#{comun.product_tag.name}</span>.
+                </span>
+              {/if}
+            </div>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            {#if roadmapStages.find((stage) => stage.key === 'suggestions')}
+              {@const suggestionsStage = roadmapStages.find((stage) => stage.key === 'suggestions')}
+              {#if suggestionsStage}
+                <Button color="ghost" on:click={() => void setCategoryFilter(suggestionsStage.category.slug)}>
+                  Смотреть идеи
+                </Button>
+              {/if}
+            {/if}
+            <Button on:click={openRoadmapSubmitFlow}>
+              {isModerator() ? 'Добавить карточку' : 'Открыть создание поста'}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </section>
+  {/if}
 
   {#if isModerator() && comun?.slug}
     <section class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-4 sm:p-5">
@@ -1289,5 +1908,436 @@
   :global(.dark) .comun-logo-fallback {
     background: hsl(var(--comun-h, 220) 35% 20%);
     color: hsl(var(--comun-h, 220) 78% 72%);
+  }
+
+  .roadmap-shell {
+    position: relative;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    background:
+      radial-gradient(
+        circle at 16% 12%,
+        rgba(59, 130, 246, 0.1),
+        rgba(59, 130, 246, 0) 42%
+      ),
+      radial-gradient(
+        circle at 90% 10%,
+        rgba(168, 85, 247, 0.12),
+        rgba(168, 85, 247, 0) 38%
+      ),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.94));
+    box-shadow: 0 20px 60px rgba(15, 23, 42, 0.08);
+  }
+
+  :global(.dark) .roadmap-shell {
+    border-color: rgba(63, 63, 70, 0.9);
+    background:
+      radial-gradient(
+        circle at 16% 12%,
+        rgba(59, 130, 246, 0.16),
+        rgba(59, 130, 246, 0) 42%
+      ),
+      radial-gradient(
+        circle at 90% 10%,
+        rgba(168, 85, 247, 0.18),
+        rgba(168, 85, 247, 0) 38%
+      ),
+      linear-gradient(180deg, rgba(24, 24, 27, 0.94), rgba(10, 10, 11, 0.96));
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+  }
+
+  .roadmap-glow {
+    position: absolute;
+    inset: -2px;
+    pointer-events: none;
+    border-radius: 1.6rem;
+    background:
+      linear-gradient(115deg, rgba(59, 130, 246, 0.22), rgba(234, 88, 12, 0.14), rgba(16, 185, 129, 0.16));
+    filter: blur(24px);
+    opacity: 0.45;
+  }
+
+  :global(.dark) .roadmap-glow {
+    opacity: 0.35;
+  }
+
+  .roadmap-content {
+    position: relative;
+    z-index: 1;
+  }
+
+  .roadmap-hero-card,
+  .roadmap-insights,
+  .roadmap-footer {
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    background: rgba(255, 255, 255, 0.78);
+    backdrop-filter: blur(8px);
+  }
+
+  :global(.dark) .roadmap-hero-card,
+  :global(.dark) .roadmap-insights,
+  :global(.dark) .roadmap-footer {
+    border-color: rgba(63, 63, 70, 0.85);
+    background: rgba(24, 24, 27, 0.72);
+  }
+
+  .roadmap-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border-radius: 9999px;
+    padding: 0.35rem 0.65rem;
+    border: 1px solid rgba(59, 130, 246, 0.25);
+    background: rgba(239, 246, 255, 0.8);
+    color: rgb(30 64 175);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+
+  .roadmap-badge--muted {
+    border-color: hsla(var(--roadmap-stage-h), var(--roadmap-stage-s), 34%, 0.22);
+    background: hsla(var(--roadmap-stage-h), 85%, 96%, 0.9);
+    color: hsl(var(--roadmap-stage-h) 58% 30%);
+  }
+
+  :global(.dark) .roadmap-badge {
+    border-color: rgba(59, 130, 246, 0.35);
+    background: rgba(30, 41, 59, 0.72);
+    color: rgb(147 197 253);
+  }
+
+  :global(.dark) .roadmap-badge--muted {
+    border-color: hsla(var(--roadmap-stage-h), 45%, 55%, 0.32);
+    background: hsla(var(--roadmap-stage-h), 42%, 16%, 0.55);
+    color: hsl(var(--roadmap-stage-h) 86% 80%);
+  }
+
+  .roadmap-title {
+    font-size: clamp(1.15rem, 1.1rem + 0.8vw, 1.55rem);
+    line-height: 1.2;
+    font-weight: 700;
+    color: rgb(15 23 42);
+  }
+
+  .roadmap-subtitle {
+    color: rgb(71 85 105);
+    line-height: 1.5;
+    font-size: 0.95rem;
+  }
+
+  :global(.dark) .roadmap-title {
+    color: rgb(244 244 245);
+  }
+
+  :global(.dark) .roadmap-subtitle {
+    color: rgb(161 161 170);
+  }
+
+  .roadmap-help {
+    border: 1px dashed rgba(148, 163, 184, 0.35);
+    background: rgba(248, 250, 252, 0.75);
+    color: rgb(51 65 85);
+  }
+
+  :global(.dark) .roadmap-help {
+    border-color: rgba(82, 82, 91, 0.9);
+    background: rgba(9, 9, 11, 0.36);
+    color: rgb(212 212 216);
+  }
+
+  .roadmap-stat-card {
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    background: rgba(248, 250, 252, 0.82);
+  }
+
+  :global(.dark) .roadmap-stat-card {
+    border-color: rgba(63, 63, 70, 0.85);
+    background: rgba(9, 9, 11, 0.38);
+  }
+
+  .roadmap-stat-label {
+    font-size: 0.7rem;
+    line-height: 1.1;
+    color: rgb(100 116 139);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .roadmap-stat-value {
+    margin-top: 0.35rem;
+    font-weight: 700;
+    font-size: 1.05rem;
+    line-height: 1.2;
+    color: rgb(15 23 42);
+  }
+
+  .roadmap-stat-note {
+    margin-top: 0.2rem;
+    font-size: 0.75rem;
+    color: rgb(100 116 139);
+  }
+
+  :global(.dark) .roadmap-stat-label,
+  :global(.dark) .roadmap-stat-note {
+    color: rgb(161 161 170);
+  }
+
+  :global(.dark) .roadmap-stat-value {
+    color: rgb(244 244 245);
+  }
+
+  .roadmap-steps {
+    margin-top: 0.1rem;
+  }
+
+  .roadmap-step {
+    display: grid;
+    grid-template-columns: 1.4rem 1fr;
+    gap: 0.6rem;
+    align-items: start;
+    font-size: 0.82rem;
+    line-height: 1.35;
+    color: rgb(71 85 105);
+    padding: 0.35rem 0;
+  }
+
+  .roadmap-step > span {
+    display: grid;
+    place-items: center;
+    width: 1.4rem;
+    height: 1.4rem;
+    border-radius: 9999px;
+    font-weight: 700;
+    color: rgb(30 64 175);
+    background: rgba(219, 234, 254, 0.95);
+    border: 1px solid rgba(96, 165, 250, 0.25);
+  }
+
+  :global(.dark) .roadmap-step {
+    color: rgb(212 212 216);
+  }
+
+  :global(.dark) .roadmap-step > span {
+    color: rgb(191 219 254);
+    background: rgba(30, 41, 59, 0.8);
+    border-color: rgba(59, 130, 246, 0.35);
+  }
+
+  .roadmap-stage-tile {
+    position: relative;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    background:
+      linear-gradient(
+        180deg,
+        hsla(var(--roadmap-stage-h), 95%, 96%, 0.9),
+        rgba(255, 255, 255, 0.88)
+      );
+    transition:
+      transform 0.16s ease,
+      box-shadow 0.16s ease,
+      border-color 0.16s ease;
+  }
+
+  .roadmap-stage-tile:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.07);
+    border-color: hsla(var(--roadmap-stage-h), 78%, 45%, 0.28);
+  }
+
+  .roadmap-stage-tile.is-selected {
+    border-color: hsla(var(--roadmap-stage-h), 78%, 45%, 0.45);
+    box-shadow:
+      0 0 0 1px hsla(var(--roadmap-stage-h), 78%, 45%, 0.24) inset,
+      0 10px 28px rgba(15, 23, 42, 0.08);
+  }
+
+  :global(.dark) .roadmap-stage-tile {
+    border-color: rgba(63, 63, 70, 0.85);
+    background:
+      linear-gradient(
+        180deg,
+        hsla(var(--roadmap-stage-h), 46%, 13%, 0.48),
+        rgba(24, 24, 27, 0.86)
+      );
+  }
+
+  :global(.dark) .roadmap-stage-tile:hover {
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+    border-color: hsla(var(--roadmap-stage-h), 72%, 55%, 0.34);
+  }
+
+  :global(.dark) .roadmap-stage-tile.is-selected {
+    border-color: hsla(var(--roadmap-stage-h), 76%, 60%, 0.46);
+    box-shadow:
+      0 0 0 1px hsla(var(--roadmap-stage-h), 72%, 58%, 0.26) inset,
+      0 10px 24px rgba(0, 0, 0, 0.32);
+  }
+
+  .roadmap-stage-pill {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 9999px;
+    padding: 0.2rem 0.55rem;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: hsl(var(--roadmap-stage-h) 60% 30%);
+    background: hsla(var(--roadmap-stage-h), 90%, 92%, 0.95);
+    border: 1px solid hsla(var(--roadmap-stage-h), 88%, 56%, 0.22);
+  }
+
+  .roadmap-stage-count {
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: rgb(15 23 42);
+  }
+
+  :global(.dark) .roadmap-stage-pill {
+    color: hsl(var(--roadmap-stage-h) 88% 82%);
+    background: hsla(var(--roadmap-stage-h), 46%, 18%, 0.72);
+    border-color: hsla(var(--roadmap-stage-h), 62%, 52%, 0.24);
+  }
+
+  :global(.dark) .roadmap-stage-count {
+    color: rgb(244 244 245);
+  }
+
+  .roadmap-lane {
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    background:
+      linear-gradient(
+        180deg,
+        hsla(var(--roadmap-stage-h), 92%, 97%, 0.75),
+        rgba(255, 255, 255, 0.84)
+      );
+  }
+
+  :global(.dark) .roadmap-lane {
+    border-color: rgba(63, 63, 70, 0.85);
+    background:
+      linear-gradient(
+        180deg,
+        hsla(var(--roadmap-stage-h), 40%, 13%, 0.38),
+        rgba(24, 24, 27, 0.84)
+      );
+  }
+
+  .roadmap-lane-kicker {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 9999px;
+    padding: 0.2rem 0.55rem;
+    font-size: 0.68rem;
+    line-height: 1;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: hsl(var(--roadmap-stage-h) 60% 30%);
+    background: hsla(var(--roadmap-stage-h), 95%, 93%, 0.92);
+    border: 1px solid hsla(var(--roadmap-stage-h), 88%, 56%, 0.2);
+    margin-bottom: 0.4rem;
+  }
+
+  :global(.dark) .roadmap-lane-kicker {
+    color: hsl(var(--roadmap-stage-h) 90% 82%);
+    background: hsla(var(--roadmap-stage-h), 48%, 18%, 0.6);
+    border-color: hsla(var(--roadmap-stage-h), 64%, 52%, 0.22);
+  }
+
+  .roadmap-mini-card {
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    background: rgba(255, 255, 255, 0.85);
+    transition:
+      transform 0.14s ease,
+      box-shadow 0.14s ease,
+      border-color 0.14s ease;
+  }
+
+  .roadmap-mini-card:hover {
+    transform: translateY(-1px);
+    border-color: hsla(var(--roadmap-stage-h), 80%, 48%, 0.28);
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.07);
+  }
+
+  :global(.dark) .roadmap-mini-card {
+    border-color: rgba(63, 63, 70, 0.78);
+    background: rgba(9, 9, 11, 0.34);
+  }
+
+  :global(.dark) .roadmap-mini-card:hover {
+    border-color: hsla(var(--roadmap-stage-h), 70%, 56%, 0.3);
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
+  }
+
+  .roadmap-mini-title {
+    font-size: 0.88rem;
+    font-weight: 600;
+    line-height: 1.25;
+    color: rgb(15 23 42);
+    line-clamp: 2;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .roadmap-mini-snippet {
+    font-size: 0.78rem;
+    line-height: 1.4;
+    color: rgb(71 85 105);
+    line-clamp: 3;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .roadmap-mini-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem 0.65rem;
+    font-size: 0.72rem;
+    color: rgb(100 116 139);
+  }
+
+  :global(.dark) .roadmap-mini-title {
+    color: rgb(244 244 245);
+  }
+
+  :global(.dark) .roadmap-mini-snippet {
+    color: rgb(161 161 170);
+  }
+
+  :global(.dark) .roadmap-mini-meta {
+    color: rgb(161 161 170);
+  }
+
+  .roadmap-lane-state {
+    border-radius: 0.9rem;
+    border: 1px dashed rgba(148, 163, 184, 0.28);
+    background: rgba(248, 250, 252, 0.72);
+    color: rgb(71 85 105);
+    font-size: 0.82rem;
+    line-height: 1.4;
+    padding: 0.85rem;
+  }
+
+  .roadmap-lane-state--error {
+    border-color: rgba(244, 63, 94, 0.28);
+    background: rgba(255, 241, 242, 0.78);
+    color: rgb(159 18 57);
+  }
+
+  :global(.dark) .roadmap-lane-state {
+    border-color: rgba(82, 82, 91, 0.9);
+    background: rgba(9, 9, 11, 0.32);
+    color: rgb(212 212 216);
+  }
+
+  :global(.dark) .roadmap-lane-state--error {
+    border-color: rgba(190, 24, 93, 0.3);
+    background: rgba(80, 7, 36, 0.3);
+    color: rgb(253 164 175);
   }
 </style>

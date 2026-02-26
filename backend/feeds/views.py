@@ -6229,7 +6229,8 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
             return JsonResponse({"ok": False, "error": "category not found"}, status=404)
 
     now = timezone.now()
-    base_query = _comun_posts_base_queryset(comun, now)
+    visible_categories = list(comun.categories.filter(is_active=True).order_by("sort_order", "name"))
+    all_posts_query = _comun_posts_base_queryset(comun, now)
     if not comun.product_tag_id:
         return JsonResponse(
             {
@@ -6239,15 +6240,57 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
                 ),
                 "posts": [],
                 "selected_category": _serialize_comun_category(selected_category) if selected_category else None,
+                "total_count": 0,
+                "category_counts": [
+                    {
+                        "category_id": category.id,
+                        "slug": category.slug,
+                        "count": 0,
+                    }
+                    for category in visible_categories
+                ],
+                "uncategorized_count": 0,
             }
         )
     if comun.welcome_post_id:
-        base_query = base_query.exclude(id=comun.welcome_post_id)
+        all_posts_query = all_posts_query.exclude(id=comun.welcome_post_id)
+
+    all_total_count = all_posts_query.count()
+    category_count_rows = (
+        ComunPostCategoryAssignment.objects.filter(
+            comun_id=comun.id,
+            category_id__isnull=False,
+            post_id__in=all_posts_query.values("id"),
+        )
+        .values("category_id")
+        .annotate(count=Count("post_id", distinct=True))
+    )
+    category_counts_map = {
+        int(row["category_id"]): int(row["count"] or 0)
+        for row in category_count_rows
+        if row.get("category_id")
+    }
+    category_counts_payload = [
+        {
+            "category_id": category.id,
+            "slug": category.slug,
+            "count": category_counts_map.get(category.id, 0),
+        }
+        for category in visible_categories
+    ]
+    uncategorized_count = max(
+        all_total_count - sum(item["count"] for item in category_counts_payload),
+        0,
+    )
+
+    base_query = all_posts_query
     if selected_category:
         base_query = base_query.filter(
             comun_category_assignments__comun_id=comun.id,
             comun_category_assignments__category_id=selected_category.id,
         )
+
+    total_count = base_query.count()
 
     posts = list(
         base_query.select_related("author", "rubric")
@@ -6289,6 +6332,9 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
             ),
             "posts": serialized_posts,
             "selected_category": _serialize_comun_category(selected_category) if selected_category else None,
+            "total_count": total_count,
+            "category_counts": category_counts_payload,
+            "uncategorized_count": uncategorized_count,
         }
     )
 
