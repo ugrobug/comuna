@@ -3900,6 +3900,56 @@ def tags_list(request: HttpRequest) -> HttpResponse:
     )
 
 
+def _ensure_tag_by_name(raw_name: str) -> tuple[Tag | None, bool]:
+    normalized = _normalize_tag_value(raw_name).lstrip("#").strip()
+    if not normalized:
+        return None, False
+    lemma = _lemmatize_tag(normalized) or normalized
+    tag = (
+        Tag.objects.filter(Q(name__iexact=normalized) | Q(lemma__iexact=lemma))
+        .order_by("name")
+        .first()
+    )
+    if tag:
+        if not tag.is_active:
+            tag.is_active = True
+            tag.save(update_fields=["is_active"])
+        if not tag.lemma:
+            tag.lemma = lemma
+            tag.save(update_fields=["lemma"])
+        return tag, False
+    return Tag.objects.create(name=normalized, lemma=lemma), True
+
+
+@csrf_exempt
+def tags_ensure(request: HttpRequest) -> HttpResponse:
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    current_user = _get_user_from_request(request)
+    if not current_user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    try:
+        body = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+
+    tag, created = _ensure_tag_by_name(str(body.get("name") or ""))
+    if not tag:
+        return JsonResponse({"ok": False, "error": "tag name required"}, status=400)
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "created": created,
+            "tag": {
+                "id": tag.id,
+                "name": tag.name,
+                "lemma": tag.lemma or _lemmatize_tag(tag.name) or tag.name,
+            },
+        }
+    )
+
+
 def _thematic_feed_is_moderator(user: User | None, feed: ThematicFeed) -> bool:
     if not user:
         return False
@@ -5497,6 +5547,7 @@ def comuns_list_create(request: HttpRequest) -> HttpResponse:
     target_audience = str(body.get("target_audience") or "").strip()
     category_ids = _parse_int_list(body.get("category_ids"))
     product_tag_id = _parse_post_reference_to_id(body.get("product_tag_id"))
+    product_tag_name = str(body.get("product_tag_name") or "").strip()
     welcome_post_id = _parse_post_reference_to_id(body.get("welcome_post_id") or body.get("welcome_post_ref"))
 
     comun = Comun.objects.create(
@@ -5513,6 +5564,10 @@ def comuns_list_create(request: HttpRequest) -> HttpResponse:
         comun.categories.set(ComunCategory.objects.filter(id__in=category_ids, is_active=True))
     if product_tag_id:
         product_tag = Tag.objects.filter(id=product_tag_id, is_active=True).first()
+        if product_tag:
+            comun.product_tag = product_tag
+    elif product_tag_name:
+        product_tag, _created = _ensure_tag_by_name(product_tag_name)
         if product_tag:
             comun.product_tag = product_tag
     if welcome_post_id:
@@ -5601,10 +5656,16 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
         except (TypeError, ValueError):
             pass
 
-    if "product_tag_id" in body:
+    if "product_tag_id" in body or "product_tag_name" in body:
         product_tag_id = _parse_post_reference_to_id(body.get("product_tag_id"))
+        product_tag_name = str(body.get("product_tag_name") or "").strip()
         if product_tag_id:
             product_tag = Tag.objects.filter(id=product_tag_id, is_active=True).first()
+            if not product_tag:
+                return JsonResponse({"ok": False, "error": "tag not found"}, status=400)
+            comun.product_tag = product_tag
+        elif product_tag_name:
+            product_tag, _created = _ensure_tag_by_name(product_tag_name)
             if not product_tag:
                 return JsonResponse({"ok": False, "error": "tag not found"}, status=400)
             comun.product_tag = product_tag
