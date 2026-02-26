@@ -479,16 +479,22 @@
 
   const openRoadmapSubmitFlow = () => {
     if (!comun?.slug) return
+    const suggestionsCategory =
+      roadmapStages.find((stage) => stage.key === 'suggestions')?.category ??
+      (comun?.categories ?? []).find((category) => isSuggestionsComunCategory(category))
+    const target = suggestionsCategory?.slug
+      ? `/comuns/${comun.slug}/new-post?category=${encodeURIComponent(suggestionsCategory.slug)}`
+      : `/comuns/${comun.slug}/new-post`
     if (isModerator()) {
-      goto(`/comuns/${comun.slug}/new-post`)
+      goto(target)
       return
     }
     if (!$siteToken) {
-      const next = encodeURIComponent(`${$page.url.pathname}${$page.url.search}`)
+      const next = encodeURIComponent(target)
       goto(`/account?next=${next}`)
       return
     }
-    goto('/create/post')
+    goto(target)
   }
 
   const loadRoadmapPreviews = async () => {
@@ -568,6 +574,8 @@
   $: roadmapModalVisible = publicRoadmapModalOpen && roadmapCanOpenModal
   $: roadmapPreviewsVisible = roadmapIsVisible || roadmapModalVisible
   $: roadmapTrackedCount = roadmapStages.reduce((sum, stage) => sum + Math.max(stage.count, 0), 0)
+  $: roadmapReleasedCount =
+    roadmapStages.find((stage) => stage.key === 'released')?.count ?? 0
   $: roadmapSelectedStage =
     roadmapStages.find((stage) => stage.category.slug === selectedCategorySlug) ?? null
   $: roadmapSignature =
@@ -1360,21 +1368,10 @@
                 Публичная дорожная карта
               </div>
               <div class="truncate text-xs text-slate-500 dark:text-zinc-400">
-                {comun?.name ?? 'Комуна'} · Полноэкранный режим
+                {comun?.name ?? 'Комуна'}
               </div>
             </div>
             <div class="flex items-center gap-2">
-              {#if publicRoadmapUrl}
-                <a
-                  href={publicRoadmapUrl}
-                  target="_blank"
-                  rel="noopener"
-                  class="inline-flex items-center rounded-lg border border-slate-200 dark:border-zinc-700 px-3 py-1.5 text-xs sm:text-sm hover:bg-slate-50 dark:hover:bg-zinc-800/60"
-                  title="Открыть отдельную страницу в новой вкладке"
-                >
-                  Открыть отдельно
-                </a>
-              {/if}
               <button
                 type="button"
                 class="inline-flex items-center rounded-lg border border-slate-200 dark:border-zinc-700 px-3 py-1.5 text-xs sm:text-sm hover:bg-slate-50 dark:hover:bg-zinc-800/60"
@@ -1391,123 +1388,32 @@
               <section class="roadmap-shell rounded-3xl overflow-hidden">
       <div class="roadmap-glow"></div>
       <div class="roadmap-content p-4 sm:p-5 md:p-6 flex flex-col gap-5">
-        <div class="roadmap-hero grid gap-4 lg:grid-cols-[1.2fr_minmax(240px,0.8fr)]">
+        <div class="roadmap-hero grid gap-4">
           <div class="roadmap-hero-card rounded-2xl p-4 sm:p-5 flex flex-col gap-3">
-            <div class="flex flex-wrap items-center gap-2">
-              <span class="roadmap-badge">Публичная дорожная карта</span>
-              {#if roadmapSelectedStage}
-                <span
-                  class="roadmap-badge roadmap-badge--muted"
-                  style={roadmapStageStyleVars(roadmapSelectedStage.key)}
-                >
-                  Сейчас открыт: {roadmapSelectedStage.shortLabel}
-                </span>
-              {/if}
-            </div>
             <div class="space-y-2">
               <h2 class="roadmap-title">
                 Показывайте, что будет дальше, и собирайте обратную связь в одном месте
               </h2>
-              <p class="roadmap-subtitle">
-                По паттерну публичных roadmap-сервисов: идеи собираются, голосуются, переходят в беклог и
-                затем двигаются по этапам. У вас это уже работает на базе постов комуны, лайков и
-                комментариев.
-              </p>
+            </div>
+            <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div class="roadmap-stat-card rounded-xl p-3">
+                <div class="roadmap-stat-label">В дорожной карте всего</div>
+                <div class="roadmap-stat-value">{formatRoadmapCount(roadmapTrackedCount)}</div>
+              </div>
+              <div class="roadmap-stat-card rounded-xl p-3">
+                <div class="roadmap-stat-label">Готово</div>
+                <div class="roadmap-stat-value">{formatRoadmapCount(roadmapReleasedCount)}</div>
+              </div>
             </div>
             <div class="flex flex-wrap gap-2">
               {#if roadmapSelectedStage}
                 <Button color="ghost" on:click={() => void setCategoryFilter('')}>Показать все посты</Button>
               {/if}
-              {#if publicRoadmapUrl && !publicRoadmapModalOpen}
-                <a
-                  href={publicRoadmapUrl}
-                  on:click={onPublicRoadmapLinkClick}
-                  class="inline-flex items-center rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-zinc-800/60"
-                  title="Открыть публичную дорожную карту во всплывающем окне"
-                >
-                  Публичный roadmap
-                </a>
-              {/if}
-            </div>
-            <div class="roadmap-help rounded-xl p-3 text-sm">
-              Голосование и обсуждение происходят прямо в карточках постов: пользователи ставят лайки и
-              пишут комментарии, а команда переводит лучшие идеи в нужный этап.
-            </div>
-          </div>
-
-          <div class="roadmap-insights rounded-2xl p-4 sm:p-5 flex flex-col gap-3">
-            <div class="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-zinc-400">
-              Сводка
-            </div>
-            <div class="grid grid-cols-2 gap-2">
-              <div class="roadmap-stat-card rounded-xl p-3">
-                <div class="roadmap-stat-label">В дорожной карте</div>
-                <div class="roadmap-stat-value">{formatRoadmapCount(roadmapTrackedCount)}</div>
-                <div class="roadmap-stat-note">карточек по этапам</div>
-              </div>
-              <div class="roadmap-stat-card rounded-xl p-3">
-                <div class="roadmap-stat-label">В текущем фильтре</div>
-                <div class="roadmap-stat-value">{formatRoadmapCount(totalPostsCount ?? visiblePosts.length)}</div>
-                <div class="roadmap-stat-note">
-                  {selectedCategorySlug ? 'по выбранной категории' : 'во всей комуне'}
-                </div>
-              </div>
-              <div class="roadmap-stat-card rounded-xl p-3">
-                <div class="roadmap-stat-label">Без категории</div>
-                <div class="roadmap-stat-value">{formatRoadmapCount(uncategorizedPostsCount)}</div>
-                <div class="roadmap-stat-note">можно разобрать модератором</div>
-              </div>
-              <div class="roadmap-stat-card rounded-xl p-3">
-                <div class="roadmap-stat-label">Участвуйте</div>
-                <div class="roadmap-stat-value">Лайки + обсуждение</div>
-                <div class="roadmap-stat-note">формируют приоритеты</div>
-              </div>
-            </div>
-            <div class="roadmap-steps grid gap-2">
-              <div class="roadmap-step">
-                <span>1</span>
-                <div>Идея или запрос от пользователя</div>
-              </div>
-              <div class="roadmap-step">
-                <span>2</span>
-                <div>Голосование и комментарии помогают выбрать приоритет</div>
-              </div>
-              <div class="roadmap-step">
-                <span>3</span>
-                <div>Команда переносит в беклог, план и далее в релизы</div>
-              </div>
             </div>
           </div>
         </div>
 
-        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          {#each roadmapStages as stage}
-            <button
-              type="button"
-              class="roadmap-stage-tile rounded-2xl p-4 text-left {selectedCategorySlug === stage.category.slug ? 'is-selected' : ''}"
-              data-stage={stage.key}
-              style={roadmapStageStyleVars(stage.key)}
-              on:click={() => void setCategoryFilter(stage.category.slug)}
-              title={`Открыть категорию «${stage.category.name}»`}
-            >
-              <div class="flex items-center justify-between gap-2">
-                <span class="roadmap-stage-pill">{roadmapStagePillLabel(stage.key)}</span>
-                <span class="roadmap-stage-count">{formatRoadmapCount(stage.count)}</span>
-              </div>
-              <div class="mt-3 text-sm font-semibold text-slate-900 dark:text-zinc-100">
-                {stage.label}
-              </div>
-              <div class="mt-1 text-xs text-slate-600 dark:text-zinc-400 leading-relaxed">
-                {stage.description}
-              </div>
-              <div class="mt-3 text-xs font-medium text-slate-700 dark:text-zinc-300">
-                {selectedCategorySlug === stage.category.slug ? 'Открыто сейчас' : 'Открыть ленту'}
-              </div>
-            </button>
-          {/each}
-        </div>
-
-        <div class="grid gap-3 xl:grid-cols-2 2xl:grid-cols-3">
+        <div class="grid gap-3 lg:grid-cols-3">
           {#each roadmapStages as stage}
             {@const preview = getRoadmapPreviewState(stage.key)}
             <section
@@ -1565,34 +1471,10 @@
           {/each}
         </div>
 
-        <div class="roadmap-footer rounded-2xl p-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div class="min-w-0">
-            <div class="text-sm font-semibold text-slate-900 dark:text-zinc-100">
-              Хотите больше сигналов от пользователей?
-            </div>
-            <div class="text-sm text-slate-600 dark:text-zinc-400">
-              Просите пользователей голосовать и комментировать карточки в колонках. Так проще понять,
-              что реально важно, а не просто часто обсуждается в чате.
-              {#if comun?.product_tag?.name}
-                <span class="block mt-1">
-                  Для новых идей можно использовать тег продукта <span class="font-semibold">#{comun.product_tag.name}</span>.
-                </span>
-              {/if}
-            </div>
-          </div>
-          <div class="flex flex-wrap gap-2">
-            {#if roadmapStages.find((stage) => stage.key === 'suggestions')}
-              {@const suggestionsStage = roadmapStages.find((stage) => stage.key === 'suggestions')}
-              {#if suggestionsStage}
-                <Button color="ghost" on:click={() => void setCategoryFilter(suggestionsStage.category.slug)}>
-                  Смотреть идеи
-                </Button>
-              {/if}
-            {/if}
-            <Button on:click={openRoadmapSubmitFlow}>
-              {isModerator() ? 'Добавить карточку' : 'Открыть создание поста'}
-            </Button>
-          </div>
+        <div class="roadmap-footer rounded-2xl p-4 flex items-center justify-start">
+          <Button on:click={openRoadmapSubmitFlow}>
+            Добавить предложение
+          </Button>
         </div>
       </div>
               </section>

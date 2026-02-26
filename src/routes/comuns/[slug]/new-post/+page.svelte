@@ -1,5 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation'
+  import { page } from '$app/stores'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import { Button, Spinner, TextInput, toast } from 'mono-svelte'
   import EditorJS from '$lib/components/editor/EditorJS.svelte'
@@ -24,6 +25,7 @@
   let comunCategories: NonNullable<BackendComun['categories']> = []
   let canCreateInComun = false
   let productTagName = ''
+  let createCategoryAutofilledFromQuery = false
   const SITE_AUTHOR_CHOICE = '__site__'
 
   type PublishIdentityOption = {
@@ -43,6 +45,13 @@
       return true
     }
   }
+
+  const normalizeCategoryQueryToken = (value?: string | null) =>
+    (value ?? '')
+      .toLowerCase()
+      .replace(/[_\s]+/g, '-')
+      .replace(/-+/g, '-')
+      .trim()
 
   const refreshComunAccess = async () => {
     if (!comun?.slug || !$siteToken) {
@@ -74,6 +83,26 @@
   })
 
   $: comunCategories = comun?.categories ?? []
+  $: if (!createCategoryAutofilledFromQuery && comunCategories.length) {
+    const queryCategoryId = Number($page.url.searchParams.get('comun_category_id') ?? 0)
+    const queryCategory = normalizeCategoryQueryToken($page.url.searchParams.get('category'))
+    let matchedCategory =
+      queryCategoryId > 0 ? comunCategories.find((category) => Number(category.id) === queryCategoryId) : null
+    if (!matchedCategory && queryCategory) {
+      matchedCategory =
+        comunCategories.find(
+          (category) => normalizeCategoryQueryToken(category.slug) === queryCategory
+        ) ??
+        comunCategories.find(
+          (category) => normalizeCategoryQueryToken(category.name) === queryCategory
+        ) ??
+        null
+    }
+    if (matchedCategory && !createCategoryId) {
+      createCategoryId = String(matchedCategory.id)
+    }
+    createCategoryAutofilledFromQuery = true
+  }
   $: canCreateInComun = Boolean($siteToken && comun?.can_moderate)
   $: productTagName = comun?.product_tag?.name?.trim() ?? ''
   $: publishIdentityOptions = (() => {
@@ -150,7 +179,7 @@
 
   const goToLogin = () => {
     if (!comun?.slug) return
-    goto(`/account?next=${encodeURIComponent(`/comuns/${comun.slug}/new-post`)}`)
+    goto(`/account?next=${encodeURIComponent(`${$page.url.pathname}${$page.url.search}`)}`)
   }
 </script>
 
