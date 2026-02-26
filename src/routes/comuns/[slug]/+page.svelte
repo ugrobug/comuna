@@ -1659,9 +1659,10 @@
 </div>
 
 {#if publicRoadmapModalOpen && publicRoadmapUrl}
-  <Portal>
+  <Portal class="public-roadmap-portal-root">
     <div
       class="public-roadmap-modal fixed inset-0 z-[1200] flex h-screen w-screen items-stretch justify-stretch p-0"
+      style="position: fixed; inset: 0; width: 100vw; height: 100dvh; z-index: 2147483000; margin: 0;"
       role="dialog"
       aria-modal="true"
       aria-label="Публичная дорожная карта"
@@ -1674,6 +1675,7 @@
       ></button>
       <section
         class="public-roadmap-modal__panel relative z-10 flex h-screen w-screen flex-col overflow-hidden"
+        style="position: relative; width: 100vw; height: 100dvh;"
       >
         <header class="public-roadmap-modal__header flex items-center justify-between gap-3 px-3 py-2 sm:px-4">
           <div class="min-w-0">
@@ -2457,6 +2459,23 @@
 
   .public-roadmap-modal {
     overscroll-behavior: contain;
+  }
+
+  :global(.portal-content.public-roadmap-portal-root) {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100dvh !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    z-index: 2147483000 !important;
+    transform: none !important;
+    contain: none !important;
+    pointer-events: none;
+  }
+
+  :global(.portal-content.public-roadmap-portal-root > .public-roadmap-modal) {
+    pointer-events: auto;
   }
 
   .public-roadmap-modal__backdrop {
