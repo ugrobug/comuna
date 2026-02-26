@@ -456,6 +456,9 @@ export const backendPostToPostView = (
   const rubricSlug = post.rubric_slug ?? undefined
   const sourceUrl = typeof post.source_url === 'string' ? post.source_url.trim() : ''
   const authorChannelUrl = typeof author?.channel_url === 'string' ? author.channel_url.trim() : ''
+  const communityName =
+    rubricSlug ?? (rubricName ? rubricName.toLowerCase().replace(/\s+/g, '-') : 'no-rubric')
+  const communityTitle = rubricName ?? 'Без рубрики'
 
   const titleWithTags = post.title
 
@@ -499,21 +502,19 @@ export const backendPostToPostView = (
       deleted: false,
       published: post.created_at,
     },
-    community: rubricName
-      ? {
-          id: communityId,
-          name: rubricSlug ?? rubricName.toLowerCase().replace(/\s+/g, '-'),
-          title: rubricName,
-          actor_id: `https://rubrics.local/${rubricSlug ?? rubricName}`,
-          icon: post.rubric_icon_url ?? undefined,
-          local: true,
-          deleted: false,
-          hidden: false,
-          nsfw: false,
-          published: post.created_at,
-          removed: false,
-        }
-      : undefined,
+    community: {
+      id: communityId,
+      name: communityName,
+      title: communityTitle,
+      actor_id: `https://rubrics.local/${communityName}`,
+      icon: post.rubric_icon_url ?? undefined,
+      local: true,
+      deleted: false,
+      hidden: false,
+      nsfw: false,
+      published: post.created_at,
+      removed: false,
+    },
     counts: {
       id: post.id,
       post_id: post.id,
