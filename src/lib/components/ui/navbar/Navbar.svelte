@@ -313,9 +313,6 @@
               <MenuButton link href="/settings" class="py-2.5">
                 Настройки
               </MenuButton>
-              <MenuButton link href={`/id${$siteUser.id}`} class="py-2.5">
-                Профиль
-              </MenuButton>
               <MenuButton link href="/account" class="py-2.5">
                 Кабинет
               </MenuButton>

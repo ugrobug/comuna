@@ -13,7 +13,6 @@
     buildComunPostCategoryUrl,
     buildComunPostsUrl,
     buildComunUrl,
-    buildTagsEnsureUrl,
     type BackendComun,
     type BackendComunCategory,
     type BackendPost,
@@ -44,8 +43,6 @@
   let settingsLogoUploading = false
   let settingsError = ''
   let settingsTagSearch = ''
-  let settingsTagCreating = false
-  let settingsUserSearch = ''
   let settingsDraft: BackendComun | null = null
   let settingsLogoInput: HTMLInputElement | null = null
   let lastAuthRefreshToken: string | null = null
@@ -53,9 +50,7 @@
   let wantsSettingsOpenFromUrl = false
   let settingsCategoryOptions: BackendComunCategory[] = []
   type ComunTagOption = BackendTag & { id: number }
-  type ComunUserOption = { id: number; username: string; display_name?: string | null }
   let settingsTagOptions: ComunTagOption[] = []
-  let settingsUserOptions: ComunUserOption[] = []
 
   $: if (data?.posts && data.posts !== lastPostsRef) {
     lastPostsRef = data.posts
@@ -81,7 +76,6 @@
   $: visiblePosts = posts.filter(isAuthorVisible)
 
   const isModerator = () => Boolean(comun?.can_moderate && $siteToken)
-  const canManageComunModerators = () => Boolean(comun?.can_manage_moderators && $siteToken)
 
   $: siteTitle = env.PUBLIC_SITE_TITLE || 'Comuna'
   $: comunName = comun?.name || 'Комуна'
@@ -102,56 +96,8 @@
   const cloneComun = (value: BackendComun | null): BackendComun | null =>
     value ? JSON.parse(JSON.stringify(value)) : null
 
-  const hashString = (value?: string | null) => {
-    const source = (value ?? '').trim() || 'comuna'
-    let hash = 0
-    for (let i = 0; i < source.length; i += 1) {
-      hash = (hash * 31 + source.charCodeAt(i)) % 360
-    }
-    return Math.abs(hash)
-  }
-
-  const comunPlaceholderStyle = (name?: string | null) => `--comun-h:${hashString(name)}`
-
-  const comunInitial = (name?: string | null) =>
-    (name ?? '').trim().slice(0, 1).toUpperCase() || 'C'
-
-  const normalizeIds = (values: Array<number | null | undefined>) =>
-    Array.from(new Set(values.filter((value): value is number => Number.isFinite(value as number) && Number(value) > 0).map(Number))).sort((a, b) => a - b)
-
-  const comunModeratorIds = (value: BackendComun | null) =>
-    normalizeIds(
-      ((value?.moderator_ids as number[] | undefined) ??
-        (value?.moderators ?? []).map((moderator) => moderator.id ?? 0)) as number[]
-    )
-
-  const comunCategoryIds = (value: BackendComun | null) =>
-    normalizeIds(
-      ((value?.category_ids as number[] | undefined) ??
-        (value?.categories ?? []).map((category) => category.id ?? 0)) as number[]
-    )
-
-  const settingsComparable = (value: BackendComun | null) =>
-    JSON.stringify({
-      website_url: (value?.website_url ?? '').trim(),
-      logo_url: (value?.logo_url ?? '').trim(),
-      product_description: (value?.product_description ?? '').trim(),
-      target_audience: (value?.target_audience ?? '').trim(),
-      product_tag_id: value?.product_tag_id ?? value?.product_tag?.id ?? null,
-      category_ids: comunCategoryIds(value),
-      moderator_ids: comunModeratorIds(value),
-      welcome_post_ref: String(value?.welcome_post_ref ?? value?.welcome_post_id ?? '').trim(),
-    })
-
   const userInitials = (username?: string | null) =>
     (username || '?').trim().slice(0, 1).toUpperCase() || '?'
-
-  const userDisplayName = (user?: { username?: string | null; display_name?: string | null } | null) => {
-    const displayName = (user?.display_name ?? '').trim()
-    if (displayName) return displayName
-    const username = (user?.username ?? '').trim()
-    return username ? `@${username}` : 'Пользователь'
-  }
 
   const toggleComunInMyFeed = async () => {
     const slug = (comun?.slug ?? '').trim()
@@ -168,7 +114,7 @@
         ...$userSettings,
         myFeedComuns: Array.from(next),
       }
-      toast({ content: 'Комуна убрана из "Моей ленты"' })
+      toast('Комуна убрана из "Моей ленты"')
       return
     }
     next.add(slug)
@@ -176,7 +122,7 @@
       ...$userSettings,
       myFeedComuns: Array.from(next),
     }
-    toast({ content: 'Посты этой комуны будут попадать в "Мою ленту"' })
+    toast('Посты этой комуны будут попадать в "Мою ленту"')
   }
 
   const authHeaders = () => {
@@ -226,7 +172,7 @@
       applyPostsPayload(payload, reset)
     } catch (error) {
       console.error(error)
-      toast({ content: error instanceof Error ? error.message : 'Ошибка загрузки', type: 'error' })
+      toast(error instanceof Error ? error.message : 'Ошибка загрузки')
     } finally {
       loadingMore = false
       loadingCategory = false
@@ -279,7 +225,6 @@
         settingsDraft = cloneComun(payload.comun)
         settingsCategoryOptions = payload.comun?.options?.categories ?? []
         settingsTagOptions = payload.comun?.options?.tags ?? []
-        settingsUserOptions = payload.comun?.options?.users ?? []
       }
     } catch (error) {
       settingsError = error instanceof Error ? error.message : 'Ошибка загрузки'
@@ -295,11 +240,10 @@
       return
     }
     settingsTagSearch = ''
-    settingsUserSearch = ''
     settingsDraft = cloneComun(comun)
     await refreshComunManage()
     if (!comun?.can_moderate) {
-      toast({ content: 'Настройки доступны только модераторам комуны', type: 'warning' })
+      toast('Настройки доступны только модераторам комуны')
       return
     }
     settingsOpen = true
@@ -313,43 +257,6 @@
     if (current.has(categoryId)) current.delete(categoryId)
     else current.add(categoryId)
     settingsDraft = { ...settingsDraft, category_ids: Array.from(current) as number[] }
-  }
-
-  const setDraftModeratorIds = (ids: number[]) => {
-    if (!settingsDraft) return
-    const creatorId = Number(settingsDraft.creator?.id ?? comun?.creator?.id ?? 0)
-    const normalizedIds = normalizeIds([...ids, creatorId > 0 ? creatorId : 0])
-    const byId = new Map<number, ComunUserOption>()
-    for (const user of settingsUserOptions) byId.set(user.id, user)
-    for (const moderator of settingsDraft.moderators ?? []) {
-      byId.set(moderator.id, {
-        id: moderator.id,
-        username: moderator.username,
-        display_name: moderator.display_name ?? null,
-      })
-    }
-    settingsDraft = {
-      ...settingsDraft,
-      moderator_ids: normalizedIds,
-      moderators: normalizedIds.map((id) => {
-        const user = byId.get(id)
-        return {
-          id,
-          username: user?.username ?? String(id),
-          display_name: user?.display_name ?? null,
-        }
-      }),
-    }
-  }
-
-  const addDraftModerator = (userId: number) => {
-    if (!settingsDraft || !canManageComunModerators()) return
-    setDraftModeratorIds([...comunModeratorIds(settingsDraft), userId])
-  }
-
-  const removeDraftModerator = (userId: number) => {
-    if (!settingsDraft || !canManageComunModerators()) return
-    setDraftModeratorIds(comunModeratorIds(settingsDraft).filter((id) => id !== userId))
   }
 
   const chooseDraftTag = (tag: ComunTagOption) => {
@@ -366,18 +273,7 @@
     settingsDraft = { ...settingsDraft, product_tag_id: null, product_tag: null }
   }
 
-  const normalizeTagInput = (value: string) =>
-    value.trim().replace(/^#+/, '').replace(/\s+/g, ' ').trim()
-
   $: normalizedTagSearch = settingsTagSearch.trim().toLowerCase()
-  $: normalizedTagCreateValue = normalizeTagInput(settingsTagSearch)
-  $: hasExactTagMatch = (settingsTagOptions ?? []).some((tag) => {
-    const needle = normalizedTagCreateValue.toLowerCase()
-    if (!needle) return false
-    return [tag.name, tag.lemma ?? '']
-      .map((value) => normalizeTagInput(value).toLowerCase())
-      .some((value) => value === needle)
-  })
   $: draftCategoryIdSet = new Set<number>(
     ((settingsDraft?.category_ids as number[] | undefined) ??
       (settingsDraft?.categories ?? []).map((item) => item.id)) as number[]
@@ -386,68 +282,6 @@
     if (!normalizedTagSearch) return true
     return [tag.name, tag.lemma ?? ''].some((value) => value.toLowerCase().includes(normalizedTagSearch))
   }).slice(0, 30)
-  $: normalizedUserSearch = settingsUserSearch.trim().toLowerCase()
-  $: draftModeratorIdSet = new Set<number>(comunModeratorIds(settingsDraft))
-  $: settingsHasChanges = settingsComparable(settingsDraft) !== settingsComparable(comun)
-  $: settingsCanDismiss =
-    !settingsHasChanges && !settingsSaving && !settingsLogoUploading && !settingsTagCreating
-  $: filteredUserOptions = (settingsUserOptions ?? [])
-    .filter((user) => {
-      if (!normalizedUserSearch) return true
-      return [user.username, user.display_name ?? '']
-        .some((value) => value.toLowerCase().includes(normalizedUserSearch))
-    })
-    .slice(0, 50)
-  $: selectedModeratorUsers = comunModeratorIds(settingsDraft).map((id) => {
-    const fromOptions = settingsUserOptions.find((user) => user.id === id)
-    if (fromOptions) return fromOptions
-    const fromDraft = settingsDraft?.moderators?.find((moderator) => moderator.id === id)
-    return {
-      id,
-      username: fromDraft?.username ?? String(id),
-      display_name: fromDraft?.display_name ?? null,
-    }
-  })
-
-  const createTagAndChooseDraft = async () => {
-    const tagName = normalizeTagInput(settingsTagSearch)
-    if (!tagName || settingsTagCreating) return
-    settingsTagCreating = true
-    try {
-      const response = await fetch(buildTagsEnsureUrl(), {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({ name: tagName }),
-      })
-      const payload = await response.json().catch(() => ({}))
-      if (!response.ok || !payload?.tag?.id) {
-        throw new Error(payload?.error || 'Не удалось добавить тег')
-      }
-      const nextTag: ComunTagOption = {
-        id: Number(payload.tag.id),
-        name: String(payload.tag.name ?? tagName),
-        lemma: payload.tag.lemma ? String(payload.tag.lemma) : null,
-      }
-      const nextOptions = [...(settingsTagOptions ?? [])]
-      const existingIndex = nextOptions.findIndex((tag) => tag.id === nextTag.id)
-      if (existingIndex >= 0) {
-        nextOptions[existingIndex] = nextTag
-      } else {
-        nextOptions.push(nextTag)
-      }
-      settingsTagOptions = nextOptions.sort((a, b) => a.name.localeCompare(b.name, 'ru'))
-      chooseDraftTag(nextTag)
-      settingsTagSearch = nextTag.name
-      toast({
-        content: payload.created ? 'Тег добавлен и выбран' : 'Тег найден и выбран',
-        type: 'success',
-      })
-    } catch (error) {
-      toast({ content: error instanceof Error ? error.message : 'Не удалось добавить тег', type: 'error' })
-    } finally {
-      settingsTagCreating = false
-    }
-  }
 
   const saveSettings = async () => {
     if (!comun?.slug || !settingsDraft) return
@@ -462,7 +296,6 @@
           logo_url: settingsDraft.logo_url ?? '',
           product_description: settingsDraft.product_description ?? '',
           target_audience: settingsDraft.target_audience ?? '',
-          moderator_ids: canManageComunModerators() ? comunModeratorIds(settingsDraft) : undefined,
           product_tag_id: settingsDraft.product_tag_id ?? null,
           category_ids: settingsDraft.category_ids ?? (settingsDraft.categories ?? []).map((category) => category.id),
           welcome_post_ref: settingsDraft.welcome_post_ref ?? '',
@@ -474,8 +307,7 @@
       }
       comun = payload.comun ?? comun
       settingsDraft = cloneComun(comun)
-      settingsOpen = false
-      toast({ content: 'Настройки комуны сохранены', type: 'success' })
+      toast('Настройки комуны сохранены')
       await loadPosts(true)
     } catch (error) {
       settingsError = error instanceof Error ? error.message : 'Ошибка сохранения'
@@ -498,9 +330,9 @@
     try {
       const uploadedUrl = await uploadSiteImage(file)
       settingsDraft = { ...settingsDraft, logo_url: uploadedUrl }
-      toast({ content: 'Логотип загружен. Нажмите «Сохранить» для применения.', type: 'success' })
+      toast('Логотип загружен. Нажмите «Сохранить» для применения.')
     } catch (error) {
-      toast({ content: error instanceof Error ? error.message : 'Не удалось загрузить логотип', type: 'error' })
+      toast(error instanceof Error ? error.message : 'Не удалось загрузить логотип')
     } finally {
       settingsLogoUploading = false
       if (input) input.value = ''
@@ -518,10 +350,10 @@
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload?.error || 'Не удалось выбрать приветственный пост')
       comun = payload.comun ?? comun
-      toast({ content: 'Приветственный пост обновлен', type: 'success' })
+      toast('Приветственный пост обновлен')
       await loadPosts(true)
     } catch (error) {
-      toast({ content: error instanceof Error ? error.message : 'Ошибка обновления', type: 'error' })
+      toast(error instanceof Error ? error.message : 'Ошибка обновления')
     }
   }
 
@@ -548,7 +380,7 @@
         }
       })
     } catch (error) {
-      toast({ content: error instanceof Error ? error.message : 'Ошибка обновления категории', type: 'error' })
+      toast(error instanceof Error ? error.message : 'Ошибка обновления категории')
     } finally {
       const next = new Set(categorySavingPostIds)
       next.delete(postId)
@@ -617,11 +449,8 @@
             {#if comun?.logo_url}
               <img src={comun.logo_url} alt={comun?.name ?? 'Логотип'} class="h-full w-full object-cover" />
             {:else}
-              <div
-                class="comun-logo-fallback h-full w-full grid place-items-center text-2xl font-bold"
-                style={comunPlaceholderStyle(comun?.name)}
-              >
-                {comunInitial(comun?.name)}
+              <div class="h-full w-full grid place-items-center text-2xl font-bold text-slate-400 dark:text-zinc-500">
+                {comun?.name?.[0] ?? 'C'}
               </div>
             {/if}
           </div>
@@ -641,18 +470,7 @@
             {/if}
             {#if comun?.creator?.username}
               <div class="mt-1 text-xs text-slate-500 dark:text-zinc-400">
-                Создатель:
-                {#if comun?.creator?.id}
-                  <a
-                    href={`/id${comun.creator.id}`}
-                    class="ml-1 text-slate-700 dark:text-zinc-300 hover:underline"
-                    title={comun.creator.username ? `Профиль @${comun.creator.username}` : 'Профиль пользователя'}
-                  >
-                    {userDisplayName(comun.creator)}
-                  </a>
-                {:else}
-                  <span class="ml-1 text-slate-700 dark:text-zinc-300">{userDisplayName(comun.creator)}</span>
-                {/if}
+                Создатель: @{comun.creator.username}
               </div>
             {/if}
           </div>
@@ -748,19 +566,6 @@
     </div>
   </section>
 
-  {#if isModerator() && comun?.slug}
-    <section class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-4 sm:p-5">
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <div class="text-sm text-slate-600 dark:text-zinc-400">
-          Опубликуйте запись прямо в коммуну. Тег продукта будет подставлен автоматически.
-        </div>
-        <Button on:click={() => goto(`/comuns/${comun.slug}/new-post`)}>
-          Добавить
-        </Button>
-      </div>
-    </section>
-  {/if}
-
   {#if comun?.welcome_post}
     <section class="rounded-2xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/60 dark:bg-blue-950/20 p-4 sm:p-5">
       <div class="mb-3 text-sm font-semibold text-blue-800 dark:text-blue-300">
@@ -851,7 +656,7 @@
   {/if}
 </div>
 
-<Modal bind:open={settingsOpen} dismissable={settingsCanDismiss} dismissOnBackdrop={true}>
+<Modal bind:open={settingsOpen}>
   <div class="w-full max-w-3xl flex flex-col gap-4">
     <div class="text-lg font-semibold text-slate-900 dark:text-zinc-100">Настройки комуны</div>
     {#if settingsError}
@@ -930,67 +735,6 @@
           <textarea bind:value={settingsDraft.target_audience} rows="2" class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"></textarea>
         </label>
 
-        {#if canManageComunModerators()}
-          <div class="flex flex-col gap-2">
-            <div class="text-sm text-slate-700 dark:text-zinc-300">Модераторы комуны</div>
-            <div class="text-xs text-slate-500 dark:text-zinc-400">
-              Только создатель комуны может назначать и снимать модераторов. Создатель всегда остается модератором.
-            </div>
-            <input
-              bind:value={settingsUserSearch}
-              placeholder="Поиск пользователя по имени или логину..."
-              class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"
-            />
-            <div class="max-h-52 overflow-auto rounded-xl border border-slate-200 dark:border-zinc-800 divide-y divide-slate-100 dark:divide-zinc-800">
-              {#if filteredUserOptions.length}
-                {#each filteredUserOptions as user}
-                  <div class="flex items-center justify-between gap-2 px-3 py-2">
-                    <div class="min-w-0">
-                      <div class="text-sm font-medium text-slate-900 dark:text-zinc-100 truncate">
-                        {userDisplayName(user)}
-                      </div>
-                      <div class="text-xs text-slate-500 dark:text-zinc-400 truncate">@{user.username}</div>
-                    </div>
-                    <Button
-                      size="sm"
-                      on:click={() => addDraftModerator(user.id)}
-                      disabled={draftModeratorIdSet.has(user.id)}
-                    >
-                      {draftModeratorIdSet.has(user.id) ? 'Добавлен' : 'Добавить'}
-                    </Button>
-                  </div>
-                {/each}
-              {:else}
-                <div class="px-3 py-2 text-sm text-slate-500 dark:text-zinc-400">Пользователи не найдены</div>
-              {/if}
-            </div>
-            <div class="flex flex-col gap-2">
-              <div class="text-xs uppercase tracking-wide text-slate-500 dark:text-zinc-400">Выбранные модераторы</div>
-              <div class="flex flex-col gap-2">
-                {#each selectedModeratorUsers as user}
-                  <div class="flex items-center justify-between gap-2 rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-2">
-                    <div class="min-w-0">
-                      <div class="text-sm font-medium text-slate-900 dark:text-zinc-100 truncate">
-                        {userDisplayName(user)}
-                      </div>
-                      <div class="text-xs text-slate-500 dark:text-zinc-400 truncate">@{user.username}</div>
-                    </div>
-                    <Button
-                      color="ghost"
-                      size="sm"
-                      on:click={() => removeDraftModerator(user.id)}
-                      disabled={user.id === comun?.creator?.id}
-                      title={user.id === comun?.creator?.id ? 'Создателя нельзя убрать из модераторов' : 'Убрать модератора'}
-                    >
-                      Убрать
-                    </Button>
-                  </div>
-                {/each}
-              </div>
-            </div>
-          </div>
-        {/if}
-
         <div class="flex flex-col gap-2">
           <div class="text-sm text-slate-700 dark:text-zinc-300">Тег продукта (посты с этим тегом попадут в коммуну)</div>
           <div class="flex flex-wrap items-center gap-2">
@@ -1009,25 +753,6 @@
             class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"
           />
           <div class="max-h-48 overflow-auto rounded-xl border border-slate-200 dark:border-zinc-800 divide-y divide-slate-100 dark:divide-zinc-800">
-            {#if normalizedTagCreateValue && !hasExactTagMatch}
-              <div class="flex items-center justify-between gap-2 px-3 py-2 bg-slate-50 dark:bg-zinc-900/60">
-                <div class="min-w-0 text-sm">
-                  <div class="font-medium text-slate-900 dark:text-zinc-100 truncate">
-                    Добавить тег #{normalizedTagCreateValue}
-                  </div>
-                  <div class="text-xs text-slate-500 dark:text-zinc-400">
-                    Создаст тег в системе и выберет его для комуны
-                  </div>
-                </div>
-                <Button
-                  size="sm"
-                  on:click={createTagAndChooseDraft}
-                  disabled={settingsTagCreating || settingsSaving}
-                >
-                  {settingsTagCreating ? '...' : 'Добавить'}
-                </Button>
-              </div>
-            {/if}
             {#if filteredTagOptions.length}
               {#each filteredTagOptions as tag}
                 <div class="flex items-center justify-between gap-2 px-3 py-2 text-sm">
@@ -1037,13 +762,11 @@
                       <div class="text-xs text-slate-500 dark:text-zinc-400 truncate">{tag.lemma}</div>
                     {/if}
                   </div>
-                  <Button size="sm" on:click={() => chooseDraftTag(tag)} disabled={settingsTagCreating || settingsSaving}>Выбрать</Button>
+                  <Button size="sm" on:click={() => chooseDraftTag(tag)}>Выбрать</Button>
                 </div>
               {/each}
             {:else}
-              <div class="px-3 py-2 text-sm text-slate-500 dark:text-zinc-400">
-                {normalizedTagCreateValue && !hasExactTagMatch ? 'Можно добавить новый тег выше' : 'Ничего не найдено'}
-              </div>
+              <div class="px-3 py-2 text-sm text-slate-500 dark:text-zinc-400">Ничего не найдено</div>
             {/if}
           </div>
         </div>
@@ -1081,6 +804,7 @@
       </div>
 
       <div class="flex justify-end gap-2 pt-2">
+        <Button color="ghost" on:click={() => (settingsOpen = false)} disabled={settingsSaving}>Закрыть</Button>
         <Button on:click={saveSettings} disabled={settingsSaving || settingsLogoUploading}>
           {settingsSaving ? 'Сохраняем...' : 'Сохранить'}
         </Button>
@@ -1103,15 +827,3 @@
   {/if}
   <link rel="canonical" href={canonicalUrl} />
 </svelte:head>
-
-<style>
-  .comun-logo-fallback {
-    background: hsl(var(--comun-h, 220) 60% 92%);
-    color: hsl(var(--comun-h, 220) 70% 34%);
-  }
-
-  :global(.dark) .comun-logo-fallback {
-    background: hsl(var(--comun-h, 220) 35% 20%);
-    color: hsl(var(--comun-h, 220) 78% 72%);
-  }
-</style>

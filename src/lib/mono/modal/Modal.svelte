@@ -11,7 +11,6 @@
   export let open = false
   export let title: string | undefined = undefined
   export let dismissable: boolean = true
-  export let dismissOnBackdrop: boolean = false
 
   let el: any
 
@@ -26,12 +25,6 @@
 flex flex-col items-center justify-center backdrop-blur-sm
 bg-white/50 dark:bg-black/50 box-border p-4"
       transition:fade|global={{ duration: 100 }}
-      on:click={(event) => {
-        if (!dismissable || !dismissOnBackdrop) return
-        if (event.target !== event.currentTarget) return
-        open = false
-        dispatcher('dismissed')
-      }}
     >
       <!-- svelte-ignore a11y-no-static-element-interactions -->
       <div

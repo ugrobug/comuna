@@ -20,20 +20,6 @@
   let targetAudience = ''
   let createLogoInput: HTMLInputElement | null = null
 
-  const hashString = (value?: string | null) => {
-    const source = (value ?? '').trim() || 'comuna'
-    let hash = 0
-    for (let i = 0; i < source.length; i += 1) {
-      hash = (hash * 31 + source.charCodeAt(i)) % 360
-    }
-    return Math.abs(hash)
-  }
-
-  const comunPlaceholderStyle = (name?: string | null) => `--comun-h:${hashString(name)}`
-
-  const comunInitial = (name?: string | null) =>
-    (name ?? '').trim().slice(0, 1).toUpperCase() || 'C'
-
   const canCreate = () => !!$siteToken
 
   const resetForm = () => {
@@ -79,9 +65,9 @@
     try {
       const uploadedUrl = await uploadSiteImage(file)
       logoUrl = uploadedUrl
-      toast({ content: 'Логотип загружен', type: 'success' })
+      toast('Логотип загружен')
     } catch (error) {
-      toast({ content: error instanceof Error ? error.message : 'Не удалось загрузить логотип', type: 'error' })
+      toast(error instanceof Error ? error.message : 'Не удалось загрузить логотип')
     } finally {
       logoUploading = false
       if (input) input.value = ''
@@ -90,7 +76,7 @@
 
   const createComun = async () => {
     if (!name.trim()) {
-      toast({ content: 'Введите название комуны', type: 'warning' })
+      toast('Введите название комуны')
       return
     }
     creating = true
@@ -113,10 +99,10 @@
       }
       createOpen = false
       resetForm()
-      toast({ content: 'Комуна создана', type: 'success' })
+      toast('Комуна создана')
       goto(`/comuns/${payload.comun.slug}/settings`)
     } catch (error) {
-      toast({ content: error instanceof Error ? error.message : 'Ошибка создания', type: 'error' })
+      toast(error instanceof Error ? error.message : 'Ошибка создания')
     } finally {
       creating = false
     }
@@ -154,11 +140,8 @@
               {#if comun.logo_url}
                 <img src={comun.logo_url} alt={comun.name} class="h-full w-full object-cover" />
               {:else}
-                <div
-                  class="comun-logo-fallback h-full w-full grid place-items-center text-xl font-bold"
-                  style={comunPlaceholderStyle(comun.name)}
-                >
-                  {comunInitial(comun.name)}
+                <div class="h-full w-full grid place-items-center text-xl font-bold text-slate-400 dark:text-zinc-500">
+                  {comun.name?.[0] ?? 'C'}
                 </div>
               {/if}
             </div>
@@ -288,15 +271,3 @@
     </div>
   </div>
 </Modal>
-
-<style>
-  .comun-logo-fallback {
-    background: hsl(var(--comun-h, 220) 60% 92%);
-    color: hsl(var(--comun-h, 220) 70% 34%);
-  }
-
-  :global(.dark) .comun-logo-fallback {
-    background: hsl(var(--comun-h, 220) 35% 20%);
-    color: hsl(var(--comun-h, 220) 78% 72%);
-  }
-</style>

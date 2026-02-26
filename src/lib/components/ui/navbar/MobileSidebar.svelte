@@ -105,9 +105,6 @@
       <SidebarButton href="/settings" on:click={handleNavigation} icon={Cog6Tooth}>
         <span slot="label">Настройки</span>
       </SidebarButton>
-      <SidebarButton href={`/id${$siteUser.id}`} on:click={handleNavigation} icon={UserCircle}>
-        <span slot="label">Профиль</span>
-      </SidebarButton>
       <SidebarButton href=\"/account\" on:click={handleNavigation} icon={UserCircle}>
         <span slot=\"label\">Кабинет</span>
       </SidebarButton>

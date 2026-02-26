@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import hmac
 import hashlib
-import logging
 import math
 import os
 import re
@@ -62,7 +61,6 @@ from .models import (
 from .telegram_media import download_telegram_file_by_path
 
 User = get_user_model()
-logger = logging.getLogger(__name__)
 
 _BOT_ID: int | None = None
 _TOKEN_SIGNER = TimestampSigner(salt="comuna-auth")
@@ -3902,56 +3900,6 @@ def tags_list(request: HttpRequest) -> HttpResponse:
     )
 
 
-def _ensure_tag_by_name(raw_name: str) -> tuple[Tag | None, bool]:
-    normalized = _normalize_tag_value(raw_name).lstrip("#").strip()
-    if not normalized:
-        return None, False
-    lemma = _lemmatize_tag(normalized) or normalized
-    tag = (
-        Tag.objects.filter(Q(name__iexact=normalized) | Q(lemma__iexact=lemma))
-        .order_by("name")
-        .first()
-    )
-    if tag:
-        if not tag.is_active:
-            tag.is_active = True
-            tag.save(update_fields=["is_active"])
-        if not tag.lemma:
-            tag.lemma = lemma
-            tag.save(update_fields=["lemma"])
-        return tag, False
-    return Tag.objects.create(name=normalized, lemma=lemma), True
-
-
-@csrf_exempt
-def tags_ensure(request: HttpRequest) -> HttpResponse:
-    if request.method != "POST":
-        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
-    current_user = _get_user_from_request(request)
-    if not current_user:
-        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
-    try:
-        body = json.loads(request.body.decode("utf-8") or "{}")
-    except json.JSONDecodeError:
-        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
-
-    tag, created = _ensure_tag_by_name(str(body.get("name") or ""))
-    if not tag:
-        return JsonResponse({"ok": False, "error": "tag name required"}, status=400)
-
-    return JsonResponse(
-        {
-            "ok": True,
-            "created": created,
-            "tag": {
-                "id": tag.id,
-                "name": tag.name,
-                "lemma": tag.lemma or _lemmatize_tag(tag.name) or tag.name,
-            },
-        }
-    )
-
-
 def _thematic_feed_is_moderator(user: User | None, feed: ThematicFeed) -> bool:
     if not user:
         return False
@@ -5160,14 +5108,6 @@ def _comun_is_moderator(user: User | None, comun: Comun) -> bool:
     return comun.moderators.filter(id=user.id).exists()
 
 
-def _comun_can_manage_moderators(user: User | None, comun: Comun) -> bool:
-    if not user:
-        return False
-    if user.is_staff:
-        return True
-    return comun.creator_id == user.id
-
-
 def _serialize_comun_category(category: ComunCategory) -> dict:
     return {
         "id": category.id,
@@ -5205,7 +5145,7 @@ def _serialize_comun(
     include_activity: bool = False,
 ) -> dict:
     categories = list(comun.categories.filter(is_active=True).order_by("sort_order", "name"))
-    moderators = list(comun.moderators.select_related("site_profile").order_by("username"))
+    moderators = list(comun.moderators.order_by("username"))
     product_tag = comun.product_tag
     welcome_post_payload = None
     if comun.welcome_post_id:
@@ -5231,28 +5171,9 @@ def _serialize_comun(
         "creator": {
             "id": comun.creator_id,
             "username": comun.creator.username if getattr(comun, "creator", None) else None,
-            "display_name": (
-                (
-                    getattr(
-                        getattr(getattr(comun, "creator", None), "site_profile", None),
-                        "display_name",
-                        "",
-                    )
-                    or ""
-                ).strip()
-                or None
-            ),
         },
         "moderators": [
-            {
-                "id": moderator.id,
-                "username": moderator.username,
-                "display_name": (
-                    (getattr(getattr(moderator, "site_profile", None), "display_name", "") or "").strip()
-                    or None
-                ),
-            }
-            for moderator in moderators
+            {"id": moderator.id, "username": moderator.username} for moderator in moderators
         ],
         "moderators_count": len(moderators),
         "categories": [_serialize_comun_category(category) for category in categories],
@@ -5269,24 +5190,11 @@ def _serialize_comun(
         "welcome_post_id": comun.welcome_post_id,
         "welcome_post": welcome_post_payload,
         "can_moderate": _comun_is_moderator(current_user, comun),
-        "can_manage_moderators": _comun_can_manage_moderators(current_user, comun),
     }
     if include_activity:
-        try:
-            # Isolate comun activity aggregation so any DB error is rolled back
-            # without poisoning the connection for the rest of the request.
-            with transaction.atomic():
-                payload["activity"] = _serialize_comun_activity(request, comun)
-        except Exception:
-            logger.exception("Failed to serialize comun activity", extra={"comun_id": comun.id})
-            payload["activity"] = {
-                "participants_count": 0,
-                "top_members": [],
-                "points": dict(_COMUN_ACTIVITY_POINTS),
-            }
+        payload["activity"] = _serialize_comun_activity(request, comun)
     if include_manage_fields:
         payload["category_ids"] = [category.id for category in categories]
-        payload["moderator_ids"] = [moderator.id for moderator in moderators]
         payload["product_tag_id"] = comun.product_tag_id
         payload["welcome_post_ref"] = str(comun.welcome_post_id or "")
     if include_options:
@@ -5304,20 +5212,6 @@ def _serialize_comun(
                 for tag in Tag.objects.filter(is_active=True).order_by("name")
             ],
         }
-        if _comun_can_manage_moderators(current_user, comun):
-            payload["options"]["users"] = [
-                {
-                    "id": user.id,
-                    "username": user.username,
-                    "display_name": (
-                        (getattr(getattr(user, "site_profile", None), "display_name", "") or "").strip()
-                        or None
-                    ),
-                }
-                for user in User.objects.filter(is_active=True)
-                .select_related("site_profile")
-                .order_by("username")
-            ]
     return payload
 
 
@@ -5603,7 +5497,6 @@ def comuns_list_create(request: HttpRequest) -> HttpResponse:
     target_audience = str(body.get("target_audience") or "").strip()
     category_ids = _parse_int_list(body.get("category_ids"))
     product_tag_id = _parse_post_reference_to_id(body.get("product_tag_id"))
-    product_tag_name = str(body.get("product_tag_name") or "").strip()
     welcome_post_id = _parse_post_reference_to_id(body.get("welcome_post_id") or body.get("welcome_post_ref"))
 
     comun = Comun.objects.create(
@@ -5620,10 +5513,6 @@ def comuns_list_create(request: HttpRequest) -> HttpResponse:
         comun.categories.set(ComunCategory.objects.filter(id__in=category_ids, is_active=True))
     if product_tag_id:
         product_tag = Tag.objects.filter(id=product_tag_id, is_active=True).first()
-        if product_tag:
-            comun.product_tag = product_tag
-    elif product_tag_name:
-        product_tag, _created = _ensure_tag_by_name(product_tag_name)
         if product_tag:
             comun.product_tag = product_tag
     if welcome_post_id:
@@ -5712,24 +5601,10 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
         except (TypeError, ValueError):
             pass
 
-    if "moderator_ids" in body:
-        if not _comun_can_manage_moderators(current_user, comun):
-            return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
-        moderator_ids = set(_parse_int_list(body.get("moderator_ids")))
-        moderator_ids.add(comun.creator_id)
-        moderator_ids = {int(user_id) for user_id in moderator_ids if int(user_id) > 0}
-        comun.moderators.set(User.objects.filter(id__in=moderator_ids, is_active=True))
-
-    if "product_tag_id" in body or "product_tag_name" in body:
+    if "product_tag_id" in body:
         product_tag_id = _parse_post_reference_to_id(body.get("product_tag_id"))
-        product_tag_name = str(body.get("product_tag_name") or "").strip()
         if product_tag_id:
             product_tag = Tag.objects.filter(id=product_tag_id, is_active=True).first()
-            if not product_tag:
-                return JsonResponse({"ok": False, "error": "tag not found"}, status=400)
-            comun.product_tag = product_tag
-        elif product_tag_name:
-            product_tag, _created = _ensure_tag_by_name(product_tag_name)
             if not product_tag:
                 return JsonResponse({"ok": False, "error": "tag not found"}, status=400)
             comun.product_tag = product_tag
@@ -5780,7 +5655,6 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
     )
 
 
-@csrf_exempt
 def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
     current_user = _get_user_from_request(request)
     try:
@@ -5795,105 +5669,6 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
 
     if not comun.is_active and not _comun_is_moderator(current_user, comun):
         return JsonResponse({"ok": False, "error": "comun not found"}, status=404)
-
-    if request.method == "POST":
-        if not current_user:
-            return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
-        if not _comun_is_moderator(current_user, comun):
-            return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
-        if not comun.product_tag_id:
-            return JsonResponse(
-                {
-                    "ok": False,
-                    "error": "product tag not set",
-                },
-                status=400,
-            )
-
-        try:
-            payload = json.loads(request.body.decode("utf-8") or "{}")
-        except json.JSONDecodeError:
-            return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
-
-        title = str(payload.get("title") or "").strip()
-        content = str(payload.get("content") or "").strip()
-        if not title:
-            return JsonResponse({"ok": False, "error": "title is required"}, status=400)
-        if not content:
-            return JsonResponse({"ok": False, "error": "content is required"}, status=400)
-
-        category_id = _parse_post_reference_to_id(
-            payload.get("comun_category_id") or payload.get("category_id")
-        )
-        category = None
-        if category_id:
-            category = comun.categories.filter(id=category_id, is_active=True).first()
-            if not category:
-                return JsonResponse(
-                    {"ok": False, "error": "category not found"},
-                    status=400,
-                )
-
-        author, personal_author_error = _get_or_create_personal_author(current_user)
-        if personal_author_error:
-            return JsonResponse({"ok": False, "error": personal_author_error}, status=400)
-        if not author:
-            return JsonResponse({"ok": False, "error": "author not found"}, status=400)
-
-        try:
-            message_id = _generate_manual_message_id(author)
-        except ValueError:
-            return JsonResponse({"ok": False, "error": "unable to create post"}, status=500)
-
-        raw_explicit_tags = _parse_tag_payload(payload.get("tags"))
-        explicit_tags: list[str] = []
-        seen_tag_keys: set[str] = set()
-        product_tag_name = (comun.product_tag.name if comun.product_tag else "").strip()
-        if product_tag_name:
-            product_tag_key = product_tag_name.lower()
-            explicit_tags.append(product_tag_name)
-            seen_tag_keys.add(product_tag_key)
-        for tag_name in raw_explicit_tags:
-            key = (tag_name or "").strip().lower()
-            if not key or key in seen_tag_keys:
-                continue
-            seen_tag_keys.add(key)
-            explicit_tags.append(tag_name)
-
-        post = Post.objects.create(
-            author=author,
-            message_id=message_id,
-            title=title,
-            content=content,
-            rubric=author.rubric if author and author.rubric_id else None,
-            channel_url="",
-            source_url="",
-            raw_data={
-                "source": "manual_comun",
-                "comun_slug": comun.slug,
-                "comun_category_id": category.id if category else None,
-            },
-            is_pending=False,
-            is_blocked=False,
-            publish_at=None,
-        )
-        _apply_post_tags(post, explicit_tags)
-        if category:
-            ComunPostCategoryAssignment.objects.update_or_create(
-                comun=comun,
-                post=post,
-                defaults={"category": category, "assigned_by": current_user},
-            )
-        _maybe_notify_new_author(author, post)
-        serialized_post = _serialize_post_for_user(request, post, current_user)
-        serialized_post["comun_category_id"] = category.id if category else None
-        serialized_post["comun_category"] = (
-            _serialize_comun_category(category) if category else None
-        )
-        return JsonResponse({"ok": True, "post": serialized_post})
-
-    if request.method != "GET":
-        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
 
     limit_raw = request.GET.get("limit", "10")
     try:
