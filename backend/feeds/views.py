@@ -5273,7 +5273,10 @@ def _serialize_comun(
     }
     if include_activity:
         try:
-            payload["activity"] = _serialize_comun_activity(request, comun)
+            # Isolate comun activity aggregation so any DB error is rolled back
+            # without poisoning the connection for the rest of the request.
+            with transaction.atomic():
+                payload["activity"] = _serialize_comun_activity(request, comun)
         except Exception:
             logger.exception("Failed to serialize comun activity", extra={"comun_id": comun.id})
             payload["activity"] = {
