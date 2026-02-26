@@ -432,6 +432,16 @@ class Comun(models.Model):
     logo_url = models.URLField(max_length=500, blank=True, verbose_name="Логотип (URL)")
     product_description = models.TextField(blank=True, verbose_name="Описание продукта")
     target_audience = models.TextField(blank=True, verbose_name="Целевая аудитория")
+    hide_from_home = models.BooleanField(
+        default=False,
+        verbose_name="Не показывать на главной",
+        help_text="Посты, созданные внутри этой комуны, не будут попадать в Горячее.",
+    )
+    hide_from_fresh = models.BooleanField(
+        default=False,
+        verbose_name="Не показывать в свежем",
+        help_text="Посты, созданные внутри этой комуны, не будут попадать в ленту Свежее.",
+    )
     is_active = models.BooleanField(default=True)
     sort_order = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)

@@ -18,11 +18,21 @@
   let createTitle = ''
   let createContent = ''
   let createCategoryId = ''
+  let createAuthorChoice = ''
   let creating = false
   let createError = ''
   let comunCategories: NonNullable<BackendComun['categories']> = []
   let canCreateInComun = false
   let productTagName = ''
+  const SITE_AUTHOR_CHOICE = '__site__'
+
+  type PublishIdentityOption = {
+    value: string
+    label: string
+    kind: 'site' | 'channel'
+    username?: string
+  }
+  let publishIdentityOptions: PublishIdentityOption[] = []
 
   const isEditorContentEmpty = (value: string) => {
     if (!value || value.trim() === '') return true
@@ -66,6 +76,32 @@
   $: comunCategories = comun?.categories ?? []
   $: canCreateInComun = Boolean($siteToken && comun?.can_moderate)
   $: productTagName = comun?.product_tag?.name?.trim() ?? ''
+  $: publishIdentityOptions = (() => {
+    if (!$siteUser) return [] as PublishIdentityOption[]
+    const siteLabelBase = ($siteUser.display_name || '').trim() || `@${$siteUser.username}`
+    const items: PublishIdentityOption[] = [
+      {
+        value: SITE_AUTHOR_CHOICE,
+        label: `${siteLabelBase} (аккаунт сайта)`,
+        kind: 'site',
+        username: $siteUser.username,
+      },
+    ]
+    for (const author of $siteUser.authors ?? []) {
+      items.push({
+        value: `channel:${author.username}`,
+        label: `@${author.username}${author.title ? ` — ${author.title}` : ''}`,
+        kind: 'channel',
+        username: author.username,
+      })
+    }
+    return items
+  })()
+  $: if ($siteUser && !createAuthorChoice) {
+    createAuthorChoice = $siteUser.authors?.length
+      ? `channel:${$siteUser.authors[0]?.username || ''}`
+      : SITE_AUTHOR_CHOICE
+  }
 
   const createPost = async () => {
     if (!$siteUser || !comun?.slug) return
@@ -93,6 +129,11 @@
       await createComunPost(comun.slug, {
         title: createTitle.trim(),
         content: createContent.trim(),
+        author_source: createAuthorChoice === SITE_AUTHOR_CHOICE ? 'site' : undefined,
+        author_username:
+          createAuthorChoice && createAuthorChoice !== SITE_AUTHOR_CHOICE
+            ? createAuthorChoice.replace(/^channel:/, '')
+            : undefined,
         comun_category_id: createCategoryId ? Number(createCategoryId) : null,
       })
       toast({
@@ -162,6 +203,21 @@
             У этой комуны пока не выбран тег продукта. Укажите его в настройках комуны перед публикацией.
           {/if}
         </div>
+
+        {#if publishIdentityOptions.length > 1}
+          <label class="flex flex-col gap-1">
+            <span class="text-sm text-slate-700 dark:text-zinc-300">Публиковать от имени</span>
+            <select
+              bind:value={createAuthorChoice}
+              class="w-full rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"
+            >
+              <option value="" disabled>Выберите автора публикации</option>
+              {#each publishIdentityOptions as authorOption}
+                <option value={authorOption.value}>{authorOption.label}</option>
+              {/each}
+            </select>
+          </label>
+        {/if}
 
         {#if comunCategories.length}
           <label class="flex flex-col gap-1">

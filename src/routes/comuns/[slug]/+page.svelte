@@ -137,6 +137,8 @@
       logo_url: (value?.logo_url ?? '').trim(),
       product_description: (value?.product_description ?? '').trim(),
       target_audience: (value?.target_audience ?? '').trim(),
+      hide_from_home: Boolean(value?.hide_from_home),
+      hide_from_fresh: Boolean(value?.hide_from_fresh),
       product_tag_id: value?.product_tag_id ?? value?.product_tag?.id ?? null,
       category_ids: comunCategoryIds(value),
       moderator_ids: comunModeratorIds(value),
@@ -462,6 +464,8 @@
           logo_url: settingsDraft.logo_url ?? '',
           product_description: settingsDraft.product_description ?? '',
           target_audience: settingsDraft.target_audience ?? '',
+          hide_from_home: canManageComunModerators() ? Boolean(settingsDraft.hide_from_home) : undefined,
+          hide_from_fresh: canManageComunModerators() ? Boolean(settingsDraft.hide_from_fresh) : undefined,
           moderator_ids: canManageComunModerators() ? comunModeratorIds(settingsDraft) : undefined,
           product_tag_id: settingsDraft.product_tag_id ?? null,
           category_ids: settingsDraft.category_ids ?? (settingsDraft.categories ?? []).map((category) => category.id),
@@ -929,6 +933,48 @@
           <span class="text-sm text-slate-700 dark:text-zinc-300">Целевая аудитория</span>
           <textarea bind:value={settingsDraft.target_audience} rows="2" class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"></textarea>
         </label>
+
+        {#if canManageComunModerators()}
+          <div class="flex flex-col gap-2 rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-3">
+            <div class="text-sm font-medium text-slate-900 dark:text-zinc-100">Видимость постов комуны в общих лентах</div>
+            <label class="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!settingsDraft.hide_from_home}
+                on:change={() =>
+                  (settingsDraft = {
+                    ...settingsDraft,
+                    hide_from_home: !Boolean(settingsDraft.hide_from_home),
+                  })}
+                class="mt-0.5"
+              />
+              <span class="min-w-0">
+                <span class="block text-sm text-slate-900 dark:text-zinc-100">Показывать в Горячем</span>
+                <span class="block text-xs text-slate-500 dark:text-zinc-400">
+                  Если выключить, посты, созданные в этой комуне, не попадут на главную.
+                </span>
+              </span>
+            </label>
+            <label class="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!settingsDraft.hide_from_fresh}
+                on:change={() =>
+                  (settingsDraft = {
+                    ...settingsDraft,
+                    hide_from_fresh: !Boolean(settingsDraft.hide_from_fresh),
+                  })}
+                class="mt-0.5"
+              />
+              <span class="min-w-0">
+                <span class="block text-sm text-slate-900 dark:text-zinc-100">Показывать в Свежее</span>
+                <span class="block text-xs text-slate-500 dark:text-zinc-400">
+                  Если выключить, посты, созданные в этой комуне, останутся только в ленте комуны и персональных лентах.
+                </span>
+              </span>
+            </label>
+          </div>
+        {/if}
 
         {#if canManageComunModerators()}
           <div class="flex flex-col gap-2">

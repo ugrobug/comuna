@@ -357,6 +357,8 @@ export type BackendComun = {
   logo_url?: string | null
   product_description?: string | null
   target_audience?: string | null
+  hide_from_home?: boolean
+  hide_from_fresh?: boolean
   is_active?: boolean
   sort_order?: number
   can_moderate?: boolean

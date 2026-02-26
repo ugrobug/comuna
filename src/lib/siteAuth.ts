@@ -318,6 +318,7 @@ export const deleteUserPost = async (postId: number) => {
 export const createUserPost = async (payload: {
   title: string
   content: string
+  author_source?: 'site'
   author_username?: string
   rubric_slug?: string
   tags?: string[]
@@ -349,6 +350,8 @@ export const createComunPost = async (
   payload: {
     title: string
     content: string
+    author_source?: 'site'
+    author_username?: string
     comun_category_id?: number | null
     tags?: string[]
   }

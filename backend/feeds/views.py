@@ -3014,6 +3014,7 @@ def user_posts(request: HttpRequest) -> HttpResponse:
 
         title = (payload.get("title") or "").strip()
         content = (payload.get("content") or "").strip()
+        author_source = (payload.get("author_source") or "").strip().lower()
         author_username = (payload.get("author_username") or "").strip()
         rubric_slug = (payload.get("rubric_slug") or "").strip()
         explicit_tags = _parse_tag_payload(payload.get("tags"))
@@ -3024,7 +3025,13 @@ def user_posts(request: HttpRequest) -> HttpResponse:
             return JsonResponse({"ok": False, "error": "content is required"}, status=400)
 
         author = None
-        if author_username:
+        if author_source == "site":
+            personal_author, personal_author_error = _get_or_create_personal_author(user)
+            if personal_author_error:
+                return JsonResponse({"ok": False, "error": personal_author_error}, status=400)
+            if personal_author:
+                author = personal_author
+        elif author_username:
             author = (
                 Author.objects.filter(id__in=author_ids, username__iexact=author_username).first()
             )
@@ -4482,6 +4489,9 @@ def home_feed(request: HttpRequest) -> HttpResponse:
         posts__id=OuterRef("pk"),
         hide_from_home=True,
     )
+    hidden_home_comun_slugs = list(
+        Comun.objects.filter(hide_from_home=True).values_list("slug", flat=True)
+    )
     base_query = (
         Post.objects.filter(
             is_blocked=False,
@@ -4497,6 +4507,11 @@ def home_feed(request: HttpRequest) -> HttpResponse:
         .filter(has_hidden_home_tag=False)
         .filter(combined_scaled__gte=0)
     )
+    if hidden_home_comun_slugs:
+        base_query = base_query.exclude(
+            raw_data__source="manual_comun",
+            raw_data__comun_slug__in=hidden_home_comun_slugs,
+        )
     hidden_read_count = 0
     if hide_read and read_user:
         hidden_read_count = base_query.filter(reads__user=read_user).count()
@@ -4678,6 +4693,14 @@ def fresh_feed(request: HttpRequest) -> HttpResponse:
         .filter(Q(author__shadow_banned=False) | Q(author__force_home=True))
         .filter(Q(rubric__isnull=True) | Q(rubric__is_hidden=False))
     )
+    hidden_fresh_comun_slugs = list(
+        Comun.objects.filter(hide_from_fresh=True).values_list("slug", flat=True)
+    )
+    if hidden_fresh_comun_slugs:
+        base_query = base_query.exclude(
+            raw_data__source="manual_comun",
+            raw_data__comun_slug__in=hidden_fresh_comun_slugs,
+        )
 
     hidden_read_count = 0
     if hide_read and read_user:
@@ -5224,6 +5247,8 @@ def _serialize_comun(
         "logo_url": comun.logo_url,
         "product_description": comun.product_description,
         "target_audience": comun.target_audience,
+        "hide_from_home": bool(comun.hide_from_home),
+        "hide_from_fresh": bool(comun.hide_from_fresh),
         "is_active": comun.is_active,
         "sort_order": comun.sort_order,
         "creator": {
@@ -5691,6 +5716,13 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
         comun.product_description = str(body.get("product_description") or "").strip()
     if "target_audience" in body:
         comun.target_audience = str(body.get("target_audience") or "").strip()
+    if "hide_from_home" in body or "hide_from_fresh" in body:
+        if not _comun_can_manage_moderators(current_user, comun):
+            return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+        if "hide_from_home" in body:
+            comun.hide_from_home = bool(body.get("hide_from_home"))
+        if "hide_from_fresh" in body:
+            comun.hide_from_fresh = bool(body.get("hide_from_fresh"))
     if "is_active" in body and (current_user and current_user.is_staff):
         comun.is_active = bool(body.get("is_active"))
     if "sort_order" in body and (current_user and current_user.is_staff):
@@ -5804,6 +5836,8 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
 
         title = str(payload.get("title") or "").strip()
         content = str(payload.get("content") or "").strip()
+        author_source = str(payload.get("author_source") or "").strip().lower()
+        author_username = str(payload.get("author_username") or "").strip()
         if not title:
             return JsonResponse({"ok": False, "error": "title is required"}, status=400)
         if not content:
@@ -5821,9 +5855,38 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
                     status=400,
                 )
 
-        author, personal_author_error = _get_or_create_personal_author(current_user)
-        if personal_author_error:
-            return JsonResponse({"ok": False, "error": personal_author_error}, status=400)
+        author_links = list(
+            AuthorAdmin.objects.filter(user=current_user, verified_at__isnull=False)
+            .select_related("author")
+            .order_by("author__username")
+        )
+        author_ids = [link.author_id for link in author_links]
+        personal_author = Author.objects.filter(
+            username__iexact=(current_user.username or "").strip(),
+            channel_url="",
+            channel_id__isnull=True,
+        ).first()
+        if personal_author and personal_author.id not in author_ids:
+            author_ids.append(personal_author.id)
+
+        author = None
+        personal_author_error = None
+        if author_source == "site":
+            author, personal_author_error = _get_or_create_personal_author(current_user)
+            if personal_author_error:
+                return JsonResponse({"ok": False, "error": personal_author_error}, status=400)
+        elif author_username:
+            author = (
+                Author.objects.filter(id__in=author_ids, username__iexact=author_username).first()
+            )
+            if not author:
+                return JsonResponse({"ok": False, "error": "author not found"}, status=404)
+        elif len(author_links) == 1:
+            author = author_links[0].author
+        else:
+            author, personal_author_error = _get_or_create_personal_author(current_user)
+            if personal_author_error:
+                return JsonResponse({"ok": False, "error": personal_author_error}, status=400)
         if not author:
             return JsonResponse({"ok": False, "error": "author not found"}, status=400)
 
@@ -5853,8 +5916,8 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
             title=title,
             content=content,
             rubric=author.rubric if author and author.rubric_id else None,
-            channel_url="",
-            source_url="",
+            channel_url=(author.invite_url or author.channel_url or ""),
+            source_url=(author.invite_url or author.channel_url or ""),
             raw_data={
                 "source": "manual_comun",
                 "comun_slug": comun.slug,

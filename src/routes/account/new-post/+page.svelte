@@ -25,8 +25,44 @@
   let rubricMenuOpen = false
   let rubricMenuRef: HTMLDivElement | null = null
   let selectedRubric: { name: string; slug: string; icon_url?: string | null; icon_thumb_url?: string | null } | undefined
+  let publishIdentityOptions: PublishIdentityOption[] = []
+  let selectedIdentity: PublishIdentityOption | undefined
+  let selectedChannelIdentity: PublishIdentityOption | undefined
+  const SITE_AUTHOR_CHOICE = '__site__'
+
+  type PublishIdentityOption = {
+    value: string
+    label: string
+    kind: 'site' | 'channel'
+    username?: string
+    rubric_slug?: string | null
+  }
 
   $: selectedRubric = rubrics.find((rubric) => rubric.slug === createRubric)
+  $: publishIdentityOptions = (() => {
+    if (!$siteUser) return [] as PublishIdentityOption[]
+    const siteLabelBase = ($siteUser.display_name || '').trim() || `@${$siteUser.username}`
+    const items: PublishIdentityOption[] = [
+      {
+        value: SITE_AUTHOR_CHOICE,
+        label: `${siteLabelBase} (аккаунт сайта)`,
+        kind: 'site',
+        username: $siteUser.username,
+      },
+    ]
+    for (const author of $siteUser.authors ?? []) {
+      items.push({
+        value: `channel:${author.username}`,
+        label: `@${author.username}${author.title ? ` — ${author.title}` : ''}`,
+        kind: 'channel',
+        username: author.username,
+        rubric_slug: author.rubric_slug ?? null,
+      })
+    }
+    return items
+  })()
+  $: selectedIdentity = publishIdentityOptions.find((item) => item.value === createAuthor)
+  $: selectedChannelIdentity = selectedIdentity?.kind === 'channel' ? selectedIdentity : undefined
 
   const isEditorContentEmpty = (value: string) => {
     if (!value || value.trim() === '') return true
@@ -80,16 +116,13 @@
     }
   })
 
-  $: if ($siteUser?.authors?.length && !createAuthor) {
-    createAuthor = $siteUser.authors[0]?.username || ''
+  $: if ($siteUser && !createAuthor) {
+    createAuthor = $siteUser.authors?.length
+      ? `channel:${$siteUser.authors[0]?.username || ''}`
+      : SITE_AUTHOR_CHOICE
   }
-  $: if (!createRubric && $siteUser?.authors?.length === 1) {
-    const authorRubric = $siteUser.authors[0]?.rubric_slug || ''
-    if (authorRubric) createRubric = authorRubric
-  }
-  $: if (!createRubric && createAuthor && $siteUser?.authors?.length) {
-    const matched = $siteUser.authors.find((author) => author.username === createAuthor)
-    const authorRubric = matched?.rubric_slug || ''
+  $: if (!createRubric && selectedChannelIdentity?.rubric_slug) {
+    const authorRubric = selectedChannelIdentity.rubric_slug || ''
     if (authorRubric) createRubric = authorRubric
   }
 
@@ -104,8 +137,8 @@
       createError = 'Текст поста не может быть пустым.'
       return
     }
-    if ($siteUser.authors.length > 1 && !createAuthor) {
-      createError = 'Выберите канал для публикации.'
+    if (publishIdentityOptions.length > 1 && !createAuthor) {
+      createError = 'Выберите автора публикации.'
       return
     }
     if (!createRubric) {
@@ -121,7 +154,11 @@
       await createUserPost({
         title: createTitle.trim(),
         content: createContent.trim(),
-        author_username: createAuthor || undefined,
+        author_source: createAuthor === SITE_AUTHOR_CHOICE ? 'site' : undefined,
+        author_username:
+          createAuthor && createAuthor !== SITE_AUTHOR_CHOICE
+            ? createAuthor.replace(/^channel:/, '')
+            : undefined,
         rubric_slug: createRubric || undefined,
         tags: tags.length ? tags : undefined,
       })
@@ -170,14 +207,14 @@
       <div class="flex flex-col gap-4">
         <div
           class={`grid grid-cols-1 gap-4 items-start ${
-            $siteUser.authors.length > 1 ? 'md:grid-cols-2' : ''
+            publishIdentityOptions.length > 1 ? 'md:grid-cols-2' : ''
           }`}
         >
-          {#if $siteUser.authors.length > 1}
+          {#if publishIdentityOptions.length > 1}
             <Select bind:value={createAuthor} class="w-full">
-              <option value="" disabled>Выберите канал</option>
-              {#each $siteUser.authors as author}
-                <option value={author.username}>@{author.username}</option>
+              <option value="" disabled>Выберите автора публикации</option>
+              {#each publishIdentityOptions as authorOption}
+                <option value={authorOption.value}>{authorOption.label}</option>
               {/each}
             </Select>
           {/if}
