@@ -65,9 +65,9 @@
     try {
       const uploadedUrl = await uploadSiteImage(file)
       logoUrl = uploadedUrl
-      toast('Логотип загружен')
+      toast({ content: 'Логотип загружен', type: 'success' })
     } catch (error) {
-      toast(error instanceof Error ? error.message : 'Не удалось загрузить логотип')
+      toast({ content: error instanceof Error ? error.message : 'Не удалось загрузить логотип', type: 'error' })
     } finally {
       logoUploading = false
       if (input) input.value = ''
@@ -76,7 +76,7 @@
 
   const createComun = async () => {
     if (!name.trim()) {
-      toast('Введите название комуны')
+      toast({ content: 'Введите название комуны', type: 'warning' })
       return
     }
     creating = true
@@ -99,10 +99,10 @@
       }
       createOpen = false
       resetForm()
-      toast('Комуна создана')
+      toast({ content: 'Комуна создана', type: 'success' })
       goto(`/comuns/${payload.comun.slug}/settings`)
     } catch (error) {
-      toast(error instanceof Error ? error.message : 'Ошибка создания')
+      toast({ content: error instanceof Error ? error.message : 'Ошибка создания', type: 'error' })
     } finally {
       creating = false
     }
