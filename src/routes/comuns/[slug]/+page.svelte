@@ -45,6 +45,7 @@
   let settingsError = ''
   let settingsTagSearch = ''
   let settingsTagCreating = false
+  let settingsUserSearch = ''
   let settingsDraft: BackendComun | null = null
   let settingsLogoInput: HTMLInputElement | null = null
   let lastAuthRefreshToken: string | null = null
@@ -52,7 +53,9 @@
   let wantsSettingsOpenFromUrl = false
   let settingsCategoryOptions: BackendComunCategory[] = []
   type ComunTagOption = BackendTag & { id: number }
+  type ComunUserOption = { id: number; username: string; display_name?: string | null }
   let settingsTagOptions: ComunTagOption[] = []
+  let settingsUserOptions: ComunUserOption[] = []
 
   $: if (data?.posts && data.posts !== lastPostsRef) {
     lastPostsRef = data.posts
@@ -78,6 +81,7 @@
   $: visiblePosts = posts.filter(isAuthorVisible)
 
   const isModerator = () => Boolean(comun?.can_moderate && $siteToken)
+  const canManageComunModerators = () => Boolean(comun?.can_manage_moderators && $siteToken)
 
   $: siteTitle = env.PUBLIC_SITE_TITLE || 'Comuna'
   $: comunName = comun?.name || 'Комуна'
@@ -98,8 +102,42 @@
   const cloneComun = (value: BackendComun | null): BackendComun | null =>
     value ? JSON.parse(JSON.stringify(value)) : null
 
+  const normalizeIds = (values: Array<number | null | undefined>) =>
+    Array.from(new Set(values.filter((value): value is number => Number.isFinite(value as number) && Number(value) > 0).map(Number))).sort((a, b) => a - b)
+
+  const comunModeratorIds = (value: BackendComun | null) =>
+    normalizeIds(
+      ((value?.moderator_ids as number[] | undefined) ??
+        (value?.moderators ?? []).map((moderator) => moderator.id ?? 0)) as number[]
+    )
+
+  const comunCategoryIds = (value: BackendComun | null) =>
+    normalizeIds(
+      ((value?.category_ids as number[] | undefined) ??
+        (value?.categories ?? []).map((category) => category.id ?? 0)) as number[]
+    )
+
+  const settingsComparable = (value: BackendComun | null) =>
+    JSON.stringify({
+      website_url: (value?.website_url ?? '').trim(),
+      logo_url: (value?.logo_url ?? '').trim(),
+      product_description: (value?.product_description ?? '').trim(),
+      target_audience: (value?.target_audience ?? '').trim(),
+      product_tag_id: value?.product_tag_id ?? value?.product_tag?.id ?? null,
+      category_ids: comunCategoryIds(value),
+      moderator_ids: comunModeratorIds(value),
+      welcome_post_ref: String(value?.welcome_post_ref ?? value?.welcome_post_id ?? '').trim(),
+    })
+
   const userInitials = (username?: string | null) =>
     (username || '?').trim().slice(0, 1).toUpperCase() || '?'
+
+  const userDisplayName = (user?: { username?: string | null; display_name?: string | null } | null) => {
+    const displayName = (user?.display_name ?? '').trim()
+    if (displayName) return displayName
+    const username = (user?.username ?? '').trim()
+    return username ? `@${username}` : 'Пользователь'
+  }
 
   const toggleComunInMyFeed = async () => {
     const slug = (comun?.slug ?? '').trim()
@@ -227,6 +265,7 @@
         settingsDraft = cloneComun(payload.comun)
         settingsCategoryOptions = payload.comun?.options?.categories ?? []
         settingsTagOptions = payload.comun?.options?.tags ?? []
+        settingsUserOptions = payload.comun?.options?.users ?? []
       }
     } catch (error) {
       settingsError = error instanceof Error ? error.message : 'Ошибка загрузки'
@@ -242,6 +281,7 @@
       return
     }
     settingsTagSearch = ''
+    settingsUserSearch = ''
     settingsDraft = cloneComun(comun)
     await refreshComunManage()
     if (!comun?.can_moderate) {
@@ -259,6 +299,43 @@
     if (current.has(categoryId)) current.delete(categoryId)
     else current.add(categoryId)
     settingsDraft = { ...settingsDraft, category_ids: Array.from(current) as number[] }
+  }
+
+  const setDraftModeratorIds = (ids: number[]) => {
+    if (!settingsDraft) return
+    const creatorId = Number(settingsDraft.creator?.id ?? comun?.creator?.id ?? 0)
+    const normalizedIds = normalizeIds([...ids, creatorId > 0 ? creatorId : 0])
+    const byId = new Map<number, ComunUserOption>()
+    for (const user of settingsUserOptions) byId.set(user.id, user)
+    for (const moderator of settingsDraft.moderators ?? []) {
+      byId.set(moderator.id, {
+        id: moderator.id,
+        username: moderator.username,
+        display_name: moderator.display_name ?? null,
+      })
+    }
+    settingsDraft = {
+      ...settingsDraft,
+      moderator_ids: normalizedIds,
+      moderators: normalizedIds.map((id) => {
+        const user = byId.get(id)
+        return {
+          id,
+          username: user?.username ?? String(id),
+          display_name: user?.display_name ?? null,
+        }
+      }),
+    }
+  }
+
+  const addDraftModerator = (userId: number) => {
+    if (!settingsDraft || !canManageComunModerators()) return
+    setDraftModeratorIds([...comunModeratorIds(settingsDraft), userId])
+  }
+
+  const removeDraftModerator = (userId: number) => {
+    if (!settingsDraft || !canManageComunModerators()) return
+    setDraftModeratorIds(comunModeratorIds(settingsDraft).filter((id) => id !== userId))
   }
 
   const chooseDraftTag = (tag: ComunTagOption) => {
@@ -295,6 +372,28 @@
     if (!normalizedTagSearch) return true
     return [tag.name, tag.lemma ?? ''].some((value) => value.toLowerCase().includes(normalizedTagSearch))
   }).slice(0, 30)
+  $: normalizedUserSearch = settingsUserSearch.trim().toLowerCase()
+  $: draftModeratorIdSet = new Set<number>(comunModeratorIds(settingsDraft))
+  $: settingsHasChanges = settingsComparable(settingsDraft) !== settingsComparable(comun)
+  $: settingsCanDismiss =
+    !settingsHasChanges && !settingsSaving && !settingsLogoUploading && !settingsTagCreating
+  $: filteredUserOptions = (settingsUserOptions ?? [])
+    .filter((user) => {
+      if (!normalizedUserSearch) return true
+      return [user.username, user.display_name ?? '']
+        .some((value) => value.toLowerCase().includes(normalizedUserSearch))
+    })
+    .slice(0, 50)
+  $: selectedModeratorUsers = comunModeratorIds(settingsDraft).map((id) => {
+    const fromOptions = settingsUserOptions.find((user) => user.id === id)
+    if (fromOptions) return fromOptions
+    const fromDraft = settingsDraft?.moderators?.find((moderator) => moderator.id === id)
+    return {
+      id,
+      username: fromDraft?.username ?? String(id),
+      display_name: fromDraft?.display_name ?? null,
+    }
+  })
 
   const createTagAndChooseDraft = async () => {
     const tagName = normalizeTagInput(settingsTagSearch)
@@ -349,6 +448,7 @@
           logo_url: settingsDraft.logo_url ?? '',
           product_description: settingsDraft.product_description ?? '',
           target_audience: settingsDraft.target_audience ?? '',
+          moderator_ids: canManageComunModerators() ? comunModeratorIds(settingsDraft) : undefined,
           product_tag_id: settingsDraft.product_tag_id ?? null,
           category_ids: settingsDraft.category_ids ?? (settingsDraft.categories ?? []).map((category) => category.id),
           welcome_post_ref: settingsDraft.welcome_post_ref ?? '',
@@ -360,6 +460,7 @@
       }
       comun = payload.comun ?? comun
       settingsDraft = cloneComun(comun)
+      settingsOpen = false
       toast({ content: 'Настройки комуны сохранены', type: 'success' })
       await loadPosts(true)
     } catch (error) {
@@ -523,7 +624,18 @@
             {/if}
             {#if comun?.creator?.username}
               <div class="mt-1 text-xs text-slate-500 dark:text-zinc-400">
-                Создатель: @{comun.creator.username}
+                Создатель:
+                {#if comun?.creator?.id}
+                  <a
+                    href={`/id${comun.creator.id}`}
+                    class="ml-1 text-slate-700 dark:text-zinc-300 hover:underline"
+                    title={comun.creator.username ? `Профиль @${comun.creator.username}` : 'Профиль пользователя'}
+                  >
+                    {userDisplayName(comun.creator)}
+                  </a>
+                {:else}
+                  <span class="ml-1 text-slate-700 dark:text-zinc-300">{userDisplayName(comun.creator)}</span>
+                {/if}
               </div>
             {/if}
           </div>
@@ -722,7 +834,7 @@
   {/if}
 </div>
 
-<Modal bind:open={settingsOpen}>
+<Modal bind:open={settingsOpen} dismissable={settingsCanDismiss} dismissOnBackdrop={true}>
   <div class="w-full max-w-3xl flex flex-col gap-4">
     <div class="text-lg font-semibold text-slate-900 dark:text-zinc-100">Настройки комуны</div>
     {#if settingsError}
@@ -800,6 +912,67 @@
           <span class="text-sm text-slate-700 dark:text-zinc-300">Целевая аудитория</span>
           <textarea bind:value={settingsDraft.target_audience} rows="2" class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"></textarea>
         </label>
+
+        {#if canManageComunModerators()}
+          <div class="flex flex-col gap-2">
+            <div class="text-sm text-slate-700 dark:text-zinc-300">Модераторы комуны</div>
+            <div class="text-xs text-slate-500 dark:text-zinc-400">
+              Только создатель комуны может назначать и снимать модераторов. Создатель всегда остается модератором.
+            </div>
+            <input
+              bind:value={settingsUserSearch}
+              placeholder="Поиск пользователя по имени или логину..."
+              class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"
+            />
+            <div class="max-h-52 overflow-auto rounded-xl border border-slate-200 dark:border-zinc-800 divide-y divide-slate-100 dark:divide-zinc-800">
+              {#if filteredUserOptions.length}
+                {#each filteredUserOptions as user}
+                  <div class="flex items-center justify-between gap-2 px-3 py-2">
+                    <div class="min-w-0">
+                      <div class="text-sm font-medium text-slate-900 dark:text-zinc-100 truncate">
+                        {userDisplayName(user)}
+                      </div>
+                      <div class="text-xs text-slate-500 dark:text-zinc-400 truncate">@{user.username}</div>
+                    </div>
+                    <Button
+                      size="sm"
+                      on:click={() => addDraftModerator(user.id)}
+                      disabled={draftModeratorIdSet.has(user.id)}
+                    >
+                      {draftModeratorIdSet.has(user.id) ? 'Добавлен' : 'Добавить'}
+                    </Button>
+                  </div>
+                {/each}
+              {:else}
+                <div class="px-3 py-2 text-sm text-slate-500 dark:text-zinc-400">Пользователи не найдены</div>
+              {/if}
+            </div>
+            <div class="flex flex-col gap-2">
+              <div class="text-xs uppercase tracking-wide text-slate-500 dark:text-zinc-400">Выбранные модераторы</div>
+              <div class="flex flex-col gap-2">
+                {#each selectedModeratorUsers as user}
+                  <div class="flex items-center justify-between gap-2 rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-2">
+                    <div class="min-w-0">
+                      <div class="text-sm font-medium text-slate-900 dark:text-zinc-100 truncate">
+                        {userDisplayName(user)}
+                      </div>
+                      <div class="text-xs text-slate-500 dark:text-zinc-400 truncate">@{user.username}</div>
+                    </div>
+                    <Button
+                      color="ghost"
+                      size="sm"
+                      on:click={() => removeDraftModerator(user.id)}
+                      disabled={user.id === comun?.creator?.id}
+                      title={user.id === comun?.creator?.id ? 'Создателя нельзя убрать из модераторов' : 'Убрать модератора'}
+                    >
+                      Убрать
+                    </Button>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          </div>
+        {/if}
 
         <div class="flex flex-col gap-2">
           <div class="text-sm text-slate-700 dark:text-zinc-300">Тег продукта (посты с этим тегом попадут в коммуну)</div>
@@ -891,7 +1064,6 @@
       </div>
 
       <div class="flex justify-end gap-2 pt-2">
-        <Button color="ghost" on:click={() => (settingsOpen = false)} disabled={settingsSaving}>Закрыть</Button>
         <Button on:click={saveSettings} disabled={settingsSaving || settingsLogoUploading}>
           {settingsSaving ? 'Сохраняем...' : 'Сохранить'}
         </Button>
