@@ -77,6 +77,10 @@ export const buildTagsListUrl = (): string => {
   return `${getBackendBaseUrl()}/api/tags/`
 }
 
+export const buildTagsEnsureUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/tags/ensure/`
+}
+
 export const buildThematicFeedsListUrl = (): string => {
   return `${getBackendBaseUrl()}/api/thematic-feeds/`
 }

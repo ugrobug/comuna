@@ -13,6 +13,7 @@
     buildComunPostCategoryUrl,
     buildComunPostsUrl,
     buildComunUrl,
+    buildTagsEnsureUrl,
     type BackendComun,
     type BackendComunCategory,
     type BackendPost,
@@ -43,6 +44,7 @@
   let settingsLogoUploading = false
   let settingsError = ''
   let settingsTagSearch = ''
+  let settingsTagCreating = false
   let settingsDraft: BackendComun | null = null
   let settingsLogoInput: HTMLInputElement | null = null
   let lastAuthRefreshToken: string | null = null
@@ -273,7 +275,18 @@
     settingsDraft = { ...settingsDraft, product_tag_id: null, product_tag: null }
   }
 
+  const normalizeTagInput = (value: string) =>
+    value.trim().replace(/^#+/, '').replace(/\s+/g, ' ').trim()
+
   $: normalizedTagSearch = settingsTagSearch.trim().toLowerCase()
+  $: normalizedTagCreateValue = normalizeTagInput(settingsTagSearch)
+  $: hasExactTagMatch = (settingsTagOptions ?? []).some((tag) => {
+    const needle = normalizedTagCreateValue.toLowerCase()
+    if (!needle) return false
+    return [tag.name, tag.lemma ?? '']
+      .map((value) => normalizeTagInput(value).toLowerCase())
+      .some((value) => value === needle)
+  })
   $: draftCategoryIdSet = new Set<number>(
     ((settingsDraft?.category_ids as number[] | undefined) ??
       (settingsDraft?.categories ?? []).map((item) => item.id)) as number[]
@@ -282,6 +295,46 @@
     if (!normalizedTagSearch) return true
     return [tag.name, tag.lemma ?? ''].some((value) => value.toLowerCase().includes(normalizedTagSearch))
   }).slice(0, 30)
+
+  const createTagAndChooseDraft = async () => {
+    const tagName = normalizeTagInput(settingsTagSearch)
+    if (!tagName || settingsTagCreating) return
+    settingsTagCreating = true
+    try {
+      const response = await fetch(buildTagsEnsureUrl(), {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ name: tagName }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok || !payload?.tag?.id) {
+        throw new Error(payload?.error || 'Не удалось добавить тег')
+      }
+      const nextTag: ComunTagOption = {
+        id: Number(payload.tag.id),
+        name: String(payload.tag.name ?? tagName),
+        lemma: payload.tag.lemma ? String(payload.tag.lemma) : null,
+      }
+      const nextOptions = [...(settingsTagOptions ?? [])]
+      const existingIndex = nextOptions.findIndex((tag) => tag.id === nextTag.id)
+      if (existingIndex >= 0) {
+        nextOptions[existingIndex] = nextTag
+      } else {
+        nextOptions.push(nextTag)
+      }
+      settingsTagOptions = nextOptions.sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+      chooseDraftTag(nextTag)
+      settingsTagSearch = nextTag.name
+      toast({
+        content: payload.created ? 'Тег добавлен и выбран' : 'Тег найден и выбран',
+        type: 'success',
+      })
+    } catch (error) {
+      toast({ content: error instanceof Error ? error.message : 'Не удалось добавить тег', type: 'error' })
+    } finally {
+      settingsTagCreating = false
+    }
+  }
 
   const saveSettings = async () => {
     if (!comun?.slug || !settingsDraft) return
@@ -766,6 +819,25 @@
             class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"
           />
           <div class="max-h-48 overflow-auto rounded-xl border border-slate-200 dark:border-zinc-800 divide-y divide-slate-100 dark:divide-zinc-800">
+            {#if normalizedTagCreateValue && !hasExactTagMatch}
+              <div class="flex items-center justify-between gap-2 px-3 py-2 bg-slate-50 dark:bg-zinc-900/60">
+                <div class="min-w-0 text-sm">
+                  <div class="font-medium text-slate-900 dark:text-zinc-100 truncate">
+                    Добавить тег #{normalizedTagCreateValue}
+                  </div>
+                  <div class="text-xs text-slate-500 dark:text-zinc-400">
+                    Создаст тег в системе и выберет его для комуны
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  on:click={createTagAndChooseDraft}
+                  disabled={settingsTagCreating || settingsSaving}
+                >
+                  {settingsTagCreating ? '...' : 'Добавить'}
+                </Button>
+              </div>
+            {/if}
             {#if filteredTagOptions.length}
               {#each filteredTagOptions as tag}
                 <div class="flex items-center justify-between gap-2 px-3 py-2 text-sm">
@@ -775,11 +847,13 @@
                       <div class="text-xs text-slate-500 dark:text-zinc-400 truncate">{tag.lemma}</div>
                     {/if}
                   </div>
-                  <Button size="sm" on:click={() => chooseDraftTag(tag)}>Выбрать</Button>
+                  <Button size="sm" on:click={() => chooseDraftTag(tag)} disabled={settingsTagCreating || settingsSaving}>Выбрать</Button>
                 </div>
               {/each}
             {:else}
-              <div class="px-3 py-2 text-sm text-slate-500 dark:text-zinc-400">Ничего не найдено</div>
+              <div class="px-3 py-2 text-sm text-slate-500 dark:text-zinc-400">
+                {normalizedTagCreateValue && !hasExactTagMatch ? 'Можно добавить новый тег выше' : 'Ничего не найдено'}
+              </div>
             {/if}
           </div>
         </div>
