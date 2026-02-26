@@ -34,6 +34,8 @@
   const comunInitial = (name?: string | null) =>
     (name ?? '').trim().slice(0, 1).toUpperCase() || 'C'
 
+  const comunRatingScore = (comun: BackendComun) => Number(comun.rating?.score ?? 0)
+
   const canCreate = () => !!$siteToken
 
   const resetForm = () => {
@@ -167,6 +169,16 @@
                 <div class="text-base font-semibold text-slate-900 dark:text-zinc-100 truncate">
                   {comun.name}
                 </div>
+                <span
+                  class="shrink-0 inline-flex h-7 min-w-[1.75rem] items-center justify-center rounded-full border px-2 text-xs font-semibold {comunRatingScore(comun) > 0
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300'
+                    : comunRatingScore(comun) < 0
+                      ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-300'
+                      : 'border-slate-200 bg-slate-50 text-slate-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300'}"
+                  title="Рейтинг комуны"
+                >
+                  {#if comunRatingScore(comun) > 0}+{/if}{comunRatingScore(comun)}
+                </span>
                 {#if comun.product_tag}
                   <span class="shrink-0 rounded-full bg-slate-100 dark:bg-zinc-800 px-2 py-0.5 text-xs text-slate-600 dark:text-zinc-300">
                     #{comun.product_tag.name}
