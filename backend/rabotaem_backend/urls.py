@@ -12,6 +12,7 @@ from feeds.views import (
     comun_detail_manage,
     comun_post_category_update,
     comun_posts,
+    comun_vote,
     comuns_list_create,
     fresh_feed,
     favorites_feed,
@@ -76,6 +77,7 @@ urlpatterns = [
     path("api/home/my/", my_feed, name="my-feed"),
     path("api/comuns/", comuns_list_create, name="comuns-list-create"),
     path("api/comuns/<slug:slug>/", comun_detail_manage, name="comun-detail-manage"),
+    path("api/comuns/<slug:slug>/vote/", comun_vote, name="comun-vote"),
     path("api/comuns/<slug:slug>/posts/", comun_posts, name="comun-posts"),
     path(
         "api/comuns/<slug:slug>/posts/<int:post_id>/category/",

@@ -432,6 +432,9 @@ class Comun(models.Model):
     logo_url = models.URLField(max_length=500, blank=True, verbose_name="Логотип (URL)")
     product_description = models.TextField(blank=True, verbose_name="Описание продукта")
     target_audience = models.TextField(blank=True, verbose_name="Целевая аудитория")
+    rating_score = models.IntegerField(default=0, verbose_name="Рейтинг")
+    votes_up = models.PositiveIntegerField(default=0, verbose_name="Буду использовать")
+    votes_down = models.PositiveIntegerField(default=0, verbose_name="Не нравится")
     hide_from_home = models.BooleanField(
         default=False,
         verbose_name="Не показывать на главной",
@@ -454,6 +457,22 @@ class Comun(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+
+class ComunVote(models.Model):
+    comun = models.ForeignKey(Comun, on_delete=models.CASCADE, related_name="votes")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="comun_votes")
+    value = models.SmallIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("comun", "user")
+        verbose_name = "Голос за коммуну"
+        verbose_name_plural = "Голоса за комуны"
+
+    def __str__(self) -> str:
+        return f"{self.comun_id}:{self.user_id}:{self.value}"
 
 
 class Post(models.Model):

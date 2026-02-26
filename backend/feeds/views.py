@@ -44,6 +44,7 @@ from .models import (
     Comun,
     ComunCategory,
     ComunPostCategoryAssignment,
+    ComunVote,
     Post,
     PostComment,
     PostCommentLike,
@@ -5220,6 +5221,43 @@ def _serialize_comun_category(category: ComunCategory) -> dict:
     }
 
 
+def _recalculate_comun_rating(comun_id: int) -> tuple[int, int, int]:
+    counts = ComunVote.objects.filter(comun_id=comun_id).aggregate(
+        up=Count("id", filter=Q(value=1)),
+        down=Count("id", filter=Q(value=-1)),
+    )
+    votes_up = int(counts.get("up") or 0)
+    votes_down = int(counts.get("down") or 0)
+    rating_score = votes_up - votes_down
+    Comun.objects.filter(id=comun_id).update(
+        votes_up=votes_up,
+        votes_down=votes_down,
+        rating_score=rating_score,
+    )
+    return votes_up, votes_down, rating_score
+
+
+def _serialize_comun_rating(
+    comun: Comun,
+    *,
+    current_user: User | None = None,
+    user_vote: int | None = None,
+) -> dict:
+    if user_vote is None and current_user:
+        user_vote = int(
+            ComunVote.objects.filter(comun_id=comun.id, user_id=current_user.id)
+            .values_list("value", flat=True)
+            .first()
+            or 0
+        )
+    return {
+        "score": int(getattr(comun, "rating_score", 0) or 0),
+        "upvotes": int(getattr(comun, "votes_up", 0) or 0),
+        "downvotes": int(getattr(comun, "votes_down", 0) or 0),
+        "user_vote": int(user_vote or 0),
+    }
+
+
 def _parse_post_reference_to_id(value: object) -> int | None:
     if value is None:
         return None
@@ -5268,6 +5306,7 @@ def _serialize_comun(
         "logo_url": comun.logo_url,
         "product_description": comun.product_description,
         "target_audience": comun.target_audience,
+        "rating": _serialize_comun_rating(comun, current_user=current_user),
         "hide_from_home": bool(comun.hide_from_home),
         "hide_from_fresh": bool(comun.hide_from_fresh),
         "is_active": comun.is_active,
@@ -5816,6 +5855,75 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
                 include_options=True,
                 include_activity=True,
             ),
+        }
+    )
+
+
+@csrf_exempt
+def comun_vote(request: HttpRequest, slug: str) -> HttpResponse:
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    current_user = _get_user_from_request(request)
+    if not current_user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+
+    try:
+        comun = (
+            Comun.objects.filter(slug=slug)
+            .select_related("creator")
+            .get()
+        )
+    except Comun.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "comun not found"}, status=404)
+
+    if not comun.is_active and not _comun_is_moderator(current_user, comun):
+        return JsonResponse({"ok": False, "error": "comun not found"}, status=404)
+
+    vote_value = 1
+    if request.body:
+        try:
+            payload = json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            payload = {}
+        if isinstance(payload, dict):
+            try:
+                vote_value = int(payload.get("value", 1))
+            except (TypeError, ValueError):
+                vote_value = 99
+
+    if vote_value not in (-1, 0, 1):
+        return JsonResponse({"ok": False, "error": "invalid vote value"}, status=400)
+
+    new_vote = 0
+    with transaction.atomic():
+        existing = (
+            ComunVote.objects.select_for_update()
+            .filter(comun_id=comun.id, user_id=current_user.id)
+            .first()
+        )
+        if existing:
+            if vote_value == 0 or existing.value == vote_value:
+                existing.delete()
+                new_vote = 0
+            else:
+                existing.value = vote_value
+                existing.save(update_fields=["value", "updated_at"])
+                new_vote = vote_value
+        elif vote_value != 0:
+            ComunVote.objects.create(comun_id=comun.id, user_id=current_user.id, value=vote_value)
+            new_vote = vote_value
+
+        votes_up, votes_down, rating_score = _recalculate_comun_rating(comun.id)
+
+    comun.votes_up = votes_up
+    comun.votes_down = votes_down
+    comun.rating_score = rating_score
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "rating": _serialize_comun_rating(comun, current_user=current_user, user_vote=new_vote),
         }
     )
 

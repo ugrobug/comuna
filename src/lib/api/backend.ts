@@ -93,6 +93,10 @@ export const buildComunUrl = (slug: string): string => {
   return `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/`
 }
 
+export const buildComunVoteUrl = (slug: string): string => {
+  return `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/vote/`
+}
+
 export const buildComunPostsUrl = (
   slug: string,
   options?: {
@@ -349,6 +353,13 @@ export type BackendComunActivity = {
   points?: Record<string, number>
 }
 
+export type BackendComunRating = {
+  score: number
+  upvotes: number
+  downvotes: number
+  user_vote?: number
+}
+
 export type BackendComun = {
   id: number
   name: string
@@ -357,6 +368,7 @@ export type BackendComun = {
   logo_url?: string | null
   product_description?: string | null
   target_audience?: string | null
+  rating?: BackendComunRating
   hide_from_home?: boolean
   hide_from_fresh?: boolean
   is_active?: boolean
