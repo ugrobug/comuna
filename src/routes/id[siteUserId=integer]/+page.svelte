@@ -10,6 +10,7 @@
     buildPublicUserProfileUrl,
     type BackendPost,
     type BackendPublicSiteUser,
+    type BackendPublicSiteUserAuthor,
     type BackendPublicSiteUserComun,
   } from '$lib/api/backend'
   import { env } from '$env/dynamic/public'
@@ -20,6 +21,7 @@
 
   const pageSize = data.pageSize ?? 10
   let profile: BackendPublicSiteUser | null = data.profile ?? null
+  let authors: BackendPublicSiteUserAuthor[] = data.authors ?? []
   let comuns: BackendPublicSiteUserComun[] = data.comuns ?? []
   let posts: BackendPost[] = data.posts ?? []
   let totalPosts = data.totalPosts ?? 0
@@ -27,6 +29,7 @@
   let loadingMore = false
   let lastPostsRef = data.posts
   let lastProfileRef = data.profile
+  let lastAuthorsRef = data.authors
   let lastComunsRef = data.comuns
   const scrollThreshold = 400
   let scrollRaf: number | null = null
@@ -41,6 +44,10 @@
   $: if (data?.profile && data.profile !== lastProfileRef) {
     lastProfileRef = data.profile
     profile = data.profile ?? null
+  }
+  $: if (data?.authors && data.authors !== lastAuthorsRef) {
+    lastAuthorsRef = data.authors
+    authors = data.authors ?? []
   }
   $: if (data?.comuns && data.comuns !== lastComunsRef) {
     lastComunsRef = data.comuns
@@ -107,6 +114,7 @@
       }
       const payload = await response.json()
       if (payload?.user) profile = payload.user
+      if (Array.isArray(payload?.authors)) authors = payload.authors
       if (Array.isArray(payload?.comuns)) comuns = payload.comuns
       if (typeof payload?.total_posts === 'number') totalPosts = payload.total_posts
       const nextPosts = (payload?.posts ?? []) as BackendPost[]
@@ -195,6 +203,54 @@
         </div>
       </div>
     </div>
+  </section>
+
+  <section class="flex flex-col gap-3">
+    <div class="text-lg font-semibold text-slate-900 dark:text-zinc-100">Каналы</div>
+    {#if authors.length}
+      <div class="grid gap-3 sm:grid-cols-2">
+        {#each authors as author}
+          <a
+            href={`/${author.username}`}
+            class="group rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-4 hover:border-slate-300 dark:hover:border-zinc-700 transition-colors"
+          >
+            <div class="flex items-start gap-3">
+              <div class="w-12 h-12 rounded-xl overflow-hidden border border-slate-200 dark:border-zinc-800 bg-slate-100 dark:bg-zinc-800 shrink-0">
+                {#if author.avatar_url}
+                  <img src={author.avatar_url} alt={author.title || author.username} class="w-full h-full object-cover" />
+                {:else}
+                  <div class="w-full h-full grid place-items-center text-sm font-semibold text-slate-500 dark:text-zinc-400">
+                    {initials(author.title || author.username)}
+                  </div>
+                {/if}
+              </div>
+              <div class="min-w-0 flex-1">
+                <div class="font-semibold text-slate-900 dark:text-zinc-100 truncate">
+                  {author.title || `@${author.username}`}
+                </div>
+                <div class="mt-0.5 text-xs text-slate-500 dark:text-zinc-400 truncate">
+                  @{author.username}
+                </div>
+                {#if author.rubric}
+                  <div class="mt-1 text-xs text-slate-500 dark:text-zinc-400 truncate">
+                    Рубрика: {author.rubric}
+                  </div>
+                {/if}
+                {#if author.description}
+                  <div class="mt-1 text-sm text-slate-600 dark:text-zinc-300 line-clamp-2">
+                    {author.description}
+                  </div>
+                {/if}
+              </div>
+            </div>
+          </a>
+        {/each}
+      </div>
+    {:else}
+      <div class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-4 text-sm text-slate-500 dark:text-zinc-400">
+        Пока нет привязанных каналов.
+      </div>
+    {/if}
   </section>
 
   <section class="flex flex-col gap-3">

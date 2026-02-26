@@ -23,6 +23,7 @@ export const load = async ({ params, fetch, url }) => {
   return {
     pageSize: PAGE_SIZE,
     profile: payload?.user ?? null,
+    authors: payload?.authors ?? [],
     comuns: payload?.comuns ?? [],
     posts: payload?.posts ?? [],
     totalPosts: payload?.total_posts ?? 0,

@@ -409,6 +409,17 @@ export type BackendPublicSiteUserComun = {
   product_tag?: { id: number; name: string; lemma?: string | null } | null
 }
 
+export type BackendPublicSiteUserAuthor = {
+  id: number
+  username: string
+  title?: string | null
+  channel_url?: string | null
+  avatar_url?: string | null
+  description?: string | null
+  rubric?: string | null
+  rubric_slug?: string | null
+}
+
 export type BackendPollOption = {
   index: number
   text: string

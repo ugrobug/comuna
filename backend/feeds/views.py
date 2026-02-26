@@ -455,6 +455,21 @@ def _serialize_public_site_user_profile(
     }
 
 
+def _serialize_public_site_user_author_card(request: HttpRequest, link: AuthorAdmin) -> dict:
+    author = link.author
+    rubric = author.rubric
+    return {
+        "id": author.id,
+        "username": author.username,
+        "title": (author.title or "").strip() or None,
+        "channel_url": (author.invite_url or author.channel_url or "").strip() or None,
+        "avatar_url": _author_avatar_url(request, author),
+        "description": (author.description or "").strip() or None,
+        "rubric": rubric.name if rubric else None,
+        "rubric_slug": rubric.slug if rubric else None,
+    }
+
+
 def _serialize_comun_profile_card(
     request: HttpRequest,
     comun: Comun,
@@ -2870,6 +2885,11 @@ def public_user_profile(request: HttpRequest, user_id: int) -> HttpResponse:
                 role=role,
             )
         )
+    author_cards = [
+        _serialize_public_site_user_author_card(request, link)
+        for link in author_links
+        if getattr(link, "author", None) is not None
+    ]
 
     posts_payload = [
         _serialize_backend_post_card(
@@ -2892,6 +2912,7 @@ def public_user_profile(request: HttpRequest, user_id: int) -> HttpResponse:
                 posts_count=total_posts,
                 comuns_count=total_comuns,
             ),
+            "authors": author_cards,
             "comuns": comun_cards,
             "posts": posts_payload,
             "total_posts": total_posts,

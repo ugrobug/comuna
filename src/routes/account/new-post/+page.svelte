@@ -45,7 +45,7 @@
     const items: PublishIdentityOption[] = [
       {
         value: SITE_AUTHOR_CHOICE,
-        label: `${siteLabelBase} (аккаунт сайта)`,
+        label: siteLabelBase,
         kind: 'site',
         username: $siteUser.username,
       },
