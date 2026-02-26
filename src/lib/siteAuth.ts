@@ -46,6 +46,36 @@ export type SiteUserPost = {
   }
 }
 
+export type SiteNotificationItem = {
+  id: number
+  event_key: string
+  title: string
+  message: string
+  link_url?: string | null
+  is_read: boolean
+  read_at?: string | null
+  created_at: string
+}
+
+export type SiteNotificationEventSetting = {
+  key: string
+  title: string
+  description?: string
+  site_enabled: boolean
+  telegram_enabled: boolean
+  default_site_enabled: boolean
+  default_telegram_enabled: boolean
+}
+
+export type SiteNotificationSettingsResponse = {
+  events: SiteNotificationEventSetting[]
+  telegram: {
+    linked: boolean
+    username?: string | null
+    first_name?: string | null
+  }
+}
+
 const TOKEN_KEY = 'comuna.site.token'
 
 const initialToken = browser ? localStorage.getItem(TOKEN_KEY) : null
@@ -402,6 +432,145 @@ export const uploadSiteImage = async (image: File) => {
     throw new Error(data?.error || 'Не удалось загрузить изображение')
   }
   return data.url as string
+}
+
+export const fetchSiteNotifications = async (limit = 10, unreadOnly = false) => {
+  const token = get(siteToken)
+  if (!token) {
+    throw new Error('Нужна авторизация')
+  }
+
+  const params = new URLSearchParams({ limit: String(limit) })
+  if (unreadOnly) {
+    params.set('unread_only', '1')
+  }
+
+  const response = await fetch(buildUrl(`/api/auth/notifications/?${params.toString()}`), {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+
+  const data = await response.json()
+  if (!response.ok) {
+    throw new Error(data?.error || 'Не удалось загрузить уведомления')
+  }
+
+  return {
+    items: (data?.items || []) as SiteNotificationItem[],
+    unread_count: Number(data?.unread_count || 0),
+  }
+}
+
+export const markSiteNotificationRead = async (notificationId: number) => {
+  const token = get(siteToken)
+  if (!token) {
+    throw new Error('Нужна авторизация')
+  }
+
+  const response = await fetch(buildUrl(`/api/auth/notifications/${notificationId}/read/`), {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+
+  const data = await response.json()
+  if (!response.ok) {
+    throw new Error(data?.error || 'Не удалось отметить уведомление')
+  }
+
+  return {
+    item: data?.item as SiteNotificationItem,
+    unread_count: Number(data?.unread_count || 0),
+  }
+}
+
+export const markAllSiteNotificationsRead = async () => {
+  const token = get(siteToken)
+  if (!token) {
+    throw new Error('Нужна авторизация')
+  }
+
+  const response = await fetch(buildUrl('/api/auth/notifications/read-all/'), {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+
+  const data = await response.json()
+  if (!response.ok) {
+    throw new Error(data?.error || 'Не удалось отметить все уведомления')
+  }
+
+  return {
+    updated: Number(data?.updated || 0),
+    unread_count: Number(data?.unread_count || 0),
+  }
+}
+
+export const fetchSiteNotificationSettings = async (): Promise<SiteNotificationSettingsResponse> => {
+  const token = get(siteToken)
+  if (!token) {
+    throw new Error('Нужна авторизация')
+  }
+
+  const response = await fetch(buildUrl('/api/auth/notifications/settings/'), {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+
+  const data = await response.json()
+  if (!response.ok) {
+    throw new Error(data?.error || 'Не удалось загрузить настройки оповещений')
+  }
+
+  return {
+    events: (data?.events || []) as SiteNotificationEventSetting[],
+    telegram: {
+      linked: Boolean(data?.telegram?.linked),
+      username: data?.telegram?.username ?? '',
+      first_name: data?.telegram?.first_name ?? '',
+    },
+  }
+}
+
+export const updateSiteNotificationSettings = async (
+  events: Array<{
+    key: string
+    site_enabled: boolean
+    telegram_enabled: boolean
+  }>
+): Promise<SiteNotificationSettingsResponse> => {
+  const token = get(siteToken)
+  if (!token) {
+    throw new Error('Нужна авторизация')
+  }
+
+  const response = await fetch(buildUrl('/api/auth/notifications/settings/'), {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ events }),
+  })
+
+  const data = await response.json()
+  if (!response.ok) {
+    throw new Error(data?.error || 'Не удалось сохранить настройки оповещений')
+  }
+
+  return {
+    events: (data?.events || []) as SiteNotificationEventSetting[],
+    telegram: {
+      linked: Boolean(data?.telegram?.linked),
+      username: data?.telegram?.username ?? '',
+      first_name: data?.telegram?.first_name ?? '',
+    },
+  }
 }
 
 if (browser && initialToken) {

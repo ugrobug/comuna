@@ -19,9 +19,12 @@
   import { buildRubricsUrl, buildTagsListUrl } from '$lib/api/backend'
   import { normalizeTag } from '$lib/tags'
   import {
+    fetchSiteNotificationSettings,
     refreshSiteUser,
     siteToken,
     siteUser,
+    type SiteNotificationEventSetting,
+    updateSiteNotificationSettings,
     updateSiteProfile,
     uploadSiteImage,
   } from '$lib/siteAuth'
@@ -39,6 +42,16 @@
   let siteProfileAvatarUploading = false
   let siteProfileFileInput: HTMLInputElement | null = null
   let lastSiteUserSnapshot: string | null = null
+  let notificationEvents: SiteNotificationEventSetting[] = []
+  let notificationSettingsLoading = false
+  let notificationSettingsSaving = false
+  let notificationSettingsLoaded = false
+  let notificationSettingsLoadAttempted = false
+  let notificationTelegramLinked = false
+  let notificationTelegramUsername = ''
+  let notificationTelegramFirstName = ''
+  let notificationSettingsSnapshot = '[]'
+  let notificationSettingsDirty = false
   $: myFeedAuthors = $userSettings.myFeedAuthors ?? []
   $: hiddenAuthors = $userSettings.hiddenAuthors ?? []
   $: blacklistedTags = Object.entries($userSettings.tagRules ?? {})
@@ -163,6 +176,14 @@
   }
 
   $: syncSiteProfileForm()
+  $: notificationSettingsDirty =
+    JSON.stringify(
+      notificationEvents.map((event) => ({
+        key: event.key,
+        site_enabled: event.site_enabled,
+        telegram_enabled: event.telegram_enabled,
+      }))
+    ) !== notificationSettingsSnapshot
 
   const pickSiteProfileAvatar = () => {
     siteProfileFileInput?.click()
@@ -210,16 +231,138 @@
     }
   }
 
+  const resetNotificationSettingsState = () => {
+    notificationEvents = []
+    notificationSettingsLoading = false
+    notificationSettingsSaving = false
+    notificationSettingsLoaded = false
+    notificationSettingsLoadAttempted = false
+    notificationTelegramLinked = false
+    notificationTelegramUsername = ''
+    notificationTelegramFirstName = ''
+    notificationSettingsSnapshot = '[]'
+  }
+
+  const loadSiteNotificationSettings = async () => {
+    if (notificationSettingsLoading || !$siteToken) return
+    notificationSettingsLoadAttempted = true
+    notificationSettingsLoading = true
+    try {
+      const data = await fetchSiteNotificationSettings()
+      notificationEvents = data.events ?? []
+      notificationTelegramLinked = Boolean(data.telegram?.linked)
+      notificationTelegramUsername = data.telegram?.username ?? ''
+      notificationTelegramFirstName = data.telegram?.first_name ?? ''
+      notificationSettingsSnapshot = JSON.stringify(
+        (data.events ?? []).map((event) => ({
+          key: event.key,
+          site_enabled: event.site_enabled,
+          telegram_enabled: event.telegram_enabled,
+        }))
+      )
+      notificationSettingsLoaded = true
+    } catch (error) {
+      toast({
+        content:
+          (error as Error)?.message ?? 'Не удалось загрузить настройки оповещений',
+        type: 'error',
+      })
+    } finally {
+      notificationSettingsLoading = false
+    }
+  }
+
+  const toggleNotificationEventChannel = (
+    index: number,
+    channel: 'site' | 'telegram',
+    value: boolean
+  ) => {
+    const next = [...notificationEvents]
+    const item = next[index]
+    if (!item) return
+    next[index] = {
+      ...item,
+      site_enabled: channel === 'site' ? value : item.site_enabled,
+      telegram_enabled: channel === 'telegram' ? value : item.telegram_enabled,
+    }
+    notificationEvents = next
+  }
+
+  const onNotificationCheckboxChange = (
+    event: Event,
+    index: number,
+    channel: 'site' | 'telegram'
+  ) => {
+    const target = event.currentTarget as HTMLInputElement | null
+    toggleNotificationEventChannel(index, channel, Boolean(target?.checked))
+  }
+
+  const saveNotificationSettings = async () => {
+    if (!$siteUser) {
+      toast({ content: 'Нужна авторизация', type: 'error' })
+      return
+    }
+    notificationSettingsSaving = true
+    try {
+      const data = await updateSiteNotificationSettings(
+        notificationEvents.map((event) => ({
+          key: event.key,
+          site_enabled: event.site_enabled,
+          telegram_enabled: event.telegram_enabled,
+        }))
+      )
+      notificationEvents = data.events ?? []
+      notificationTelegramLinked = Boolean(data.telegram?.linked)
+      notificationTelegramUsername = data.telegram?.username ?? ''
+      notificationTelegramFirstName = data.telegram?.first_name ?? ''
+      notificationSettingsSnapshot = JSON.stringify(
+        (data.events ?? []).map((event) => ({
+          key: event.key,
+          site_enabled: event.site_enabled,
+          telegram_enabled: event.telegram_enabled,
+        }))
+      )
+      toast({ content: 'Настройки оповещений сохранены', type: 'success' })
+    } catch (error) {
+      toast({
+        content:
+          (error as Error)?.message ?? 'Не удалось сохранить настройки оповещений',
+        type: 'error',
+      })
+    } finally {
+      notificationSettingsSaving = false
+    }
+  }
+
   onMount(() => {
     loadMyFeedRubrics()
     loadTagLemmas()
     if ($siteToken) {
       refreshSiteUser().catch(() => {})
+      loadSiteNotificationSettings().catch(() => {})
     }
     if ($colorScheme === 'system') {
       $colorScheme = inDarkColorScheme() ? 'dark' : 'light'
     }
   })
+
+  $: if (
+    $siteToken &&
+    !notificationSettingsLoaded &&
+    !notificationSettingsLoading &&
+    !notificationSettingsLoadAttempted
+  ) {
+    loadSiteNotificationSettings().catch(() => {})
+  }
+
+  $: if (
+    !$siteToken &&
+    (notificationSettingsLoaded ||
+      notificationSettingsLoadAttempted ||
+      notificationEvents.length > 0)
+  ) {
+    resetNotificationSettingsState()
+  }
 
 </script>
 
@@ -300,6 +443,12 @@
 </Header>
 
 <div class="flex items-center gap-2 flex-wrap w-full my-5">
+  {#if $siteUser}
+    <Button href="#notifications" size="sm" class="text-xs" rounding="pill">
+      <Icon src={ArrowTopRightOnSquare} size="14" micro />
+      Оповещения
+    </Button>
+  {/if}
   <Button href="#app" size="sm" class="text-xs" rounding="pill">
     <Icon src={ArrowTopRightOnSquare} size="14" micro />
     {$t('settings.app.title')}
@@ -395,6 +544,101 @@
             </div>
           </div>
         </div>
+      </div>
+    </Section>
+  {/if}
+  {#if $siteUser}
+    <Section id="notifications" title="Оповещения">
+      <div class="flex flex-col gap-4">
+        <div class="text-sm text-slate-500 dark:text-zinc-400">
+          Выберите, для каких событий показывать уведомления в колокольчике на сайте и
+          отправлять сообщения в Telegram-бот.
+        </div>
+
+        <div class="rounded-xl border border-slate-200 dark:border-zinc-800 p-3 bg-slate-50/60 dark:bg-zinc-900/40">
+          <div class="text-sm font-medium text-slate-900 dark:text-zinc-100">
+            Telegram: {notificationTelegramLinked ? 'подключен' : 'не подключен'}
+          </div>
+          <div class="text-xs text-slate-500 dark:text-zinc-400 mt-1">
+            {#if notificationTelegramLinked}
+              {#if notificationTelegramUsername}
+                Аккаунт: @{notificationTelegramUsername}
+              {:else if notificationTelegramFirstName}
+                Аккаунт: {notificationTelegramFirstName}
+              {:else}
+                Telegram-аккаунт привязан к профилю.
+              {/if}
+            {:else}
+              Привяжите Telegram через вход/авторизацию Telegram, чтобы бот мог присылать оповещения.
+            {/if}
+          </div>
+        </div>
+
+        {#if notificationSettingsLoading && !notificationEvents.length}
+          <div class="text-sm text-slate-500 dark:text-zinc-400">
+            Загружаем настройки оповещений...
+          </div>
+        {:else if notificationEvents.length}
+          <div class="overflow-x-auto rounded-xl border border-slate-200 dark:border-zinc-800">
+            <table class="w-full min-w-[680px] text-sm">
+              <thead class="bg-slate-50 dark:bg-zinc-900/70">
+                <tr class="text-left">
+                  <th class="px-4 py-3 font-medium text-slate-700 dark:text-zinc-200">Событие</th>
+                  <th class="px-4 py-3 font-medium text-center text-slate-700 dark:text-zinc-200 w-28">На сайте</th>
+                  <th class="px-4 py-3 font-medium text-center text-slate-700 dark:text-zinc-200 w-28">Telegram</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-200 dark:divide-zinc-800">
+                {#each notificationEvents as event, index}
+                  <tr class="align-top">
+                    <td class="px-4 py-3">
+                      <div class="font-medium text-slate-900 dark:text-zinc-100">
+                        {event.title}
+                      </div>
+                      {#if event.description}
+                        <div class="mt-1 text-xs text-slate-500 dark:text-zinc-400">
+                          {event.description}
+                        </div>
+                      {/if}
+                    </td>
+                    <td class="px-4 py-3 text-center">
+                      <input
+                        type="checkbox"
+                        class="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-900"
+                        checked={event.site_enabled}
+                        on:change={(e) => onNotificationCheckboxChange(e, index, 'site')}
+                      />
+                    </td>
+                    <td class="px-4 py-3 text-center">
+                      <input
+                        type="checkbox"
+                        class="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-900"
+                        checked={event.telegram_enabled}
+                        on:change={(e) => onNotificationCheckboxChange(e, index, 'telegram')}
+                      />
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2">
+            <Button
+              on:click={saveNotificationSettings}
+              disabled={notificationSettingsSaving || !notificationSettingsDirty}
+            >
+              {notificationSettingsSaving ? 'Сохраняем...' : 'Сохранить настройки'}
+            </Button>
+            <div class="text-xs text-slate-500 dark:text-zinc-400">
+              Изменения применяются ко всем будущим уведомлениям.
+            </div>
+          </div>
+        {:else}
+          <div class="text-sm text-slate-500 dark:text-zinc-400">
+            Список событий уведомлений пока пуст.
+          </div>
+        {/if}
       </div>
     </Section>
   {/if}

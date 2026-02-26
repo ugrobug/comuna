@@ -12,6 +12,8 @@ from .models import (
     PostCommentLike,
     PostLike,
     Rubric,
+    SiteNotification,
+    SiteNotificationPreference,
     Tag,
     TagRelation,
     TagRelationType,
@@ -301,4 +303,30 @@ class AuthorAdminLinkAdmin(admin.ModelAdmin):
 class AuthorVerificationCodeAdmin(admin.ModelAdmin):
     list_display = ("user", "code", "used_at", "created_at")
     search_fields = ("user__username", "code")
+    raw_id_fields = ("user",)
+
+
+@admin.register(SiteNotificationPreference)
+class SiteNotificationPreferenceAdmin(admin.ModelAdmin):
+    list_display = ("user", "event_key", "site_enabled", "telegram_enabled", "updated_at")
+    list_filter = ("event_key", "site_enabled", "telegram_enabled")
+    search_fields = ("user__username", "event_key")
+    raw_id_fields = ("user",)
+
+
+@admin.register(SiteNotification)
+class SiteNotificationAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "user",
+        "event_key",
+        "title",
+        "is_site",
+        "is_telegram",
+        "read_at",
+        "telegram_sent_at",
+        "created_at",
+    )
+    list_filter = ("event_key", "is_site", "is_telegram")
+    search_fields = ("user__username", "title", "message", "event_key")
     raw_id_fields = ("user",)

@@ -5,6 +5,10 @@ from django.urls import path
 
 from feeds.views import (
     auth_me,
+    auth_notification_read,
+    auth_notification_settings,
+    auth_notifications,
+    auth_notifications_read_all,
     author_verification_code,
     author_posts,
     comment_detail,
@@ -103,6 +107,22 @@ urlpatterns = [
     path("api/auth/telegram/", telegram_auth, name="auth-telegram"),
     path("api/auth/vk/", vk_auth, name="auth-vk"),
     path("api/auth/me/", auth_me, name="auth-me"),
+    path("api/auth/notifications/", auth_notifications, name="auth-notifications"),
+    path(
+        "api/auth/notifications/settings/",
+        auth_notification_settings,
+        name="auth-notification-settings",
+    ),
+    path(
+        "api/auth/notifications/read-all/",
+        auth_notifications_read_all,
+        name="auth-notifications-read-all",
+    ),
+    path(
+        "api/auth/notifications/<int:notification_id>/read/",
+        auth_notification_read,
+        name="auth-notification-read",
+    ),
     path("api/site-users/<int:user_id>/profile/", public_user_profile, name="public-user-profile"),
     path("api/auth/verification-code/", author_verification_code, name="auth-verification-code"),
     path("api/auth/posts/", user_posts, name="auth-posts"),
