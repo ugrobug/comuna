@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import hmac
 import hashlib
+import logging
 import math
 import os
 import re
@@ -61,6 +62,7 @@ from .models import (
 from .telegram_media import download_telegram_file_by_path
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
 _BOT_ID: int | None = None
 _TOKEN_SIGNER = TimestampSigner(salt="comuna-auth")
@@ -5270,7 +5272,15 @@ def _serialize_comun(
         "can_manage_moderators": _comun_can_manage_moderators(current_user, comun),
     }
     if include_activity:
-        payload["activity"] = _serialize_comun_activity(request, comun)
+        try:
+            payload["activity"] = _serialize_comun_activity(request, comun)
+        except Exception:
+            logger.exception("Failed to serialize comun activity", extra={"comun_id": comun.id})
+            payload["activity"] = {
+                "participants_count": 0,
+                "top_members": [],
+                "points": dict(_COMUN_ACTIVITY_POINTS),
+            }
     if include_manage_fields:
         payload["category_ids"] = [category.id for category in categories]
         payload["moderator_ids"] = [moderator.id for moderator in moderators]
