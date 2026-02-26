@@ -56,6 +56,8 @@
   type ComunUserOption = { id: number; username: string; display_name?: string | null }
   let settingsTagOptions: ComunTagOption[] = []
   let settingsUserOptions: ComunUserOption[] = []
+  const COMUN_SUGGESTIONS_CATEGORY_SLUGS = new Set(['feature-ideas', 'suggestions'])
+  const COMUN_BACKLOG_CATEGORY_SLUG = 'backlog'
 
   $: if (data?.posts && data.posts !== lastPostsRef) {
     lastPostsRef = data.posts
@@ -88,6 +90,8 @@
   $: welcomePostView = comun?.welcome_post ? backendPostToPostView(comun.welcome_post) : null
   $: comunTopMembers = comun?.activity?.top_members ?? []
   $: comunParticipantsCount = comun?.activity?.participants_count ?? comunTopMembers.length
+  $: comunBacklogCategory =
+    (comun?.categories ?? []).find((category) => category.slug === COMUN_BACKLOG_CATEGORY_SLUG) ?? null
   $: myFeedComunSlugs = ($userSettings.myFeedComuns ?? []).map((slug) => slug.trim()).filter(Boolean)
   $: currentComunSlug = (comun?.slug ?? '').trim()
   $: isSubscribedToComun = !!currentComunSlug && myFeedComunSlugs.includes(currentComunSlug)
@@ -154,6 +158,17 @@
     const username = (user?.username ?? '').trim()
     return username ? `@${username}` : 'Пользователь'
   }
+
+  const isSuggestionsComunCategory = (category?: BackendComunCategory | null) =>
+    Boolean(category?.slug && COMUN_SUGGESTIONS_CATEGORY_SLUGS.has(category.slug))
+
+  const canMovePostToBacklog = (post: BackendPost) =>
+    Boolean(
+      isModerator() &&
+        comunBacklogCategory?.id &&
+        isSuggestionsComunCategory(post.comun_category) &&
+        post.comun_category_id !== comunBacklogCategory.id
+    )
 
   const toggleComunInMyFeed = async () => {
     const slug = (comun?.slug ?? '').trim()
@@ -530,7 +545,7 @@
   }
 
   const updatePostCategory = async (postId: number, categoryId: number | null) => {
-    if (!comun?.slug || !isModerator()) return
+    if (!comun?.slug || !isModerator()) return false
     categorySavingPostIds = new Set([...categorySavingPostIds, postId])
     try {
       const response = await fetch(buildComunPostCategoryUrl(comun.slug, postId), {
@@ -551,8 +566,10 @@
           comun_category: assignment?.category ?? null,
         }
       })
+      return true
     } catch (error) {
       toast({ content: error instanceof Error ? error.message : 'Ошибка обновления категории', type: 'error' })
+      return false
     } finally {
       const next = new Set(categorySavingPostIds)
       next.delete(postId)
@@ -565,6 +582,14 @@
     if (!target) return
     const value = target.value ? Number(target.value) : null
     void updatePostCategory(postId, value)
+  }
+
+  const movePostToBacklog = async (postId: number) => {
+    if (!comunBacklogCategory?.id) return
+    const updated = await updatePostCategory(postId, comunBacklogCategory.id)
+    if (updated) {
+      toast({ content: 'Пост добавлен в Беклог', type: 'success' })
+    }
   }
 
   $: wantsSettingsOpenFromUrl = $page.url.searchParams.get('settings') === '1'
@@ -829,6 +854,17 @@
                 </div>
               </div>
               <div class="flex flex-wrap gap-2">
+                {#if canMovePostToBacklog(backendPost)}
+                  <Button
+                    color="ghost"
+                    size="sm"
+                    on:click={() => movePostToBacklog(backendPost.id)}
+                    disabled={categorySavingPostIds.has(backendPost.id)}
+                    title="Перевести пост из Предложений в Беклог"
+                  >
+                    В Беклог
+                  </Button>
+                {/if}
                 <Button
                   color="ghost"
                   size="sm"
