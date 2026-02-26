@@ -432,14 +432,6 @@ class Comun(models.Model):
     logo_url = models.URLField(max_length=500, blank=True, verbose_name="Логотип (URL)")
     product_description = models.TextField(blank=True, verbose_name="Описание продукта")
     target_audience = models.TextField(blank=True, verbose_name="Целевая аудитория")
-    include_in_public_feeds = models.BooleanField(
-        default=True,
-        verbose_name="Показывать посты комуны в Горячем и Свежее",
-        help_text=(
-            "Если выключено, посты, созданные внутри этой комуны, не попадут в "
-            "Горячее и Свежее (останутся в ленте комуны и персональных лентах)."
-        ),
-    )
     is_active = models.BooleanField(default=True)
     sort_order = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)

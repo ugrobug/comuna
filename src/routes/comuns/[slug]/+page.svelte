@@ -137,7 +137,6 @@
       logo_url: (value?.logo_url ?? '').trim(),
       product_description: (value?.product_description ?? '').trim(),
       target_audience: (value?.target_audience ?? '').trim(),
-      include_in_public_feeds: value?.include_in_public_feeds ?? true,
       product_tag_id: value?.product_tag_id ?? value?.product_tag?.id ?? null,
       category_ids: comunCategoryIds(value),
       moderator_ids: comunModeratorIds(value),
@@ -367,15 +366,6 @@
     settingsDraft = { ...settingsDraft, product_tag_id: null, product_tag: null }
   }
 
-  const onIncludeInPublicFeedsChange = (event: Event) => {
-    if (!settingsDraft) return
-    const input = event.currentTarget as HTMLInputElement | null
-    settingsDraft = {
-      ...settingsDraft,
-      include_in_public_feeds: input?.checked ?? true,
-    }
-  }
-
   const normalizeTagInput = (value: string) =>
     value.trim().replace(/^#+/, '').replace(/\s+/g, ' ').trim()
 
@@ -472,9 +462,6 @@
           logo_url: settingsDraft.logo_url ?? '',
           product_description: settingsDraft.product_description ?? '',
           target_audience: settingsDraft.target_audience ?? '',
-          include_in_public_feeds: canManageComunModerators()
-            ? (settingsDraft.include_in_public_feeds ?? true)
-            : undefined,
           moderator_ids: canManageComunModerators() ? comunModeratorIds(settingsDraft) : undefined,
           product_tag_id: settingsDraft.product_tag_id ?? null,
           category_ids: settingsDraft.category_ids ?? (settingsDraft.categories ?? []).map((category) => category.id),
@@ -688,10 +675,8 @@
               Сайт
             </a>
           {/if}
-          {#if isModerator() && comun?.slug}
-            <Button color="ghost" on:click={() => goto(`/comuns/${encodeURIComponent(comun.slug)}/settings`)}>
-              Настройки комуны
-            </Button>
+          {#if isModerator()}
+            <Button color="ghost" on:click={openSettings}>Настройки комуны</Button>
           {/if}
         </div>
       </div>
@@ -944,25 +929,6 @@
           <span class="text-sm text-slate-700 dark:text-zinc-300">Целевая аудитория</span>
           <textarea bind:value={settingsDraft.target_audience} rows="2" class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"></textarea>
         </label>
-
-        {#if canManageComunModerators()}
-          <label class="rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-3 flex items-start gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              class="mt-1"
-              checked={settingsDraft.include_in_public_feeds ?? true}
-              on:change={onIncludeInPublicFeedsChange}
-            />
-            <span class="min-w-0">
-              <span class="block text-sm font-medium text-slate-900 dark:text-zinc-100">
-                Показывать посты этой комуны в Горячем и Свежее
-              </span>
-              <span class="block text-xs text-slate-500 dark:text-zinc-400">
-                Если выключить, посты, созданные внутри комуны, останутся только в ленте комуны и персональных лентах пользователей.
-              </span>
-            </span>
-          </label>
-        {/if}
 
         {#if canManageComunModerators()}
           <div class="flex flex-col gap-2">
