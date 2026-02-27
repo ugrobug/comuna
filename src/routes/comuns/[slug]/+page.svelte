@@ -24,6 +24,7 @@
   import { refreshSiteUser, siteToken, siteUser, uploadSiteImage } from '$lib/siteAuth'
   import { env } from '$env/dynamic/public'
   import { userSettings } from '$lib/settings'
+  import { deserializeEditorModel } from '$lib/util'
 
   export let data
 
@@ -63,7 +64,6 @@
   const COMUN_BACKLOG_CATEGORY_SLUG = 'backlog'
   const ROADMAP_PREVIEW_LIMIT = 4
   const ROADMAP_PREVIEW_FETCH_LIMIT = 8
-  const SHOW_INLINE_ROADMAP_ON_COMUN_PAGE = false
 
   type ComunCategoryCount = {
     category_id?: number | null
@@ -441,8 +441,67 @@
       .replace(/\s+/g, ' ')
       .trim()
 
+  const looksLikeSerializedRoadmapContent = (value?: string | null) => {
+    const trimmed = (value ?? '').trim()
+    if (!trimmed) return false
+    if (trimmed.startsWith('{') && trimmed.includes('"blocks"')) return true
+    return /^eyJ[0-9A-Za-z+/=]{20,}$/.test(trimmed)
+  }
+
+  const collectRoadmapBlockText = (block: any) => {
+    const data = block?.data ?? {}
+    const chunks: string[] = []
+    const pushChunk = (value: unknown) => {
+      if (typeof value !== 'string') return
+      const normalized = stripRoadmapHtml(value)
+      if (normalized) chunks.push(normalized)
+    }
+
+    pushChunk(data.text)
+    pushChunk(data.caption)
+    pushChunk(data.title)
+    pushChunk(data.code)
+    pushChunk(data.alt)
+
+    if (Array.isArray(data.items)) {
+      for (const item of data.items) {
+        if (typeof item === 'string') {
+          pushChunk(item)
+          continue
+        }
+        if (item && typeof item === 'object') {
+          pushChunk((item as { text?: string }).text)
+        }
+      }
+    }
+
+    if (Array.isArray(data.content)) {
+      for (const row of data.content) {
+        if (!Array.isArray(row)) continue
+        for (const cell of row) {
+          pushChunk(typeof cell === 'string' ? cell : '')
+        }
+      }
+    }
+
+    return chunks
+  }
+
+  const extractRoadmapTextFromSerializedContent = (value?: string | null) => {
+    if (!looksLikeSerializedRoadmapContent(value)) return ''
+    const parsed = deserializeEditorModel((value ?? '').trim())
+    const blocks = Array.isArray(parsed?.blocks) ? parsed.blocks : []
+    const chunks: string[] = []
+    for (const block of blocks) {
+      chunks.push(...collectRoadmapBlockText(block))
+    }
+    return chunks.join(' ').trim()
+  }
+
   const roadmapSnippet = (post: BackendPost, maxLength = 150) => {
-    const text = stripRoadmapHtml(post.content)
+    const serializedText = extractRoadmapTextFromSerializedContent(post.content)
+    const text = serializedText || stripRoadmapHtml(post.content)
+    if (!serializedText && looksLikeSerializedRoadmapContent(post.content)) return ''
     if (!text) return ''
     if (text.length <= maxLength) return text
     return `${text.slice(0, maxLength - 1).trimEnd()}…`
@@ -570,9 +629,7 @@
   $: roadmapStageSlugSet = new Set(roadmapStages.map((stage) => stage.category.slug))
   $: roadmapHasBacklog = roadmapStages.some((stage) => stage.key === 'backlog')
   $: roadmapCanOpenModal = roadmapHasBacklog || roadmapStages.length >= 2
-  $: roadmapIsVisible = SHOW_INLINE_ROADMAP_ON_COMUN_PAGE && roadmapCanOpenModal
   $: roadmapModalVisible = publicRoadmapModalOpen && roadmapCanOpenModal
-  $: roadmapPreviewsVisible = roadmapIsVisible || roadmapModalVisible
   $: roadmapTrackedCount = roadmapStages.reduce((sum, stage) => sum + Math.max(stage.count, 0), 0)
   $: roadmapReleasedCount =
     roadmapStages.find((stage) => stage.key === 'released')?.count ?? 0
@@ -1060,7 +1117,7 @@
           uncategorizedPostsCount += 1
         }
       }
-      if (roadmapPreviewsVisible) {
+      if (roadmapCanOpenModal) {
         void loadRoadmapPreviews()
       }
       return true
@@ -1114,7 +1171,7 @@
     browser &&
     roadmapSignature &&
     roadmapSignature !== lastRoadmapPreviewSignature &&
-    roadmapPreviewsVisible
+    roadmapCanOpenModal
   ) {
     lastRoadmapPreviewSignature = roadmapSignature
     void loadRoadmapPreviews()
@@ -1431,14 +1488,9 @@
                     {formatRoadmapCount(stage.count)} карточек
                   </div>
                 </div>
-                <Button size="sm" color="ghost" on:click={() => void setCategoryFilter(stage.category.slug)}>
-                  Все
-                </Button>
               </div>
 
-              {#if preview.loading}
-                <div class="roadmap-lane-state">Загружаем превью…</div>
-              {:else if preview.error}
+              {#if preview.error}
                 <div class="roadmap-lane-state roadmap-lane-state--error">{preview.error}</div>
               {:else if preview.posts.length}
                 <div class="flex flex-col gap-2">
@@ -1464,7 +1516,7 @@
                     </a>
                   {/each}
                 </div>
-              {:else}
+              {:else if !preview.loading}
                 <div class="roadmap-lane-state">{stage.emptyState}</div>
               {/if}
             </section>
