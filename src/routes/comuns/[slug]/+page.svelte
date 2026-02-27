@@ -441,8 +441,11 @@
       .replace(/\s+/g, ' ')
       .trim()
 
+  const normalizeSerializedRoadmapCandidate = (value?: string | null) =>
+    (value ?? '').trim().replace(/^[-*•\s]+/, '').trim()
+
   const looksLikeSerializedRoadmapContent = (value?: string | null) => {
-    const trimmed = (value ?? '').trim()
+    const trimmed = normalizeSerializedRoadmapCandidate(value)
     if (!trimmed) return false
     if (trimmed.startsWith('{') && trimmed.includes('"blocks"')) return true
     return /^eyJ[0-9A-Za-z+/=]{20,}$/.test(trimmed)
@@ -489,7 +492,7 @@
 
   const extractRoadmapTextFromSerializedContent = (value?: string | null) => {
     if (!looksLikeSerializedRoadmapContent(value)) return ''
-    const parsed = deserializeEditorModel((value ?? '').trim())
+    const parsed = deserializeEditorModel(normalizeSerializedRoadmapCandidate(value))
     const blocks = Array.isArray(parsed?.blocks) ? parsed.blocks : []
     const chunks: string[] = []
     for (const block of blocks) {
