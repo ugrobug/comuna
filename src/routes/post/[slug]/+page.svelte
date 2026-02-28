@@ -49,7 +49,11 @@
   import VirtualFeed from '$lib/components/lemmy/post/feed/VirtualFeed.svelte'
   import PostFeed from '$lib/components/lemmy/post/feed/PostFeed.svelte'
   import { postFeed } from '$lib/lemmy/postfeed'
-  import { deserializeEditorModel } from '$lib/util'
+  import {
+    deserializeEditorModel,
+    buildOpenStreetMapEmbedUrl,
+    normalizeOpenStreetMapZoom,
+  } from '$lib/util'
   import { buildPostReadUrl } from '$lib/api/backend'
   import { siteToken } from '$lib/siteAuth'
 
@@ -299,6 +303,69 @@
     return match ? match[1].trim() : null;
   }
 
+  const renderMapBlock = (raw: any, anchorId = ''): string => {
+    const lat = Number(raw?.lat)
+    const lng = Number(raw?.lng)
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return ''
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return ''
+    const zoom = normalizeOpenStreetMapZoom(raw?.zoom, 14)
+    const src = buildOpenStreetMapEmbedUrl(lat, lng, zoom)
+
+    return `<div class="post-map"${anchorId}>
+      <iframe
+        class="post-map__frame"
+        src="${src}"
+        loading="lazy"
+        referrerpolicy="no-referrer-when-downgrade"
+        allowfullscreen
+        frameborder="0"
+        title="Карта OpenStreetMap"
+      ></iframe>
+      <div class="post-map__hint">Нажмите, чтобы открыть карту</div>
+    </div>`
+  }
+
+  const openMapModal = (source: string) => {
+    if (!browser || !source) return
+    if (document.querySelector('.post-map-modal')) return
+
+    const modal = document.createElement('div')
+    modal.className = 'post-map-modal'
+    modal.innerHTML = `
+      <div class="post-map-modal__backdrop"></div>
+      <div class="post-map-modal__content">
+        <iframe
+          class="post-map-modal__frame"
+          src="${source}"
+          loading="lazy"
+          referrerpolicy="no-referrer-when-downgrade"
+          allowfullscreen
+          frameborder="0"
+          title="Карта OpenStreetMap"
+        ></iframe>
+        <button type="button" class="post-map-modal__close" aria-label="Закрыть карту">✕</button>
+      </div>
+    `
+
+    const previousOverflow = document.body.style.overflow
+
+    const close = () => {
+      modal.remove()
+      document.body.style.overflow = previousOverflow
+      document.removeEventListener('keydown', onKeydown)
+    }
+
+    const onKeydown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') close()
+    }
+
+    modal.querySelector('.post-map-modal__backdrop')?.addEventListener('click', close)
+    modal.querySelector('.post-map-modal__close')?.addEventListener('click', close)
+    document.addEventListener('keydown', onKeydown)
+    document.body.style.overflow = 'hidden'
+    document.body.appendChild(modal)
+  }
+
   function processJsonBlock(block: any): string {
     // Извлекаем якорь из tunes блока
     const anchorText = block?.tunes?.anchorInput?.text || 
@@ -380,6 +447,8 @@
         return `<div class="post-gallery"${anchorId}>
           <div class="gallery-images">${images}</div>
         </div>`;
+      case 'map':
+        return renderMapBlock(block.data, anchorId)
       default:
         return '';
     }
@@ -452,7 +521,7 @@
 
         processedContent = DOMPurify.sanitize(content, {
           ALLOWED_TAGS: ['p', 'b', 'i', 'em', 'strong', 'a', 'br', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'img', 'figure', 'figcaption', 'div', 'blockquote', 'pre', 'code', 'input', 'iframe', 'footer'],
-          ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'alt', 'title', 'width', 'height', 'loading', 'class', 'data-index', 'data-url', 'type', 'checked', 'disabled', 'data-caption', 'id', 'style', 'frameborder', 'allowfullscreen', 'allow']
+          ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'alt', 'title', 'width', 'height', 'loading', 'class', 'data-index', 'data-url', 'type', 'checked', 'disabled', 'data-caption', 'id', 'style', 'frameborder', 'allowfullscreen', 'allow', 'referrerpolicy']
         });
       } catch (error) {
         console.error('Error processing post body:', error);
@@ -672,6 +741,22 @@
             gallery.innerHTML = ''
             gallery.appendChild(grid)
           })
+
+          const maps = document.querySelectorAll('.post-content .post-map')
+          maps.forEach((mapElement) => {
+            if (!(mapElement instanceof HTMLElement)) return
+            if (mapElement.getAttribute('data-map-ready') === '1') return
+            mapElement.setAttribute('data-map-ready', '1')
+            mapElement.addEventListener('click', (event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              const frame = mapElement.querySelector('iframe')
+              const source = frame?.getAttribute('src') || ''
+              if (source) {
+                openMapModal(source)
+              }
+            })
+          })
         }, 0)
       }
     }
@@ -726,6 +811,8 @@
             return `<div class="post-gallery"${anchorText ? ` id="${anchorText}"` : ''}>
               ${images}
             </div>`;
+          case 'map':
+            return renderMapBlock(block.data, anchorText ? ` id="${anchorText}"` : '')
           case 'link':
           case 'customLink':
             const url = block.data.url || '#';
@@ -774,7 +861,7 @@
           'title', 'width', 'height', 'loading', 
           'class', 'data-caption', 'id', 'checked', 
           'disabled', 'style', 'frameborder',
-          'allowfullscreen', 'allow'
+          'allowfullscreen', 'allow', 'referrerpolicy'
         ]
       });
     }
@@ -1478,6 +1565,49 @@
     @apply w-6 h-6;
   }
 
+  :global(.post-content .post-map) {
+    @apply relative my-4 rounded-xl overflow-hidden border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900;
+    cursor: zoom-in;
+  }
+
+  :global(.post-content .post-map__frame) {
+    width: 100%;
+    height: 340px;
+    border: 0;
+    display: block;
+    pointer-events: none;
+  }
+
+  :global(.post-content .post-map__hint) {
+    @apply absolute right-3 bottom-3 text-xs font-semibold rounded-full px-3 py-1.5 border border-slate-200 dark:border-zinc-700 bg-white/95 dark:bg-zinc-900/95 text-slate-700 dark:text-zinc-200;
+    pointer-events: none;
+  }
+
+  :global(.post-map-modal) {
+    @apply fixed inset-0 z-50 flex items-center justify-center;
+  }
+
+  :global(.post-map-modal__backdrop) {
+    @apply absolute inset-0 bg-black/70 backdrop-blur-[2px];
+  }
+
+  :global(.post-map-modal__content) {
+    @apply relative z-10 rounded-2xl overflow-hidden border border-slate-200/30 dark:border-zinc-700/70 bg-white dark:bg-zinc-950;
+    width: min(94vw, 1200px);
+    height: min(84vh, 760px);
+  }
+
+  :global(.post-map-modal__frame) {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    display: block;
+  }
+
+  :global(.post-map-modal__close) {
+    @apply absolute top-3 right-3 w-8 h-8 rounded-full border border-slate-200 dark:border-zinc-700 bg-white/90 dark:bg-zinc-900/90 text-slate-900 dark:text-zinc-100 text-base font-bold flex items-center justify-center cursor-pointer;
+  }
+
   :global(.post-content .image-wrapper) {
     @apply cursor-zoom-in relative inline-block;
   }
@@ -1611,6 +1741,12 @@
   :global(.post-content strong),
   :global(.post-content b) {
     font-weight: 500;
+  }
+
+  @media (max-width: 640px) {
+    :global(.post-content .post-map__frame) {
+      height: 250px;
+    }
   }
 
 </style>

@@ -2,7 +2,14 @@
   import { onMount, onDestroy } from 'svelte'
   import { profile } from '$lib/auth'
   import { uploadSiteImage, siteToken } from '$lib/siteAuth'
-  import { uploadImage, serializeEditorModel, deserializeEditorModel } from '$lib/util'
+  import {
+    uploadImage,
+    serializeEditorModel,
+    deserializeEditorModel,
+    parseGpsCoordinates,
+    normalizeOpenStreetMapZoom,
+    buildOpenStreetMapEmbedUrl,
+  } from '$lib/util'
   import { get } from 'svelte/store'
   import { Button } from 'mono-svelte'
   import CustomInputTune from './CustomInputTune'
@@ -37,6 +44,7 @@
     unorderedList: `${iconPath}/list-ul.svg`,
     orderedList: `${iconPath}/list-ol.svg`,
     checklist: `${iconPath}/list-check.svg`,
+    map: `${iconPath}/geo-alt.svg`,
     quote: `${iconPath}/quote.svg`,
     image: `${iconPath}/card-image.svg`,
     link: `${iconPath}/link-45deg.svg`,
@@ -707,6 +715,138 @@
 
     save() {
       return this.data
+    }
+  }
+
+  class MapTool {
+    private data: { lat: number | null; lng: number | null; zoom: number; raw: string }
+
+    static get toolbox() {
+      return {
+        title: 'Карта',
+        icon: `<img src="${icons.map}" width="16" height="16" />`,
+      }
+    }
+
+    constructor({ data }: { data?: { lat?: unknown; lng?: unknown; zoom?: unknown; raw?: unknown } }) {
+      const lat = typeof data?.lat === 'number' && Number.isFinite(data.lat) ? data.lat : null
+      const lng = typeof data?.lng === 'number' && Number.isFinite(data.lng) ? data.lng : null
+      const parsedFromRaw =
+        typeof data?.raw === 'string' && data.raw.trim() ? parseGpsCoordinates(data.raw) : null
+
+      this.data = {
+        lat: parsedFromRaw?.lat ?? lat,
+        lng: parsedFromRaw?.lng ?? lng,
+        zoom: normalizeOpenStreetMapZoom(data?.zoom, 14),
+        raw:
+          typeof data?.raw === 'string' && data.raw.trim()
+            ? data.raw.trim()
+            : lat !== null && lng !== null
+              ? `${lat}, ${lng}`
+              : '',
+      }
+    }
+
+    render() {
+      const wrapper = document.createElement('div')
+      wrapper.classList.add('map-tool')
+
+      const controls = document.createElement('div')
+      controls.classList.add('map-tool__controls')
+
+      const gpsLabel = document.createElement('label')
+      gpsLabel.classList.add('map-tool__label')
+      gpsLabel.textContent = 'GPS координаты (широта, долгота)'
+
+      const gpsInput = document.createElement('input')
+      gpsInput.type = 'text'
+      gpsInput.classList.add('map-tool__input')
+      gpsInput.placeholder = 'Например: 55.7558, 37.6176'
+      gpsInput.value = this.data.raw
+
+      const zoomRow = document.createElement('div')
+      zoomRow.classList.add('map-tool__zoom-row')
+
+      const zoomLabel = document.createElement('label')
+      zoomLabel.classList.add('map-tool__label')
+      zoomLabel.textContent = 'Масштаб'
+
+      const zoomInput = document.createElement('input')
+      zoomInput.type = 'number'
+      zoomInput.min = '1'
+      zoomInput.max = '19'
+      zoomInput.step = '1'
+      zoomInput.classList.add('map-tool__zoom')
+      zoomInput.value = String(this.data.zoom)
+
+      zoomRow.appendChild(zoomLabel)
+      zoomRow.appendChild(zoomInput)
+
+      const hint = document.createElement('p')
+      hint.classList.add('map-tool__hint')
+
+      const preview = document.createElement('div')
+      preview.classList.add('map-tool__preview')
+
+      const previewFrame = document.createElement('iframe')
+      previewFrame.classList.add('map-tool__frame')
+      previewFrame.loading = 'lazy'
+      previewFrame.referrerPolicy = 'no-referrer-when-downgrade'
+      previewFrame.setAttribute('title', 'Предпросмотр карты')
+      previewFrame.setAttribute('frameborder', '0')
+      previewFrame.setAttribute('allowfullscreen', '')
+
+      preview.appendChild(previewFrame)
+
+      const updatePreview = () => {
+        const parsed = parseGpsCoordinates(gpsInput.value)
+        const zoom = normalizeOpenStreetMapZoom(zoomInput.value, 14)
+        zoomInput.value = String(zoom)
+        this.data.zoom = zoom
+        this.data.raw = gpsInput.value.trim()
+
+        if (!parsed) {
+          this.data.lat = null
+          this.data.lng = null
+          preview.classList.remove('is-ready')
+          previewFrame.removeAttribute('src')
+          hint.textContent = 'Укажите координаты в формате "широта, долгота".'
+          return
+        }
+
+        this.data.lat = parsed.lat
+        this.data.lng = parsed.lng
+        if (!this.data.raw) {
+          this.data.raw = `${parsed.lat}, ${parsed.lng}`
+        }
+        previewFrame.src = buildOpenStreetMapEmbedUrl(parsed.lat, parsed.lng, zoom)
+        preview.classList.add('is-ready')
+        hint.textContent = 'Карта будет показана в посте. Нажатие по карте откроет увеличенный вид.'
+      }
+
+      gpsInput.addEventListener('input', updatePreview)
+      zoomInput.addEventListener('input', updatePreview)
+      zoomInput.addEventListener('blur', updatePreview)
+
+      controls.appendChild(gpsLabel)
+      controls.appendChild(gpsInput)
+      controls.appendChild(zoomRow)
+      controls.appendChild(hint)
+
+      wrapper.appendChild(controls)
+      wrapper.appendChild(preview)
+
+      updatePreview()
+      return wrapper
+    }
+
+    save() {
+      return {
+        lat: this.data.lat,
+        lng: this.data.lng,
+        zoom: normalizeOpenStreetMapZoom(this.data.zoom, 14),
+        raw: this.data.raw,
+      }
     }
   }
 
@@ -1590,6 +1730,7 @@
           }
         },
         gallery: GalleryTool,
+        map: MapTool,
         anchorInput: {
           class: CustomInputTune
         },
@@ -1802,6 +1943,7 @@
             "Code": "Код",
             "Image": "Изображение",
             "Gallery": "Галерея",
+            "Map": "Карта",
             "Link": "Ссылка",
             "Unordered List": "Маркированный список",
             "Ordered List": "Нумерованный список",
@@ -2497,6 +2639,105 @@
 
   :global(.dark .image-tool__loader-text) {
     color: #e5e7eb;
+  }
+
+  :global(.map-tool) {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 1rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.75rem;
+    background: #ffffff;
+  }
+
+  :global(.dark .map-tool) {
+    border-color: #4b5563;
+    background: #1f2937;
+  }
+
+  :global(.map-tool__controls) {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  :global(.map-tool__label) {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #334155;
+  }
+
+  :global(.dark .map-tool__label) {
+    color: #cbd5e1;
+  }
+
+  :global(.map-tool__input),
+  :global(.map-tool__zoom) {
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.5rem;
+    background: #f8fafc;
+    color: #0f172a;
+    padding: 0.55rem 0.65rem;
+    font-size: 0.875rem;
+  }
+
+  :global(.dark .map-tool__input),
+  :global(.dark .map-tool__zoom) {
+    border-color: #52525b;
+    background: #111827;
+    color: #e5e7eb;
+  }
+
+  :global(.map-tool__input:focus),
+  :global(.map-tool__zoom:focus) {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+  }
+
+  :global(.map-tool__zoom-row) {
+    display: grid;
+    grid-template-columns: 1fr minmax(90px, 120px);
+    gap: 0.5rem;
+    align-items: end;
+  }
+
+  :global(.map-tool__hint) {
+    margin: 0;
+    font-size: 0.78rem;
+    color: #64748b;
+  }
+
+  :global(.dark .map-tool__hint) {
+    color: #a1a1aa;
+  }
+
+  :global(.map-tool__preview) {
+    border-radius: 0.75rem;
+    overflow: hidden;
+    border: 1px dashed #cbd5e1;
+    background:
+      linear-gradient(135deg, rgba(226, 232, 240, 0.7), rgba(248, 250, 252, 0.9));
+    min-height: 220px;
+  }
+
+  :global(.dark .map-tool__preview) {
+    border-color: #3f3f46;
+    background:
+      linear-gradient(135deg, rgba(39, 39, 42, 0.9), rgba(24, 24, 27, 0.92));
+  }
+
+  :global(.map-tool__preview.is-ready) {
+    border-style: solid;
+  }
+
+  :global(.map-tool__frame) {
+    width: 100%;
+    height: 220px;
+    border: 0;
+    display: block;
   }
 
   :global(.gallery-loader) {

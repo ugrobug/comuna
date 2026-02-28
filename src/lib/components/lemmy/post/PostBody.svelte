@@ -6,7 +6,7 @@
   import { browser } from '$app/environment'
   import { afterUpdate, createEventDispatcher, onMount, tick } from 'svelte'
   import { page } from '$app/stores'
-  import { deserializeEditorModel } from '$lib/util'
+  import { deserializeEditorModel, buildOpenStreetMapEmbedUrl, normalizeOpenStreetMapZoom } from '$lib/util'
   import { buildPostPollVoteUrl } from '$lib/api/backend'
   import { siteToken } from '$lib/siteAuth'
   
@@ -31,12 +31,17 @@
           }
           if (node.tagName === 'IFRAME') {
             const src = node.getAttribute('src') || ''
-            if (!src.startsWith('https://t.me/')) {
+            const isTelegram = src.startsWith('https://t.me/')
+            const isOpenStreetMap = src.startsWith('https://www.openstreetmap.org/export/embed.html')
+            if (!isTelegram && !isOpenStreetMap) {
               node.remove()
               return
             }
             node.setAttribute('loading', 'lazy')
-            node.setAttribute('referrerpolicy', 'no-referrer')
+            node.setAttribute(
+              'referrerpolicy',
+              isOpenStreetMap ? 'no-referrer-when-downgrade' : 'no-referrer'
+            )
           }
         })
         purifyConfigured = true
@@ -358,6 +363,51 @@
     await submitPollVote(pollElement, Array.from(next).sort((a, b) => a - b))
   }
 
+  const openMapModal = (mapElement: HTMLElement) => {
+    if (!browser) return
+    const frame = mapElement.querySelector('iframe') as HTMLIFrameElement | null
+    const source = frame?.getAttribute('src')
+    if (!source) return
+    if (document.querySelector('.post-map-modal')) return
+
+    const modal = document.createElement('div')
+    modal.className = 'post-map-modal'
+    modal.innerHTML = `
+      <div class="post-map-modal__backdrop"></div>
+      <div class="post-map-modal__content">
+        <iframe
+          class="post-map-modal__frame"
+          src="${source}"
+          loading="lazy"
+          referrerpolicy="no-referrer-when-downgrade"
+          allowfullscreen
+          frameborder="0"
+          title="Карта OpenStreetMap"
+        ></iframe>
+        <button type="button" class="post-map-modal__close" aria-label="Закрыть карту">✕</button>
+      </div>
+    `
+
+    const previousOverflow = document.body.style.overflow
+
+    const close = () => {
+      modal.remove()
+      document.body.style.overflow = previousOverflow
+      document.removeEventListener('keydown', onKeydown)
+    }
+
+    const onKeydown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') close()
+    }
+
+    modal.querySelector('.post-map-modal__backdrop')?.addEventListener('click', close)
+    modal.querySelector('.post-map-modal__close')?.addEventListener('click', close)
+    document.addEventListener('keydown', onKeydown)
+
+    document.body.style.overflow = 'hidden'
+    document.body.appendChild(modal)
+  }
+
   // Функция для добавления preload в head
   function addPreloadLink(url: string, srcset: string | null = null) {
     if (!browser) return;
@@ -415,6 +465,27 @@
   }
 
   function processJsonBlock(block: any): string {
+    const renderMapBlock = (raw: any): string => {
+      const lat = Number(raw?.lat)
+      const lng = Number(raw?.lng)
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return ''
+      if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return ''
+      const zoom = normalizeOpenStreetMapZoom(raw?.zoom, 14)
+      const src = buildOpenStreetMapEmbedUrl(lat, lng, zoom)
+      return `<div class="post-map">
+        <iframe
+          class="post-map__frame"
+          src="${src}"
+          loading="lazy"
+          referrerpolicy="no-referrer-when-downgrade"
+          allowfullscreen
+          frameborder="0"
+          title="Карта OpenStreetMap"
+        ></iframe>
+        <div class="post-map__hint">Нажмите, чтобы открыть карту</div>
+      </div>`
+    }
+
     switch (block.type) {
       case 'paragraph':
         return `<p>${block.data.text}</p>`;
@@ -445,6 +516,8 @@
             `<img src="${img.url}" alt="${img.alt || ''}" title="${img.title || ''}">`
           ).join('')}
         </div>`;
+      case 'map':
+        return renderMapBlock(block.data)
       case 'link':
       case 'customLink':
         const url = block.data.url || '#';
@@ -981,6 +1054,14 @@
   onMount(() => {
     if (!browser) return
     const clickHandler = (event: Event) => {
+      const target = event.target as HTMLElement | null
+      const mapElement = target?.closest('.post-map') as HTMLElement | null
+      if (mapElement && element?.contains(mapElement)) {
+        event.preventDefault()
+        event.stopPropagation()
+        openMapModal(mapElement)
+        return
+      }
       void handlePollClick(event)
     }
     element?.addEventListener('click', clickHandler)
@@ -1206,6 +1287,115 @@
     border: 0;
   }
 
+  :global(.post-content .post-map) {
+    position: relative;
+    margin: 1rem 0;
+    border-radius: 0.9rem;
+    overflow: hidden;
+    border: 1px solid rgb(226 232 240);
+    background: rgb(248 250 252);
+    cursor: zoom-in;
+  }
+
+  :global(.dark .post-content .post-map) {
+    border-color: rgb(63 63 70);
+    background: rgb(24 24 27);
+  }
+
+  :global(.post-content .post-map__frame) {
+    width: 100%;
+    height: 300px;
+    border: 0;
+    display: block;
+    pointer-events: none;
+  }
+
+  :global(.post-content .post-map__hint) {
+    position: absolute;
+    right: 0.75rem;
+    bottom: 0.75rem;
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 0.3rem 0.65rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: rgb(30 41 59);
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgb(226 232 240);
+    pointer-events: none;
+  }
+
+  :global(.dark .post-content .post-map__hint) {
+    color: rgb(228 228 231);
+    background: rgba(24, 24, 27, 0.9);
+    border-color: rgb(82 82 91);
+  }
+
+  :global(.post-map-modal) {
+    position: fixed;
+    inset: 0;
+    z-index: 3000;
+    display: grid;
+    place-items: center;
+  }
+
+  :global(.post-map-modal__backdrop) {
+    position: absolute;
+    inset: 0;
+    background: rgba(2, 6, 23, 0.65);
+    backdrop-filter: blur(2px);
+  }
+
+  :global(.post-map-modal__content) {
+    position: relative;
+    z-index: 1;
+    width: min(1200px, 94vw);
+    height: min(84vh, 760px);
+    border-radius: 1rem;
+    overflow: hidden;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    background: rgb(255 255 255);
+    box-shadow: 0 28px 80px rgba(15, 23, 42, 0.28);
+  }
+
+  :global(.dark .post-map-modal__content) {
+    background: rgb(9 9 11);
+    border-color: rgba(82, 82, 91, 0.9);
+  }
+
+  :global(.post-map-modal__frame) {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    display: block;
+  }
+
+  :global(.post-map-modal__close) {
+    position: absolute;
+    top: 0.7rem;
+    right: 0.7rem;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.6);
+    background: rgba(255, 255, 255, 0.88);
+    color: rgb(15 23 42);
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  :global(.dark .post-map-modal__close) {
+    border-color: rgba(82, 82, 91, 0.9);
+    background: rgba(24, 24, 27, 0.9);
+    color: rgb(228 228 231);
+  }
+
   :global(.post-content .post-audio) {
     @apply my-4;
   }
@@ -1220,6 +1410,12 @@
 
   :global(.post-content .post-audio-fallback a) {
     @apply text-blue-600 dark:text-blue-400 hover:underline;
+  }
+
+  @media (max-width: 640px) {
+    :global(.post-content .post-map__frame) {
+      height: 240px;
+    }
   }
 
   @media (max-width: 768px) {

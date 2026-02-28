@@ -272,3 +272,68 @@ export function deserializeEditorModel(base64Data: string): any {
     return { blocks: [] }
   }
 }
+
+const OSM_MAX_LAT = 85.0511
+
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value))
+
+const toFiniteNumber = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string') {
+    const normalized = value.trim().replace(',', '.')
+    if (!normalized) return null
+    const parsed = Number(normalized)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
+}
+
+export function parseGpsCoordinates(input: string): { lat: number; lng: number } | null {
+  const normalized = (input || '').trim()
+  if (!normalized) return null
+
+  const matches = normalized.match(/-?\d+(?:[.,]\d+)?/g)
+  if (!matches || matches.length < 2) return null
+
+  const lat = toFiniteNumber(matches[0])
+  const lng = toFiniteNumber(matches[1])
+  if (lat === null || lng === null) return null
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null
+
+  return { lat, lng }
+}
+
+export function normalizeOpenStreetMapZoom(value: unknown, fallback = 14): number {
+  const parsed = toFiniteNumber(value)
+  const safeFallback = clamp(Math.round(fallback), 1, 19)
+  if (parsed === null) return safeFallback
+  return clamp(Math.round(parsed), 1, 19)
+}
+
+export function buildOpenStreetMapEmbedUrl(lat: number, lng: number, zoom = 14): string {
+  const safeLat = clamp(lat, -OSM_MAX_LAT, OSM_MAX_LAT)
+  const safeLng = clamp(lng, -180, 180)
+  const safeZoom = normalizeOpenStreetMapZoom(zoom, 14)
+
+  const latSpan = Math.max(0.0008, 170 / Math.pow(2, safeZoom / 1.45))
+  const lngSpan = Math.max(0.0008, 360 / Math.pow(2, safeZoom / 1.45))
+
+  const minLat = clamp(safeLat - latSpan / 2, -OSM_MAX_LAT, OSM_MAX_LAT)
+  const maxLat = clamp(safeLat + latSpan / 2, -OSM_MAX_LAT, OSM_MAX_LAT)
+  const minLng = clamp(safeLng - lngSpan / 2, -180, 180)
+  const maxLng = clamp(safeLng + lngSpan / 2, -180, 180)
+
+  const bbox = `${minLng},${minLat},${maxLng},${maxLat}`
+  const marker = `${safeLat},${safeLng}`
+
+  return `https://www.openstreetmap.org/export/embed.html?bbox=${encodeURIComponent(bbox)}&layer=mapnik&marker=${encodeURIComponent(marker)}`
+}
+
+export function buildOpenStreetMapPageUrl(lat: number, lng: number, zoom = 14): string {
+  const safeLat = clamp(lat, -OSM_MAX_LAT, OSM_MAX_LAT)
+  const safeLng = clamp(lng, -180, 180)
+  const safeZoom = normalizeOpenStreetMapZoom(zoom, 14)
+
+  return `https://www.openstreetmap.org/?mlat=${safeLat}&mlon=${safeLng}#map=${safeZoom}/${safeLat}/${safeLng}`
+}
