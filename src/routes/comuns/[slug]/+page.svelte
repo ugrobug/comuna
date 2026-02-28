@@ -636,8 +636,6 @@
   $: roadmapTrackedCount = roadmapStages.reduce((sum, stage) => sum + Math.max(stage.count, 0), 0)
   $: roadmapReleasedCount =
     roadmapStages.find((stage) => stage.key === 'released')?.count ?? 0
-  $: roadmapSelectedStage =
-    roadmapStages.find((stage) => stage.category.slug === selectedCategorySlug) ?? null
   $: roadmapSignature =
     (comun?.slug ?? '').trim() && roadmapStages.length
       ? `${comun?.slug}:${roadmapStages.map((stage) => `${stage.key}:${stage.category.slug}`).join('|')}`
@@ -1464,11 +1462,6 @@
                 <div class="roadmap-stat-label">Готово</div>
                 <div class="roadmap-stat-value">{formatRoadmapCount(roadmapReleasedCount)}</div>
               </div>
-            </div>
-            <div class="flex flex-wrap gap-2">
-              {#if roadmapSelectedStage}
-                <Button color="ghost" on:click={() => void setCategoryFilter('')}>Показать все посты</Button>
-              {/if}
             </div>
           </div>
         </div>
