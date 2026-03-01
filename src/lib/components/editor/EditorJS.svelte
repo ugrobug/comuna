@@ -1898,30 +1898,6 @@
     }
   }
 
-  let isInsertingImageCompare = false
-
-  const insertImageCompareBlock = async () => {
-    if (!editor || isInsertingImageCompare) return
-
-    isInsertingImageCompare = true
-
-    try {
-      // Some sessions still hide the tool in the toolbox, so we add a direct insert path.
-      try {
-        editor.blocks.insert('compare', {})
-      } catch {
-        editor.blocks.insert('imageCompare', {})
-      }
-
-      const data = await editor.save()
-      updateMarkdown(data)
-    } catch (error) {
-      console.error('❌ Не удалось вставить блок сравнения изображений:', error)
-    } finally {
-      isInsertingImageCompare = false
-    }
-  }
-
   onMount(async () => {
     console.log('🚀 EditorJS onMount: начало монтирования', { postId })
     
@@ -2019,13 +1995,6 @@
         gallery: GalleryTool,
         map: MapTool,
         compare: {
-          class: ImageCompareTool,
-          toolbox: {
-            title: 'Сравнение изображений',
-            icon: `<img src="${icons.imageCompare}" width="16" height="16" />`,
-          },
-        },
-        imageCompare: {
           class: ImageCompareTool,
           toolbox: {
             title: 'Сравнение изображений',
@@ -2420,21 +2389,6 @@
     <span class="font-medium text-sm text-slate-600 dark:text-slate-300">{label}</span>
   {/if}
 
-  <div class="editor-quick-actions">
-    <button
-      type="button"
-      class="editor-quick-action"
-      on:click={insertImageCompareBlock}
-      disabled={!editor || isInsertingImageCompare}
-      title="Добавить блок сравнения изображений"
-    >
-      {isInsertingImageCompare ? 'Добавляю...' : 'Сравнение изображений'}
-    </button>
-    <span class="editor-quick-action__hint">
-      Если блока нет в меню «Добавить», используйте эту кнопку.
-    </span>
-  </div>
-
   <div
     class="min-h-[400px] p-3 rounded-lg focus-within:ring-2 focus-within:ring-blue-500 transition-all duration-200 editor-content bg-white dark:bg-slate-800 border dark:border-slate-700"
     bind:this={element}
@@ -2543,60 +2497,6 @@
 
   .editor-content {
     padding-left: 2.5rem;
-  }
-
-  .editor-quick-actions {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 0.5rem;
-  }
-
-  .editor-quick-action {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid #f59e0b;
-    background: #fff7ed;
-    color: #9a3412;
-    border-radius: 9999px;
-    padding: 0.3rem 0.75rem;
-    font-size: 0.75rem;
-    font-weight: 600;
-    line-height: 1.2;
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-
-  .editor-quick-action:hover:not(:disabled) {
-    background: #ffedd5;
-    border-color: #ea580c;
-  }
-
-  .editor-quick-action:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-
-  .editor-quick-action__hint {
-    font-size: 0.75rem;
-    color: #64748b;
-    line-height: 1.2;
-  }
-
-  :global(.dark) .editor-quick-action {
-    background: rgba(154, 52, 18, 0.15);
-    border-color: #ea580c;
-    color: #fed7aa;
-  }
-
-  :global(.dark) .editor-quick-action:hover:not(:disabled) {
-    background: rgba(234, 88, 12, 0.24);
-  }
-
-  :global(.dark) .editor-quick-action__hint {
-    color: #94a3b8;
   }
 
   :global(.gallery-wrapper) {
