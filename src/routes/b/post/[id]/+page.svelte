@@ -1,16 +1,17 @@
 <script lang="ts">
   import { env } from '$env/dynamic/public'
+  import { browser } from '$app/environment'
   import { page } from '$app/stores'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import Post from '$lib/components/lemmy/post/Post.svelte'
   import PostComments from '$lib/components/site/PostComments.svelte'
   import { backendPostToPostView, buildBackendPostPath, buildPostReadUrl, buildPostViewUrl } from '$lib/api/backend'
-  import { onMount } from 'svelte'
   import { siteToken } from '$lib/siteAuth'
 
   export let data
 
   let postView = backendPostToPostView(data.post)
+  let lastVisitedPostId: number | null = null
 
   const stripHtml = (value: string) =>
     value.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
@@ -67,6 +68,7 @@
   $: siteBaseUrl = (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '')
   $: canonicalPath = data.canonicalId ? `/b/post/${data.canonicalId}` : $page.url.pathname
   $: canonicalUrl = `${siteBaseUrl}${canonicalPath}`
+  $: postView = backendPostToPostView(data.post)
   $: authorName = data.post?.author?.title || data.post?.author?.username || 'Автор'
   $: authorUrl = data.post?.author?.username
     ? `${siteBaseUrl}/${data.post.author.username}`
@@ -114,10 +116,7 @@
       : ''
   $: articleSchemaTag = buildJsonLdTag(articleSchema)
 
-  onMount(async () => {
-    if (!data?.post?.id) return
-    const postId = data.post.id
-
+  const trackPostVisit = async (postId: number) => {
     try {
       const sessionKey = `comuna:post-view:${postId}`
       const alreadyCounted = sessionStorage.getItem(sessionKey) === '1'
@@ -126,7 +125,7 @@
         const viewResponse = await fetch(buildPostViewUrl(postId), { method: 'POST' })
         if (viewResponse.ok) {
           const payload = await viewResponse.json()
-          if (typeof payload?.views_count === 'number') {
+          if (typeof payload?.views_count === 'number' && data?.post?.id === postId) {
             postView = {
               ...postView,
               counts: {
@@ -153,7 +152,12 @@
     } catch (error) {
       console.error('Failed to mark post as read:', error)
     }
-  })
+  }
+
+  $: if (browser && data?.post?.id && data.post.id !== lastVisitedPostId) {
+    lastVisitedPostId = data.post.id
+    void trackPostVisit(data.post.id)
+  }
 </script>
 
 <svelte:head>
