@@ -238,6 +238,47 @@
     });
   };
 
+  const setupImageComparisons = () => {
+    if (!browser || !element) return
+    const comparisons = element.querySelectorAll('.post-image-compare')
+
+    const clampPosition = (value: unknown): number => {
+      const parsed = Number(value)
+      if (!Number.isFinite(parsed)) return 50
+      return Math.min(95, Math.max(5, Math.round(parsed)))
+    }
+
+    comparisons.forEach((node) => {
+      if (!(node instanceof HTMLElement)) return
+
+      const slider = node.querySelector('.post-image-compare__slider') as HTMLInputElement | null
+      const overlay = node.querySelector('.post-image-compare__overlay') as HTMLElement | null
+      const divider = node.querySelector('.post-image-compare__divider') as HTMLElement | null
+      if (!slider || !overlay || !divider) return
+
+      const applyPosition = (value: unknown) => {
+        const safe = clampPosition(value)
+        overlay.style.width = `${safe}%`
+        divider.style.left = `${safe}%`
+        slider.value = String(safe)
+        node.setAttribute('data-compare-position', String(safe))
+      }
+
+      if (node.getAttribute('data-compare-ready') !== '1') {
+        slider.type = 'range'
+        slider.min = '5'
+        slider.max = '95'
+        slider.step = '1'
+        slider.addEventListener('input', () => {
+          applyPosition(slider.value)
+        })
+        node.setAttribute('data-compare-ready', '1')
+      }
+
+      applyPosition(node.getAttribute('data-compare-position') ?? 50)
+    })
+  }
+
   const expand = async (event?: Event) => {
     event?.preventDefault()
     event?.stopPropagation()
@@ -248,6 +289,7 @@
     if (browser) {
       await tick()
       setTimeout(setupGalleries, 0)
+      setTimeout(setupImageComparisons, 0)
     }
   }
 
@@ -260,6 +302,7 @@
     if (browser) {
       await tick()
       setTimeout(setupGalleries, 0)
+      setTimeout(setupImageComparisons, 0)
     }
   }
 
@@ -486,6 +529,58 @@
       </div>`
     }
 
+    const renderImageCompareBlock = (raw: any): string => {
+      const beforeUrl = typeof raw?.before?.url === 'string' ? raw.before.url.trim() : ''
+      const afterUrl = typeof raw?.after?.url === 'string' ? raw.after.url.trim() : ''
+      if (!beforeUrl || !afterUrl) return ''
+
+      const rawPosition = Number(raw?.position)
+      const position = Number.isFinite(rawPosition)
+        ? Math.min(95, Math.max(5, Math.round(rawPosition)))
+        : 50
+
+      const beforeAlt = escapeHtml(
+        typeof raw?.before?.alt === 'string' && raw.before.alt.trim()
+          ? raw.before.alt
+          : 'Изображение до'
+      )
+      const beforeTitle = escapeHtml(typeof raw?.before?.title === 'string' ? raw.before.title : '')
+      const afterAlt = escapeHtml(
+        typeof raw?.after?.alt === 'string' && raw.after.alt.trim()
+          ? raw.after.alt
+          : 'Изображение после'
+      )
+      const afterTitle = escapeHtml(typeof raw?.after?.title === 'string' ? raw.after.title : '')
+      const caption =
+        typeof raw?.caption === 'string' && raw.caption.trim()
+          ? `<figcaption class="post-image-compare__caption">${escapeHtml(raw.caption)}</figcaption>`
+          : ''
+
+      return `<figure class="post-image-compare" data-compare-position="${position}">
+        <div class="post-image-compare__viewport">
+          <img
+            src="${beforeUrl}"
+            alt="${beforeAlt}"
+            title="${beforeTitle}"
+            class="post-image-compare__image post-image-compare__image--before"
+          >
+          <div class="post-image-compare__overlay">
+            <img
+              src="${afterUrl}"
+              alt="${afterAlt}"
+              title="${afterTitle}"
+              class="post-image-compare__image post-image-compare__image--after"
+            >
+          </div>
+          <div class="post-image-compare__divider" aria-hidden="true">
+            <span class="post-image-compare__knob"></span>
+          </div>
+        </div>
+        <input type="range" class="post-image-compare__slider">
+        ${caption}
+      </figure>`
+    }
+
     switch (block.type) {
       case 'paragraph':
         return `<p>${block.data.text}</p>`;
@@ -518,6 +613,9 @@
         </div>`;
       case 'map':
         return renderMapBlock(block.data)
+      case 'imageCompare':
+      case 'compare':
+        return renderImageCompareBlock(block.data)
       case 'link':
       case 'customLink':
         const url = block.data.url || '#';
@@ -727,6 +825,18 @@
             url: first.url,
             alt: first.alt || '',
             title: first.title || ''
+          };
+        }
+      }
+      if (block.type === 'imageCompare' || block.type === 'compare') {
+        const before = block.data?.before;
+        const after = block.data?.after;
+        const source = before?.url ? before : after;
+        if (source?.url) {
+          return {
+            url: source.url,
+            alt: source.alt || '',
+            title: source.title || ''
           };
         }
       }
@@ -945,6 +1055,7 @@
           'source',
           'figure',
           'figcaption',
+          'input',
           'blockquote',
           'footer',
           'div',
@@ -1066,6 +1177,7 @@
     }
     element?.addEventListener('click', clickHandler)
     setTimeout(setupGalleries, 0);
+    setTimeout(setupImageComparisons, 0);
     setTimeout(() => {
       if (!element) return
       if (!collapsible || showFullBody) {
@@ -1092,6 +1204,7 @@
       lastProcessedBody = processedBody;
     }
     setTimeout(setupGalleries, 0);
+    setTimeout(setupImageComparisons, 0);
     setTimeout(() => {
       if (!element) return
       if (!collapsible || showFullBody) {
@@ -1276,6 +1389,92 @@
 
   :global(.post-content .featured-gallery-thumb.active img) {
     @apply ring-2 ring-blue-500;
+  }
+
+  :global(.post-content .post-image-compare) {
+    margin: 1rem 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+  }
+
+  :global(.post-content .post-image-compare__viewport) {
+    position: relative;
+    border-radius: 0.9rem;
+    overflow: hidden;
+    border: 1px solid rgb(226 232 240);
+    background: rgb(248 250 252);
+    aspect-ratio: 16 / 9;
+  }
+
+  :global(.dark .post-content .post-image-compare__viewport) {
+    border-color: rgb(63 63 70);
+    background: rgb(24 24 27);
+  }
+
+  :global(.post-content .post-image-compare__image) {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+  }
+
+  :global(.post-content .post-image-compare__overlay) {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 50%;
+    overflow: hidden;
+    border-right: 2px solid rgba(255, 255, 255, 0.88);
+  }
+
+  :global(.post-content .post-image-compare__divider) {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 2px;
+    transform: translateX(-50%);
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.18);
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  :global(.post-content .post-image-compare__knob) {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 2.15rem;
+    height: 2.15rem;
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.75);
+    background: rgba(255, 255, 255, 0.95);
+    transform: translate(-50%, -50%);
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.28);
+  }
+
+  :global(.dark .post-content .post-image-compare__knob) {
+    border-color: rgba(113, 113, 122, 0.85);
+    background: rgba(24, 24, 27, 0.95);
+  }
+
+  :global(.post-content .post-image-compare__slider) {
+    width: 100%;
+    accent-color: rgb(37 99 235);
+    cursor: ew-resize;
+  }
+
+  :global(.post-content .post-image-compare__caption) {
+    margin: 0;
+    font-size: 0.86rem;
+    color: rgb(71 85 105);
+    text-align: center;
+  }
+
+  :global(.dark .post-content .post-image-compare__caption) {
+    color: rgb(161 161 170);
   }
 
   :global(.post-content .post-embed) {

@@ -292,6 +292,30 @@
         if (parsed.additional?.previewImage) {
           return parsed.additional.previewImage.trim();
         }
+
+        const blocks = Array.isArray(parsed?.blocks) ? parsed.blocks : []
+        for (const block of blocks) {
+          if (block?.type === 'image') {
+            const url = block?.data?.file?.url || block?.data?.url
+            if (typeof url === 'string' && url.trim()) {
+              return url.trim()
+            }
+          }
+          if (block?.type === 'gallery') {
+            const url = block?.data?.images?.[0]?.url
+            if (typeof url === 'string' && url.trim()) {
+              return url.trim()
+            }
+          }
+          if (block?.type === 'imageCompare' || block?.type === 'compare') {
+            const beforeUrl = block?.data?.before?.url
+            const afterUrl = block?.data?.after?.url
+            const candidate = beforeUrl || afterUrl
+            if (typeof candidate === 'string' && candidate.trim()) {
+              return candidate.trim()
+            }
+          }
+        }
       } catch (error) {
         console.error('Error parsing JSON content:', error);
       }
@@ -323,6 +347,110 @@
       ></iframe>
       <div class="post-map__hint">Нажмите, чтобы открыть карту</div>
     </div>`
+  }
+
+  const escapeHtmlAttr = (value: string): string =>
+    value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+
+  const renderImageCompareBlock = (raw: any, anchorId = ''): string => {
+    const beforeUrl = typeof raw?.before?.url === 'string' ? raw.before.url.trim() : ''
+    const afterUrl = typeof raw?.after?.url === 'string' ? raw.after.url.trim() : ''
+    if (!beforeUrl || !afterUrl) return ''
+
+    const rawPosition = Number(raw?.position)
+    const position = Number.isFinite(rawPosition)
+      ? Math.min(95, Math.max(5, Math.round(rawPosition)))
+      : 50
+
+    const beforeAlt = escapeHtmlAttr(
+      typeof raw?.before?.alt === 'string' && raw.before.alt.trim()
+        ? raw.before.alt
+        : 'Изображение до'
+    )
+    const beforeTitle = escapeHtmlAttr(
+      typeof raw?.before?.title === 'string' ? raw.before.title : ''
+    )
+    const afterAlt = escapeHtmlAttr(
+      typeof raw?.after?.alt === 'string' && raw.after.alt.trim()
+        ? raw.after.alt
+        : 'Изображение после'
+    )
+    const afterTitle = escapeHtmlAttr(
+      typeof raw?.after?.title === 'string' ? raw.after.title : ''
+    )
+    const caption =
+      typeof raw?.caption === 'string' && raw.caption.trim()
+        ? `<figcaption class="post-image-compare__caption">${escapeHtmlAttr(raw.caption)}</figcaption>`
+        : ''
+
+    return `<figure class="post-image-compare"${anchorId} data-compare-position="${position}">
+      <div class="post-image-compare__viewport">
+        <img
+          src="${beforeUrl}"
+          alt="${beforeAlt}"
+          title="${beforeTitle}"
+          class="post-image-compare__image post-image-compare__image--before"
+        >
+        <div class="post-image-compare__overlay">
+          <img
+            src="${afterUrl}"
+            alt="${afterAlt}"
+            title="${afterTitle}"
+            class="post-image-compare__image post-image-compare__image--after"
+          >
+        </div>
+        <div class="post-image-compare__divider" aria-hidden="true">
+          <span class="post-image-compare__knob"></span>
+        </div>
+      </div>
+      <input type="range" class="post-image-compare__slider">
+      ${caption}
+    </figure>`
+  }
+
+  const setupImageCompareElements = () => {
+    if (!browser) return
+    const comparisons = document.querySelectorAll('.post-content .post-image-compare')
+
+    const clampPosition = (value: unknown): number => {
+      const parsed = Number(value)
+      if (!Number.isFinite(parsed)) return 50
+      return Math.min(95, Math.max(5, Math.round(parsed)))
+    }
+
+    comparisons.forEach((node) => {
+      if (!(node instanceof HTMLElement)) return
+      const slider = node.querySelector('.post-image-compare__slider') as HTMLInputElement | null
+      const overlay = node.querySelector('.post-image-compare__overlay') as HTMLElement | null
+      const divider = node.querySelector('.post-image-compare__divider') as HTMLElement | null
+      if (!slider || !overlay || !divider) return
+
+      const applyPosition = (value: unknown) => {
+        const safe = clampPosition(value)
+        overlay.style.width = `${safe}%`
+        divider.style.left = `${safe}%`
+        slider.value = String(safe)
+        node.setAttribute('data-compare-position', String(safe))
+      }
+
+      if (node.getAttribute('data-compare-ready') !== '1') {
+        slider.type = 'range'
+        slider.min = '5'
+        slider.max = '95'
+        slider.step = '1'
+        slider.addEventListener('input', () => {
+          applyPosition(slider.value)
+        })
+        node.setAttribute('data-compare-ready', '1')
+      }
+
+      applyPosition(node.getAttribute('data-compare-position') ?? 50)
+    })
   }
 
   const openMapModal = (source: string) => {
@@ -449,6 +577,9 @@
         </div>`;
       case 'map':
         return renderMapBlock(block.data, anchorId)
+      case 'imageCompare':
+      case 'compare':
+        return renderImageCompareBlock(block.data, anchorId)
       default:
         return '';
     }
@@ -757,6 +888,8 @@
               }
             })
           })
+
+          setupImageCompareElements()
         }, 0)
       }
     }
@@ -813,6 +946,9 @@
             </div>`;
           case 'map':
             return renderMapBlock(block.data, anchorText ? ` id="${anchorText}"` : '')
+          case 'imageCompare':
+          case 'compare':
+            return renderImageCompareBlock(block.data, anchorText ? ` id="${anchorText}"` : '')
           case 'link':
           case 'customLink':
             const url = block.data.url || '#';
@@ -1518,6 +1654,57 @@
 
   :global(.post-content .post-gallery .gallery-thumb:hover) {
     @apply border-slate-300 dark:border-zinc-600;
+  }
+
+  :global(.post-content .post-image-compare) {
+    @apply my-4 flex flex-col gap-2;
+  }
+
+  :global(.post-content .post-image-compare__viewport) {
+    @apply relative overflow-hidden rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900;
+    aspect-ratio: 16/9;
+  }
+
+  :global(.post-content .post-image-compare__image) {
+    @apply absolute inset-0 w-full h-full object-cover block;
+  }
+
+  :global(.post-content .post-image-compare__overlay) {
+    @apply absolute inset-y-0 left-0 overflow-hidden;
+    width: 50%;
+    border-right: 2px solid rgba(255, 255, 255, 0.9);
+  }
+
+  :global(.post-content .post-image-compare__divider) {
+    @apply absolute inset-y-0;
+    left: 50%;
+    width: 2px;
+    transform: translateX(-50%);
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.2);
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  :global(.post-content .post-image-compare__knob) {
+    @apply absolute rounded-full border border-slate-300 dark:border-zinc-600 bg-white dark:bg-zinc-900;
+    top: 50%;
+    left: 50%;
+    width: 2.15rem;
+    height: 2.15rem;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.28);
+  }
+
+  :global(.post-content .post-image-compare__slider) {
+    width: 100%;
+    cursor: ew-resize;
+    accent-color: rgb(37 99 235);
+  }
+
+  :global(.post-content .post-image-compare__caption) {
+    @apply text-sm text-slate-600 dark:text-zinc-400 text-center;
+    margin: 0;
   }
 
   :global(.gallery-modal) {

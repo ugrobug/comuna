@@ -4,7 +4,6 @@
   import Placeholder from '@tiptap/extension-placeholder'
   import Link from '@tiptap/extension-link'
   import Image from '@tiptap/extension-image'
-  import { Extension } from '@tiptap/core'
   import { Node } from '@tiptap/core'
   import { onMount, onDestroy } from 'svelte'
   import { Button } from 'mono-svelte'
@@ -59,6 +58,146 @@
     renderHTML({ HTMLAttributes }) {
       return ['div', { class: 'post-gallery', ...HTMLAttributes }, 0]
     }
+  })
+
+  const ImageCompare = Node.create({
+    name: 'imageCompare',
+    group: 'block',
+    atom: true,
+    selectable: true,
+    draggable: false,
+    addAttributes() {
+      return {
+        beforeSrc: {
+          default: '',
+          parseHTML: (element) =>
+            (element as HTMLElement)
+              .querySelector('.post-image-compare__image--before')
+              ?.getAttribute('src') || '',
+        },
+        beforeAlt: {
+          default: '',
+          parseHTML: (element) =>
+            (element as HTMLElement)
+              .querySelector('.post-image-compare__image--before')
+              ?.getAttribute('alt') || '',
+        },
+        beforeTitle: {
+          default: '',
+          parseHTML: (element) =>
+            (element as HTMLElement)
+              .querySelector('.post-image-compare__image--before')
+              ?.getAttribute('title') || '',
+        },
+        afterSrc: {
+          default: '',
+          parseHTML: (element) =>
+            (element as HTMLElement)
+              .querySelector('.post-image-compare__image--after')
+              ?.getAttribute('src') || '',
+        },
+        afterAlt: {
+          default: '',
+          parseHTML: (element) =>
+            (element as HTMLElement)
+              .querySelector('.post-image-compare__image--after')
+              ?.getAttribute('alt') || '',
+        },
+        afterTitle: {
+          default: '',
+          parseHTML: (element) =>
+            (element as HTMLElement)
+              .querySelector('.post-image-compare__image--after')
+              ?.getAttribute('title') || '',
+        },
+        caption: {
+          default: '',
+          parseHTML: (element) =>
+            (element as HTMLElement)
+              .querySelector('.post-image-compare__caption')
+              ?.textContent || '',
+        },
+        position: {
+          default: 50,
+          parseHTML: (element) => {
+            const raw = Number((element as HTMLElement).getAttribute('data-compare-position'))
+            if (!Number.isFinite(raw)) return 50
+            return Math.min(95, Math.max(5, Math.round(raw)))
+          },
+        },
+      }
+    },
+    parseHTML() {
+      return [
+        {
+          tag: 'figure.post-image-compare',
+        },
+      ]
+    },
+    renderHTML({ HTMLAttributes }) {
+      const position = Number.isFinite(Number(HTMLAttributes.position))
+        ? Math.min(95, Math.max(5, Math.round(Number(HTMLAttributes.position))))
+        : 50
+      const caption = typeof HTMLAttributes.caption === 'string' ? HTMLAttributes.caption.trim() : ''
+
+      return [
+        'figure',
+        {
+          class: 'post-image-compare',
+          'data-compare-position': String(position),
+        },
+        [
+          'div',
+          { class: 'post-image-compare__viewport' },
+          [
+            'img',
+            {
+              class: 'post-image-compare__image post-image-compare__image--before',
+              src: HTMLAttributes.beforeSrc || '',
+              alt: HTMLAttributes.beforeAlt || '',
+              title: HTMLAttributes.beforeTitle || '',
+            },
+          ],
+          [
+            'div',
+            {
+              class: 'post-image-compare__overlay',
+              style: `width: ${position}%`,
+            },
+            [
+              'img',
+              {
+                class: 'post-image-compare__image post-image-compare__image--after',
+                src: HTMLAttributes.afterSrc || '',
+                alt: HTMLAttributes.afterAlt || '',
+                title: HTMLAttributes.afterTitle || '',
+              },
+            ],
+          ],
+          [
+            'div',
+            {
+              class: 'post-image-compare__divider',
+              'aria-hidden': 'true',
+              style: `left: ${position}%`,
+            },
+            ['span', { class: 'post-image-compare__knob' }],
+          ],
+        ],
+        [
+          'input',
+          {
+            type: 'range',
+            class: 'post-image-compare__slider',
+            min: '5',
+            max: '95',
+            step: '1',
+            value: String(position),
+          },
+        ],
+        ...(caption ? [['figcaption', { class: 'post-image-compare__caption' }, caption]] : []),
+      ]
+    },
   })
 
   const TelegramEmbed = Node.create({
@@ -389,6 +528,74 @@
     input.click()
   }
 
+  const addImageCompare = () => {
+    if (!$profile?.jwt) {
+      alert('Нужна авторизация для загрузки изображений')
+      return
+    }
+
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.multiple = true
+    input.accept = 'image/*'
+
+    input.onchange = async (event) => {
+      const files = Array.from((event.target as HTMLInputElement).files || [])
+      if (files.length < 2) {
+        alert('Выберите минимум 2 изображения для сравнения')
+        return
+      }
+
+      const [beforeFile, afterFile] = files
+      try {
+        isImageUploading = true
+        uploadProgress = {
+          current: 0,
+          total: 2,
+          percent: 0,
+        }
+
+        const beforeUrlRaw = await uploadImage(beforeFile, $profile.instance, $profile.jwt)
+        uploadProgress = { current: 1, total: 2, percent: 50 }
+        const afterUrlRaw = await uploadImage(afterFile, $profile.instance, $profile.jwt)
+        uploadProgress = { current: 2, total: 2, percent: 100 }
+
+        if (!beforeUrlRaw || !afterUrlRaw) {
+          throw new Error('Не удалось загрузить изображения')
+        }
+
+        const beforeUrl = `${beforeUrlRaw}?format=webp`
+        const afterUrl = `${afterUrlRaw}?format=webp`
+
+        editor.chain().focus().insertContent({
+          type: 'imageCompare',
+          attrs: {
+            beforeSrc: beforeUrl,
+            beforeAlt: '',
+            beforeTitle: '',
+            afterSrc: afterUrl,
+            afterAlt: '',
+            afterTitle: '',
+            caption: '',
+            position: 50,
+          },
+        }).run()
+      } catch (error) {
+        console.error('Ошибка при создании блока сравнения изображений:', error)
+        alert('Не удалось создать блок сравнения. Попробуйте снова.')
+      } finally {
+        isImageUploading = false
+        uploadProgress = {
+          current: 0,
+          total: 0,
+          percent: 0,
+        }
+      }
+    }
+
+    input.click()
+  }
+
   const updateToolbarPosition = () => {
     const selection = window.getSelection()
     if (selection && !selection.isCollapsed) {
@@ -716,6 +923,7 @@
         }),
         CustomImage,
         Gallery,
+        ImageCompare,
         TelegramEmbed,
       ],
       content: contentWithoutTags,
@@ -895,6 +1103,14 @@
             title="Добавить галерею"
           >
             🖼️
+          </button>
+          <button
+            class="toolbar-btn"
+            on:click|preventDefault|stopPropagation={addImageCompare}
+            type="button"
+            title="Сравнение изображений"
+          >
+            ↔️
           </button>
         {/if}
       </div>
@@ -1186,6 +1402,16 @@
           >
             <span class="icon">🖼️</span>
             <span>Добавить галерею</span>
+          </button>
+          <button
+            class="context-menu-item"
+            on:click|preventDefault|stopPropagation={() => {
+              addImageCompare()
+              hideContextMenu()
+            }}
+          >
+            <span class="icon">↔️</span>
+            <span>Сравнение изображений</span>
           </button>
         {/if}
 
@@ -1756,6 +1982,94 @@
   :global(.dark) .ProseMirror .post-gallery:hover {
     background: rgba(96, 165, 250, 0.08);
     border-color: rgba(96, 165, 250, 0.3);
+  }
+
+  :global(.ProseMirror .post-image-compare) {
+    margin: 1rem 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+  }
+
+  :global(.ProseMirror .post-image-compare__viewport) {
+    position: relative;
+    border-radius: 0.9rem;
+    overflow: hidden;
+    border: 1px solid rgb(226 232 240);
+    background: rgb(248 250 252);
+    aspect-ratio: 16 / 9;
+  }
+
+  :global(.dark) .ProseMirror .post-image-compare__viewport {
+    border-color: rgb(63 63 70);
+    background: rgb(24 24 27);
+  }
+
+  :global(.ProseMirror .post-image-compare__image) {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+    margin: 0;
+    border-radius: 0;
+  }
+
+  :global(.ProseMirror .post-image-compare__overlay) {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 50%;
+    overflow: hidden;
+    border-right: 2px solid rgba(255, 255, 255, 0.88);
+  }
+
+  :global(.ProseMirror .post-image-compare__divider) {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 2px;
+    transform: translateX(-50%);
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.18);
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  :global(.ProseMirror .post-image-compare__knob) {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 2.15rem;
+    height: 2.15rem;
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.75);
+    background: rgba(255, 255, 255, 0.95);
+    transform: translate(-50%, -50%);
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.28);
+  }
+
+  :global(.dark) .ProseMirror .post-image-compare__knob {
+    border-color: rgba(113, 113, 122, 0.85);
+    background: rgba(24, 24, 27, 0.95);
+  }
+
+  :global(.ProseMirror .post-image-compare__slider) {
+    width: 100%;
+    accent-color: rgb(37 99 235);
+    cursor: ew-resize;
+  }
+
+  :global(.ProseMirror .post-image-compare__caption) {
+    margin: 0;
+    font-size: 0.86rem;
+    color: rgb(71 85 105);
+    text-align: center;
+  }
+
+  :global(.dark) .ProseMirror .post-image-compare__caption {
+    color: rgb(161 161 170);
   }
 
   .context-menu-item.delete {

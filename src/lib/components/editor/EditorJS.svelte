@@ -45,6 +45,7 @@
     orderedList: `${iconPath}/list-ol.svg`,
     checklist: `${iconPath}/list-check.svg`,
     map: `${iconPath}/geo-alt.svg`,
+    imageCompare: `${iconPath}/images.svg`,
     quote: `${iconPath}/quote.svg`,
     image: `${iconPath}/card-image.svg`,
     link: `${iconPath}/link-45deg.svg`,
@@ -846,6 +847,268 @@
         lng: this.data.lng,
         zoom: normalizeOpenStreetMapZoom(this.data.zoom, 14),
         raw: this.data.raw,
+      }
+    }
+  }
+
+  class ImageCompareTool {
+    private data: {
+      before: { url: string; alt: string; title: string }
+      after: { url: string; alt: string; title: string }
+      caption: string
+      position: number
+    }
+
+    static get toolbox() {
+      return {
+        title: 'Сравнение',
+        icon: `<img src="${icons.imageCompare}" width="16" height="16" />`,
+      }
+    }
+
+    constructor({
+      data,
+    }: {
+      data?: {
+        before?: { url?: unknown; alt?: unknown; title?: unknown }
+        after?: { url?: unknown; alt?: unknown; title?: unknown }
+        caption?: unknown
+        position?: unknown
+      }
+    }) {
+      const normalizeImage = (value: { url?: unknown; alt?: unknown; title?: unknown } | undefined) => ({
+        url: typeof value?.url === 'string' ? value.url : '',
+        alt: typeof value?.alt === 'string' ? value.alt : '',
+        title: typeof value?.title === 'string' ? value.title : '',
+      })
+
+      this.data = {
+        before: normalizeImage(data?.before),
+        after: normalizeImage(data?.after),
+        caption: typeof data?.caption === 'string' ? data.caption : '',
+        position: this.normalizePosition(data?.position),
+      }
+    }
+
+    private normalizePosition(value: unknown): number {
+      const parsed = Number(value)
+      if (!Number.isFinite(parsed)) return 50
+      return Math.min(95, Math.max(5, Math.round(parsed)))
+    }
+
+    render() {
+      const wrapper = document.createElement('div')
+      wrapper.classList.add('image-compare-tool')
+
+      const hint = document.createElement('p')
+      hint.classList.add('image-compare-tool__hint')
+      hint.textContent = 'Загрузите левое и правое изображение, затем отрегулируйте ползунок.'
+
+      const controls = document.createElement('div')
+      controls.classList.add('image-compare-tool__controls')
+
+      const preview = document.createElement('div')
+      preview.classList.add('image-compare-tool__preview')
+
+      const beforeImage = document.createElement('img')
+      beforeImage.classList.add('image-compare-tool__image', 'image-compare-tool__image--before')
+
+      const overlay = document.createElement('div')
+      overlay.classList.add('image-compare-tool__overlay')
+
+      const afterImage = document.createElement('img')
+      afterImage.classList.add('image-compare-tool__image', 'image-compare-tool__image--after')
+      overlay.appendChild(afterImage)
+
+      const divider = document.createElement('div')
+      divider.classList.add('image-compare-tool__divider')
+      const knob = document.createElement('span')
+      knob.classList.add('image-compare-tool__knob')
+      divider.appendChild(knob)
+
+      const placeholder = document.createElement('div')
+      placeholder.classList.add('image-compare-tool__placeholder')
+
+      preview.appendChild(beforeImage)
+      preview.appendChild(overlay)
+      preview.appendChild(divider)
+      preview.appendChild(placeholder)
+
+      const sliderRow = document.createElement('div')
+      sliderRow.classList.add('image-compare-tool__slider-row')
+
+      const sliderLabel = document.createElement('span')
+      sliderLabel.classList.add('image-compare-tool__slider-label')
+      sliderLabel.textContent = 'Положение ползунка'
+
+      const sliderValue = document.createElement('span')
+      sliderValue.classList.add('image-compare-tool__slider-value')
+
+      sliderRow.appendChild(sliderLabel)
+      sliderRow.appendChild(sliderValue)
+
+      const slider = document.createElement('input')
+      slider.type = 'range'
+      slider.min = '5'
+      slider.max = '95'
+      slider.step = '1'
+      slider.classList.add('image-compare-tool__range')
+
+      const caption = document.createElement('textarea')
+      caption.classList.add('image-compare-tool__caption')
+      caption.placeholder = 'Подпись к сравнению (необязательно)'
+      caption.value = this.data.caption
+      caption.addEventListener('input', () => {
+        this.data.caption = caption.value
+      })
+
+      const updatePreview = () => {
+        const beforeUrl = this.data.before.url
+        const afterUrl = this.data.after.url
+
+        if (beforeUrl) {
+          beforeImage.src = beforeUrl
+          beforeImage.style.display = 'block'
+        } else {
+          beforeImage.removeAttribute('src')
+          beforeImage.style.display = 'none'
+        }
+
+        if (afterUrl) {
+          afterImage.src = afterUrl
+          afterImage.style.display = 'block'
+        } else {
+          afterImage.removeAttribute('src')
+          afterImage.style.display = 'none'
+        }
+
+        const position = this.normalizePosition(this.data.position)
+        this.data.position = position
+        overlay.style.width = `${position}%`
+        divider.style.left = `${position}%`
+        slider.value = String(position)
+        sliderValue.textContent = `${position}%`
+
+        const ready = Boolean(beforeUrl && afterUrl)
+        preview.classList.toggle('is-ready', ready)
+        if (ready) {
+          placeholder.style.display = 'none'
+        } else {
+          placeholder.style.display = 'flex'
+          if (!beforeUrl && !afterUrl) {
+            placeholder.textContent = 'Загрузите два изображения для сравнения'
+          } else if (!beforeUrl) {
+            placeholder.textContent = 'Загрузите левое изображение'
+          } else {
+            placeholder.textContent = 'Загрузите правое изображение'
+          }
+        }
+      }
+
+      const createSideControls = (side: 'before' | 'after', label: string) => {
+        const section = document.createElement('div')
+        section.classList.add('image-compare-tool__side')
+
+        const title = document.createElement('p')
+        title.classList.add('image-compare-tool__side-title')
+        title.textContent = label
+
+        const button = document.createElement('button')
+        button.type = 'button'
+        button.classList.add('image-compare-tool__upload')
+
+        const setButtonLabel = () => {
+          button.textContent = this.data[side].url ? 'Заменить изображение' : 'Загрузить изображение'
+        }
+
+        const input = document.createElement('input')
+        input.type = 'file'
+        input.accept = 'image/*'
+        input.style.display = 'none'
+
+        button.onclick = (e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          input.click()
+        }
+
+        input.onchange = async (event: Event) => {
+          const target = event.target as HTMLInputElement
+          const file = target.files?.[0]
+          if (!file) return
+
+          button.disabled = true
+          button.textContent = 'Загрузка...'
+
+          try {
+            const uploaded = await uploadEditorImage(file)
+            if (uploaded?.url) {
+              this.data[side].url = uploaded.useWebp ? `${uploaded.url}?format=webp` : uploaded.url
+              updatePreview()
+            }
+          } catch (error) {
+            console.error('Ошибка при загрузке изображения для сравнения:', error)
+          } finally {
+            button.disabled = false
+            target.value = ''
+            setButtonLabel()
+          }
+        }
+
+        const altInput = document.createElement('input')
+        altInput.type = 'text'
+        altInput.classList.add('image-compare-tool__input')
+        altInput.placeholder = 'ALT текст'
+        altInput.value = this.data[side].alt
+        altInput.addEventListener('input', () => {
+          this.data[side].alt = altInput.value
+        })
+
+        const titleInput = document.createElement('input')
+        titleInput.type = 'text'
+        titleInput.classList.add('image-compare-tool__input')
+        titleInput.placeholder = 'Title'
+        titleInput.value = this.data[side].title
+        titleInput.addEventListener('input', () => {
+          this.data[side].title = titleInput.value
+        })
+
+        setButtonLabel()
+        section.appendChild(title)
+        section.appendChild(button)
+        section.appendChild(input)
+        section.appendChild(altInput)
+        section.appendChild(titleInput)
+
+        return section
+      }
+
+      controls.appendChild(createSideControls('before', 'Левое изображение (до)'))
+      controls.appendChild(createSideControls('after', 'Правое изображение (после)'))
+
+      slider.addEventListener('input', () => {
+        this.data.position = this.normalizePosition(slider.value)
+        updatePreview()
+      })
+
+      updatePreview()
+
+      wrapper.appendChild(hint)
+      wrapper.appendChild(controls)
+      wrapper.appendChild(preview)
+      wrapper.appendChild(sliderRow)
+      wrapper.appendChild(slider)
+      wrapper.appendChild(caption)
+
+      return wrapper
+    }
+
+    save() {
+      return {
+        before: { ...this.data.before },
+        after: { ...this.data.after },
+        caption: this.data.caption,
+        position: this.normalizePosition(this.data.position),
       }
     }
   }
@@ -1731,6 +1994,20 @@
         },
         gallery: GalleryTool,
         map: MapTool,
+        compare: {
+          class: ImageCompareTool,
+          toolbox: {
+            title: 'Сравнение изображений',
+            icon: `<img src="${icons.imageCompare}" width="16" height="16" />`,
+          },
+        },
+        imageCompare: {
+          class: ImageCompareTool,
+          toolbox: {
+            title: 'Сравнение изображений',
+            icon: `<img src="${icons.imageCompare}" width="16" height="16" />`,
+          },
+        },
         anchorInput: {
           class: CustomInputTune
         },
@@ -1944,6 +2221,9 @@
             "Image": "Изображение",
             "Gallery": "Галерея",
             "Map": "Карта",
+            "Image Compare": "Сравнение изображений",
+            "Сравнение изображений": "Сравнение изображений",
+            "Compare": "Сравнение изображений",
             "Link": "Ссылка",
             "Unordered List": "Маркированный список",
             "Ordered List": "Нумерованный список",
@@ -2738,6 +3018,235 @@
     height: 220px;
     border: 0;
     display: block;
+  }
+
+  :global(.image-compare-tool) {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    padding: 1rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.75rem;
+    background: #ffffff;
+  }
+
+  :global(.dark .image-compare-tool) {
+    border-color: #4b5563;
+    background: #1f2937;
+  }
+
+  :global(.image-compare-tool__hint) {
+    margin: 0;
+    font-size: 0.8rem;
+    color: #64748b;
+  }
+
+  :global(.dark .image-compare-tool__hint) {
+    color: #a1a1aa;
+  }
+
+  :global(.image-compare-tool__controls) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+
+  :global(.image-compare-tool__side) {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.6rem;
+    background: #f8fafc;
+  }
+
+  :global(.dark .image-compare-tool__side) {
+    border-color: #52525b;
+    background: #111827;
+  }
+
+  :global(.image-compare-tool__side-title) {
+    margin: 0;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #334155;
+  }
+
+  :global(.dark .image-compare-tool__side-title) {
+    color: #cbd5e1;
+  }
+
+  :global(.image-compare-tool__upload) {
+    border: 1px solid #d1d5db;
+    border-radius: 0.5rem;
+    background: #ffffff;
+    color: #1f2937;
+    font-size: 0.8rem;
+    font-weight: 500;
+    padding: 0.55rem 0.75rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  :global(.image-compare-tool__upload:hover) {
+    background: #f8fafc;
+    border-color: #94a3b8;
+  }
+
+  :global(.dark .image-compare-tool__upload) {
+    border-color: #4b5563;
+    background: #1f2937;
+    color: #e5e7eb;
+  }
+
+  :global(.dark .image-compare-tool__upload:hover) {
+    background: #374151;
+    border-color: #64748b;
+  }
+
+  :global(.image-compare-tool__input),
+  :global(.image-compare-tool__caption) {
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.5rem;
+    background: #ffffff;
+    color: #0f172a;
+    padding: 0.55rem 0.65rem;
+    font-size: 0.85rem;
+  }
+
+  :global(.dark .image-compare-tool__input),
+  :global(.dark .image-compare-tool__caption) {
+    border-color: #52525b;
+    background: #111827;
+    color: #e5e7eb;
+  }
+
+  :global(.image-compare-tool__input:focus),
+  :global(.image-compare-tool__caption:focus) {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+  }
+
+  :global(.image-compare-tool__preview) {
+    position: relative;
+    border-radius: 0.75rem;
+    overflow: hidden;
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+    aspect-ratio: 16 / 9;
+  }
+
+  :global(.dark .image-compare-tool__preview) {
+    border-color: #3f3f46;
+    background: #18181b;
+  }
+
+  :global(.image-compare-tool__image) {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  :global(.image-compare-tool__overlay) {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 50%;
+    overflow: hidden;
+    border-right: 2px solid rgba(255, 255, 255, 0.85);
+  }
+
+  :global(.image-compare-tool__divider) {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 2px;
+    background: rgba(255, 255, 255, 0.88);
+    transform: translateX(-50%);
+    box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.16);
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  :global(.image-compare-tool__knob) {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.75);
+    background: rgba(255, 255, 255, 0.95);
+    transform: translate(-50%, -50%);
+    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.25);
+  }
+
+  :global(.dark .image-compare-tool__knob) {
+    border-color: rgba(113, 113, 122, 0.9);
+    background: rgba(24, 24, 27, 0.95);
+  }
+
+  :global(.image-compare-tool__placeholder) {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 0.75rem;
+    font-size: 0.85rem;
+    color: #475569;
+    background: linear-gradient(135deg, rgba(241, 245, 249, 0.95), rgba(226, 232, 240, 0.9));
+  }
+
+  :global(.dark .image-compare-tool__placeholder) {
+    color: #d4d4d8;
+    background: linear-gradient(135deg, rgba(39, 39, 42, 0.95), rgba(24, 24, 27, 0.92));
+  }
+
+  :global(.image-compare-tool__slider-row) {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.8rem;
+    color: #475569;
+  }
+
+  :global(.dark .image-compare-tool__slider-row) {
+    color: #d4d4d8;
+  }
+
+  :global(.image-compare-tool__slider-value) {
+    font-weight: 600;
+    color: #1d4ed8;
+  }
+
+  :global(.dark .image-compare-tool__slider-value) {
+    color: #60a5fa;
+  }
+
+  :global(.image-compare-tool__range) {
+    width: 100%;
+    accent-color: #2563eb;
+    cursor: ew-resize;
+  }
+
+  :global(.image-compare-tool__caption) {
+    min-height: 2.6rem;
+    resize: vertical;
+  }
+
+  @media (max-width: 640px) {
+    :global(.image-compare-tool__controls) {
+      grid-template-columns: 1fr;
+    }
   }
 
   :global(.gallery-loader) {
