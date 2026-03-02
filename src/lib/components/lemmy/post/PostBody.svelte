@@ -251,27 +251,58 @@
     comparisons.forEach((node) => {
       if (!(node instanceof HTMLElement)) return
 
-      const slider = node.querySelector('.post-image-compare__slider') as HTMLInputElement | null
+      const viewport = node.querySelector('.post-image-compare__viewport') as HTMLElement | null
       const overlay = node.querySelector('.post-image-compare__overlay') as HTMLElement | null
       const divider = node.querySelector('.post-image-compare__divider') as HTMLElement | null
-      if (!slider || !overlay || !divider) return
+      if (!viewport || !overlay || !divider) return
 
       const applyPosition = (value: unknown) => {
         const safe = clampPosition(value)
-        overlay.style.width = `${safe}%`
+        const rightInset = 100 - safe
+        const clipRule = `inset(0 ${rightInset}% 0 0)`
+        overlay.style.clipPath = clipRule
+        ;(overlay.style as CSSStyleDeclaration & { webkitClipPath?: string }).webkitClipPath = clipRule
         divider.style.left = `${safe}%`
-        slider.value = String(safe)
         node.setAttribute('data-compare-position', String(safe))
       }
 
+      const updateFromClientX = (clientX: number) => {
+        const rect = viewport.getBoundingClientRect()
+        if (!rect.width) return
+        const next = ((clientX - rect.left) / rect.width) * 100
+        applyPosition(next)
+      }
+
       if (node.getAttribute('data-compare-ready') !== '1') {
-        slider.type = 'range'
-        slider.min = '5'
-        slider.max = '95'
-        slider.step = '1'
-        slider.addEventListener('input', () => {
-          applyPosition(slider.value)
-        })
+        let isDragging = false
+
+        const onPointerMove = (event: PointerEvent) => {
+          if (!isDragging) return
+          event.preventDefault()
+          updateFromClientX(event.clientX)
+        }
+
+        const stopDrag = () => {
+          if (!isDragging) return
+          isDragging = false
+          node.removeAttribute('data-compare-dragging')
+          window.removeEventListener('pointermove', onPointerMove)
+          window.removeEventListener('pointerup', stopDrag)
+          window.removeEventListener('pointercancel', stopDrag)
+        }
+
+        const startDrag = (event: PointerEvent) => {
+          if (event.button !== 0 && event.pointerType !== 'touch') return
+          event.preventDefault()
+          isDragging = true
+          node.setAttribute('data-compare-dragging', '1')
+          updateFromClientX(event.clientX)
+          window.addEventListener('pointermove', onPointerMove)
+          window.addEventListener('pointerup', stopDrag)
+          window.addEventListener('pointercancel', stopDrag)
+        }
+
+        viewport.addEventListener('pointerdown', startDrag)
         node.setAttribute('data-compare-ready', '1')
       }
 
@@ -576,7 +607,6 @@
             <span class="post-image-compare__knob"></span>
           </div>
         </div>
-        <input type="range" class="post-image-compare__slider">
         ${caption}
       </figure>`
     }
@@ -1081,6 +1111,7 @@
           'preload',
           'type',
           'data-option-index',
+          'data-compare-position',
           'data-poll-multiple',
           'data-poll-closed',
           'data-poll-id',
@@ -1423,10 +1454,12 @@
 
   :global(.post-content .post-image-compare__overlay) {
     position: absolute;
-    inset: 0 auto 0 0;
-    width: 50%;
+    inset: 0;
+    width: 100%;
     overflow: hidden;
-    border-right: 2px solid rgba(255, 255, 255, 0.88);
+    clip-path: inset(0 50% 0 0);
+    -webkit-clip-path: inset(0 50% 0 0);
+    pointer-events: none;
   }
 
   :global(.post-content .post-image-compare__divider) {
@@ -1438,7 +1471,9 @@
     transform: translateX(-50%);
     background: rgba(255, 255, 255, 0.9);
     box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.18);
-    pointer-events: none;
+    pointer-events: auto;
+    cursor: ew-resize;
+    touch-action: none;
     z-index: 2;
   }
 
@@ -1460,10 +1495,13 @@
     background: rgba(24, 24, 27, 0.95);
   }
 
-  :global(.post-content .post-image-compare__slider) {
-    width: 100%;
-    accent-color: rgb(37 99 235);
+  :global(.post-content .post-image-compare__viewport) {
     cursor: ew-resize;
+    touch-action: none;
+  }
+
+  :global(.post-content .post-image-compare[data-compare-dragging='1']) {
+    user-select: none;
   }
 
   :global(.post-content .post-image-compare__caption) {

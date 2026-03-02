@@ -902,7 +902,7 @@
 
       const hint = document.createElement('p')
       hint.classList.add('image-compare-tool__hint')
-      hint.textContent = 'Загрузите левое и правое изображение, затем отрегулируйте ползунок.'
+      hint.textContent = 'Загрузите левое и правое изображение, затем перетащите разделитель.'
 
       const controls = document.createElement('div')
       controls.classList.add('image-compare-tool__controls')
@@ -934,26 +934,6 @@
       preview.appendChild(divider)
       preview.appendChild(placeholder)
 
-      const sliderRow = document.createElement('div')
-      sliderRow.classList.add('image-compare-tool__slider-row')
-
-      const sliderLabel = document.createElement('span')
-      sliderLabel.classList.add('image-compare-tool__slider-label')
-      sliderLabel.textContent = 'Положение ползунка'
-
-      const sliderValue = document.createElement('span')
-      sliderValue.classList.add('image-compare-tool__slider-value')
-
-      sliderRow.appendChild(sliderLabel)
-      sliderRow.appendChild(sliderValue)
-
-      const slider = document.createElement('input')
-      slider.type = 'range'
-      slider.min = '5'
-      slider.max = '95'
-      slider.step = '1'
-      slider.classList.add('image-compare-tool__range')
-
       const caption = document.createElement('textarea')
       caption.classList.add('image-compare-tool__caption')
       caption.placeholder = 'Подпись к сравнению (необязательно)'
@@ -961,6 +941,53 @@
       caption.addEventListener('input', () => {
         this.data.caption = caption.value
       })
+
+      const applyPosition = (value: unknown) => {
+        const position = this.normalizePosition(value)
+        this.data.position = position
+        const rightInset = 100 - position
+        const clipRule = `inset(0 ${rightInset}% 0 0)`
+        overlay.style.clipPath = clipRule
+        ;(overlay.style as CSSStyleDeclaration & { webkitClipPath?: string }).webkitClipPath = clipRule
+        divider.style.left = `${position}%`
+      }
+
+      const updateFromClientX = (clientX: number) => {
+        const rect = preview.getBoundingClientRect()
+        if (!rect.width) return
+        const next = ((clientX - rect.left) / rect.width) * 100
+        applyPosition(next)
+      }
+
+      let isDragging = false
+
+      const onPointerMove = (event: PointerEvent) => {
+        if (!isDragging) return
+        event.preventDefault()
+        updateFromClientX(event.clientX)
+      }
+
+      const stopDrag = () => {
+        if (!isDragging) return
+        isDragging = false
+        preview.classList.remove('is-dragging')
+        window.removeEventListener('pointermove', onPointerMove)
+        window.removeEventListener('pointerup', stopDrag)
+        window.removeEventListener('pointercancel', stopDrag)
+      }
+
+      const startDrag = (event: PointerEvent) => {
+        if (event.button !== 0 && event.pointerType !== 'touch') return
+        event.preventDefault()
+        isDragging = true
+        preview.classList.add('is-dragging')
+        updateFromClientX(event.clientX)
+        window.addEventListener('pointermove', onPointerMove)
+        window.addEventListener('pointerup', stopDrag)
+        window.addEventListener('pointercancel', stopDrag)
+      }
+
+      preview.addEventListener('pointerdown', startDrag)
 
       const updatePreview = () => {
         const beforeUrl = this.data.before.url
@@ -982,12 +1009,7 @@
           afterImage.style.display = 'none'
         }
 
-        const position = this.normalizePosition(this.data.position)
-        this.data.position = position
-        overlay.style.width = `${position}%`
-        divider.style.left = `${position}%`
-        slider.value = String(position)
-        sliderValue.textContent = `${position}%`
+        applyPosition(this.data.position)
 
         const ready = Boolean(beforeUrl && afterUrl)
         preview.classList.toggle('is-ready', ready)
@@ -1086,18 +1108,11 @@
       controls.appendChild(createSideControls('before', 'Левое изображение (до)'))
       controls.appendChild(createSideControls('after', 'Правое изображение (после)'))
 
-      slider.addEventListener('input', () => {
-        this.data.position = this.normalizePosition(slider.value)
-        updatePreview()
-      })
-
       updatePreview()
 
       wrapper.appendChild(hint)
       wrapper.appendChild(controls)
       wrapper.appendChild(preview)
-      wrapper.appendChild(sliderRow)
-      wrapper.appendChild(slider)
       wrapper.appendChild(caption)
 
       return wrapper
@@ -3148,10 +3163,12 @@
 
   :global(.image-compare-tool__overlay) {
     position: absolute;
-    inset: 0 auto 0 0;
-    width: 50%;
+    inset: 0;
+    width: 100%;
     overflow: hidden;
-    border-right: 2px solid rgba(255, 255, 255, 0.85);
+    clip-path: inset(0 50% 0 0);
+    -webkit-clip-path: inset(0 50% 0 0);
+    pointer-events: none;
   }
 
   :global(.image-compare-tool__divider) {
@@ -3163,7 +3180,9 @@
     background: rgba(255, 255, 255, 0.88);
     transform: translateX(-50%);
     box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.16);
-    pointer-events: none;
+    pointer-events: auto;
+    cursor: ew-resize;
+    touch-action: none;
     z-index: 2;
   }
 
@@ -3203,32 +3222,13 @@
     background: linear-gradient(135deg, rgba(39, 39, 42, 0.95), rgba(24, 24, 27, 0.92));
   }
 
-  :global(.image-compare-tool__slider-row) {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 0.75rem;
-    font-size: 0.8rem;
-    color: #475569;
-  }
-
-  :global(.dark .image-compare-tool__slider-row) {
-    color: #d4d4d8;
-  }
-
-  :global(.image-compare-tool__slider-value) {
-    font-weight: 600;
-    color: #1d4ed8;
-  }
-
-  :global(.dark .image-compare-tool__slider-value) {
-    color: #60a5fa;
-  }
-
-  :global(.image-compare-tool__range) {
-    width: 100%;
-    accent-color: #2563eb;
+  :global(.image-compare-tool__preview.is-ready) {
     cursor: ew-resize;
+    touch-action: none;
+  }
+
+  :global(.image-compare-tool__preview.is-dragging) {
+    user-select: none;
   }
 
   :global(.image-compare-tool__caption) {

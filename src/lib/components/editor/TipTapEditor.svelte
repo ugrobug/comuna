@@ -162,7 +162,7 @@
             'div',
             {
               class: 'post-image-compare__overlay',
-              style: `width: ${position}%`,
+              style: `clip-path: inset(0 ${100 - position}% 0 0); -webkit-clip-path: inset(0 ${100 - position}% 0 0);`,
             },
             [
               'img',
@@ -183,17 +183,6 @@
             },
             ['span', { class: 'post-image-compare__knob' }],
           ],
-        ],
-        [
-          'input',
-          {
-            type: 'range',
-            class: 'post-image-compare__slider',
-            min: '5',
-            max: '95',
-            step: '1',
-            value: String(position),
-          },
         ],
         ...(caption ? [['figcaption', { class: 'post-image-compare__caption' }, caption]] : []),
       ]
@@ -884,6 +873,114 @@
     }
   }
 
+  const clampComparePosition = (value: unknown): number => {
+    const parsed = Number(value)
+    if (!Number.isFinite(parsed)) return 50
+    return Math.min(95, Math.max(5, Math.round(parsed)))
+  }
+
+  const updateImageCompareNodePosition = (targetElement: HTMLElement, position: number) => {
+    if (!editor) return
+
+    let nodePos = -1
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name !== 'imageCompare') return true
+      const domNode = editor.view.nodeDOM(pos)
+      if (domNode === targetElement) {
+        nodePos = pos
+        return false
+      }
+      return true
+    })
+
+    if (nodePos < 0) return
+
+    const currentNode = editor.state.doc.nodeAt(nodePos)
+    if (!currentNode || currentNode.type.name !== 'imageCompare') return
+
+    const normalized = clampComparePosition(position)
+    if (clampComparePosition(currentNode.attrs.position) === normalized) return
+
+    const tr = editor.state.tr.setNodeMarkup(nodePos, undefined, {
+      ...currentNode.attrs,
+      position: normalized,
+    })
+    editor.view.dispatch(tr)
+  }
+
+  const setupImageCompareInteractions = () => {
+    if (!editor || !element) return
+
+    const comparisons = element.querySelectorAll('.post-image-compare')
+    comparisons.forEach((node) => {
+      if (!(node instanceof HTMLElement)) return
+      const viewport = node.querySelector('.post-image-compare__viewport') as HTMLElement | null
+      const overlay = node.querySelector('.post-image-compare__overlay') as HTMLElement | null
+      const divider = node.querySelector('.post-image-compare__divider') as HTMLElement | null
+      if (!viewport || !overlay || !divider) return
+
+      let lastPosition = clampComparePosition(node.getAttribute('data-compare-position') ?? 50)
+
+      const applyPosition = (value: unknown): number => {
+        const safe = clampComparePosition(value)
+        const rightInset = 100 - safe
+        const clipRule = `inset(0 ${rightInset}% 0 0)`
+        overlay.style.clipPath = clipRule
+        ;(overlay.style as CSSStyleDeclaration & { webkitClipPath?: string }).webkitClipPath = clipRule
+        divider.style.left = `${safe}%`
+        node.setAttribute('data-compare-position', String(safe))
+        lastPosition = safe
+        return safe
+      }
+
+      const updateFromClientX = (clientX: number) => {
+        const rect = viewport.getBoundingClientRect()
+        if (!rect.width) return
+        const next = ((clientX - rect.left) / rect.width) * 100
+        applyPosition(next)
+      }
+
+      if (node.getAttribute('data-compare-ready') !== '1') {
+        let isDragging = false
+
+        const startDrag = (event: PointerEvent) => {
+          if (event.button !== 0 && event.pointerType !== 'touch') return
+          event.preventDefault()
+          isDragging = true
+          node.setAttribute('data-compare-dragging', '1')
+          viewport.setPointerCapture(event.pointerId)
+          updateFromClientX(event.clientX)
+        }
+
+        const onDrag = (event: PointerEvent) => {
+          if (!isDragging) return
+          event.preventDefault()
+          updateFromClientX(event.clientX)
+        }
+
+        const stopDrag = (event: PointerEvent) => {
+          if (!isDragging) return
+          isDragging = false
+          node.removeAttribute('data-compare-dragging')
+          try {
+            viewport.releasePointerCapture(event.pointerId)
+          } catch (_error) {
+            // Ignore release errors when capture was not acquired.
+          }
+          updateImageCompareNodePosition(node, lastPosition)
+        }
+
+        viewport.addEventListener('pointerdown', startDrag)
+        viewport.addEventListener('pointermove', onDrag)
+        viewport.addEventListener('pointerup', stopDrag)
+        viewport.addEventListener('pointercancel', stopDrag)
+        node.setAttribute('data-compare-ready', '1')
+      }
+
+      applyPosition(node.getAttribute('data-compare-position') ?? 50)
+    })
+  }
+
   onMount(() => {
     // Извлекаем существующие данные из value при монтировании
     const previewImageMatch = value.match(/<preview-image>(.*?)<\/preview-image>/)
@@ -931,6 +1028,7 @@
         updateMarkdown(editor.getHTML())
         updateFormatting()
         characterCount = editor.getHTML().length
+        setTimeout(setupImageCompareInteractions, 0)
       },
       onSelectionUpdate: () => {
         updateToolbarPosition()
@@ -940,6 +1038,7 @@
 
     // Инициализируем начальное значение счетчика
     characterCount = editor.getHTML().length
+    setTimeout(setupImageCompareInteractions, 0)
 
     element.addEventListener('contextmenu', handleContextMenu)
     
@@ -2018,10 +2117,12 @@
 
   :global(.ProseMirror .post-image-compare__overlay) {
     position: absolute;
-    inset: 0 auto 0 0;
-    width: 50%;
+    inset: 0;
+    width: 100%;
     overflow: hidden;
-    border-right: 2px solid rgba(255, 255, 255, 0.88);
+    clip-path: inset(0 50% 0 0);
+    -webkit-clip-path: inset(0 50% 0 0);
+    pointer-events: none;
   }
 
   :global(.ProseMirror .post-image-compare__divider) {
@@ -2033,7 +2134,9 @@
     transform: translateX(-50%);
     background: rgba(255, 255, 255, 0.9);
     box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.18);
-    pointer-events: none;
+    pointer-events: auto;
+    cursor: ew-resize;
+    touch-action: none;
     z-index: 2;
   }
 
@@ -2055,10 +2158,13 @@
     background: rgba(24, 24, 27, 0.95);
   }
 
-  :global(.ProseMirror .post-image-compare__slider) {
-    width: 100%;
-    accent-color: rgb(37 99 235);
+  :global(.ProseMirror .post-image-compare__viewport) {
     cursor: ew-resize;
+    touch-action: none;
+  }
+
+  :global(.ProseMirror .post-image-compare[data-compare-dragging='1']) {
+    user-select: none;
   }
 
   :global(.ProseMirror .post-image-compare__caption) {
