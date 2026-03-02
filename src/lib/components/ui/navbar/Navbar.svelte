@@ -67,6 +67,7 @@
     env.PUBLIC_PROJECT_ADVRTISEMENT || '/advertisement';
   const PUBLIC_PROJECT_AUTHORS = env.PUBLIC_PROJECT_AUTHORS || '/authors';
   const PUBLIC_PROJECT_RULES = env.PUBLIC_PROJECT_RULES || '/rules';
+  const SHOW_FOLDERS = false;
   
   // Переменная для случайного слогана
   let randomTagline = '';
@@ -402,70 +403,72 @@
         >
           <span slot="label">Избранное</span>
         </SidebarButton>
-        <SidebarButton
-          icon={ClipboardDocumentList}
-          href="javascript:void(0)"
-          active={currentFeed === 'thematic'}
-          on:click={(e) => {
-            e.preventDefault();
-            thematicFeedsOpen = !thematicFeedsOpen;
-          }}
-        >
-          <div slot="label" class="flex items-center gap-2 w-full">
-            <span class="truncate">Папки</span>
-            <span
-              class="ml-auto transition-transform duration-150"
-              class:rotate-180={thematicFeedsOpen}
-              aria-hidden="true"
-            >
-              <Icon src={ChevronDown} size="16" mini />
-            </span>
-          </div>
-        </SidebarButton>
-        {#if thematicFeedsOpen && (thematicFeeds.length || $siteUser)}
-          <div class="ml-6 flex flex-col gap-1">
-            {#if $siteUser?.is_staff}
-              <SidebarButton
-                href="/folders?create=1"
-                isExpandable={true}
-                class="h-auto py-2"
-                on:click={() => { sidebarOpen = false; }}
+        {#if SHOW_FOLDERS}
+          <SidebarButton
+            icon={ClipboardDocumentList}
+            href="javascript:void(0)"
+            active={currentFeed === 'thematic'}
+            on:click={(e) => {
+              e.preventDefault();
+              thematicFeedsOpen = !thematicFeedsOpen;
+            }}
+          >
+            <div slot="label" class="flex items-center gap-2 w-full">
+              <span class="truncate">Папки</span>
+              <span
+                class="ml-auto transition-transform duration-150"
+                class:rotate-180={thematicFeedsOpen}
+                aria-hidden="true"
               >
-                <div slot="label" class="flex flex-col min-w-0 leading-tight">
-                  <span class="truncate text-sm">Создать папку</span>
-                </div>
-              </SidebarButton>
-            {/if}
-            {#if $siteUser}
-              <SidebarButton
-                href="/folders"
-                isExpandable={true}
-                class="h-auto py-2"
-                on:click={() => { sidebarOpen = false; }}
-              >
-                <div slot="label" class="flex flex-col min-w-0 leading-tight">
-                  <span class="truncate text-sm">Управление папками</span>
-                </div>
-              </SidebarButton>
-            {/if}
-            {#each thematicFeeds as feed}
-              <SidebarButton
-                href={`/?feed=thematic&theme=${encodeURIComponent(feed.slug)}`}
-                active={currentFeed === 'thematic' && currentThematicSlug === feed.slug}
-                isExpandable={true}
-                class="h-auto py-2"
-                title={feed.description || feed.name}
-                on:click={() => { sidebarOpen = false; }}
-              >
-                <div slot="label" class="flex flex-col min-w-0 leading-tight">
-                  <span class="truncate text-sm">{feed.name}</span>
-                  <span class="truncate text-xs text-slate-500 dark:text-zinc-400">
-                    {feed.authors_count ?? 0} авторов · {feed.tags_count ?? 0} тегов
-                  </span>
-                </div>
-              </SidebarButton>
-            {/each}
-          </div>
+                <Icon src={ChevronDown} size="16" mini />
+              </span>
+            </div>
+          </SidebarButton>
+          {#if thematicFeedsOpen && (thematicFeeds.length || $siteUser)}
+            <div class="ml-6 flex flex-col gap-1">
+              {#if $siteUser?.is_staff}
+                <SidebarButton
+                  href="/folders?create=1"
+                  isExpandable={true}
+                  class="h-auto py-2"
+                  on:click={() => { sidebarOpen = false; }}
+                >
+                  <div slot="label" class="flex flex-col min-w-0 leading-tight">
+                    <span class="truncate text-sm">Создать папку</span>
+                  </div>
+                </SidebarButton>
+              {/if}
+              {#if $siteUser}
+                <SidebarButton
+                  href="/folders"
+                  isExpandable={true}
+                  class="h-auto py-2"
+                  on:click={() => { sidebarOpen = false; }}
+                >
+                  <div slot="label" class="flex flex-col min-w-0 leading-tight">
+                    <span class="truncate text-sm">Управление папками</span>
+                  </div>
+                </SidebarButton>
+              {/if}
+              {#each thematicFeeds as feed}
+                <SidebarButton
+                  href={`/?feed=thematic&theme=${encodeURIComponent(feed.slug)}`}
+                  active={currentFeed === 'thematic' && currentThematicSlug === feed.slug}
+                  isExpandable={true}
+                  class="h-auto py-2"
+                  title={feed.description || feed.name}
+                  on:click={() => { sidebarOpen = false; }}
+                >
+                  <div slot="label" class="flex flex-col min-w-0 leading-tight">
+                    <span class="truncate text-sm">{feed.name}</span>
+                    <span class="truncate text-xs text-slate-500 dark:text-zinc-400">
+                      {feed.authors_count ?? 0} авторов · {feed.tags_count ?? 0} тегов
+                    </span>
+                  </div>
+                </SidebarButton>
+              {/each}
+            </div>
+          {/if}
         {/if}
       </div>
 
