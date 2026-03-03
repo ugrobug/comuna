@@ -5,6 +5,7 @@ from django.urls import path
 
 from feeds.views import (
     auth_me,
+    auth_movie_review_autofill,
     auth_notification_read,
     auth_notification_settings,
     auth_notifications,
@@ -107,6 +108,11 @@ urlpatterns = [
     path("api/auth/telegram/", telegram_auth, name="auth-telegram"),
     path("api/auth/vk/", vk_auth, name="auth-vk"),
     path("api/auth/me/", auth_me, name="auth-me"),
+    path(
+        "api/auth/post-templates/movie-review/autofill/",
+        auth_movie_review_autofill,
+        name="auth-movie-review-autofill",
+    ),
     path("api/auth/notifications/", auth_notifications, name="auth-notifications"),
     path(
         "api/auth/notifications/settings/",

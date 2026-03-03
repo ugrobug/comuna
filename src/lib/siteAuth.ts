@@ -1,6 +1,6 @@
 import { browser } from '$app/environment'
 import { getBackendBaseUrl } from '$lib/api/backend'
-import type { SitePostTemplate } from '$lib/postTemplates'
+import type { MovieReviewTemplateData, SitePostTemplate } from '$lib/postTemplates'
 import { writable, get } from 'svelte/store'
 
 export type SiteAuthorLink = {
@@ -458,6 +458,32 @@ export const uploadSiteImage = async (image: File) => {
     throw new Error(data?.error || 'Не удалось загрузить изображение')
   }
   return data.url as string
+}
+
+export const autofillMovieReviewTemplateByImdb = async (imdbUrl: string) => {
+  const token = get(siteToken)
+  if (!token) {
+    throw new Error('Нужна авторизация')
+  }
+  const response = await fetch(buildUrl('/api/auth/post-templates/movie-review/autofill/'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ imdb_url: imdbUrl }),
+  })
+
+  const data = await response.json().catch(() => null)
+  if (!response.ok || !data?.template?.data) {
+    throw new Error(data?.error || 'Не удалось получить данные фильма')
+  }
+  return {
+    imdb_id: String(data?.imdb_id || ''),
+    data: (data?.template?.data || {}) as Partial<MovieReviewTemplateData>,
+    sources: Array.isArray(data?.sources) ? data.sources.map((item: unknown) => String(item)) : [],
+    warnings: Array.isArray(data?.warnings) ? data.warnings.map((item: unknown) => String(item)) : [],
+  }
 }
 
 export const fetchSiteNotifications = async (limit = 10, unreadOnly = false) => {

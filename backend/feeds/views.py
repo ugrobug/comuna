@@ -96,6 +96,141 @@ _COMMENT_PERSONAS = (
 _COMMENT_PERSONAS_BY_KEY = {item["key"]: item for item in _COMMENT_PERSONAS}
 _POST_TEMPLATE_TYPE_MOVIE_REVIEW = "movie_review"
 _POST_TEMPLATE_MOVIE_KINDS = {"movie", "series"}
+_POST_TEMPLATE_MOVIE_GENRES = {
+    "action",
+    "adventure",
+    "animation",
+    "biography",
+    "comedy",
+    "crime",
+    "documentary",
+    "drama",
+    "family",
+    "fantasy",
+    "history",
+    "horror",
+    "music",
+    "mystery",
+    "romance",
+    "sci_fi",
+    "sport",
+    "thriller",
+    "war",
+    "western",
+}
+_POST_TEMPLATE_MOVIE_GENRE_ALIASES = {
+    "action": "action",
+    "боевик": "action",
+    "adventure": "adventure",
+    "приключения": "adventure",
+    "animation": "animation",
+    "анимация": "animation",
+    "мультфильм": "animation",
+    "biography": "biography",
+    "биография": "biography",
+    "comedy": "comedy",
+    "комедия": "comedy",
+    "crime": "crime",
+    "криминал": "crime",
+    "documentary": "documentary",
+    "документальный": "documentary",
+    "drama": "drama",
+    "драма": "drama",
+    "family": "family",
+    "семейный": "family",
+    "fantasy": "fantasy",
+    "фэнтези": "fantasy",
+    "history": "history",
+    "история": "history",
+    "horror": "horror",
+    "ужасы": "horror",
+    "music": "music",
+    "музыкальный": "music",
+    "mystery": "mystery",
+    "детектив": "mystery",
+    "romance": "romance",
+    "мелодрама": "romance",
+    "sci_fi": "sci_fi",
+    "sci-fi": "sci_fi",
+    "sciencefiction": "sci_fi",
+    "fantastic": "sci_fi",
+    "фантастика": "sci_fi",
+    "sport": "sport",
+    "спорт": "sport",
+    "thriller": "thriller",
+    "триллер": "thriller",
+    "war": "war",
+    "военный": "war",
+    "western": "western",
+    "вестерн": "western",
+}
+_POST_TEMPLATE_MOVIE_WATCH_PROVIDERS = {
+    "kinopoisk",
+    "okko",
+    "ivi",
+    "wink",
+    "start",
+    "premier",
+    "more_tv",
+    "kion",
+    "amediateka",
+    "netflix",
+    "amazon_prime_video",
+    "disney_plus",
+    "max",
+    "apple_tv_plus",
+    "hulu",
+    "paramount_plus",
+    "peacock",
+}
+_POST_TEMPLATE_MOVIE_WATCH_PROVIDER_ALIASES = {
+    "kinopoisk": "kinopoisk",
+    "kinopoisk hd": "kinopoisk",
+    "kinopoiskhd": "kinopoisk",
+    "кинопоиск": "kinopoisk",
+    "кинопоиск hd": "kinopoisk",
+    "okko": "okko",
+    "ivi": "ivi",
+    "иви": "ivi",
+    "wink": "wink",
+    "start": "start",
+    "premier": "premier",
+    "more_tv": "more_tv",
+    "more tv": "more_tv",
+    "moretv": "more_tv",
+    "more.tv": "more_tv",
+    "kion": "kion",
+    "amediateka": "amediateka",
+    "амедиатека": "amediateka",
+    "netflix": "netflix",
+    "amazon_prime_video": "amazon_prime_video",
+    "amazonprimevideo": "amazon_prime_video",
+    "amazon prime video": "amazon_prime_video",
+    "amazon prime": "amazon_prime_video",
+    "prime video": "amazon_prime_video",
+    "disney_plus": "disney_plus",
+    "disney plus": "disney_plus",
+    "disneyplus": "disney_plus",
+    "disney+": "disney_plus",
+    "max": "max",
+    "hbomax": "max",
+    "hbo max": "max",
+    "apple_tv_plus": "apple_tv_plus",
+    "apple tv": "apple_tv_plus",
+    "appletvplus": "apple_tv_plus",
+    "apple tv+": "apple_tv_plus",
+    "apple tv plus": "apple_tv_plus",
+    "hulu": "hulu",
+    "paramount_plus": "paramount_plus",
+    "paramount plus": "paramount_plus",
+    "paramountplus": "paramount_plus",
+    "paramount+": "paramount_plus",
+    "peacock": "peacock",
+    "peacock tv": "peacock",
+    "peacocktv": "peacock",
+}
+_IMDB_ID_RE = re.compile(r"(tt\d{5,12})", flags=re.IGNORECASE)
+_JUSTWATCH_PROVIDER_CACHE: dict[str, tuple[float, dict[int, str]]] = {}
 
 
 def _issue_token(user: User) -> str:
@@ -939,6 +1074,356 @@ def _parse_tag_payload(raw) -> list[str]:
     return normalized
 
 
+def _http_json_request(
+    url: str,
+    *,
+    method: str = "GET",
+    payload: dict | None = None,
+    headers: dict[str, str] | None = None,
+    timeout: float = 6.0,
+) -> dict | list | None:
+    request_headers = {
+        "Accept": "application/json",
+        "User-Agent": "ComunaBot/1.0 (+https://comuna.ru)",
+    }
+    if headers:
+        request_headers.update(headers)
+
+    data: bytes | None = None
+    if payload is not None:
+        data = json.dumps(payload).encode("utf-8")
+        request_headers.setdefault("Content-Type", "application/json")
+
+    request = urllib.request.Request(
+        url,
+        data=data,
+        headers=request_headers,
+        method=method.upper(),
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            body = response.read().decode("utf-8")
+    except (urllib.error.URLError, TimeoutError, ValueError):
+        return None
+
+    if not body:
+        return None
+    try:
+        return json.loads(body)
+    except json.JSONDecodeError:
+        return None
+
+
+def _http_json_get(
+    url: str, *, headers: dict[str, str] | None = None, timeout: float = 6.0
+) -> dict | list | None:
+    return _http_json_request(url, method="GET", headers=headers, timeout=timeout)
+
+
+def _http_json_post(
+    url: str,
+    payload: dict,
+    *,
+    headers: dict[str, str] | None = None,
+    timeout: float = 6.0,
+) -> dict | list | None:
+    return _http_json_request(
+        url, method="POST", payload=payload, headers=headers, timeout=timeout
+    )
+
+
+def _extract_imdb_id(value: object) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    matched = _IMDB_ID_RE.search(raw)
+    if not matched:
+        return ""
+    return matched.group(1).lower()
+
+
+def _canonical_imdb_url(imdb_id: str) -> str:
+    return f"https://www.imdb.com/title/{imdb_id}/"
+
+
+def _normalize_movie_watch_provider_value(value: object) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    candidates = [raw.lower()]
+    normalized_spaces = re.sub(r"[\s._\-]+", " ", raw.lower()).strip()
+    if normalized_spaces:
+        candidates.extend(
+            [
+                normalized_spaces,
+                normalized_spaces.replace(" ", ""),
+                normalized_spaces.replace(" ", "_"),
+                normalized_spaces.replace(" ", "."),
+            ]
+        )
+    for candidate in candidates:
+        mapped = _POST_TEMPLATE_MOVIE_WATCH_PROVIDER_ALIASES.get(candidate)
+        if mapped:
+            return mapped
+    return raw
+
+
+def _parse_release_date_hint(value: object) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    iso_date = re.search(r"\b(\d{4}-\d{2}-\d{2})\b", raw)
+    if iso_date:
+        return iso_date.group(1)
+    year_month = re.search(r"\b(\d{4})-(\d{2})\b", raw)
+    if year_month:
+        return f"{year_month.group(1)}-{year_month.group(2)}-01"
+    year_only = re.search(r"\b(18\d{2}|19\d{2}|20\d{2})\b", raw)
+    if year_only:
+        return f"{year_only.group(1)}-01-01"
+    return ""
+
+
+def _movie_review_autofill_from_cinemeta(imdb_id: str) -> dict:
+    for endpoint_kind in ("movie", "series"):
+        payload = _http_json_get(
+            f"https://v3-cinemeta.strem.io/meta/{endpoint_kind}/{imdb_id}.json",
+            timeout=5.0,
+        )
+        if not isinstance(payload, dict):
+            continue
+        meta = payload.get("meta")
+        if not isinstance(meta, dict):
+            continue
+        title = str(meta.get("name") or "").strip()
+        if not title:
+            continue
+        genres_raw = meta.get("genres")
+        first_genre = ""
+        if isinstance(genres_raw, list):
+            for genre_item in genres_raw:
+                genre_value = str(genre_item or "").strip()
+                if genre_value:
+                    first_genre = genre_value
+                    break
+        if not first_genre:
+            first_genre = str(meta.get("genre") or "").strip()
+        release_date = _parse_release_date_hint(
+            meta.get("releaseInfo") or meta.get("released") or meta.get("year")
+        )
+        raw_kind = str(meta.get("type") or endpoint_kind).strip().lower()
+        content_kind = "series" if raw_kind in {"series", "show", "tv"} else "movie"
+        return {
+            "title": title,
+            "poster_url": str(meta.get("poster") or "").strip(),
+            "genre": first_genre,
+            "content_kind": content_kind,
+            "release_date": release_date,
+        }
+    return {}
+
+
+def _movie_review_autofill_from_wikidata(imdb_id: str) -> dict:
+    query = f"""
+SELECT ?itemLabel ?originalTitle ?genreLabel ?publicationDate ?instanceOfLabel ?poster WHERE {{
+  ?item wdt:P345 "{imdb_id}".
+  OPTIONAL {{ ?item wdt:P1476 ?originalTitle. }}
+  OPTIONAL {{ ?item wdt:P136 ?genre. }}
+  OPTIONAL {{ ?item wdt:P577 ?publicationDate. }}
+  OPTIONAL {{ ?item wdt:P31 ?instanceOf. }}
+  OPTIONAL {{ ?item wdt:P18 ?poster. }}
+  SERVICE wikibase:label {{ bd:serviceParam wikibase:language "ru,en". }}
+}}
+LIMIT 25
+""".strip()
+    url = "https://query.wikidata.org/sparql?" + urllib.parse.urlencode(
+        {"format": "json", "query": query}
+    )
+    payload = _http_json_get(
+        url,
+        headers={"Accept": "application/sparql-results+json"},
+        timeout=8.0,
+    )
+    if not isinstance(payload, dict):
+        return {}
+    rows = (
+        payload.get("results", {}).get("bindings", [])
+        if isinstance(payload.get("results"), dict)
+        else []
+    )
+    if not isinstance(rows, list) or not rows:
+        return {}
+
+    title = ""
+    original_title = ""
+    genre = ""
+    release_date = ""
+    content_kind = ""
+    poster_url = ""
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if not title:
+            title = str(row.get("itemLabel", {}).get("value") or "").strip()
+        if not original_title:
+            original_title = str(row.get("originalTitle", {}).get("value") or "").strip()
+        if not genre:
+            genre = str(row.get("genreLabel", {}).get("value") or "").strip()
+        if not release_date:
+            release_date = _parse_release_date_hint(
+                row.get("publicationDate", {}).get("value")
+            )
+        if not content_kind:
+            raw_instance = str(row.get("instanceOfLabel", {}).get("value") or "").lower()
+            if any(token in raw_instance for token in ("сериал", "series", "television")):
+                content_kind = "series"
+            elif any(token in raw_instance for token in ("фильм", "film", "movie")):
+                content_kind = "movie"
+        if not poster_url:
+            poster_value = str(row.get("poster", {}).get("value") or "").strip()
+            if poster_value.startswith("http://") or poster_value.startswith("https://"):
+                poster_url = poster_value
+            elif poster_value:
+                poster_url = "https://commons.wikimedia.org/wiki/Special:FilePath/" + urllib.parse.quote(
+                    poster_value
+                )
+
+    return {
+        "title": title,
+        "original_title": original_title,
+        "genre": genre,
+        "release_date": release_date,
+        "content_kind": content_kind,
+        "poster_url": poster_url,
+    }
+
+
+def _justwatch_provider_names_by_id(locale: str) -> dict[int, str]:
+    now_ts = time.time()
+    cached = _JUSTWATCH_PROVIDER_CACHE.get(locale)
+    if cached and (now_ts - cached[0]) < 60 * 60 * 24:
+        return cached[1]
+
+    payload = _http_json_get(
+        f"https://apis.justwatch.com/content/providers/locale/{locale}",
+        timeout=6.0,
+    )
+    providers_raw: list[object]
+    if isinstance(payload, list):
+        providers_raw = payload
+    elif isinstance(payload, dict):
+        providers_raw = payload.get("items") or payload.get("providers") or []
+    else:
+        providers_raw = []
+
+    provider_map: dict[int, str] = {}
+    for provider in providers_raw:
+        if not isinstance(provider, dict):
+            continue
+        provider_id = provider.get("id")
+        if not isinstance(provider_id, int):
+            continue
+        provider_name = str(
+            provider.get("clear_name")
+            or provider.get("short_name")
+            or provider.get("technical_name")
+            or ""
+        ).strip()
+        if not provider_name:
+            continue
+        provider_map[provider_id] = provider_name
+
+    _JUSTWATCH_PROVIDER_CACHE[locale] = (now_ts, provider_map)
+    return provider_map
+
+
+def _movie_review_autofill_from_justwatch(
+    imdb_id: str,
+    *,
+    title: str = "",
+    original_title: str = "",
+    content_kind: str = "",
+) -> dict:
+    queries: list[str] = []
+    for raw_query in (title, original_title, imdb_id):
+        query = str(raw_query or "").strip()
+        if query and query not in queries:
+            queries.append(query)
+
+    if not queries:
+        return {}
+
+    collected: list[str] = []
+    seen: set[str] = set()
+    for locale in ("ru_RU", "en_US"):
+        provider_names_by_id = _justwatch_provider_names_by_id(locale)
+        for query in queries:
+            search_payload = _http_json_post(
+                f"https://apis.justwatch.com/content/titles/{locale}/popular",
+                {
+                    "query": query,
+                    "page_size": 8,
+                    "page": 1,
+                    "content_types": ["movie", "show"],
+                },
+                timeout=7.0,
+            )
+            if not isinstance(search_payload, dict):
+                continue
+            items = search_payload.get("items")
+            if not isinstance(items, list):
+                continue
+
+            for item in items[:6]:
+                if not isinstance(item, dict):
+                    continue
+                item_id = item.get("id")
+                if not isinstance(item_id, int):
+                    continue
+                object_type = str(item.get("object_type") or "").strip().lower()
+                inferred_kind = "series" if object_type in {"show", "series"} else "movie"
+                if content_kind in _POST_TEMPLATE_MOVIE_KINDS and inferred_kind != content_kind:
+                    continue
+
+                details_payload = _http_json_get(
+                    f"https://apis.justwatch.com/content/titles/{object_type or 'movie'}/{item_id}/locale/{locale}",
+                    timeout=7.0,
+                )
+                if not isinstance(details_payload, dict):
+                    continue
+                offers = details_payload.get("offers")
+                if not isinstance(offers, list):
+                    continue
+                for offer in offers:
+                    if not isinstance(offer, dict):
+                        continue
+                    provider_id_raw = offer.get("provider_id")
+                    provider_name_from_map = (
+                        provider_names_by_id.get(provider_id_raw)
+                        if isinstance(provider_id_raw, int)
+                        else None
+                    )
+                    candidates = [
+                        offer.get("package_short_name"),
+                        offer.get("package_clear_name"),
+                        offer.get("retailer"),
+                        provider_name_from_map,
+                    ]
+                    for candidate in candidates:
+                        mapped = _normalize_movie_watch_provider_value(candidate)
+                        if mapped not in _POST_TEMPLATE_MOVIE_WATCH_PROVIDERS:
+                            continue
+                        if mapped in seen:
+                            continue
+                        seen.add(mapped)
+                        collected.append(mapped)
+                if len(collected) >= 10:
+                    return {"watch_where": collected[:10]}
+    if not collected:
+        return {}
+    return {"watch_where": collected[:10]}
+
+
 def _normalize_template_text(value: object, max_length: int) -> tuple[str, str | None]:
     text = str(value or "").strip()
     if len(text) > max_length:
@@ -959,6 +1444,56 @@ def _normalize_template_http_url(value: object) -> tuple[str, str | None]:
     return url, None
 
 
+def _normalize_movie_review_genre(value: object) -> tuple[str, str | None]:
+    genre, genre_error = _normalize_template_text(value, 80)
+    if genre_error:
+        return "", "genre is too long"
+    if not genre:
+        return "", None
+    normalized = _POST_TEMPLATE_MOVIE_GENRE_ALIASES.get(genre.lower(), genre)
+    if normalized in _POST_TEMPLATE_MOVIE_GENRES:
+        return normalized, None
+    # Keep custom/legacy values for backwards compatibility.
+    return normalized, None
+
+
+def _normalize_movie_review_watch_where(value: object) -> tuple[list[str], str | None]:
+    if value in (None, "", []):
+        return [], None
+
+    raw_items: list[object]
+    if isinstance(value, (list, tuple, set)):
+        raw_items = list(value)
+    elif isinstance(value, str):
+        raw_items = [item for item in re.split(r"[;,]", value)]
+    else:
+        return [], "invalid watch platform value"
+
+    normalized_items: list[str] = []
+    seen: set[str] = set()
+    for raw_item in raw_items:
+        item, item_error = _normalize_template_text(raw_item, 120)
+        if item_error:
+            return [], "watch platform value is too long"
+        if not item:
+            continue
+        normalized = _normalize_movie_watch_provider_value(item)
+        if normalized in _POST_TEMPLATE_MOVIE_WATCH_PROVIDERS:
+            value_to_store = normalized
+        else:
+            # Keep custom/legacy values for backwards compatibility.
+            value_to_store = normalized
+        dedupe_key = value_to_store.lower()
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        normalized_items.append(value_to_store)
+
+    if len(normalized_items) > 24:
+        return [], "too many watch platforms"
+    return normalized_items, None
+
+
 def _normalize_movie_review_template_data(raw_data: object) -> tuple[dict | None, str | None]:
     if raw_data in (None, "", {}):
         return None, None
@@ -971,9 +1506,9 @@ def _normalize_movie_review_template_data(raw_data: object) -> tuple[dict | None
     poster_url, poster_error = _normalize_template_http_url(raw_data.get("poster_url"))
     if poster_error:
         return None, "invalid poster url"
-    genre, genre_error = _normalize_template_text(raw_data.get("genre"), 180)
+    genre, genre_error = _normalize_movie_review_genre(raw_data.get("genre"))
     if genre_error:
-        return None, "genre is too long"
+        return None, genre_error
     title, title_error = _normalize_template_text(raw_data.get("title"), 255)
     if title_error:
         return None, "movie title is too long"
@@ -982,11 +1517,11 @@ def _normalize_movie_review_template_data(raw_data: object) -> tuple[dict | None
     )
     if original_title_error:
         return None, "original title is too long"
-    watch_where, watch_where_error = _normalize_template_text(
-        raw_data.get("watch_where"), 255
+    watch_where, watch_where_error = _normalize_movie_review_watch_where(
+        raw_data.get("watch_where")
     )
     if watch_where_error:
-        return None, "watch platform value is too long"
+        return None, watch_where_error
 
     raw_kind = str(
         raw_data.get("content_kind")
@@ -1021,11 +1556,13 @@ def _normalize_movie_review_template_data(raw_data: object) -> tuple[dict | None
         "release_date": release_date,
         "watch_where": watch_where,
     }
-    cleaned_data = {
-        key: value
-        for key, value in normalized_data.items()
-        if isinstance(value, str) and value.strip()
-    }
+    cleaned_data: dict[str, object] = {}
+    for key, value in normalized_data.items():
+        if isinstance(value, str) and value.strip():
+            cleaned_data[key] = value
+            continue
+        if isinstance(value, list) and value:
+            cleaned_data[key] = value
     if not cleaned_data:
         return None, None
     return cleaned_data, None
@@ -2963,6 +3500,78 @@ def auth_me(request: HttpRequest) -> HttpResponse:
 
     profile.save()
     return JsonResponse({"ok": True, "user": _serialize_user(user)})
+
+
+@csrf_exempt
+def auth_movie_review_autofill(request: HttpRequest) -> HttpResponse:
+    user = _get_user_from_request(request)
+    if not user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+
+    imdb_input = payload.get("imdb_url") or payload.get("imdb") or payload.get("url") or ""
+    imdb_id = _extract_imdb_id(imdb_input)
+    if not imdb_id:
+        return JsonResponse({"ok": False, "error": "invalid imdb url"}, status=400)
+
+    autofill_data: dict[str, object] = {"imdb_url": _canonical_imdb_url(imdb_id)}
+    sources: list[str] = []
+    warnings: list[str] = []
+
+    cinemeta_data = _movie_review_autofill_from_cinemeta(imdb_id)
+    if cinemeta_data:
+        sources.append("cinemeta")
+        for key, value in cinemeta_data.items():
+            if isinstance(value, str) and value.strip():
+                autofill_data[key] = value.strip()
+
+    wikidata_data = _movie_review_autofill_from_wikidata(imdb_id)
+    if wikidata_data:
+        sources.append("wikidata")
+        for key in ("title", "original_title", "genre", "release_date", "content_kind", "poster_url"):
+            value = wikidata_data.get(key)
+            if isinstance(value, str) and value.strip() and not autofill_data.get(key):
+                autofill_data[key] = value.strip()
+
+    justwatch_data = _movie_review_autofill_from_justwatch(
+        imdb_id,
+        title=str(autofill_data.get("title") or ""),
+        original_title=str(autofill_data.get("original_title") or ""),
+        content_kind=str(autofill_data.get("content_kind") or ""),
+    )
+    if justwatch_data:
+        sources.append("justwatch")
+        watch_where = justwatch_data.get("watch_where")
+        if isinstance(watch_where, list) and watch_where:
+            autofill_data["watch_where"] = watch_where
+    else:
+        warnings.append("Не удалось определить площадки для просмотра")
+
+    normalized_data, template_error = _normalize_movie_review_template_data(autofill_data)
+    if template_error:
+        return JsonResponse({"ok": False, "error": template_error}, status=400)
+    if not normalized_data:
+        return JsonResponse({"ok": False, "error": "could not fetch movie data"}, status=404)
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "imdb_id": imdb_id,
+            "sources": sources,
+            "warnings": warnings,
+            "template": {
+                "type": _POST_TEMPLATE_TYPE_MOVIE_REVIEW,
+                "version": 1,
+                "data": normalized_data,
+            },
+        }
+    )
 
 
 def _serialize_site_notification_item(item: SiteNotification) -> dict:

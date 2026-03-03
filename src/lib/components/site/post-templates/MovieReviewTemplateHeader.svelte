@@ -1,7 +1,9 @@
 <script lang="ts">
   import {
     formatMovieReviewReleaseDate,
+    movieReviewGenreLabel,
     movieReviewKindLabel,
+    movieReviewWatchWhereLabels,
     type MovieReviewTemplate,
   } from '$lib/postTemplates'
 
@@ -11,7 +13,9 @@
   $: data = template.data
   $: displayTitle = (data.title || fallbackTitle || '').trim()
   $: displayOriginalTitle = (data.original_title || '').trim()
+  $: displayGenre = movieReviewGenreLabel(data.genre)
   $: releaseLabel = formatMovieReviewReleaseDate(data.release_date)
+  $: watchWhereLabels = movieReviewWatchWhereLabels(data.watch_where)
   $: imdbHost = (() => {
     try {
       if (!data.imdb_url) return ''
@@ -36,8 +40,8 @@
         {#if data.content_kind}
           <span class="movie-review-chip">{movieReviewKindLabel(data.content_kind)}</span>
         {/if}
-        {#if data.genre}
-          <span class="movie-review-chip">{data.genre}</span>
+        {#if displayGenre}
+          <span class="movie-review-chip">{displayGenre}</span>
         {/if}
         {#if releaseLabel}
           <span class="movie-review-chip">Премьера: {releaseLabel}</span>
@@ -53,10 +57,10 @@
       {/if}
 
       <div class="movie-review-hero__meta">
-        {#if data.watch_where}
+        {#if watchWhereLabels.length}
           <div class="movie-review-meta-item">
             <span class="movie-review-meta-label">Где посмотреть</span>
-            <span class="movie-review-meta-value">{data.watch_where}</span>
+            <span class="movie-review-meta-value">{watchWhereLabels.join(', ')}</span>
           </div>
         {/if}
 
