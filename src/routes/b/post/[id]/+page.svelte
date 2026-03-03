@@ -10,7 +10,7 @@
 
   export let data
 
-  let postView = backendPostToPostView(data.post)
+  let postView: any = backendPostToPostView(data.post)
   let lastVisitedPostId: number | null = null
 
   const stripHtml = (value: string) =>
@@ -73,8 +73,12 @@
   $: authorUrl = data.post?.author?.username
     ? `${siteBaseUrl}/${data.post.author.username}`
     : undefined
+  $: templatePoster =
+    data.post?.template?.type === 'movie_review'
+      ? (data.post?.template?.data?.poster_url ?? '')
+      : ''
   $: firstImage = extractFirstImage(data.post?.content || '')
-  $: firstImageAbsolute = firstImage ? ensureAbsoluteUrl(firstImage, siteBaseUrl) : ''
+  $: firstImageAbsolute = ensureAbsoluteUrl(templatePoster || firstImage || '', siteBaseUrl)
   $: ogImage = isPreviewImageCandidate(firstImageAbsolute) ? firstImageAbsolute : ''
   $: ogImageType = imageMimeByExtension(ogImage)
   $: postDescription = buildDescription(data.post?.content || '')

@@ -8,6 +8,13 @@
   import { buildComunUrl, type BackendComun } from '$lib/api/backend'
   import { createComunPost, refreshSiteUser, siteToken, siteUser } from '$lib/siteAuth'
   import { onMount } from 'svelte'
+  import PostTemplateFields from '$lib/components/site/post-templates/PostTemplateFields.svelte'
+  import {
+    buildPostTemplatePayload,
+    createEmptyMovieReviewTemplateData,
+    type MovieReviewTemplateData,
+    type PostTemplateType,
+  } from '$lib/postTemplates'
 
   export let data
 
@@ -35,6 +42,8 @@
     username?: string
   }
   let publishIdentityOptions: PublishIdentityOption[] = []
+  let createTemplateType: '' | PostTemplateType = ''
+  let createMovieReviewData: MovieReviewTemplateData = createEmptyMovieReviewTemplateData()
 
   const isEditorContentEmpty = (value: string) => {
     if (!value || value.trim() === '') return true
@@ -155,6 +164,10 @@
 
     creating = true
     try {
+      const template = buildPostTemplatePayload(
+        createTemplateType,
+        createMovieReviewData
+      )
       await createComunPost(comun.slug, {
         title: createTitle.trim(),
         content: createContent.trim(),
@@ -164,6 +177,7 @@
             ? createAuthorChoice.replace(/^channel:/, '')
             : undefined,
         comun_category_id: createCategoryId ? Number(createCategoryId) : null,
+        template: template ?? undefined,
       })
       toast({
         content: 'Пост опубликован в комуне',
@@ -197,7 +211,7 @@
         </div>
       </div>
       {#if comun?.slug}
-        <Button color="ghost" on:click={() => goto(`/comuns/${comun.slug}`)}>
+        <Button color="ghost" on:click={() => goto(`/comuns/${comun?.slug ?? ''}`)}>
           Назад к комуне
         </Button>
       {/if}
@@ -263,6 +277,10 @@
         {/if}
 
         <TextInput label="Заголовок" bind:value={createTitle} />
+        <PostTemplateFields
+          bind:templateType={createTemplateType}
+          bind:movieReviewData={createMovieReviewData}
+        />
 
         <EditorJS
           bind:value={createContent}
@@ -291,6 +309,8 @@
               createTitle = ''
               createContent = ''
               createCategoryId = ''
+              createTemplateType = ''
+              createMovieReviewData = createEmptyMovieReviewTemplateData()
               createError = ''
             }}
             disabled={creating}

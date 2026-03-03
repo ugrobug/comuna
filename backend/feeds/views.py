@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections import defaultdict
-from datetime import timedelta, timezone as dt_timezone
+from datetime import datetime as dt_datetime, timedelta, timezone as dt_timezone
 from math import ceil
 from html import escape, unescape
 from xml.sax.saxutils import escape as xml_escape
@@ -94,6 +94,8 @@ _COMMENT_PERSONAS = (
     {"key": "persona_10", "username": "alex_b"},
 )
 _COMMENT_PERSONAS_BY_KEY = {item["key"]: item for item in _COMMENT_PERSONAS}
+_POST_TEMPLATE_TYPE_MOVIE_REVIEW = "movie_review"
+_POST_TEMPLATE_MOVIE_KINDS = {"movie", "series"}
 
 
 def _issue_token(user: User) -> str:
@@ -935,6 +937,144 @@ def _parse_tag_payload(raw) -> list[str]:
         seen.add(key)
         normalized.append(value)
     return normalized
+
+
+def _normalize_template_text(value: object, max_length: int) -> tuple[str, str | None]:
+    text = str(value or "").strip()
+    if len(text) > max_length:
+        return "", "template field is too long"
+    return text, None
+
+
+def _normalize_template_http_url(value: object) -> tuple[str, str | None]:
+    url = str(value or "").strip()
+    if not url:
+        return "", None
+    try:
+        parsed = urllib.parse.urlparse(url)
+    except Exception:
+        return "", "invalid template url"
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return "", "invalid template url"
+    return url, None
+
+
+def _normalize_movie_review_template_data(raw_data: object) -> tuple[dict | None, str | None]:
+    if raw_data in (None, "", {}):
+        return None, None
+    if not isinstance(raw_data, dict):
+        return None, "invalid movie review template data"
+
+    imdb_url, url_error = _normalize_template_http_url(raw_data.get("imdb_url"))
+    if url_error:
+        return None, "invalid imdb url"
+    poster_url, poster_error = _normalize_template_http_url(raw_data.get("poster_url"))
+    if poster_error:
+        return None, "invalid poster url"
+    genre, genre_error = _normalize_template_text(raw_data.get("genre"), 180)
+    if genre_error:
+        return None, "genre is too long"
+    title, title_error = _normalize_template_text(raw_data.get("title"), 255)
+    if title_error:
+        return None, "movie title is too long"
+    original_title, original_title_error = _normalize_template_text(
+        raw_data.get("original_title"), 255
+    )
+    if original_title_error:
+        return None, "original title is too long"
+    watch_where, watch_where_error = _normalize_template_text(
+        raw_data.get("watch_where"), 255
+    )
+    if watch_where_error:
+        return None, "watch platform value is too long"
+
+    raw_kind = str(
+        raw_data.get("content_kind")
+        or raw_data.get("kind")
+        or raw_data.get("content_type")
+        or ""
+    ).strip().lower()
+    if raw_kind in {"film", "movie", "фильм"}:
+        content_kind = "movie"
+    elif raw_kind in {"series", "serial", "tv", "сериал"}:
+        content_kind = "series"
+    else:
+        content_kind = ""
+    if raw_kind and content_kind not in _POST_TEMPLATE_MOVIE_KINDS:
+        return None, "invalid movie review type"
+
+    release_date_raw = str(raw_data.get("release_date") or "").strip()
+    release_date = ""
+    if release_date_raw:
+        try:
+            release_date = dt_datetime.strptime(release_date_raw, "%Y-%m-%d").date().isoformat()
+        except ValueError:
+            return None, "invalid release date"
+
+    normalized_data = {
+        "imdb_url": imdb_url,
+        "poster_url": poster_url,
+        "genre": genre,
+        "content_kind": content_kind,
+        "title": title,
+        "original_title": original_title,
+        "release_date": release_date,
+        "watch_where": watch_where,
+    }
+    cleaned_data = {
+        key: value
+        for key, value in normalized_data.items()
+        if isinstance(value, str) and value.strip()
+    }
+    if not cleaned_data:
+        return None, None
+    return cleaned_data, None
+
+
+def _normalize_post_template_payload(raw_template: object) -> tuple[dict | None, str | None]:
+    if raw_template in (None, "", {}):
+        return None, None
+    if not isinstance(raw_template, dict):
+        return None, "invalid template payload"
+
+    template_type = str(raw_template.get("type") or "").strip().lower()
+    if not template_type:
+        return None, None
+    if template_type != _POST_TEMPLATE_TYPE_MOVIE_REVIEW:
+        return None, "unsupported template type"
+
+    template_data_input = raw_template.get("data")
+    if template_data_input is None and template_type == _POST_TEMPLATE_TYPE_MOVIE_REVIEW:
+        template_data_input = {
+            key: raw_template.get(key)
+            for key in (
+                "imdb_url",
+                "poster_url",
+                "genre",
+                "content_kind",
+                "title",
+                "original_title",
+                "release_date",
+                "watch_where",
+            )
+            if raw_template.get(key) is not None
+        }
+    normalized_data, template_error = _normalize_movie_review_template_data(template_data_input)
+    if template_error:
+        return None, template_error
+    if not normalized_data:
+        return None, None
+    return {
+        "type": _POST_TEMPLATE_TYPE_MOVIE_REVIEW,
+        "version": 1,
+        "data": normalized_data,
+    }, None
+
+
+def _serialize_post_template(post: Post) -> dict | None:
+    raw_data = post.raw_data if isinstance(post.raw_data, dict) else {}
+    normalized_template, _template_error = _normalize_post_template_payload(raw_data.get("template"))
+    return normalized_template
 
 
 def _count_tag_occurrences(text_lower: str, tag_lower: str) -> int:
@@ -3089,6 +3229,7 @@ def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None
     return {
         "id": post.id,
         "title": _post_display_title(post),
+        "template": _serialize_post_template(post),
         "content": content,
         "poll": poll_payload,
         "created_at": post.created_at.isoformat(),
@@ -3172,6 +3313,9 @@ def user_posts(request: HttpRequest) -> HttpResponse:
         author_username = (payload.get("author_username") or "").strip()
         rubric_slug = (payload.get("rubric_slug") or "").strip()
         explicit_tags = _parse_tag_payload(payload.get("tags"))
+        template_payload, template_error = _normalize_post_template_payload(payload.get("template"))
+        if template_error:
+            return JsonResponse({"ok": False, "error": template_error}, status=400)
 
         if not title:
             return JsonResponse({"ok": False, "error": "title is required"}, status=400)
@@ -3236,7 +3380,10 @@ def user_posts(request: HttpRequest) -> HttpResponse:
             rubric=rubric,
             channel_url=channel_url,
             source_url=channel_url,
-            raw_data={"source": "manual"},
+            raw_data={
+                "source": "manual",
+                **({"template": template_payload} if template_payload else {}),
+            },
             is_pending=False,
             is_blocked=False,
             publish_at=publish_at,
@@ -3358,10 +3505,18 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
     title = payload.get("title") if "title" in payload else None
     content = payload.get("content") if "content" in payload else None
     tags_payload = payload.get("tags") if "tags" in payload else None
+    template_in_payload = "template" in payload
+    template_payload = None
+    if template_in_payload:
+        template_payload, template_error = _normalize_post_template_payload(payload.get("template"))
+        if template_error:
+            return JsonResponse({"ok": False, "error": template_error}, status=400)
 
-    if title is None and content is None and tags_payload is None:
+    if title is None and content is None and tags_payload is None and not template_in_payload:
         return JsonResponse({"ok": False, "error": "nothing to update"}, status=400)
 
+    raw_data = dict(post.raw_data or {})
+    raw_data_changed = False
     if content is not None:
         content = str(content).strip()
         if not content:
@@ -3369,10 +3524,18 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
         if len(content) > 100000:
             return JsonResponse({"ok": False, "error": "content too long"}, status=400)
         post.content = content
-        raw_data = dict(post.raw_data or {})
         raw_data["manual_edit"] = True
         raw_data["manual_updated_at"] = timezone.now().isoformat()
-        post.raw_data = raw_data
+        raw_data_changed = True
+
+    if template_in_payload:
+        if template_payload:
+            raw_data["template"] = template_payload
+        else:
+            raw_data.pop("template", None)
+        raw_data["manual_edit"] = True
+        raw_data["manual_updated_at"] = timezone.now().isoformat()
+        raw_data_changed = True
 
     if title is not None:
         title = str(title).strip()
@@ -3381,6 +3544,9 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
         else:
             source_text = _strip_html(post.content)
             post.title = _build_title(source_text)
+
+    if raw_data_changed:
+        post.raw_data = raw_data
 
     post.save(update_fields=["title", "content", "raw_data", "updated_at"])
     if tags_payload is not None:
@@ -3896,6 +4062,7 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
             {
                 "id": post.id,
                 "title": _post_display_title(post),
+                "template": _serialize_post_template(post),
                 "rubric": rubric.name if rubric else None,
                 "rubric_slug": rubric.slug if rubric else None,
                 "rubric_icon_url": _rubric_icon_url(request, rubric),
@@ -4008,6 +4175,7 @@ def rubric_posts(request: HttpRequest, slug: str) -> HttpResponse:
             {
                 "id": post.id,
                 "title": _post_display_title(post),
+                "template": _serialize_post_template(post),
                 "rubric": rubric.name,
                 "rubric_slug": rubric.slug,
                 "rubric_icon_url": _rubric_icon_url(request, rubric),
@@ -4486,6 +4654,7 @@ def tag_posts(request: HttpRequest, tag: str) -> HttpResponse:
             {
                 "id": post.id,
                 "title": _post_display_title(post),
+                "template": _serialize_post_template(post),
                 "rubric": rubric.name if rubric else None,
                 "rubric_slug": rubric.slug if rubric else None,
                 "rubric_icon_url": _rubric_icon_url(request, rubric)
@@ -4550,6 +4719,7 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
             "post": {
                 "id": post.id,
                 "title": _post_display_title(post),
+                "template": _serialize_post_template(post),
                 "rubric": rubric.name if rubric else None,
                 "rubric_slug": rubric.slug if rubric else None,
                 "rubric_icon_url": _rubric_icon_url(request, rubric),
@@ -4691,6 +4861,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
                 {
                     "id": post.id,
                     "title": _post_display_title(post),
+                    "template": _serialize_post_template(post),
                     "rubric": rubric.name if rubric else None,
                     "rubric_slug": rubric.slug if rubric else None,
                     "rubric_icon_url": _rubric_icon_url(request, rubric),
@@ -4782,6 +4953,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
             {
                 "id": post.id,
                 "title": _post_display_title(post),
+                "template": _serialize_post_template(post),
                 "rubric": rubric.name if rubric else None,
                 "rubric_slug": rubric.slug if rubric else None,
                 "rubric_icon_url": _rubric_icon_url(request, rubric),
@@ -4885,6 +5057,7 @@ def fresh_feed(request: HttpRequest) -> HttpResponse:
             {
                 "id": post.id,
                 "title": _post_display_title(post),
+                "template": _serialize_post_template(post),
                 "rubric": rubric.name if rubric else None,
                 "rubric_slug": rubric.slug if rubric else None,
                 "rubric_icon_url": _rubric_icon_url(request, rubric),
@@ -4969,6 +5142,7 @@ def favorites_feed(request: HttpRequest) -> HttpResponse:
             {
                 "id": post.id,
                 "title": _post_display_title(post),
+                "template": _serialize_post_template(post),
                 "rubric": rubric.name if rubric else None,
                 "rubric_slug": rubric.slug if rubric else None,
                 "rubric_icon_url": _rubric_icon_url(request, rubric),
@@ -5137,6 +5311,7 @@ def my_feed(request: HttpRequest) -> HttpResponse:
             {
                 "id": post.id,
                 "title": _post_display_title(post),
+                "template": _serialize_post_template(post),
                 "rubric": rubric.name if rubric else None,
                 "rubric_slug": rubric.slug if rubric else None,
                 "rubric_icon_url": _rubric_icon_url(request, rubric),
@@ -5292,6 +5467,7 @@ def thematic_feed_posts(request: HttpRequest, slug: str) -> HttpResponse:
             {
                 "id": post.id,
                 "title": _post_display_title(post),
+                "template": _serialize_post_template(post),
                 "rubric": rubric.name if rubric else None,
                 "rubric_slug": rubric.slug if rubric else None,
                 "rubric_icon_url": _rubric_icon_url(request, rubric),
@@ -5738,6 +5914,7 @@ def _serialize_backend_post_card(
     return {
         "id": post.id,
         "title": _post_display_title(post),
+        "template": _serialize_post_template(post),
         "rubric": rubric.name if rubric else None,
         "rubric_slug": rubric.slug if rubric else None,
         "rubric_icon_url": _rubric_icon_url(request, rubric),
@@ -6101,6 +6278,9 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
         content = str(payload.get("content") or "").strip()
         author_source = str(payload.get("author_source") or "").strip().lower()
         author_username = str(payload.get("author_username") or "").strip()
+        template_payload, template_error = _normalize_post_template_payload(payload.get("template"))
+        if template_error:
+            return JsonResponse({"ok": False, "error": template_error}, status=400)
         if not title:
             return JsonResponse({"ok": False, "error": "title is required"}, status=400)
         if not content:
@@ -6185,6 +6365,7 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
                 "source": "manual_comun",
                 "comun_slug": comun.slug,
                 "comun_category_id": category.id if category else None,
+                **({"template": template_payload} if template_payload else {}),
             },
             is_pending=False,
             is_blocked=False,
@@ -6520,6 +6701,7 @@ def search_content(request: HttpRequest) -> HttpResponse:
                 {
                     "id": post.id,
                     "title": _post_display_title(post),
+                    "template": _serialize_post_template(post),
                     "rubric": rubric.name if rubric else None,
                     "rubric_slug": rubric.slug if rubric else None,
                     "rubric_icon_url": _rubric_icon_url(request, rubric)

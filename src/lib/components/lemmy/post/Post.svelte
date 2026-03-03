@@ -29,6 +29,8 @@
   import { getTagKey, getTagName, normalizeTag, type TagItem } from '$lib/tags'
   import { buildPostReadUrl } from '$lib/api/backend'
   import { siteToken } from '$lib/siteAuth'
+  import PostTemplateHeader from '$lib/components/site/post-templates/PostTemplateHeader.svelte'
+  import type { SitePostTemplate } from '$lib/postTemplates'
 
   export let post: PostView
   export let actions: boolean = true
@@ -59,6 +61,8 @@
   $: communityName = post.community?.name || ''
   $: communityTitle = post.community?.title || ''
   $: backendTags = (post.post as { tags?: TagItem[] }).tags ?? []
+  $: backendTemplate = (post.post as { template?: SitePostTemplate | null }).template ?? null
+  $: showTemplateHeader = Boolean(isBackendPost && showFullBody && backendTemplate)
   $: backendViewsValue = ((post.counts as { views?: number }).views ?? 0)
   $: backendAuthorNotifyCommentsEnabled = (
     post.creator as { comuna_notify_comments?: boolean }
@@ -164,7 +168,7 @@
   </PostMeta>
 
   <!-- Оборачиваем заголовок в ссылку -->
-  {#if post.post.name}
+  {#if post.post.name && !hideTitle && !showTemplateHeader}
     <a 
       href={postUrl}
       class="block no-underline hover:underline"
@@ -211,6 +215,14 @@
   {#if post.post.body && !post.post.nsfw && view != 'compact' && !hideBody && rule != 'hide'}
     {#if showFullBody}
       <div style="grid-area: body;">
+        {#if showTemplateHeader}
+          <div class="mb-4">
+            <PostTemplateHeader
+              template={backendTemplate}
+              fallbackTitle={post.post.name}
+            />
+          </div>
+        {/if}
         <PostBody
           element="section"
           body={post.post.body}

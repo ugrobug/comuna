@@ -11,6 +11,13 @@
     siteUser,
   } from '$lib/siteAuth'
   import { buildRubricsUrl } from '$lib/api/backend'
+  import PostTemplateFields from '$lib/components/site/post-templates/PostTemplateFields.svelte'
+  import {
+    buildPostTemplatePayload,
+    createEmptyMovieReviewTemplateData,
+    type MovieReviewTemplateData,
+    type PostTemplateType,
+  } from '$lib/postTemplates'
 
   let loadingUser = true
   let createTitle = ''
@@ -29,6 +36,8 @@
   let selectedIdentity: PublishIdentityOption | undefined
   let selectedChannelIdentity: PublishIdentityOption | undefined
   const SITE_AUTHOR_CHOICE = '__site__'
+  let createTemplateType: '' | PostTemplateType = ''
+  let createMovieReviewData: MovieReviewTemplateData = createEmptyMovieReviewTemplateData()
 
   type PublishIdentityOption = {
     value: string
@@ -151,6 +160,10 @@
         .split(',')
         .map((tag) => tag.trim())
         .filter((tag) => tag.length > 0)
+      const template = buildPostTemplatePayload(
+        createTemplateType,
+        createMovieReviewData
+      )
       await createUserPost({
         title: createTitle.trim(),
         content: createContent.trim(),
@@ -161,10 +174,13 @@
             : undefined,
         rubric_slug: createRubric || undefined,
         tags: tags.length ? tags : undefined,
+        template: template ?? undefined,
       })
       createTitle = ''
       createContent = ''
       createTags = ''
+      createTemplateType = ''
+      createMovieReviewData = createEmptyMovieReviewTemplateData()
       toast({
         content:
           'Ваш пост опубликован! Не забудьте поделиться ссылкой на него в социальных сетях',
@@ -309,6 +325,10 @@
           {/if}
         </div>
         <TextInput label="Заголовок" bind:value={createTitle} />
+        <PostTemplateFields
+          bind:templateType={createTemplateType}
+          bind:movieReviewData={createMovieReviewData}
+        />
         <EditorJS
           bind:value={createContent}
           placeholder="Текст поста"
@@ -330,6 +350,8 @@
               createTitle = ''
               createContent = ''
               createTags = ''
+              createTemplateType = ''
+              createMovieReviewData = createEmptyMovieReviewTemplateData()
               createError = ''
             }}
             disabled={creating}

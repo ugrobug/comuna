@@ -1,5 +1,6 @@
 import { browser } from '$app/environment'
 import { getBackendBaseUrl } from '$lib/api/backend'
+import type { SitePostTemplate } from '$lib/postTemplates'
 import { writable, get } from 'svelte/store'
 
 export type SiteAuthorLink = {
@@ -31,6 +32,7 @@ export type SiteUserPost = {
   id: number
   title: string
   content: string
+  template?: SitePostTemplate | null
   created_at: string
   updated_at?: string
   is_pending?: boolean
@@ -300,7 +302,12 @@ export const fetchUserPosts = async (limit = 20, offset = 0) => {
 
 export const updateUserPost = async (
   postId: number,
-  payload: { title?: string; content?: string; tags?: string[] }
+  payload: {
+    title?: string
+    content?: string
+    tags?: string[]
+    template?: SitePostTemplate | null
+  }
 ) => {
   const token = get(siteToken)
   if (!token) {
@@ -352,6 +359,7 @@ export const createUserPost = async (payload: {
   author_username?: string
   rubric_slug?: string
   tags?: string[]
+  template?: SitePostTemplate | null
 }) => {
   const token = get(siteToken)
   if (!token) {
@@ -384,6 +392,7 @@ export const createComunPost = async (
     author_username?: string
     comun_category_id?: number | null
     tags?: string[]
+    template?: SitePostTemplate | null
   }
 ) => {
   const token = get(siteToken)

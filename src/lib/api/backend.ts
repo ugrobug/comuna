@@ -1,5 +1,6 @@
 import { browser } from '$app/environment'
 import { env } from '$env/dynamic/public'
+import type { SitePostTemplate } from '$lib/postTemplates'
 import { slugifyTitle } from '$lib/util/slug'
 
 export const getBackendBaseUrl = (): string => {
@@ -453,6 +454,7 @@ export type BackendPost = {
   id: number
   title: string
   content: string
+  template?: SitePostTemplate | null
   poll?: BackendPoll | null
   created_at: string
   source_url?: string | null
@@ -495,6 +497,7 @@ export const backendPostToPostView = (
       id: post.id,
       name: titleWithTags,
       body: post.content,
+      template: post.template ?? null,
       url: '',
       tags: post.tags ?? [],
       published: post.created_at,
