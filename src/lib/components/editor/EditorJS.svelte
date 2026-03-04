@@ -2134,54 +2134,86 @@
       holder: element,
       placeholder: placeholder,
       tools: {
-        header: {
-          class: Header,
-          config: {
-            levels: [2, 3],
-            defaultLevel: 2
-          },
-          toolbox: {
-            title: 'Заголовок',
-            icon: `<img src="${icons.header}" width="16" height="16" />`
-          }
-        },
-        list: {
-          class: List,
-          inlineToolbar: ['bold', 'italic', 'customInlineLink'],
-          toolbox: {
-            title: 'Список',
-            icon: `<img src="${icons.unorderedList}" width="16" height="16" />`
-          },
-          config: {
-            defaultStyle: 'unordered'
-          }
-        },
-        image: CustomImageTool,
-        quote: {
-          class: Quote,
-          inlineToolbar: ['bold', 'italic', 'customInlineLink'],
-          toolbox: {
-            title: 'Цитата',
-            icon: `<img src="${icons.quote}" width="16" height="16" />`
-          }
-        },
-        code: {
-          class: Code,
-          inlineToolbar: ['bold', 'italic'],
-          toolbox: {
-            title: 'Код',
-            icon: `<img src="${icons.code}" width="16" height="16" />`
-          }
-        },
-        gallery: GalleryTool,
-        map: MapTool,
-        compare: {
-          class: ImageCompareTool,
-          toolbox: {
-            title: 'Сравнение изображений',
-            icon: `<img src="${icons.imageCompare}" width="16" height="16" />`,
-          },
-        },
+        ...(enabledTemplateBlockTypes.has('header')
+          ? {
+              header: {
+                class: Header,
+                config: {
+                  levels: [2, 3],
+                  defaultLevel: 2
+                },
+                toolbox: {
+                  title: 'Заголовок',
+                  icon: `<img src="${icons.header}" width="16" height="16" />`
+                }
+              },
+            }
+          : {}),
+        ...(enabledTemplateBlockTypes.has('list')
+          ? {
+              list: {
+                class: List,
+                inlineToolbar: ['bold', 'italic', 'customInlineLink'],
+                toolbox: {
+                  title: 'Список',
+                  icon: `<img src="${icons.unorderedList}" width="16" height="16" />`
+                },
+                config: {
+                  defaultStyle: 'unordered'
+                }
+              },
+            }
+          : {}),
+        ...(enabledTemplateBlockTypes.has('image')
+          ? {
+              image: CustomImageTool,
+            }
+          : {}),
+        ...(enabledTemplateBlockTypes.has('quote')
+          ? {
+              quote: {
+                class: Quote,
+                inlineToolbar: ['bold', 'italic', 'customInlineLink'],
+                toolbox: {
+                  title: 'Цитата',
+                  icon: `<img src="${icons.quote}" width="16" height="16" />`
+                }
+              },
+            }
+          : {}),
+        ...(enabledTemplateBlockTypes.has('code')
+          ? {
+              code: {
+                class: Code,
+                inlineToolbar: ['bold', 'italic'],
+                toolbox: {
+                  title: 'Код',
+                  icon: `<img src="${icons.code}" width="16" height="16" />`
+                }
+              },
+            }
+          : {}),
+        ...(enabledTemplateBlockTypes.has('gallery')
+          ? {
+              gallery: GalleryTool,
+            }
+          : {}),
+        ...(enabledTemplateBlockTypes.has('map')
+          ? {
+              map: MapTool,
+            }
+          : {}),
+        ...(enabledTemplateBlockTypes.has('compare')
+          ? {
+              compare: {
+                class: ImageCompareTool,
+                toolbox: {
+                  title: 'Сравнение изображений',
+                  icon: `<img src="${icons.imageCompare}" width="16" height="16" />`,
+                },
+              },
+            }
+          : {}),
         ...(enabledTemplateBlockTypes.has('movie_time')
           ? {
               movie_time: MovieTimeTool,
@@ -2190,11 +2222,17 @@
         anchorInput: {
           class: CustomInputTune
         },
-        customLink: CustomLinkTool,
+        ...(enabledTemplateBlockTypes.has('link')
+          ? {
+              customLink: CustomLinkTool,
+            }
+          : {}),
         customInlineLink: CustomInlineLinkTool,
-        embed: {
-          class: Embed,
-          config: {
+        ...(enabledTemplateBlockTypes.has('embed')
+          ? {
+              embed: {
+                class: Embed,
+                config: {
             services: {
               // Стандартные сервисы
               youtube: true,
@@ -2361,8 +2399,10 @@
                 }
               }
             }
-          }
-        }
+          },
+        },
+      }
+      : {}),
       },
       tunes: ["anchorInput"],
       inlineToolbar: ['bold', 'italic', 'customInlineLink'],

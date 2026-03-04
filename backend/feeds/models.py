@@ -25,16 +25,39 @@ POST_TEMPLATE_TYPE_CHOICES = (
     (POST_TEMPLATE_TYPE_MOVIE_REVIEW, "Кинообзор"),
 )
 POST_TEMPLATE_TYPE_VALUES = {value for value, _label in POST_TEMPLATE_TYPE_CHOICES}
+POST_TEMPLATE_EDITOR_BLOCK_HEADER = "header"
+POST_TEMPLATE_EDITOR_BLOCK_LIST = "list"
+POST_TEMPLATE_EDITOR_BLOCK_IMAGE = "image"
+POST_TEMPLATE_EDITOR_BLOCK_QUOTE = "quote"
+POST_TEMPLATE_EDITOR_BLOCK_CODE = "code"
+POST_TEMPLATE_EDITOR_BLOCK_GALLERY = "gallery"
+POST_TEMPLATE_EDITOR_BLOCK_MAP = "map"
+POST_TEMPLATE_EDITOR_BLOCK_COMPARE = "compare"
+POST_TEMPLATE_EDITOR_BLOCK_LINK = "link"
+POST_TEMPLATE_EDITOR_BLOCK_EMBED = "embed"
 POST_TEMPLATE_EDITOR_BLOCK_MOVIE_TIME = "movie_time"
 POST_TEMPLATE_EDITOR_BLOCK_CHOICES = (
+    (POST_TEMPLATE_EDITOR_BLOCK_HEADER, "Заголовок"),
+    (POST_TEMPLATE_EDITOR_BLOCK_LIST, "Список"),
+    (POST_TEMPLATE_EDITOR_BLOCK_IMAGE, "Изображение"),
+    (POST_TEMPLATE_EDITOR_BLOCK_QUOTE, "Цитата"),
+    (POST_TEMPLATE_EDITOR_BLOCK_CODE, "Код"),
+    (POST_TEMPLATE_EDITOR_BLOCK_GALLERY, "Галерея"),
+    (POST_TEMPLATE_EDITOR_BLOCK_MAP, "Карта"),
+    (POST_TEMPLATE_EDITOR_BLOCK_COMPARE, "Сравнение изображений"),
+    (POST_TEMPLATE_EDITOR_BLOCK_LINK, "Ссылка"),
+    (POST_TEMPLATE_EDITOR_BLOCK_EMBED, "Встраивание (Embed)"),
     (POST_TEMPLATE_EDITOR_BLOCK_MOVIE_TIME, "Время в фильме"),
 )
 POST_TEMPLATE_EDITOR_BLOCK_VALUES = {
     value for value, _label in POST_TEMPLATE_EDITOR_BLOCK_CHOICES
 }
+POST_TEMPLATE_EDITOR_BLOCK_ALL_VALUES = tuple(
+    value for value, _label in POST_TEMPLATE_EDITOR_BLOCK_CHOICES
+)
 POST_TEMPLATE_EDITOR_BLOCKS_BY_TEMPLATE = {
-    POST_TEMPLATE_TYPE_BASIC: (),
-    POST_TEMPLATE_TYPE_MOVIE_REVIEW: (POST_TEMPLATE_EDITOR_BLOCK_MOVIE_TIME,),
+    POST_TEMPLATE_TYPE_BASIC: POST_TEMPLATE_EDITOR_BLOCK_ALL_VALUES,
+    POST_TEMPLATE_TYPE_MOVIE_REVIEW: POST_TEMPLATE_EDITOR_BLOCK_ALL_VALUES,
 }
 
 
@@ -66,7 +89,12 @@ def normalize_allowed_post_templates(raw_value: object) -> list[str]:
 
 
 def template_editor_block_choices_for_template(template_type: str) -> tuple[tuple[str, str], ...]:
-    available_blocks = set(POST_TEMPLATE_EDITOR_BLOCKS_BY_TEMPLATE.get(template_type, ()))
+    normalized_template_type = str(template_type or "").strip().lower()
+    available_blocks = set(
+        POST_TEMPLATE_EDITOR_BLOCKS_BY_TEMPLATE.get(
+            normalized_template_type, POST_TEMPLATE_EDITOR_BLOCK_ALL_VALUES
+        )
+    )
     if not available_blocks:
         return ()
     return tuple(
@@ -87,9 +115,8 @@ def normalize_template_editor_blocks_for_template(
     template_type: str,
     raw_value: object,
 ) -> list[str]:
-    available_blocks = {
-        value for value, _label in template_editor_block_choices_for_template(template_type)
-    }
+    available_choices = template_editor_block_choices_for_template(template_type)
+    available_blocks = {value for value, _label in available_choices}
     if not available_blocks:
         return []
 
@@ -100,15 +127,14 @@ def normalize_template_editor_blocks_for_template(
     else:
         candidates = []
 
-    normalized: list[str] = []
-    seen: set[str] = set()
+    selected: set[str] = set()
     for candidate in candidates:
         value = str(candidate or "").strip().lower()
-        if not value or value not in available_blocks or value in seen:
+        if not value or value not in available_blocks:
             continue
-        seen.add(value)
-        normalized.append(value)
-    return normalized
+        selected.add(value)
+
+    return [value for value, _label in available_choices if value in selected]
 
 
 def default_post_fake_views_target() -> int:

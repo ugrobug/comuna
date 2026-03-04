@@ -1,6 +1,17 @@
 export type PostTemplateType = 'movie_review'
 export type PostTemplateCode = 'basic' | PostTemplateType
-export type TemplateEditorBlockType = 'movie_time'
+export type TemplateEditorBlockType =
+  | 'header'
+  | 'list'
+  | 'image'
+  | 'quote'
+  | 'code'
+  | 'gallery'
+  | 'map'
+  | 'compare'
+  | 'link'
+  | 'embed'
+  | 'movie_time'
 
 export type TemplateEditorBlockOption = {
   type: TemplateEditorBlockType
@@ -40,16 +51,37 @@ export const POST_TEMPLATE_TYPE_OPTIONS: PostTemplateTypeOption[] = [
 ]
 
 const POST_TEMPLATE_CODE_VALUES = new Set<PostTemplateCode>(['basic', 'movie_review'])
-const TEMPLATE_EDITOR_BLOCK_TYPE_VALUES = new Set<TemplateEditorBlockType>(['movie_time'])
+const TEMPLATE_EDITOR_BLOCK_TYPE_VALUES = new Set<TemplateEditorBlockType>([
+  'header',
+  'list',
+  'image',
+  'quote',
+  'code',
+  'gallery',
+  'map',
+  'compare',
+  'link',
+  'embed',
+  'movie_time',
+])
+
+const ALL_TEMPLATE_EDITOR_BLOCK_OPTIONS: TemplateEditorBlockOption[] = [
+  { type: 'header', label: 'Заголовок' },
+  { type: 'list', label: 'Список' },
+  { type: 'image', label: 'Изображение' },
+  { type: 'quote', label: 'Цитата' },
+  { type: 'code', label: 'Код' },
+  { type: 'gallery', label: 'Галерея' },
+  { type: 'map', label: 'Карта' },
+  { type: 'compare', label: 'Сравнение изображений' },
+  { type: 'link', label: 'Ссылка' },
+  { type: 'embed', label: 'Встраивание (Embed)' },
+  { type: 'movie_time', label: 'Время в фильме' },
+]
 
 const TEMPLATE_EDITOR_BLOCKS_BY_TEMPLATE: Record<PostTemplateCode, TemplateEditorBlockOption[]> = {
-  basic: [],
-  movie_review: [
-    {
-      type: 'movie_time',
-      label: 'Время в фильме',
-    },
-  ],
+  basic: ALL_TEMPLATE_EDITOR_BLOCK_OPTIONS,
+  movie_review: ALL_TEMPLATE_EDITOR_BLOCK_OPTIONS,
 }
 
 export const normalizeAllowedPostTemplateTypes = (value: unknown): PostTemplateCode[] => {
