@@ -7,6 +7,7 @@
     MOVIE_REVIEW_WATCH_PROVIDER_OPTIONS,
     POST_TEMPLATE_TYPE_OPTIONS,
     createEmptyMovieReviewTemplateData,
+    normalizeAllowedPostTemplateTypes,
     normalizeMovieReviewTemplateData,
     type MovieReviewTemplateData,
     type PostTemplateType,
@@ -14,6 +15,7 @@
 
   export let templateType: '' | PostTemplateType = ''
   export let movieReviewData: MovieReviewTemplateData = createEmptyMovieReviewTemplateData()
+  export let allowedTemplateTypes: string[] | undefined = undefined
 
   let posterInput: HTMLInputElement | null = null
   let posterUploading = false
@@ -21,6 +23,16 @@
   let watchProviderValues: string[] = []
   let watchProviderSet = new Set<string>()
   let watchProviderLabels: string[] = []
+  let allowedTemplateTypeSet = new Set<string>()
+  let availableTemplateTypeOptions = POST_TEMPLATE_TYPE_OPTIONS
+
+  $: allowedTemplateTypeSet = new Set(normalizeAllowedPostTemplateTypes(allowedTemplateTypes))
+  $: availableTemplateTypeOptions = POST_TEMPLATE_TYPE_OPTIONS.filter((option) =>
+    option.value ? allowedTemplateTypeSet.has(option.value) : allowedTemplateTypeSet.has('basic')
+  )
+  $: if (!availableTemplateTypeOptions.some((option) => option.value === templateType)) {
+    templateType = availableTemplateTypeOptions[0]?.value ?? ''
+  }
 
   const selectedWatchProviders = (value: unknown): string[] => {
     if (!Array.isArray(value)) return []
@@ -148,7 +160,7 @@
       bind:value={templateType}
       class="w-full rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm text-slate-900 dark:text-zinc-100"
     >
-      {#each POST_TEMPLATE_TYPE_OPTIONS as option}
+      {#each availableTemplateTypeOptions as option}
         <option value={option.value}>{option.label}</option>
       {/each}
     </select>

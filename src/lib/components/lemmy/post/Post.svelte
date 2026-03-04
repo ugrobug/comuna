@@ -226,6 +226,7 @@
         <PostBody
           element="section"
           body={post.post.body}
+          template={backendTemplate}
           postId={isBackendPost ? post.post.id : null}
           allowPollVoting={isBackendPost}
           title={post.post.name}
@@ -269,6 +270,7 @@
           <PostBody
             element="section"
             body={post.post.body}
+            template={backendTemplate}
             postId={isBackendPost ? post.post.id : null}
             allowPollVoting={isBackendPost}
             title={post.post.name}
@@ -290,6 +292,7 @@
           <PostBody
             element="section"
             body={post.post.body}
+            template={backendTemplate}
             postId={isBackendPost ? post.post.id : null}
             allowPollVoting={isBackendPost}
             title={post.post.name}

@@ -87,6 +87,20 @@ export const siteUser = writable<SiteUser | null>(null)
 
 const buildUrl = (path: string) => `${getBackendBaseUrl()}${path}`
 
+const parseApiResponse = async (response: Response) => {
+  const raw = await response.text()
+  if (!raw) {
+    return null
+  }
+  try {
+    return JSON.parse(raw)
+  } catch {
+    throw new Error(
+      `Сервер вернул HTML вместо JSON (${response.status}). Проверьте PUBLIC_BACKEND_URL и что backend запущен.`
+    )
+  }
+}
+
 const saveToken = (token: string | null) => {
   if (!browser) return
   if (token) {
@@ -116,7 +130,7 @@ export const refreshSiteUser = async () => {
     return null
   }
 
-  const data = await response.json()
+  const data = await parseApiResponse(response)
   if (data?.user) {
     siteUser.set(data.user)
     return data.user as SiteUser
@@ -142,7 +156,7 @@ export const updateSiteProfile = async (payload: {
     body: JSON.stringify(payload),
   })
 
-  const data = await response.json()
+  const data = await parseApiResponse(response)
   if (!response.ok || !data?.user) {
     throw new Error(data?.error || 'Не удалось обновить профиль')
   }
@@ -158,7 +172,7 @@ export const login = async (username: string, password: string) => {
     body: JSON.stringify({ username, password }),
   })
 
-  const data = await response.json()
+  const data = await parseApiResponse(response)
   if (!response.ok || !data?.token) {
     throw new Error(data?.error || 'Не удалось войти')
   }
@@ -180,7 +194,7 @@ export const register = async (payload: {
     body: JSON.stringify(payload),
   })
 
-  const data = await response.json()
+  const data = await parseApiResponse(response)
   if (!response.ok || !data?.token) {
     throw new Error(data?.error || 'Не удалось зарегистрироваться')
   }
@@ -208,7 +222,7 @@ export const loginTelegram = async (payload: TelegramAuthPayload) => {
     body: JSON.stringify(payload),
   })
 
-  const data = await response.json()
+  const data = await parseApiResponse(response)
   if (!response.ok || !data?.token) {
     throw new Error(data?.error || 'Не удалось войти через Telegram')
   }
@@ -233,7 +247,7 @@ export const loginVK = async (payload: VkAuthPayload) => {
     body: JSON.stringify(payload),
   })
 
-  const data = await response.json()
+  const data = await parseApiResponse(response)
   if (!response.ok || !data?.token) {
     throw new Error(data?.error || 'Не удалось войти через VK')
   }

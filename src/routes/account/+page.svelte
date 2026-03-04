@@ -17,6 +17,7 @@
   import { onMount } from 'svelte'
   import { deserializeEditorModel } from '$lib/util'
   import { buildBackendPostPath } from '$lib/api/backend'
+  import type { PostTemplateType } from '$lib/postTemplates'
 
   let code = ''
   let loading = false
@@ -32,6 +33,7 @@
   let editContent = ''
   let editTags = ''
   let isJsonContent = true
+  let editTemplateType: '' | PostTemplateType = ''
   let saving = false
   let saveError = ''
   let deletingPostId: number | null = null
@@ -89,6 +91,7 @@
     editing = post
     editTitle = post.title || ''
     editContent = post.content || ''
+    editTemplateType = post.template?.type === 'movie_review' ? 'movie_review' : ''
     const tagNames = (post.tags ?? []).map((tag) =>
       typeof tag === 'string' ? tag : tag.name
     )
@@ -353,6 +356,7 @@
           <EditorJS
             bind:value={editContent}
             placeholder="Текст поста"
+            postTemplateType={editTemplateType}
             enableAutosave={false}
             postId={editing?.id ?? null}
             showPostSettings={false}

@@ -13,6 +13,10 @@
     type BackendTag,
   } from '$lib/api/backend'
   import { siteToken, uploadSiteImage } from '$lib/siteAuth'
+  import {
+    normalizeAllowedPostTemplateTypes,
+    type PostTemplateCode,
+  } from '$lib/postTemplates'
   import { env } from '$env/dynamic/public'
 
   export let data
@@ -33,8 +37,15 @@
   let settingsCategoryOptions: BackendComunCategory[] = []
   type ComunTagOption = BackendTag & { id: number }
   type ComunUserOption = { id: number; username: string; display_name?: string | null }
+  type TemplateTypeOption = { value: PostTemplateCode; label: string }
+  const fallbackTemplateTypeOptions: TemplateTypeOption[] = [
+    { value: 'basic', label: 'Базовый пост' },
+    { value: 'movie_review', label: 'Кинообзор' },
+  ]
+  const allowedTemplateCodes = new Set<PostTemplateCode>(['basic', 'movie_review'])
   let settingsTagOptions: ComunTagOption[] = []
   let settingsUserOptions: ComunUserOption[] = []
+  let settingsTemplateTypeOptions: TemplateTypeOption[] = fallbackTemplateTypeOptions
   let settingsLogoInput: HTMLInputElement | null = null
 
   const cloneComun = (value: BackendComun | null): BackendComun | null =>
@@ -61,6 +72,28 @@
         (value?.categories ?? []).map((category) => category.id ?? 0)) as number[]
     )
 
+  const comunAllowedTemplateTypes = (value: BackendComun | null) =>
+    normalizeAllowedPostTemplateTypes(value?.allowed_template_types)
+
+  const normalizeTemplateTypeOptions = (value: unknown): TemplateTypeOption[] => {
+    const source = Array.isArray(value) ? value : []
+    const normalized: TemplateTypeOption[] = []
+    const seen = new Set<PostTemplateCode>()
+    for (const item of source) {
+      const templateValueRaw = String((item as any)?.value ?? '')
+        .trim()
+        .toLowerCase()
+      const templateLabel = String((item as any)?.label ?? '').trim()
+      const templateValue = allowedTemplateCodes.has(templateValueRaw as PostTemplateCode)
+        ? (templateValueRaw as PostTemplateCode)
+        : null
+      if (!templateValue || !templateLabel || seen.has(templateValue)) continue
+      seen.add(templateValue)
+      normalized.push({ value: templateValue, label: templateLabel })
+    }
+    return normalized.length ? normalized : fallbackTemplateTypeOptions
+  }
+
   const settingsComparable = (value: BackendComun | null) =>
     JSON.stringify({
       website_url: (value?.website_url ?? '').trim(),
@@ -70,6 +103,7 @@
       hide_from_home: Boolean(value?.hide_from_home),
       hide_from_fresh: Boolean(value?.hide_from_fresh),
       product_tag_id: value?.product_tag_id ?? value?.product_tag?.id ?? null,
+      allowed_template_types: comunAllowedTemplateTypes(value),
       category_ids: comunCategoryIds(value),
       moderator_ids: comunModeratorIds(value),
       welcome_post_ref: String(value?.welcome_post_ref ?? value?.welcome_post_id ?? '').trim(),
@@ -124,6 +158,7 @@
       settingsCategoryOptions = payload.comun?.options?.categories ?? []
       settingsTagOptions = payload.comun?.options?.tags ?? []
       settingsUserOptions = payload.comun?.options?.users ?? []
+      settingsTemplateTypeOptions = normalizeTemplateTypeOptions(payload.comun?.options?.template_types)
       if (!payload.comun?.can_moderate) {
         settingsError = 'Настройки доступны только модераторам комуны'
       }
@@ -199,6 +234,41 @@
     settingsDraft = { ...settingsDraft, product_tag_id: null, product_tag: null }
   }
 
+  const toggleDraftTemplateType = (templateType: PostTemplateCode) => {
+    if (!settingsDraft) return
+    const current = new Set(comunAllowedTemplateTypes(settingsDraft))
+    if (current.has(templateType)) current.delete(templateType)
+    else current.add(templateType)
+    const orderedTemplateTypes = settingsTemplateTypeOptions
+      .map((option) => option.value)
+      .filter((value) => current.has(value))
+    settingsDraft = {
+      ...settingsDraft,
+      allowed_template_types: orderedTemplateTypes,
+    }
+  }
+
+  const clearDraftLogo = () => {
+    if (!settingsDraft) return
+    settingsDraft = { ...settingsDraft, logo_url: '' }
+  }
+
+  const toggleDraftHideFromHome = () => {
+    if (!settingsDraft) return
+    settingsDraft = {
+      ...settingsDraft,
+      hide_from_home: !Boolean(settingsDraft.hide_from_home),
+    }
+  }
+
+  const toggleDraftHideFromFresh = () => {
+    if (!settingsDraft) return
+    settingsDraft = {
+      ...settingsDraft,
+      hide_from_fresh: !Boolean(settingsDraft.hide_from_fresh),
+    }
+  }
+
   const normalizeTagInput = (value: string) =>
     value.trim().replace(/^#+/, '').replace(/\s+/g, ' ').trim()
 
@@ -225,6 +295,7 @@
     .slice(0, 30)
   $: normalizedUserSearch = settingsUserSearch.trim().toLowerCase()
   $: draftModeratorIdSet = new Set<number>(comunModeratorIds(settingsDraft))
+  $: draftAllowedTemplateTypeSet = new Set<string>(comunAllowedTemplateTypes(settingsDraft))
   $: settingsHasChanges = settingsComparable(settingsDraft) !== settingsComparable(comun)
   $: filteredUserOptions = (settingsUserOptions ?? [])
     .filter((user) => {
@@ -298,6 +369,7 @@
           logo_url: settingsDraft.logo_url ?? '',
           product_description: settingsDraft.product_description ?? '',
           target_audience: settingsDraft.target_audience ?? '',
+          allowed_template_types: comunAllowedTemplateTypes(settingsDraft),
           hide_from_home: canManageComunModerators() ? Boolean(settingsDraft.hide_from_home) : undefined,
           hide_from_fresh: canManageComunModerators() ? Boolean(settingsDraft.hide_from_fresh) : undefined,
           moderator_ids: canManageComunModerators() ? comunModeratorIds(settingsDraft) : undefined,
@@ -317,6 +389,9 @@
       settingsCategoryOptions = payload.comun?.options?.categories ?? settingsCategoryOptions
       settingsTagOptions = payload.comun?.options?.tags ?? settingsTagOptions
       settingsUserOptions = payload.comun?.options?.users ?? settingsUserOptions
+      settingsTemplateTypeOptions = normalizeTemplateTypeOptions(
+        payload.comun?.options?.template_types
+      )
       toast({ content: 'Настройки комуны сохранены', type: 'success' })
     } catch (error) {
       settingsError = error instanceof Error ? error.message : 'Ошибка сохранения'
@@ -475,7 +550,7 @@
                 <Button
                   color="ghost"
                   size="sm"
-                  on:click={() => (settingsDraft = { ...settingsDraft, logo_url: '' })}
+                  on:click={clearDraftLogo}
                   disabled={settingsSaving || settingsLogoUploading}
                 >
                   Убрать
@@ -513,11 +588,7 @@
                 type="checkbox"
                 class="mt-0.5"
                 checked={!settingsDraft.hide_from_home}
-                on:change={() =>
-                  (settingsDraft = {
-                    ...settingsDraft,
-                    hide_from_home: !Boolean(settingsDraft.hide_from_home),
-                  })}
+                on:change={toggleDraftHideFromHome}
               />
               <span class="min-w-0">
                 <span class="block text-sm text-slate-900 dark:text-zinc-100">Показывать в Горячем</span>
@@ -531,11 +602,7 @@
                 type="checkbox"
                 class="mt-0.5"
                 checked={!settingsDraft.hide_from_fresh}
-                on:change={() =>
-                  (settingsDraft = {
-                    ...settingsDraft,
-                    hide_from_fresh: !Boolean(settingsDraft.hide_from_fresh),
-                  })}
+                on:change={toggleDraftHideFromFresh}
               />
               <span class="min-w-0">
                 <span class="block text-sm text-slate-900 dark:text-zinc-100">Показывать в Свежее</span>
@@ -546,6 +613,28 @@
             </label>
           </div>
         {/if}
+
+        <div class="flex flex-col gap-2">
+          <div class="text-sm text-slate-700 dark:text-zinc-300">Доступные шаблоны публикаций</div>
+          <div class="text-xs text-slate-500 dark:text-zinc-400">
+            Определяет, какие типы постов можно публиковать внутри комуны.
+          </div>
+          <div class="grid gap-2 sm:grid-cols-2">
+            {#each settingsTemplateTypeOptions as option}
+              <label class="rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-2 flex items-start gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={draftAllowedTemplateTypeSet.has(option.value)}
+                  on:change={() => toggleDraftTemplateType(option.value)}
+                  class="mt-0.5"
+                />
+                <span class="block text-sm font-medium text-slate-900 dark:text-zinc-100">
+                  {option.label}
+                </span>
+              </label>
+            {/each}
+          </div>
+        </div>
 
         {#if canManageComunModerators()}
           <div class="flex flex-col gap-2">

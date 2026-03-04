@@ -1,8 +1,10 @@
+from django import forms
 from django.contrib import admin
 
 from .models import (
     Author,
     AuthorAdmin as AuthorAdminLink,
+    POST_TEMPLATE_TYPE_CHOICES,
     AuthorVerificationCode,
     Comun,
     ComunCategory,
@@ -11,6 +13,7 @@ from .models import (
     PostComment,
     PostCommentLike,
     PostLike,
+    PostTemplateConfig,
     Rubric,
     SiteNotification,
     SiteNotificationPreference,
@@ -18,7 +21,102 @@ from .models import (
     TagRelation,
     TagRelationType,
     ThematicFeed,
+    default_enabled_template_editor_blocks,
+    normalize_allowed_post_templates,
+    normalize_template_editor_blocks_for_template,
+    template_editor_block_choices_for_template,
 )
+
+
+_POST_TEMPLATE_TYPE_FORM_CHOICES = tuple(
+    (str(value), str(label)) for value, label in POST_TEMPLATE_TYPE_CHOICES
+)
+
+
+class RubricAdminForm(forms.ModelForm):
+    allowed_post_templates = forms.MultipleChoiceField(
+        label="Доступные шаблоны поста",
+        choices=_POST_TEMPLATE_TYPE_FORM_CHOICES,
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+        help_text="Разрешенные шаблоны для публикации в рубрике.",
+    )
+
+    class Meta:
+        model = Rubric
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["allowed_post_templates"].initial = normalize_allowed_post_templates(
+            getattr(self.instance, "allowed_post_templates", None)
+        )
+
+    def clean_allowed_post_templates(self):
+        return normalize_allowed_post_templates(self.cleaned_data.get("allowed_post_templates"))
+
+
+class ComunAdminForm(forms.ModelForm):
+    allowed_post_templates = forms.MultipleChoiceField(
+        label="Доступные шаблоны поста",
+        choices=_POST_TEMPLATE_TYPE_FORM_CHOICES,
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+        help_text="Разрешенные шаблоны для публикации внутри комуны.",
+    )
+
+    class Meta:
+        model = Comun
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["allowed_post_templates"].initial = normalize_allowed_post_templates(
+            getattr(self.instance, "allowed_post_templates", None)
+        )
+
+    def clean_allowed_post_templates(self):
+        return normalize_allowed_post_templates(self.cleaned_data.get("allowed_post_templates"))
+
+
+class PostTemplateConfigAdminForm(forms.ModelForm):
+    enabled_editor_blocks = forms.MultipleChoiceField(
+        label="Доступные блоки редактора",
+        choices=(),
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+        help_text="Отмеченные блоки будут доступны в редакторе для этого шаблона.",
+    )
+
+    class Meta:
+        model = PostTemplateConfig
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        template_type = (
+            str(
+                self.instance.template_type
+                or self.initial.get("template_type")
+                or self.data.get("template_type")
+                or ""
+            )
+            .strip()
+            .lower()
+        )
+        choices = template_editor_block_choices_for_template(template_type)
+        self.fields["enabled_editor_blocks"].choices = choices
+        self.fields["enabled_editor_blocks"].initial = normalize_template_editor_blocks_for_template(
+            template_type,
+            getattr(self.instance, "enabled_editor_blocks", None)
+            or default_enabled_template_editor_blocks(template_type),
+        )
+
+    def clean_enabled_editor_blocks(self):
+        template_type = str(self.cleaned_data.get("template_type") or "").strip().lower()
+        return normalize_template_editor_blocks_for_template(
+            template_type, self.cleaned_data.get("enabled_editor_blocks")
+        )
 
 
 @admin.register(Author)
@@ -113,6 +211,7 @@ class TagRelationTypeAdmin(admin.ModelAdmin):
 
 @admin.register(Rubric)
 class RubricAdmin(admin.ModelAdmin):
+    form = RubricAdminForm
     list_display = (
         "name",
         "slug",
@@ -132,6 +231,7 @@ class RubricAdmin(admin.ModelAdmin):
         "subscribe_url",
         "home_limit",
         "hide_from_home",
+        "allowed_post_templates",
         "sort_order",
         "is_active",
         "is_hidden",
@@ -219,6 +319,7 @@ class ComunCategoryAdmin(admin.ModelAdmin):
 
 @admin.register(Comun)
 class ComunAdmin(admin.ModelAdmin):
+    form = ComunAdminForm
     list_display = (
         "name",
         "slug",
@@ -247,6 +348,7 @@ class ComunAdmin(admin.ModelAdmin):
         "product_description",
         "target_audience",
         "categories",
+        "allowed_post_templates",
         "sort_order",
         "is_active",
     )
@@ -260,6 +362,41 @@ class ComunAdmin(admin.ModelAdmin):
         return obj.categories.count()
 
     categories_count.short_description = "Категорий"
+
+
+@admin.register(PostTemplateConfig)
+class PostTemplateConfigAdmin(admin.ModelAdmin):
+    form = PostTemplateConfigAdminForm
+    list_display = (
+        "template_type",
+        "enabled_editor_blocks_display",
+        "updated_at",
+    )
+    fields = (
+        "template_type",
+        "enabled_editor_blocks",
+    )
+    readonly_fields = ("template_type",)
+
+    def get_queryset(self, request):
+        PostTemplateConfig.ensure_defaults()
+        return super().get_queryset(request)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def enabled_editor_blocks_display(self, obj):
+        choices = dict(template_editor_block_choices_for_template(obj.template_type))
+        values = normalize_template_editor_blocks_for_template(
+            obj.template_type, obj.enabled_editor_blocks
+        )
+        labels = [choices.get(value, value) for value in values]
+        return ", ".join(labels) if labels else "Без дополнительных блоков"
+
+    enabled_editor_blocks_display.short_description = "Блоки редактора"
 
 
 @admin.register(ComunPostCategoryAssignment)

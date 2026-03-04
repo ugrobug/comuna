@@ -18,6 +18,97 @@ from PIL import Image, ImageOps
 User = get_user_model()
 
 _MORPH_ANALYZER = None
+POST_TEMPLATE_TYPE_BASIC = "basic"
+POST_TEMPLATE_TYPE_MOVIE_REVIEW = "movie_review"
+POST_TEMPLATE_TYPE_CHOICES = (
+    (POST_TEMPLATE_TYPE_BASIC, "Базовый пост"),
+    (POST_TEMPLATE_TYPE_MOVIE_REVIEW, "Кинообзор"),
+)
+POST_TEMPLATE_TYPE_VALUES = {value for value, _label in POST_TEMPLATE_TYPE_CHOICES}
+POST_TEMPLATE_EDITOR_BLOCK_MOVIE_TIME = "movie_time"
+POST_TEMPLATE_EDITOR_BLOCK_CHOICES = (
+    (POST_TEMPLATE_EDITOR_BLOCK_MOVIE_TIME, "Время в фильме"),
+)
+POST_TEMPLATE_EDITOR_BLOCK_VALUES = {
+    value for value, _label in POST_TEMPLATE_EDITOR_BLOCK_CHOICES
+}
+POST_TEMPLATE_EDITOR_BLOCKS_BY_TEMPLATE = {
+    POST_TEMPLATE_TYPE_BASIC: (),
+    POST_TEMPLATE_TYPE_MOVIE_REVIEW: (POST_TEMPLATE_EDITOR_BLOCK_MOVIE_TIME,),
+}
+
+
+def default_allowed_post_templates() -> list[str]:
+    return [POST_TEMPLATE_TYPE_BASIC]
+
+
+def normalize_allowed_post_templates(raw_value: object) -> list[str]:
+    if isinstance(raw_value, str):
+        candidates = [raw_value]
+    elif isinstance(raw_value, (list, tuple, set)):
+        candidates = list(raw_value)
+    else:
+        candidates = []
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        value = str(candidate or "").strip().lower()
+        if not value or value not in POST_TEMPLATE_TYPE_VALUES:
+            continue
+        if value in seen:
+            continue
+        seen.add(value)
+        normalized.append(value)
+    if not normalized:
+        return default_allowed_post_templates()
+    return normalized
+
+
+def template_editor_block_choices_for_template(template_type: str) -> tuple[tuple[str, str], ...]:
+    available_blocks = set(POST_TEMPLATE_EDITOR_BLOCKS_BY_TEMPLATE.get(template_type, ()))
+    if not available_blocks:
+        return ()
+    return tuple(
+        (value, label)
+        for value, label in POST_TEMPLATE_EDITOR_BLOCK_CHOICES
+        if value in available_blocks
+    )
+
+
+def default_enabled_template_editor_blocks(template_type: str) -> list[str]:
+    return [
+        value
+        for value, _label in template_editor_block_choices_for_template(template_type)
+    ]
+
+
+def normalize_template_editor_blocks_for_template(
+    template_type: str,
+    raw_value: object,
+) -> list[str]:
+    available_blocks = {
+        value for value, _label in template_editor_block_choices_for_template(template_type)
+    }
+    if not available_blocks:
+        return []
+
+    if isinstance(raw_value, str):
+        candidates = [raw_value]
+    elif isinstance(raw_value, (list, tuple, set)):
+        candidates = list(raw_value)
+    else:
+        candidates = []
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        value = str(candidate or "").strip().lower()
+        if not value or value not in available_blocks or value in seen:
+            continue
+        seen.add(value)
+        normalized.append(value)
+    return normalized
 
 
 def default_post_fake_views_target() -> int:
@@ -120,6 +211,12 @@ class Rubric(models.Model):
         default=False,
         verbose_name="Не показывать на главной",
         help_text="Если включено, посты этой рубрики не попадут в ленту «Горячее».",
+    )
+    allowed_post_templates = models.JSONField(
+        default=default_allowed_post_templates,
+        blank=True,
+        verbose_name="Доступные шаблоны поста",
+        help_text="Список типов шаблонов, разрешенных для публикаций в рубрике.",
     )
     is_active = models.BooleanField(default=True)
     is_hidden = models.BooleanField(default=False)
@@ -445,6 +542,12 @@ class Comun(models.Model):
         verbose_name="Не показывать в свежем",
         help_text="Посты, созданные внутри этой комуны, не будут попадать в ленту Свежее.",
     )
+    allowed_post_templates = models.JSONField(
+        default=default_allowed_post_templates,
+        blank=True,
+        verbose_name="Доступные шаблоны поста",
+        help_text="Список типов шаблонов, разрешенных для публикаций внутри комуны.",
+    )
     is_active = models.BooleanField(default=True)
     sort_order = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -473,6 +576,63 @@ class ComunVote(models.Model):
 
     def __str__(self) -> str:
         return f"{self.comun_id}:{self.user_id}:{self.value}"
+
+
+class PostTemplateConfig(models.Model):
+    template_type = models.CharField(
+        max_length=32,
+        choices=POST_TEMPLATE_TYPE_CHOICES,
+        unique=True,
+        verbose_name="Тип шаблона",
+    )
+    enabled_editor_blocks = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name="Доступные блоки редактора",
+        help_text="Блоки редактора, которые можно использовать внутри шаблона.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["template_type"]
+        verbose_name = "Настройка шаблона поста"
+        verbose_name_plural = "Настройки шаблонов постов"
+
+    def __str__(self) -> str:
+        return self.get_template_type_display()
+
+    @classmethod
+    def ensure_defaults(cls) -> None:
+        existing_types = set(cls.objects.values_list("template_type", flat=True))
+        missing_types = [
+            template_type
+            for template_type, _label in POST_TEMPLATE_TYPE_CHOICES
+            if template_type not in existing_types
+        ]
+        if not missing_types:
+            return
+        cls.objects.bulk_create(
+            [
+                cls(
+                    template_type=template_type,
+                    enabled_editor_blocks=default_enabled_template_editor_blocks(template_type),
+                )
+                for template_type in missing_types
+            ]
+        )
+
+    def clean(self) -> None:
+        super().clean()
+        template_type = (self.template_type or "").strip().lower()
+        self.template_type = template_type
+        self.enabled_editor_blocks = normalize_template_editor_blocks_for_template(
+            template_type, self.enabled_editor_blocks
+        )
+
+    def save(self, *args, **kwargs) -> None:
+        self.full_clean()
+        super().save(*args, **kwargs)
 
 
 class Post(models.Model):

@@ -1,4 +1,12 @@
 export type PostTemplateType = 'movie_review'
+export type PostTemplateCode = 'basic' | PostTemplateType
+export type TemplateEditorBlockType = 'movie_time'
+
+export type TemplateEditorBlockOption = {
+  type: TemplateEditorBlockType
+  label: string
+}
+export type TemplateEditorBlockSettings = Partial<Record<PostTemplateCode, TemplateEditorBlockType[]>>
 
 export type MovieReviewContentKind = 'movie' | 'series'
 
@@ -30,6 +38,103 @@ export const POST_TEMPLATE_TYPE_OPTIONS: PostTemplateTypeOption[] = [
   { value: '', label: 'Обычный пост (без шаблона)' },
   { value: 'movie_review', label: 'Кинообзор' },
 ]
+
+const POST_TEMPLATE_CODE_VALUES = new Set<PostTemplateCode>(['basic', 'movie_review'])
+const TEMPLATE_EDITOR_BLOCK_TYPE_VALUES = new Set<TemplateEditorBlockType>(['movie_time'])
+
+const TEMPLATE_EDITOR_BLOCKS_BY_TEMPLATE: Record<PostTemplateCode, TemplateEditorBlockOption[]> = {
+  basic: [],
+  movie_review: [
+    {
+      type: 'movie_time',
+      label: 'Время в фильме',
+    },
+  ],
+}
+
+export const normalizeAllowedPostTemplateTypes = (value: unknown): PostTemplateCode[] => {
+  const source = Array.isArray(value) ? value : typeof value === 'string' ? [value] : []
+  const seen = new Set<PostTemplateCode>()
+  const normalized: PostTemplateCode[] = []
+  for (const item of source) {
+    const code = typeof item === 'string' ? item.trim().toLowerCase() : ''
+    if (!POST_TEMPLATE_CODE_VALUES.has(code as PostTemplateCode)) continue
+    const typedCode = code as PostTemplateCode
+    if (seen.has(typedCode)) continue
+    seen.add(typedCode)
+    normalized.push(typedCode)
+  }
+  return normalized.length ? normalized : ['basic']
+}
+
+export const resolveTemplateCode = (
+  templateType: '' | PostTemplateType | null | undefined
+): PostTemplateCode => {
+  return templateType === 'movie_review' ? 'movie_review' : 'basic'
+}
+
+export const getTemplateEditorBlocks = (
+  templateType: '' | PostTemplateType | null | undefined
+): TemplateEditorBlockOption[] => {
+  return TEMPLATE_EDITOR_BLOCKS_BY_TEMPLATE[resolveTemplateCode(templateType)] ?? []
+}
+
+export const getTemplateEditorBlockTypes = (
+  templateType: '' | PostTemplateType | null | undefined
+): TemplateEditorBlockType[] => {
+  return getTemplateEditorBlocks(templateType).map((option) => option.type)
+}
+
+export const normalizeTemplateEditorBlockTypes = (value: unknown): TemplateEditorBlockType[] => {
+  const source = Array.isArray(value) ? value : typeof value === 'string' ? [value] : []
+  const seen = new Set<TemplateEditorBlockType>()
+  const normalized: TemplateEditorBlockType[] = []
+  for (const item of source) {
+    const blockType = typeof item === 'string' ? item.trim().toLowerCase() : ''
+    if (!TEMPLATE_EDITOR_BLOCK_TYPE_VALUES.has(blockType as TemplateEditorBlockType)) continue
+    const typedBlockType = blockType as TemplateEditorBlockType
+    if (seen.has(typedBlockType)) continue
+    seen.add(typedBlockType)
+    normalized.push(typedBlockType)
+  }
+  return normalized
+}
+
+export const normalizeTemplateEditorBlockSettings = (
+  value: unknown
+): TemplateEditorBlockSettings => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {}
+  }
+  const raw = value as Record<string, unknown>
+  const normalized: TemplateEditorBlockSettings = {}
+  for (const templateCode of POST_TEMPLATE_CODE_VALUES) {
+    if (!(templateCode in raw)) continue
+    normalized[templateCode] = normalizeTemplateEditorBlockTypes(raw[templateCode])
+  }
+  return normalized
+}
+
+export const resolveEnabledTemplateEditorBlockTypes = (
+  templateType: '' | PostTemplateType | null | undefined,
+  settings?: TemplateEditorBlockSettings
+): TemplateEditorBlockType[] => {
+  const templateCode = resolveTemplateCode(templateType)
+  const templateDefault = getTemplateEditorBlockTypes(templateType)
+  if (!settings || !Object.prototype.hasOwnProperty.call(settings, templateCode)) {
+    return templateDefault
+  }
+  const configured = normalizeTemplateEditorBlockTypes(settings[templateCode])
+  const configuredSet = new Set<TemplateEditorBlockType>(configured)
+  return templateDefault.filter((blockType) => configuredSet.has(blockType))
+}
+
+export const isTemplateEditorBlockEnabled = (
+  templateType: '' | PostTemplateType | null | undefined,
+  blockType: TemplateEditorBlockType
+): boolean => {
+  return getTemplateEditorBlockTypes(templateType).includes(blockType)
+}
 
 export const MOVIE_REVIEW_KIND_OPTIONS: Array<{ value: MovieReviewContentKind; label: string }> = [
   { value: 'movie', label: 'Фильм' },

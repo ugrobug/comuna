@@ -52,13 +52,21 @@ from .models import (
     PostLike,
     PostPollVote,
     PostRead,
+    PostTemplateConfig,
     Rubric,
+    POST_TEMPLATE_TYPE_BASIC as MODEL_POST_TEMPLATE_TYPE_BASIC,
+    POST_TEMPLATE_TYPE_CHOICES as MODEL_POST_TEMPLATE_TYPE_CHOICES,
+    POST_TEMPLATE_TYPE_MOVIE_REVIEW as MODEL_POST_TEMPLATE_TYPE_MOVIE_REVIEW,
     SiteNotification,
     SiteUserProfile,
     Tag,
     ThematicFeed,
     TelegramAccount,
     VkAccount,
+    default_enabled_template_editor_blocks,
+    normalize_allowed_post_templates,
+    normalize_template_editor_blocks_for_template,
+    template_editor_block_choices_for_template,
 )
 from .notifications import (
     serialize_notification_settings_for_user,
@@ -94,7 +102,12 @@ _COMMENT_PERSONAS = (
     {"key": "persona_10", "username": "alex_b"},
 )
 _COMMENT_PERSONAS_BY_KEY = {item["key"]: item for item in _COMMENT_PERSONAS}
-_POST_TEMPLATE_TYPE_MOVIE_REVIEW = "movie_review"
+_POST_TEMPLATE_TYPE_BASIC = MODEL_POST_TEMPLATE_TYPE_BASIC
+_POST_TEMPLATE_TYPE_MOVIE_REVIEW = MODEL_POST_TEMPLATE_TYPE_MOVIE_REVIEW
+_POST_TEMPLATE_TYPE_OPTIONS = tuple(
+    (str(value), str(label)) for value, label in MODEL_POST_TEMPLATE_TYPE_CHOICES
+)
+_POST_TEMPLATE_TYPES = {value for value, _label in _POST_TEMPLATE_TYPE_OPTIONS}
 _POST_TEMPLATE_MOVIE_KINDS = {"movie", "series"}
 _POST_TEMPLATE_MOVIE_GENRES = {
     "action",
@@ -1566,6 +1579,76 @@ def _normalize_movie_review_template_data(raw_data: object) -> tuple[dict | None
     if not cleaned_data:
         return None, None
     return cleaned_data, None
+
+
+def _serialize_post_template_type_options() -> list[dict]:
+    return [
+        {"value": value, "label": label}
+        for value, label in _POST_TEMPLATE_TYPE_OPTIONS
+    ]
+
+
+def _serialize_template_editor_block_options_by_template() -> dict[str, list[dict]]:
+    payload: dict[str, list[dict]] = {}
+    for template_type, _template_label in _POST_TEMPLATE_TYPE_OPTIONS:
+        payload[template_type] = [
+            {"value": value, "label": label}
+            for value, label in template_editor_block_choices_for_template(template_type)
+        ]
+    return payload
+
+
+def _template_editor_blocks_by_template() -> dict[str, list[str]]:
+    payload: dict[str, list[str]] = {
+        template_type: default_enabled_template_editor_blocks(template_type)
+        for template_type, _template_label in _POST_TEMPLATE_TYPE_OPTIONS
+    }
+    for item in PostTemplateConfig.objects.all():
+        template_type = str(item.template_type or "").strip().lower()
+        if template_type not in payload:
+            continue
+        payload[template_type] = normalize_template_editor_blocks_for_template(
+            template_type, item.enabled_editor_blocks
+        )
+    return payload
+
+
+def _allowed_templates_for_rubric(rubric: Rubric | None) -> list[str]:
+    if not rubric:
+        return normalize_allowed_post_templates(None)
+    return normalize_allowed_post_templates(rubric.allowed_post_templates)
+
+
+def _allowed_templates_for_comun(comun: Comun | None) -> list[str]:
+    if not comun:
+        return normalize_allowed_post_templates(None)
+    return normalize_allowed_post_templates(comun.allowed_post_templates)
+
+
+def _requested_template_type(template_payload: dict | None) -> str:
+    if not template_payload:
+        return _POST_TEMPLATE_TYPE_BASIC
+    template_type = str(template_payload.get("type") or "").strip().lower()
+    if template_type and template_type in _POST_TEMPLATE_TYPES:
+        return template_type
+    return _POST_TEMPLATE_TYPE_BASIC
+
+
+def _template_not_allowed_error(
+    requested_template_type: str,
+    allowed_template_types: list[str],
+    *,
+    scope: str,
+) -> str | None:
+    allowed = normalize_allowed_post_templates(allowed_template_types)
+    if requested_template_type in allowed:
+        return None
+    return f"template '{requested_template_type}' is not allowed for this {scope}"
+
+
+def _post_comun_slug(post: Post) -> str:
+    raw_data = post.raw_data if isinstance(post.raw_data, dict) else {}
+    return str(raw_data.get("comun_slug") or "").strip()
 
 
 def _normalize_post_template_payload(raw_template: object) -> tuple[dict | None, str | None]:
@@ -3966,6 +4049,14 @@ def user_posts(request: HttpRequest) -> HttpResponse:
             return JsonResponse({"ok": False, "error": "rubric required"}, status=400)
         if rubric.is_hidden and not user.is_staff:
             return JsonResponse({"ok": False, "error": "rubric not allowed"}, status=403)
+        requested_template_type = _requested_template_type(template_payload)
+        template_access_error = _template_not_allowed_error(
+            requested_template_type,
+            _allowed_templates_for_rubric(rubric),
+            scope="rubric",
+        )
+        if template_access_error:
+            return JsonResponse({"ok": False, "error": template_access_error}, status=400)
         if _is_comuna_rubric(rubric):
             personal_author, personal_author_error = _get_or_create_personal_author(user)
             if personal_author_error:
@@ -4138,6 +4229,25 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
         raw_data_changed = True
 
     if template_in_payload:
+        requested_template_type = _requested_template_type(template_payload)
+        comun_for_template = None
+        comun_slug = _post_comun_slug(post)
+        if comun_slug:
+            comun_for_template = Comun.objects.filter(slug=comun_slug).first()
+        if comun_for_template:
+            template_access_error = _template_not_allowed_error(
+                requested_template_type,
+                _allowed_templates_for_comun(comun_for_template),
+                scope="comun",
+            )
+        else:
+            template_access_error = _template_not_allowed_error(
+                requested_template_type,
+                _allowed_templates_for_rubric(post.rubric),
+                scope="rubric",
+            )
+        if template_access_error:
+            return JsonResponse({"ok": False, "error": template_access_error}, status=400)
         if template_payload:
             raw_data["template"] = template_payload
         else:
@@ -4735,10 +4845,21 @@ def rubrics_list(request: HttpRequest) -> HttpResponse:
             "cover_image_url": _media_url(request, rubric.cover_image_url),
             "description": rubric.description,
             "subscribe_url": rubric.subscribe_url,
+            "allowed_template_types": _allowed_templates_for_rubric(rubric),
         }
         for rubric in rubrics
     ]
-    return JsonResponse({"ok": True, "rubrics": serialized})
+    return JsonResponse(
+        {
+            "ok": True,
+            "rubrics": serialized,
+            "template_type_options": _serialize_post_template_type_options(),
+            "template_editor_block_options_by_template": (
+                _serialize_template_editor_block_options_by_template()
+            ),
+            "template_editor_blocks_by_template": _template_editor_blocks_by_template(),
+        }
+    )
 
 
 def rubric_posts(request: HttpRequest, slug: str) -> HttpResponse:
@@ -6230,6 +6351,8 @@ def _serialize_comun(
         "hide_from_fresh": bool(comun.hide_from_fresh),
         "is_active": comun.is_active,
         "sort_order": comun.sort_order,
+        "allowed_template_types": _allowed_templates_for_comun(comun),
+        "template_editor_blocks_by_template": _template_editor_blocks_by_template(),
         "creator": {
             "id": comun.creator_id,
             "username": comun.creator.username if getattr(comun, "creator", None) else None,
@@ -6294,6 +6417,11 @@ def _serialize_comun(
                 }
                 for tag in Tag.objects.filter(is_active=True).order_by("name")
             ],
+            "template_types": _serialize_post_template_type_options(),
+            "template_editor_block_options_by_template": (
+                _serialize_template_editor_block_options_by_template()
+            ),
+            "template_editor_blocks_by_template": _template_editor_blocks_by_template(),
         }
         if _comun_can_manage_moderators(current_user, comun):
             payload["options"]["users"] = [
@@ -6696,6 +6824,10 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
         comun.product_description = str(body.get("product_description") or "").strip()
     if "target_audience" in body:
         comun.target_audience = str(body.get("target_audience") or "").strip()
+    if "allowed_template_types" in body:
+        comun.allowed_post_templates = normalize_allowed_post_templates(
+            body.get("allowed_template_types")
+        )
     if "hide_from_home" in body or "hide_from_fresh" in body:
         if not _comun_can_manage_moderators(current_user, comun):
             return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
@@ -6890,6 +7022,14 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
         template_payload, template_error = _normalize_post_template_payload(payload.get("template"))
         if template_error:
             return JsonResponse({"ok": False, "error": template_error}, status=400)
+        requested_template_type = _requested_template_type(template_payload)
+        template_access_error = _template_not_allowed_error(
+            requested_template_type,
+            _allowed_templates_for_comun(comun),
+            scope="comun",
+        )
+        if template_access_error:
+            return JsonResponse({"ok": False, "error": template_access_error}, status=400)
         if not title:
             return JsonResponse({"ok": False, "error": "title is required"}, status=400)
         if not content:

@@ -9,6 +9,10 @@
   import { deserializeEditorModel, buildOpenStreetMapEmbedUrl, normalizeOpenStreetMapZoom } from '$lib/util'
   import { buildPostPollVoteUrl } from '$lib/api/backend'
   import { siteToken } from '$lib/siteAuth'
+  import {
+    isTemplateEditorBlockEnabled,
+    type SitePostTemplate,
+  } from '$lib/postTemplates'
   
   let DOMPurify: any
   let purifyConfigured = false
@@ -53,6 +57,7 @@
   export let postId: number | null = null
   export let allowPollVoting = false
   export let title: string | undefined = undefined
+  export let template: SitePostTemplate | null | undefined = null
   export let view: View = 'cozy'
   export let clickThrough = false
   export let showFullBody = false
@@ -611,6 +616,71 @@
       </figure>`
     }
 
+    const renderMovieTimeBlock = (raw: any): string => {
+      if (!isTemplateEditorBlockEnabled(template?.type ?? '', 'movie_time')) return ''
+      const rawTime = typeof raw?.time === 'string' ? raw.time.trim() : ''
+      if (!rawTime) return ''
+
+      const parseTimeToSeconds = (value: string): number | null => {
+        if (!value) return null
+        if (/^\d+$/.test(value)) {
+          const totalSeconds = Number(value)
+          if (!Number.isFinite(totalSeconds) || totalSeconds < 0) return null
+          return Math.floor(totalSeconds)
+        }
+        const parts = value.split(':').map((part) => part.trim())
+        if (parts.length < 2 || parts.length > 3) return null
+        if (parts.some((part) => !/^\d+$/.test(part))) return null
+        if (parts.length === 2) {
+          const minutes = Number(parts[0])
+          const seconds = Number(parts[1])
+          if (seconds >= 60) return null
+          return minutes * 60 + seconds
+        }
+        const hours = Number(parts[0])
+        const minutes = Number(parts[1])
+        const seconds = Number(parts[2])
+        if (minutes >= 60 || seconds >= 60) return null
+        return hours * 3600 + minutes * 60 + seconds
+      }
+
+      const formatTimeFromSeconds = (totalSeconds: number, useHours: boolean): string => {
+        const safe = Math.max(0, Math.floor(totalSeconds))
+        const hours = Math.floor(safe / 3600)
+        const minutes = Math.floor((safe % 3600) / 60)
+        const seconds = safe % 60
+        if (useHours || hours > 0) {
+          return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+        }
+        return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+      }
+
+      const totalSeconds = parseTimeToSeconds(rawTime)
+      if (totalSeconds === null) return ''
+
+      const hasHoursInInput = rawTime.split(':').length === 3
+      const displayTime = formatTimeFromSeconds(totalSeconds, hasHoursInInput || totalSeconds >= 3600)
+      const sceneTitle = escapeHtml(
+        typeof raw?.title === 'string' && raw.title.trim() ? raw.title : 'Ключевой момент'
+      )
+      const sceneNote = escapeHtml(typeof raw?.note === 'string' ? raw.note : '')
+      const noteHtml = sceneNote
+        ? `<p class="post-movie-time__note">${sceneNote}</p>`
+        : ''
+
+      return `<aside class="post-movie-time">
+        <div class="post-movie-time__icon" aria-hidden="true">⏱</div>
+        <div class="post-movie-time__content">
+          <div class="post-movie-time__meta">Таймкод</div>
+          <div class="post-movie-time__headline">
+            <span class="post-movie-time__stamp">${displayTime}</span>
+            <span class="post-movie-time__scene">${sceneTitle}</span>
+          </div>
+          ${noteHtml}
+        </div>
+      </aside>`
+    }
+
     switch (block.type) {
       case 'paragraph':
         return `<p>${block.data.text}</p>`;
@@ -646,6 +716,9 @@
       case 'imageCompare':
       case 'compare':
         return renderImageCompareBlock(block.data)
+      case 'movie_time':
+      case 'movieTime':
+        return renderMovieTimeBlock(block.data)
       case 'link':
       case 'customLink':
         const url = block.data.url || '#';
@@ -1513,6 +1586,88 @@
 
   :global(.dark .post-content .post-image-compare__caption) {
     color: rgb(161 161 170);
+  }
+
+  :global(.post-content .post-movie-time) {
+    margin: 1rem 0;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.75rem;
+    border-radius: 0.95rem;
+    border: 1px solid rgba(251, 191, 36, 0.45);
+    background:
+      radial-gradient(130% 140% at 0% 0%, rgba(251, 191, 36, 0.24), rgba(251, 191, 36, 0) 60%),
+      linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.93));
+    color: #e2e8f0;
+    padding: 0.8rem 0.9rem;
+  }
+
+  :global(.post-content .post-movie-time__icon) {
+    width: 2.05rem;
+    height: 2.05rem;
+    border-radius: 999px;
+    border: 1px solid rgba(251, 191, 36, 0.45);
+    background: rgba(15, 23, 42, 0.42);
+    color: #fde68a;
+    display: grid;
+    place-items: center;
+    font-size: 1rem;
+    line-height: 1;
+  }
+
+  :global(.post-content .post-movie-time__content) {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  :global(.post-content .post-movie-time__meta) {
+    font-size: 0.7rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #94a3b8;
+  }
+
+  :global(.post-content .post-movie-time__headline) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    align-items: baseline;
+  }
+
+  :global(.post-content .post-movie-time__stamp) {
+    color: #fde68a;
+    font-size: 1.02rem;
+    line-height: 1.15;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  :global(.post-content .post-movie-time__scene) {
+    color: #f8fafc;
+    font-size: 0.92rem;
+    line-height: 1.3;
+    font-weight: 600;
+  }
+
+  :global(.post-content .post-movie-time__note) {
+    margin: 0;
+    color: #cbd5e1;
+    font-size: 0.88rem;
+    line-height: 1.45;
+  }
+
+  @media (max-width: 640px) {
+    :global(.post-content .post-movie-time) {
+      grid-template-columns: 1fr;
+      gap: 0.55rem;
+    }
+
+    :global(.post-content .post-movie-time__icon) {
+      width: 1.8rem;
+      height: 1.8rem;
+    }
   }
 
   :global(.post-content .post-embed) {

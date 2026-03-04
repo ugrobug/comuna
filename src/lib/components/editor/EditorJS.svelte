@@ -3,6 +3,11 @@
   import { profile } from '$lib/auth'
   import { uploadSiteImage, siteToken } from '$lib/siteAuth'
   import {
+    getTemplateEditorBlockTypes,
+    normalizeTemplateEditorBlockTypes,
+    type PostTemplateType,
+  } from '$lib/postTemplates'
+  import {
     uploadImage,
     serializeEditorModel,
     deserializeEditorModel,
@@ -44,6 +49,7 @@
     unorderedList: `${iconPath}/list-ul.svg`,
     orderedList: `${iconPath}/list-ol.svg`,
     checklist: `${iconPath}/list-check.svg`,
+    clock: `${iconPath}/clock.svg`,
     map: `${iconPath}/geo-alt.svg`,
     imageCompare: `${iconPath}/images.svg`,
     quote: `${iconPath}/quote.svg`,
@@ -851,6 +857,158 @@
     }
   }
 
+  class MovieTimeTool {
+    private data: {
+      time: string
+      title: string
+      note: string
+    }
+
+    static get toolbox() {
+      return {
+        title: 'Время в фильме',
+        icon: `<img src="${icons.clock}" width="16" height="16" />`,
+      }
+    }
+
+    constructor({ data }: { data?: { time?: unknown; title?: unknown; note?: unknown } }) {
+      this.data = {
+        time: typeof data?.time === 'string' ? data.time.trim() : '',
+        title: typeof data?.title === 'string' ? data.title.trim() : '',
+        note: typeof data?.note === 'string' ? data.note.trim() : '',
+      }
+    }
+
+    private parseTimeToSeconds(value: string): number | null {
+      const raw = value.trim()
+      if (!raw) return null
+
+      if (/^\d+$/.test(raw)) {
+        const totalSeconds = Number(raw)
+        if (!Number.isFinite(totalSeconds) || totalSeconds < 0) return null
+        return Math.floor(totalSeconds)
+      }
+
+      const parts = raw.split(':').map((part) => part.trim())
+      if (parts.length < 2 || parts.length > 3) return null
+      if (parts.some((part) => !/^\d+$/.test(part))) return null
+
+      if (parts.length === 2) {
+        const minutes = Number(parts[0])
+        const seconds = Number(parts[1])
+        if (seconds >= 60) return null
+        return minutes * 60 + seconds
+      }
+
+      const hours = Number(parts[0])
+      const minutes = Number(parts[1])
+      const seconds = Number(parts[2])
+      if (minutes >= 60 || seconds >= 60) return null
+      return hours * 3600 + minutes * 60 + seconds
+    }
+
+    private formatTimeFromSeconds(totalSeconds: number, hasHours: boolean): string {
+      const safeSeconds = Math.max(0, Math.floor(totalSeconds))
+      const hours = Math.floor(safeSeconds / 3600)
+      const minutes = Math.floor((safeSeconds % 3600) / 60)
+      const seconds = safeSeconds % 60
+      if (hasHours || hours > 0) {
+        return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+      }
+      return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+    }
+
+    private normalizeTimeValue(value: string): string {
+      const raw = value.trim()
+      if (!raw) return ''
+      const totalSeconds = this.parseTimeToSeconds(raw)
+      if (totalSeconds === null) return raw
+      const hasHoursInInput = raw.split(':').length === 3
+      return this.formatTimeFromSeconds(totalSeconds, hasHoursInInput || totalSeconds >= 3600)
+    }
+
+    render() {
+      const wrapper = document.createElement('div')
+      wrapper.classList.add('movie-time-tool')
+
+      const title = document.createElement('div')
+      title.classList.add('movie-time-tool__title')
+      title.textContent = 'Время в фильме'
+
+      const subtitle = document.createElement('div')
+      subtitle.classList.add('movie-time-tool__subtitle')
+      subtitle.textContent = 'Укажите таймкод и короткий комментарий автора.'
+
+      const grid = document.createElement('div')
+      grid.classList.add('movie-time-tool__grid')
+
+      const timeInput = document.createElement('input')
+      timeInput.type = 'text'
+      timeInput.classList.add('movie-time-tool__input')
+      timeInput.placeholder = 'Таймкод: 01:23:45 или 12:40'
+      timeInput.value = this.data.time
+
+      const titleInput = document.createElement('input')
+      titleInput.type = 'text'
+      titleInput.classList.add('movie-time-tool__input')
+      titleInput.placeholder = 'Название сцены (необязательно)'
+      titleInput.value = this.data.title
+
+      const noteInput = document.createElement('textarea')
+      noteInput.classList.add('movie-time-tool__textarea')
+      noteInput.rows = 3
+      noteInput.placeholder = 'Что важно в этом моменте?'
+      noteInput.value = this.data.note
+
+      const preview = document.createElement('div')
+      preview.classList.add('movie-time-tool__preview')
+
+      const updatePreview = () => {
+        this.data.time = timeInput.value.trim()
+        this.data.title = titleInput.value.trim()
+        this.data.note = noteInput.value.trim()
+        const normalizedTime = this.normalizeTimeValue(this.data.time)
+        const previewTitle = this.data.title || 'Ключевой момент'
+        if (!normalizedTime) {
+          preview.textContent = 'Этот блок появится в тексте после заполнения таймкода.'
+          return
+        }
+        preview.textContent = `${normalizedTime} • ${previewTitle}`
+      }
+
+      timeInput.addEventListener('input', updatePreview)
+      titleInput.addEventListener('input', updatePreview)
+      noteInput.addEventListener('input', updatePreview)
+      timeInput.addEventListener('blur', () => {
+        const normalizedTime = this.normalizeTimeValue(timeInput.value)
+        timeInput.value = normalizedTime
+        this.data.time = normalizedTime
+        updatePreview()
+      })
+
+      grid.appendChild(timeInput)
+      grid.appendChild(titleInput)
+
+      wrapper.appendChild(title)
+      wrapper.appendChild(subtitle)
+      wrapper.appendChild(grid)
+      wrapper.appendChild(noteInput)
+      wrapper.appendChild(preview)
+
+      updatePreview()
+      return wrapper
+    }
+
+    save() {
+      const time = this.normalizeTimeValue(this.data.time)
+      return {
+        time,
+        title: this.data.title.trim(),
+        note: this.data.note.trim(),
+      }
+    }
+  }
+
   class ImageCompareTool {
     private data: {
       before: { url: string; alt: string; title: string }
@@ -1607,6 +1765,8 @@
   export let value = ''
   export let placeholder = ''
   export let label = ''
+  export let postTemplateType: '' | PostTemplateType = ''
+  export let enabledTemplateEditorBlockTypes: string[] | undefined = undefined
   export let postId: string | number | null = null // ID поста для автосохранения
   export let enableAutosave: boolean = true // Разрешение автосохранения
   export let onContentChange: (() => void) | null = null // Callback для уведомления PostForm об изменениях
@@ -1963,6 +2123,12 @@
       import('@editorjs/embed')
     ])
 
+    const enabledTemplateBlockTypes = new Set(
+      enabledTemplateEditorBlockTypes === undefined
+        ? getTemplateEditorBlockTypes(postTemplateType)
+        : normalizeTemplateEditorBlockTypes(enabledTemplateEditorBlockTypes)
+    )
+
     // Инициализация Editor.js
     editor = new EditorJS({
       holder: element,
@@ -2016,6 +2182,11 @@
             icon: `<img src="${icons.imageCompare}" width="16" height="16" />`,
           },
         },
+        ...(enabledTemplateBlockTypes.has('movie_time')
+          ? {
+              movie_time: MovieTimeTool,
+            }
+          : {}),
         anchorInput: {
           class: CustomInputTune
         },
@@ -2232,6 +2403,8 @@
             "Image Compare": "Сравнение изображений",
             "Сравнение изображений": "Сравнение изображений",
             "Compare": "Сравнение изображений",
+            "Movie Time": "Время в фильме",
+            "Время в фильме": "Время в фильме",
             "Link": "Ссылка",
             "Unordered List": "Маркированный список",
             "Ordered List": "Нумерованный список",
@@ -2927,6 +3100,89 @@
 
   :global(.dark .image-tool__loader-text) {
     color: #e5e7eb;
+  }
+
+  :global(.movie-time-tool) {
+    border-radius: 0.9rem;
+    border: 1px solid #e2e8f0;
+    background:
+      radial-gradient(120% 120% at 0% 0%, rgba(251, 191, 36, 0.22), rgba(251, 191, 36, 0) 58%),
+      linear-gradient(135deg, rgba(15, 23, 42, 0.93), rgba(30, 41, 59, 0.9));
+    color: #e2e8f0;
+    padding: 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+
+  :global(.dark .movie-time-tool) {
+    border-color: #3f3f46;
+  }
+
+  :global(.movie-time-tool__title) {
+    font-weight: 700;
+    color: #fff;
+    font-size: 0.95rem;
+    line-height: 1.2;
+  }
+
+  :global(.movie-time-tool__subtitle) {
+    font-size: 0.78rem;
+    color: #cbd5e1;
+    margin-top: -0.2rem;
+  }
+
+  :global(.movie-time-tool__grid) {
+    display: grid;
+    gap: 0.55rem;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  :global(.movie-time-tool__input),
+  :global(.movie-time-tool__textarea) {
+    width: 100%;
+    border-radius: 0.7rem;
+    border: 1px solid rgba(251, 191, 36, 0.35);
+    background: rgba(15, 23, 42, 0.45);
+    color: #f8fafc;
+    font-size: 0.87rem;
+    line-height: 1.3;
+    padding: 0.55rem 0.7rem;
+  }
+
+  :global(.movie-time-tool__input::placeholder),
+  :global(.movie-time-tool__textarea::placeholder) {
+    color: #94a3b8;
+  }
+
+  :global(.movie-time-tool__input:focus),
+  :global(.movie-time-tool__textarea:focus) {
+    outline: none;
+    border-color: rgba(251, 191, 36, 0.85);
+    box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.18);
+  }
+
+  :global(.movie-time-tool__textarea) {
+    resize: vertical;
+    min-height: 5rem;
+  }
+
+  :global(.movie-time-tool__preview) {
+    border-radius: 0.7rem;
+    border: 1px solid rgba(251, 191, 36, 0.28);
+    background: rgba(15, 23, 42, 0.42);
+    color: #fde68a;
+    font-size: 0.8rem;
+    padding: 0.5rem 0.65rem;
+    min-height: 2rem;
+    display: flex;
+    align-items: center;
+  }
+
+  @media (max-width: 760px) {
+    :global(.movie-time-tool__grid) {
+      grid-template-columns: 1fr;
+    }
   }
 
   :global(.map-tool) {

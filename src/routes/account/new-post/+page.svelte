@@ -15,8 +15,12 @@
   import {
     buildPostTemplatePayload,
     createEmptyMovieReviewTemplateData,
+    normalizeAllowedPostTemplateTypes,
+    normalizeTemplateEditorBlockSettings,
+    resolveEnabledTemplateEditorBlockTypes,
     type MovieReviewTemplateData,
     type PostTemplateType,
+    type TemplateEditorBlockSettings,
   } from '$lib/postTemplates'
 
   let loadingUser = true
@@ -28,16 +32,24 @@
   let creating = false
   let createError = ''
   let rubricsLoading = false
-  let rubrics: Array<{ name: string; slug: string; icon_url?: string | null; icon_thumb_url?: string | null }> = []
+  type RubricOption = {
+    name: string
+    slug: string
+    icon_url?: string | null
+    icon_thumb_url?: string | null
+    allowed_template_types?: string[]
+  }
+  let rubrics: RubricOption[] = []
   let rubricMenuOpen = false
   let rubricMenuRef: HTMLDivElement | null = null
-  let selectedRubric: { name: string; slug: string; icon_url?: string | null; icon_thumb_url?: string | null } | undefined
+  let selectedRubric: RubricOption | undefined
   let publishIdentityOptions: PublishIdentityOption[] = []
   let selectedIdentity: PublishIdentityOption | undefined
   let selectedChannelIdentity: PublishIdentityOption | undefined
   const SITE_AUTHOR_CHOICE = '__site__'
   let createTemplateType: '' | PostTemplateType = ''
   let createMovieReviewData: MovieReviewTemplateData = createEmptyMovieReviewTemplateData()
+  let templateEditorBlockSettings: TemplateEditorBlockSettings = {}
 
   type PublishIdentityOption = {
     value: string
@@ -72,6 +84,11 @@
   })()
   $: selectedIdentity = publishIdentityOptions.find((item) => item.value === createAuthor)
   $: selectedChannelIdentity = selectedIdentity?.kind === 'channel' ? selectedIdentity : undefined
+  $: editorEnabledTemplateBlockTypes = resolveEnabledTemplateEditorBlockTypes(
+    createTemplateType,
+    templateEditorBlockSettings
+  )
+  $: editorTemplateBlocksKey = `${createTemplateType || 'basic'}:${editorEnabledTemplateBlockTypes.join(',')}`
 
   const isEditorContentEmpty = (value: string) => {
     if (!value || value.trim() === '') return true
@@ -95,7 +112,15 @@
         headers,
       })
       const data = await response.json()
-      rubrics = data?.rubrics ?? []
+      rubrics = Array.isArray(data?.rubrics)
+        ? data.rubrics.map((rubric: any) => ({
+            ...rubric,
+            allowed_template_types: normalizeAllowedPostTemplateTypes(rubric?.allowed_template_types),
+          }))
+        : []
+      templateEditorBlockSettings = normalizeTemplateEditorBlockSettings(
+        data?.template_editor_blocks_by_template
+      )
       if (!createRubric && rubrics.length === 1) {
         createRubric = rubrics[0].slug
       }
@@ -328,14 +353,19 @@
         <PostTemplateFields
           bind:templateType={createTemplateType}
           bind:movieReviewData={createMovieReviewData}
+          allowedTemplateTypes={selectedRubric?.allowed_template_types}
         />
-        <EditorJS
-          bind:value={createContent}
-          placeholder="Текст поста"
-          enableAutosave={false}
-          postId={null}
-          showPostSettings={false}
-        />
+        {#key `editor-template-${editorTemplateBlocksKey}`}
+          <EditorJS
+            bind:value={createContent}
+            placeholder="Текст поста"
+            postTemplateType={createTemplateType}
+            enabledTemplateEditorBlockTypes={editorEnabledTemplateBlockTypes}
+            enableAutosave={false}
+            postId={null}
+            showPostSettings={false}
+          />
+        {/key}
         <TextInput label="Теги (через запятую)" bind:value={createTags} />
         {#if createError}
           <p class="text-sm text-red-600">{createError}</p>

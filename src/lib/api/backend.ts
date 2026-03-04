@@ -372,6 +372,8 @@ export type BackendComun = {
   rating?: BackendComunRating
   hide_from_home?: boolean
   hide_from_fresh?: boolean
+  allowed_template_types?: string[]
+  template_editor_blocks_by_template?: Record<string, string[]>
   is_active?: boolean
   sort_order?: number
   can_moderate?: boolean
@@ -379,6 +381,7 @@ export type BackendComun = {
   creator?: { id?: number; username?: string | null; display_name?: string | null }
   moderators?: Array<{ id: number; username: string; display_name?: string | null }>
   moderators_count?: number
+  moderator_ids?: number[]
   categories?: BackendComunCategory[]
   categories_count?: number
   category_ids?: number[]
@@ -392,6 +395,9 @@ export type BackendComun = {
     categories?: BackendComunCategory[]
     tags?: BackendTag[]
     users?: Array<{ id: number; username: string; display_name?: string | null }>
+    template_types?: Array<{ value: string; label: string }>
+    template_editor_block_options_by_template?: Record<string, Array<{ value: string; label: string }>>
+    template_editor_blocks_by_template?: Record<string, string[]>
   }
 }
 

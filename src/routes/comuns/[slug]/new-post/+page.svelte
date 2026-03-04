@@ -12,8 +12,11 @@
   import {
     buildPostTemplatePayload,
     createEmptyMovieReviewTemplateData,
+    normalizeTemplateEditorBlockSettings,
+    resolveEnabledTemplateEditorBlockTypes,
     type MovieReviewTemplateData,
     type PostTemplateType,
+    type TemplateEditorBlockSettings,
   } from '$lib/postTemplates'
 
   export let data
@@ -44,6 +47,7 @@
   let publishIdentityOptions: PublishIdentityOption[] = []
   let createTemplateType: '' | PostTemplateType = ''
   let createMovieReviewData: MovieReviewTemplateData = createEmptyMovieReviewTemplateData()
+  let templateEditorBlockSettings: TemplateEditorBlockSettings = {}
 
   const isEditorContentEmpty = (value: string) => {
     if (!value || value.trim() === '') return true
@@ -114,6 +118,14 @@
   }
   $: canCreateInComun = Boolean($siteToken && comun?.can_moderate)
   $: productTagName = comun?.product_tag?.name?.trim() ?? ''
+  $: templateEditorBlockSettings = normalizeTemplateEditorBlockSettings(
+    comun?.options?.template_editor_blocks_by_template ?? comun?.template_editor_blocks_by_template
+  )
+  $: editorEnabledTemplateBlockTypes = resolveEnabledTemplateEditorBlockTypes(
+    createTemplateType,
+    templateEditorBlockSettings
+  )
+  $: editorTemplateBlocksKey = `${createTemplateType || 'basic'}:${editorEnabledTemplateBlockTypes.join(',')}`
   $: publishIdentityOptions = (() => {
     if (!$siteUser) return [] as PublishIdentityOption[]
     const siteLabelBase = ($siteUser.display_name || '').trim() || `@${$siteUser.username}`
@@ -280,15 +292,20 @@
         <PostTemplateFields
           bind:templateType={createTemplateType}
           bind:movieReviewData={createMovieReviewData}
+          allowedTemplateTypes={comun?.allowed_template_types}
         />
 
-        <EditorJS
-          bind:value={createContent}
-          placeholder="Текст поста"
-          enableAutosave={false}
-          postId={null}
-          showPostSettings={false}
-        />
+        {#key `editor-template-${editorTemplateBlocksKey}`}
+          <EditorJS
+            bind:value={createContent}
+            placeholder="Текст поста"
+            postTemplateType={createTemplateType}
+            enabledTemplateEditorBlockTypes={editorEnabledTemplateBlockTypes}
+            enableAutosave={false}
+            postId={null}
+            showPostSettings={false}
+          />
+        {/key}
 
         {#if createError}
           <p class="text-sm text-red-600">{createError}</p>
