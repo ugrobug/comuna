@@ -25,12 +25,13 @@
       alignment="left"
       href={item.url}
     >
-      <div class="flex-none" slot="prefix">
+      <div class="flex-none">
         <Avatar
           url={item.avatar}
           alt={item.name}
           title={item.name}
           width={24}
+          slot="prefix"
         />
       </div>
       <div class="flex flex-col max-w-full break-words">

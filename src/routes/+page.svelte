@@ -108,7 +108,7 @@
   let tagMoodMap = new Map<string, string>()
   let tagLemmaMap = new Map<string, string>()
   let tagMoodLoading = false
-  let moodExpiryTimer: number | null = null
+  let moodExpiryTimer: ReturnType<typeof setTimeout> | null = null
 
   const cloneFolderSettingsDraft = (folder: BackendThematicFeed | null): BackendThematicFeed | null =>
     folder ? JSON.parse(JSON.stringify(folder)) : null
@@ -805,7 +805,7 @@
 	  $: filteredMyFeedPosts =
 	    effectiveMood && tagMoodMap.size
 	      ? posts.filter((post) =>
-          (post.tags ?? []).some((tag: any) => {
+	          (post.tags ?? []).some((tag) => {
 	            const rawName = typeof tag === 'string' ? tag : tag.name
 	            const normalized = normalizeTag(rawName)
 	            const lemma =

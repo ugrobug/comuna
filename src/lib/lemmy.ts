@@ -93,38 +93,20 @@ export function client({
 }
 
 export function getClient(
-  options?: {
-    instanceURL?: string
-    auth?: string
+  options?: string | { 
+    instanceURL?: string,
+    auth?: string,
     func?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
   }
-): LemmyHttp
-export function getClient(
-  instanceURL?: string,
-  func?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
-): LemmyHttp
-export function getClient(
-  optionsOrInstance?:
-    | string
-    | {
-        instanceURL?: string
-        auth?: string
-        func?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
-      },
-  legacyFunc?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 ): LemmyHttp {
-  if (typeof optionsOrInstance === 'string') {
-    return client({ instanceURL: optionsOrInstance, func: legacyFunc })
-  }
-
-  if (!optionsOrInstance && legacyFunc) {
-    return client({ func: legacyFunc })
+  if (typeof options === 'string') {
+    return client({ instanceURL: options })
   }
 
   return client({
-    instanceURL: optionsOrInstance?.instanceURL,
-    auth: optionsOrInstance?.auth,
-    func: optionsOrInstance?.func
+    instanceURL: options?.instanceURL,
+    auth: options?.auth,
+    func: options?.func
   })
 }
 

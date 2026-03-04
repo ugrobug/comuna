@@ -1,3 +1,6 @@
-import ru from './ru.json'
-
-export default ru
+{
+  nav: {
+    local_communities: 'Локальные сообщества',
+    // ... остальные переводы
+  }
+} 

@@ -318,7 +318,7 @@
             linkOverride={buildBackendPostPath(backendPost)}
             userUrlOverride={backendPost.author?.username ? `/${backendPost.author.username}` : undefined}
             communityUrlOverride={backendPost.rubric_slug ? `/rubrics/${backendPost.rubric_slug}/posts` : undefined}
-            subscribeUrl={(backendPost.channel_url ?? backendPost.author?.channel_url) ?? undefined}
+            subscribeUrl={backendPost.channel_url ?? backendPost.author?.channel_url}
             subscribeLabel="Подписаться"
           />
         {/each}

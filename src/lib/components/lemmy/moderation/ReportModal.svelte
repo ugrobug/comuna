@@ -89,7 +89,6 @@
               comment_view: item,
               depth: 1,
               loading: false,
-              ui: { open: true },
             }}
             postId={item.post.id}
           />

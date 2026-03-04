@@ -56,26 +56,21 @@
   <div class="p-4 pt-16 sm:pt-4 flex flex-col gap-2">
     <div class="flex-1 flex flex-row items-center text-left gap-0 sm:gap-8">
       <div class="hidden sm:block w-24 flex-shrink-0"></div>
-      <div class="flex items-start gap-3 min-w-0 flex-1">
-        <div class="flex flex-col min-w-0 flex-1">
-          <svelte:element
-            this={url ? 'a' : 'span'}
-            href={url}
-            class="text-2xl font-semibold break-words max-w-full {url
-              ? 'hover:underline hover:text-primary-900 hover:dark:text-primary-100'
-              : ''}"
-          >
-            {name}
-          </svelte:element>
-          <span
-            class="flex items-center gap-0 text-sm text-slate-600 dark:text-zinc-400 max-w-full w-max"
-          >
-            <slot name="nameDetail" />
-          </span>
-        </div>
-        <div class="flex items-center shrink-0">
-          <slot name="actions" />
-        </div>
+      <div class="flex flex-col min-w-0 flex-1">
+        <svelte:element
+          this={url ? 'a' : 'span'}
+          href={url}
+          class="text-2xl font-semibold break-words max-w-full {url
+            ? 'hover:underline hover:text-primary-900 hover:dark:text-primary-100'
+            : ''}"
+        >
+          {name}
+        </svelte:element>
+        <span
+          class="flex items-center gap-0 text-sm text-slate-600 dark:text-zinc-400 max-w-full w-max"
+        >
+          <slot name="nameDetail" />
+        </span>
       </div>
     </div>
 

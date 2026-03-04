@@ -144,7 +144,7 @@ export async function markAsRead(
 
   if (item.type == 'post') {
     getClient().markPostAsRead({
-      post_ids: [item.id],
+      post_id: item.id,
       read: read,
     })
     return read

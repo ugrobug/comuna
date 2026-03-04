@@ -1,5 +1,4 @@
 <script lang="ts">
-  // @ts-nocheck
   import { page } from '$app/stores'
   import { goto } from '$app/navigation'
   import { profile } from '$lib/auth.js'
@@ -65,6 +64,7 @@
         nsfw: post.post.nsfw || false,
         community_id: post.community.id,
         language_id: post.post.language_id || 0,
+        honeypot: "",
         removed: post.post.removed || false,
         deleted: post.post.deleted || false,
         creator_id: post.post.creator_id,

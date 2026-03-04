@@ -13,8 +13,6 @@
   export let width: number = 28
   export let res: number | undefined = undefined
   export let class_: string = ''
-  let className: string = ''
-  export { className as class }
 
   // Базовые классы для всех аватаров
   const baseClasses = "aspect-square object-cover overflow-hidden flex-shrink-0 border border-slate-300 dark:border-zinc-700"
@@ -91,12 +89,12 @@
     {alt}
     {width}
     title=""
-    class="{baseClasses} {circle ? 'rounded-full' : 'rounded-lg'} {class_} {className}"
+    class="{baseClasses} {circle ? 'rounded-full' : 'rounded-lg'} {class_}"
     style="width: {width}px; height: {width}px"
   />
 {:else}
   <div
-    class="{baseClasses} {circle ? 'rounded-full' : 'rounded-lg'} {className}"
+    class="{baseClasses} {circle ? 'rounded-full' : 'rounded-lg'}"
     style="width: {width}px; height: {width}px"
   >
     {#if browser && svgMarkup}

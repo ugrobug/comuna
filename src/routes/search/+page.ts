@@ -1,11 +1,6 @@
 import { env } from '$env/dynamic/public'
 import { profile } from '$lib/auth.js'
-import {
-  backendPostToPostView,
-  buildBackendPostPath,
-  buildSearchUrl,
-  type BackendPost,
-} from '$lib/api/backend'
+import { buildBackendPostPath, buildSearchUrl, backendPostToPostView } from '$lib/api/backend'
 import { client, getClient } from '$lib/lemmy.js'
 import { getItemPublished } from '$lib/lemmy/item.js'
 import type {
@@ -42,7 +37,7 @@ export async function load({ url, fetch }) {
     }
     const payload = await response.json()
 
-    const posts = (payload.posts ?? []).map((backendPost: BackendPost) => ({
+    const posts = (payload.posts ?? []).map((backendPost) => ({
       post: backendPostToPostView(backendPost, backendPost.author),
       linkOverride: buildBackendPostPath(backendPost),
       authorUsername: backendPost.author?.username,

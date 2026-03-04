@@ -1,5 +1,4 @@
 <script lang="ts">
-  // @ts-nocheck
   import { navigating, page } from '$app/stores'
   import { profile } from '$lib/auth.js'
   import ObjectAutocomplete from '$lib/components/lemmy/ObjectAutocomplete.svelte'
