@@ -12,6 +12,7 @@
   import {
     buildPostTemplatePayload,
     createEmptyMovieReviewTemplateData,
+    normalizeAllowedPostTemplateTypes,
     normalizeTemplateEditorBlockSettings,
     resolveEnabledTemplateEditorBlockTypes,
     type MovieReviewTemplateData,
@@ -47,6 +48,7 @@
   let publishIdentityOptions: PublishIdentityOption[] = []
   let createTemplateType: '' | PostTemplateType = ''
   let createMovieReviewData: MovieReviewTemplateData = createEmptyMovieReviewTemplateData()
+  let comunAllowedTemplateTypes: string[] = ['basic']
   let templateEditorBlockSettings: TemplateEditorBlockSettings = {}
 
   const isEditorContentEmpty = (value: string) => {
@@ -73,8 +75,11 @@
     }
     loadingComunAccess = true
     try {
-      const response = await fetch(buildComunUrl(comun.slug), {
+      const comunUrl = new URL(buildComunUrl(comun.slug), window.location.origin)
+      comunUrl.searchParams.set('_', String(Date.now()))
+      const response = await fetch(comunUrl.toString(), {
         headers: { Authorization: `Bearer ${$siteToken}` },
+        cache: 'no-store',
       })
       const payload = await response.json().catch(() => ({}))
       if (response.ok && payload?.comun) {
@@ -118,6 +123,9 @@
   }
   $: canCreateInComun = Boolean($siteToken && comun?.can_moderate)
   $: productTagName = comun?.product_tag?.name?.trim() ?? ''
+  $: comunAllowedTemplateTypes = normalizeAllowedPostTemplateTypes(
+    comun?.allowed_template_types ?? comun?.allowed_post_templates
+  )
   $: templateEditorBlockSettings = normalizeTemplateEditorBlockSettings(
     comun?.options?.template_editor_blocks_by_template ?? comun?.template_editor_blocks_by_template
   )
@@ -292,7 +300,7 @@
         <PostTemplateFields
           bind:templateType={createTemplateType}
           bind:movieReviewData={createMovieReviewData}
-          allowedTemplateTypes={comun?.allowed_template_types}
+          allowedTemplateTypes={comunAllowedTemplateTypes}
         />
 
         {#key `editor-template-${editorTemplateBlocksKey}`}

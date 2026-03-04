@@ -110,12 +110,15 @@
     try {
       const response = await fetch(buildRubricsUrl({ includeHidden: true }), {
         headers,
+        cache: 'no-store',
       })
       const data = await response.json()
       rubrics = Array.isArray(data?.rubrics)
         ? data.rubrics.map((rubric: any) => ({
             ...rubric,
-            allowed_template_types: normalizeAllowedPostTemplateTypes(rubric?.allowed_template_types),
+            allowed_template_types: normalizeAllowedPostTemplateTypes(
+              rubric?.allowed_template_types ?? rubric?.allowed_post_templates
+            ),
           }))
         : []
       templateEditorBlockSettings = normalizeTemplateEditorBlockSettings(

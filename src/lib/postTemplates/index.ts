@@ -46,7 +46,7 @@ export type PostTemplateTypeOption = {
 }
 
 export const POST_TEMPLATE_TYPE_OPTIONS: PostTemplateTypeOption[] = [
-  { value: '', label: 'Обычный пост (без шаблона)' },
+  { value: '', label: 'Пост' },
   { value: 'movie_review', label: 'Кинообзор' },
 ]
 

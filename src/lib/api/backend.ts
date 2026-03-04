@@ -373,6 +373,7 @@ export type BackendComun = {
   hide_from_home?: boolean
   hide_from_fresh?: boolean
   allowed_template_types?: string[]
+  allowed_post_templates?: string[]
   template_editor_blocks_by_template?: Record<string, string[]>
   is_active?: boolean
   sort_order?: number

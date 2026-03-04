@@ -39,7 +39,7 @@
   type ComunUserOption = { id: number; username: string; display_name?: string | null }
   type TemplateTypeOption = { value: PostTemplateCode; label: string }
   const fallbackTemplateTypeOptions: TemplateTypeOption[] = [
-    { value: 'basic', label: 'Базовый пост' },
+    { value: 'basic', label: 'Пост' },
     { value: 'movie_review', label: 'Кинообзор' },
   ]
   const allowedTemplateCodes = new Set<PostTemplateCode>(['basic', 'movie_review'])
@@ -73,7 +73,9 @@
     )
 
   const comunAllowedTemplateTypes = (value: BackendComun | null) =>
-    normalizeAllowedPostTemplateTypes(value?.allowed_template_types)
+    normalizeAllowedPostTemplateTypes(
+      value?.allowed_template_types ?? value?.allowed_post_templates
+    )
 
   const normalizeTemplateTypeOptions = (value: unknown): TemplateTypeOption[] => {
     const source = Array.isArray(value) ? value : []
@@ -141,8 +143,11 @@
     settingsLoading = true
     settingsError = ''
     try {
-      const response = await fetch(buildComunUrl(slug), {
+      const comunUrl = new URL(buildComunUrl(slug), window.location.origin)
+      comunUrl.searchParams.set('_', String(Date.now()))
+      const response = await fetch(comunUrl.toString(), {
         headers: { Authorization: `Bearer ${$siteToken}` },
+        cache: 'no-store',
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) {
