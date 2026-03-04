@@ -52,6 +52,7 @@
     clock: `${iconPath}/clock.svg`,
     map: `${iconPath}/geo-alt.svg`,
     imageCompare: `${iconPath}/images.svg`,
+    movieCard: `${iconPath}/card-image.svg`,
     quote: `${iconPath}/quote.svg`,
     image: `${iconPath}/card-image.svg`,
     link: `${iconPath}/link-45deg.svg`,
@@ -1005,6 +1006,61 @@
         time,
         title: this.data.title.trim(),
         note: this.data.note.trim(),
+      }
+    }
+  }
+
+  class MovieCardTool {
+    private data: {
+      use_template: boolean
+    }
+
+    static get toolbox() {
+      return {
+        title: 'Карточка фильма',
+        icon: `<img src="${icons.movieCard}" width="16" height="16" />`,
+      }
+    }
+
+    constructor({ data }: { data?: { use_template?: unknown } }) {
+      this.data = {
+        use_template:
+          typeof data?.use_template === 'boolean' ? data.use_template : true,
+      }
+    }
+
+    render() {
+      const wrapper = document.createElement('div')
+      wrapper.classList.add('movie-card-tool')
+
+      const title = document.createElement('div')
+      title.classList.add('movie-card-tool__title')
+      title.textContent = 'Карточка фильма'
+
+      const subtitle = document.createElement('p')
+      subtitle.classList.add('movie-card-tool__subtitle')
+      subtitle.textContent =
+        postTemplateType === 'movie_review'
+          ? 'Блок покажет карточку по данным шаблона «Кинообзор» в тексте и в превью ленты.'
+          : 'Для корректной карточки выберите шаблон «Кинообзор».'
+
+      const preview = document.createElement('div')
+      preview.classList.add('movie-card-tool__preview')
+      preview.textContent =
+        postTemplateType === 'movie_review'
+          ? 'Будут использованы поля: постер, название, жанр, тип, премьера, где смотреть, IMDb.'
+          : 'Карточка сейчас недоступна для выбранного шаблона.'
+
+      wrapper.appendChild(title)
+      wrapper.appendChild(subtitle)
+      wrapper.appendChild(preview)
+
+      return wrapper
+    }
+
+    save() {
+      return {
+        use_template: this.data.use_template,
       }
     }
   }
@@ -2219,6 +2275,11 @@
               movie_time: MovieTimeTool,
             }
           : {}),
+        ...(enabledTemplateBlockTypes.has('movie_card')
+          ? {
+              movie_card: MovieCardTool,
+            }
+          : {}),
         anchorInput: {
           class: CustomInputTune
         },
@@ -2445,6 +2506,8 @@
             "Compare": "Сравнение изображений",
             "Movie Time": "Время в фильме",
             "Время в фильме": "Время в фильме",
+            "Movie Card": "Карточка фильма",
+            "Карточка фильма": "Карточка фильма",
             "Link": "Ссылка",
             "Unordered List": "Маркированный список",
             "Ordered List": "Нумерованный список",
@@ -3223,6 +3286,47 @@
     :global(.movie-time-tool__grid) {
       grid-template-columns: 1fr;
     }
+  }
+
+  :global(.movie-card-tool) {
+    border-radius: 0.9rem;
+    border: 1px solid rgba(251, 191, 36, 0.38);
+    background:
+      radial-gradient(120% 120% at 0% 0%, rgba(251, 191, 36, 0.22), rgba(251, 191, 36, 0) 58%),
+      linear-gradient(135deg, rgba(15, 23, 42, 0.94), rgba(30, 41, 59, 0.9));
+    color: #e2e8f0;
+    padding: 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+
+  :global(.dark .movie-card-tool) {
+    border-color: rgba(251, 191, 36, 0.34);
+  }
+
+  :global(.movie-card-tool__title) {
+    font-weight: 700;
+    color: #fff;
+    font-size: 0.95rem;
+    line-height: 1.2;
+  }
+
+  :global(.movie-card-tool__subtitle) {
+    margin: 0;
+    color: #cbd5e1;
+    font-size: 0.79rem;
+    line-height: 1.4;
+  }
+
+  :global(.movie-card-tool__preview) {
+    border-radius: 0.65rem;
+    border: 1px solid rgba(251, 191, 36, 0.28);
+    background: rgba(15, 23, 42, 0.4);
+    color: #fde68a;
+    font-size: 0.78rem;
+    line-height: 1.35;
+    padding: 0.5rem 0.65rem;
   }
 
   :global(.map-tool) {

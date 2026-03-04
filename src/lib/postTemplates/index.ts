@@ -12,6 +12,7 @@ export type TemplateEditorBlockType =
   | 'link'
   | 'embed'
   | 'movie_time'
+  | 'movie_card'
 
 export type TemplateEditorBlockOption = {
   type: TemplateEditorBlockType
@@ -63,6 +64,7 @@ const TEMPLATE_EDITOR_BLOCK_TYPE_VALUES = new Set<TemplateEditorBlockType>([
   'link',
   'embed',
   'movie_time',
+  'movie_card',
 ])
 
 const ALL_TEMPLATE_EDITOR_BLOCK_OPTIONS: TemplateEditorBlockOption[] = [
@@ -77,10 +79,11 @@ const ALL_TEMPLATE_EDITOR_BLOCK_OPTIONS: TemplateEditorBlockOption[] = [
   { type: 'link', label: 'Ссылка' },
   { type: 'embed', label: 'Встраивание (Embed)' },
   { type: 'movie_time', label: 'Время в фильме' },
+  { type: 'movie_card', label: 'Карточка фильма' },
 ]
 
 const TEMPLATE_EDITOR_BLOCKS_BY_TEMPLATE: Record<PostTemplateCode, TemplateEditorBlockOption[]> = {
-  basic: ALL_TEMPLATE_EDITOR_BLOCK_OPTIONS,
+  basic: ALL_TEMPLATE_EDITOR_BLOCK_OPTIONS.filter((option) => option.type !== 'movie_card'),
   movie_review: ALL_TEMPLATE_EDITOR_BLOCK_OPTIONS,
 }
 
