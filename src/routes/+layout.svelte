@@ -1,4 +1,5 @@
 <script lang="ts">
+  // @ts-ignore Svelte component default export is generated during compilation.
   import Navbar from '$lib/components/ui/navbar/Navbar.svelte'
   import '../style/app.css'
   import { navigating, page } from '$app/stores'
@@ -21,7 +22,7 @@
     toast,
     ToastContainer,
   } from 'mono-svelte'
-  import { onMount } from 'svelte'
+  import { onMount, type ComponentType } from 'svelte'
   import { browser } from '$app/environment'
   import { Forward, Icon } from 'svelte-hero-icons'
   import { routes } from '$lib/util.js'
@@ -33,11 +34,6 @@
   import { locale } from '$lib/translations'
   import { getDefaultColors } from '$lib/ui/presets'
   import { env } from '$env/dynamic/public'
-import YandexMetrika from '$lib/components/YandexMetrika.svelte'
-import GoogleAnalytics from '$lib/components/GoogleAnalytics.svelte'
-import PopularPosts from '$lib/components/ui/sidebar/PopularPosts.svelte'
-import RecentComments from '$lib/components/ui/sidebar/RecentComments.svelte'
-import KeyboardShortcutsHint from '$lib/components/ui/sidebar/KeyboardShortcutsHint.svelte'
 
   nProgress.configure({
     minimum: 0.4,
@@ -46,6 +42,37 @@ import KeyboardShortcutsHint from '$lib/components/ui/sidebar/KeyboardShortcutsH
     speed: 300,
     showSpinner: false,
   })
+
+  let GoogleAnalyticsComponent: ComponentType | null = null
+  let YandexMetrikaComponent: ComponentType | null = null
+  let PopularPostsComponent: ComponentType | null = null
+  let RecentCommentsComponent: ComponentType | null = null
+  let KeyboardShortcutsHintComponent: ComponentType | null = null
+
+  const loadAnalytics = async () => {
+    const [{ default: GoogleAnalytics }, { default: YandexMetrika }] =
+      await Promise.all([
+        import('$lib/components/GoogleAnalytics.svelte'),
+        import('$lib/components/YandexMetrika.svelte'),
+      ])
+    GoogleAnalyticsComponent = GoogleAnalytics
+    YandexMetrikaComponent = YandexMetrika
+  }
+
+  const loadSidebarWidgets = async () => {
+    const [
+      { default: PopularPosts },
+      { default: RecentComments },
+      { default: KeyboardShortcutsHint },
+    ] = await Promise.all([
+      import('$lib/components/ui/sidebar/PopularPosts.svelte'),
+      import('$lib/components/ui/sidebar/RecentComments.svelte'),
+      import('$lib/components/ui/sidebar/KeyboardShortcutsHint.svelte'),
+    ])
+    PopularPostsComponent = PopularPosts
+    RecentCommentsComponent = RecentComments
+    KeyboardShortcutsHintComponent = KeyboardShortcutsHint
+  }
 
   onMount(() => {
     if (!('serviceWorker' in navigator)) return
@@ -139,28 +166,53 @@ import KeyboardShortcutsHint from '$lib/components/ui/sidebar/KeyboardShortcutsH
   $: siteSchemaTag = buildJsonLdTag(siteSchemaJson)
 
   onMount(() => {
-    if (browser) {
-      if (window.location.hash == 'main') {
-        history.replaceState(
-          null,
-          '',
-          window.location.toString().replace('#main', '')
-        )
-      }
-      document.body.querySelector('.loader')?.classList.add('hidden')
-      themeVars.subscribe((vars) => {
-        document.body.setAttribute('style', vars)
+    if (!browser) return
+
+    if (window.location.hash == 'main') {
+      history.replaceState(
+        null,
+        '',
+        window.location.toString().replace('#main', '')
+      )
+    }
+    document.body.querySelector('.loader')?.classList.add('hidden')
+    const unsubscribeThemeVars = themeVars.subscribe((vars) => {
+      document.body.setAttribute('style', vars)
+    })
+    const unsubscribeUserSettings = userSettings.subscribe((settings) => {
+      console.log('Current font settings:', settings.font)
+      console.log(
+        'Adding font class:',
+        settings.font === 'roboto' ? 'font-roboto' : 'font-sans'
+      )
+    })
+
+    const sidebarWidgetsTimer = window.setTimeout(() => {
+      loadSidebarWidgets().catch((error) => {
+        console.error('Failed to load sidebar widgets', error)
       })
-      userSettings.subscribe((settings) => {
-        console.log('Current font settings:', settings.font);
-        console.log('Adding font class:', settings.font === 'roboto' ? 'font-roboto' : 'font-sans');
+    }, 200)
+    const analyticsTimer = window.setTimeout(() => {
+      loadAnalytics().catch((error) => {
+        console.error('Failed to load analytics components', error)
       })
+    }, 1000)
+
+    return () => {
+      window.clearTimeout(sidebarWidgetsTimer)
+      window.clearTimeout(analyticsTimer)
+      unsubscribeThemeVars()
+      unsubscribeUserSettings()
     }
   })
 </script>
 
-<GoogleAnalytics />
-<YandexMetrika />
+{#if GoogleAnalyticsComponent}
+  <svelte:component this={GoogleAnalyticsComponent} />
+{/if}
+{#if YandexMetrikaComponent}
+  <svelte:component this={YandexMetrikaComponent} />
+{/if}
 
 <svelte:head>
 
@@ -257,10 +309,21 @@ import KeyboardShortcutsHint from '$lib/components/ui/sidebar/KeyboardShortcutsH
         
         <!-- PopularPosts -->
         <div class="flex flex-col gap-4">
-          <KeyboardShortcutsHint enabled={keyboardShortcutsHintEnabled} />
-          <PopularPosts />
-          <div class="h-px bg-slate-200 dark:bg-zinc-800"></div>
-          <RecentComments />
+          {#if KeyboardShortcutsHintComponent}
+            <svelte:component
+              this={KeyboardShortcutsHintComponent}
+              enabled={keyboardShortcutsHintEnabled}
+            />
+          {/if}
+          {#if PopularPostsComponent}
+            <svelte:component this={PopularPostsComponent} />
+          {/if}
+          {#if PopularPostsComponent || RecentCommentsComponent}
+            <div class="h-px bg-slate-200 dark:bg-zinc-800"></div>
+          {/if}
+          {#if RecentCommentsComponent}
+            <svelte:component this={RecentCommentsComponent} />
+          {/if}
         </div>
       </div>
     </div>

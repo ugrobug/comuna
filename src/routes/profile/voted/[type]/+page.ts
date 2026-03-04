@@ -12,6 +12,8 @@ export async function load({ url, params, fetch }) {
     feed: await postFeed({
       id: 'votes',
       request: {
+        type_: 'All',
+        limit: 20,
         sort: 'New',
         liked_only: upvoted || undefined,
         disliked_only: !upvoted || undefined,

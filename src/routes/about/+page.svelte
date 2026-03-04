@@ -16,7 +16,7 @@
   $: hiddenAuthorKeys = new Set(
     ($userSettings.hiddenAuthors ?? []).map((value) => value.toLowerCase())
   )
-  $: visiblePosts = (data?.posts ?? []).filter((backendPost) => {
+  $: visiblePosts = (data?.posts ?? []).filter((/** @type {any} */ backendPost) => {
     const key = (backendPost.author?.username ?? '').trim().toLowerCase()
     return !key || !hiddenAuthorKeys.has(key)
   })

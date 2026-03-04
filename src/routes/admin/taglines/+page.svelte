@@ -107,8 +107,9 @@
         type: 'success',
       })
     } catch (err) {
+      const message = err instanceof Error ? err.message : 'Неизвестная ошибка'
       toast({
-        content: `Ошибка сохранения: ${err.message || 'Неизвестная ошибка'}`,
+        content: `Ошибка сохранения: ${message}`,
         type: 'error',
       })
     }

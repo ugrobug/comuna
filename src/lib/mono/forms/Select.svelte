@@ -1,30 +1,18 @@
 <script lang="ts">
-  import {
-    buttonColor,
-    buttonSize,
-    type ButtonShadow,
-    type ButtonSize,
-    buttonShadow,
-  } from '../button/Button.svelte'
-  import Label from '../forms/Label.svelte'
-  import { generateID } from '../forms/helper.js'
-  import Menu from '../popover/Menu.svelte'
-  import MenuButton from '../popover/MenuButton.svelte'
-  import Popover from '../popover/Popover.svelte'
   import { createEventDispatcher, onMount } from 'svelte'
   import { browser } from '$app/environment'
-  import {
-    CheckCircle,
-    Icon,
-  } from 'svelte-hero-icons'
   import { openedSelectId } from './selectStore'
   import { nanoid } from 'nanoid'
 
   type T = $$Generic
 
   export let value: T | undefined = undefined
+  export let selected: T | undefined = undefined
   export let placeholder: string | undefined = undefined
+  export let label: string | undefined = undefined
   export let id: string = ''
+  let className: string = ''
+  export { className as class }
 
   let open = false
   let element: HTMLSelectElement
@@ -45,6 +33,10 @@
     contextmenu: any
     input: any
   }>()
+
+  $: if (value === undefined && selected !== undefined) {
+    value = selected
+  }
 
   // Закрытие дропдауна при клике вне селекта
   function handleClickOutside(event: MouseEvent) {
@@ -143,6 +135,7 @@
     display: flex;
     flex-direction: row;
     align-items: center;
+    gap: 6px;
     width: 100%;
   }
   .custom-select-text {
@@ -236,11 +229,16 @@
   }
 </style>
 
-<div class="custom-select-wrapper">
+<div class="custom-select-wrapper {className}">
   <button type="button" class="custom-select-label" on:click={() => open = !open}>
     <span class="custom-select-main">
+      {#if $$slots.label || label}
+        <span>
+          <slot name="label">{label}</slot>
+        </span>
+      {/if}
       <span class="custom-select-text">
-        {#if value}
+        {#if value !== undefined && value !== null && value !== ''}
           {options.find(o => o.value == value)?.label}
         {:else if placeholder}
           <span class="text-slate-400">{placeholder}</span>

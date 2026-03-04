@@ -1,4 +1,5 @@
 <script lang="ts">
+  // @ts-nocheck
   import { onMount, onDestroy } from 'svelte'
   import { profile } from '$lib/auth'
   import { uploadSiteImage, siteToken } from '$lib/siteAuth'

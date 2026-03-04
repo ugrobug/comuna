@@ -2,10 +2,11 @@ import { browser } from '$app/environment'
 import { env } from '$env/dynamic/public'
 import type { SitePostTemplate } from '$lib/postTemplates'
 import { slugifyTitle } from '$lib/util/slug'
+import type { PostView } from 'lemmy-js-client'
 
 export const getBackendBaseUrl = (): string => {
   if (!browser) {
-    const base = env.PUBLIC_INTERNAL_BACKEND_URL || ''
+    const base = env.PUBLIC_INTERNAL_BACKEND_URL || env.PUBLIC_BACKEND_URL || ''
     return base.replace(/\/$/, '')
   }
   const base = env.PUBLIC_BACKEND_URL || 'http://localhost:8000'
@@ -519,7 +520,7 @@ export const backendPostToPostView = (
       community_id: communityId,
       ap_id: sourceUrl || `https://post.local/${post.id}`,
       embed_description: '',
-      thumbnail_url: null,
+      thumbnail_url: undefined,
       language_id: 0,
     },
     creator: {
@@ -528,7 +529,6 @@ export const backendPostToPostView = (
       display_name: authorTitle,
       avatar: author?.avatar_url ?? undefined,
       actor_id: authorChannelUrl || `https://t.me/${authorName}`,
-      comuna_notify_comments: author?.notify_comments_enabled,
       local: true,
       admin: false,
       bot_account: false,
@@ -546,11 +546,13 @@ export const backendPostToPostView = (
       deleted: false,
       hidden: false,
       nsfw: false,
+      posting_restricted_to_mods: false,
       published: post.created_at,
       removed: false,
+      visibility: 'Public',
+      instance_id: 0,
     },
     counts: {
-      id: post.id,
       post_id: post.id,
       comments: post.comments_count ?? 0,
       score: post.likes_count ?? 0,
@@ -568,5 +570,8 @@ export const backendPostToPostView = (
     read: false,
     hidden: false,
     my_vote: 0,
-  }
+    banned_from_community: false,
+    creator_blocked: false,
+    unread_comments: 0,
+  } as unknown as PostView
 }

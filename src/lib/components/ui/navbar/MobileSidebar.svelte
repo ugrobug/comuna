@@ -98,8 +98,6 @@
   }
 </script>
 
-<div style="background: #ffe; color: #b00; font-weight: bold; padding: 8px; text-align: center;">SIDEBAR TEST</div>
-
 <nav class="flex flex-col p-4 overflow-auto gap-2 h-auto min-h-0">
   <div class="flex flex-col gap-1">
     {#if $siteUser}
@@ -109,8 +107,8 @@
       <SidebarButton href={`/id${$siteUser.id}`} on:click={handleNavigation} icon={UserCircle}>
         <span slot="label">Профиль</span>
       </SidebarButton>
-      <SidebarButton href=\"/account\" on:click={handleNavigation} icon={UserCircle}>
-        <span slot=\"label\">Кабинет</span>
+      <SidebarButton href="/account" on:click={handleNavigation} icon={UserCircle}>
+        <span slot="label">Кабинет</span>
       </SidebarButton>
       <SidebarButton
         icon={ArrowLeftOnRectangle}
@@ -119,7 +117,7 @@
           handleNavigation();
         }}
       >
-        <span slot=\"label\">Выйти</span>
+        <span slot="label">Выйти</span>
       </SidebarButton>
     {:else}
       <SidebarButton
@@ -128,7 +126,7 @@
           loginModalOpen = true;
         }}
       >
-        <span slot=\"label\">Войти</span>
+        <span slot="label">Войти</span>
       </SidebarButton>
     {/if}
   </div>

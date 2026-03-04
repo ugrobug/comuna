@@ -36,7 +36,7 @@
     new Date(node.comment.updated_at).getTime() > commentDate.getTime()
 
   const forward = (event: CustomEvent) => {
-    dispatch(event.type, event.detail)
+    dispatch(event.type as 'update' | 'reply' | 'remove', event.detail as any)
   }
 
   const setComment = (comment: SiteComment) => {

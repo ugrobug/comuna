@@ -4,7 +4,7 @@ import { userSettings } from '$lib/settings.js'
 import { aliases, loadTranslations } from '$lib/translations.js'
 import { get } from 'svelte/store'
 
-export let ssr = (env.PUBLIC_SSR_ENABLED?.toLowerCase() ?? 'false') == 'true'
+export let ssr = (env.PUBLIC_SSR_ENABLED?.toLowerCase() ?? 'true') == 'true'
 
 export const load = async ({}) => {
   if (browser) {
