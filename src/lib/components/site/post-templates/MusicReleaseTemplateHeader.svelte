@@ -19,8 +19,17 @@
   const normalizeExternalUrl = (value: string | undefined): string => {
     const raw = (value || '').trim()
     if (!raw) return ''
-    if (/^https?:\/\//i.test(raw)) return raw
-    return `https://${raw}`
+
+    // Allow pasting full iframe code from "Поделиться" and extract src.
+    const quotedSrcMatch = raw.match(/src\s*=\s*(['"])(https?:\/\/[^'"]+)\1/i)
+    const plainSrcMatch = raw.match(/src\s*=\s*(https?:\/\/[^\s>]+)/i)
+    const extracted = (quotedSrcMatch?.[2] || plainSrcMatch?.[1] || raw)
+      .replace(/&amp;/gi, '&')
+      .trim()
+
+    if (!extracted) return ''
+    if (/^https?:\/\//i.test(extracted)) return extracted
+    return `https://${extracted}`
   }
 
   const resolveReleaseEmbed = (value: string): ReleaseEmbed | null => {
@@ -43,6 +52,19 @@
       if (albumTrackMatch) {
         const albumId = albumTrackMatch[1]
         const trackId = albumTrackMatch[2]
+        return {
+          provider: 'yandex_music',
+          providerLabel: 'Яндекс Музыка',
+          embedUrl: `https://music.yandex.ru/iframe/album/${albumId}/track/${trackId}`,
+          title: 'Плеер Яндекс Музыки',
+          height: 244,
+        }
+      }
+
+      const hashTrackMatch = parsed.hash.match(/#track\/(\d+)\/(\d+)(?:\/|$)/i)
+      if (hashTrackMatch) {
+        const trackId = hashTrackMatch[1]
+        const albumId = hashTrackMatch[2]
         return {
           provider: 'yandex_music',
           providerLabel: 'Яндекс Музыка',

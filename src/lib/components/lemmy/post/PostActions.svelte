@@ -572,7 +572,7 @@
       {$t('post.actions.more.actions')}
     </MenuDivider>
     {#if canEditBackendPost && backendPostId}
-      <MenuButton link href={`/account?edit=${backendPostId}`}>
+      <MenuButton link href={`/account/edit-post/${backendPostId}`}>
         <Icon src={PencilSquare} size="16" micro slot="prefix" />
         {$t('post.actions.more.edit')}
       </MenuButton>

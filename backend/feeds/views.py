@@ -71,6 +71,7 @@ from .models import (
     template_editor_block_choices_for_template,
 )
 from .notifications import (
+    create_user_notification,
     serialize_notification_settings_for_user,
     update_notification_settings_for_user,
 )
@@ -928,6 +929,88 @@ def _maybe_notify_author_comment(post: Post, comment: PostComment) -> None:
         text += f"\nСсылка: {post_link}"
 
     _send_bot_message(int(author.admin_chat_id), text)
+
+
+def _author_owner_users_for_notifications(author: Author) -> list[User]:
+    user_ids = set(
+        AuthorAdmin.objects.filter(author=author, verified_at__isnull=False).values_list(
+            "user_id", flat=True
+        )
+    )
+    if not author.channel_url and author.channel_id is None:
+        personal_user = User.objects.filter(
+            username__iexact=(author.username or "").strip()
+        ).first()
+        if personal_user:
+            user_ids.add(personal_user.id)
+    if not user_ids:
+        return []
+    return list(User.objects.filter(id__in=user_ids))
+
+
+def _is_voting_comun_category(category: ComunCategory | None) -> bool:
+    if not category:
+        return False
+    slug = (category.slug or "").strip().lower()
+    name = (category.name or "").strip().lower()
+    tokens = (slug, name)
+    voting_markers = (
+        "vote",
+        "voting",
+        "poll",
+        "голос",
+        "голосован",
+        "опрос",
+    )
+    return any(marker in value for value in tokens for marker in voting_markers if value)
+
+
+def _maybe_notify_post_added_to_voting(
+    *,
+    post: Post,
+    comun: Comun,
+    category: ComunCategory | None,
+    actor: User | None = None,
+    previous_category: ComunCategory | None = None,
+) -> None:
+    if not _is_voting_comun_category(category):
+        return
+    if _is_voting_comun_category(previous_category):
+        return
+
+    recipients = _author_owner_users_for_notifications(post.author)
+    if not recipients:
+        return
+
+    post_title = _post_display_title(post)
+    comun_title = (comun.name or comun.slug or "").strip() or "коммуна"
+    category_title = (category.name or "").strip() if category else "голосование"
+    message = (
+        f"Пост «{post_title}» добавлен в категорию «{category_title}» "
+        f"в комуне «{comun_title}»."
+    )
+    link_url = f"/b/post/{post.id}"
+    payload = {
+        "post_id": post.id,
+        "author_id": post.author_id,
+        "comun_id": comun.id,
+        "comun_slug": comun.slug,
+        "category_id": category.id if category else None,
+        "category_slug": category.slug if category else "",
+        "actor_user_id": actor.id if actor else None,
+    }
+
+    for recipient in recipients:
+        if actor and recipient.id == actor.id:
+            continue
+        create_user_notification(
+            user=recipient,
+            event_key="post_added_to_voting",
+            title="Ваш пост добавили в голосование",
+            message=message,
+            link_url=link_url,
+            payload=payload,
+        )
 
 
 def _media_url(request: HttpRequest | None, field) -> str | None:
@@ -4921,7 +5004,7 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
     user = _get_user_from_request(request)
     if not user:
         return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
-    if request.method not in {"PATCH", "PUT", "DELETE"}:
+    if request.method not in {"GET", "PATCH", "PUT", "DELETE"}:
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
 
     try:
@@ -4937,6 +5020,11 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
     can_staff_delete = bool(user.is_staff and request.method == "DELETE")
     if not is_linked and not can_staff_delete:
         return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+
+    if request.method == "GET":
+        if not is_linked and not user.is_staff:
+            return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+        return JsonResponse({"ok": True, "post": _serialize_post_for_user(request, post, user)})
 
     if request.method == "DELETE":
         raw_data = dict(post.raw_data or {})
@@ -7904,6 +7992,13 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
                 post=post,
                 defaults={"category": category, "assigned_by": current_user},
             )
+            _maybe_notify_post_added_to_voting(
+                post=post,
+                comun=comun,
+                category=category,
+                actor=current_user,
+                previous_category=None,
+            )
         _maybe_notify_new_author(author, post)
         serialized_post = _serialize_post_for_user(request, post, current_user)
         serialized_post["comun_category_id"] = category.id if category else None
@@ -8091,6 +8186,13 @@ def comun_post_category_update(request: HttpRequest, slug: str, post_id: int) ->
     if not post:
         return JsonResponse({"ok": False, "error": "post not found in comun"}, status=404)
 
+    previous_assignment = (
+        ComunPostCategoryAssignment.objects.select_related("category")
+        .filter(comun=comun, post=post)
+        .first()
+    )
+    previous_category = previous_assignment.category if previous_assignment else None
+
     if category is None:
         ComunPostCategoryAssignment.objects.filter(comun=comun, post=post).delete()
         return JsonResponse({"ok": True, "assignment": None})
@@ -8099,6 +8201,13 @@ def comun_post_category_update(request: HttpRequest, slug: str, post_id: int) ->
         comun=comun,
         post=post,
         defaults={"category": category, "assigned_by": current_user},
+    )
+    _maybe_notify_post_added_to_voting(
+        post=post,
+        comun=comun,
+        category=category,
+        actor=current_user,
+        previous_category=previous_category,
     )
     return JsonResponse(
         {

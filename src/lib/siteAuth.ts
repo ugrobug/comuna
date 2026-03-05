@@ -325,6 +325,26 @@ export const fetchUserPosts = async (limit = 20, offset = 0) => {
   }
 }
 
+export const fetchUserPost = async (postId: number) => {
+  const token = get(siteToken)
+  if (!token) {
+    throw new Error('Нужна авторизация')
+  }
+
+  const response = await fetch(buildUrl(`/api/auth/posts/${postId}/`), {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+
+  const data = await response.json()
+  if (!response.ok || !data?.post) {
+    throw new Error(data?.error || 'Не удалось загрузить пост')
+  }
+
+  return data.post as SiteUserPost
+}
+
 export const updateUserPost = async (
   postId: number,
   payload: {

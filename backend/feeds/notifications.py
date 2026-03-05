@@ -48,6 +48,13 @@ NOTIFICATION_EVENT_DEFINITIONS: list[dict[str, Any]] = [
         "default_telegram_enabled": True,
     },
     {
+        "key": "post_added_to_voting",
+        "title": "Ваш пост добавили в голосование",
+        "description": "Пост вашей авторской ленты попал в этап голосования в комуне.",
+        "default_site_enabled": True,
+        "default_telegram_enabled": True,
+    },
+    {
         "key": "system_announcement",
         "title": "Системное объявление",
         "description": "Важные новости и сообщения от команды проекта.",

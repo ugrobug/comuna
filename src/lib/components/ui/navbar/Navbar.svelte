@@ -319,9 +319,6 @@
               <MenuButton link href={`/id${$siteUser.id}`} class="py-2.5">
                 Профиль
               </MenuButton>
-              <MenuButton link href="/account" class="py-2.5">
-                Кабинет
-              </MenuButton>
               <MenuButton
                 class="py-2.5 text-red-600 dark:text-red-400"
                 on:click={siteLogout}
