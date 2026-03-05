@@ -5633,6 +5633,11 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
         .filter(Q(rubric__isnull=True) | Q(rubric__is_hidden=False))
         .count()
     )
+    site_user_id = None
+    if not author.channel_url and author.channel_id is None:
+        matching_user = User.objects.filter(username__iexact=author.username).only("id").first()
+        if matching_user:
+            site_user_id = matching_user.id
     author_channel_url = author.invite_url or author.channel_url
     serialized = []
     for post in posts:
@@ -5683,6 +5688,7 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
                 "subscribers_count": author.subscribers_count,
                 "posts_count": posts_count,
                 "author_rating": _author_rating_value(author.rating_total),
+                "site_user_id": site_user_id,
             },
             "posts": serialized,
         }

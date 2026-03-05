@@ -1,5 +1,5 @@
 import { buildAuthorPostsUrl } from '$lib/api/backend'
-import { error } from '@sveltejs/kit'
+import { error, redirect } from '@sveltejs/kit'
 
 const PAGE_SIZE = 10
 
@@ -17,6 +17,10 @@ export const load = async ({ params, fetch, url }) => {
   }
 
   const data = await response.json()
+  const siteUserId = Number(data?.author?.site_user_id ?? 0)
+  if (Number.isFinite(siteUserId) && siteUserId > 0) {
+    throw redirect(301, `/id${siteUserId}`)
+  }
 
   return {
     author: data.author,
