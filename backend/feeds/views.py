@@ -5017,12 +5017,18 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
     is_linked = AuthorAdmin.objects.filter(
         user=user, author=post.author, verified_at__isnull=False
     ).exists()
+    personal_author = Author.objects.filter(
+        username__iexact=(user.username or "").strip(),
+        channel_url="",
+        channel_id__isnull=True,
+    ).first()
+    is_personal_author_owner = bool(personal_author and personal_author.id == post.author_id)
     can_staff_delete = bool(user.is_staff and request.method == "DELETE")
-    if not is_linked and not can_staff_delete:
+    if not is_linked and not is_personal_author_owner and not can_staff_delete:
         return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
 
     if request.method == "GET":
-        if not is_linked and not user.is_staff:
+        if not is_linked and not is_personal_author_owner and not user.is_staff:
             return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
         return JsonResponse({"ok": True, "post": _serialize_post_for_user(request, post, user)})
 
