@@ -52,6 +52,7 @@ export type PostVotePollTemplateData = {
   question?: string
   items?: PostVotePollTemplateItem[]
   ends_at?: string
+  allows_multiple_answers?: boolean
 }
 
 export type PostVotePollTemplate = {
@@ -372,6 +373,7 @@ export const createEmptyPostVotePollTemplateData = (): PostVotePollTemplateData 
   question: '',
   items: [],
   ends_at: '',
+  allows_multiple_answers: false,
 })
 
 const normalizeMovieReviewGenre = (value: unknown): string => {
@@ -455,6 +457,13 @@ const normalizePostVotePollEndsAt = (value: unknown): string => {
   return new Date(timestamp).toISOString()
 }
 
+const normalizePostVotePollAllowsMultipleAnswers = (value: unknown): boolean => {
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'number') return value !== 0
+  const raw = trimOrEmpty(value).toLowerCase()
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on'
+}
+
 export const normalizePostVotePollTemplateData = (
   value: Partial<PostVotePollTemplateData> | null | undefined
 ): PostVotePollTemplateData => {
@@ -462,6 +471,9 @@ export const normalizePostVotePollTemplateData = (
     question: trimOrEmpty(value?.question),
     items: normalizePostVotePollItems(value?.items),
     ends_at: normalizePostVotePollEndsAt(value?.ends_at),
+    allows_multiple_answers: normalizePostVotePollAllowsMultipleAnswers(
+      value?.allows_multiple_answers
+    ),
   }
 }
 
@@ -548,6 +560,11 @@ export const formatMovieReviewReleaseDate = (value: string | null | undefined): 
 
 export const postVotePollOptionLabel = (item: PostVotePollTemplateItem): string => {
   const title = trimOrEmpty(item?.title)
+  const looksSerialized =
+    title.length >= 48 && !/\s/.test(title) && /^[A-Za-z0-9_+/=-]+$/.test(title)
+  if (looksSerialized) {
+    return `Пост #${item.post_id}`
+  }
   if (title) return title
   return `Пост #${item.post_id}`
 }

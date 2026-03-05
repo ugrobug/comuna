@@ -171,6 +171,11 @@
     normalizeVotePollData({ ends_at: input?.value || '' })
   }
 
+  const onVotePollMultipleChange = (event: Event) => {
+    const input = event.currentTarget as HTMLInputElement | null
+    normalizeVotePollData({ allows_multiple_answers: Boolean(input?.checked) })
+  }
+
   const onVotePollQuestionInput = (event: Event) => {
     const input = event.currentTarget as HTMLInputElement | null
     normalizeVotePollData({ question: input?.value || '' })
@@ -460,6 +465,23 @@
             Завершится: {formatPostVotePollDeadline(postVotePollData.ends_at)}
           </span>
         {/if}
+      </label>
+
+      <label class="flex items-start gap-2 rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 cursor-pointer">
+        <input
+          type="checkbox"
+          class="mt-0.5 accent-slate-900 dark:accent-zinc-200"
+          checked={Boolean(postVotePollData.allows_multiple_answers)}
+          on:change={onVotePollMultipleChange}
+        />
+        <span class="min-w-0">
+          <span class="block text-sm text-slate-900 dark:text-zinc-100">
+            Голосование за несколько вариантов
+          </span>
+          <span class="block text-xs text-slate-500 dark:text-zinc-400">
+            Если включено, пользователь может выбрать несколько постов в одном голосовании.
+          </span>
+        </span>
       </label>
 
       <div class="flex flex-col gap-2">

@@ -1,6 +1,7 @@
 <script lang="ts">
   import MovieReviewTemplateHeader from '$lib/components/site/post-templates/MovieReviewTemplateHeader.svelte'
   import PostVotePollTemplateHeader from '$lib/components/site/post-templates/PostVotePollTemplateHeader.svelte'
+  import type { BackendPoll } from '$lib/api/backend'
   import {
     isMovieReviewTemplate,
     isPostVotePollTemplate,
@@ -9,10 +10,19 @@
 
   export let template: SitePostTemplate | null | undefined
   export let fallbackTitle = ''
+  export let poll: BackendPoll | null = null
+  export let pollPostId: number | null = null
+  export let allowPollVoting = false
 </script>
 
 {#if isMovieReviewTemplate(template)}
   <MovieReviewTemplateHeader {template} {fallbackTitle} />
 {:else if isPostVotePollTemplate(template)}
-  <PostVotePollTemplateHeader {template} {fallbackTitle} />
+  <PostVotePollTemplateHeader
+    {template}
+    {fallbackTitle}
+    {poll}
+    {pollPostId}
+    {allowPollVoting}
+  />
 {/if}

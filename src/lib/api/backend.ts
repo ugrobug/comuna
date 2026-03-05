@@ -518,6 +518,7 @@ export const backendPostToPostView = (
       body: post.content,
       template: post.template ?? null,
       vote_poll_participations: post.vote_poll_participations ?? [],
+      poll: post.poll ?? null,
       url: '',
       tags: post.tags ?? [],
       published: post.created_at,

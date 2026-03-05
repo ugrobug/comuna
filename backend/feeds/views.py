@@ -978,6 +978,70 @@ def _build_title(text: str) -> str:
     return first_line[:117].strip() + "..."
 
 
+def _decode_editor_payload(raw_content: str) -> dict | None:
+    raw = str(raw_content or "").strip()
+    if not raw:
+        return None
+
+    candidates: list[str] = []
+    if raw.startswith("{") and raw.endswith("}"):
+        candidates.append(raw)
+    elif re.fullmatch(r"[A-Za-z0-9_\-+/=]+", raw):
+        for encoded in (raw, raw.replace("-", "+").replace("_", "/")):
+            padded = encoded + ("=" * (-len(encoded) % 4))
+            try:
+                decoded = base64.b64decode(padded, validate=False).decode("utf-8")
+            except Exception:
+                continue
+            if decoded:
+                candidates.append(decoded)
+
+    for candidate in candidates:
+        try:
+            payload = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict) and isinstance(payload.get("blocks"), list):
+            return payload
+    return None
+
+
+def _extract_editor_payload_title(raw_content: str) -> str:
+    payload = _decode_editor_payload(raw_content)
+    if not payload:
+        return ""
+
+    additional = payload.get("additional")
+    if isinstance(additional, dict):
+        for key in ("metaTitle", "previewDescription"):
+            value = _strip_html(str(additional.get(key) or "")).strip()
+            if value:
+                title = _build_title(value)
+                if title:
+                    return title
+
+    for block in payload.get("blocks") or []:
+        if not isinstance(block, dict):
+            continue
+        block_type = str(block.get("type") or "").strip().lower()
+        block_data = block.get("data")
+        if not isinstance(block_data, dict):
+            continue
+        text_candidates: list[str] = []
+        if block_type in {"header", "paragraph", "quote"}:
+            text_candidates.append(str(block_data.get("text") or ""))
+        elif block_type in {"link", "customlink"}:
+            text_candidates.append(str(block_data.get("text") or block_data.get("title") or ""))
+        for candidate in text_candidates:
+            text = _strip_html(candidate).strip()
+            if not text:
+                continue
+            title = _build_title(text)
+            if title:
+                return title
+    return ""
+
+
 def _post_display_title(post: Post) -> str:
     direct_title = (post.title or "").strip()
     if direct_title:
@@ -992,7 +1056,12 @@ def _post_display_title(post: Post) -> str:
             if poll_title:
                 return poll_title
 
-    content_text = _strip_html(post.content or "").strip()
+    content = post.content or ""
+    editor_payload_title = _extract_editor_payload_title(content)
+    if editor_payload_title:
+        return editor_payload_title
+
+    content_text = _strip_html(content).strip()
     if content_text:
         content_title = _build_title(content_text)
         if content_title:
@@ -1600,6 +1669,15 @@ def _normalize_template_datetime(value: object) -> tuple[str, str | None]:
     return parsed.astimezone(dt_timezone.utc).isoformat().replace("+00:00", "Z"), None
 
 
+def _normalize_template_bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    raw = str(value or "").strip().lower()
+    return raw in {"1", "true", "yes", "y", "on"}
+
+
 def _normalize_post_vote_poll_template_items(
     raw_items: object,
     *,
@@ -1677,6 +1755,12 @@ def _normalize_post_vote_poll_template_items(
         title, title_error = _normalize_template_text(raw_item.get("title"), 255)
         if title_error:
             return [], "voting post title is too long"
+        if title:
+            decoded_title = _extract_editor_payload_title(title)
+            if decoded_title:
+                title = decoded_title
+            elif len(title) >= 48 and re.fullmatch(r"[A-Za-z0-9_\-+/=]+", title):
+                title = f"Пост #{post_id}"
         if not title:
             title = f"Пост #{post_id}"
         path = str(raw_item.get("path") or "").strip()
@@ -1724,6 +1808,12 @@ def _normalize_post_vote_poll_template_data(
     if not ends_at:
         return None, "voting deadline is required"
 
+    allows_multiple_answers = _normalize_template_bool(
+        raw_data.get("allows_multiple_answers")
+        or raw_data.get("allow_multiple_answers")
+        or raw_data.get("multiple")
+    )
+
     items_input = raw_data.get("items")
     if items_input is None:
         items_input = raw_data.get("posts")
@@ -1738,6 +1828,7 @@ def _normalize_post_vote_poll_template_data(
     normalized_data: dict[str, object] = {
         "items": normalized_items,
         "ends_at": ends_at,
+        "allows_multiple_answers": allows_multiple_answers,
     }
     if question:
         normalized_data["question"] = question
@@ -1771,11 +1862,14 @@ def _build_post_vote_poll_raw_poll(template_data: object) -> dict | None:
         return None
 
     question = str(template_data.get("question") or "").strip() or "Голосование за посты"
+    allows_multiple_answers = _normalize_template_bool(
+        template_data.get("allows_multiple_answers")
+    )
     raw_poll: dict[str, object] = {
         "question": question,
         "options": option_items,
         "is_anonymous": False,
-        "allows_multiple_answers": False,
+        "allows_multiple_answers": allows_multiple_answers,
         "is_closed": False,
         "total_voter_count": 0,
     }
@@ -1922,7 +2016,16 @@ def _normalize_post_template_payload(
         if template_data_input is None:
             template_data_input = {
                 key: raw_template.get(key)
-                for key in ("question", "items", "posts", "post_refs", "ends_at")
+                for key in (
+                    "question",
+                    "items",
+                    "posts",
+                    "post_refs",
+                    "ends_at",
+                    "allows_multiple_answers",
+                    "allow_multiple_answers",
+                    "multiple",
+                )
                 if raw_template.get(key) is not None
             }
         normalized_data, template_error = _normalize_post_vote_poll_template_data(
@@ -2603,7 +2706,13 @@ def _render_poll_html_from_payload(payload: dict) -> str:
     option_items: list[str] = []
     for option in options:
         idx = int(option.get("index", -1))
+        post_id = _parse_post_reference_to_id(option.get("post_id"))
         text = str(option.get("text") or "").strip()
+        decoded_option_title = _extract_editor_payload_title(text)
+        if decoded_option_title:
+            text = decoded_option_title
+        elif post_id and len(text) >= 48 and re.fullmatch(r"[A-Za-z0-9_\-+/=]+", text):
+            text = f"Пост #{post_id}"
         count = max(int(option.get("voter_count") or 0), 0)
         value_label = str(count)
         if total_voters > 0:
@@ -2695,8 +2804,17 @@ def _content_with_live_poll(post: Post, user: User | None = None) -> tuple[str, 
     if not live_poll:
         return content, None
 
-    poll_html = live_poll["html"]
     raw_data = post.raw_data if isinstance(post.raw_data, dict) else {}
+    template_payload = raw_data.get("template") if isinstance(raw_data, dict) else None
+    template_type = (
+        str(template_payload.get("type") or "").strip().lower()
+        if isinstance(template_payload, dict)
+        else ""
+    )
+    if template_type == _POST_TEMPLATE_TYPE_POST_VOTE_POLL:
+        return content, live_poll["poll"]
+
+    poll_html = live_poll["html"]
     stored_poll_html = raw_data.get("poll_html")
     if isinstance(stored_poll_html, str) and stored_poll_html and stored_poll_html in content:
         return content.replace(stored_poll_html, poll_html, 1), live_poll["poll"]

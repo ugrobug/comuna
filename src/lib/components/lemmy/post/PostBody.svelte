@@ -533,7 +533,7 @@
     } catch {
       try {
         // Проверяем, похоже ли это на base64
-        const isBase64 = /^[A-Za-z0-9+/]*={0,2}$/.test(content);
+        const isBase64 = /^[A-Za-z0-9+/_-]*={0,2}$/.test(content);
         
         if (!isBase64) {
           return false;

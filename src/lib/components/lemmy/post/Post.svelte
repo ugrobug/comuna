@@ -27,7 +27,7 @@
   import PostBody from './PostBody.svelte'
   import { profile } from '$lib/auth'
   import { getTagKey, getTagName, normalizeTag, type TagItem } from '$lib/tags'
-  import { buildPostReadUrl } from '$lib/api/backend'
+  import { buildPostReadUrl, type BackendPoll } from '$lib/api/backend'
   import { siteToken } from '$lib/siteAuth'
   import PostTemplateHeader from '$lib/components/site/post-templates/PostTemplateHeader.svelte'
   import type { SitePostTemplate } from '$lib/postTemplates'
@@ -69,12 +69,16 @@
   }
   $: backendTags = (post.post as { tags?: TagItem[] }).tags ?? []
   $: backendTemplate = (post.post as { template?: SitePostTemplate | null }).template ?? null
+  $: backendPoll = (post.post as { poll?: BackendPoll | null }).poll ?? null
   $: backendVotePollParticipations = (
     post.post as { vote_poll_participations?: VotePollParticipation[] }
   ).vote_poll_participations ?? []
   $: activeVotePollParticipation = backendVotePollParticipations[0] ?? null
   $: extraVotePollParticipationCount = Math.max(backendVotePollParticipations.length - 1, 0)
   $: showTemplateHeader = Boolean(isBackendPost && showFullBody && backendTemplate)
+  $: showTemplateHeaderPreview = Boolean(
+    isBackendPost && !showFullBody && backendTemplate?.type === 'post_vote_poll'
+  )
   $: backendViewsValue = ((post.counts as { views?: number }).views ?? 0)
   $: backendAuthorNotifyCommentsEnabled = (
     post.creator as { comuna_notify_comments?: boolean }
@@ -246,6 +250,9 @@
             <PostTemplateHeader
               template={backendTemplate}
               fallbackTitle={post.post.name}
+              poll={backendPoll}
+              pollPostId={post.post.id}
+              allowPollVoting={isBackendPost}
             />
           </div>
         {/if}
@@ -305,6 +312,17 @@
                   (+{extraVotePollParticipationCount})
                 {/if}
               </a>
+            </div>
+          {/if}
+          {#if showTemplateHeaderPreview}
+            <div class="mb-3">
+              <PostTemplateHeader
+                template={backendTemplate}
+                fallbackTitle={post.post.name}
+                poll={backendPoll}
+                pollPostId={post.post.id}
+                allowPollVoting={isBackendPost}
+              />
             </div>
           {/if}
           <PostBody
