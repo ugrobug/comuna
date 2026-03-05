@@ -216,11 +216,12 @@ class RubricAdmin(admin.ModelAdmin):
         "name",
         "slug",
         "hide_from_home",
+        "allow_for_telegram_channel",
         "is_active",
         "is_hidden",
         "sort_order",
     )
-    list_filter = ("hide_from_home", "is_active", "is_hidden")
+    list_filter = ("hide_from_home", "allow_for_telegram_channel", "is_active", "is_hidden")
     search_fields = ("name", "slug")
     fields = (
         "name",
@@ -231,6 +232,7 @@ class RubricAdmin(admin.ModelAdmin):
         "subscribe_url",
         "home_limit",
         "hide_from_home",
+        "allow_for_telegram_channel",
         "allowed_post_templates",
         "sort_order",
         "is_active",

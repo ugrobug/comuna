@@ -1,15 +1,20 @@
 from __future__ import annotations
 
 from io import BytesIO
+import json
 import random
 import os
 import re
 import inspect
+import urllib.error
+import urllib.parse
+import urllib.request
 try:
     import pymorphy2
 except ImportError:  # optional dependency for lemmatization
     pymorphy2 = None
 
+from django.conf import settings
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
@@ -69,6 +74,26 @@ POST_TEMPLATE_EDITOR_BLOCKS_BY_TEMPLATE = {
     POST_TEMPLATE_TYPE_MOVIE_REVIEW: POST_TEMPLATE_EDITOR_BLOCK_ALL_VALUES,
     POST_TEMPLATE_TYPE_POST_VOTE_POLL: POST_TEMPLATE_EDITOR_BLOCK_BASIC_VALUES,
 }
+
+
+def _send_bot_message_to_chat(chat_id: int, text: str) -> None:
+    token = (getattr(settings, "TELEGRAM_BOT_TOKEN", "") or "").strip()
+    if not token:
+        return
+    payload = urllib.parse.urlencode(
+        {"chat_id": str(chat_id), "text": str(text or "").strip()[:4096]}
+    ).encode("utf-8")
+    if not payload:
+        return
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    try:
+        request = urllib.request.Request(url, data=payload, method="POST")
+        with urllib.request.urlopen(request, timeout=5) as response:
+            json.loads(response.read().decode("utf-8") or "{}")
+    except (urllib.error.URLError, TimeoutError, ValueError):
+        return
+    except Exception:
+        return
 
 
 def default_allowed_post_templates() -> list[str]:
@@ -231,6 +256,28 @@ class Author(models.Model):
     def __str__(self) -> str:
         return self.username
 
+    def _send_blocked_notification(self) -> None:
+        if not self.admin_chat_id:
+            return
+        channel_name = (self.title or "").strip() or f"@{self.username}"
+        text = (
+            f"Ваш канал {channel_name} заблокирован для кросс-постинга на сайте Comuna. "
+            "Обычно это происходит из-за низкой ценности контента для пользователей: "
+            "сплошная реклама без дополнительной ценности, сгенерированный или ИИ "
+            "контент, а также из-за нарушений правил сайта."
+        )
+        _send_bot_message_to_chat(int(self.admin_chat_id), text)
+
+    def save(self, *args, **kwargs) -> None:
+        should_notify_blocked = False
+        if self.pk:
+            previous = Author.objects.filter(pk=self.pk).only("is_blocked").first()
+            if previous and not previous.is_blocked and self.is_blocked:
+                should_notify_blocked = True
+        super().save(*args, **kwargs)
+        if should_notify_blocked:
+            self._send_blocked_notification()
+
 
 class Rubric(models.Model):
     ICON_THUMB_SIZE = (64, 64)
@@ -247,6 +294,11 @@ class Rubric(models.Model):
         default=False,
         verbose_name="Не показывать на главной",
         help_text="Если включено, посты этой рубрики не попадут в ленту «Горячее».",
+    )
+    allow_for_telegram_channel = models.BooleanField(
+        default=True,
+        verbose_name="Можно выбрать рубрикой для телеграм канала",
+        help_text="Если выключено, рубрика не будет доступна для выбора в настройках Telegram-бота.",
     )
     allowed_post_templates = models.JSONField(
         default=default_allowed_post_templates,

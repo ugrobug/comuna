@@ -2961,9 +2961,11 @@ def _refresh_author_from_telegram(author: Author, chat_ref, token: str) -> None:
 
 def _build_rubric_keyboard() -> list[list[dict]]:
     rubrics = list(
-        Rubric.objects.filter(is_active=True, is_hidden=False).order_by(
-            "sort_order", "name"
-        )
+        Rubric.objects.filter(
+            is_active=True,
+            is_hidden=False,
+            allow_for_telegram_channel=True,
+        ).order_by("sort_order", "name")
     )
     keyboard: list[list[dict]] = []
     row: list[dict] = []
@@ -3652,7 +3654,12 @@ def _handle_callback_query(callback_query: dict) -> None:
         except ValueError:
             _answer_callback_query(callback_id, "Некорректная рубрика")
             return
-        rubric = Rubric.objects.filter(id=rubric_id, is_active=True).first()
+        rubric = Rubric.objects.filter(
+            id=rubric_id,
+            is_active=True,
+            is_hidden=False,
+            allow_for_telegram_channel=True,
+        ).first()
         if not rubric:
             _answer_callback_query(callback_id, "Рубрика не найдена")
             return
