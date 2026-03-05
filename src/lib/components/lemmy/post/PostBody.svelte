@@ -813,11 +813,11 @@
         <span class="post-movie-time__trigger">
           <span class="post-movie-time__icon" aria-hidden="true">⏱</span>
           <span class="post-movie-time__stamp">${displayTime}</span>
-        </span>
-        <span class="post-movie-time__panel">
-          <span class="post-movie-time__meta">Время в фильме</span>
-          <span class="post-movie-time__scene">${sceneTitle}</span>
-          ${noteHtml}
+          <span class="post-movie-time__details">
+            <span class="post-movie-time__meta">Время в фильме</span>
+            <span class="post-movie-time__scene">${sceneTitle}</span>
+            ${noteHtml}
+          </span>
         </span>
       </span>`
     }
@@ -2134,6 +2134,7 @@
     display: inline-flex;
     align-items: center;
     gap: 0.42rem;
+    overflow: hidden;
     border-radius: 999px;
     border: 1px solid rgba(251, 191, 36, 0.42);
     background:
@@ -2142,6 +2143,11 @@
     color: #fde68a;
     padding: 0.28rem 0.62rem 0.28rem 0.42rem;
     cursor: default;
+    transition:
+      padding 0.2s ease,
+      box-shadow 0.2s ease,
+      border-color 0.2s ease,
+      background 0.2s ease;
   }
 
   :global(.post-content .post-movie-time__icon) {
@@ -2166,58 +2172,67 @@
     white-space: nowrap;
   }
 
-  :global(.post-content .post-movie-time__panel) {
-    display: block;
-    position: absolute;
-    top: calc(100% + 0.45rem);
-    left: 0;
-    min-width: 220px;
-    max-width: min(380px, calc(100vw - 2.5rem));
-    border-radius: 0.78rem;
-    border: 1px solid rgba(251, 191, 36, 0.36);
-    background:
-      radial-gradient(130% 140% at 0% 0%, rgba(251, 191, 36, 0.22), rgba(251, 191, 36, 0) 62%),
-      linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(30, 41, 59, 0.92));
-    color: #e2e8f0;
-    padding: 0.62rem 0.7rem;
-    box-shadow: 0 12px 26px rgba(2, 6, 23, 0.35);
+  :global(.post-content .post-movie-time__details) {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.36rem;
+    max-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
     opacity: 0;
-    visibility: hidden;
-    transform: translateY(-2px);
-    transition: opacity 0.16s ease, transform 0.16s ease, visibility 0.16s ease;
-    pointer-events: none;
-    z-index: 5;
+    transform: translateX(-6px);
+    transition:
+      max-width 0.24s ease,
+      opacity 0.18s ease,
+      transform 0.24s ease;
   }
 
-  :global(.post-content .post-movie-time:hover .post-movie-time__panel) {
+  :global(.post-content .post-movie-time:hover .post-movie-time__trigger) {
+    padding-right: 0.76rem;
+    border-color: rgba(251, 191, 36, 0.65);
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.24);
+  }
+
+  :global(.post-content .post-movie-time:hover .post-movie-time__details) {
+    max-width: min(480px, calc(100vw - 2.6rem));
     opacity: 1;
-    visibility: visible;
-    transform: translateY(0);
+    transform: translateX(0);
   }
 
   :global(.post-content .post-movie-time__meta) {
-    display: block;
-    font-size: 0.68rem;
-    letter-spacing: 0.04em;
+    display: inline;
+    font-size: 0.7rem;
+    letter-spacing: 0.03em;
     text-transform: uppercase;
-    color: #94a3b8;
-    margin-bottom: 0.32rem;
+    color: #cbd5e1;
+    opacity: 0.88;
   }
 
   :global(.post-content .post-movie-time__scene) {
-    display: block;
+    display: inline;
     color: #f8fafc;
-    font-size: 0.9rem;
-    line-height: 1.3;
+    font-size: 0.82rem;
+    line-height: 1.2;
     font-weight: 600;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   :global(.post-content .post-movie-time__note) {
-    display: block;
-    margin: 0.34rem 0 0;
+    display: inline;
     color: #cbd5e1;
-    font-size: 0.84rem;
-    line-height: 1.4;
+    font-size: 0.78rem;
+    line-height: 1.2;
+    max-width: 210px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  :global(.post-content .post-movie-time__note::before) {
+    content: '•';
+    margin-right: 0.24rem;
+    opacity: 0.72;
   }
 
   :global(.post-content .post-spoiler) {
