@@ -1,6 +1,11 @@
 <script lang="ts">
   import MovieReviewTemplateHeader from '$lib/components/site/post-templates/MovieReviewTemplateHeader.svelte'
-  import { isMovieReviewTemplate, type SitePostTemplate } from '$lib/postTemplates'
+  import PostVotePollTemplateHeader from '$lib/components/site/post-templates/PostVotePollTemplateHeader.svelte'
+  import {
+    isMovieReviewTemplate,
+    isPostVotePollTemplate,
+    type SitePostTemplate,
+  } from '$lib/postTemplates'
 
   export let template: SitePostTemplate | null | undefined
   export let fallbackTitle = ''
@@ -8,4 +13,6 @@
 
 {#if isMovieReviewTemplate(template)}
   <MovieReviewTemplateHeader {template} {fallbackTitle} />
+{:else if isPostVotePollTemplate(template)}
+  <PostVotePollTemplateHeader {template} {fallbackTitle} />
 {/if}
