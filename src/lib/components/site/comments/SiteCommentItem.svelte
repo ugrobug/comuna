@@ -31,6 +31,7 @@
   $: isAuthor = postAuthor && node.comment.user.username === postAuthor
   $: isDeleted = Boolean(node.comment.is_deleted)
   $: commentDate = new Date(node.comment.created_at)
+  $: commenterProfileUrl = node.comment.user?.id ? `/id${node.comment.user.id}` : null
   $: edited =
     node.comment.updated_at &&
     new Date(node.comment.updated_at).getTime() > commentDate.getTime()
@@ -105,9 +106,18 @@
     <Avatar width={depth > 0 ? 28 : 36} alt={node.comment.user.username} />
     <div class="flex-1 min-w-0">
       <div class="flex items-center gap-2 text-xs text-slate-500 dark:text-zinc-400 flex-wrap">
-        <span class="text-sm font-semibold text-slate-900 dark:text-zinc-100">
-          @{node.comment.user.username}
-        </span>
+        {#if commenterProfileUrl}
+          <a
+            href={commenterProfileUrl}
+            class="text-sm font-semibold text-slate-900 dark:text-zinc-100 hover:text-sky-600 dark:hover:text-sky-400 transition"
+          >
+            @{node.comment.user.username}
+          </a>
+        {:else}
+          <span class="text-sm font-semibold text-slate-900 dark:text-zinc-100">
+            @{node.comment.user.username}
+          </span>
+        {/if}
         {#if isAuthor}
           <span class="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-600">
             Автор

@@ -1,6 +1,15 @@
 import { browser } from '$app/environment'
-import { getBackendBaseUrl } from '$lib/api/backend'
-import type { MovieReviewTemplateData, SitePostTemplate } from '$lib/postTemplates'
+import {
+  buildBackendPostPath,
+  buildPostDetailUrl,
+  buildSearchUrl,
+  getBackendBaseUrl,
+} from '$lib/api/backend'
+import type {
+  MovieReviewTemplateData,
+  PostVotePollTemplateItem,
+  SitePostTemplate,
+} from '$lib/postTemplates'
 import { writable, get } from 'svelte/store'
 
 export type SiteAuthorLink = {
@@ -77,6 +86,8 @@ export type SiteNotificationSettingsResponse = {
     first_name?: string | null
   }
 }
+
+export type VotePollPostCandidate = PostVotePollTemplateItem
 
 const TOKEN_KEY = 'comuna.site.token'
 
@@ -498,6 +509,91 @@ export const autofillMovieReviewTemplateByImdb = async (imdbUrl: string) => {
     sources: Array.isArray(data?.sources) ? data.sources.map((item: unknown) => String(item)) : [],
     warnings: Array.isArray(data?.warnings) ? data.warnings.map((item: unknown) => String(item)) : [],
   }
+}
+
+const parsePostIdFromReference = (value: string): number | null => {
+  const raw = (value || '').trim()
+  if (!raw) return null
+  if (/^\d+$/.test(raw)) {
+    const numericId = Number(raw)
+    return Number.isFinite(numericId) && numericId > 0 ? numericId : null
+  }
+  const match = raw.match(/\/b\/post\/(\d+)/)
+  if (!match) return null
+  const numericId = Number(match[1])
+  return Number.isFinite(numericId) && numericId > 0 ? numericId : null
+}
+
+const normalizeVotePollCandidate = (
+  value: any,
+  fallbackPostId?: number | null
+): VotePollPostCandidate | null => {
+  const postIdRaw = Number(value?.post_id ?? value?.id ?? fallbackPostId ?? 0)
+  const postId = Number.isFinite(postIdRaw) ? Math.floor(postIdRaw) : 0
+  if (postId <= 0) return null
+  const title = String(value?.title ?? value?.name ?? '').trim() || `Пост #${postId}`
+  const path = buildBackendPostPath({ id: postId, title })
+  const authorUsername = String(value?.author?.username ?? value?.author_username ?? '').trim()
+  return {
+    post_id: postId,
+    title,
+    path,
+    ...(authorUsername ? { author_username: authorUsername } : {}),
+  }
+}
+
+export const resolveVotePollPostByReference = async (
+  reference: string
+): Promise<VotePollPostCandidate> => {
+  const postId = parsePostIdFromReference(reference)
+  if (!postId) {
+    throw new Error('Некорректная ссылка на пост')
+  }
+  const response = await fetch(buildPostDetailUrl(postId), {
+    headers: {
+      ...(get(siteToken) ? { Authorization: `Bearer ${get(siteToken)}` } : {}),
+    },
+  })
+  const data = await response.json().catch(() => null)
+  if (!response.ok || !data?.post) {
+    throw new Error(data?.error || 'Пост не найден')
+  }
+  const candidate = normalizeVotePollCandidate(data.post, postId)
+  if (!candidate) {
+    throw new Error('Пост не найден')
+  }
+  return candidate
+}
+
+export const searchPostsForVotePoll = async (
+  query: string,
+  limit = 10
+): Promise<VotePollPostCandidate[]> => {
+  const normalizedQuery = query.trim()
+  if (!normalizedQuery) return []
+
+  const safeLimit = Math.min(Math.max(limit, 1), 20)
+  const response = await fetch(buildSearchUrl(normalizedQuery, 1, safeLimit, 'Posts', 'New'), {
+    headers: {
+      ...(get(siteToken) ? { Authorization: `Bearer ${get(siteToken)}` } : {}),
+    },
+  })
+  const data = await response.json().catch(() => null)
+  if (!response.ok) {
+    throw new Error(data?.error || 'Не удалось выполнить поиск постов')
+  }
+  const source = Array.isArray(data?.posts) ? data.posts : []
+  const normalized: VotePollPostCandidate[] = []
+  const seen = new Set<number>()
+  for (const item of source) {
+    const candidate = normalizeVotePollCandidate(item)
+    if (!candidate) continue
+    if (seen.has(candidate.post_id)) continue
+    seen.add(candidate.post_id)
+    normalized.push(candidate)
+    if (normalized.length >= 10) break
+  }
+  return normalized
 }
 
 export const fetchSiteNotifications = async (limit = 10, unreadOnly = false) => {

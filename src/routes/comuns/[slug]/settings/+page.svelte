@@ -41,8 +41,13 @@
   const fallbackTemplateTypeOptions: TemplateTypeOption[] = [
     { value: 'basic', label: 'Пост' },
     { value: 'movie_review', label: 'Кинообзор' },
+    { value: 'post_vote_poll', label: 'Голосование за посты' },
   ]
-  const allowedTemplateCodes = new Set<PostTemplateCode>(['basic', 'movie_review'])
+  const allowedTemplateCodes = new Set<PostTemplateCode>([
+    'basic',
+    'movie_review',
+    'post_vote_poll',
+  ])
   let settingsTagOptions: ComunTagOption[] = []
   let settingsUserOptions: ComunUserOption[] = []
   let settingsTemplateTypeOptions: TemplateTypeOption[] = fallbackTemplateTypeOptions

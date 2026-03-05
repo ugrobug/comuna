@@ -60,8 +60,20 @@
   )
   $: communityName = post.community?.name || ''
   $: communityTitle = post.community?.title || ''
+  type VotePollParticipation = {
+    poll_post_id: number
+    poll_post_title: string
+    poll_post_path: string
+    question: string
+    close_at?: string | null
+  }
   $: backendTags = (post.post as { tags?: TagItem[] }).tags ?? []
   $: backendTemplate = (post.post as { template?: SitePostTemplate | null }).template ?? null
+  $: backendVotePollParticipations = (
+    post.post as { vote_poll_participations?: VotePollParticipation[] }
+  ).vote_poll_participations ?? []
+  $: activeVotePollParticipation = backendVotePollParticipations[0] ?? null
+  $: extraVotePollParticipationCount = Math.max(backendVotePollParticipations.length - 1, 0)
   $: showTemplateHeader = Boolean(isBackendPost && showFullBody && backendTemplate)
   $: backendViewsValue = ((post.counts as { views?: number }).views ?? 0)
   $: backendAuthorNotifyCommentsEnabled = (
@@ -215,6 +227,20 @@
   {#if post.post.body && !post.post.nsfw && view != 'compact' && !hideBody && rule != 'hide'}
     {#if showFullBody}
       <div style="grid-area: body;">
+        {#if activeVotePollParticipation}
+          <div class="vote-poll-participation-banner mb-4">
+            <a
+              href={activeVotePollParticipation.poll_post_path}
+              class="vote-poll-participation-banner__link"
+              data-sveltekit-preload-data="off"
+            >
+              Пост участвует в голосовании: {activeVotePollParticipation.question}
+              {#if extraVotePollParticipationCount > 0}
+                (+{extraVotePollParticipationCount})
+              {/if}
+            </a>
+          </div>
+        {/if}
         {#if showTemplateHeader}
           <div class="mb-4">
             <PostTemplateHeader
@@ -267,6 +293,20 @@
     {:else}
       {#if isBackendPost}
         <div style="grid-area: body;">
+          {#if activeVotePollParticipation}
+            <div class="vote-poll-participation-banner mb-2">
+              <a
+                href={activeVotePollParticipation.poll_post_path}
+                class="vote-poll-participation-banner__link"
+                data-sveltekit-preload-data="off"
+              >
+                Пост участвует в голосовании: {activeVotePollParticipation.question}
+                {#if extraVotePollParticipationCount > 0}
+                  (+{extraVotePollParticipationCount})
+                {/if}
+              </a>
+            </div>
+          {/if}
           <PostBody
             element="section"
             body={post.post.body}
@@ -416,6 +456,45 @@
 
   .post-preview a:hover {
     text-decoration: none;
+  }
+
+  .vote-poll-participation-banner {
+    border: 1px solid rgba(16, 185, 129, 0.35);
+    background: linear-gradient(
+      135deg,
+      rgba(16, 185, 129, 0.14),
+      rgba(15, 23, 42, 0.04)
+    );
+    border-radius: 0.85rem;
+    padding: 0.5rem 0.75rem;
+  }
+
+  .vote-poll-participation-banner__link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+    line-height: 1.35;
+    font-weight: 600;
+    color: rgb(5 150 105);
+    text-decoration: none;
+  }
+
+  .vote-poll-participation-banner__link:hover {
+    text-decoration: underline;
+  }
+
+  :global(.dark) .vote-poll-participation-banner {
+    border-color: rgba(52, 211, 153, 0.45);
+    background: linear-gradient(
+      135deg,
+      rgba(5, 150, 105, 0.22),
+      rgba(15, 23, 42, 0.2)
+    );
+  }
+
+  :global(.dark) .vote-poll-participation-banner__link {
+    color: rgb(110 231 183);
   }
 
   a.post-read-more:hover {

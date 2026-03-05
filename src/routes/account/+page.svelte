@@ -91,7 +91,10 @@
     editing = post
     editTitle = post.title || ''
     editContent = post.content || ''
-    editTemplateType = post.template?.type === 'movie_review' ? 'movie_review' : ''
+    editTemplateType =
+      post.template?.type === 'movie_review' || post.template?.type === 'post_vote_poll'
+        ? post.template.type
+        : ''
     const tagNames = (post.tags ?? []).map((tag) =>
       typeof tag === 'string' ? tag : tag.name
     )
