@@ -184,7 +184,7 @@
   </PostMeta>
 
   <!-- Оборачиваем заголовок в ссылку -->
-  {#if post.post.name && !hideTitle && !showTemplateHeader}
+  {#if post.post.name && !hideTitle}
     <a 
       href={postUrl}
       class="block no-underline hover:underline"

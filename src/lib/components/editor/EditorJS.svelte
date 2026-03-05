@@ -1067,10 +1067,14 @@
   }
 
   class SpoilerTool {
+    private api: any
+    private block: any
     private data: {
+      marker: 'start' | 'end'
       title: string
-      content: string
     }
+    private legacyContent: string
+    private shouldAutoInsertEndMarker: boolean
 
     static get toolbox() {
       return {
@@ -1081,74 +1085,138 @@
 
     constructor({
       data,
+      api,
+      block,
     }: {
-      data?: { title?: unknown; content?: unknown }
+      data?: { marker?: unknown; mode?: unknown; title?: unknown; content?: unknown }
+      api?: any
+      block?: any
     }) {
+      this.api = api
+      this.block = block
+      const markerCandidate =
+        typeof data?.marker === 'string'
+          ? data.marker.trim().toLowerCase()
+          : typeof data?.mode === 'string'
+            ? data.mode.trim().toLowerCase()
+            : ''
+      const marker: 'start' | 'end' =
+        markerCandidate === 'end' || markerCandidate === 'close' ? 'end' : 'start'
       this.data = {
-        title:
-          typeof data?.title === 'string' && data.title.trim()
-            ? data.title.trim()
-            : 'Спойлер',
-        content: typeof data?.content === 'string' ? data.content.trim() : '',
+        marker,
+        title: typeof data?.title === 'string' && data.title.trim() ? data.title.trim() : 'Спойлер',
       }
+      this.legacyContent = typeof data?.content === 'string' ? data.content.trim() : ''
+      const hasPersistedData = Boolean(data && Object.keys(data).length > 0)
+      this.shouldAutoInsertEndMarker =
+        !hasPersistedData && this.legacyContent.length === 0 && marker === 'start'
+    }
+
+    private findCurrentBlockIndex(): number {
+      if (!this.api?.blocks) return -1
+      if (typeof this.api.blocks.getCurrentBlockIndex === 'function') {
+        const currentIndex = Number(this.api.blocks.getCurrentBlockIndex())
+        if (Number.isFinite(currentIndex) && currentIndex >= 0) {
+          return currentIndex
+        }
+      }
+      const currentId = this.block?.id
+      const count = Number(this.api.blocks.getBlocksCount?.() || 0)
+      for (let index = 0; index < count; index += 1) {
+        const candidate = this.api.blocks.getBlockByIndex(index)
+        if (candidate?.id && currentId && candidate.id === currentId) {
+          return index
+        }
+      }
+      return -1
+    }
+
+    private ensurePairedEndMarkerInserted() {
+      if (!this.shouldAutoInsertEndMarker) return
+      if (!this.api?.blocks || typeof this.api.blocks.insert !== 'function') return
+      this.shouldAutoInsertEndMarker = false
+
+      setTimeout(() => {
+        try {
+          const currentIndex = this.findCurrentBlockIndex()
+          if (currentIndex < 0) return
+          const nextBlock = this.api.blocks.getBlockByIndex(currentIndex + 1)
+          const nextData =
+            nextBlock && typeof nextBlock.data === 'object' && nextBlock.data ? nextBlock.data : {}
+          const nextMarker =
+            typeof nextData.marker === 'string' ? nextData.marker.trim().toLowerCase() : ''
+          if (nextBlock?.name === 'spoiler' && (nextMarker === 'end' || nextMarker === 'close')) {
+            return
+          }
+          this.api.blocks.insert(
+            'spoiler',
+            {
+              marker: 'end',
+              title: this.data.title,
+            },
+            undefined,
+            currentIndex + 1,
+            false
+          )
+        } catch (error) {
+          console.error('Failed to insert closing spoiler marker', error)
+        }
+      }, 0)
     }
 
     render() {
       const wrapper = document.createElement('div')
-      wrapper.classList.add('spoiler-tool')
+      wrapper.classList.add('spoiler-marker-tool')
+      wrapper.classList.add(
+        this.data.marker === 'end' ? 'spoiler-marker-tool--end' : 'spoiler-marker-tool--start'
+      )
 
       const title = document.createElement('div')
-      title.classList.add('spoiler-tool__title')
-      title.textContent = 'Спойлер'
+      title.classList.add('spoiler-marker-tool__title')
+      title.textContent = this.data.marker === 'end' ? 'Конец спойлера' : 'Начало спойлера'
 
       const subtitle = document.createElement('p')
-      subtitle.classList.add('spoiler-tool__subtitle')
+      subtitle.classList.add('spoiler-marker-tool__subtitle')
       subtitle.textContent =
-        'Содержимое этого блока будет заблюрено в посте до нажатия.'
-
-      const titleInput = document.createElement('input')
-      titleInput.type = 'text'
-      titleInput.classList.add('spoiler-tool__input')
-      titleInput.placeholder = 'Заголовок блока (например: Спойлер)'
-      titleInput.value = this.data.title
-
-      const contentInput = document.createElement('textarea')
-      contentInput.classList.add('spoiler-tool__textarea')
-      contentInput.rows = 5
-      contentInput.placeholder = 'Текст, который нужно скрыть до раскрытия'
-      contentInput.value = this.data.content
+        this.data.marker === 'end'
+          ? 'Закрывает спойлер. Все блоки выше до «Начало спойлера» будут скрыты до клика.'
+          : 'Открывает спойлер. Все следующие блоки до «Конец спойлера» будут скрыты до клика.'
 
       const preview = document.createElement('div')
-      preview.classList.add('spoiler-tool__preview')
+      preview.classList.add('spoiler-marker-tool__preview')
 
-      const updatePreview = () => {
-        this.data.title = titleInput.value.trim() || 'Спойлер'
-        this.data.content = contentInput.value.trim()
-        if (!this.data.content) {
-          preview.textContent = 'Добавьте скрываемое содержимое.'
-          return
+      if (this.legacyContent) {
+        wrapper.classList.add('spoiler-marker-tool--legacy')
+        title.textContent = 'Спойлер (старый формат)'
+        subtitle.textContent =
+          'Этот блок создан в старом формате с текстом внутри. При сохранении он останется без изменений.'
+        preview.textContent = 'Скрытый текст сохранится как есть.'
+      } else {
+        preview.textContent =
+          this.data.marker === 'end'
+            ? 'Закрывающий маркер.'
+            : 'После вставки блока автоматически добавляется закрывающий маркер.'
+        if (this.data.marker === 'start') {
+          this.ensurePairedEndMarkerInserted()
         }
-        const lineCount = this.data.content.split(/\n+/).filter(Boolean).length
-        preview.textContent = `Будет скрыто ${lineCount} ${lineCount === 1 ? 'фрагмент' : 'фрагментов'} до клика.`
       }
-
-      titleInput.addEventListener('input', updatePreview)
-      contentInput.addEventListener('input', updatePreview)
 
       wrapper.appendChild(title)
       wrapper.appendChild(subtitle)
-      wrapper.appendChild(titleInput)
-      wrapper.appendChild(contentInput)
       wrapper.appendChild(preview)
-
-      updatePreview()
       return wrapper
     }
 
     save() {
+      if (this.legacyContent) {
+        return {
+          title: this.data.title.trim() || 'Спойлер',
+          content: this.legacyContent,
+        }
+      }
       return {
+        marker: this.data.marker,
         title: this.data.title.trim() || 'Спойлер',
-        content: this.data.content.trim(),
       }
     }
   }
@@ -3577,7 +3645,7 @@
     padding: 0.5rem 0.65rem;
   }
 
-  :global(.spoiler-tool) {
+  :global(.spoiler-marker-tool) {
     border-radius: 0.9rem;
     border: 1px solid rgba(148, 163, 184, 0.4);
     background:
@@ -3590,54 +3658,43 @@
     gap: 0.55rem;
   }
 
-  :global(.dark .spoiler-tool) {
+  :global(.spoiler-marker-tool--start) {
+    border-color: rgba(148, 163, 184, 0.48);
+  }
+
+  :global(.spoiler-marker-tool--end) {
+    border-color: rgba(94, 234, 212, 0.44);
+    background:
+      radial-gradient(120% 120% at 0% 0%, rgba(45, 212, 191, 0.2), rgba(45, 212, 191, 0) 58%),
+      linear-gradient(135deg, rgba(15, 23, 42, 0.94), rgba(30, 41, 59, 0.9));
+  }
+
+  :global(.spoiler-marker-tool--legacy) {
+    border-color: rgba(251, 191, 36, 0.52);
+    background:
+      radial-gradient(120% 120% at 0% 0%, rgba(251, 191, 36, 0.2), rgba(251, 191, 36, 0) 58%),
+      linear-gradient(135deg, rgba(15, 23, 42, 0.94), rgba(30, 41, 59, 0.9));
+  }
+
+  :global(.dark .spoiler-marker-tool) {
     border-color: rgba(148, 163, 184, 0.45);
   }
 
-  :global(.spoiler-tool__title) {
+  :global(.spoiler-marker-tool__title) {
     font-weight: 700;
     color: #fff;
     font-size: 0.95rem;
     line-height: 1.2;
   }
 
-  :global(.spoiler-tool__subtitle) {
+  :global(.spoiler-marker-tool__subtitle) {
     margin: 0;
     color: #cbd5e1;
     font-size: 0.78rem;
     line-height: 1.35;
   }
 
-  :global(.spoiler-tool__input),
-  :global(.spoiler-tool__textarea) {
-    width: 100%;
-    border-radius: 0.7rem;
-    border: 1px solid rgba(148, 163, 184, 0.4);
-    background: rgba(15, 23, 42, 0.45);
-    color: #f8fafc;
-    font-size: 0.86rem;
-    line-height: 1.3;
-    padding: 0.55rem 0.68rem;
-  }
-
-  :global(.spoiler-tool__input:focus),
-  :global(.spoiler-tool__textarea:focus) {
-    outline: none;
-    border-color: rgba(148, 163, 184, 0.9);
-    box-shadow: 0 0 0 2px rgba(148, 163, 184, 0.18);
-  }
-
-  :global(.spoiler-tool__input::placeholder),
-  :global(.spoiler-tool__textarea::placeholder) {
-    color: #94a3b8;
-  }
-
-  :global(.spoiler-tool__textarea) {
-    resize: vertical;
-    min-height: 6rem;
-  }
-
-  :global(.spoiler-tool__preview) {
+  :global(.spoiler-marker-tool__preview) {
     border-radius: 0.7rem;
     border: 1px solid rgba(148, 163, 184, 0.34);
     background: rgba(15, 23, 42, 0.42);

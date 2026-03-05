@@ -573,7 +573,7 @@
         return `<div class="post-spoiler"${anchorId} data-spoiler-open="0">
           <div class="post-spoiler__trigger" role="button" tabindex="0" aria-expanded="false">
             <span class="post-spoiler__title">${escapeSpoilerText(spoilerTitle)}</span>
-            <span class="post-spoiler__hint">Нажмите, чтобы раскрыть</span>
+            <span class="post-spoiler__hint">Нажмите в любую область, чтобы раскрыть</span>
           </div>
           <div class="post-spoiler__content">
             <p>${escapeSpoilerText(spoilerContent).replace(/\r?\n/g, '<br>')}</p>
@@ -666,9 +666,85 @@
         ? `<meta-description>${content.additional.metaDescription}</meta-description>` 
         : '';
         
-      const htmlContent = content.blocks
-        .map((block: any) => processJsonBlock(block))
-        .join('\n');
+      const escapeSpoilerText = (value: string): string =>
+        value
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;')
+      const renderSpoilerContainer = (spoilerTitle: string, spoilerHtml: string): string => {
+        if (!spoilerHtml.trim()) return ''
+        return `<div class="post-spoiler" data-spoiler-open="0">
+          <div class="post-spoiler__trigger" role="button" tabindex="0" aria-expanded="false">
+            <span class="post-spoiler__title">${escapeSpoilerText(spoilerTitle || 'Спойлер')}</span>
+            <span class="post-spoiler__hint">Нажмите в любую область, чтобы раскрыть</span>
+          </div>
+          <div class="post-spoiler__content">
+            ${spoilerHtml}
+          </div>
+        </div>`
+      }
+
+      const htmlParts: string[] = []
+      const spoilerStack: Array<{ title: string; parts: string[] }> = []
+
+      const appendHtmlToCurrentScope = (html: string) => {
+        if (!html) return
+        if (spoilerStack.length > 0) {
+          spoilerStack[spoilerStack.length - 1].parts.push(html)
+          return
+        }
+        htmlParts.push(html)
+      }
+
+      for (const block of content.blocks) {
+        const blockType = String(block?.type || '').toLowerCase()
+        if (blockType === 'spoiler') {
+          const rawData = block?.data || {}
+          const legacyContent =
+            typeof rawData?.content === 'string' ? rawData.content.trim() : ''
+          if (legacyContent) {
+            appendHtmlToCurrentScope(processJsonBlock(block))
+            continue
+          }
+          const markerCandidate =
+            typeof rawData?.marker === 'string'
+              ? rawData.marker.trim().toLowerCase()
+              : typeof rawData?.mode === 'string'
+                ? rawData.mode.trim().toLowerCase()
+                : ''
+          if (markerCandidate === 'end' || markerCandidate === 'close') {
+            const completedSpoiler = spoilerStack.pop()
+            if (!completedSpoiler) continue
+            appendHtmlToCurrentScope(
+              renderSpoilerContainer(completedSpoiler.title, completedSpoiler.parts.join('\n'))
+            )
+            continue
+          }
+          const spoilerTitle =
+            typeof rawData?.title === 'string' && rawData.title.trim()
+              ? rawData.title.trim()
+              : 'Спойлер'
+          spoilerStack.push({
+            title: spoilerTitle,
+            parts: [],
+          })
+          continue
+        }
+
+        appendHtmlToCurrentScope(processJsonBlock(block))
+      }
+
+      while (spoilerStack.length > 0) {
+        const unclosedSpoiler = spoilerStack.pop()
+        if (!unclosedSpoiler) break
+        appendHtmlToCurrentScope(
+          renderSpoilerContainer(unclosedSpoiler.title, unclosedSpoiler.parts.join('\n'))
+        )
+      }
+
+      const htmlContent = htmlParts.join('\n');
       
       console.log(`${previewImage}${previewDescription}${metaTitle}${metaDescription} + html`);
 
@@ -943,32 +1019,39 @@
             })
           })
 
-          const spoilerTriggers = document.querySelectorAll('.post-content .post-spoiler__trigger')
-          const toggleSpoiler = (trigger: HTMLElement) => {
-            const spoiler = trigger.closest('.post-spoiler') as HTMLElement | null
+          const spoilers = document.querySelectorAll('.post-content .post-spoiler')
+          const toggleSpoiler = (spoiler: HTMLElement) => {
             if (!spoiler) return
             const isOpen = spoiler.classList.toggle('is-open')
             spoiler.setAttribute('data-spoiler-open', isOpen ? '1' : '0')
+            const trigger = spoiler.querySelector('.post-spoiler__trigger') as HTMLElement | null
+            if (!trigger) return
             trigger.setAttribute('aria-expanded', isOpen ? 'true' : 'false')
             const hint = trigger.querySelector('.post-spoiler__hint') as HTMLElement | null
             if (hint) {
-              hint.textContent = isOpen ? 'Нажмите, чтобы скрыть' : 'Нажмите, чтобы раскрыть'
+              hint.textContent = isOpen ? 'Нажмите на шапку, чтобы скрыть' : 'Нажмите в любую область, чтобы раскрыть'
             }
           }
-          spoilerTriggers.forEach((triggerElement) => {
-            if (!(triggerElement instanceof HTMLElement)) return
-            if (triggerElement.getAttribute('data-spoiler-ready') === '1') return
-            triggerElement.setAttribute('data-spoiler-ready', '1')
-            triggerElement.addEventListener('click', (event) => {
+          spoilers.forEach((spoilerElement) => {
+            if (!(spoilerElement instanceof HTMLElement)) return
+            if (spoilerElement.getAttribute('data-spoiler-ready') === '1') return
+            spoilerElement.setAttribute('data-spoiler-ready', '1')
+            spoilerElement.addEventListener('click', (event) => {
+              const clickTarget = event.target as HTMLElement | null
+              const clickedTrigger = clickTarget?.closest('.post-spoiler__trigger')
+              const isOpen = spoilerElement.classList.contains('is-open')
+              if (isOpen && !clickedTrigger) return
               event.preventDefault()
               event.stopPropagation()
-              toggleSpoiler(triggerElement)
+              toggleSpoiler(spoilerElement)
             })
+            const triggerElement = spoilerElement.querySelector('.post-spoiler__trigger')
+            if (!(triggerElement instanceof HTMLElement)) return
             triggerElement.addEventListener('keydown', (event: KeyboardEvent) => {
               if (event.key !== 'Enter' && event.key !== ' ') return
               event.preventDefault()
               event.stopPropagation()
-              toggleSpoiler(triggerElement)
+              toggleSpoiler(spoilerElement)
             })
           })
 
@@ -988,104 +1071,185 @@
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;')
-    
-    const htmlContent = content.blocks
-      .map((block: any) => {
-        // Получаем якорь из tunes блока
-        const anchorText = block?.tunes?.anchorInput?.text || 
-                          block?.tunes?.customInput?.text;
-        
-        switch (block.type) {
-          case 'paragraph':
-            return `<p${anchorText ? ` id="${anchorText}"` : ''}>${block.data.text}</p>`;
-          case 'header':
-            return `<h${block.data.level}${anchorText ? ` id="${anchorText}"` : ''}>${block.data.text}</h${block.data.level}>`;
-          case 'list':
-            const items = block.data.items.map((item: any) => 
-              `<li>${block.data.style === 'checklist' 
-                ? `<input type="checkbox" ${item.meta?.checked ? 'checked' : ''} disabled> `
-                : ''}${item.content}</li>`
-            ).join('');
-            return block.data.style === 'ordered' 
-              ? `<ol${anchorText ? ` id="${anchorText}"` : ''}>${items}</ol>` 
-              : `<ul${anchorText ? ` id="${anchorText}"` : ''} class="${block.data.style === 'checklist' ? 'checklist' : ''}">${items}</ul>`;
-          case 'quote':
-            const cleanCaption = block.data.caption?.trim();
-            return `<blockquote${anchorText ? ` id="${anchorText}"` : ''}>
-              <p>${block.data.text}</p>
-              ${cleanCaption ? `<footer>${cleanCaption}</footer>` : ''}
-            </blockquote>`;
-          case 'code':
-            return `<pre${anchorText ? ` id="${anchorText}"` : ''}><code>${block.data.code}</code></pre>`;
-          case 'spoiler':
-            const spoilerTitle =
-              typeof block.data?.title === 'string' && block.data.title.trim()
-                ? block.data.title.trim()
-                : 'Спойлер'
-            const spoilerContent =
-              typeof block.data?.content === 'string' ? block.data.content.trim() : ''
-            if (!spoilerContent) return ''
-            return `<div class="post-spoiler"${anchorText ? ` id="${anchorText}"` : ''} data-spoiler-open="0">
-              <div class="post-spoiler__trigger" role="button" tabindex="0" aria-expanded="false">
-                <span class="post-spoiler__title">${escapeSpoilerText(spoilerTitle)}</span>
-                <span class="post-spoiler__hint">Нажмите, чтобы раскрыть</span>
-              </div>
-              <div class="post-spoiler__content">
-                <p>${escapeSpoilerText(spoilerContent).replace(/\r?\n/g, '<br>')}</p>
-              </div>
-            </div>`;
-          case 'image':
-            const imageWrapper = `<div class="image-wrapper"${anchorText ? ` id="${anchorText}"` : ''}>
-              <img src="${block.data.file.url}" 
-                alt="${block.data.file.alt || ''}" 
-                title="${block.data.file.title || ''}"
-                ${block.data.caption ? `data-caption="${block.data.caption}"` : ''}>
-              ${block.data.caption ? `<div class="image-alt-text">${block.data.caption}</div>` : ''}
-            </div>`;
-            return imageWrapper;
-          case 'gallery':
-            const images = block.data.images.map(
-              (img: any) =>
-                `<img src="${img.url}" alt="${img.alt || ''}" title="${img.title || ''}">`
-            ).join('');
-            return `<div class="post-gallery"${anchorText ? ` id="${anchorText}"` : ''}>
-              ${images}
-            </div>`;
-          case 'map':
-            return renderMapBlock(block.data, anchorText ? ` id="${anchorText}"` : '')
-          case 'imageCompare':
-          case 'compare':
-            return renderImageCompareBlock(block.data, anchorText ? ` id="${anchorText}"` : '')
-          case 'link':
-          case 'customLink':
-            const url = block.data.url || '#';
-            const text = block.data.text || block.data.title || url;
-            const title = block.data.title ? ` title="${block.data.title}"` : '';
-            const isExternal = url.startsWith('http');
-            const target = isExternal ? ' target="_blank" rel="noopener noreferrer"' : '';
-            const linkStyle = block.data.style || 'link';
-            return `<p${anchorText ? ` id="${anchorText}"` : ''}><a href="${url}"${title}${target} class="${linkStyle}">${text}</a></p>`;
-          case 'embed':
-            const embedCaption = block.data.caption ? `<div class="embed-caption">${block.data.caption}</div>` : '';
-            return `<div class="embed-container"${anchorText ? ` id="${anchorText}"` : ''}>
-              <div class="embed-responsive" style="padding-bottom: ${(block.data.height / block.data.width * 100).toFixed(2)}%">
-                <iframe 
-                  src="${block.data.embed}" 
-                  frameborder="0" 
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                  allowfullscreen
-                  loading="lazy"
-                ></iframe>
-              </div>
-              ${embedCaption}
-            </div>`;
-          default:
-            return '';
-        }
-      })
-      .join('\n');
 
-    return htmlContent;
+    const renderSpoilerContainer = (
+      spoilerTitle: string,
+      spoilerHtml: string,
+      anchorId: string
+    ): string => {
+      if (!spoilerHtml.trim()) return ''
+      return `<div class="post-spoiler"${anchorId} data-spoiler-open="0">
+        <div class="post-spoiler__trigger" role="button" tabindex="0" aria-expanded="false">
+          <span class="post-spoiler__title">${escapeSpoilerText(spoilerTitle || 'Спойлер')}</span>
+          <span class="post-spoiler__hint">Нажмите в любую область, чтобы раскрыть</span>
+        </div>
+        <div class="post-spoiler__content">
+          ${spoilerHtml}
+        </div>
+      </div>`
+    }
+
+    const renderRegularBlock = (block: any): string => {
+      const anchorText = block?.tunes?.anchorInput?.text || block?.tunes?.customInput?.text;
+      const anchorId = anchorText ? ` id="${anchorText}"` : '';
+
+      switch (block.type) {
+        case 'paragraph':
+          return `<p${anchorId}>${block.data.text}</p>`;
+        case 'header':
+          return `<h${block.data.level}${anchorId}>${block.data.text}</h${block.data.level}>`;
+        case 'list':
+          const items = block.data.items.map((item: any) => 
+            `<li>${block.data.style === 'checklist' 
+              ? `<input type="checkbox" ${item.meta?.checked ? 'checked' : ''} disabled> `
+              : ''}${item.content}</li>`
+          ).join('');
+          return block.data.style === 'ordered' 
+            ? `<ol${anchorId}>${items}</ol>` 
+            : `<ul${anchorId} class="${block.data.style === 'checklist' ? 'checklist' : ''}">${items}</ul>`;
+        case 'quote':
+          const cleanCaption = block.data.caption?.trim();
+          return `<blockquote${anchorId}>
+            <p>${block.data.text}</p>
+            ${cleanCaption ? `<footer>${cleanCaption}</footer>` : ''}
+          </blockquote>`;
+        case 'code':
+          return `<pre${anchorId}><code>${block.data.code}</code></pre>`;
+        case 'spoiler':
+          const spoilerTitle =
+            typeof block.data?.title === 'string' && block.data.title.trim()
+              ? block.data.title.trim()
+              : 'Спойлер'
+          const spoilerContent =
+            typeof block.data?.content === 'string' ? block.data.content.trim() : ''
+          if (!spoilerContent) return ''
+          return `<div class="post-spoiler"${anchorId} data-spoiler-open="0">
+            <div class="post-spoiler__trigger" role="button" tabindex="0" aria-expanded="false">
+              <span class="post-spoiler__title">${escapeSpoilerText(spoilerTitle)}</span>
+              <span class="post-spoiler__hint">Нажмите в любую область, чтобы раскрыть</span>
+            </div>
+            <div class="post-spoiler__content">
+              <p>${escapeSpoilerText(spoilerContent).replace(/\r?\n/g, '<br>')}</p>
+            </div>
+          </div>`;
+        case 'image':
+          return `<div class="image-wrapper"${anchorId}>
+            <img src="${block.data.file.url}" 
+              alt="${block.data.file.alt || ''}" 
+              title="${block.data.file.title || ''}"
+              ${block.data.caption ? `data-caption="${block.data.caption}"` : ''}>
+            ${block.data.caption ? `<div class="image-alt-text">${block.data.caption}</div>` : ''}
+          </div>`;
+        case 'gallery':
+          const images = block.data.images.map(
+            (img: any) =>
+              `<img src="${img.url}" alt="${img.alt || ''}" title="${img.title || ''}">`
+          ).join('');
+          return `<div class="post-gallery"${anchorId}>
+            ${images}
+          </div>`;
+        case 'map':
+          return renderMapBlock(block.data, anchorId)
+        case 'imageCompare':
+        case 'compare':
+          return renderImageCompareBlock(block.data, anchorId)
+        case 'link':
+        case 'customLink':
+          const url = block.data.url || '#';
+          const text = block.data.text || block.data.title || url;
+          const title = block.data.title ? ` title="${block.data.title}"` : '';
+          const isExternal = url.startsWith('http');
+          const target = isExternal ? ' target="_blank" rel="noopener noreferrer"' : '';
+          const linkStyle = block.data.style || 'link';
+          return `<p${anchorId}><a href="${url}"${title}${target} class="${linkStyle}">${text}</a></p>`;
+        case 'embed':
+          const embedCaption = block.data.caption ? `<div class="embed-caption">${block.data.caption}</div>` : '';
+          return `<div class="embed-container"${anchorId}>
+            <div class="embed-responsive" style="padding-bottom: ${(block.data.height / block.data.width * 100).toFixed(2)}%">
+              <iframe 
+                src="${block.data.embed}" 
+                frameborder="0" 
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                allowfullscreen
+                loading="lazy"
+              ></iframe>
+            </div>
+            ${embedCaption}
+          </div>`;
+        default:
+          return '';
+      }
+    }
+
+    const htmlParts: string[] = []
+    const spoilerStack: Array<{ title: string; parts: string[]; anchorId: string }> = []
+
+    const appendHtmlToCurrentScope = (html: string) => {
+      if (!html) return
+      if (spoilerStack.length > 0) {
+        spoilerStack[spoilerStack.length - 1].parts.push(html)
+        return
+      }
+      htmlParts.push(html)
+    }
+
+    for (const block of content.blocks) {
+      const blockType = String(block?.type || '').toLowerCase()
+      if (blockType === 'spoiler') {
+        const rawData = block?.data || {}
+        const legacyContent =
+          typeof rawData?.content === 'string' ? rawData.content.trim() : ''
+        if (legacyContent) {
+          appendHtmlToCurrentScope(renderRegularBlock(block))
+          continue
+        }
+        const markerCandidate =
+          typeof rawData?.marker === 'string'
+            ? rawData.marker.trim().toLowerCase()
+            : typeof rawData?.mode === 'string'
+              ? rawData.mode.trim().toLowerCase()
+              : ''
+        if (markerCandidate === 'end' || markerCandidate === 'close') {
+          const completedSpoiler = spoilerStack.pop()
+          if (!completedSpoiler) continue
+          appendHtmlToCurrentScope(
+            renderSpoilerContainer(
+              completedSpoiler.title,
+              completedSpoiler.parts.join('\n'),
+              completedSpoiler.anchorId
+            )
+          )
+          continue
+        }
+        const spoilerTitle =
+          typeof rawData?.title === 'string' && rawData.title.trim()
+            ? rawData.title.trim()
+            : 'Спойлер'
+        const anchorText = block?.tunes?.anchorInput?.text || block?.tunes?.customInput?.text;
+        spoilerStack.push({
+          title: spoilerTitle,
+          parts: [],
+          anchorId: anchorText ? ` id="${anchorText}"` : '',
+        })
+        continue
+      }
+
+      appendHtmlToCurrentScope(renderRegularBlock(block))
+    }
+
+    while (spoilerStack.length > 0) {
+      const unclosedSpoiler = spoilerStack.pop()
+      if (!unclosedSpoiler) break
+      appendHtmlToCurrentScope(
+        renderSpoilerContainer(
+          unclosedSpoiler.title,
+          unclosedSpoiler.parts.join('\n'),
+          unclosedSpoiler.anchorId
+        )
+      )
+    }
+
+    return htmlParts.join('\n');
   }
 
   // Функция для санитизации HTML
@@ -1831,6 +1995,11 @@
       linear-gradient(135deg, rgba(15, 23, 42, 0.94), rgba(30, 41, 59, 0.9));
     color: #e2e8f0;
     overflow: hidden;
+    cursor: pointer;
+  }
+
+  :global(.post-content .post-spoiler.is-open) {
+    cursor: default;
   }
 
   :global(.post-content .post-spoiler__trigger) {
@@ -1870,10 +2039,17 @@
   }
 
   :global(.post-content .post-spoiler__content p) {
-    margin: 0;
     color: #e2e8f0;
     font-size: 0.9rem;
     line-height: 1.5;
+  }
+
+  :global(.post-content .post-spoiler__content > :first-child) {
+    margin-top: 0;
+  }
+
+  :global(.post-content .post-spoiler__content > :last-child) {
+    margin-bottom: 0;
   }
 
   :global(.post-content .post-spoiler:not(.is-open) .post-spoiler__content) {
@@ -1893,6 +2069,11 @@
 
   :global(.post-content .post-spoiler.is-open .post-spoiler__hint) {
     color: #94a3b8;
+  }
+
+  :global(.post-content .post-spoiler.is-open .post-spoiler__content) {
+    pointer-events: auto;
+    user-select: text;
   }
 
   :global(.gallery-modal) {

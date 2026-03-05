@@ -506,15 +506,16 @@
     document.body.appendChild(modal)
   }
 
-  const toggleSpoilerBlock = (trigger: HTMLElement) => {
-    const spoiler = trigger.closest('.post-spoiler') as HTMLElement | null
-    if (!spoiler || !element?.contains(spoiler)) return
+  const toggleSpoilerBlock = (spoiler: HTMLElement) => {
+    if (!element?.contains(spoiler)) return
     const isOpen = spoiler.classList.toggle('is-open')
     spoiler.setAttribute('data-spoiler-open', isOpen ? '1' : '0')
+    const trigger = spoiler.querySelector('.post-spoiler__trigger') as HTMLElement | null
+    if (!trigger) return
     trigger.setAttribute('aria-expanded', isOpen ? 'true' : 'false')
     const hint = trigger.querySelector('.post-spoiler__hint') as HTMLElement | null
     if (hint) {
-      hint.textContent = isOpen ? 'Нажмите, чтобы скрыть' : 'Нажмите, чтобы раскрыть'
+      hint.textContent = isOpen ? 'Нажмите на шапку, чтобы скрыть' : 'Нажмите в любую область, чтобы раскрыть'
     }
   }
 
@@ -822,7 +823,7 @@
       </span>`
     }
 
-    const renderSpoilerBlock = (raw: any): string => {
+    const renderLegacySpoilerBlock = (raw: any): string => {
       if (!isTemplateEditorBlockEnabled(template?.type ?? '', 'spoiler')) return ''
 
       const spoilerTitle =
@@ -834,7 +835,7 @@
       return `<div class="post-spoiler" data-spoiler-open="0">
         <div class="post-spoiler__trigger" role="button" tabindex="0" aria-expanded="false">
           <span class="post-spoiler__title">${escapeHtml(spoilerTitle)}</span>
-          <span class="post-spoiler__hint">Нажмите, чтобы раскрыть</span>
+          <span class="post-spoiler__hint">Нажмите в любую область, чтобы раскрыть</span>
         </div>
         <div class="post-spoiler__content">
           <p>${spoilerBody}</p>
@@ -1060,7 +1061,7 @@
       case 'movieCard':
         return renderMovieCardBlock(block.data)
       case 'spoiler':
-        return renderSpoilerBlock(block.data)
+        return renderLegacySpoilerBlock(block.data)
       case 'music':
       case 'musicTrack':
         return renderMusicBlock(block.data)
@@ -1105,23 +1106,91 @@
         ? `<meta-description>${content.additional.metaDescription}</meta-description>` 
         : '';
         
+      const renderSpoilerContainer = (spoilerTitle: string, spoilerHtml: string): string => {
+        if (!spoilerHtml.trim()) return ''
+        return `<div class="post-spoiler" data-spoiler-open="0">
+          <div class="post-spoiler__trigger" role="button" tabindex="0" aria-expanded="false">
+            <span class="post-spoiler__title">${escapeHtml(spoilerTitle || 'Спойлер')}</span>
+            <span class="post-spoiler__hint">Нажмите в любую область, чтобы раскрыть</span>
+          </div>
+          <div class="post-spoiler__content">
+            ${spoilerHtml}
+          </div>
+        </div>`
+      }
+
       const htmlParts: string[] = []
-      for (const block of content.blocks) {
-        const html = processJsonBlock(block)
-        if (!html) continue
-        const blockType = String(block?.type || '').toLowerCase()
+      const spoilerStack: Array<{ title: string; parts: string[] }> = []
+
+      const appendHtmlToCurrentScope = (html: string, blockType: string) => {
+        if (!html) return
+        const targetParts =
+          spoilerStack.length > 0 ? spoilerStack[spoilerStack.length - 1].parts : htmlParts
+        const normalizedType = blockType.toLowerCase()
         if (
-          (blockType === 'movie_time' || blockType === 'movietime') &&
-          htmlParts.length > 0 &&
-          /<\/p>\s*$/i.test(htmlParts[htmlParts.length - 1])
+          (normalizedType === 'movie_time' || normalizedType === 'movietime') &&
+          targetParts.length > 0 &&
+          /<\/p>\s*$/i.test(targetParts[targetParts.length - 1])
         ) {
-          htmlParts[htmlParts.length - 1] = htmlParts[htmlParts.length - 1].replace(
+          targetParts[targetParts.length - 1] = targetParts[targetParts.length - 1].replace(
             /<\/p>\s*$/i,
             ` ${html}</p>`
           )
+          return
+        }
+        targetParts.push(html)
+      }
+
+      for (const block of content.blocks) {
+        const blockType = String(block?.type || '').toLowerCase()
+        if (blockType === 'spoiler') {
+          const rawData = block?.data || {}
+          const legacyContent =
+            typeof rawData?.content === 'string' ? rawData.content.trim() : ''
+          if (legacyContent) {
+            const html = processJsonBlock(block)
+            appendHtmlToCurrentScope(html, blockType)
+            continue
+          }
+          const markerCandidate =
+            typeof rawData?.marker === 'string'
+              ? rawData.marker.trim().toLowerCase()
+              : typeof rawData?.mode === 'string'
+                ? rawData.mode.trim().toLowerCase()
+                : ''
+          if (markerCandidate === 'end' || markerCandidate === 'close') {
+            const completedSpoiler = spoilerStack.pop()
+            if (!completedSpoiler) continue
+            const wrappedSpoiler = renderSpoilerContainer(
+              completedSpoiler.title,
+              completedSpoiler.parts.join('\n')
+            )
+            appendHtmlToCurrentScope(wrappedSpoiler, 'spoiler')
+            continue
+          }
+          const spoilerTitle =
+            typeof rawData?.title === 'string' && rawData.title.trim()
+              ? rawData.title.trim()
+              : 'Спойлер'
+          spoilerStack.push({
+            title: spoilerTitle,
+            parts: [],
+          })
           continue
         }
-        htmlParts.push(html)
+
+        const html = processJsonBlock(block)
+        appendHtmlToCurrentScope(html, blockType)
+      }
+
+      while (spoilerStack.length > 0) {
+        const unclosedSpoiler = spoilerStack.pop()
+        if (!unclosedSpoiler) break
+        const wrappedSpoiler = renderSpoilerContainer(
+          unclosedSpoiler.title,
+          unclosedSpoiler.parts.join('\n')
+        )
+        appendHtmlToCurrentScope(wrappedSpoiler, 'spoiler')
       }
 
       const htmlContent = htmlParts.join('\n');
@@ -1655,11 +1724,16 @@
     if (!browser) return
     const clickHandler = (event: Event) => {
       const target = event.target as HTMLElement | null
-      const spoilerTrigger = target?.closest('.post-spoiler__trigger') as HTMLElement | null
-      if (spoilerTrigger && element?.contains(spoilerTrigger)) {
+      const spoilerElement = target?.closest('.post-spoiler') as HTMLElement | null
+      if (spoilerElement && element?.contains(spoilerElement)) {
+        const spoilerTrigger = target?.closest('.post-spoiler__trigger') as HTMLElement | null
+        const isOpen = spoilerElement.classList.contains('is-open')
+        if (isOpen && !spoilerTrigger) {
+          return
+        }
         event.preventDefault()
         event.stopPropagation()
-        toggleSpoilerBlock(spoilerTrigger)
+        toggleSpoilerBlock(spoilerElement)
         return
       }
       const mapElement = target?.closest('.post-map') as HTMLElement | null
@@ -1676,9 +1750,11 @@
       const target = event.target as HTMLElement | null
       const spoilerTrigger = target?.closest('.post-spoiler__trigger') as HTMLElement | null
       if (!spoilerTrigger || !element?.contains(spoilerTrigger)) return
+      const spoilerElement = spoilerTrigger.closest('.post-spoiler') as HTMLElement | null
+      if (!spoilerElement || !element?.contains(spoilerElement)) return
       event.preventDefault()
       event.stopPropagation()
-      toggleSpoilerBlock(spoilerTrigger)
+      toggleSpoilerBlock(spoilerElement)
     }
     element?.addEventListener('click', clickHandler)
     element?.addEventListener('keydown', keydownHandler)
@@ -2134,7 +2210,8 @@
     display: inline-flex;
     align-items: center;
     gap: 0.42rem;
-    overflow: hidden;
+    overflow: visible;
+    position: relative;
     border-radius: 999px;
     border: 1px solid rgba(251, 191, 36, 0.42);
     background:
@@ -2144,7 +2221,6 @@
     padding: 0.28rem 0.62rem 0.28rem 0.42rem;
     cursor: default;
     transition:
-      padding 0.2s ease,
       box-shadow 0.2s ease,
       border-color 0.2s ease,
       background 0.2s ease;
@@ -2174,29 +2250,41 @@
 
   :global(.post-content .post-movie-time__details) {
     display: inline-flex;
-    align-items: baseline;
+    align-items: center;
     gap: 0.36rem;
-    max-width: 0;
-    overflow: hidden;
+    position: absolute;
+    left: 0;
+    top: calc(100% + 0.38rem);
+    z-index: 24;
+    padding: 0.4rem 0.58rem;
+    border-radius: 0.68rem;
+    border: 1px solid rgba(251, 191, 36, 0.38);
+    background:
+      radial-gradient(120% 140% at 0% 0%, rgba(251, 191, 36, 0.24), rgba(251, 191, 36, 0) 62%),
+      linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(30, 41, 59, 0.96));
+    box-shadow: 0 12px 24px rgba(15, 23, 42, 0.34);
     white-space: nowrap;
     opacity: 0;
-    transform: translateX(-6px);
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(6px);
     transition:
-      max-width 0.24s ease,
       opacity 0.18s ease,
-      transform 0.24s ease;
+      transform 0.24s ease,
+      visibility 0s linear 0.24s;
   }
 
   :global(.post-content .post-movie-time:hover .post-movie-time__trigger) {
-    padding-right: 0.76rem;
     border-color: rgba(251, 191, 36, 0.65);
     box-shadow: 0 8px 22px rgba(15, 23, 42, 0.24);
   }
 
-  :global(.post-content .post-movie-time:hover .post-movie-time__details) {
-    max-width: min(480px, calc(100vw - 2.6rem));
+  :global(.post-content .post-movie-time:hover .post-movie-time__details),
+  :global(.post-content .post-movie-time:focus-within .post-movie-time__details) {
     opacity: 1;
-    transform: translateX(0);
+    visibility: visible;
+    transform: translateY(0);
+    transition-delay: 0s;
   }
 
   :global(.post-content .post-movie-time__meta) {
@@ -2244,6 +2332,11 @@
       linear-gradient(135deg, rgba(15, 23, 42, 0.94), rgba(30, 41, 59, 0.9));
     color: #e2e8f0;
     overflow: hidden;
+    cursor: pointer;
+  }
+
+  :global(.post-content .post-spoiler.is-open) {
+    cursor: default;
   }
 
   :global(.post-content .post-spoiler__trigger) {
@@ -2283,10 +2376,17 @@
   }
 
   :global(.post-content .post-spoiler__content p) {
-    margin: 0;
     color: #e2e8f0;
     font-size: 0.9rem;
     line-height: 1.5;
+  }
+
+  :global(.post-content .post-spoiler__content > :first-child) {
+    margin-top: 0;
+  }
+
+  :global(.post-content .post-spoiler__content > :last-child) {
+    margin-bottom: 0;
   }
 
   :global(.post-content .post-spoiler:not(.is-open) .post-spoiler__content) {
@@ -2306,6 +2406,11 @@
 
   :global(.post-content .post-spoiler.is-open .post-spoiler__hint) {
     color: #94a3b8;
+  }
+
+  :global(.post-content .post-spoiler.is-open .post-spoiler__content) {
+    pointer-events: auto;
+    user-select: text;
   }
 
   :global(.post-content .post-music) {
