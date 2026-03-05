@@ -11,6 +11,8 @@
   import { siteToken } from '$lib/siteAuth'
   import {
     formatMovieReviewReleaseDate,
+    movieReviewAuthorRatingLabel,
+    movieReviewAuthorRatingTone,
     isMovieReviewTemplate,
     isTemplateEditorBlockEnabled,
     movieReviewGenreLabel,
@@ -504,6 +506,18 @@
     document.body.appendChild(modal)
   }
 
+  const toggleSpoilerBlock = (trigger: HTMLElement) => {
+    const spoiler = trigger.closest('.post-spoiler') as HTMLElement | null
+    if (!spoiler || !element?.contains(spoiler)) return
+    const isOpen = spoiler.classList.toggle('is-open')
+    spoiler.setAttribute('data-spoiler-open', isOpen ? '1' : '0')
+    trigger.setAttribute('aria-expanded', isOpen ? 'true' : 'false')
+    const hint = trigger.querySelector('.post-spoiler__hint') as HTMLElement | null
+    if (hint) {
+      hint.textContent = isOpen ? 'Нажмите, чтобы скрыть' : 'Нажмите, чтобы раскрыть'
+    }
+  }
+
   // Функция для добавления preload в head
   function addPreloadLink(url: string, srcset: string | null = null) {
     if (!browser) return;
@@ -642,6 +656,8 @@
       const displayOriginalTitle = (movie.original_title || '').trim()
       const displayGenre = movieReviewGenreLabel(movie.genre)
       const releaseLabel = formatMovieReviewReleaseDate(movie.release_date)
+      const authorRatingLabel = movieReviewAuthorRatingLabel(movie.author_rating)
+      const authorRatingTone = movieReviewAuthorRatingTone(movie.author_rating)
       const watchWhereLabels = movieReviewWatchWhereLabels(movie.watch_where)
       const contentKindLabel = movieReviewKindLabel(movie.content_kind)
       const imdbUrl = (movie.imdb_url || '').trim()
@@ -677,6 +693,19 @@
       }
       if (releaseLabel) {
         chips.push(`<span class="post-movie-card__chip">Премьера: ${escapeHtml(releaseLabel)}</span>`)
+      }
+      if (authorRatingLabel) {
+        const ratingClass =
+          authorRatingTone === 'green'
+            ? ' post-movie-card__chip--green'
+            : authorRatingTone === 'yellow'
+              ? ' post-movie-card__chip--yellow'
+              : authorRatingTone === 'red'
+                ? ' post-movie-card__chip--red'
+                : ''
+        chips.push(
+          `<span class="post-movie-card__chip post-movie-card__chip--rating${ratingClass}">Оценка автора: ${escapeHtml(authorRatingLabel)}</span>`
+        )
       }
 
       const watchWhereHtml = watchWhereLabels.length
@@ -777,18 +806,38 @@
       )
       const sceneNote = escapeHtml(typeof raw?.note === 'string' ? raw.note : '')
       const noteHtml = sceneNote
-        ? `<p class="post-movie-time__note">${sceneNote}</p>`
+        ? `<span class="post-movie-time__note">${sceneNote}</span>`
         : ''
 
-      return `<div class="post-movie-time">
-        <div class="post-movie-time__trigger">
+      return `<span class="post-movie-time">
+        <span class="post-movie-time__trigger">
           <span class="post-movie-time__icon" aria-hidden="true">⏱</span>
           <span class="post-movie-time__stamp">${displayTime}</span>
-        </div>
-        <div class="post-movie-time__panel">
-          <div class="post-movie-time__meta">Время в фильме</div>
-          <div class="post-movie-time__scene">${sceneTitle}</div>
+        </span>
+        <span class="post-movie-time__panel">
+          <span class="post-movie-time__meta">Время в фильме</span>
+          <span class="post-movie-time__scene">${sceneTitle}</span>
           ${noteHtml}
+        </span>
+      </span>`
+    }
+
+    const renderSpoilerBlock = (raw: any): string => {
+      if (!isTemplateEditorBlockEnabled(template?.type ?? '', 'spoiler')) return ''
+
+      const spoilerTitle =
+        typeof raw?.title === 'string' && raw.title.trim() ? raw.title.trim() : 'Спойлер'
+      const spoilerContent = typeof raw?.content === 'string' ? raw.content.trim() : ''
+      if (!spoilerContent) return ''
+
+      const spoilerBody = escapeHtml(spoilerContent).replace(/\r?\n/g, '<br>')
+      return `<div class="post-spoiler" data-spoiler-open="0">
+        <div class="post-spoiler__trigger" role="button" tabindex="0" aria-expanded="false">
+          <span class="post-spoiler__title">${escapeHtml(spoilerTitle)}</span>
+          <span class="post-spoiler__hint">Нажмите, чтобы раскрыть</span>
+        </div>
+        <div class="post-spoiler__content">
+          <p>${spoilerBody}</p>
         </div>
       </div>`
     }
@@ -1010,6 +1059,8 @@
       case 'movie_card':
       case 'movieCard':
         return renderMovieCardBlock(block.data)
+      case 'spoiler':
+        return renderSpoilerBlock(block.data)
       case 'music':
       case 'musicTrack':
         return renderMusicBlock(block.data)
@@ -1054,9 +1105,26 @@
         ? `<meta-description>${content.additional.metaDescription}</meta-description>` 
         : '';
         
-      const htmlContent = content.blocks
-        .map((block: any) => processJsonBlock(block))
-        .join('\n');
+      const htmlParts: string[] = []
+      for (const block of content.blocks) {
+        const html = processJsonBlock(block)
+        if (!html) continue
+        const blockType = String(block?.type || '').toLowerCase()
+        if (
+          (blockType === 'movie_time' || blockType === 'movietime') &&
+          htmlParts.length > 0 &&
+          /<\/p>\s*$/i.test(htmlParts[htmlParts.length - 1])
+        ) {
+          htmlParts[htmlParts.length - 1] = htmlParts[htmlParts.length - 1].replace(
+            /<\/p>\s*$/i,
+            ` ${html}</p>`
+          )
+          continue
+        }
+        htmlParts.push(html)
+      }
+
+      const htmlContent = htmlParts.join('\n');
         
       return `${previewImage}${previewDescription}${metaTitle}${metaDescription}${htmlContent}`;
     } catch (error) {
@@ -1454,6 +1522,7 @@
       return DOMPurify.sanitize(processedHtml, {
         ALLOWED_TAGS: [
           'p',
+          'span',
           'b',
           'i',
           'em',
@@ -1500,6 +1569,10 @@
           'data-poll-closed',
           'data-poll-id',
           'data-music-provider',
+          'data-spoiler-open',
+          'role',
+          'tabindex',
+          'aria-expanded',
         ],
       });
     }
@@ -1582,6 +1655,13 @@
     if (!browser) return
     const clickHandler = (event: Event) => {
       const target = event.target as HTMLElement | null
+      const spoilerTrigger = target?.closest('.post-spoiler__trigger') as HTMLElement | null
+      if (spoilerTrigger && element?.contains(spoilerTrigger)) {
+        event.preventDefault()
+        event.stopPropagation()
+        toggleSpoilerBlock(spoilerTrigger)
+        return
+      }
       const mapElement = target?.closest('.post-map') as HTMLElement | null
       if (mapElement && element?.contains(mapElement)) {
         event.preventDefault()
@@ -1591,7 +1671,17 @@
       }
       void handlePollClick(event)
     }
+    const keydownHandler = (event: KeyboardEvent) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return
+      const target = event.target as HTMLElement | null
+      const spoilerTrigger = target?.closest('.post-spoiler__trigger') as HTMLElement | null
+      if (!spoilerTrigger || !element?.contains(spoilerTrigger)) return
+      event.preventDefault()
+      event.stopPropagation()
+      toggleSpoilerBlock(spoilerTrigger)
+    }
     element?.addEventListener('click', clickHandler)
+    element?.addEventListener('keydown', keydownHandler)
     setTimeout(setupGalleries, 0);
     setTimeout(setupImageComparisons, 0);
     setTimeout(() => {
@@ -1611,6 +1701,7 @@
     }, 50)
     return () => {
       element?.removeEventListener('click', clickHandler)
+      element?.removeEventListener('keydown', keydownHandler)
     }
   });
 
@@ -1954,6 +2045,28 @@
     padding: 0.24rem 0.58rem;
   }
 
+  :global(.post-content .post-movie-card__chip--rating) {
+    font-weight: 700;
+  }
+
+  :global(.post-content .post-movie-card__chip--green) {
+    border-color: rgba(34, 197, 94, 0.45);
+    background: rgba(22, 101, 52, 0.25);
+    color: #86efac;
+  }
+
+  :global(.post-content .post-movie-card__chip--yellow) {
+    border-color: rgba(250, 204, 21, 0.5);
+    background: rgba(161, 98, 7, 0.24);
+    color: #fde68a;
+  }
+
+  :global(.post-content .post-movie-card__chip--red) {
+    border-color: rgba(239, 68, 68, 0.46);
+    background: rgba(153, 27, 27, 0.24);
+    color: #fca5a5;
+  }
+
   :global(.post-content .post-movie-card__title) {
     margin: 0;
     color: #fff;
@@ -2011,10 +2124,10 @@
   }
 
   :global(.post-content .post-movie-time) {
-    margin: 1rem 0;
+    margin: 0 0.28rem;
     display: inline-flex;
     position: relative;
-    vertical-align: middle;
+    vertical-align: baseline;
   }
 
   :global(.post-content .post-movie-time__trigger) {
@@ -2054,6 +2167,7 @@
   }
 
   :global(.post-content .post-movie-time__panel) {
+    display: block;
     position: absolute;
     top: calc(100% + 0.45rem);
     left: 0;
@@ -2082,6 +2196,7 @@
   }
 
   :global(.post-content .post-movie-time__meta) {
+    display: block;
     font-size: 0.68rem;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -2090,6 +2205,7 @@
   }
 
   :global(.post-content .post-movie-time__scene) {
+    display: block;
     color: #f8fafc;
     font-size: 0.9rem;
     line-height: 1.3;
@@ -2097,10 +2213,84 @@
   }
 
   :global(.post-content .post-movie-time__note) {
+    display: block;
     margin: 0.34rem 0 0;
     color: #cbd5e1;
     font-size: 0.84rem;
     line-height: 1.4;
+  }
+
+  :global(.post-content .post-spoiler) {
+    margin: 1rem 0;
+    border-radius: 0.9rem;
+    border: 1px solid rgba(148, 163, 184, 0.36);
+    background:
+      radial-gradient(120% 120% at 0% 0%, rgba(148, 163, 184, 0.16), rgba(148, 163, 184, 0) 62%),
+      linear-gradient(135deg, rgba(15, 23, 42, 0.94), rgba(30, 41, 59, 0.9));
+    color: #e2e8f0;
+    overflow: hidden;
+  }
+
+  :global(.post-content .post-spoiler__trigger) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.55rem;
+    padding: 0.62rem 0.72rem;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  :global(.post-content .post-spoiler__trigger:focus-visible) {
+    outline: 2px solid rgba(148, 163, 184, 0.9);
+    outline-offset: -2px;
+  }
+
+  :global(.post-content .post-spoiler__title) {
+    color: #f8fafc;
+    font-size: 0.87rem;
+    line-height: 1.3;
+    font-weight: 700;
+  }
+
+  :global(.post-content .post-spoiler__hint) {
+    color: #cbd5e1;
+    font-size: 0.75rem;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+
+  :global(.post-content .post-spoiler__content) {
+    position: relative;
+    padding: 0 0.72rem 0.72rem;
+    transition: filter 0.2s ease, max-height 0.2s ease;
+    max-height: 1000px;
+  }
+
+  :global(.post-content .post-spoiler__content p) {
+    margin: 0;
+    color: #e2e8f0;
+    font-size: 0.9rem;
+    line-height: 1.5;
+  }
+
+  :global(.post-content .post-spoiler:not(.is-open) .post-spoiler__content) {
+    filter: blur(7px);
+    max-height: 120px;
+    overflow: hidden;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  :global(.post-content .post-spoiler:not(.is-open) .post-spoiler__content::after) {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.04), rgba(15, 23, 42, 0.62));
+  }
+
+  :global(.post-content .post-spoiler.is-open .post-spoiler__hint) {
+    color: #94a3b8;
   }
 
   :global(.post-content .post-music) {

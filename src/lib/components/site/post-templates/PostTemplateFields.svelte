@@ -458,6 +458,17 @@
         />
       </label>
 
+      <label class="flex flex-col gap-1">
+        <span class="text-sm text-slate-700 dark:text-zinc-300">Оценка автора (0-10)</span>
+        <input
+          type="text"
+          inputmode="decimal"
+          bind:value={movieReviewData.author_rating}
+          placeholder="Например, 8.5"
+          class="w-full rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm text-slate-900 dark:text-zinc-100"
+        />
+      </label>
+
       <div class="md:col-span-2 flex flex-col gap-2">
         <span class="text-sm text-slate-700 dark:text-zinc-300">Где посмотреть</span>
         <details class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900">

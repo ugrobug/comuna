@@ -7,6 +7,7 @@ export type TemplateEditorBlockType =
   | 'image'
   | 'quote'
   | 'code'
+  | 'spoiler'
   | 'gallery'
   | 'map'
   | 'compare'
@@ -30,6 +31,7 @@ export type MovieReviewTemplateData = {
   poster_url?: string
   genre?: string
   content_kind?: MovieReviewContentKind
+  author_rating?: string
   title?: string
   original_title?: string
   release_date?: string
@@ -106,6 +108,7 @@ const TEMPLATE_EDITOR_BLOCK_TYPE_VALUES = new Set<TemplateEditorBlockType>([
   'image',
   'quote',
   'code',
+  'spoiler',
   'gallery',
   'map',
   'compare',
@@ -122,6 +125,7 @@ const ALL_TEMPLATE_EDITOR_BLOCK_OPTIONS: TemplateEditorBlockOption[] = [
   { type: 'image', label: 'Изображение' },
   { type: 'quote', label: 'Цитата' },
   { type: 'code', label: 'Код' },
+  { type: 'spoiler', label: 'Спойлер' },
   { type: 'gallery', label: 'Галерея' },
   { type: 'map', label: 'Карта' },
   { type: 'compare', label: 'Сравнение изображений' },
@@ -482,6 +486,7 @@ export const createEmptyMovieReviewTemplateData = (): MovieReviewTemplateData =>
   poster_url: '',
   genre: '',
   content_kind: 'movie',
+  author_rating: '',
   title: '',
   original_title: '',
   release_date: '',
@@ -510,6 +515,26 @@ const normalizeMovieReviewGenre = (value: unknown): string => {
   const raw = trimOrEmpty(value)
   if (!raw) return ''
   return movieReviewGenreAliases[raw.toLowerCase()] ?? raw
+}
+
+const parseMovieReviewAuthorRatingNumber = (value: unknown): number | null => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+  const raw = trimOrEmpty(value).replace(',', '.')
+  if (!raw) return null
+  const numeric = Number(raw)
+  if (!Number.isFinite(numeric)) return null
+  return numeric
+}
+
+const normalizeMovieReviewAuthorRating = (value: unknown): string => {
+  const parsed = parseMovieReviewAuthorRatingNumber(value)
+  if (parsed === null) return ''
+  const clamped = Math.max(0, Math.min(10, parsed))
+  const rounded = Math.round(clamped * 10) / 10
+  if (Number.isInteger(rounded)) return String(rounded)
+  return rounded.toFixed(1).replace(/\.0$/, '')
 }
 
 const normalizeMovieReviewWatchWhere = (value: unknown): string[] => {
@@ -551,6 +576,7 @@ export const normalizeMovieReviewTemplateData = (
     poster_url: trimOrEmpty(value?.poster_url),
     genre: normalizeMovieReviewGenre(value?.genre),
     content_kind,
+    author_rating: normalizeMovieReviewAuthorRating(value?.author_rating),
     title: trimOrEmpty(value?.title),
     original_title: trimOrEmpty(value?.original_title),
     release_date: trimOrEmpty(value?.release_date),
@@ -641,6 +667,7 @@ export const buildPostTemplatePayload = (
         normalized.poster_url ||
         normalized.genre ||
         normalized.content_kind === 'series' ||
+        normalized.author_rating ||
         normalized.title ||
         normalized.original_title ||
         normalized.release_date ||
@@ -706,6 +733,29 @@ export const isMusicReleaseTemplate = (
 export const movieReviewKindLabel = (kind: string | null | undefined): string => {
   if (kind === 'series') return 'Сериал'
   return 'Фильм'
+}
+
+export const movieReviewAuthorRatingValue = (value: unknown): number | null => {
+  const normalized = normalizeMovieReviewAuthorRating(value)
+  if (!normalized) return null
+  const parsed = Number(normalized)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+export const movieReviewAuthorRatingLabel = (value: unknown): string => {
+  const rating = movieReviewAuthorRatingValue(value)
+  if (rating === null) return ''
+  return `${Number.isInteger(rating) ? String(rating) : rating.toFixed(1)} / 10`
+}
+
+export const movieReviewAuthorRatingTone = (
+  value: unknown
+): 'green' | 'yellow' | 'red' | '' => {
+  const rating = movieReviewAuthorRatingValue(value)
+  if (rating === null) return ''
+  if (rating >= 8) return 'green'
+  if (rating >= 5) return 'yellow'
+  return 'red'
 }
 
 export const movieReviewGenreLabel = (genre: string | null | undefined): string => {

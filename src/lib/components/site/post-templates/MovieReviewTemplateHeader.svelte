@@ -1,5 +1,7 @@
 <script lang="ts">
   import {
+    movieReviewAuthorRatingLabel,
+    movieReviewAuthorRatingTone,
     formatMovieReviewReleaseDate,
     movieReviewGenreLabel,
     movieReviewKindLabel,
@@ -14,6 +16,8 @@
   $: displayTitle = (data.title || fallbackTitle || '').trim()
   $: displayOriginalTitle = (data.original_title || '').trim()
   $: displayGenre = movieReviewGenreLabel(data.genre)
+  $: authorRatingLabel = movieReviewAuthorRatingLabel(data.author_rating)
+  $: authorRatingTone = movieReviewAuthorRatingTone(data.author_rating)
   $: releaseLabel = formatMovieReviewReleaseDate(data.release_date)
   $: watchWhereLabels = movieReviewWatchWhereLabels(data.watch_where)
   $: imdbHost = (() => {
@@ -45,6 +49,11 @@
         {/if}
         {#if releaseLabel}
           <span class="movie-review-chip">Премьера: {releaseLabel}</span>
+        {/if}
+        {#if authorRatingLabel}
+          <span class={`movie-review-chip movie-review-chip--rating movie-review-chip--${authorRatingTone}`}>
+            Оценка автора: {authorRatingLabel}
+          </span>
         {/if}
       </div>
 
@@ -162,6 +171,28 @@
     font-size: 0.75rem;
     line-height: 1.1;
     color: #fde68a;
+  }
+
+  .movie-review-chip--rating {
+    font-weight: 700;
+  }
+
+  .movie-review-chip--green {
+    border-color: rgba(34, 197, 94, 0.45);
+    background: rgba(22, 101, 52, 0.25);
+    color: #86efac;
+  }
+
+  .movie-review-chip--yellow {
+    border-color: rgba(250, 204, 21, 0.5);
+    background: rgba(161, 98, 7, 0.24);
+    color: #fde68a;
+  }
+
+  .movie-review-chip--red {
+    border-color: rgba(239, 68, 68, 0.46);
+    background: rgba(153, 27, 27, 0.24);
+    color: #fca5a5;
   }
 
   .movie-review-hero__title {

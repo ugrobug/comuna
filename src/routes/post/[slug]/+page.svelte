@@ -531,6 +531,13 @@
     
     // Создаем атрибут id если есть якорь
     const anchorId = anchorText ? ` id="${anchorText}"` : '';
+    const escapeSpoilerText = (value: string): string =>
+      value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
     
     switch (block.type) {
       case 'paragraph':
@@ -555,6 +562,23 @@
         </blockquote>`;
       case 'code':
         return `<pre${anchorId}><code>${block.data.code}</code></pre>`;
+      case 'spoiler':
+        const spoilerTitle =
+          typeof block.data?.title === 'string' && block.data.title.trim()
+            ? block.data.title.trim()
+            : 'Спойлер'
+        const spoilerContent =
+          typeof block.data?.content === 'string' ? block.data.content.trim() : ''
+        if (!spoilerContent) return ''
+        return `<div class="post-spoiler"${anchorId} data-spoiler-open="0">
+          <div class="post-spoiler__trigger" role="button" tabindex="0" aria-expanded="false">
+            <span class="post-spoiler__title">${escapeSpoilerText(spoilerTitle)}</span>
+            <span class="post-spoiler__hint">Нажмите, чтобы раскрыть</span>
+          </div>
+          <div class="post-spoiler__content">
+            <p>${escapeSpoilerText(spoilerContent).replace(/\r?\n/g, '<br>')}</p>
+          </div>
+        </div>`;
       case 'link':
       case 'customLink':
         const url = block.data.url || '#';
@@ -919,6 +943,35 @@
             })
           })
 
+          const spoilerTriggers = document.querySelectorAll('.post-content .post-spoiler__trigger')
+          const toggleSpoiler = (trigger: HTMLElement) => {
+            const spoiler = trigger.closest('.post-spoiler') as HTMLElement | null
+            if (!spoiler) return
+            const isOpen = spoiler.classList.toggle('is-open')
+            spoiler.setAttribute('data-spoiler-open', isOpen ? '1' : '0')
+            trigger.setAttribute('aria-expanded', isOpen ? 'true' : 'false')
+            const hint = trigger.querySelector('.post-spoiler__hint') as HTMLElement | null
+            if (hint) {
+              hint.textContent = isOpen ? 'Нажмите, чтобы скрыть' : 'Нажмите, чтобы раскрыть'
+            }
+          }
+          spoilerTriggers.forEach((triggerElement) => {
+            if (!(triggerElement instanceof HTMLElement)) return
+            if (triggerElement.getAttribute('data-spoiler-ready') === '1') return
+            triggerElement.setAttribute('data-spoiler-ready', '1')
+            triggerElement.addEventListener('click', (event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              toggleSpoiler(triggerElement)
+            })
+            triggerElement.addEventListener('keydown', (event: KeyboardEvent) => {
+              if (event.key !== 'Enter' && event.key !== ' ') return
+              event.preventDefault()
+              event.stopPropagation()
+              toggleSpoiler(triggerElement)
+            })
+          })
+
           setupImageCompareElements()
         }, 0)
       }
@@ -928,6 +981,13 @@
   // Функция для рендеринга контента из JSON/base64 формата
   function renderContent(content: any): string {
     if (!content?.blocks) return '';
+    const escapeSpoilerText = (value: string): string =>
+      value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
     
     const htmlContent = content.blocks
       .map((block: any) => {
@@ -957,6 +1017,23 @@
             </blockquote>`;
           case 'code':
             return `<pre${anchorText ? ` id="${anchorText}"` : ''}><code>${block.data.code}</code></pre>`;
+          case 'spoiler':
+            const spoilerTitle =
+              typeof block.data?.title === 'string' && block.data.title.trim()
+                ? block.data.title.trim()
+                : 'Спойлер'
+            const spoilerContent =
+              typeof block.data?.content === 'string' ? block.data.content.trim() : ''
+            if (!spoilerContent) return ''
+            return `<div class="post-spoiler"${anchorText ? ` id="${anchorText}"` : ''} data-spoiler-open="0">
+              <div class="post-spoiler__trigger" role="button" tabindex="0" aria-expanded="false">
+                <span class="post-spoiler__title">${escapeSpoilerText(spoilerTitle)}</span>
+                <span class="post-spoiler__hint">Нажмите, чтобы раскрыть</span>
+              </div>
+              <div class="post-spoiler__content">
+                <p>${escapeSpoilerText(spoilerContent).replace(/\r?\n/g, '<br>')}</p>
+              </div>
+            </div>`;
           case 'image':
             const imageWrapper = `<div class="image-wrapper"${anchorText ? ` id="${anchorText}"` : ''}>
               <img src="${block.data.file.url}" 
@@ -1027,6 +1104,7 @@
           'title', 'width', 'height', 'loading', 
           'class', 'data-caption', 'data-compare-position', 'id', 'checked', 
           'disabled', 'style', 'frameborder',
+          'data-spoiler-open', 'role', 'tabindex', 'aria-expanded',
           'allowfullscreen', 'allow', 'referrerpolicy'
         ]
       });
@@ -1742,6 +1820,79 @@
   :global(.post-content .post-image-compare__caption) {
     @apply text-sm text-slate-600 dark:text-zinc-400 text-center;
     margin: 0;
+  }
+
+  :global(.post-content .post-spoiler) {
+    margin: 1rem 0;
+    border-radius: 0.9rem;
+    border: 1px solid rgba(148, 163, 184, 0.36);
+    background:
+      radial-gradient(120% 120% at 0% 0%, rgba(148, 163, 184, 0.16), rgba(148, 163, 184, 0) 62%),
+      linear-gradient(135deg, rgba(15, 23, 42, 0.94), rgba(30, 41, 59, 0.9));
+    color: #e2e8f0;
+    overflow: hidden;
+  }
+
+  :global(.post-content .post-spoiler__trigger) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.55rem;
+    padding: 0.62rem 0.72rem;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  :global(.post-content .post-spoiler__trigger:focus-visible) {
+    outline: 2px solid rgba(148, 163, 184, 0.9);
+    outline-offset: -2px;
+  }
+
+  :global(.post-content .post-spoiler__title) {
+    color: #f8fafc;
+    font-size: 0.87rem;
+    line-height: 1.3;
+    font-weight: 700;
+  }
+
+  :global(.post-content .post-spoiler__hint) {
+    color: #cbd5e1;
+    font-size: 0.75rem;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+
+  :global(.post-content .post-spoiler__content) {
+    position: relative;
+    padding: 0 0.72rem 0.72rem;
+    transition: filter 0.2s ease, max-height 0.2s ease;
+    max-height: 1000px;
+  }
+
+  :global(.post-content .post-spoiler__content p) {
+    margin: 0;
+    color: #e2e8f0;
+    font-size: 0.9rem;
+    line-height: 1.5;
+  }
+
+  :global(.post-content .post-spoiler:not(.is-open) .post-spoiler__content) {
+    filter: blur(7px);
+    max-height: 120px;
+    overflow: hidden;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  :global(.post-content .post-spoiler:not(.is-open) .post-spoiler__content::after) {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.04), rgba(15, 23, 42, 0.62));
+  }
+
+  :global(.post-content .post-spoiler.is-open .post-spoiler__hint) {
+    color: #94a3b8;
   }
 
   :global(.gallery-modal) {

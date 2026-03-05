@@ -1066,6 +1066,93 @@
     }
   }
 
+  class SpoilerTool {
+    private data: {
+      title: string
+      content: string
+    }
+
+    static get toolbox() {
+      return {
+        title: 'Спойлер',
+        icon: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 8C2 8 4.2 4.5 8 4.5C11.8 4.5 14 8 14 8C14 8 11.8 11.5 8 11.5C4.2 11.5 2 8 2 8Z" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="8" r="1.8" stroke="currentColor" stroke-width="1.3"/><path d="M3 13L13 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>`,
+      }
+    }
+
+    constructor({
+      data,
+    }: {
+      data?: { title?: unknown; content?: unknown }
+    }) {
+      this.data = {
+        title:
+          typeof data?.title === 'string' && data.title.trim()
+            ? data.title.trim()
+            : 'Спойлер',
+        content: typeof data?.content === 'string' ? data.content.trim() : '',
+      }
+    }
+
+    render() {
+      const wrapper = document.createElement('div')
+      wrapper.classList.add('spoiler-tool')
+
+      const title = document.createElement('div')
+      title.classList.add('spoiler-tool__title')
+      title.textContent = 'Спойлер'
+
+      const subtitle = document.createElement('p')
+      subtitle.classList.add('spoiler-tool__subtitle')
+      subtitle.textContent =
+        'Содержимое этого блока будет заблюрено в посте до нажатия.'
+
+      const titleInput = document.createElement('input')
+      titleInput.type = 'text'
+      titleInput.classList.add('spoiler-tool__input')
+      titleInput.placeholder = 'Заголовок блока (например: Спойлер)'
+      titleInput.value = this.data.title
+
+      const contentInput = document.createElement('textarea')
+      contentInput.classList.add('spoiler-tool__textarea')
+      contentInput.rows = 5
+      contentInput.placeholder = 'Текст, который нужно скрыть до раскрытия'
+      contentInput.value = this.data.content
+
+      const preview = document.createElement('div')
+      preview.classList.add('spoiler-tool__preview')
+
+      const updatePreview = () => {
+        this.data.title = titleInput.value.trim() || 'Спойлер'
+        this.data.content = contentInput.value.trim()
+        if (!this.data.content) {
+          preview.textContent = 'Добавьте скрываемое содержимое.'
+          return
+        }
+        const lineCount = this.data.content.split(/\n+/).filter(Boolean).length
+        preview.textContent = `Будет скрыто ${lineCount} ${lineCount === 1 ? 'фрагмент' : 'фрагментов'} до клика.`
+      }
+
+      titleInput.addEventListener('input', updatePreview)
+      contentInput.addEventListener('input', updatePreview)
+
+      wrapper.appendChild(title)
+      wrapper.appendChild(subtitle)
+      wrapper.appendChild(titleInput)
+      wrapper.appendChild(contentInput)
+      wrapper.appendChild(preview)
+
+      updatePreview()
+      return wrapper
+    }
+
+    save() {
+      return {
+        title: this.data.title.trim() || 'Спойлер',
+        content: this.data.content.trim(),
+      }
+    }
+  }
+
   class MusicTool {
     private data: {
       url: string
@@ -2400,6 +2487,11 @@
               },
             }
           : {}),
+        ...(enabledTemplateBlockTypes.has('spoiler')
+          ? {
+              spoiler: SpoilerTool,
+            }
+          : {}),
         ...(enabledTemplateBlockTypes.has('gallery')
           ? {
               gallery: GalleryTool,
@@ -3483,6 +3575,76 @@
     font-size: 0.78rem;
     line-height: 1.35;
     padding: 0.5rem 0.65rem;
+  }
+
+  :global(.spoiler-tool) {
+    border-radius: 0.9rem;
+    border: 1px solid rgba(148, 163, 184, 0.4);
+    background:
+      radial-gradient(120% 120% at 0% 0%, rgba(148, 163, 184, 0.24), rgba(148, 163, 184, 0) 58%),
+      linear-gradient(135deg, rgba(15, 23, 42, 0.94), rgba(30, 41, 59, 0.9));
+    color: #e2e8f0;
+    padding: 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+
+  :global(.dark .spoiler-tool) {
+    border-color: rgba(148, 163, 184, 0.45);
+  }
+
+  :global(.spoiler-tool__title) {
+    font-weight: 700;
+    color: #fff;
+    font-size: 0.95rem;
+    line-height: 1.2;
+  }
+
+  :global(.spoiler-tool__subtitle) {
+    margin: 0;
+    color: #cbd5e1;
+    font-size: 0.78rem;
+    line-height: 1.35;
+  }
+
+  :global(.spoiler-tool__input),
+  :global(.spoiler-tool__textarea) {
+    width: 100%;
+    border-radius: 0.7rem;
+    border: 1px solid rgba(148, 163, 184, 0.4);
+    background: rgba(15, 23, 42, 0.45);
+    color: #f8fafc;
+    font-size: 0.86rem;
+    line-height: 1.3;
+    padding: 0.55rem 0.68rem;
+  }
+
+  :global(.spoiler-tool__input:focus),
+  :global(.spoiler-tool__textarea:focus) {
+    outline: none;
+    border-color: rgba(148, 163, 184, 0.9);
+    box-shadow: 0 0 0 2px rgba(148, 163, 184, 0.18);
+  }
+
+  :global(.spoiler-tool__input::placeholder),
+  :global(.spoiler-tool__textarea::placeholder) {
+    color: #94a3b8;
+  }
+
+  :global(.spoiler-tool__textarea) {
+    resize: vertical;
+    min-height: 6rem;
+  }
+
+  :global(.spoiler-tool__preview) {
+    border-radius: 0.7rem;
+    border: 1px solid rgba(148, 163, 184, 0.34);
+    background: rgba(15, 23, 42, 0.42);
+    color: #e2e8f0;
+    font-size: 0.78rem;
+    line-height: 1.35;
+    padding: 0.52rem 0.66rem;
   }
 
   :global(.music-tool) {

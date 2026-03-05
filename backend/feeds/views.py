@@ -1773,6 +1773,22 @@ def _normalize_movie_review_watch_where(value: object) -> tuple[list[str], str |
     return normalized_items, None
 
 
+def _normalize_movie_review_author_rating(value: object) -> tuple[str, str | None]:
+    raw = str(value or "").strip().replace(",", ".")
+    if not raw:
+        return "", None
+    try:
+        numeric = float(raw)
+    except (TypeError, ValueError):
+        return "", "invalid author rating"
+    if numeric < 0 or numeric > 10:
+        return "", "invalid author rating"
+    normalized = round(numeric, 1)
+    if float(normalized).is_integer():
+        return str(int(normalized)), None
+    return f"{normalized:.1f}".rstrip("0").rstrip("."), None
+
+
 def _normalize_movie_review_template_data(raw_data: object) -> tuple[dict | None, str | None]:
     if raw_data in (None, "", {}):
         return None, None
@@ -1801,6 +1817,11 @@ def _normalize_movie_review_template_data(raw_data: object) -> tuple[dict | None
     )
     if watch_where_error:
         return None, watch_where_error
+    author_rating, author_rating_error = _normalize_movie_review_author_rating(
+        raw_data.get("author_rating")
+    )
+    if author_rating_error:
+        return None, author_rating_error
 
     raw_kind = str(
         raw_data.get("content_kind")
@@ -1834,6 +1855,7 @@ def _normalize_movie_review_template_data(raw_data: object) -> tuple[dict | None
         "original_title": original_title,
         "release_date": release_date,
         "watch_where": watch_where,
+        "author_rating": author_rating,
     }
     cleaned_data: dict[str, object] = {}
     for key, value in normalized_data.items():
@@ -2282,6 +2304,7 @@ def _normalize_post_template_payload(
                     "poster_url",
                     "genre",
                     "content_kind",
+                    "author_rating",
                     "title",
                     "original_title",
                     "release_date",
