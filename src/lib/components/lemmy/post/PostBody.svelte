@@ -819,6 +819,9 @@
         ? `<p class="post-music__caption">${escapeHtml(captionText)}</p>`
         : ''
 
+      const buildYandexTrackEmbedUrl = (trackId: string, albumId: string): string =>
+        `https://music.yandex.ru/iframe/#track/${trackId}/${albumId}`
+
       const parseMusicEmbed = (
         value: string,
         hint: string
@@ -864,7 +867,7 @@
           return {
             provider: 'yandex_music',
             providerLabel: 'Яндекс Музыка',
-            embedUrl: `https://music.yandex.ru/iframe/track/${trackId}/${albumId}`,
+            embedUrl: buildYandexTrackEmbedUrl(trackId, albumId),
             title: 'Плеер Яндекс Музыки',
           }
         }
@@ -881,7 +884,7 @@
             return {
               provider: 'yandex_music',
               providerLabel: 'Яндекс Музыка',
-              embedUrl: `https://music.yandex.ru/iframe/track/${trackId}/${albumId}`,
+              embedUrl: buildYandexTrackEmbedUrl(trackId, albumId),
               title: 'Плеер Яндекс Музыки',
             }
           }
