@@ -15,12 +15,10 @@
   import {
     buildPostTemplatePayload,
     createEmptyMovieReviewTemplateData,
-    createEmptyPostVotePollTemplateData,
     normalizeAllowedPostTemplateTypes,
     normalizeTemplateEditorBlockSettings,
     resolveEnabledTemplateEditorBlockTypes,
     type MovieReviewTemplateData,
-    type PostVotePollTemplateData,
     type PostTemplateType,
     type TemplateEditorBlockSettings,
   } from '$lib/postTemplates'
@@ -51,7 +49,6 @@
   const SITE_AUTHOR_CHOICE = '__site__'
   let createTemplateType: '' | PostTemplateType = ''
   let createMovieReviewData: MovieReviewTemplateData = createEmptyMovieReviewTemplateData()
-  let createPostVotePollData: PostVotePollTemplateData = createEmptyPostVotePollTemplateData()
   let templateEditorBlockSettings: TemplateEditorBlockSettings = {}
 
   type PublishIdentityOption = {
@@ -193,8 +190,7 @@
         .filter((tag) => tag.length > 0)
       const template = buildPostTemplatePayload(
         createTemplateType,
-        createMovieReviewData,
-        createPostVotePollData
+        createMovieReviewData
       )
       await createUserPost({
         title: createTitle.trim(),
@@ -213,7 +209,6 @@
       createTags = ''
       createTemplateType = ''
       createMovieReviewData = createEmptyMovieReviewTemplateData()
-      createPostVotePollData = createEmptyPostVotePollTemplateData()
       toast({
         content:
           'Ваш пост опубликован! Не забудьте поделиться ссылкой на него в социальных сетях',
@@ -361,7 +356,6 @@
         <PostTemplateFields
           bind:templateType={createTemplateType}
           bind:movieReviewData={createMovieReviewData}
-          bind:postVotePollData={createPostVotePollData}
           allowedTemplateTypes={selectedRubric?.allowed_template_types}
         />
         {#key `editor-template-${editorTemplateBlocksKey}`}
@@ -391,7 +385,6 @@
               createTags = ''
               createTemplateType = ''
               createMovieReviewData = createEmptyMovieReviewTemplateData()
-              createPostVotePollData = createEmptyPostVotePollTemplateData()
               createError = ''
             }}
             disabled={creating}

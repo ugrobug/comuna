@@ -57,7 +57,6 @@ from .models import (
     POST_TEMPLATE_TYPE_BASIC as MODEL_POST_TEMPLATE_TYPE_BASIC,
     POST_TEMPLATE_TYPE_CHOICES as MODEL_POST_TEMPLATE_TYPE_CHOICES,
     POST_TEMPLATE_TYPE_MOVIE_REVIEW as MODEL_POST_TEMPLATE_TYPE_MOVIE_REVIEW,
-    POST_TEMPLATE_TYPE_POST_VOTE_POLL as MODEL_POST_TEMPLATE_TYPE_POST_VOTE_POLL,
     SiteNotification,
     SiteUserProfile,
     Tag,
@@ -105,7 +104,6 @@ _COMMENT_PERSONAS = (
 _COMMENT_PERSONAS_BY_KEY = {item["key"]: item for item in _COMMENT_PERSONAS}
 _POST_TEMPLATE_TYPE_BASIC = MODEL_POST_TEMPLATE_TYPE_BASIC
 _POST_TEMPLATE_TYPE_MOVIE_REVIEW = MODEL_POST_TEMPLATE_TYPE_MOVIE_REVIEW
-_POST_TEMPLATE_TYPE_POST_VOTE_POLL = MODEL_POST_TEMPLATE_TYPE_POST_VOTE_POLL
 _POST_TEMPLATE_TYPE_OPTIONS = tuple(
     (str(value), str(label)) for value, label in MODEL_POST_TEMPLATE_TYPE_CHOICES
 )
@@ -1583,227 +1581,6 @@ def _normalize_movie_review_template_data(raw_data: object) -> tuple[dict | None
     return cleaned_data, None
 
 
-def _normalize_template_datetime(value: object) -> tuple[str, str | None]:
-    raw = str(value or "").strip()
-    if not raw:
-        return "", None
-    normalized_raw = raw[:-1] + "+00:00" if raw.endswith("Z") else raw
-    try:
-        parsed = dt_datetime.fromisoformat(normalized_raw)
-    except ValueError:
-        return "", "invalid datetime"
-    if timezone.is_naive(parsed):
-        try:
-            parsed = timezone.make_aware(parsed, timezone.get_current_timezone())
-        except Exception:
-            return "", "invalid datetime"
-    return parsed.astimezone(dt_timezone.utc).isoformat().replace("+00:00", "Z"), None
-
-
-def _normalize_post_vote_poll_template_items(
-    raw_items: object,
-    *,
-    resolve_posts: bool = False,
-) -> tuple[list[dict], str | None]:
-    if not isinstance(raw_items, list):
-        return [], "invalid voting posts list"
-
-    ordered_post_ids: list[int] = []
-    seen_post_ids: set[int] = set()
-    raw_items_by_post_id: dict[int, dict] = {}
-    for raw_item in raw_items:
-        candidate_id: int | None = None
-        raw_item_dict = raw_item if isinstance(raw_item, dict) else None
-        if isinstance(raw_item_dict, dict):
-            candidate_id = _parse_post_reference_to_id(
-                raw_item_dict.get("post_id")
-                or raw_item_dict.get("id")
-                or raw_item_dict.get("post")
-                or raw_item_dict.get("url")
-                or raw_item_dict.get("path")
-                or raw_item_dict.get("ref")
-            )
-        if candidate_id is None:
-            candidate_id = _parse_post_reference_to_id(raw_item)
-        if candidate_id is None:
-            continue
-        if candidate_id in seen_post_ids:
-            continue
-        seen_post_ids.add(candidate_id)
-        ordered_post_ids.append(candidate_id)
-        raw_items_by_post_id[candidate_id] = raw_item_dict or {}
-
-    if len(ordered_post_ids) < 2:
-        return [], "at least two posts are required for voting"
-    if len(ordered_post_ids) > 10:
-        return [], "too many posts in voting"
-
-    if resolve_posts:
-        now = timezone.now()
-        posts = (
-            Post.objects.filter(
-                id__in=ordered_post_ids,
-                is_blocked=False,
-                is_pending=False,
-                author__is_blocked=False,
-            )
-            .filter(_publish_ready_filter(now))
-            .select_related("author")
-        )
-        posts_by_id = {post.id: post for post in posts}
-        missing_ids = [post_id for post_id in ordered_post_ids if post_id not in posts_by_id]
-        if missing_ids:
-            return [], "some voting posts were not found"
-
-        normalized_items: list[dict] = []
-        for post_id in ordered_post_ids:
-            post = posts_by_id[post_id]
-            post_title = _post_display_title(post)
-            post_slug = _slugify_title(post_title)
-            post_path = f"/b/post/{post.id}-{post_slug}" if post_slug else f"/b/post/{post.id}"
-            normalized_items.append(
-                {
-                    "post_id": post.id,
-                    "title": post_title,
-                    "path": post_path,
-                    "author_username": post.author.username,
-                }
-            )
-        return normalized_items, None
-
-    normalized_items = []
-    for post_id in ordered_post_ids:
-        raw_item = raw_items_by_post_id.get(post_id, {})
-        title, title_error = _normalize_template_text(raw_item.get("title"), 255)
-        if title_error:
-            return [], "voting post title is too long"
-        if not title:
-            title = f"Пост #{post_id}"
-        path = str(raw_item.get("path") or "").strip()
-        if path and not path.startswith("/"):
-            path = ""
-        author_username, author_error = _normalize_template_text(
-            raw_item.get("author_username"), 150
-        )
-        if author_error:
-            return [], "voting post author username is too long"
-        normalized_item: dict[str, object] = {
-            "post_id": post_id,
-            "title": title,
-        }
-        if path:
-            normalized_item["path"] = path
-        if author_username:
-            normalized_item["author_username"] = author_username
-        normalized_items.append(normalized_item)
-    return normalized_items, None
-
-
-def _normalize_post_vote_poll_template_data(
-    raw_data: object,
-    *,
-    resolve_posts: bool = False,
-) -> tuple[dict | None, str | None]:
-    if raw_data in (None, "", {}):
-        return None, "invalid post vote poll template data"
-    if not isinstance(raw_data, dict):
-        return None, "invalid post vote poll template data"
-
-    question, question_error = _normalize_template_text(raw_data.get("question"), 255)
-    if question_error:
-        return None, "poll question is too long"
-
-    ends_at, ends_at_error = _normalize_template_datetime(
-        raw_data.get("ends_at")
-        or raw_data.get("deadline_at")
-        or raw_data.get("expires_at")
-        or raw_data.get("close_at")
-    )
-    if ends_at_error:
-        return None, "invalid voting deadline"
-    if not ends_at:
-        return None, "voting deadline is required"
-
-    items_input = raw_data.get("items")
-    if items_input is None:
-        items_input = raw_data.get("posts")
-    if items_input is None:
-        items_input = raw_data.get("post_refs")
-    normalized_items, items_error = _normalize_post_vote_poll_template_items(
-        items_input, resolve_posts=resolve_posts
-    )
-    if items_error:
-        return None, items_error
-
-    normalized_data: dict[str, object] = {
-        "items": normalized_items,
-        "ends_at": ends_at,
-    }
-    if question:
-        normalized_data["question"] = question
-    return normalized_data, None
-
-
-def _build_post_vote_poll_raw_poll(template_data: object) -> dict | None:
-    if not isinstance(template_data, dict):
-        return None
-    items = template_data.get("items")
-    if not isinstance(items, list):
-        return None
-    option_items: list[dict] = []
-    for raw_item in items:
-        if not isinstance(raw_item, dict):
-            continue
-        post_id = _parse_post_reference_to_id(raw_item.get("post_id"))
-        if post_id is None:
-            continue
-        option_text = str(raw_item.get("title") or "").strip() or f"Пост #{post_id}"
-        option_payload: dict[str, object] = {
-            "text": option_text,
-            "voter_count": 0,
-            "post_id": post_id,
-        }
-        path = str(raw_item.get("path") or "").strip()
-        if path.startswith("/"):
-            option_payload["post_path"] = path
-        option_items.append(option_payload)
-    if len(option_items) < 2:
-        return None
-
-    question = str(template_data.get("question") or "").strip() or "Голосование за посты"
-    raw_poll: dict[str, object] = {
-        "question": question,
-        "options": option_items,
-        "is_anonymous": False,
-        "allows_multiple_answers": False,
-        "is_closed": False,
-        "total_voter_count": 0,
-    }
-    close_at = str(template_data.get("ends_at") or "").strip()
-    if close_at:
-        raw_poll["close_at"] = close_at
-    return raw_poll
-
-
-_TEMPLATE_POLL_SOURCE_POST_VOTE = "template_post_vote_poll"
-
-
-def _sync_template_derived_raw_data(raw_data: dict, template_payload: dict | None) -> None:
-    template_type = str(template_payload.get("type") or "").strip().lower() if template_payload else ""
-    if template_type == _POST_TEMPLATE_TYPE_POST_VOTE_POLL:
-        poll_payload = _build_post_vote_poll_raw_poll(template_payload.get("data"))
-        if poll_payload:
-            raw_data["poll"] = poll_payload
-            raw_data["poll_source"] = _TEMPLATE_POLL_SOURCE_POST_VOTE
-            raw_data.pop("poll_html", None)
-        return
-
-    if str(raw_data.get("poll_source") or "") == _TEMPLATE_POLL_SOURCE_POST_VOTE:
-        raw_data.pop("poll", None)
-        raw_data.pop("poll_source", None)
-        raw_data.pop("poll_html", None)
-
-
 def _serialize_post_template_type_options() -> list[dict]:
     return [
         {"value": value, "label": label}
@@ -1874,11 +1651,7 @@ def _post_comun_slug(post: Post) -> str:
     return str(raw_data.get("comun_slug") or "").strip()
 
 
-def _normalize_post_template_payload(
-    raw_template: object,
-    *,
-    resolve_post_refs: bool = False,
-) -> tuple[dict | None, str | None]:
+def _normalize_post_template_payload(raw_template: object) -> tuple[dict | None, str | None]:
     if raw_template in (None, "", {}):
         return None, None
     if not isinstance(raw_template, dict):
@@ -1887,59 +1660,35 @@ def _normalize_post_template_payload(
     template_type = str(raw_template.get("type") or "").strip().lower()
     if not template_type:
         return None, None
-    if template_type == _POST_TEMPLATE_TYPE_MOVIE_REVIEW:
-        template_data_input = raw_template.get("data")
-        if template_data_input is None:
-            template_data_input = {
-                key: raw_template.get(key)
-                for key in (
-                    "imdb_url",
-                    "poster_url",
-                    "genre",
-                    "content_kind",
-                    "title",
-                    "original_title",
-                    "release_date",
-                    "watch_where",
-                )
-                if raw_template.get(key) is not None
-            }
-        normalized_data, template_error = _normalize_movie_review_template_data(
-            template_data_input
-        )
-        if template_error:
-            return None, template_error
-        if not normalized_data:
-            return None, None
-        return {
-            "type": _POST_TEMPLATE_TYPE_MOVIE_REVIEW,
-            "version": 1,
-            "data": normalized_data,
-        }, None
+    if template_type != _POST_TEMPLATE_TYPE_MOVIE_REVIEW:
+        return None, "unsupported template type"
 
-    if template_type == _POST_TEMPLATE_TYPE_POST_VOTE_POLL:
-        template_data_input = raw_template.get("data")
-        if template_data_input is None:
-            template_data_input = {
-                key: raw_template.get(key)
-                for key in ("question", "items", "posts", "post_refs", "ends_at")
-                if raw_template.get(key) is not None
-            }
-        normalized_data, template_error = _normalize_post_vote_poll_template_data(
-            template_data_input,
-            resolve_posts=resolve_post_refs,
-        )
-        if template_error:
-            return None, template_error
-        if not normalized_data:
-            return None, None
-        return {
-            "type": _POST_TEMPLATE_TYPE_POST_VOTE_POLL,
-            "version": 1,
-            "data": normalized_data,
-        }, None
-
-    return None, "unsupported template type"
+    template_data_input = raw_template.get("data")
+    if template_data_input is None and template_type == _POST_TEMPLATE_TYPE_MOVIE_REVIEW:
+        template_data_input = {
+            key: raw_template.get(key)
+            for key in (
+                "imdb_url",
+                "poster_url",
+                "genre",
+                "content_kind",
+                "title",
+                "original_title",
+                "release_date",
+                "watch_where",
+            )
+            if raw_template.get(key) is not None
+        }
+    normalized_data, template_error = _normalize_movie_review_template_data(template_data_input)
+    if template_error:
+        return None, template_error
+    if not normalized_data:
+        return None, None
+    return {
+        "type": _POST_TEMPLATE_TYPE_MOVIE_REVIEW,
+        "version": 1,
+        "data": normalized_data,
+    }, None
 
 
 def _serialize_post_template(post: Post) -> dict | None:
@@ -2422,9 +2171,9 @@ def _replace_legacy_audio_embed(post: Post, content: str) -> str:
     )
 
 
-def _extract_poll_options(raw_poll: dict) -> list[dict]:
+def _extract_poll_options(raw_poll: dict) -> list[tuple[str, int]]:
     raw_options = raw_poll.get("options") or []
-    options: list[dict] = []
+    options: list[tuple[str, int]] = []
     if not isinstance(raw_options, list):
         return options
     for option in raw_options:
@@ -2437,58 +2186,8 @@ def _extract_poll_options(raw_poll: dict) -> list[dict]:
             count = int(option.get("voter_count", 0))
         except (TypeError, ValueError):
             count = 0
-        post_id = _parse_post_reference_to_id(option.get("post_id") or option.get("post_ref"))
-        post_path = str(option.get("post_path") or option.get("path") or "").strip()
-        if post_path and not post_path.startswith("/"):
-            post_path = ""
-        option_payload: dict[str, object] = {
-            "text": text,
-            "voter_count": max(count, 0),
-        }
-        if post_id is not None:
-            option_payload["post_id"] = post_id
-        if post_path:
-            option_payload["post_path"] = post_path
-        options.append(option_payload)
+        options.append((text, max(count, 0)))
     return options
-
-
-def _parse_poll_close_at(value: object) -> dt_datetime | None:
-    raw = str(value or "").strip()
-    if not raw:
-        return None
-    normalized_raw = raw[:-1] + "+00:00" if raw.endswith("Z") else raw
-    try:
-        parsed = dt_datetime.fromisoformat(normalized_raw)
-    except ValueError:
-        return None
-    if timezone.is_naive(parsed):
-        try:
-            parsed = timezone.make_aware(parsed, dt_timezone.utc)
-        except Exception:
-            return None
-    return parsed
-
-
-def _poll_is_closed(raw_poll: dict) -> bool:
-    if bool(raw_poll.get("is_closed")):
-        return True
-    close_at = _parse_poll_close_at(
-        raw_poll.get("close_at") or raw_poll.get("ends_at") or raw_poll.get("expires_at")
-    )
-    if not close_at:
-        return False
-    return timezone.now() >= close_at
-
-
-def _format_poll_close_at_label(value: str | None) -> str:
-    if not value:
-        return ""
-    close_at = _parse_poll_close_at(value)
-    if not close_at:
-        return ""
-    localized = timezone.localtime(close_at)
-    return localized.strftime("%d.%m.%Y %H:%M")
 
 
 def _normalize_poll_selection(value: object, options_count: int) -> list[int]:
@@ -2540,9 +2239,7 @@ def _build_poll_payload(
         return None
 
     resolved_counts = (
-        list(option_counts[: len(options)])
-        if option_counts is not None
-        else [int(option.get("voter_count") or 0) for option in options]
+        list(option_counts[: len(options)]) if option_counts is not None else [count for _, count in options]
     )
     if len(resolved_counts) < len(options):
         resolved_counts.extend([0] * (len(options) - len(resolved_counts)))
@@ -2555,40 +2252,23 @@ def _build_poll_payload(
     total_voters += max(extra_voters, 0)
 
     option_payload = []
-    for idx, option in enumerate(options):
-        option_item: dict[str, object] = {
-            "index": idx,
-            "text": str(option.get("text") or "").strip(),
-            "voter_count": max(int(resolved_counts[idx]), 0),
-        }
-        post_id = _parse_post_reference_to_id(option.get("post_id"))
-        if post_id is not None:
-            option_item["post_id"] = post_id
-        post_path = str(option.get("post_path") or "").strip()
-        if post_path.startswith("/"):
-            option_item["post_path"] = post_path
-        option_payload.append(option_item)
+    for idx, (text, _) in enumerate(options):
+        option_payload.append(
+            {
+                "index": idx,
+                "text": text,
+                "voter_count": max(int(resolved_counts[idx]), 0),
+            }
+        )
 
     normalized_selection = _normalize_poll_selection(user_selection or [], len(option_payload))
     poll_id = str(raw_poll.get("id") or "").strip()
-    close_at_raw = (
-        str(raw_poll.get("close_at") or raw_poll.get("ends_at") or raw_poll.get("expires_at") or "")
-        .strip()
-    )
-    close_at_parsed = _parse_poll_close_at(close_at_raw) if close_at_raw else None
-    close_at = (
-        close_at_parsed.astimezone(dt_timezone.utc).isoformat().replace("+00:00", "Z")
-        if close_at_parsed
-        else None
-    )
-    is_closed = _poll_is_closed(raw_poll)
     return {
         "id": poll_id or None,
         "question": question,
         "is_anonymous": bool(raw_poll.get("is_anonymous")),
         "allows_multiple_answers": bool(raw_poll.get("allows_multiple_answers")),
-        "is_closed": is_closed,
-        "close_at": close_at,
+        "is_closed": bool(raw_poll.get("is_closed")),
         "total_voter_count": total_voters,
         "options": option_payload,
         "user_selection": normalized_selection,
@@ -2627,9 +2307,6 @@ def _render_poll_html_from_payload(payload: dict) -> str:
         meta_parts.append("Опрос завершен")
     else:
         meta_parts.append("Нажмите вариант, чтобы проголосовать")
-    close_at_label = _format_poll_close_at_label(payload.get("close_at"))
-    if close_at_label:
-        meta_parts.append(f"До {close_at_label}")
     meta_parts.append(f"Голосов: {total_voters}")
     meta_html = f'<div class="post-poll-meta">{" · ".join(meta_parts)}</div>'
 
@@ -4245,7 +3922,6 @@ def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None
         "id": post.id,
         "title": _post_display_title(post),
         "template": _serialize_post_template(post),
-        "vote_poll_participations": _serialize_post_vote_poll_participations(post),
         "content": content,
         "poll": poll_payload,
         "created_at": post.created_at.isoformat(),
@@ -4268,79 +3944,6 @@ def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None
             **_author_admin_fields_for_user(user, post.author, rubric),
         },
     }
-
-
-def _post_public_path(post: Post) -> str:
-    post_title = _post_display_title(post)
-    post_slug = _slugify_title(post_title)
-    return f"/b/post/{post.id}-{post_slug}" if post_slug else f"/b/post/{post.id}"
-
-
-def _serialize_post_vote_poll_participations(
-    post: Post,
-    *,
-    limit: int = 3,
-) -> list[dict]:
-    post_id = int(getattr(post, "id", 0) or 0)
-    if post_id <= 0 or limit <= 0:
-        return []
-
-    now = timezone.now()
-    candidate_limit = min(max(limit * 4, 12), 40)
-    try:
-        candidates = list(
-            Post.objects.filter(
-                is_blocked=False,
-                is_pending=False,
-                author__is_blocked=False,
-            )
-            .filter(_publish_ready_filter(now))
-            .exclude(id=post_id)
-            .filter(raw_data__poll__options__contains=[{"post_id": post_id}])
-            .order_by("-created_at")[:candidate_limit]
-        )
-    except Exception:
-        return []
-
-    result: list[dict] = []
-    seen_poll_post_ids: set[int] = set()
-    for candidate in candidates:
-        raw_data = candidate.raw_data if isinstance(candidate.raw_data, dict) else {}
-        raw_poll = raw_data.get("poll")
-        if not isinstance(raw_poll, dict):
-            continue
-
-        has_target_post = any(
-            _parse_post_reference_to_id(option.get("post_id") or option.get("post_ref")) == post_id
-            for option in _extract_poll_options(raw_poll)
-        )
-        if not has_target_post:
-            continue
-
-        poll_payload = _build_poll_payload(raw_poll)
-        if not poll_payload or bool(poll_payload.get("is_closed")):
-            continue
-
-        poll_post_id = int(candidate.id)
-        if poll_post_id in seen_poll_post_ids:
-            continue
-        seen_poll_post_ids.add(poll_post_id)
-
-        poll_post_title = _post_display_title(candidate)
-        poll_question = str(poll_payload.get("question") or "").strip() or poll_post_title
-        result.append(
-            {
-                "poll_post_id": poll_post_id,
-                "poll_post_title": poll_post_title,
-                "poll_post_path": _post_public_path(candidate),
-                "question": poll_question,
-                "close_at": poll_payload.get("close_at"),
-            }
-        )
-        if len(result) >= limit:
-            break
-
-    return result
 
 
 def _favorite_post_ids_for_user(posts: list[Post], user: User | None) -> set[int]:
@@ -4402,10 +4005,7 @@ def user_posts(request: HttpRequest) -> HttpResponse:
         author_username = (payload.get("author_username") or "").strip()
         rubric_slug = (payload.get("rubric_slug") or "").strip()
         explicit_tags = _parse_tag_payload(payload.get("tags"))
-        template_payload, template_error = _normalize_post_template_payload(
-            payload.get("template"),
-            resolve_post_refs=True,
-        )
+        template_payload, template_error = _normalize_post_template_payload(payload.get("template"))
         if template_error:
             return JsonResponse({"ok": False, "error": template_error}, status=400)
 
@@ -4472,12 +4072,6 @@ def user_posts(request: HttpRequest) -> HttpResponse:
         delay_days = max(int(author.publish_delay_days or 0), 0)
         publish_at = timezone.now() + timedelta(days=delay_days) if delay_days else None
 
-        raw_data = {
-            "source": "manual",
-            **({"template": template_payload} if template_payload else {}),
-        }
-        _sync_template_derived_raw_data(raw_data, template_payload)
-
         post = Post.objects.create(
             author=author,
             message_id=message_id,
@@ -4486,7 +4080,10 @@ def user_posts(request: HttpRequest) -> HttpResponse:
             rubric=rubric,
             channel_url=channel_url,
             source_url=channel_url,
-            raw_data=raw_data,
+            raw_data={
+                "source": "manual",
+                **({"template": template_payload} if template_payload else {}),
+            },
             is_pending=False,
             is_blocked=False,
             publish_at=publish_at,
@@ -4611,10 +4208,7 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
     template_in_payload = "template" in payload
     template_payload = None
     if template_in_payload:
-        template_payload, template_error = _normalize_post_template_payload(
-            payload.get("template"),
-            resolve_post_refs=True,
-        )
+        template_payload, template_error = _normalize_post_template_payload(payload.get("template"))
         if template_error:
             return JsonResponse({"ok": False, "error": template_error}, status=400)
 
@@ -4658,7 +4252,6 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
             raw_data["template"] = template_payload
         else:
             raw_data.pop("template", None)
-        _sync_template_derived_raw_data(raw_data, template_payload)
         raw_data["manual_edit"] = True
         raw_data["manual_updated_at"] = timezone.now().isoformat()
         raw_data_changed = True
@@ -4722,10 +4315,7 @@ def post_comments(request: HttpRequest, post_id: int) -> HttpResponse:
                 "likes_count": comment.likes_count,
                 "liked_by_me": comment.id in liked_ids,
                 "can_edit": bool(user and comment.user_id == user.id and not comment.is_deleted),
-                "user": {
-                    "id": comment.user_id,
-                    "username": _comment_display_username(comment),
-                },
+                "user": {"username": _comment_display_username(comment)},
             }
             for comment in comments
         ]
@@ -4797,10 +4387,7 @@ def post_comments(request: HttpRequest, post_id: int) -> HttpResponse:
                 "likes_count": 0,
                 "liked_by_me": False,
                 "can_edit": True,
-                "user": {
-                    "id": comment.user_id,
-                    "username": _comment_display_username(comment),
-                },
+                "user": {"username": _comment_display_username(comment)},
             },
             "comments_count": post.comments_count,
         }
@@ -4857,10 +4444,7 @@ def comment_detail(request: HttpRequest, comment_id: int) -> HttpResponse:
                     "likes_count": likes_count,
                     "liked_by_me": liked_by_me,
                     "can_edit": True,
-                    "user": {
-                        "id": comment.user_id,
-                        "username": _comment_display_username(comment),
-                    },
+                    "user": {"username": _comment_display_username(comment)},
                 },
             }
         )
@@ -5138,10 +4722,7 @@ def recent_comments(request: HttpRequest) -> HttpResponse:
             "id": comment.id,
             "body": comment.body,
             "created_at": comment.created_at.isoformat(),
-            "user": {
-                "id": comment.user_id,
-                "username": _comment_display_username(comment),
-            },
+            "user": {"username": _comment_display_username(comment)},
             "post": {"id": comment.post_id, "title": _post_display_title(comment.post)},
         }
         for comment in comments
@@ -5201,7 +4782,6 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
                 "id": post.id,
                 "title": _post_display_title(post),
                 "template": _serialize_post_template(post),
-                "vote_poll_participations": _serialize_post_vote_poll_participations(post),
                 "rubric": rubric.name if rubric else None,
                 "rubric_slug": rubric.slug if rubric else None,
                 "rubric_icon_url": _rubric_icon_url(request, rubric),
@@ -5326,7 +4906,6 @@ def rubric_posts(request: HttpRequest, slug: str) -> HttpResponse:
                 "id": post.id,
                 "title": _post_display_title(post),
                 "template": _serialize_post_template(post),
-                "vote_poll_participations": _serialize_post_vote_poll_participations(post),
                 "rubric": rubric.name,
                 "rubric_slug": rubric.slug,
                 "rubric_icon_url": _rubric_icon_url(request, rubric),
@@ -5806,7 +5385,6 @@ def tag_posts(request: HttpRequest, tag: str) -> HttpResponse:
                 "id": post.id,
                 "title": _post_display_title(post),
                 "template": _serialize_post_template(post),
-                "vote_poll_participations": _serialize_post_vote_poll_participations(post),
                 "rubric": rubric.name if rubric else None,
                 "rubric_slug": rubric.slug if rubric else None,
                 "rubric_icon_url": _rubric_icon_url(request, rubric)
@@ -5872,7 +5450,6 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
                 "id": post.id,
                 "title": _post_display_title(post),
                 "template": _serialize_post_template(post),
-                "vote_poll_participations": _serialize_post_vote_poll_participations(post),
                 "rubric": rubric.name if rubric else None,
                 "rubric_slug": rubric.slug if rubric else None,
                 "rubric_icon_url": _rubric_icon_url(request, rubric),
@@ -6015,7 +5592,6 @@ def home_feed(request: HttpRequest) -> HttpResponse:
                     "id": post.id,
                     "title": _post_display_title(post),
                     "template": _serialize_post_template(post),
-                    "vote_poll_participations": _serialize_post_vote_poll_participations(post),
                     "rubric": rubric.name if rubric else None,
                     "rubric_slug": rubric.slug if rubric else None,
                     "rubric_icon_url": _rubric_icon_url(request, rubric),
@@ -6108,7 +5684,6 @@ def home_feed(request: HttpRequest) -> HttpResponse:
                 "id": post.id,
                 "title": _post_display_title(post),
                 "template": _serialize_post_template(post),
-                "vote_poll_participations": _serialize_post_vote_poll_participations(post),
                 "rubric": rubric.name if rubric else None,
                 "rubric_slug": rubric.slug if rubric else None,
                 "rubric_icon_url": _rubric_icon_url(request, rubric),
@@ -6213,7 +5788,6 @@ def fresh_feed(request: HttpRequest) -> HttpResponse:
                 "id": post.id,
                 "title": _post_display_title(post),
                 "template": _serialize_post_template(post),
-                "vote_poll_participations": _serialize_post_vote_poll_participations(post),
                 "rubric": rubric.name if rubric else None,
                 "rubric_slug": rubric.slug if rubric else None,
                 "rubric_icon_url": _rubric_icon_url(request, rubric),
@@ -6299,7 +5873,6 @@ def favorites_feed(request: HttpRequest) -> HttpResponse:
                 "id": post.id,
                 "title": _post_display_title(post),
                 "template": _serialize_post_template(post),
-                "vote_poll_participations": _serialize_post_vote_poll_participations(post),
                 "rubric": rubric.name if rubric else None,
                 "rubric_slug": rubric.slug if rubric else None,
                 "rubric_icon_url": _rubric_icon_url(request, rubric),
@@ -6469,7 +6042,6 @@ def my_feed(request: HttpRequest) -> HttpResponse:
                 "id": post.id,
                 "title": _post_display_title(post),
                 "template": _serialize_post_template(post),
-                "vote_poll_participations": _serialize_post_vote_poll_participations(post),
                 "rubric": rubric.name if rubric else None,
                 "rubric_slug": rubric.slug if rubric else None,
                 "rubric_icon_url": _rubric_icon_url(request, rubric),
@@ -6626,7 +6198,6 @@ def thematic_feed_posts(request: HttpRequest, slug: str) -> HttpResponse:
                 "id": post.id,
                 "title": _post_display_title(post),
                 "template": _serialize_post_template(post),
-                "vote_poll_participations": _serialize_post_vote_poll_participations(post),
                 "rubric": rubric.name if rubric else None,
                 "rubric_slug": rubric.slug if rubric else None,
                 "rubric_icon_url": _rubric_icon_url(request, rubric),
@@ -7081,7 +6652,6 @@ def _serialize_backend_post_card(
         "id": post.id,
         "title": _post_display_title(post),
         "template": _serialize_post_template(post),
-        "vote_poll_participations": _serialize_post_vote_poll_participations(post),
         "rubric": rubric.name if rubric else None,
         "rubric_slug": rubric.slug if rubric else None,
         "rubric_icon_url": _rubric_icon_url(request, rubric),
@@ -7449,10 +7019,7 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
         content = str(payload.get("content") or "").strip()
         author_source = str(payload.get("author_source") or "").strip().lower()
         author_username = str(payload.get("author_username") or "").strip()
-        template_payload, template_error = _normalize_post_template_payload(
-            payload.get("template"),
-            resolve_post_refs=True,
-        )
+        template_payload, template_error = _normalize_post_template_payload(payload.get("template"))
         if template_error:
             return JsonResponse({"ok": False, "error": template_error}, status=400)
         requested_template_type = _requested_template_type(template_payload)
@@ -7535,14 +7102,6 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
             seen_tag_keys.add(key)
             explicit_tags.append(tag_name)
 
-        raw_data = {
-            "source": "manual_comun",
-            "comun_slug": comun.slug,
-            "comun_category_id": category.id if category else None,
-            **({"template": template_payload} if template_payload else {}),
-        }
-        _sync_template_derived_raw_data(raw_data, template_payload)
-
         post = Post.objects.create(
             author=author,
             message_id=message_id,
@@ -7551,7 +7110,12 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
             rubric=author.rubric if author and author.rubric_id else None,
             channel_url=(author.invite_url or author.channel_url or ""),
             source_url=(author.invite_url or author.channel_url or ""),
-            raw_data=raw_data,
+            raw_data={
+                "source": "manual_comun",
+                "comun_slug": comun.slug,
+                "comun_category_id": category.id if category else None,
+                **({"template": template_payload} if template_payload else {}),
+            },
             is_pending=False,
             is_blocked=False,
             publish_at=None,
@@ -7887,7 +7451,6 @@ def search_content(request: HttpRequest) -> HttpResponse:
                     "id": post.id,
                     "title": _post_display_title(post),
                     "template": _serialize_post_template(post),
-                    "vote_poll_participations": _serialize_post_vote_poll_participations(post),
                     "rubric": rubric.name if rubric else None,
                     "rubric_slug": rubric.slug if rubric else None,
                     "rubric_icon_url": _rubric_icon_url(request, rubric)

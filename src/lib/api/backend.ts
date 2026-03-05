@@ -444,8 +444,6 @@ export type BackendPollOption = {
   index: number
   text: string
   voter_count: number
-  post_id?: number
-  post_path?: string
 }
 
 export type BackendPoll = {
@@ -454,18 +452,9 @@ export type BackendPoll = {
   is_anonymous: boolean
   allows_multiple_answers: boolean
   is_closed: boolean
-  close_at?: string | null
   total_voter_count: number
   options: BackendPollOption[]
   user_selection?: number[]
-}
-
-export type BackendPostVotePollParticipation = {
-  poll_post_id: number
-  poll_post_title: string
-  poll_post_path: string
-  question: string
-  close_at?: string | null
 }
 
 export type BackendPost = {
@@ -473,7 +462,6 @@ export type BackendPost = {
   title: string
   content: string
   template?: SitePostTemplate | null
-  vote_poll_participations?: BackendPostVotePollParticipation[]
   poll?: BackendPoll | null
   created_at: string
   source_url?: string | null
@@ -517,7 +505,6 @@ export const backendPostToPostView = (
       name: titleWithTags,
       body: post.content,
       template: post.template ?? null,
-      vote_poll_participations: post.vote_poll_participations ?? [],
       url: '',
       tags: post.tags ?? [],
       published: post.created_at,

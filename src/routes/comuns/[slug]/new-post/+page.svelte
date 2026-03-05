@@ -12,12 +12,10 @@
   import {
     buildPostTemplatePayload,
     createEmptyMovieReviewTemplateData,
-    createEmptyPostVotePollTemplateData,
     normalizeAllowedPostTemplateTypes,
     normalizeTemplateEditorBlockSettings,
     resolveEnabledTemplateEditorBlockTypes,
     type MovieReviewTemplateData,
-    type PostVotePollTemplateData,
     type PostTemplateType,
     type TemplateEditorBlockSettings,
   } from '$lib/postTemplates'
@@ -50,7 +48,6 @@
   let publishIdentityOptions: PublishIdentityOption[] = []
   let createTemplateType: '' | PostTemplateType = ''
   let createMovieReviewData: MovieReviewTemplateData = createEmptyMovieReviewTemplateData()
-  let createPostVotePollData: PostVotePollTemplateData = createEmptyPostVotePollTemplateData()
   let comunAllowedTemplateTypes: string[] = ['basic']
   let templateEditorBlockSettings: TemplateEditorBlockSettings = {}
 
@@ -189,8 +186,7 @@
     try {
       const template = buildPostTemplatePayload(
         createTemplateType,
-        createMovieReviewData,
-        createPostVotePollData
+        createMovieReviewData
       )
       await createComunPost(comun.slug, {
         title: createTitle.trim(),
@@ -304,7 +300,6 @@
         <PostTemplateFields
           bind:templateType={createTemplateType}
           bind:movieReviewData={createMovieReviewData}
-          bind:postVotePollData={createPostVotePollData}
           allowedTemplateTypes={comunAllowedTemplateTypes}
         />
 
@@ -341,7 +336,6 @@
               createCategoryId = ''
               createTemplateType = ''
               createMovieReviewData = createEmptyMovieReviewTemplateData()
-              createPostVotePollData = createEmptyPostVotePollTemplateData()
               createError = ''
             }}
             disabled={creating}

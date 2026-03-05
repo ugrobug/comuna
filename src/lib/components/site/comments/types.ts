@@ -9,7 +9,6 @@ export type SiteComment = {
   liked_by_me?: boolean
   can_edit?: boolean
   user: {
-    id: number
     username: string
   }
 }

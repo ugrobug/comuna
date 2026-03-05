@@ -1,6 +1,5 @@
-export type PostTemplateType = 'movie_review' | 'post_vote_poll'
+export type PostTemplateType = 'movie_review'
 export type PostTemplateCode = 'basic' | PostTemplateType
-
 export type TemplateEditorBlockType =
   | 'header'
   | 'list'
@@ -19,7 +18,6 @@ export type TemplateEditorBlockOption = {
   type: TemplateEditorBlockType
   label: string
 }
-
 export type TemplateEditorBlockSettings = Partial<Record<PostTemplateCode, TemplateEditorBlockType[]>>
 
 export type MovieReviewContentKind = 'movie' | 'series'
@@ -41,26 +39,7 @@ export type MovieReviewTemplate = {
   data: MovieReviewTemplateData
 }
 
-export type PostVotePollTemplateItem = {
-  post_id: number
-  title?: string
-  path?: string
-  author_username?: string
-}
-
-export type PostVotePollTemplateData = {
-  question?: string
-  items?: PostVotePollTemplateItem[]
-  ends_at?: string
-}
-
-export type PostVotePollTemplate = {
-  type: 'post_vote_poll'
-  version: 1
-  data: PostVotePollTemplateData
-}
-
-export type SitePostTemplate = MovieReviewTemplate | PostVotePollTemplate
+export type SitePostTemplate = MovieReviewTemplate
 
 export type PostTemplateTypeOption = {
   value: '' | PostTemplateType
@@ -70,15 +49,9 @@ export type PostTemplateTypeOption = {
 export const POST_TEMPLATE_TYPE_OPTIONS: PostTemplateTypeOption[] = [
   { value: '', label: 'Пост' },
   { value: 'movie_review', label: 'Кинообзор' },
-  { value: 'post_vote_poll', label: 'Голосование за посты' },
 ]
 
-const POST_TEMPLATE_CODE_VALUES = new Set<PostTemplateCode>([
-  'basic',
-  'movie_review',
-  'post_vote_poll',
-])
-
+const POST_TEMPLATE_CODE_VALUES = new Set<PostTemplateCode>(['basic', 'movie_review'])
 const TEMPLATE_EDITOR_BLOCK_TYPE_VALUES = new Set<TemplateEditorBlockType>([
   'header',
   'list',
@@ -109,14 +82,9 @@ const ALL_TEMPLATE_EDITOR_BLOCK_OPTIONS: TemplateEditorBlockOption[] = [
   { type: 'movie_card', label: 'Карточка фильма' },
 ]
 
-const BLOCKS_WITHOUT_MOVIE_CARD = ALL_TEMPLATE_EDITOR_BLOCK_OPTIONS.filter(
-  (option) => option.type !== 'movie_card'
-)
-
 const TEMPLATE_EDITOR_BLOCKS_BY_TEMPLATE: Record<PostTemplateCode, TemplateEditorBlockOption[]> = {
-  basic: BLOCKS_WITHOUT_MOVIE_CARD,
+  basic: ALL_TEMPLATE_EDITOR_BLOCK_OPTIONS.filter((option) => option.type !== 'movie_card'),
   movie_review: ALL_TEMPLATE_EDITOR_BLOCK_OPTIONS,
-  post_vote_poll: BLOCKS_WITHOUT_MOVIE_CARD,
 }
 
 export const normalizeAllowedPostTemplateTypes = (value: unknown): PostTemplateCode[] => {
@@ -137,9 +105,7 @@ export const normalizeAllowedPostTemplateTypes = (value: unknown): PostTemplateC
 export const resolveTemplateCode = (
   templateType: '' | PostTemplateType | null | undefined
 ): PostTemplateCode => {
-  if (templateType === 'movie_review') return 'movie_review'
-  if (templateType === 'post_vote_poll') return 'post_vote_poll'
-  return 'basic'
+  return templateType === 'movie_review' ? 'movie_review' : 'basic'
 }
 
 export const getTemplateEditorBlocks = (
@@ -256,7 +222,6 @@ export const MOVIE_REVIEW_WATCH_PROVIDER_OPTIONS: Array<{ value: string; label: 
 const genreLabelByValue = new Map(
   MOVIE_REVIEW_GENRE_OPTIONS.map((option) => [option.value, option.label])
 )
-
 const watchProviderLabelByValue = new Map(
   MOVIE_REVIEW_WATCH_PROVIDER_OPTIONS.map((option) => [option.value, option.label])
 )
@@ -311,11 +276,11 @@ const movieReviewWatchProviderAliases: Record<string, string> = {
   kinopoisk: 'kinopoisk',
   'kinopoisk hd': 'kinopoisk',
   kinopoiskhd: 'kinopoisk',
-  кинопоиск: 'kinopoisk',
+  'кинопоиск': 'kinopoisk',
   'кинопоиск hd': 'kinopoisk',
   okko: 'okko',
   ivi: 'ivi',
-  иви: 'ivi',
+  'иви': 'ivi',
   wink: 'wink',
   start: 'start',
   premier: 'premier',
@@ -355,8 +320,6 @@ const movieReviewWatchProviderAliases: Record<string, string> = {
   peacocktv: 'peacock',
 }
 
-const trimOrEmpty = (value: unknown): string => (typeof value === 'string' ? value.trim() : '')
-
 export const createEmptyMovieReviewTemplateData = (): MovieReviewTemplateData => ({
   imdb_url: '',
   poster_url: '',
@@ -368,11 +331,7 @@ export const createEmptyMovieReviewTemplateData = (): MovieReviewTemplateData =>
   watch_where: [],
 })
 
-export const createEmptyPostVotePollTemplateData = (): PostVotePollTemplateData => ({
-  question: '',
-  items: [],
-  ends_at: '',
-})
+const trimOrEmpty = (value: unknown): string => (typeof value === 'string' ? value.trim() : '')
 
 const normalizeMovieReviewGenre = (value: unknown): string => {
   const raw = trimOrEmpty(value)
@@ -420,97 +379,41 @@ export const normalizeMovieReviewTemplateData = (
   }
 }
 
-const normalizePostVotePollItems = (value: unknown): PostVotePollTemplateItem[] => {
-  const source = Array.isArray(value) ? value : []
-  const seen = new Set<number>()
-  const normalized: PostVotePollTemplateItem[] = []
-  for (const item of source) {
-    if (!item || typeof item !== 'object') continue
-    const rawPostId = Number((item as any).post_id ?? (item as any).id)
-    const postId = Number.isFinite(rawPostId) ? Math.floor(rawPostId) : 0
-    if (postId <= 0 || seen.has(postId)) continue
-    seen.add(postId)
-
-    const title = trimOrEmpty((item as any).title)
-    const pathRaw = trimOrEmpty((item as any).path)
-    const path = pathRaw.startsWith('/') ? pathRaw : ''
-    const authorUsername = trimOrEmpty((item as any).author_username)
-
-    const normalizedItem: PostVotePollTemplateItem = { post_id: postId }
-    if (title) normalizedItem.title = title
-    if (path) normalizedItem.path = path
-    if (authorUsername) normalizedItem.author_username = authorUsername
-
-    normalized.push(normalizedItem)
-    if (normalized.length >= 10) break
-  }
-  return normalized
-}
-
-const normalizePostVotePollEndsAt = (value: unknown): string => {
-  const raw = trimOrEmpty(value)
-  if (!raw) return ''
-  const timestamp = Date.parse(raw)
-  if (!Number.isFinite(timestamp)) return raw
-  return new Date(timestamp).toISOString()
-}
-
-export const normalizePostVotePollTemplateData = (
-  value: Partial<PostVotePollTemplateData> | null | undefined
-): PostVotePollTemplateData => {
-  return {
-    question: trimOrEmpty(value?.question),
-    items: normalizePostVotePollItems(value?.items),
-    ends_at: normalizePostVotePollEndsAt(value?.ends_at),
-  }
-}
-
 export const buildPostTemplatePayload = (
   templateType: '' | PostTemplateType,
-  movieReviewData: Partial<MovieReviewTemplateData> | null | undefined,
-  postVotePollData?: Partial<PostVotePollTemplateData> | null | undefined
+  movieReviewData: Partial<MovieReviewTemplateData> | null | undefined
 ): SitePostTemplate | null => {
-  if (templateType === 'movie_review') {
-    const normalized = normalizeMovieReviewTemplateData(movieReviewData)
-    const hasMeaningfulField = Boolean(
-      normalized.imdb_url ||
-        normalized.poster_url ||
-        normalized.genre ||
-        normalized.content_kind === 'series' ||
-        normalized.title ||
-        normalized.original_title ||
-        normalized.release_date ||
-        (normalized.watch_where?.length ?? 0)
-    )
-    if (!hasMeaningfulField) return null
-    return {
-      type: 'movie_review',
-      version: 1,
-      data: normalized,
-    }
+  if (templateType !== 'movie_review') {
+    return null
   }
 
-  if (templateType === 'post_vote_poll') {
-    return {
-      type: 'post_vote_poll',
-      version: 1,
-      data: normalizePostVotePollTemplateData(postVotePollData),
-    }
+  const normalized = normalizeMovieReviewTemplateData(movieReviewData)
+  const hasMeaningfulField = Boolean(
+    normalized.imdb_url ||
+      normalized.poster_url ||
+      normalized.genre ||
+      normalized.content_kind === 'series' ||
+      normalized.title ||
+      normalized.original_title ||
+      normalized.release_date ||
+      (normalized.watch_where?.length ?? 0)
+  )
+
+  if (!hasMeaningfulField) {
+    return null
   }
 
-  return null
+  return {
+    type: 'movie_review',
+    version: 1,
+    data: normalized,
+  }
 }
 
 export const isMovieReviewTemplate = (
   template: SitePostTemplate | null | undefined
 ): template is MovieReviewTemplate => {
   return template?.type === 'movie_review' && typeof template.data === 'object'
-}
-
-export const isPostVotePollTemplate = (
-  template: SitePostTemplate | null | undefined
-): template is PostVotePollTemplate => {
-  return template?.type === 'post_vote_poll' && typeof template.data === 'object'
 }
 
 export const movieReviewKindLabel = (kind: string | null | undefined): string => {
@@ -543,24 +446,5 @@ export const formatMovieReviewReleaseDate = (value: string | null | undefined): 
     day: 'numeric',
     month: 'long',
     year: 'numeric',
-  })
-}
-
-export const postVotePollOptionLabel = (item: PostVotePollTemplateItem): string => {
-  const title = trimOrEmpty(item?.title)
-  if (title) return title
-  return `Пост #${item.post_id}`
-}
-
-export const formatPostVotePollDeadline = (value: string | null | undefined): string => {
-  if (!value) return ''
-  const timestamp = Date.parse(value)
-  if (!Number.isFinite(timestamp)) return value
-  return new Date(timestamp).toLocaleString('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
   })
 }

@@ -1,33 +1,20 @@
 <script lang="ts">
   import { TextInput, toast } from 'mono-svelte'
-  import {
-    autofillMovieReviewTemplateByImdb,
-    resolveVotePollPostByReference,
-    searchPostsForVotePoll,
-    uploadSiteImage,
-    type VotePollPostCandidate,
-  } from '$lib/siteAuth'
+  import { autofillMovieReviewTemplateByImdb, uploadSiteImage } from '$lib/siteAuth'
   import {
     MOVIE_REVIEW_GENRE_OPTIONS,
     MOVIE_REVIEW_KIND_OPTIONS,
     MOVIE_REVIEW_WATCH_PROVIDER_OPTIONS,
     POST_TEMPLATE_TYPE_OPTIONS,
     createEmptyMovieReviewTemplateData,
-    createEmptyPostVotePollTemplateData,
-    formatPostVotePollDeadline,
     normalizeAllowedPostTemplateTypes,
     normalizeMovieReviewTemplateData,
-    normalizePostVotePollTemplateData,
-    postVotePollOptionLabel,
     type MovieReviewTemplateData,
     type PostTemplateType,
-    type PostVotePollTemplateData,
-    type PostVotePollTemplateItem,
   } from '$lib/postTemplates'
 
   export let templateType: '' | PostTemplateType = ''
   export let movieReviewData: MovieReviewTemplateData = createEmptyMovieReviewTemplateData()
-  export let postVotePollData: PostVotePollTemplateData = createEmptyPostVotePollTemplateData()
   export let allowedTemplateTypes: string[] | undefined = undefined
 
   let posterInput: HTMLInputElement | null = null
@@ -38,16 +25,6 @@
   let watchProviderLabels: string[] = []
   let allowedTemplateTypeSet = new Set<string>()
   let availableTemplateTypeOptions = POST_TEMPLATE_TYPE_OPTIONS
-
-  let votePollReference = ''
-  let votePollReferenceLoading = false
-  let votePollSearchQuery = ''
-  let votePollSearchLoading = false
-  let votePollSearchError = ''
-  let votePollSearchResults: VotePollPostCandidate[] = []
-  let votePollItems: PostVotePollTemplateItem[] = []
-  let votePollItemIds = new Set<number>()
-  let votePollDeadlineInput = ''
 
   $: allowedTemplateTypeSet = new Set(normalizeAllowedPostTemplateTypes(allowedTemplateTypes))
   $: availableTemplateTypeOptions = POST_TEMPLATE_TYPE_OPTIONS.filter((option) =>
@@ -72,119 +49,11 @@
     return values
   }
 
-  const formatDateTimeLocalValue = (value: string | undefined): string => {
-    const raw = (value || '').trim()
-    if (!raw) return ''
-    const timestamp = Date.parse(raw)
-    if (!Number.isFinite(timestamp)) return ''
-    const date = new Date(timestamp)
-    const year = String(date.getFullYear())
-    const month = String(date.getMonth() + 1).padStart(2, '0')
-    const day = String(date.getDate()).padStart(2, '0')
-    const hour = String(date.getHours()).padStart(2, '0')
-    const minute = String(date.getMinutes()).padStart(2, '0')
-    return `${year}-${month}-${day}T${hour}:${minute}`
-  }
-
-  const normalizeVotePollData = (value: Partial<PostVotePollTemplateData>) => {
-    postVotePollData = normalizePostVotePollTemplateData({
-      ...postVotePollData,
-      ...value,
-    })
-  }
-
-  const addVotePollItem = (item: VotePollPostCandidate) => {
-    const normalized = normalizePostVotePollTemplateData(postVotePollData)
-    const currentItems = normalized.items ?? []
-    if (currentItems.some((entry) => entry.post_id === item.post_id)) {
-      toast({ content: 'Этот пост уже добавлен', type: 'error' })
-      return
-    }
-    if (currentItems.length >= 10) {
-      toast({ content: 'Можно добавить не более 10 постов', type: 'error' })
-      return
-    }
-
-    normalizeVotePollData({
-      items: [
-        ...currentItems,
-        {
-          post_id: item.post_id,
-          title: item.title,
-          path: item.path,
-          author_username: item.author_username,
-        },
-      ],
-    })
-  }
-
-  const removeVotePollItem = (postId: number) => {
-    const normalized = normalizePostVotePollTemplateData(postVotePollData)
-    const currentItems = normalized.items ?? []
-    normalizeVotePollData({
-      items: currentItems.filter((item) => item.post_id !== postId),
-    })
-  }
-
-  const addVotePollItemByReference = async () => {
-    const reference = votePollReference.trim()
-    if (!reference || votePollReferenceLoading) return
-
-    votePollReferenceLoading = true
-    try {
-      const candidate = await resolveVotePollPostByReference(reference)
-      addVotePollItem(candidate)
-      votePollReference = ''
-    } catch (error) {
-      toast({
-        content: (error as Error)?.message ?? 'Не удалось добавить пост по ссылке',
-        type: 'error',
-      })
-    } finally {
-      votePollReferenceLoading = false
-    }
-  }
-
-  const searchVotePoll = async () => {
-    const query = votePollSearchQuery.trim()
-    if (!query) {
-      votePollSearchResults = []
-      votePollSearchError = ''
-      return
-    }
-    if (votePollSearchLoading) return
-
-    votePollSearchLoading = true
-    votePollSearchError = ''
-    try {
-      votePollSearchResults = await searchPostsForVotePoll(query, 10)
-    } catch (error) {
-      votePollSearchResults = []
-      votePollSearchError = (error as Error)?.message ?? 'Не удалось выполнить поиск'
-    } finally {
-      votePollSearchLoading = false
-    }
-  }
-
-  const onVotePollDeadlineChange = (event: Event) => {
-    const input = event.currentTarget as HTMLInputElement | null
-    normalizeVotePollData({ ends_at: input?.value || '' })
-  }
-
-  const onVotePollQuestionInput = (event: Event) => {
-    const input = event.currentTarget as HTMLInputElement | null
-    normalizeVotePollData({ question: input?.value || '' })
-  }
-
   $: watchProviderValues = selectedWatchProviders(movieReviewData.watch_where)
   $: watchProviderSet = new Set(watchProviderValues)
   $: watchProviderLabels = MOVIE_REVIEW_WATCH_PROVIDER_OPTIONS
     .filter((option) => watchProviderSet.has(option.value))
     .map((option) => option.label)
-
-  $: votePollItems = normalizePostVotePollTemplateData(postVotePollData).items ?? []
-  $: votePollItemIds = new Set(votePollItems.map((item) => item.post_id))
-  $: votePollDeadlineInput = formatDateTimeLocalValue(postVotePollData.ends_at)
 
   const toggleWatchProvider = (provider: string, enabled: boolean) => {
     const next = new Set(watchProviderValues)
@@ -399,7 +268,6 @@
           {/each}
         </select>
       </label>
-
       <label class="flex flex-col gap-1">
         <span class="text-sm text-slate-700 dark:text-zinc-300">Дата премьеры</span>
         <input
@@ -432,154 +300,6 @@
             {/each}
           </div>
         </details>
-      </div>
-    </div>
-  {:else if templateType === 'post_vote_poll'}
-    <div class="flex flex-col gap-4">
-      <label class="flex flex-col gap-1">
-        <span class="text-sm text-slate-700 dark:text-zinc-300">Вопрос голосования (необязательно)</span>
-        <input
-          type="text"
-          value={postVotePollData.question || ''}
-          on:input={onVotePollQuestionInput}
-          placeholder="Например, Какой пост лучший в этом месяце?"
-          class="w-full rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm text-slate-900 dark:text-zinc-100"
-        />
-      </label>
-
-      <label class="flex flex-col gap-1">
-        <span class="text-sm text-slate-700 dark:text-zinc-300">Срок голосования</span>
-        <input
-          type="datetime-local"
-          value={votePollDeadlineInput}
-          on:change={onVotePollDeadlineChange}
-          class="w-full rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm text-slate-900 dark:text-zinc-100"
-        />
-        {#if postVotePollData.ends_at}
-          <span class="text-xs text-slate-500 dark:text-zinc-400">
-            Завершится: {formatPostVotePollDeadline(postVotePollData.ends_at)}
-          </span>
-        {/if}
-      </label>
-
-      <div class="flex flex-col gap-2">
-        <span class="text-sm text-slate-700 dark:text-zinc-300">Добавить пост по ссылке</span>
-        <div class="flex flex-col sm:flex-row gap-2">
-          <input
-            type="text"
-            bind:value={votePollReference}
-            placeholder="/b/post/123 или https://.../b/post/123"
-            class="flex-1 rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm text-slate-900 dark:text-zinc-100"
-          />
-          <button
-            type="button"
-            on:click={addVotePollItemByReference}
-            disabled={votePollReferenceLoading}
-            class="rounded-lg border border-slate-300 dark:border-zinc-700 px-3 py-2 text-sm text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 disabled:opacity-50"
-          >
-            {votePollReferenceLoading ? 'Добавляем...' : 'Добавить'}
-          </button>
-        </div>
-      </div>
-
-      <div class="flex flex-col gap-2">
-        <span class="text-sm text-slate-700 dark:text-zinc-300">Поиск постов</span>
-        <div class="flex flex-col sm:flex-row gap-2">
-          <input
-            type="text"
-            bind:value={votePollSearchQuery}
-            on:keydown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault()
-                searchVotePoll()
-              }
-            }}
-            placeholder="Название поста или автор"
-            class="flex-1 rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm text-slate-900 dark:text-zinc-100"
-          />
-          <button
-            type="button"
-            on:click={searchVotePoll}
-            disabled={votePollSearchLoading}
-            class="rounded-lg border border-slate-300 dark:border-zinc-700 px-3 py-2 text-sm text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 disabled:opacity-50"
-          >
-            {votePollSearchLoading ? 'Ищем...' : 'Найти'}
-          </button>
-        </div>
-        {#if votePollSearchError}
-          <p class="text-xs text-red-600">{votePollSearchError}</p>
-        {/if}
-        {#if votePollSearchResults.length}
-          <div class="rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 divide-y divide-slate-100 dark:divide-zinc-800">
-            {#each votePollSearchResults as result (result.post_id)}
-              <div class="px-3 py-2 flex items-center justify-between gap-3">
-                <div class="min-w-0">
-                  <a
-                    href={result.path || `/b/post/${result.post_id}`}
-                    target="_blank"
-                    rel="noopener"
-                    class="text-sm text-slate-800 dark:text-zinc-100 hover:underline"
-                  >
-                    {result.title || `Пост #${result.post_id}`}
-                  </a>
-                  {#if result.author_username}
-                    <div class="text-xs text-slate-500 dark:text-zinc-400">@{result.author_username}</div>
-                  {/if}
-                </div>
-                <button
-                  type="button"
-                  class="rounded-md border border-slate-300 dark:border-zinc-700 px-2.5 py-1 text-xs text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 disabled:opacity-50"
-                  disabled={votePollItemIds.has(result.post_id)}
-                  on:click={() => addVotePollItem(result)}
-                >
-                  {votePollItemIds.has(result.post_id) ? 'Добавлен' : 'Добавить'}
-                </button>
-              </div>
-            {/each}
-          </div>
-        {/if}
-      </div>
-
-      <div class="flex flex-col gap-2">
-        <div class="flex items-center justify-between gap-3">
-          <span class="text-sm text-slate-700 dark:text-zinc-300">Выбранные посты</span>
-          <span class="text-xs text-slate-500 dark:text-zinc-400">{votePollItems.length}/10</span>
-        </div>
-        {#if votePollItems.length}
-          <div class="rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 divide-y divide-slate-100 dark:divide-zinc-800">
-            {#each votePollItems as item (item.post_id)}
-              <div class="px-3 py-2 flex items-center justify-between gap-3">
-                <div class="min-w-0">
-                  <a
-                    href={item.path || `/b/post/${item.post_id}`}
-                    target="_blank"
-                    rel="noopener"
-                    class="text-sm text-slate-800 dark:text-zinc-100 hover:underline"
-                  >
-                    {postVotePollOptionLabel(item)}
-                  </a>
-                  {#if item.author_username}
-                    <div class="text-xs text-slate-500 dark:text-zinc-400">@{item.author_username}</div>
-                  {/if}
-                </div>
-                <button
-                  type="button"
-                  class="rounded-md border border-slate-300 dark:border-zinc-700 px-2.5 py-1 text-xs text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800"
-                  on:click={() => removeVotePollItem(item.post_id)}
-                >
-                  Удалить
-                </button>
-              </div>
-            {/each}
-          </div>
-        {:else}
-          <div class="rounded-xl border border-dashed border-slate-300 dark:border-zinc-700 px-3 py-3 text-sm text-slate-500 dark:text-zinc-400">
-            Пока не добавлено ни одного поста.
-          </div>
-        {/if}
-        <p class="text-xs text-slate-500 dark:text-zinc-400">
-          Для публикации голосования добавьте минимум 2 поста и укажите срок голосования.
-        </p>
       </div>
     </div>
   {/if}
