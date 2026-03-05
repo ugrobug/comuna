@@ -820,7 +820,7 @@
         : ''
 
       const buildYandexTrackEmbedUrl = (trackId: string, albumId: string): string =>
-        `https://music.yandex.ru/iframe/#track/${trackId}/${albumId}`
+        `https://music.yandex.ru/iframe/album/${albumId}/track/${trackId}`
 
       const parseMusicEmbed = (
         value: string,
@@ -864,6 +864,24 @@
         ) {
           const albumId = yandexAlbumTrackMatch[1]
           const trackId = yandexAlbumTrackMatch[2]
+          return {
+            provider: 'yandex_music',
+            providerLabel: 'Яндекс Музыка',
+            embedUrl: buildYandexTrackEmbedUrl(trackId, albumId),
+            title: 'Плеер Яндекс Музыки',
+          }
+        }
+
+        const yandexIframeAlbumTrackMatch = path.match(
+          /\/iframe\/album\/(\d+)\/track\/(\d+)(?:\/|$)/i
+        )
+        if (
+          yandexIframeAlbumTrackMatch &&
+          (hint === 'auto' || hint === 'yandex_music') &&
+          (host === 'music.yandex.ru' || host === 'music.yandex.com')
+        ) {
+          const albumId = yandexIframeAlbumTrackMatch[1]
+          const trackId = yandexIframeAlbumTrackMatch[2]
           return {
             provider: 'yandex_music',
             providerLabel: 'Яндекс Музыка',

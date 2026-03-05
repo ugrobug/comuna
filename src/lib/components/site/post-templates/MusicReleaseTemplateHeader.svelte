@@ -8,16 +8,114 @@
   export let template: MusicReleaseTemplate
   export let fallbackTitle = ''
 
+  type ReleaseEmbed = {
+    provider: 'spotify' | 'yandex_music' | 'soundcloud'
+    providerLabel: string
+    embedUrl: string
+    title: string
+    height: number
+  }
+
+  const normalizeExternalUrl = (value: string | undefined): string => {
+    const raw = (value || '').trim()
+    if (!raw) return ''
+    if (/^https?:\/\//i.test(raw)) return raw
+    return `https://${raw}`
+  }
+
+  const resolveReleaseEmbed = (value: string): ReleaseEmbed | null => {
+    if (!value) return null
+
+    let parsed: URL
+    try {
+      parsed = new URL(value)
+    } catch {
+      return null
+    }
+
+    const host = parsed.hostname.replace(/^www\./i, '').toLowerCase()
+    const path = parsed.pathname
+
+    if (host === 'music.yandex.ru' || host === 'music.yandex.com') {
+      const albumTrackMatch =
+        path.match(/\/album\/(\d+)\/track\/(\d+)(?:\/|$)/i) ||
+        path.match(/\/iframe\/album\/(\d+)\/track\/(\d+)(?:\/|$)/i)
+      if (albumTrackMatch) {
+        const albumId = albumTrackMatch[1]
+        const trackId = albumTrackMatch[2]
+        return {
+          provider: 'yandex_music',
+          providerLabel: 'Яндекс Музыка',
+          embedUrl: `https://music.yandex.ru/iframe/album/${albumId}/track/${trackId}`,
+          title: 'Плеер Яндекс Музыки',
+          height: 244,
+        }
+      }
+
+      const trackMatch = path.match(/\/track\/(\d+)(?:\/|$)/i)
+      if (trackMatch) {
+        const trackId = trackMatch[1]
+        const albumId = parsed.searchParams.get('album_id') || parsed.searchParams.get('albumId')
+        if (albumId) {
+          return {
+            provider: 'yandex_music',
+            providerLabel: 'Яндекс Музыка',
+            embedUrl: `https://music.yandex.ru/iframe/album/${albumId}/track/${trackId}`,
+            title: 'Плеер Яндекс Музыки',
+            height: 244,
+          }
+        }
+      }
+    }
+
+    if (host === 'open.spotify.com' || host.endsWith('.spotify.com')) {
+      const trackMatch = path.match(/\/track\/([A-Za-z0-9]+)(?:\/|$)/)
+      if (trackMatch) {
+        return {
+          provider: 'spotify',
+          providerLabel: 'Spotify',
+          embedUrl: `https://open.spotify.com/embed/track/${trackMatch[1]}?utm_source=comuna`,
+          title: 'Плеер Spotify',
+          height: 152,
+        }
+      }
+      const albumMatch = path.match(/\/album\/([A-Za-z0-9]+)(?:\/|$)/)
+      if (albumMatch) {
+        return {
+          provider: 'spotify',
+          providerLabel: 'Spotify',
+          embedUrl: `https://open.spotify.com/embed/album/${albumMatch[1]}?utm_source=comuna`,
+          title: 'Плеер Spotify',
+          height: 352,
+        }
+      }
+    }
+
+    if (host === 'soundcloud.com' || host.endsWith('.soundcloud.com') || host === 'snd.sc') {
+      return {
+        provider: 'soundcloud',
+        providerLabel: 'SoundCloud',
+        embedUrl: `https://w.soundcloud.com/player/?url=${encodeURIComponent(value)}&auto_play=false&hide_related=false&show_comments=false&show_user=true&show_reposts=false`,
+        title: 'Плеер SoundCloud',
+        height: 180,
+      }
+    }
+
+    return null
+  }
+
   $: data = template.data
   $: displayTitle = (data.release_title || fallbackTitle || '').trim()
   $: displayArtist = (data.artist_name || '').trim()
   $: styleLabel = musicReleaseStyleLabel(data.style)
   $: releaseDateLabel = formatMusicReleaseDate(data.release_date)
   $: locationLabel = [data.city, data.country].filter(Boolean).join(', ')
+  $: normalizedAlbumUrl = normalizeExternalUrl(data.album_url)
+  $: releaseEmbed = resolveReleaseEmbed(normalizedAlbumUrl)
   $: albumHost = (() => {
     try {
-      if (!data.album_url) return ''
-      return new URL(data.album_url).hostname.replace(/^www\./, '')
+      if (!normalizedAlbumUrl) return ''
+      return new URL(normalizedAlbumUrl).hostname.replace(/^www\./, '')
     } catch {
       return ''
     }
@@ -62,11 +160,11 @@
           </div>
         {/if}
 
-        {#if data.album_url}
+        {#if normalizedAlbumUrl}
           <div class="music-release-meta-item">
             <span class="music-release-meta-label">Ссылка на релиз</span>
             <a
-              href={data.album_url}
+              href={normalizedAlbumUrl}
               target="_blank"
               rel="nofollow noopener"
               class="music-release-meta-link"
@@ -76,6 +174,21 @@
           </div>
         {/if}
       </div>
+
+      {#if releaseEmbed}
+        <div class="music-release-hero__player">
+          <iframe
+            class="music-release-player__frame"
+            src={releaseEmbed.embedUrl}
+            loading="lazy"
+            title={releaseEmbed.title}
+            frameborder="0"
+            allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+            referrerpolicy="no-referrer-when-downgrade"
+            style={`--player-height:${releaseEmbed.height}px`}
+          ></iframe>
+        </div>
+      {/if}
     </div>
   </div>
 </section>
@@ -218,6 +331,21 @@
 
   .music-release-meta-link:hover {
     color: #6ee7b7;
+  }
+
+  .music-release-hero__player {
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 0.85rem;
+    overflow: hidden;
+    background: rgba(15, 23, 42, 0.45);
+    margin-top: 0.2rem;
+  }
+
+  .music-release-player__frame {
+    display: block;
+    width: 100%;
+    height: var(--player-height, 180px);
+    border: 0;
   }
 
   @media (max-width: 760px) {
