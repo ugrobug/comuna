@@ -50,6 +50,7 @@
     orderedList: `${iconPath}/list-ol.svg`,
     checklist: `${iconPath}/list-check.svg`,
     clock: `${iconPath}/clock.svg`,
+    music: `${iconPath}/music-note.svg`,
     map: `${iconPath}/geo-alt.svg`,
     imageCompare: `${iconPath}/images.svg`,
     movieCard: `${iconPath}/card-image.svg`,
@@ -1061,6 +1062,156 @@
     save() {
       return {
         use_template: this.data.use_template,
+      }
+    }
+  }
+
+  class MusicTool {
+    private data: {
+      url: string
+      provider: string
+      caption: string
+    }
+
+    static get toolbox() {
+      return {
+        title: 'Музыка',
+        icon: `<img src="${icons.music}" width="16" height="16" />`,
+      }
+    }
+
+    constructor({
+      data,
+    }: {
+      data?: { url?: unknown; provider?: unknown; caption?: unknown }
+    }) {
+      this.data = {
+        url: typeof data?.url === 'string' ? data.url.trim() : '',
+        provider:
+          typeof data?.provider === 'string' ? this.normalizeProvider(data.provider) : 'auto',
+        caption: typeof data?.caption === 'string' ? data.caption.trim() : '',
+      }
+    }
+
+    private normalizeProvider(value: string): string {
+      const normalized = String(value || '').trim().toLowerCase()
+      if (normalized === 'spotify') return 'spotify'
+      if (normalized === 'yandex_music') return 'yandex_music'
+      if (normalized === 'soundcloud') return 'soundcloud'
+      return 'auto'
+    }
+
+    private inferProviderFromUrl(value: string): string {
+      const raw = value.trim().toLowerCase()
+      if (!raw) return 'unknown'
+      if (raw.includes('open.spotify.com/track/')) return 'spotify'
+      if (raw.includes('music.yandex.ru/') || raw.includes('music.yandex.com/')) {
+        return 'yandex_music'
+      }
+      if (raw.includes('soundcloud.com/') || raw.includes('snd.sc/')) return 'soundcloud'
+      return 'unknown'
+    }
+
+    private providerLabel(value: string): string {
+      if (value === 'spotify') return 'Spotify'
+      if (value === 'yandex_music') return 'Яндекс Музыка'
+      if (value === 'soundcloud') return 'SoundCloud'
+      return 'не определена'
+    }
+
+    render() {
+      const wrapper = document.createElement('div')
+      wrapper.classList.add('music-tool')
+
+      const title = document.createElement('div')
+      title.classList.add('music-tool__title')
+      title.textContent = 'Музыка'
+
+      const subtitle = document.createElement('p')
+      subtitle.classList.add('music-tool__subtitle')
+      subtitle.textContent =
+        'Вставьте ссылку на трек. Поддержка: Spotify, Яндекс Музыка, SoundCloud.'
+
+      const providerLabel = document.createElement('label')
+      providerLabel.classList.add('music-tool__label')
+      providerLabel.textContent = 'Площадка'
+
+      const providerSelect = document.createElement('select')
+      providerSelect.classList.add('music-tool__select')
+      const providerOptions = [
+        { value: 'auto', label: 'Определить автоматически' },
+        { value: 'spotify', label: 'Spotify' },
+        { value: 'yandex_music', label: 'Яндекс Музыка' },
+        { value: 'soundcloud', label: 'SoundCloud' },
+      ]
+      providerOptions.forEach((option) => {
+        const optionElement = document.createElement('option')
+        optionElement.value = option.value
+        optionElement.textContent = option.label
+        providerSelect.appendChild(optionElement)
+      })
+      providerSelect.value = this.normalizeProvider(this.data.provider)
+
+      const urlInput = document.createElement('input')
+      urlInput.type = 'url'
+      urlInput.classList.add('music-tool__input')
+      urlInput.placeholder = 'https://open.spotify.com/track/...'
+      urlInput.value = this.data.url
+
+      const captionInput = document.createElement('textarea')
+      captionInput.classList.add('music-tool__textarea')
+      captionInput.rows = 2
+      captionInput.placeholder = 'Подпись к треку (необязательно)'
+      captionInput.value = this.data.caption
+
+      const preview = document.createElement('div')
+      preview.classList.add('music-tool__preview')
+
+      const updatePreview = () => {
+        this.data.url = urlInput.value.trim()
+        this.data.provider = this.normalizeProvider(providerSelect.value)
+        this.data.caption = captionInput.value.trim()
+
+        if (!this.data.url) {
+          preview.textContent = 'После вставки ссылки в посте появится встроенный плеер.'
+          return
+        }
+
+        const detectedProvider = this.inferProviderFromUrl(this.data.url)
+        const effectiveProvider =
+          this.data.provider === 'auto' ? detectedProvider : this.data.provider
+        const label = this.providerLabel(effectiveProvider)
+
+        if (effectiveProvider === 'unknown') {
+          preview.textContent =
+            'Ссылка сохранена. Если плеер не отобразится, используйте ссылку Spotify, Яндекс Музыки или SoundCloud.'
+          return
+        }
+
+        preview.textContent = `Плеер будет показан через ${label}.`
+      }
+
+      providerSelect.addEventListener('change', updatePreview)
+      urlInput.addEventListener('input', updatePreview)
+      captionInput.addEventListener('input', updatePreview)
+
+      wrapper.appendChild(title)
+      wrapper.appendChild(subtitle)
+      wrapper.appendChild(providerLabel)
+      wrapper.appendChild(providerSelect)
+      wrapper.appendChild(urlInput)
+      wrapper.appendChild(captionInput)
+      wrapper.appendChild(preview)
+
+      updatePreview()
+      return wrapper
+    }
+
+    save() {
+      return {
+        url: this.data.url.trim(),
+        provider: this.normalizeProvider(this.data.provider),
+        caption: this.data.caption.trim(),
       }
     }
   }
@@ -2275,6 +2426,11 @@
               movie_time: MovieTimeTool,
             }
           : {}),
+        ...(enabledTemplateBlockTypes.has('music')
+          ? {
+              music: MusicTool,
+            }
+          : {}),
         ...(enabledTemplateBlockTypes.has('movie_card')
           ? {
               movie_card: MovieCardTool,
@@ -3327,6 +3483,85 @@
     font-size: 0.78rem;
     line-height: 1.35;
     padding: 0.5rem 0.65rem;
+  }
+
+  :global(.music-tool) {
+    border-radius: 0.9rem;
+    border: 1px solid rgba(14, 165, 233, 0.38);
+    background:
+      radial-gradient(120% 120% at 0% 0%, rgba(56, 189, 248, 0.2), rgba(56, 189, 248, 0) 60%),
+      linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.9));
+    color: #e2e8f0;
+    padding: 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+
+  :global(.dark .music-tool) {
+    border-color: rgba(56, 189, 248, 0.42);
+  }
+
+  :global(.music-tool__title) {
+    font-weight: 700;
+    color: #fff;
+    font-size: 0.95rem;
+    line-height: 1.2;
+  }
+
+  :global(.music-tool__subtitle) {
+    margin: 0;
+    color: #bae6fd;
+    font-size: 0.78rem;
+    line-height: 1.35;
+  }
+
+  :global(.music-tool__label) {
+    color: #e0f2fe;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+
+  :global(.music-tool__select),
+  :global(.music-tool__input),
+  :global(.music-tool__textarea) {
+    width: 100%;
+    border-radius: 0.7rem;
+    border: 1px solid rgba(56, 189, 248, 0.34);
+    background: rgba(15, 23, 42, 0.48);
+    color: #f8fafc;
+    font-size: 0.86rem;
+    line-height: 1.3;
+    padding: 0.55rem 0.68rem;
+  }
+
+  :global(.music-tool__select:focus),
+  :global(.music-tool__input:focus),
+  :global(.music-tool__textarea:focus) {
+    outline: none;
+    border-color: rgba(56, 189, 248, 0.85);
+    box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+  }
+
+  :global(.music-tool__input::placeholder),
+  :global(.music-tool__textarea::placeholder) {
+    color: #7dd3fc;
+  }
+
+  :global(.music-tool__textarea) {
+    resize: vertical;
+    min-height: 4rem;
+  }
+
+  :global(.music-tool__preview) {
+    border-radius: 0.7rem;
+    border: 1px solid rgba(56, 189, 248, 0.32);
+    background: rgba(15, 23, 42, 0.44);
+    color: #e0f2fe;
+    font-size: 0.78rem;
+    line-height: 1.35;
+    padding: 0.52rem 0.66rem;
   }
 
   :global(.map-tool) {

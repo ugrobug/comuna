@@ -42,15 +42,27 @@
             const src = node.getAttribute('src') || ''
             const isTelegram = src.startsWith('https://t.me/')
             const isOpenStreetMap = src.startsWith('https://www.openstreetmap.org/export/embed.html')
-            if (!isTelegram && !isOpenStreetMap) {
+            const isSpotify = src.startsWith('https://open.spotify.com/embed/')
+            const isSoundCloud = src.startsWith('https://w.soundcloud.com/player/')
+            const isYandexMusic =
+              src.startsWith('https://music.yandex.ru/iframe/') ||
+              src.startsWith('https://music.yandex.com/iframe/')
+            if (!isTelegram && !isOpenStreetMap && !isSpotify && !isSoundCloud && !isYandexMusic) {
               node.remove()
               return
             }
             node.setAttribute('loading', 'lazy')
-            node.setAttribute(
-              'referrerpolicy',
-              isOpenStreetMap ? 'no-referrer-when-downgrade' : 'no-referrer'
-            )
+            if (!node.getAttribute('allow')) {
+              node.setAttribute(
+                'allow',
+                'autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture'
+              )
+            }
+            const referrerPolicy =
+              isOpenStreetMap || isSpotify || isSoundCloud || isYandexMusic
+                ? 'no-referrer-when-downgrade'
+                : 'no-referrer'
+            node.setAttribute('referrerpolicy', referrerPolicy)
           }
         })
         purifyConfigured = true
@@ -781,6 +793,161 @@
       </div>`
     }
 
+    const renderMusicBlock = (raw: any): string => {
+      if (!isTemplateEditorBlockEnabled(template?.type ?? '', 'music')) return ''
+
+      const rawUrl = typeof raw?.url === 'string' ? raw.url.trim() : ''
+      if (!rawUrl) return ''
+
+      const normalizeExternalUrl = (value: string): string => {
+        const candidate = value.trim()
+        if (!candidate) return ''
+        if (/^https?:\/\//i.test(candidate)) return candidate
+        return `https://${candidate}`
+      }
+
+      const safeExternalUrl = normalizeExternalUrl(rawUrl)
+      if (!safeExternalUrl) return ''
+
+      const providerHint = typeof raw?.provider === 'string' ? raw.provider.trim().toLowerCase() : 'auto'
+      const captionText =
+        typeof raw?.caption === 'string' ? raw.caption.trim() : ''
+      const figureCaption = captionText
+        ? `<figcaption class="post-music__caption">${escapeHtml(captionText)}</figcaption>`
+        : ''
+      const fallbackCaption = captionText
+        ? `<p class="post-music__caption">${escapeHtml(captionText)}</p>`
+        : ''
+
+      const parseMusicEmbed = (
+        value: string,
+        hint: string
+      ): {
+        provider: string
+        providerLabel: string
+        embedUrl: string
+        title: string
+      } | null => {
+        let parsed: URL
+        try {
+          parsed = new URL(value)
+        } catch {
+          return null
+        }
+
+        const host = parsed.hostname.replace(/^www\./i, '').toLowerCase()
+        const path = parsed.pathname
+
+        const spotifyMatch = path.match(/\/track\/([a-zA-Z0-9]+)(?:\/|$)/)
+        if (
+          spotifyMatch &&
+          (hint === 'auto' || hint === 'spotify') &&
+          (host === 'open.spotify.com' || host.endsWith('.spotify.com'))
+        ) {
+          const trackId = spotifyMatch[1]
+          return {
+            provider: 'spotify',
+            providerLabel: 'Spotify',
+            embedUrl: `https://open.spotify.com/embed/track/${trackId}?utm_source=comuna`,
+            title: 'Плеер Spotify',
+          }
+        }
+
+        const yandexAlbumTrackMatch = path.match(/\/album\/(\d+)\/track\/(\d+)(?:\/|$)/)
+        if (
+          yandexAlbumTrackMatch &&
+          (hint === 'auto' || hint === 'yandex_music') &&
+          (host === 'music.yandex.ru' || host === 'music.yandex.com')
+        ) {
+          const albumId = yandexAlbumTrackMatch[1]
+          const trackId = yandexAlbumTrackMatch[2]
+          return {
+            provider: 'yandex_music',
+            providerLabel: 'Яндекс Музыка',
+            embedUrl: `https://music.yandex.ru/iframe/track/${trackId}/${albumId}`,
+            title: 'Плеер Яндекс Музыки',
+          }
+        }
+
+        const yandexTrackMatch = path.match(/\/track\/(\d+)(?:\/|$)/)
+        if (
+          yandexTrackMatch &&
+          (hint === 'auto' || hint === 'yandex_music') &&
+          (host === 'music.yandex.ru' || host === 'music.yandex.com')
+        ) {
+          const trackId = yandexTrackMatch[1]
+          const albumId = parsed.searchParams.get('album_id') || parsed.searchParams.get('albumId')
+          if (albumId) {
+            return {
+              provider: 'yandex_music',
+              providerLabel: 'Яндекс Музыка',
+              embedUrl: `https://music.yandex.ru/iframe/track/${trackId}/${albumId}`,
+              title: 'Плеер Яндекс Музыки',
+            }
+          }
+        }
+
+        if (
+          (hint === 'auto' || hint === 'soundcloud') &&
+          (host === 'soundcloud.com' || host.endsWith('.soundcloud.com') || host === 'snd.sc')
+        ) {
+          return {
+            provider: 'soundcloud',
+            providerLabel: 'SoundCloud',
+            embedUrl: `https://w.soundcloud.com/player/?url=${encodeURIComponent(value)}&auto_play=false&hide_related=false&show_comments=false&show_user=true&show_reposts=false`,
+            title: 'Плеер SoundCloud',
+          }
+        }
+
+        return null
+      }
+
+      const parsedEmbed = parseMusicEmbed(safeExternalUrl, providerHint)
+      if (!parsedEmbed) {
+        return `<div class="post-music post-music--link-only">
+          <div class="post-music__header">
+            <span class="post-music__badge">Музыка</span>
+            <a
+              href="${escapeHtml(safeExternalUrl)}"
+              target="_blank"
+              rel="nofollow noopener"
+              class="post-music__open-link"
+            >
+              Открыть трек
+            </a>
+          </div>
+          <p class="post-music__fallback">
+            Для этой ссылки встроенный плеер недоступен. Поддержка: Spotify, Яндекс Музыка, SoundCloud.
+          </p>
+          ${fallbackCaption}
+        </div>`
+      }
+
+      return `<figure class="post-music" data-music-provider="${parsedEmbed.provider}">
+        <div class="post-music__header">
+          <span class="post-music__badge">Музыка</span>
+          <span class="post-music__provider">${parsedEmbed.providerLabel}</span>
+          <a
+            href="${escapeHtml(safeExternalUrl)}"
+            target="_blank"
+            rel="nofollow noopener"
+            class="post-music__open-link"
+          >
+            Открыть трек
+          </a>
+        </div>
+        <iframe
+          class="post-music__frame"
+          src="${escapeHtml(parsedEmbed.embedUrl)}"
+          loading="lazy"
+          title="${escapeHtml(parsedEmbed.title)}"
+          frameborder="0"
+          allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+        ></iframe>
+        ${figureCaption}
+      </figure>`
+    }
+
     switch (block.type) {
       case 'paragraph':
         return `<p>${block.data.text}</p>`;
@@ -822,6 +989,9 @@
       case 'movie_card':
       case 'movieCard':
         return renderMovieCardBlock(block.data)
+      case 'music':
+      case 'musicTrack':
+        return renderMusicBlock(block.data)
       case 'link':
       case 'customLink':
         const url = block.data.url || '#';
@@ -1295,6 +1465,7 @@
           'width',
           'height',
           'class',
+          'title',
           'allow',
           'allowfullscreen',
           'frameborder',
@@ -1307,6 +1478,7 @@
           'data-poll-multiple',
           'data-poll-closed',
           'data-poll-id',
+          'data-music-provider',
         ],
       });
     }
@@ -1908,6 +2080,86 @@
     color: #cbd5e1;
     font-size: 0.84rem;
     line-height: 1.4;
+  }
+
+  :global(.post-content .post-music) {
+    margin: 1rem 0;
+    border-radius: 0.95rem;
+    border: 1px solid rgba(56, 189, 248, 0.34);
+    background:
+      radial-gradient(130% 140% at 0% 0%, rgba(56, 189, 248, 0.18), rgba(56, 189, 248, 0) 60%),
+      linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(30, 41, 59, 0.9));
+    color: #e2e8f0;
+    padding: 0.78rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+
+  :global(.post-content .post-music__header) {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+  }
+
+  :global(.post-content .post-music__badge) {
+    border-radius: 999px;
+    border: 1px solid rgba(56, 189, 248, 0.4);
+    background: rgba(15, 23, 42, 0.45);
+    color: #7dd3fc;
+    font-size: 0.7rem;
+    line-height: 1.1;
+    padding: 0.23rem 0.54rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    font-weight: 700;
+  }
+
+  :global(.post-content .post-music__provider) {
+    font-size: 0.78rem;
+    line-height: 1.2;
+    color: #e0f2fe;
+    font-weight: 600;
+  }
+
+  :global(.post-content .post-music__open-link) {
+    margin-left: auto;
+    color: #38bdf8;
+    font-size: 0.78rem;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    font-weight: 600;
+  }
+
+  :global(.post-content .post-music__open-link:hover) {
+    color: #7dd3fc;
+  }
+
+  :global(.post-content .post-music__frame) {
+    width: 100%;
+    min-height: 152px;
+    border: 0;
+    border-radius: 0.72rem;
+    background: rgba(2, 6, 23, 0.45);
+  }
+
+  :global(.post-content .post-music[data-music-provider='yandex_music'] .post-music__frame) {
+    min-height: 200px;
+  }
+
+  :global(.post-content .post-music__caption) {
+    margin: 0;
+    color: #cbd5e1;
+    font-size: 0.8rem;
+    line-height: 1.35;
+  }
+
+  :global(.post-content .post-music--link-only .post-music__fallback) {
+    margin: 0;
+    color: #bae6fd;
+    font-size: 0.8rem;
+    line-height: 1.35;
   }
 
   @media (max-width: 640px) {

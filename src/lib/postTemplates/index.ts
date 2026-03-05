@@ -12,6 +12,7 @@ export type TemplateEditorBlockType =
   | 'compare'
   | 'link'
   | 'embed'
+  | 'music'
   | 'movie_time'
   | 'movie_card'
 
@@ -91,6 +92,7 @@ const TEMPLATE_EDITOR_BLOCK_TYPE_VALUES = new Set<TemplateEditorBlockType>([
   'compare',
   'link',
   'embed',
+  'music',
   'movie_time',
   'movie_card',
 ])
@@ -106,6 +108,7 @@ const ALL_TEMPLATE_EDITOR_BLOCK_OPTIONS: TemplateEditorBlockOption[] = [
   { type: 'compare', label: 'Сравнение изображений' },
   { type: 'link', label: 'Ссылка' },
   { type: 'embed', label: 'Встраивание (Embed)' },
+  { type: 'music', label: 'Музыка' },
   { type: 'movie_time', label: 'Время в фильме' },
   { type: 'movie_card', label: 'Карточка фильма' },
 ]
