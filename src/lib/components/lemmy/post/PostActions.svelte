@@ -105,6 +105,22 @@
   $: buttonHeight = view == 'compact' ? 'h-7' : 'h-8'
   $: buttonSquare = view == 'compact' ? 'w-7 h-7' : 'w-8 h-8'
   $: isBackendPost = backendPostId !== null
+  $: backendCreatorUsername = (post.creator?.name ?? '').trim().toLowerCase()
+  $: backendOwnedAuthorUsernames = $siteUser
+    ? [
+        ($siteUser.username ?? '').trim().toLowerCase(),
+        ...($siteUser.authors ?? [])
+          .map((author) => (author?.username ?? '').trim().toLowerCase())
+          .filter(Boolean),
+      ]
+    : []
+  $: canEditBackendPost =
+    Boolean(
+      isBackendPost &&
+        $siteToken &&
+        backendCreatorUsername &&
+        backendOwnedAuthorUsernames.includes(backendCreatorUsername)
+    )
   $: if (backendLikes !== null && backendLikes !== undefined) backendLikesCount = backendLikes
   $: if (backendComments !== null && backendComments !== undefined)
     backendCommentsCount = backendComments
@@ -555,6 +571,12 @@
     <MenuDivider>
       {$t('post.actions.more.actions')}
     </MenuDivider>
+    {#if canEditBackendPost && backendPostId}
+      <MenuButton link href={`/account?edit=${backendPostId}`}>
+        <Icon src={PencilSquare} size="16" micro slot="prefix" />
+        {$t('post.actions.more.edit')}
+      </MenuButton>
+    {/if}
     {#if $profile?.user && (post.creator.id == $profile.user.local_user_view.person.id || isAdmin($profile.user))}
       <MenuButton 
         on:click={() => {

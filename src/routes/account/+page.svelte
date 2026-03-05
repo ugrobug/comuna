@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { page } from '$app/stores'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import { Button, Modal, Spinner, TextInput, toast } from 'mono-svelte'
   import { Icon, Trash } from 'svelte-hero-icons'
@@ -37,6 +38,7 @@
   let saving = false
   let saveError = ''
   let deletingPostId: number | null = null
+  let autoEditPostIdHandled: number | null = null
 
   const loadCode = async () => {
     loading = true
@@ -182,6 +184,23 @@
       }
     })
   })
+
+  $: autoEditPostIdRaw = $page.url.searchParams.get('edit')
+  $: autoEditPostId = autoEditPostIdRaw ? Number(autoEditPostIdRaw) : null
+  $: if (
+    autoEditPostId &&
+    Number.isFinite(autoEditPostId) &&
+    autoEditPostId > 0 &&
+    autoEditPostIdHandled !== autoEditPostId &&
+    !postsLoading &&
+    posts.length
+  ) {
+    const postToEdit = posts.find((item) => item.id === autoEditPostId)
+    if (postToEdit) {
+      openEdit(postToEdit)
+      autoEditPostIdHandled = autoEditPostId
+    }
+  }
 
 </script>
 
