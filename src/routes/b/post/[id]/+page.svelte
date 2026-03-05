@@ -76,7 +76,9 @@
   $: templatePoster =
     data.post?.template?.type === 'movie_review'
       ? (data.post?.template?.data?.poster_url ?? '')
-      : ''
+      : data.post?.template?.type === 'music_release'
+        ? (data.post?.template?.data?.cover_image_url ?? '')
+        : ''
   $: firstImage = extractFirstImage(data.post?.content || '')
   $: firstImageAbsolute = ensureAbsoluteUrl(templatePoster || firstImage || '', siteBaseUrl)
   $: ogImage = isPreviewImageCandidate(firstImageAbsolute) ? firstImageAbsolute : ''

@@ -1,4 +1,4 @@
-export type PostTemplateType = 'movie_review' | 'post_vote_poll'
+export type PostTemplateType = 'movie_review' | 'post_vote_poll' | 'music_release'
 export type PostTemplateCode = 'basic' | PostTemplateType
 
 export type TemplateEditorBlockType =
@@ -62,7 +62,24 @@ export type PostVotePollTemplate = {
   data: PostVotePollTemplateData
 }
 
-export type SitePostTemplate = MovieReviewTemplate | PostVotePollTemplate
+export type MusicReleaseTemplateData = {
+  cover_image_url?: string
+  release_date?: string
+  album_url?: string
+  artist_name?: string
+  release_title?: string
+  country?: string
+  city?: string
+  style?: string
+}
+
+export type MusicReleaseTemplate = {
+  type: 'music_release'
+  version: 1
+  data: MusicReleaseTemplateData
+}
+
+export type SitePostTemplate = MovieReviewTemplate | PostVotePollTemplate | MusicReleaseTemplate
 
 export type PostTemplateTypeOption = {
   value: '' | PostTemplateType
@@ -73,12 +90,14 @@ export const POST_TEMPLATE_TYPE_OPTIONS: PostTemplateTypeOption[] = [
   { value: '', label: 'Пост' },
   { value: 'movie_review', label: 'Кинообзор' },
   { value: 'post_vote_poll', label: 'Голосование за посты' },
+  { value: 'music_release', label: 'Музыкальный релиз' },
 ]
 
 const POST_TEMPLATE_CODE_VALUES = new Set<PostTemplateCode>([
   'basic',
   'movie_review',
   'post_vote_poll',
+  'music_release',
 ])
 
 const TEMPLATE_EDITOR_BLOCK_TYPE_VALUES = new Set<TemplateEditorBlockType>([
@@ -121,6 +140,7 @@ const TEMPLATE_EDITOR_BLOCKS_BY_TEMPLATE: Record<PostTemplateCode, TemplateEdito
   basic: BLOCKS_WITHOUT_MOVIE_CARD,
   movie_review: ALL_TEMPLATE_EDITOR_BLOCK_OPTIONS,
   post_vote_poll: BLOCKS_WITHOUT_MOVIE_CARD,
+  music_release: BLOCKS_WITHOUT_MOVIE_CARD,
 }
 
 export const normalizeAllowedPostTemplateTypes = (value: unknown): PostTemplateCode[] => {
@@ -143,6 +163,7 @@ export const resolveTemplateCode = (
 ): PostTemplateCode => {
   if (templateType === 'movie_review') return 'movie_review'
   if (templateType === 'post_vote_poll') return 'post_vote_poll'
+  if (templateType === 'music_release') return 'music_release'
   return 'basic'
 }
 
@@ -257,12 +278,47 @@ export const MOVIE_REVIEW_WATCH_PROVIDER_OPTIONS: Array<{ value: string; label: 
   { value: 'peacock', label: 'Peacock' },
 ]
 
+export const MUSIC_RELEASE_STYLE_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'pop', label: 'Поп' },
+  { value: 'rock', label: 'Рок' },
+  { value: 'indie', label: 'Инди' },
+  { value: 'alternative', label: 'Альтернатива' },
+  { value: 'metal', label: 'Метал' },
+  { value: 'punk', label: 'Панк' },
+  { value: 'hip_hop', label: 'Хип-хоп' },
+  { value: 'rap', label: 'Рэп' },
+  { value: 'rnb', label: 'R&B' },
+  { value: 'electronic', label: 'Электроника' },
+  { value: 'edm', label: 'EDM' },
+  { value: 'house', label: 'House' },
+  { value: 'techno', label: 'Techno' },
+  { value: 'trance', label: 'Trance' },
+  { value: 'drum_and_bass', label: 'Drum & Bass' },
+  { value: 'dubstep', label: 'Dubstep' },
+  { value: 'ambient', label: 'Ambient' },
+  { value: 'lo_fi', label: 'Lo-fi' },
+  { value: 'jazz', label: 'Джаз' },
+  { value: 'blues', label: 'Блюз' },
+  { value: 'soul', label: 'Соул' },
+  { value: 'funk', label: 'Фанк' },
+  { value: 'reggae', label: 'Регги' },
+  { value: 'ska', label: 'Ска' },
+  { value: 'folk', label: 'Фолк' },
+  { value: 'country', label: 'Кантри' },
+  { value: 'classical', label: 'Классика' },
+  { value: 'soundtrack', label: 'Саундтрек' },
+]
+
 const genreLabelByValue = new Map(
   MOVIE_REVIEW_GENRE_OPTIONS.map((option) => [option.value, option.label])
 )
 
 const watchProviderLabelByValue = new Map(
   MOVIE_REVIEW_WATCH_PROVIDER_OPTIONS.map((option) => [option.value, option.label])
+)
+
+const musicReleaseStyleLabelByValue = new Map(
+  MUSIC_RELEASE_STYLE_OPTIONS.map((option) => [option.value, option.label])
 )
 
 const movieReviewGenreAliases: Record<string, string> = {
@@ -359,6 +415,66 @@ const movieReviewWatchProviderAliases: Record<string, string> = {
   peacocktv: 'peacock',
 }
 
+const musicReleaseStyleAliases: Record<string, string> = {
+  pop: 'pop',
+  поп: 'pop',
+  rock: 'rock',
+  рок: 'rock',
+  indie: 'indie',
+  инди: 'indie',
+  alternative: 'alternative',
+  альтернативный: 'alternative',
+  альтернатива: 'alternative',
+  metal: 'metal',
+  метал: 'metal',
+  металл: 'metal',
+  punk: 'punk',
+  панк: 'punk',
+  hip_hop: 'hip_hop',
+  'hip-hop': 'hip_hop',
+  хипхоп: 'hip_hop',
+  'хип-хоп': 'hip_hop',
+  rap: 'rap',
+  рэп: 'rap',
+  rnb: 'rnb',
+  'r&b': 'rnb',
+  electronic: 'electronic',
+  электроника: 'electronic',
+  edm: 'edm',
+  house: 'house',
+  techno: 'techno',
+  trance: 'trance',
+  drum_and_bass: 'drum_and_bass',
+  'drum and bass': 'drum_and_bass',
+  dnb: 'drum_and_bass',
+  dubstep: 'dubstep',
+  ambient: 'ambient',
+  эмбиент: 'ambient',
+  lo_fi: 'lo_fi',
+  lofi: 'lo_fi',
+  'lo-fi': 'lo_fi',
+  jazz: 'jazz',
+  джаз: 'jazz',
+  blues: 'blues',
+  блюз: 'blues',
+  soul: 'soul',
+  соул: 'soul',
+  funk: 'funk',
+  фанк: 'funk',
+  reggae: 'reggae',
+  регги: 'reggae',
+  ska: 'ska',
+  ска: 'ska',
+  folk: 'folk',
+  фолк: 'folk',
+  country: 'country',
+  кантри: 'country',
+  classical: 'classical',
+  классика: 'classical',
+  soundtrack: 'soundtrack',
+  саундтрек: 'soundtrack',
+}
+
 const trimOrEmpty = (value: unknown): string => (typeof value === 'string' ? value.trim() : '')
 
 export const createEmptyMovieReviewTemplateData = (): MovieReviewTemplateData => ({
@@ -377,6 +493,17 @@ export const createEmptyPostVotePollTemplateData = (): PostVotePollTemplateData 
   items: [],
   ends_at: '',
   allows_multiple_answers: false,
+})
+
+export const createEmptyMusicReleaseTemplateData = (): MusicReleaseTemplateData => ({
+  cover_image_url: '',
+  release_date: '',
+  album_url: '',
+  artist_name: '',
+  release_title: '',
+  country: '',
+  city: '',
+  style: '',
 })
 
 const normalizeMovieReviewGenre = (value: unknown): string => {
@@ -406,6 +533,12 @@ const normalizeMovieReviewWatchWhere = (value: unknown): string[] => {
     normalizedItems.push(normalized)
   }
   return normalizedItems
+}
+
+const normalizeMusicReleaseStyle = (value: unknown): string => {
+  const raw = trimOrEmpty(value)
+  if (!raw) return ''
+  return musicReleaseStyleAliases[raw.toLowerCase()] ?? raw
 }
 
 export const normalizeMovieReviewTemplateData = (
@@ -480,10 +613,26 @@ export const normalizePostVotePollTemplateData = (
   }
 }
 
+export const normalizeMusicReleaseTemplateData = (
+  value: Partial<MusicReleaseTemplateData> | null | undefined
+): MusicReleaseTemplateData => {
+  return {
+    cover_image_url: trimOrEmpty(value?.cover_image_url),
+    release_date: trimOrEmpty(value?.release_date),
+    album_url: trimOrEmpty(value?.album_url),
+    artist_name: trimOrEmpty(value?.artist_name),
+    release_title: trimOrEmpty(value?.release_title),
+    country: trimOrEmpty(value?.country),
+    city: trimOrEmpty(value?.city),
+    style: normalizeMusicReleaseStyle(value?.style),
+  }
+}
+
 export const buildPostTemplatePayload = (
   templateType: '' | PostTemplateType,
   movieReviewData: Partial<MovieReviewTemplateData> | null | undefined,
-  postVotePollData?: Partial<PostVotePollTemplateData> | null | undefined
+  postVotePollData?: Partial<PostVotePollTemplateData> | null | undefined,
+  musicReleaseData?: Partial<MusicReleaseTemplateData> | null | undefined
 ): SitePostTemplate | null => {
   if (templateType === 'movie_review') {
     const normalized = normalizeMovieReviewTemplateData(movieReviewData)
@@ -513,6 +662,26 @@ export const buildPostTemplatePayload = (
     }
   }
 
+  if (templateType === 'music_release') {
+    const normalized = normalizeMusicReleaseTemplateData(musicReleaseData)
+    const hasMeaningfulField = Boolean(
+      normalized.cover_image_url ||
+        normalized.release_date ||
+        normalized.album_url ||
+        normalized.artist_name ||
+        normalized.release_title ||
+        normalized.country ||
+        normalized.city ||
+        normalized.style
+    )
+    if (!hasMeaningfulField) return null
+    return {
+      type: 'music_release',
+      version: 1,
+      data: normalized,
+    }
+  }
+
   return null
 }
 
@@ -526,6 +695,12 @@ export const isPostVotePollTemplate = (
   template: SitePostTemplate | null | undefined
 ): template is PostVotePollTemplate => {
   return template?.type === 'post_vote_poll' && typeof template.data === 'object'
+}
+
+export const isMusicReleaseTemplate = (
+  template: SitePostTemplate | null | undefined
+): template is MusicReleaseTemplate => {
+  return template?.type === 'music_release' && typeof template.data === 'object'
 }
 
 export const movieReviewKindLabel = (kind: string | null | undefined): string => {
@@ -550,7 +725,24 @@ export const movieReviewWatchWhereLabels = (providers: unknown): string[] => {
   return normalized.map((provider) => movieReviewWatchProviderLabel(provider))
 }
 
+export const musicReleaseStyleLabel = (style: string | null | undefined): string => {
+  if (!style) return ''
+  const normalized = normalizeMusicReleaseStyle(style)
+  return musicReleaseStyleLabelByValue.get(normalized) ?? style
+}
+
 export const formatMovieReviewReleaseDate = (value: string | null | undefined): string => {
+  if (!value) return ''
+  const timestamp = Date.parse(value)
+  if (!Number.isFinite(timestamp)) return value
+  return new Date(timestamp).toLocaleDateString('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
+}
+
+export const formatMusicReleaseDate = (value: string | null | undefined): string => {
   if (!value) return ''
   const timestamp = Date.parse(value)
   if (!Number.isFinite(timestamp)) return value

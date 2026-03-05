@@ -8,17 +8,21 @@
     type VotePollPostCandidate,
   } from '$lib/siteAuth'
   import {
+    MUSIC_RELEASE_STYLE_OPTIONS,
     MOVIE_REVIEW_GENRE_OPTIONS,
     MOVIE_REVIEW_KIND_OPTIONS,
     MOVIE_REVIEW_WATCH_PROVIDER_OPTIONS,
     POST_TEMPLATE_TYPE_OPTIONS,
+    createEmptyMusicReleaseTemplateData,
     createEmptyMovieReviewTemplateData,
     createEmptyPostVotePollTemplateData,
     formatPostVotePollDeadline,
     normalizeAllowedPostTemplateTypes,
+    normalizeMusicReleaseTemplateData,
     normalizeMovieReviewTemplateData,
     normalizePostVotePollTemplateData,
     postVotePollOptionLabel,
+    type MusicReleaseTemplateData,
     type MovieReviewTemplateData,
     type PostTemplateType,
     type PostVotePollTemplateData,
@@ -28,10 +32,13 @@
   export let templateType: '' | PostTemplateType = ''
   export let movieReviewData: MovieReviewTemplateData = createEmptyMovieReviewTemplateData()
   export let postVotePollData: PostVotePollTemplateData = createEmptyPostVotePollTemplateData()
+  export let musicReleaseData: MusicReleaseTemplateData = createEmptyMusicReleaseTemplateData()
   export let allowedTemplateTypes: string[] | undefined = undefined
 
   let posterInput: HTMLInputElement | null = null
   let posterUploading = false
+  let coverInput: HTMLInputElement | null = null
+  let coverUploading = false
   let imdbAutofillLoading = false
   let watchProviderValues: string[] = []
   let watchProviderSet = new Set<string>()
@@ -246,6 +253,43 @@
     }
   }
 
+  const pickCover = () => {
+    coverInput?.click()
+  }
+
+  const removeCover = () => {
+    musicReleaseData = {
+      ...musicReleaseData,
+      cover_image_url: '',
+    }
+  }
+
+  const onCoverSelected = async (event: Event) => {
+    const input = event.currentTarget as HTMLInputElement | null
+    const file = input?.files?.[0]
+    if (!file || coverUploading) return
+    coverUploading = true
+    try {
+      const uploadedUrl = await uploadSiteImage(file)
+      musicReleaseData = normalizeMusicReleaseTemplateData({
+        ...musicReleaseData,
+        cover_image_url: uploadedUrl,
+      })
+      toast({
+        content: 'Обложка загружена',
+        type: 'success',
+      })
+    } catch (error) {
+      toast({
+        content: (error as Error)?.message ?? 'Не удалось загрузить обложку',
+        type: 'error',
+      })
+    } finally {
+      coverUploading = false
+      if (input) input.value = ''
+    }
+  }
+
   const autofillFromImdb = async () => {
     const imdbUrl = (movieReviewData.imdb_url || '').trim()
     if (!imdbUrl) {
@@ -437,6 +481,116 @@
             {/each}
           </div>
         </details>
+      </div>
+    </div>
+  {:else if templateType === 'music_release'}
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <TextInput
+        label="Название группы"
+        bind:value={musicReleaseData.artist_name}
+        placeholder="Например, Radiohead"
+      />
+      <TextInput
+        label="Название альбома/сингла"
+        bind:value={musicReleaseData.release_title}
+        placeholder="Например, OK Computer"
+      />
+
+      <TextInput
+        label="Ссылка на альбом"
+        bind:value={musicReleaseData.album_url}
+        placeholder="https://open.spotify.com/album/..."
+      />
+
+      <label class="flex flex-col gap-1">
+        <span class="text-sm text-slate-700 dark:text-zinc-300">Дата релиза</span>
+        <input
+          type="date"
+          bind:value={musicReleaseData.release_date}
+          class="w-full rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm text-slate-900 dark:text-zinc-100"
+        />
+      </label>
+
+      <TextInput
+        label="Страна группы"
+        bind:value={musicReleaseData.country}
+        placeholder="Например, Великобритания"
+      />
+      <TextInput
+        label="Город группы"
+        bind:value={musicReleaseData.city}
+        placeholder="Например, Лондон"
+      />
+
+      <label class="flex flex-col gap-1">
+        <span class="text-sm text-slate-700 dark:text-zinc-300">Музыкальный стиль</span>
+        <select
+          bind:value={musicReleaseData.style}
+          class="w-full rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm text-slate-900 dark:text-zinc-100"
+        >
+          <option value="">Не выбран</option>
+          {#each MUSIC_RELEASE_STYLE_OPTIONS as option}
+            <option value={option.value}>{option.label}</option>
+          {/each}
+        </select>
+      </label>
+
+      <div class="md:col-span-2 flex flex-col gap-2">
+        <span class="text-sm text-slate-700 dark:text-zinc-300">Фото обложки</span>
+        <input
+          bind:this={coverInput}
+          type="file"
+          accept="image/*"
+          class="hidden"
+          on:change={onCoverSelected}
+        />
+        <div class="flex items-center gap-3 rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-3">
+          <div class="h-16 w-16 rounded-lg overflow-hidden border border-slate-200 dark:border-zinc-800 bg-slate-100 dark:bg-zinc-800 shrink-0">
+            {#if musicReleaseData.cover_image_url}
+              <img
+                src={musicReleaseData.cover_image_url}
+                alt="Обложка релиза"
+                class="h-full w-full object-cover"
+              />
+            {:else}
+              <div class="h-full w-full grid place-items-center text-[10px] text-slate-400 dark:text-zinc-500 text-center px-1">
+                Нет обложки
+              </div>
+            {/if}
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="text-sm text-slate-700 dark:text-zinc-300">
+              {#if coverUploading}
+                Загрузка обложки...
+              {:else if musicReleaseData.cover_image_url}
+                Обложка загружена
+              {:else}
+                Загрузите файл обложки
+              {/if}
+            </div>
+            <div class="text-xs text-slate-500 dark:text-zinc-400">PNG, JPG, WEBP, GIF</div>
+          </div>
+          <div class="flex flex-wrap gap-2 justify-end">
+            <button
+              type="button"
+              class="rounded-lg border border-slate-300 dark:border-zinc-700 px-3 py-1.5 text-sm text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 disabled:opacity-50"
+              on:click={pickCover}
+              disabled={coverUploading}
+            >
+              {musicReleaseData.cover_image_url ? 'Заменить' : 'Загрузить'}
+            </button>
+            {#if musicReleaseData.cover_image_url}
+              <button
+                type="button"
+                class="rounded-lg border border-slate-300 dark:border-zinc-700 px-3 py-1.5 text-sm text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 disabled:opacity-50"
+                on:click={removeCover}
+                disabled={coverUploading}
+              >
+                Убрать
+              </button>
+            {/if}
+          </div>
+        </div>
       </div>
     </div>
   {:else if templateType === 'post_vote_poll'}

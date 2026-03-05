@@ -11,11 +11,13 @@
   import PostTemplateFields from '$lib/components/site/post-templates/PostTemplateFields.svelte'
   import {
     buildPostTemplatePayload,
+    createEmptyMusicReleaseTemplateData,
     createEmptyMovieReviewTemplateData,
     createEmptyPostVotePollTemplateData,
     normalizeAllowedPostTemplateTypes,
     normalizeTemplateEditorBlockSettings,
     resolveEnabledTemplateEditorBlockTypes,
+    type MusicReleaseTemplateData,
     type MovieReviewTemplateData,
     type PostVotePollTemplateData,
     type PostTemplateType,
@@ -51,6 +53,7 @@
   let createTemplateType: '' | PostTemplateType = ''
   let createMovieReviewData: MovieReviewTemplateData = createEmptyMovieReviewTemplateData()
   let createPostVotePollData: PostVotePollTemplateData = createEmptyPostVotePollTemplateData()
+  let createMusicReleaseData: MusicReleaseTemplateData = createEmptyMusicReleaseTemplateData()
   let comunAllowedTemplateTypes: string[] = ['basic']
   let templateEditorBlockSettings: TemplateEditorBlockSettings = {}
 
@@ -190,7 +193,8 @@
       const template = buildPostTemplatePayload(
         createTemplateType,
         createMovieReviewData,
-        createPostVotePollData
+        createPostVotePollData,
+        createMusicReleaseData
       )
       await createComunPost(comun.slug, {
         title: createTitle.trim(),
@@ -305,6 +309,7 @@
           bind:templateType={createTemplateType}
           bind:movieReviewData={createMovieReviewData}
           bind:postVotePollData={createPostVotePollData}
+          bind:musicReleaseData={createMusicReleaseData}
           allowedTemplateTypes={comunAllowedTemplateTypes}
         />
 
@@ -342,6 +347,7 @@
               createTemplateType = ''
               createMovieReviewData = createEmptyMovieReviewTemplateData()
               createPostVotePollData = createEmptyPostVotePollTemplateData()
+              createMusicReleaseData = createEmptyMusicReleaseTemplateData()
               createError = ''
             }}
             disabled={creating}

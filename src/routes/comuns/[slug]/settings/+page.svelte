@@ -42,11 +42,13 @@
     { value: 'basic', label: 'Пост' },
     { value: 'movie_review', label: 'Кинообзор' },
     { value: 'post_vote_poll', label: 'Голосование за посты' },
+    { value: 'music_release', label: 'Музыкальный релиз' },
   ]
   const allowedTemplateCodes = new Set<PostTemplateCode>([
     'basic',
     'movie_review',
     'post_vote_poll',
+    'music_release',
   ])
   let settingsTagOptions: ComunTagOption[] = []
   let settingsUserOptions: ComunUserOption[] = []

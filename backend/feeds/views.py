@@ -58,6 +58,7 @@ from .models import (
     POST_TEMPLATE_TYPE_CHOICES as MODEL_POST_TEMPLATE_TYPE_CHOICES,
     POST_TEMPLATE_TYPE_MOVIE_REVIEW as MODEL_POST_TEMPLATE_TYPE_MOVIE_REVIEW,
     POST_TEMPLATE_TYPE_POST_VOTE_POLL as MODEL_POST_TEMPLATE_TYPE_POST_VOTE_POLL,
+    POST_TEMPLATE_TYPE_MUSIC_RELEASE as MODEL_POST_TEMPLATE_TYPE_MUSIC_RELEASE,
     SiteNotification,
     SiteUserProfile,
     Tag,
@@ -106,6 +107,7 @@ _COMMENT_PERSONAS_BY_KEY = {item["key"]: item for item in _COMMENT_PERSONAS}
 _POST_TEMPLATE_TYPE_BASIC = MODEL_POST_TEMPLATE_TYPE_BASIC
 _POST_TEMPLATE_TYPE_MOVIE_REVIEW = MODEL_POST_TEMPLATE_TYPE_MOVIE_REVIEW
 _POST_TEMPLATE_TYPE_POST_VOTE_POLL = MODEL_POST_TEMPLATE_TYPE_POST_VOTE_POLL
+_POST_TEMPLATE_TYPE_MUSIC_RELEASE = MODEL_POST_TEMPLATE_TYPE_MUSIC_RELEASE
 _POST_TEMPLATE_TYPE_OPTIONS = tuple(
     (str(value), str(label)) for value, label in MODEL_POST_TEMPLATE_TYPE_CHOICES
 )
@@ -243,6 +245,95 @@ _POST_TEMPLATE_MOVIE_WATCH_PROVIDER_ALIASES = {
     "peacock": "peacock",
     "peacock tv": "peacock",
     "peacocktv": "peacock",
+}
+_POST_TEMPLATE_MUSIC_STYLES = {
+    "pop",
+    "rock",
+    "indie",
+    "alternative",
+    "metal",
+    "punk",
+    "hip_hop",
+    "rap",
+    "rnb",
+    "electronic",
+    "edm",
+    "house",
+    "techno",
+    "trance",
+    "drum_and_bass",
+    "dubstep",
+    "ambient",
+    "lo_fi",
+    "jazz",
+    "blues",
+    "soul",
+    "funk",
+    "reggae",
+    "ska",
+    "folk",
+    "country",
+    "classical",
+    "soundtrack",
+}
+_POST_TEMPLATE_MUSIC_STYLE_ALIASES = {
+    "pop": "pop",
+    "поп": "pop",
+    "rock": "rock",
+    "рок": "rock",
+    "indie": "indie",
+    "инди": "indie",
+    "alternative": "alternative",
+    "альтернатива": "alternative",
+    "альтернативный": "alternative",
+    "metal": "metal",
+    "метал": "metal",
+    "металл": "metal",
+    "punk": "punk",
+    "панк": "punk",
+    "hip_hop": "hip_hop",
+    "hip-hop": "hip_hop",
+    "хипхоп": "hip_hop",
+    "хип-хоп": "hip_hop",
+    "rap": "rap",
+    "рэп": "rap",
+    "rnb": "rnb",
+    "r&b": "rnb",
+    "electronic": "electronic",
+    "электроника": "electronic",
+    "edm": "edm",
+    "house": "house",
+    "techno": "techno",
+    "trance": "trance",
+    "drum_and_bass": "drum_and_bass",
+    "drum and bass": "drum_and_bass",
+    "dnb": "drum_and_bass",
+    "dubstep": "dubstep",
+    "ambient": "ambient",
+    "эмбиент": "ambient",
+    "lo_fi": "lo_fi",
+    "lo-fi": "lo_fi",
+    "lofi": "lo_fi",
+    "jazz": "jazz",
+    "джаз": "jazz",
+    "blues": "blues",
+    "блюз": "blues",
+    "soul": "soul",
+    "соул": "soul",
+    "funk": "funk",
+    "фанк": "funk",
+    "reggae": "reggae",
+    "регги": "reggae",
+    "ska": "ska",
+    "ска": "ska",
+    "folk": "folk",
+    "фолк": "folk",
+    "country": "country",
+    "кантри": "country",
+    "classical": "classical",
+    "классика": "classical",
+    "soundtrack": "soundtrack",
+    "саундтрек": "soundtrack",
 }
 _IMDB_ID_RE = re.compile(r"(tt\d{5,12})", flags=re.IGNORECASE)
 _JUSTWATCH_PROVIDER_CACHE: dict[str, tuple[float, dict[int, str]]] = {}
@@ -1652,6 +1743,102 @@ def _normalize_movie_review_template_data(raw_data: object) -> tuple[dict | None
     return cleaned_data, None
 
 
+def _normalize_music_release_style(value: object) -> tuple[str, str | None]:
+    style, style_error = _normalize_template_text(value, 120)
+    if style_error:
+        return "", "music style is too long"
+    if not style:
+        return "", None
+    normalized = _POST_TEMPLATE_MUSIC_STYLE_ALIASES.get(style.lower(), style)
+    if normalized in _POST_TEMPLATE_MUSIC_STYLES:
+        return normalized, None
+    # Keep custom/legacy values for backwards compatibility.
+    return normalized, None
+
+
+def _normalize_music_release_template_data(raw_data: object) -> tuple[dict | None, str | None]:
+    if raw_data in (None, "", {}):
+        return None, None
+    if not isinstance(raw_data, dict):
+        return None, "invalid music release template data"
+
+    cover_image_url, cover_error = _normalize_template_http_url(
+        raw_data.get("cover_image_url") or raw_data.get("cover_url")
+    )
+    if cover_error:
+        return None, "invalid cover image url"
+
+    album_url, album_url_error = _normalize_template_http_url(
+        raw_data.get("album_url")
+        or raw_data.get("release_url")
+        or raw_data.get("link")
+        or raw_data.get("album_link")
+    )
+    if album_url_error:
+        return None, "invalid album url"
+
+    artist_name, artist_name_error = _normalize_template_text(
+        raw_data.get("artist_name")
+        or raw_data.get("group_name")
+        or raw_data.get("band_name"),
+        255,
+    )
+    if artist_name_error:
+        return None, "artist name is too long"
+
+    release_title, release_title_error = _normalize_template_text(
+        raw_data.get("release_title")
+        or raw_data.get("album_title")
+        or raw_data.get("title"),
+        255,
+    )
+    if release_title_error:
+        return None, "release title is too long"
+
+    country, country_error = _normalize_template_text(raw_data.get("country"), 120)
+    if country_error:
+        return None, "country is too long"
+
+    city, city_error = _normalize_template_text(raw_data.get("city"), 120)
+    if city_error:
+        return None, "city is too long"
+
+    style, style_error = _normalize_music_release_style(
+        raw_data.get("style") or raw_data.get("music_style") or raw_data.get("genre")
+    )
+    if style_error:
+        return None, style_error
+
+    release_date_raw = str(raw_data.get("release_date") or "").strip()
+    release_date = ""
+    if release_date_raw:
+        try:
+            release_date = dt_datetime.strptime(release_date_raw, "%Y-%m-%d").date().isoformat()
+        except ValueError:
+            return None, "invalid release date"
+
+    normalized_data = {
+        "cover_image_url": cover_image_url,
+        "release_date": release_date,
+        "album_url": album_url,
+        "artist_name": artist_name,
+        "release_title": release_title,
+        "country": country,
+        "city": city,
+        "style": style,
+    }
+    cleaned_data: dict[str, object] = {}
+    for key, value in normalized_data.items():
+        if isinstance(value, str) and value.strip():
+            cleaned_data[key] = value
+            continue
+        if isinstance(value, list) and value:
+            cleaned_data[key] = value
+    if not cleaned_data:
+        return None, None
+    return cleaned_data, None
+
+
 def _normalize_template_datetime(value: object) -> tuple[str, str | None]:
     raw = str(value or "").strip()
     if not raw:
@@ -2038,6 +2225,46 @@ def _normalize_post_template_payload(
             return None, None
         return {
             "type": _POST_TEMPLATE_TYPE_POST_VOTE_POLL,
+            "version": 1,
+            "data": normalized_data,
+        }, None
+
+    if template_type == _POST_TEMPLATE_TYPE_MUSIC_RELEASE:
+        template_data_input = raw_template.get("data")
+        if template_data_input is None:
+            template_data_input = {
+                key: raw_template.get(key)
+                for key in (
+                    "cover_image_url",
+                    "cover_url",
+                    "release_date",
+                    "album_url",
+                    "release_url",
+                    "link",
+                    "album_link",
+                    "artist_name",
+                    "group_name",
+                    "band_name",
+                    "release_title",
+                    "album_title",
+                    "title",
+                    "country",
+                    "city",
+                    "style",
+                    "music_style",
+                    "genre",
+                )
+                if raw_template.get(key) is not None
+            }
+        normalized_data, template_error = _normalize_music_release_template_data(
+            template_data_input
+        )
+        if template_error:
+            return None, template_error
+        if not normalized_data:
+            return None, None
+        return {
+            "type": _POST_TEMPLATE_TYPE_MUSIC_RELEASE,
             "version": 1,
             "data": normalized_data,
         }, None

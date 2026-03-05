@@ -14,11 +14,13 @@
   import PostTemplateFields from '$lib/components/site/post-templates/PostTemplateFields.svelte'
   import {
     buildPostTemplatePayload,
+    createEmptyMusicReleaseTemplateData,
     createEmptyMovieReviewTemplateData,
     createEmptyPostVotePollTemplateData,
     normalizeAllowedPostTemplateTypes,
     normalizeTemplateEditorBlockSettings,
     resolveEnabledTemplateEditorBlockTypes,
+    type MusicReleaseTemplateData,
     type MovieReviewTemplateData,
     type PostVotePollTemplateData,
     type PostTemplateType,
@@ -52,6 +54,7 @@
   let createTemplateType: '' | PostTemplateType = ''
   let createMovieReviewData: MovieReviewTemplateData = createEmptyMovieReviewTemplateData()
   let createPostVotePollData: PostVotePollTemplateData = createEmptyPostVotePollTemplateData()
+  let createMusicReleaseData: MusicReleaseTemplateData = createEmptyMusicReleaseTemplateData()
   let templateEditorBlockSettings: TemplateEditorBlockSettings = {}
 
   type PublishIdentityOption = {
@@ -194,7 +197,8 @@
       const template = buildPostTemplatePayload(
         createTemplateType,
         createMovieReviewData,
-        createPostVotePollData
+        createPostVotePollData,
+        createMusicReleaseData
       )
       await createUserPost({
         title: createTitle.trim(),
@@ -214,6 +218,7 @@
       createTemplateType = ''
       createMovieReviewData = createEmptyMovieReviewTemplateData()
       createPostVotePollData = createEmptyPostVotePollTemplateData()
+      createMusicReleaseData = createEmptyMusicReleaseTemplateData()
       toast({
         content:
           'Ваш пост опубликован! Не забудьте поделиться ссылкой на него в социальных сетях',
@@ -362,6 +367,7 @@
           bind:templateType={createTemplateType}
           bind:movieReviewData={createMovieReviewData}
           bind:postVotePollData={createPostVotePollData}
+          bind:musicReleaseData={createMusicReleaseData}
           allowedTemplateTypes={selectedRubric?.allowed_template_types}
         />
         {#key `editor-template-${editorTemplateBlocksKey}`}
@@ -392,6 +398,7 @@
               createTemplateType = ''
               createMovieReviewData = createEmptyMovieReviewTemplateData()
               createPostVotePollData = createEmptyPostVotePollTemplateData()
+              createMusicReleaseData = createEmptyMusicReleaseTemplateData()
               createError = ''
             }}
             disabled={creating}
