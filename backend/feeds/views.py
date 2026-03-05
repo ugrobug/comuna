@@ -672,6 +672,27 @@ def _public_user_author_ids(user: User) -> tuple[list[int], list[AuthorAdmin]]:
     return author_ids, author_links
 
 
+def _site_user_id_for_author(author: Author | None) -> int | None:
+    if not author:
+        return None
+    if author.channel_url or author.channel_id is not None:
+        return None
+
+    linked_user_id = (
+        AuthorAdmin.objects.filter(author=author, verified_at__isnull=False)
+        .order_by("created_at", "id")
+        .values_list("user_id", flat=True)
+        .first()
+    )
+    if linked_user_id:
+        return int(linked_user_id)
+
+    matching_user = User.objects.filter(
+        username__iexact=(author.username or "").strip()
+    ).only("id").first()
+    return int(matching_user.id) if matching_user else None
+
+
 def _serialize_public_site_user_profile(
     request: HttpRequest,
     user: User,
@@ -5633,11 +5654,7 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
         .filter(Q(rubric__isnull=True) | Q(rubric__is_hidden=False))
         .count()
     )
-    site_user_id = None
-    if not author.channel_url and author.channel_id is None:
-        matching_user = User.objects.filter(username__iexact=author.username).only("id").first()
-        if matching_user:
-            site_user_id = matching_user.id
+    site_user_id = _site_user_id_for_author(author)
     author_channel_url = author.invite_url or author.channel_url
     serialized = []
     for post in posts:
