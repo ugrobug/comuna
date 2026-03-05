@@ -800,7 +800,11 @@
       if (!rawUrl) return ''
 
       const normalizeExternalUrl = (value: string): string => {
-        const candidate = value.trim()
+        const raw = value.trim()
+        if (!raw) return ''
+        const quotedSrcMatch = raw.match(/src\s*=\s*(['"])(https?:\/\/[^'"]+)\1/i)
+        const plainSrcMatch = raw.match(/src\s*=\s*(https?:\/\/[^\s>]+)/i)
+        const candidate = (quotedSrcMatch?.[2] || plainSrcMatch?.[1] || raw).trim()
         if (!candidate) return ''
         if (/^https?:\/\//i.test(candidate)) return candidate
         return `https://${candidate}`
@@ -882,6 +886,22 @@
         ) {
           const albumId = yandexIframeAlbumTrackMatch[1]
           const trackId = yandexIframeAlbumTrackMatch[2]
+          return {
+            provider: 'yandex_music',
+            providerLabel: 'Яндекс Музыка',
+            embedUrl: buildYandexTrackEmbedUrl(trackId, albumId),
+            title: 'Плеер Яндекс Музыки',
+          }
+        }
+
+        const yandexHashTrackMatch = parsed.hash.match(/#track\/(\d+)\/(\d+)(?:\/|$)/i)
+        if (
+          yandexHashTrackMatch &&
+          (hint === 'auto' || hint === 'yandex_music') &&
+          (host === 'music.yandex.ru' || host === 'music.yandex.com')
+        ) {
+          const trackId = yandexHashTrackMatch[1]
+          const albumId = yandexHashTrackMatch[2]
           return {
             provider: 'yandex_music',
             providerLabel: 'Яндекс Музыка',

@@ -1085,8 +1085,10 @@
     }: {
       data?: { url?: unknown; provider?: unknown; caption?: unknown }
     }) {
+      const normalizedUrl =
+        typeof data?.url === 'string' ? this.extractUrlFromIframeSnippet(data.url).trim() : ''
       this.data = {
-        url: typeof data?.url === 'string' ? data.url.trim() : '',
+        url: normalizedUrl,
         provider:
           typeof data?.provider === 'string' ? this.normalizeProvider(data.provider) : 'auto',
         caption: typeof data?.caption === 'string' ? data.caption.trim() : '',
@@ -1102,7 +1104,7 @@
     }
 
     private inferProviderFromUrl(value: string): string {
-      const raw = value.trim().toLowerCase()
+      const raw = this.extractUrlFromIframeSnippet(value).trim().toLowerCase()
       if (!raw) return 'unknown'
       if (raw.includes('open.spotify.com/track/')) return 'spotify'
       if (raw.includes('music.yandex.ru/') || raw.includes('music.yandex.com/')) {
@@ -1110,6 +1112,24 @@
       }
       if (raw.includes('soundcloud.com/') || raw.includes('snd.sc/')) return 'soundcloud'
       return 'unknown'
+    }
+
+    private extractUrlFromIframeSnippet(value: string): string {
+      const raw = String(value || '').trim()
+      if (!raw) return ''
+      if (!raw.includes('<iframe')) return raw
+
+      const quotedSrcMatch = raw.match(/src\s*=\s*(['"])(https?:\/\/[^'"]+)\1/i)
+      if (quotedSrcMatch?.[2]) {
+        return quotedSrcMatch[2]
+      }
+
+      const plainSrcMatch = raw.match(/src\s*=\s*(https?:\/\/[^\s>]+)/i)
+      if (plainSrcMatch?.[1]) {
+        return plainSrcMatch[1]
+      }
+
+      return raw
     }
 
     private providerLabel(value: string): string {
@@ -1168,7 +1188,8 @@
       preview.classList.add('music-tool__preview')
 
       const updatePreview = () => {
-        this.data.url = urlInput.value.trim()
+        const normalizedUrl = this.extractUrlFromIframeSnippet(urlInput.value)
+        this.data.url = normalizedUrl.trim()
         this.data.provider = this.normalizeProvider(providerSelect.value)
         this.data.caption = captionInput.value.trim()
 
@@ -1209,7 +1230,7 @@
 
     save() {
       return {
-        url: this.data.url.trim(),
+        url: this.extractUrlFromIframeSnippet(this.data.url).trim(),
         provider: this.normalizeProvider(this.data.provider),
         caption: this.data.caption.trim(),
       }
@@ -2465,7 +2486,59 @@
               imgur: true,
               vine: true,
               aparat: true,
-              'yandex-music-track': true,
+              'yandex-music-track': {
+                regex:
+                  /https?:\/\/music\.yandex\.(?:ru|com)\/(?:album\/\d+\/track\/\d+|iframe\/album\/\d+\/track\/\d+|iframe\/#track\/\d+\/\d+|track\/\d+(?:\?[^#\s]*)?)(?:[#?][^\s]*)?/i,
+                embedUrl: '<%= remote_id %>',
+                html: "<iframe width='614' height='244' frameBorder='0' allow='clipboard-write; autoplay'></iframe>",
+                height: 244,
+                width: 614,
+                id: (groups: RegExpMatchArray) => {
+                  try {
+                    const sourceUrl = String((groups as any)?.input || groups[0] || '').trim()
+                    if (!sourceUrl) return null
+
+                    const parsed = new URL(sourceUrl)
+                    const host = parsed.hostname.replace(/^www\./i, '').toLowerCase()
+                    if (host !== 'music.yandex.ru' && host !== 'music.yandex.com') {
+                      return null
+                    }
+
+                    const path = parsed.pathname
+                    const albumTrackMatch =
+                      path.match(/\/album\/(\d+)\/track\/(\d+)(?:\/|$)/i) ||
+                      path.match(/\/iframe\/album\/(\d+)\/track\/(\d+)(?:\/|$)/i)
+                    if (albumTrackMatch) {
+                      const albumId = albumTrackMatch[1]
+                      const trackId = albumTrackMatch[2]
+                      return `https://music.yandex.ru/iframe/album/${albumId}/track/${trackId}`
+                    }
+
+                    const hashTrackMatch = parsed.hash.match(/#track\/(\d+)\/(\d+)(?:\/|$)/i)
+                    if (hashTrackMatch) {
+                      const trackId = hashTrackMatch[1]
+                      const albumId = hashTrackMatch[2]
+                      return `https://music.yandex.ru/iframe/album/${albumId}/track/${trackId}`
+                    }
+
+                    const trackMatch = path.match(/\/track\/(\d+)(?:\/|$)/i)
+                    if (trackMatch) {
+                      const trackId = trackMatch[1]
+                      const albumId =
+                        parsed.searchParams.get('album_id') ||
+                        parsed.searchParams.get('albumId')
+                      if (albumId) {
+                        return `https://music.yandex.ru/iframe/album/${albumId}/track/${trackId}`
+                      }
+                    }
+
+                    return null
+                  } catch (error) {
+                    console.error('Yandex Music parsing - Error:', error)
+                    return null
+                  }
+                },
+              },
               'yandex-music-album': true,
               'yandex-music-playlist': true,
               codepen: true,
