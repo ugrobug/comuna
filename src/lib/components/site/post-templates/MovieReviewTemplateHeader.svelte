@@ -30,7 +30,9 @@
   })()
 </script>
 
-<section class="movie-review-hero overflow-hidden rounded-2xl border border-slate-200 dark:border-zinc-800">
+<section
+  class={`movie-review-hero overflow-hidden rounded-2xl border border-slate-200 dark:border-zinc-800 ${authorRatingLabel ? 'movie-review-hero--has-rating' : ''}`}
+>
   <div class="movie-review-hero__bg" style={data.poster_url ? `--poster:url('${data.poster_url}')` : undefined}></div>
   <div class="movie-review-hero__body">
     {#if data.poster_url}
@@ -49,11 +51,6 @@
         {/if}
         {#if releaseLabel}
           <span class="movie-review-chip">Премьера: {releaseLabel}</span>
-        {/if}
-        {#if authorRatingLabel}
-          <span class={`movie-review-chip movie-review-chip--rating movie-review-chip--${authorRatingTone}`}>
-            Оценка автора: {authorRatingLabel}
-          </span>
         {/if}
       </div>
 
@@ -88,6 +85,17 @@
         {/if}
       </div>
     </div>
+
+    {#if authorRatingLabel}
+      <div
+        class={`movie-review-rating-badge movie-review-rating-badge--${authorRatingTone}`}
+        title={`Оценка автора: ${authorRatingLabel}`}
+        aria-label={`Оценка автора: ${authorRatingLabel}`}
+      >
+        <span class="movie-review-rating-badge__value">{authorRatingLabel}</span>
+        <span class="movie-review-rating-badge__label">Оценка автора</span>
+      </div>
+    {/if}
   </div>
 </section>
 
@@ -97,6 +105,10 @@
     background:
       radial-gradient(120% 120% at 10% 0%, rgba(251, 191, 36, 0.25) 0%, rgba(251, 191, 36, 0) 55%),
       linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(30, 41, 59, 0.9));
+  }
+
+  .movie-review-hero--has-rating .movie-review-hero__body {
+    padding-bottom: 4.8rem;
   }
 
   .movie-review-hero__bg {
@@ -173,28 +185,6 @@
     color: #fde68a;
   }
 
-  .movie-review-chip--rating {
-    font-weight: 700;
-  }
-
-  .movie-review-chip--green {
-    border-color: rgba(34, 197, 94, 0.45);
-    background: rgba(22, 101, 52, 0.25);
-    color: #86efac;
-  }
-
-  .movie-review-chip--yellow {
-    border-color: rgba(250, 204, 21, 0.5);
-    background: rgba(161, 98, 7, 0.24);
-    color: #fde68a;
-  }
-
-  .movie-review-chip--red {
-    border-color: rgba(239, 68, 68, 0.46);
-    background: rgba(153, 27, 27, 0.24);
-    color: #fca5a5;
-  }
-
   .movie-review-hero__title {
     margin: 0;
     font-size: clamp(1.35rem, 2.1vw, 1.95rem);
@@ -252,6 +242,72 @@
     color: #fbbf24;
   }
 
+  .movie-review-rating-badge {
+    position: absolute;
+    right: 1rem;
+    bottom: 1rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 3.6rem;
+    min-height: 3.6rem;
+    padding: 0.45rem 0.55rem;
+    border-radius: 0.95rem;
+    border: 1px solid rgba(250, 204, 21, 0.45);
+    background: linear-gradient(140deg, rgba(15, 23, 42, 0.94), rgba(30, 41, 59, 0.92));
+    box-shadow: 0 10px 24px rgba(2, 6, 23, 0.3);
+    color: #f8fafc;
+  }
+
+  .movie-review-rating-badge__value {
+    font-size: clamp(1.35rem, 2.6vw, 1.75rem);
+    line-height: 1;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .movie-review-rating-badge__label {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 0.35rem);
+    border-radius: 0.55rem;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    background: rgba(15, 23, 42, 0.96);
+    color: #cbd5e1;
+    padding: 0.2rem 0.45rem;
+    font-size: 0.72rem;
+    line-height: 1.1;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(5px);
+    transition: opacity 0.18s ease, transform 0.18s ease;
+  }
+
+  .movie-review-rating-badge:hover .movie-review-rating-badge__label,
+  .movie-review-rating-badge:focus-within .movie-review-rating-badge__label {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .movie-review-rating-badge--green {
+    border-color: rgba(34, 197, 94, 0.5);
+    background: linear-gradient(140deg, rgba(20, 83, 45, 0.9), rgba(22, 101, 52, 0.86));
+    color: #dcfce7;
+  }
+
+  .movie-review-rating-badge--yellow {
+    border-color: rgba(250, 204, 21, 0.52);
+    background: linear-gradient(140deg, rgba(113, 63, 18, 0.92), rgba(146, 64, 14, 0.88));
+    color: #fef3c7;
+  }
+
+  .movie-review-rating-badge--red {
+    border-color: rgba(239, 68, 68, 0.52);
+    background: linear-gradient(140deg, rgba(127, 29, 29, 0.92), rgba(153, 27, 27, 0.88));
+    color: #fee2e2;
+  }
+
   @media (max-width: 760px) {
     .movie-review-hero__body {
       grid-template-columns: 1fr;
@@ -259,6 +315,13 @@
 
     .movie-review-hero__poster {
       max-width: 160px;
+    }
+
+    .movie-review-rating-badge {
+      right: 0.85rem;
+      bottom: 0.85rem;
+      min-width: 3.3rem;
+      min-height: 3.3rem;
     }
   }
 </style>

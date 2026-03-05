@@ -7,6 +7,7 @@
   import PostComments from '$lib/components/site/PostComments.svelte'
   import { backendPostToPostView, buildBackendPostPath, buildPostReadUrl, buildPostViewUrl } from '$lib/api/backend'
   import { siteToken } from '$lib/siteAuth'
+  import { deserializeEditorModel } from '$lib/util'
 
   export let data
 
@@ -22,7 +23,62 @@
   }
 
   const buildDescription = (value: string, max = 200) => {
-    const text = stripHtml(value)
+    const raw = (value || '').trim()
+    if (!raw) return ''
+
+    const parseEditorPayload = (candidate: string): any | null => {
+      try {
+        const parsed = JSON.parse(candidate)
+        if (parsed && typeof parsed === 'object' && Array.isArray(parsed.blocks)) {
+          return parsed
+        }
+      } catch {
+        // noop
+      }
+
+      if (!/^[A-Za-z0-9+/_-]*={0,2}$/.test(candidate)) return null
+      const decoded = deserializeEditorModel(candidate)
+      if (decoded && typeof decoded === 'object' && Array.isArray(decoded.blocks)) {
+        return decoded
+      }
+      return null
+    }
+
+    const editorPayload = parseEditorPayload(raw)
+    if (editorPayload) {
+      const extraDescription = stripHtml(
+        String(
+          editorPayload?.additional?.metaDescription ||
+            editorPayload?.additional?.previewDescription ||
+            ''
+        )
+      )
+      if (extraDescription) {
+        return extraDescription.length <= max
+          ? extraDescription
+          : `${extraDescription.slice(0, max).trim()}…`
+      }
+
+      const blocks = Array.isArray(editorPayload.blocks) ? editorPayload.blocks : []
+      for (const block of blocks) {
+        const type = String(block?.type || '').toLowerCase()
+        const data = block?.data || {}
+        if (type === 'paragraph' && typeof data.text === 'string') {
+          const clean = stripHtml(data.text)
+          if (clean) {
+            return clean.length <= max ? clean : `${clean.slice(0, max).trim()}…`
+          }
+        }
+        if (type === 'header' && typeof data.text === 'string') {
+          const clean = stripHtml(data.text)
+          if (clean) {
+            return clean.length <= max ? clean : `${clean.slice(0, max).trim()}…`
+          }
+        }
+      }
+    }
+
+    const text = stripHtml(raw)
     if (!text) return ''
     if (text.length <= max) return text
     return `${text.slice(0, max).trim()}…`

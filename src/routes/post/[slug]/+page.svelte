@@ -258,7 +258,7 @@
     } catch {
       try {
         // Проверяем, похоже ли это на base64
-        const isBase64 = /^[A-Za-z0-9+/]*={0,2}$/.test(content);
+        const isBase64 = /^[A-Za-z0-9+/_-]*={0,2}$/.test(content);
         
         if (!isBase64) {
           return false;
@@ -1305,7 +1305,7 @@
             parsed = JSON.parse(cleanHtml);
           } catch {
             // Проверяем, похоже ли это на base64
-            const isBase64 = /^[A-Za-z0-9+/]*={0,2}$/.test(cleanHtml);
+            const isBase64 = /^[A-Za-z0-9+/_-]*={0,2}$/.test(cleanHtml);
             if (!isBase64) {
               throw new Error('Not a base64 string');
             }
@@ -1412,7 +1412,7 @@
           parsed = JSON.parse(post.body);
         } catch {
           // Если не получилось, пробуем десериализовать из base64
-          const isBase64 = /^[A-Za-z0-9+/]*={0,2}$/.test(post.body);
+          const isBase64 = /^[A-Za-z0-9+/_-]*={0,2}$/.test(post.body);
           if (!isBase64) {
             throw new Error('Not a base64 string');
           }
@@ -1459,7 +1459,7 @@
           parsed = JSON.parse(post.body);
         } catch {
           // Если не получилось, пробуем десериализовать из base64
-          const isBase64 = /^[A-Za-z0-9+/]*={0,2}$/.test(post.body);
+          const isBase64 = /^[A-Za-z0-9+/_-]*={0,2}$/.test(post.body);
           if (!isBase64) {
             throw new Error('Not a base64 string');
           }
