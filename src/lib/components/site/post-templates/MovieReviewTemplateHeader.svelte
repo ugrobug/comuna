@@ -113,10 +113,6 @@
       linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(30, 41, 59, 0.9));
   }
 
-  .movie-review-hero--has-rating .movie-review-hero__body {
-    padding-bottom: 4.8rem;
-  }
-
   .movie-review-hero__bg {
     position: absolute;
     inset: 0;
@@ -173,6 +169,10 @@
     flex-direction: column;
     gap: 0.6rem;
     color: #e2e8f0;
+  }
+
+  .movie-review-hero--has-rating .movie-review-hero__content {
+    padding-right: 4.2rem;
   }
 
   .movie-review-hero__chips {
@@ -316,6 +316,10 @@
   @media (max-width: 760px) {
     .movie-review-hero__body {
       grid-template-columns: 1fr;
+    }
+
+    .movie-review-hero--has-rating .movie-review-hero__content {
+      padding-right: 0;
     }
 
     .movie-review-hero__poster {
