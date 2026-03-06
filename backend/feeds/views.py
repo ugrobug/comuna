@@ -428,7 +428,53 @@ def _is_comuna_rubric(rubric: Rubric | None) -> bool:
     return rubric.slug.strip().lower() == "comuna"
 
 
+def _site_user_display_name(user: User) -> str:
+    display_name = (
+        (getattr(getattr(user, "site_profile", None), "display_name", "") or "").strip()
+    )
+    if display_name:
+        return display_name
+    full_name = " ".join(
+        part for part in [(user.first_name or "").strip(), (user.last_name or "").strip()] if part
+    ).strip()
+    if full_name:
+        return full_name
+    return (user.username or "").strip()
+
+
+def _site_user_for_personal_author(
+    request: HttpRequest | None,
+    author: Author,
+) -> User | None:
+    if not author or author.channel_url or author.channel_id is not None:
+        return None
+
+    cache: dict[int, User | None] | None = None
+    author_id = int(getattr(author, "id", 0) or 0)
+    if request is not None:
+        cache = getattr(request, "_personal_author_site_user_cache", None)
+        if cache is None:
+            cache = {}
+            setattr(request, "_personal_author_site_user_cache", cache)
+        if author_id in cache:
+            return cache[author_id]
+
+    site_user = None
+    site_user_id = _site_user_id_for_author(author)
+    if site_user_id:
+        site_user = (
+            User.objects.filter(id=site_user_id)
+            .select_related("site_profile", "telegram_account", "vk_account")
+            .first()
+        )
+
+    if cache is not None:
+        cache[author_id] = site_user
+    return site_user
+
+
 def _author_display_fields(
+    request: HttpRequest | None,
     author: Author,
     rubric: Rubric | None,
     post_channel_url: str | None = None,
@@ -439,6 +485,11 @@ def _author_display_fields(
         return "", "Admin"
     if not channel_url:
         channel_url = post_channel_url
+    site_user = _site_user_for_personal_author(request, author)
+    if site_user:
+        site_user_name = _site_user_display_name(site_user)
+        if site_user_name:
+            title = site_user_name
     return channel_url, title
 
 
@@ -449,6 +500,11 @@ def _author_avatar_for_rubric(
 ) -> str | None:
     if _is_comuna_rubric(rubric):
         return None
+    site_user = _site_user_for_personal_author(request, author)
+    if site_user:
+        site_avatar = _site_user_avatar_url(request, site_user)
+        if site_avatar:
+            return site_avatar
     return _author_avatar_url(request, author)
 
 
@@ -4714,7 +4770,7 @@ def author_verification_code(request: HttpRequest) -> HttpResponse:
 def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None = None) -> dict:
     rubric = post.rubric
     author_channel_url, author_title = _author_display_fields(
-        post.author, rubric, post.channel_url
+        request, post.author, rubric, post.channel_url
     )
     content, poll_payload = _content_with_live_poll(post, user)
     is_favorite = (
@@ -5684,7 +5740,7 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
         rubric = post.rubric
         content, poll_payload = _content_with_live_poll(post, current_user)
         author_channel_url, author_title = _author_display_fields(
-            author, rubric, post.channel_url
+            request, author, rubric, post.channel_url
         )
         serialized.append(
             {
@@ -5809,7 +5865,7 @@ def rubric_posts(request: HttpRequest, slug: str) -> HttpResponse:
     for post in posts:
         content, poll_payload = _content_with_live_poll(post, current_user)
         author_channel_url, author_title = _author_display_fields(
-            post.author, rubric, post.channel_url
+            request, post.author, rubric, post.channel_url
         )
         serialized.append(
             {
@@ -6288,7 +6344,7 @@ def tag_posts(request: HttpRequest, tag: str) -> HttpResponse:
         rubric = post.rubric
         content, poll_payload = _content_with_live_poll(post, current_user)
         author_channel_url, author_title = _author_display_fields(
-            post.author, rubric, post.channel_url
+            request, post.author, rubric, post.channel_url
         )
         serialized.append(
             {
@@ -6351,7 +6407,7 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
     current_user = _get_user_from_request(request)
     content, poll_payload = _content_with_live_poll(post, current_user)
     author_channel_url, author_title = _author_display_fields(
-        post.author, rubric, post.channel_url
+        request, post.author, rubric, post.channel_url
     )
     return JsonResponse(
         {
@@ -6496,7 +6552,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
             author_rating = _author_rating_value(post.author.rating_total)
             content, poll_payload = _content_with_live_poll(post, current_user)
             author_channel_url, author_title = _author_display_fields(
-                post.author, rubric, post.channel_url
+                request, post.author, rubric, post.channel_url
             )
             serialized.append(
                 {
@@ -6588,7 +6644,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
         elif force_slot_available:
             forced_daily_counts[forced_key] = forced_used + 1
         author_channel_url, author_title = _author_display_fields(
-            post.author, rubric, post.channel_url
+            request, post.author, rubric, post.channel_url
         )
         serialized_posts.append(
             {
@@ -6692,7 +6748,7 @@ def fresh_feed(request: HttpRequest) -> HttpResponse:
         rubric = post.rubric
         content, poll_payload = _content_with_live_poll(post, current_user)
         author_channel_url, author_title = _author_display_fields(
-            post.author, rubric, post.channel_url
+            request, post.author, rubric, post.channel_url
         )
         serialized.append(
             {
@@ -6777,7 +6833,7 @@ def favorites_feed(request: HttpRequest) -> HttpResponse:
         rubric = post.rubric
         content, poll_payload = _content_with_live_poll(post, user)
         author_channel_url, author_title = _author_display_fields(
-            post.author, rubric, post.channel_url
+            request, post.author, rubric, post.channel_url
         )
         serialized.append(
             {
@@ -6946,7 +7002,7 @@ def my_feed(request: HttpRequest) -> HttpResponse:
         rubric = post.rubric
         content, poll_payload = _content_with_live_poll(post, current_user)
         author_channel_url, author_title = _author_display_fields(
-            post.author, rubric, post.channel_url
+            request, post.author, rubric, post.channel_url
         )
         serialized.append(
             {
@@ -7102,7 +7158,7 @@ def thematic_feed_posts(request: HttpRequest, slug: str) -> HttpResponse:
         rubric = post.rubric
         content, poll_payload = _content_with_live_poll(post, current_user)
         author_channel_url, author_title = _author_display_fields(
-            post.author, rubric, post.channel_url
+            request, post.author, rubric, post.channel_url
         )
         serialized.append(
             {
@@ -7558,7 +7614,9 @@ def _serialize_backend_post_card(
     now = now or timezone.now()
     rubric = post.rubric
     content, poll_payload = _content_with_live_poll(post, current_user)
-    author_channel_url, author_title = _author_display_fields(post.author, rubric, post.channel_url)
+    author_channel_url, author_title = _author_display_fields(
+        request, post.author, rubric, post.channel_url
+    )
     return {
         "id": post.id,
         "title": _post_display_title(post),
@@ -8382,7 +8440,7 @@ def search_content(request: HttpRequest) -> HttpResponse:
             rubric = post.rubric
             content, poll_payload = _content_with_live_poll(post, current_user)
             author_channel_url, author_title = _author_display_fields(
-                post.author, rubric, post.channel_url
+                request, post.author, rubric, post.channel_url
             )
             posts.append(
                 {
