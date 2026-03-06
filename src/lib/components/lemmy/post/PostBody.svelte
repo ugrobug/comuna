@@ -515,7 +515,7 @@
     trigger.setAttribute('aria-expanded', isOpen ? 'true' : 'false')
     const hint = trigger.querySelector('.post-spoiler__hint') as HTMLElement | null
     if (hint) {
-      hint.textContent = isOpen ? 'Нажмите на шапку, чтобы скрыть' : 'Нажмите в любую область, чтобы раскрыть'
+      hint.textContent = isOpen ? 'Нажмите, чтобы скрыть' : 'Нажмите, чтобы раскрыть'
     }
   }
 
@@ -835,7 +835,7 @@
       return `<div class="post-spoiler" data-spoiler-open="0">
         <div class="post-spoiler__trigger" role="button" tabindex="0" aria-expanded="false">
           <span class="post-spoiler__title">${escapeHtml(spoilerTitle)}</span>
-          <span class="post-spoiler__hint">Нажмите в любую область, чтобы раскрыть</span>
+          <span class="post-spoiler__hint">Нажмите, чтобы раскрыть</span>
         </div>
         <div class="post-spoiler__content">
           <p>${spoilerBody}</p>
@@ -1111,7 +1111,7 @@
         return `<div class="post-spoiler" data-spoiler-open="0">
           <div class="post-spoiler__trigger" role="button" tabindex="0" aria-expanded="false">
             <span class="post-spoiler__title">${escapeHtml(spoilerTitle || 'Спойлер')}</span>
-            <span class="post-spoiler__hint">Нажмите в любую область, чтобы раскрыть</span>
+            <span class="post-spoiler__hint">Нажмите, чтобы раскрыть</span>
           </div>
           <div class="post-spoiler__content">
             ${spoilerHtml}
@@ -1724,13 +1724,10 @@
     if (!browser) return
     const clickHandler = (event: Event) => {
       const target = event.target as HTMLElement | null
-      const spoilerElement = target?.closest('.post-spoiler') as HTMLElement | null
-      if (spoilerElement && element?.contains(spoilerElement)) {
-        const spoilerTrigger = target?.closest('.post-spoiler__trigger') as HTMLElement | null
-        const isOpen = spoilerElement.classList.contains('is-open')
-        if (isOpen && !spoilerTrigger) {
-          return
-        }
+      const spoilerTrigger = target?.closest('.post-spoiler__trigger') as HTMLElement | null
+      if (spoilerTrigger && element?.contains(spoilerTrigger)) {
+        const spoilerElement = spoilerTrigger.closest('.post-spoiler') as HTMLElement | null
+        if (!spoilerElement || !element?.contains(spoilerElement)) return
         event.preventDefault()
         event.stopPropagation()
         toggleSpoilerBlock(spoilerElement)
@@ -1837,7 +1834,6 @@
     this={htmlElement}
     style={$$props.style ?? ''}
     class="post-content text-base {$$props.class ?? ''} {collapsible && !showFullBody && !expanded ? 'post-collapsed' : ''}"
-    class:pointer-events-none={!showFullBody && !(collapsible && expanded)}
     bind:this={element}
   >
     {@html sanitizeHtml(processedBody)}
@@ -2249,21 +2245,24 @@
   }
 
   :global(.post-content .post-movie-time__details) {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.36rem;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.3rem;
     position: absolute;
     left: 0;
     top: calc(100% + 0.38rem);
     z-index: 24;
-    padding: 0.4rem 0.58rem;
-    border-radius: 0.68rem;
+    padding: 0.56rem 0.66rem;
+    border-radius: 0.74rem;
     border: 1px solid rgba(251, 191, 36, 0.38);
     background:
       radial-gradient(120% 140% at 0% 0%, rgba(251, 191, 36, 0.24), rgba(251, 191, 36, 0) 62%),
       linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(30, 41, 59, 0.96));
     box-shadow: 0 12px 24px rgba(15, 23, 42, 0.34);
-    white-space: nowrap;
+    width: min(15.5rem, calc(100vw - 2.5rem));
+    min-height: 5.35rem;
+    white-space: normal;
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
@@ -2288,7 +2287,7 @@
   }
 
   :global(.post-content .post-movie-time__meta) {
-    display: inline;
+    display: block;
     font-size: 0.7rem;
     letter-spacing: 0.03em;
     text-transform: uppercase;
@@ -2297,30 +2296,22 @@
   }
 
   :global(.post-content .post-movie-time__scene) {
-    display: inline;
+    display: block;
     color: #f8fafc;
     font-size: 0.82rem;
-    line-height: 1.2;
+    line-height: 1.28;
     font-weight: 600;
-    max-width: 220px;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    width: 100%;
+    word-break: break-word;
   }
 
   :global(.post-content .post-movie-time__note) {
-    display: inline;
+    display: block;
     color: #cbd5e1;
     font-size: 0.78rem;
-    line-height: 1.2;
-    max-width: 210px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  :global(.post-content .post-movie-time__note::before) {
-    content: '•';
-    margin-right: 0.24rem;
-    opacity: 0.72;
+    line-height: 1.26;
+    width: 100%;
+    word-break: break-word;
   }
 
   :global(.post-content .post-spoiler) {
@@ -2332,11 +2323,6 @@
       linear-gradient(135deg, rgba(15, 23, 42, 0.94), rgba(30, 41, 59, 0.9));
     color: #e2e8f0;
     overflow: hidden;
-    cursor: pointer;
-  }
-
-  :global(.post-content .post-spoiler.is-open) {
-    cursor: default;
   }
 
   :global(.post-content .post-spoiler__trigger) {
@@ -2406,11 +2392,6 @@
 
   :global(.post-content .post-spoiler.is-open .post-spoiler__hint) {
     color: #94a3b8;
-  }
-
-  :global(.post-content .post-spoiler.is-open .post-spoiler__content) {
-    pointer-events: auto;
-    user-select: text;
   }
 
   :global(.post-content .post-music) {

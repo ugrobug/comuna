@@ -573,7 +573,7 @@
         return `<div class="post-spoiler"${anchorId} data-spoiler-open="0">
           <div class="post-spoiler__trigger" role="button" tabindex="0" aria-expanded="false">
             <span class="post-spoiler__title">${escapeSpoilerText(spoilerTitle)}</span>
-            <span class="post-spoiler__hint">Нажмите в любую область, чтобы раскрыть</span>
+            <span class="post-spoiler__hint">Нажмите, чтобы раскрыть</span>
           </div>
           <div class="post-spoiler__content">
             <p>${escapeSpoilerText(spoilerContent).replace(/\r?\n/g, '<br>')}</p>
@@ -678,7 +678,7 @@
         return `<div class="post-spoiler" data-spoiler-open="0">
           <div class="post-spoiler__trigger" role="button" tabindex="0" aria-expanded="false">
             <span class="post-spoiler__title">${escapeSpoilerText(spoilerTitle || 'Спойлер')}</span>
-            <span class="post-spoiler__hint">Нажмите в любую область, чтобы раскрыть</span>
+            <span class="post-spoiler__hint">Нажмите, чтобы раскрыть</span>
           </div>
           <div class="post-spoiler__content">
             ${spoilerHtml}
@@ -1019,39 +1019,32 @@
             })
           })
 
-          const spoilers = document.querySelectorAll('.post-content .post-spoiler')
-          const toggleSpoiler = (spoiler: HTMLElement) => {
+          const spoilerTriggers = document.querySelectorAll('.post-content .post-spoiler__trigger')
+          const toggleSpoiler = (trigger: HTMLElement) => {
+            const spoiler = trigger.closest('.post-spoiler') as HTMLElement | null
             if (!spoiler) return
             const isOpen = spoiler.classList.toggle('is-open')
             spoiler.setAttribute('data-spoiler-open', isOpen ? '1' : '0')
-            const trigger = spoiler.querySelector('.post-spoiler__trigger') as HTMLElement | null
-            if (!trigger) return
             trigger.setAttribute('aria-expanded', isOpen ? 'true' : 'false')
             const hint = trigger.querySelector('.post-spoiler__hint') as HTMLElement | null
             if (hint) {
-              hint.textContent = isOpen ? 'Нажмите на шапку, чтобы скрыть' : 'Нажмите в любую область, чтобы раскрыть'
+              hint.textContent = isOpen ? 'Нажмите, чтобы скрыть' : 'Нажмите, чтобы раскрыть'
             }
           }
-          spoilers.forEach((spoilerElement) => {
-            if (!(spoilerElement instanceof HTMLElement)) return
-            if (spoilerElement.getAttribute('data-spoiler-ready') === '1') return
-            spoilerElement.setAttribute('data-spoiler-ready', '1')
-            spoilerElement.addEventListener('click', (event) => {
-              const clickTarget = event.target as HTMLElement | null
-              const clickedTrigger = clickTarget?.closest('.post-spoiler__trigger')
-              const isOpen = spoilerElement.classList.contains('is-open')
-              if (isOpen && !clickedTrigger) return
+          spoilerTriggers.forEach((triggerElement) => {
+            if (!(triggerElement instanceof HTMLElement)) return
+            if (triggerElement.getAttribute('data-spoiler-ready') === '1') return
+            triggerElement.setAttribute('data-spoiler-ready', '1')
+            triggerElement.addEventListener('click', (event) => {
               event.preventDefault()
               event.stopPropagation()
-              toggleSpoiler(spoilerElement)
+              toggleSpoiler(triggerElement)
             })
-            const triggerElement = spoilerElement.querySelector('.post-spoiler__trigger')
-            if (!(triggerElement instanceof HTMLElement)) return
             triggerElement.addEventListener('keydown', (event: KeyboardEvent) => {
               if (event.key !== 'Enter' && event.key !== ' ') return
               event.preventDefault()
               event.stopPropagation()
-              toggleSpoiler(spoilerElement)
+              toggleSpoiler(triggerElement)
             })
           })
 
@@ -1081,7 +1074,7 @@
       return `<div class="post-spoiler"${anchorId} data-spoiler-open="0">
         <div class="post-spoiler__trigger" role="button" tabindex="0" aria-expanded="false">
           <span class="post-spoiler__title">${escapeSpoilerText(spoilerTitle || 'Спойлер')}</span>
-          <span class="post-spoiler__hint">Нажмите в любую область, чтобы раскрыть</span>
+          <span class="post-spoiler__hint">Нажмите, чтобы раскрыть</span>
         </div>
         <div class="post-spoiler__content">
           ${spoilerHtml}
@@ -1126,7 +1119,7 @@
           return `<div class="post-spoiler"${anchorId} data-spoiler-open="0">
             <div class="post-spoiler__trigger" role="button" tabindex="0" aria-expanded="false">
               <span class="post-spoiler__title">${escapeSpoilerText(spoilerTitle)}</span>
-              <span class="post-spoiler__hint">Нажмите в любую область, чтобы раскрыть</span>
+              <span class="post-spoiler__hint">Нажмите, чтобы раскрыть</span>
             </div>
             <div class="post-spoiler__content">
               <p>${escapeSpoilerText(spoilerContent).replace(/\r?\n/g, '<br>')}</p>
@@ -1995,11 +1988,6 @@
       linear-gradient(135deg, rgba(15, 23, 42, 0.94), rgba(30, 41, 59, 0.9));
     color: #e2e8f0;
     overflow: hidden;
-    cursor: pointer;
-  }
-
-  :global(.post-content .post-spoiler.is-open) {
-    cursor: default;
   }
 
   :global(.post-content .post-spoiler__trigger) {
@@ -2069,11 +2057,6 @@
 
   :global(.post-content .post-spoiler.is-open .post-spoiler__hint) {
     color: #94a3b8;
-  }
-
-  :global(.post-content .post-spoiler.is-open .post-spoiler__content) {
-    pointer-events: auto;
-    user-select: text;
   }
 
   :global(.gallery-modal) {
