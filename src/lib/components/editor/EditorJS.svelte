@@ -16,7 +16,7 @@
     buildOpenStreetMapEmbedUrl,
   } from '$lib/util'
   import { get } from 'svelte/store'
-  import { Button } from 'mono-svelte'
+  import { Button, toast } from 'mono-svelte'
   import CustomInputTune from './CustomInputTune'
   import './CustomInputTune.css'
   import { saveDraft, getDraft, formatLastSaved, getDraftLastSaved } from '$lib/session'
@@ -34,6 +34,23 @@
       }
     }
     throw new Error('Нужна авторизация для загрузки изображений')
+  }
+
+  const humanizeUploadError = (error: unknown): string => {
+    const rawMessage = error instanceof Error ? error.message : String(error ?? '')
+    const message = rawMessage.trim()
+    if (!message) {
+      return 'Не удалось загрузить изображение'
+    }
+    const lowered = message.toLowerCase()
+    if (
+      lowered.includes('слишком большой') ||
+      lowered.includes('too large') ||
+      lowered.includes('413')
+    ) {
+      return 'Файл слишком большой. Максимальный размер — 10 МБ.'
+    }
+    return message
   }
 
   // Импортируем иконки
@@ -296,19 +313,32 @@
             button.textContent = 'Загрузка...'
             
             for (const file of files) {
-              const uploaded = await uploadEditorImage(file)
-              if (uploaded?.url) {
-                const finalUrl = uploaded.useWebp ? `${uploaded.url}?format=webp` : uploaded.url
-                this.data.images.push({
-                  url: finalUrl,
-                  alt: '',
-                  title: ''
+              try {
+                const uploaded = await uploadEditorImage(file)
+                if (uploaded?.url) {
+                  const finalUrl = uploaded.useWebp ? `${uploaded.url}?format=webp` : uploaded.url
+                  this.data.images.push({
+                    url: finalUrl,
+                    alt: '',
+                    title: ''
+                  })
+                  this.renderGallery(gallery)
+                }
+              } catch (error) {
+                console.error('Ошибка при загрузке изображения:', error)
+                const fileLabel = file?.name ? `«${file.name}»` : 'Файл'
+                toast({
+                  content: `${fileLabel}: ${humanizeUploadError(error)}`,
+                  type: 'error'
                 })
-                this.renderGallery(gallery)
               }
             }
           } catch (error) {
-            console.error('Ошибка при загрузке изображения:', error)
+            console.error('Ошибка при загрузке изображений в галерею:', error)
+            toast({
+              content: humanizeUploadError(error),
+              type: 'error'
+            })
           } finally {
             this.isUploading = false
             wrapper.removeChild(loader)
@@ -685,6 +715,10 @@
             }
           } catch (error) {
             console.error('Ошибка при загрузке изображения:', error)
+            toast({
+              content: humanizeUploadError(error),
+              type: 'error'
+            })
           } finally {
             this.isUploading = false
             wrapper.removeChild(loader)
