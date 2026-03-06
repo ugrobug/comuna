@@ -77,7 +77,9 @@
   $: extraVotePollParticipationCount = Math.max(backendVotePollParticipations.length - 1, 0)
   $: showTemplateHeader = Boolean(isBackendPost && showFullBody && backendTemplate)
   $: showTemplateHeaderPreview = Boolean(
-    isBackendPost && !showFullBody && backendTemplate?.type === 'post_vote_poll'
+    isBackendPost &&
+      !showFullBody &&
+      (backendTemplate?.type === 'post_vote_poll' || backendTemplate?.type === 'movie_review')
   )
   $: backendViewsValue = ((post.counts as { views?: number }).views ?? 0)
   $: backendAuthorNotifyCommentsEnabled = (

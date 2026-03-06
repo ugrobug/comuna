@@ -99,6 +99,7 @@
         aria-label={`Оценка автора: ${authorRatingBadgeText}`}
       >
         <span class="movie-review-rating-badge__value">{authorRatingBadgeText}</span>
+        <span class="movie-review-rating-badge__label" aria-hidden="true">Оценка автора</span>
       </div>
     {/if}
   </div>
@@ -269,6 +270,29 @@
     line-height: 1;
     font-weight: 800;
     font-variant-numeric: tabular-nums;
+  }
+
+  .movie-review-rating-badge__label {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 0.35rem);
+    border-radius: 0.55rem;
+    border: 1px solid rgba(148, 163, 184, 0.36);
+    background: rgba(15, 23, 42, 0.96);
+    color: #cbd5e1;
+    padding: 0.2rem 0.46rem;
+    font-size: 0.72rem;
+    line-height: 1.1;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(4px);
+    transition: opacity 0.18s ease, transform 0.18s ease;
+  }
+
+  .movie-review-rating-badge:hover .movie-review-rating-badge__label {
+    opacity: 1;
+    transform: translateY(0);
   }
 
   .movie-review-rating-badge--green {
