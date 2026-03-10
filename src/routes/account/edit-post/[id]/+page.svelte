@@ -87,7 +87,6 @@
   let autosaving = false
   let publishing = false
   let saveError = ''
-  let draftStatus = ''
   let autosavePrimed = false
   let lastObservedEditSnapshot = ''
   let autosaveTimeout: ReturnType<typeof setTimeout> | null = null
@@ -264,9 +263,6 @@
     editTags = tagNames.join(', ')
     isJsonContent = detectContentType(editContent)
     lastObservedEditSnapshot = JSON.stringify(buildEditPayload())
-    draftStatus = currentPost.is_draft
-      ? `Черновик сохранён ${formatSavedAt(currentPost.updated_at || currentPost.created_at)}`
-      : ''
   }
 
   const loadRubrics = async () => {
@@ -325,7 +321,6 @@
     if (!post?.is_draft || !autosavePrimed || autosaving || publishing) return
     clearAutosaveTimeout()
     saveError = ''
-    draftStatus = 'Сохраняем черновик...'
     autosaveTimeout = setTimeout(async () => {
       autosaving = true
       const sentSnapshot = JSON.stringify(buildEditPayload())
@@ -339,10 +334,8 @@
         const latestSnapshot = JSON.stringify(buildEditPayload())
         needsAnotherSave = latestSnapshot !== sentSnapshot
         lastObservedEditSnapshot = latestSnapshot
-        draftStatus = `Черновик сохранён ${formatSavedAt(updated.updated_at || updated.created_at)}`
       } catch (err) {
         saveError = (err as Error)?.message ?? 'Не удалось сохранить черновик'
-        draftStatus = 'Автосохранение черновика не удалось.'
       } finally {
         autosaving = false
         if (needsAnotherSave) {
@@ -481,16 +474,6 @@
     <p class="text-sm text-red-600">{loadError}</p>
   {:else if post}
     <div class="rounded-xl border border-slate-200 dark:border-zinc-800 p-4 sm:p-6 flex flex-col gap-4">
-      {#if post.is_draft}
-        <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
-          <div class="font-medium">Черновик с автосохранением</div>
-          <div class="mt-1">{draftStatus}</div>
-          <div class="mt-1 text-xs opacity-80">
-            Ссылка на просмотр работает только для зарегистрированных пользователей сайта.
-          </div>
-        </div>
-      {/if}
-
       {#if publishIdentityOptions.length > 1}
         <label class="flex flex-col gap-1 w-full">
           <span class="text-sm text-slate-700 dark:text-zinc-300">Публиковать от имени</span>
