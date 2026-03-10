@@ -84,10 +84,12 @@
   let allowedTemplateTypes: string[] = ['basic']
 
   let saving = false
+  let autosaving = false
   let publishing = false
   let saveError = ''
   let draftStatus = ''
   let autosavePrimed = false
+  let lastSavedEditSnapshot = ''
   let lastObservedEditSnapshot = ''
   let autosaveTimeout: ReturnType<typeof setTimeout> | null = null
 
@@ -262,7 +264,9 @@
     )
     editTags = tagNames.join(', ')
     isJsonContent = detectContentType(editContent)
-    lastObservedEditSnapshot = JSON.stringify(buildEditPayload())
+    const snapshot = JSON.stringify(buildEditPayload())
+    lastSavedEditSnapshot = snapshot
+    lastObservedEditSnapshot = snapshot
     draftStatus = currentPost.is_draft
       ? `Черновик сохранён ${formatSavedAt(currentPost.updated_at || currentPost.created_at)}`
       : ''
@@ -321,29 +325,33 @@
   }
 
   const queueDraftAutosave = () => {
-    if (!post?.is_draft || !autosavePrimed || saving || publishing) return
+    if (!post?.is_draft || !autosavePrimed || autosaving || publishing) return
+    if (currentEditSnapshot === lastSavedEditSnapshot) return
     clearAutosaveTimeout()
     saveError = ''
     draftStatus = 'Сохраняем черновик...'
     autosaveTimeout = setTimeout(async () => {
-      saving = true
-      const sentSnapshot = JSON.stringify(buildEditPayload())
+      const payload = buildEditPayload()
+      const sentSnapshot = JSON.stringify(payload)
+      if (sentSnapshot === lastSavedEditSnapshot) return
+      autosaving = true
       let needsAnotherSave = false
       try {
         const updated = await updateUserPost(post.id, {
-          ...buildEditPayload(),
+          ...payload,
           is_draft: true,
         })
         post = updated
         const latestSnapshot = JSON.stringify(buildEditPayload())
-        needsAnotherSave = latestSnapshot !== sentSnapshot
+        lastSavedEditSnapshot = sentSnapshot
         lastObservedEditSnapshot = latestSnapshot
+        needsAnotherSave = latestSnapshot !== lastSavedEditSnapshot
         draftStatus = `Черновик сохранён ${formatSavedAt(updated.updated_at || updated.created_at)}`
       } catch (err) {
         saveError = (err as Error)?.message ?? 'Не удалось сохранить черновик'
         draftStatus = 'Автосохранение черновика не удалось.'
       } finally {
-        saving = false
+        autosaving = false
         if (needsAnotherSave) {
           queueDraftAutosave()
         }
@@ -460,7 +468,11 @@
   $: currentEditSnapshot = JSON.stringify(buildEditPayload())
   $: if (autosavePrimed && post?.is_draft && currentEditSnapshot !== lastObservedEditSnapshot) {
     lastObservedEditSnapshot = currentEditSnapshot
-    queueDraftAutosave()
+    if (currentEditSnapshot === lastSavedEditSnapshot) {
+      clearAutosaveTimeout()
+    } else {
+      queueDraftAutosave()
+    }
   }
 </script>
 
@@ -631,15 +643,15 @@
             color="primary"
             on:click={publishDraft}
             loading={publishing}
-            disabled={publishing || saving}
+            disabled={publishing}
           >
             Опубликовать
           </Button>
-          <Button color="ghost" on:click={copyDraftShareLink} disabled={!draftShareUrl || saving || publishing}>
+          <Button color="ghost" on:click={copyDraftShareLink} disabled={!draftShareUrl || publishing}>
             Скопировать ссылку
           </Button>
           {#if draftSharePath}
-            <Button color="ghost" href={draftSharePath} target="_blank" rel="noreferrer" disabled={saving || publishing}>
+            <Button color="ghost" href={draftSharePath} target="_blank" rel="noreferrer" disabled={publishing}>
               Открыть просмотр
             </Button>
           {/if}

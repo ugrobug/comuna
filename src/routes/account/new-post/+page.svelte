@@ -42,6 +42,7 @@
   let rubricsLoading = false
   let autosavePrimed = false
   let initialFormSnapshot = ''
+  let lastSavedFormSnapshot = ''
   let lastObservedFormSnapshot = ''
   let autosaveTimeout: ReturnType<typeof setTimeout> | null = null
   type RubricOption = {
@@ -260,10 +261,12 @@
 
   const queueDraftCreation = () => {
     if (!autosavePrimed || !$siteUser || creating || draftCreating) return
+    if (currentFormSnapshot === lastSavedFormSnapshot) return
     clearAutosaveTimeout()
     draftError = ''
 
     autosaveTimeout = setTimeout(async () => {
+      if (currentFormSnapshot === lastSavedFormSnapshot) return
       draftCreating = true
       try {
         const draft = await createUserPost({
@@ -298,6 +301,7 @@
     draftError = ''
     clearLocalDraftBuffer()
     initialFormSnapshot = JSON.stringify(buildLocalDraftState())
+    lastSavedFormSnapshot = initialFormSnapshot
     lastObservedFormSnapshot = initialFormSnapshot
   }
 
@@ -309,6 +313,7 @@
           await loadRubrics()
           await tick()
           initialFormSnapshot = JSON.stringify(buildLocalDraftState())
+          lastSavedFormSnapshot = initialFormSnapshot
           const restored = restoreLocalDraftBuffer()
           await tick()
           lastObservedFormSnapshot = JSON.stringify(buildLocalDraftState())
@@ -354,6 +359,7 @@
   $: if (autosavePrimed && currentFormSnapshot !== lastObservedFormSnapshot) {
     lastObservedFormSnapshot = currentFormSnapshot
     if (currentFormSnapshot === initialFormSnapshot) {
+      lastSavedFormSnapshot = initialFormSnapshot
       clearAutosaveTimeout()
       clearLocalDraftBuffer()
     } else {
@@ -563,11 +569,11 @@
             color="primary"
             on:click={createPost}
             loading={creating}
-            disabled={creating || draftCreating}
+            disabled={creating}
           >
             Опубликовать
           </Button>
-          <Button color="ghost" on:click={resetForm} disabled={creating || draftCreating}>
+          <Button color="ghost" on:click={resetForm} disabled={creating}>
             Очистить
           </Button>
         </div>
