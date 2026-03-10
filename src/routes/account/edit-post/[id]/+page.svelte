@@ -89,7 +89,6 @@
   let saveError = ''
   let draftStatus = ''
   let autosavePrimed = false
-  let lastSavedEditSnapshot = ''
   let lastObservedEditSnapshot = ''
   let autosaveTimeout: ReturnType<typeof setTimeout> | null = null
 
@@ -264,9 +263,7 @@
     )
     editTags = tagNames.join(', ')
     isJsonContent = detectContentType(editContent)
-    const snapshot = JSON.stringify(buildEditPayload())
-    lastSavedEditSnapshot = snapshot
-    lastObservedEditSnapshot = snapshot
+    lastObservedEditSnapshot = JSON.stringify(buildEditPayload())
     draftStatus = currentPost.is_draft
       ? `Черновик сохранён ${formatSavedAt(currentPost.updated_at || currentPost.created_at)}`
       : ''
@@ -326,26 +323,22 @@
 
   const queueDraftAutosave = () => {
     if (!post?.is_draft || !autosavePrimed || autosaving || publishing) return
-    if (currentEditSnapshot === lastSavedEditSnapshot) return
     clearAutosaveTimeout()
     saveError = ''
     draftStatus = 'Сохраняем черновик...'
     autosaveTimeout = setTimeout(async () => {
-      const payload = buildEditPayload()
-      const sentSnapshot = JSON.stringify(payload)
-      if (sentSnapshot === lastSavedEditSnapshot) return
       autosaving = true
+      const sentSnapshot = JSON.stringify(buildEditPayload())
       let needsAnotherSave = false
       try {
         const updated = await updateUserPost(post.id, {
-          ...payload,
+          ...buildEditPayload(),
           is_draft: true,
         })
         post = updated
         const latestSnapshot = JSON.stringify(buildEditPayload())
-        lastSavedEditSnapshot = sentSnapshot
+        needsAnotherSave = latestSnapshot !== sentSnapshot
         lastObservedEditSnapshot = latestSnapshot
-        needsAnotherSave = latestSnapshot !== lastSavedEditSnapshot
         draftStatus = `Черновик сохранён ${formatSavedAt(updated.updated_at || updated.created_at)}`
       } catch (err) {
         saveError = (err as Error)?.message ?? 'Не удалось сохранить черновик'
@@ -468,11 +461,7 @@
   $: currentEditSnapshot = JSON.stringify(buildEditPayload())
   $: if (autosavePrimed && post?.is_draft && currentEditSnapshot !== lastObservedEditSnapshot) {
     lastObservedEditSnapshot = currentEditSnapshot
-    if (currentEditSnapshot === lastSavedEditSnapshot) {
-      clearAutosaveTimeout()
-    } else {
-      queueDraftAutosave()
-    }
+    queueDraftAutosave()
   }
 </script>
 
