@@ -6,11 +6,12 @@
   import EditorJS from '$lib/components/editor/EditorJS.svelte'
   import { feedKeyboardShortcuts } from '$lib/actions/feedKeyboardShortcuts'
   import { backendPostToPostView, buildBackendPostPath } from '$lib/api/backend'
-  import { siteUser, updateStaticPageContent } from '$lib/siteAuth'
+  import { refreshSiteUser, siteUser, updateStaticPageContent } from '$lib/siteAuth'
   import { userSettings } from '$lib/settings'
   import { env } from '$env/dynamic/public'
   import { page } from '$app/stores'
   import { Button, toast } from 'mono-svelte'
+  import { onMount } from 'svelte'
 
   export let data
 
@@ -33,6 +34,9 @@
     $page.url.pathname,
     (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '') + '/'
   ).toString()
+  onMount(() => {
+    refreshSiteUser().catch(() => null)
+  })
 
   const startEditing = () => {
     editorValue = pageContent

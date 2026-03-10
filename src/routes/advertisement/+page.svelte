@@ -3,7 +3,8 @@
   import PostBody from '$lib/components/lemmy/post/PostBody.svelte'
   import EditorJS from '$lib/components/editor/EditorJS.svelte'
   import { Button, toast } from 'mono-svelte'
-  import { siteUser, updateStaticPageContent } from '$lib/siteAuth'
+  import { onMount } from 'svelte'
+  import { refreshSiteUser, siteUser, updateStaticPageContent } from '$lib/siteAuth'
   import { env } from '$env/dynamic/public'
   import { page } from '$app/stores'
 
@@ -21,6 +22,9 @@
     $page.url.pathname,
     (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '') + '/'
   ).toString()
+  onMount(() => {
+    refreshSiteUser().catch(() => null)
+  })
 
   const startEditing = () => {
     editorValue = pageContent
