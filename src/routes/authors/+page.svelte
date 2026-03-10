@@ -2,6 +2,9 @@
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import PostBody from '$lib/components/lemmy/post/PostBody.svelte'
   import EditorJS from '$lib/components/editor/EditorJS.svelte'
+  import LoginModal from '$lib/components/auth/LoginModal.svelte'
+  import { profile } from '$lib/auth'
+  import { isAdmin } from '$lib/components/lemmy/moderation/moderation'
   import { Button, toast } from 'mono-svelte'
   import { onMount } from 'svelte'
   import { refreshSiteUser, siteUser, updateStaticPageContent } from '$lib/siteAuth'
@@ -15,9 +18,11 @@
     'Публикуйте посты Telegram-канала на сайте, чтобы их находили в Google и Яндексе и подписывались на ваш канал.'
   let isEditing = false
   let isSaving = false
+  let loginModalOpen = false
   let pageContent = data?.pageContent ?? ''
   let editorValue = pageContent
   $: canEdit = !!$siteUser?.is_staff
+  $: canManagePage = canEdit || !!($profile?.user && isAdmin($profile.user))
   $: canonicalUrl = new URL(
     $page.url.pathname,
     (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '') + '/'
@@ -27,6 +32,14 @@
   })
 
   const startEditing = () => {
+    if (!canEdit) {
+      loginModalOpen = true
+      toast({
+        content: 'Для редактирования этой страницы нужен вход в аккаунт сайта.',
+        type: 'info',
+      })
+      return
+    }
     editorValue = pageContent
     isEditing = true
   }
@@ -63,8 +76,14 @@
   <Header pageHeader>
     <div class="flex w-full items-center justify-between gap-3">
       <h1 class="text-2xl font-bold">Авторам</h1>
-      {#if canEdit && !isEditing}
-        <Button size="sm" color="secondary" on:click={startEditing}>Редактировать</Button>
+      {#if canManagePage && !isEditing}
+        <Button size="sm" color="secondary" on:click={startEditing}>
+          {#if canEdit}
+            Редактировать
+          {:else}
+            Войти для редактирования
+          {/if}
+        </Button>
       {/if}
     </div>
   </Header>
@@ -91,6 +110,8 @@
     </div>
   {/if}
 </div>
+
+<LoginModal bind:open={loginModalOpen} />
 
 <svelte:head>
   <title>{title}</title>

@@ -4,6 +4,9 @@
   import Post from '$lib/components/lemmy/post/Post.svelte'
   import PostBody from '$lib/components/lemmy/post/PostBody.svelte'
   import EditorJS from '$lib/components/editor/EditorJS.svelte'
+  import LoginModal from '$lib/components/auth/LoginModal.svelte'
+  import { profile } from '$lib/auth'
+  import { isAdmin } from '$lib/components/lemmy/moderation/moderation'
   import { feedKeyboardShortcuts } from '$lib/actions/feedKeyboardShortcuts'
   import { backendPostToPostView, buildBackendPostPath } from '$lib/api/backend'
   import { refreshSiteUser, siteUser, updateStaticPageContent } from '$lib/siteAuth'
@@ -20,9 +23,11 @@
     'Comuna помогает Telegram-каналам получать органический трафик из поисковых систем за счет публикации контента на сайте.'
   let isEditing = false
   let isSaving = false
+  let loginModalOpen = false
   let pageContent = data?.pageContent ?? ''
   let editorValue = pageContent
   $: canEdit = !!$siteUser?.is_staff
+  $: canManagePage = canEdit || !!($profile?.user && isAdmin($profile.user))
   $: hiddenAuthorKeys = new Set(
     ($userSettings.hiddenAuthors ?? []).map((value) => value.toLowerCase())
   )
@@ -39,6 +44,14 @@
   })
 
   const startEditing = () => {
+    if (!canEdit) {
+      loginModalOpen = true
+      toast({
+        content: 'Для редактирования этой страницы нужен вход в аккаунт сайта.',
+        type: 'info',
+      })
+      return
+    }
     editorValue = pageContent
     isEditing = true
   }
@@ -75,8 +88,14 @@
   <Header pageHeader>
     <div class="flex w-full items-center justify-between gap-3">
       <h1 class="text-2xl font-bold">О проекте</h1>
-      {#if canEdit && !isEditing}
-        <Button size="sm" color="secondary" on:click={startEditing}>Редактировать</Button>
+      {#if canManagePage && !isEditing}
+        <Button size="sm" color="secondary" on:click={startEditing}>
+          {#if canEdit}
+            Редактировать
+          {:else}
+            Войти для редактирования
+          {/if}
+        </Button>
       {/if}
     </div>
   </Header>
@@ -124,6 +143,8 @@
     <p class="text-base text-slate-500">Пока нет обновлений.</p>
   {/if}
 </div>
+
+<LoginModal bind:open={loginModalOpen} />
 
 <svelte:head>
   <title>{title}</title>
