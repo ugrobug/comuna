@@ -1,9 +1,10 @@
 <script lang="ts">
+  import { browser } from '$app/environment'
   import { goto } from '$app/navigation'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import { Button, Spinner, TextInput, toast } from 'mono-svelte'
   import EditorJS from '$lib/components/editor/EditorJS.svelte'
-  import { onDestroy, onMount } from 'svelte'
+  import { onDestroy, onMount, tick } from 'svelte'
   import { deserializeEditorModel } from '$lib/util'
   import {
     createUserPost,
@@ -40,7 +41,8 @@
   let draftCreating = false
   let rubricsLoading = false
   let autosavePrimed = false
-  let lastObservedDraftSnapshot = ''
+  let initialFormSnapshot = ''
+  let lastObservedFormSnapshot = ''
   let autosaveTimeout: ReturnType<typeof setTimeout> | null = null
   type RubricOption = {
     name: string
@@ -57,6 +59,7 @@
   let selectedIdentity: PublishIdentityOption | undefined
   let selectedChannelIdentity: PublishIdentityOption | undefined
   const SITE_AUTHOR_CHOICE = '__site__'
+  const LOCAL_DRAFT_STORAGE_KEY = 'comuna.site.new-post.buffer.v1'
   let createTemplateType: '' | PostTemplateType = ''
   let createMovieReviewData: MovieReviewTemplateData = createEmptyMovieReviewTemplateData()
   let createPostVotePollData: PostVotePollTemplateData = createEmptyPostVotePollTemplateData()
@@ -143,12 +146,76 @@
     }
   }
 
-  const hasMeaningfulDraftContent = () => {
-    if (createTitle.trim()) return true
-    if (!isEditorContentEmpty(createContent)) return true
-    if (buildTags().length) return true
-    if (createTemplateType) return true
-    return false
+  const buildLocalDraftState = () => ({
+    title: createTitle,
+    content: createContent,
+    tags: createTags,
+    author: createAuthor,
+    rubric: createRubric,
+    templateType: createTemplateType,
+    movieReviewData: createMovieReviewData,
+    postVotePollData: createPostVotePollData,
+    musicReleaseData: createMusicReleaseData,
+  })
+
+  const localDraftStorageKey = () =>
+    $siteUser ? `${LOCAL_DRAFT_STORAGE_KEY}:${$siteUser.id}` : null
+
+  const clearLocalDraftBuffer = () => {
+    if (!browser) return
+    const key = localDraftStorageKey()
+    if (!key) return
+    localStorage.removeItem(key)
+  }
+
+  const persistLocalDraftBuffer = () => {
+    if (!browser) return
+    const key = localDraftStorageKey()
+    if (!key) return
+    localStorage.setItem(
+      key,
+      JSON.stringify({
+        saved_at: new Date().toISOString(),
+        ...buildLocalDraftState(),
+      })
+    )
+  }
+
+  const restoreLocalDraftBuffer = () => {
+    if (!browser) return false
+    const key = localDraftStorageKey()
+    if (!key) return false
+    const raw = localStorage.getItem(key)
+    if (!raw) return false
+    try {
+      const parsed = JSON.parse(raw)
+      const nextAuthor = String(parsed?.author || '')
+      const nextRubric = String(parsed?.rubric || '')
+      const nextTemplateType = String(parsed?.templateType || '') as '' | PostTemplateType
+      const authorExists =
+        !nextAuthor || publishIdentityOptions.some((item) => item.value === nextAuthor)
+      const rubricExists = !nextRubric || rubrics.some((item) => item.slug === nextRubric)
+      createTitle = String(parsed?.title || '')
+      createContent = String(parsed?.content || '')
+      createTags = String(parsed?.tags || '')
+      createAuthor = authorExists ? nextAuthor : createAuthor
+      createRubric = rubricExists ? nextRubric : createRubric
+      createTemplateType =
+        nextTemplateType === 'movie_review' ||
+        nextTemplateType === 'post_vote_poll' ||
+        nextTemplateType === 'music_release'
+          ? nextTemplateType
+          : ''
+      createMovieReviewData = parsed?.movieReviewData ?? createEmptyMovieReviewTemplateData()
+      createPostVotePollData =
+        parsed?.postVotePollData ?? createEmptyPostVotePollTemplateData()
+      createMusicReleaseData =
+        parsed?.musicReleaseData ?? createEmptyMusicReleaseTemplateData()
+      return true
+    } catch {
+      localStorage.removeItem(key)
+      return false
+    }
   }
 
   const clearAutosaveTimeout = () => {
@@ -196,10 +263,6 @@
     clearAutosaveTimeout()
     draftError = ''
 
-    if (!hasMeaningfulDraftContent()) {
-      return
-    }
-
     autosaveTimeout = setTimeout(async () => {
       draftCreating = true
       try {
@@ -207,6 +270,7 @@
           ...buildDraftPayload(),
           is_draft: true,
         })
+        clearLocalDraftBuffer()
         toast({ content: 'Черновик создан', type: 'success' })
         await goto(`/account/edit-post/${draft.id}`, {
           replaceState: true,
@@ -232,15 +296,32 @@
     createMusicReleaseData = createEmptyMusicReleaseTemplateData()
     createError = ''
     draftError = ''
-    lastObservedDraftSnapshot = JSON.stringify(buildDraftPayload())
+    clearLocalDraftBuffer()
+    initialFormSnapshot = JSON.stringify(buildLocalDraftState())
+    lastObservedFormSnapshot = initialFormSnapshot
   }
 
   onMount(() => {
-    refreshSiteUser().finally(() => {
-      loadingUser = false
-      loadRubrics()
-      autosavePrimed = true
-    })
+    const initializeForm = async () => {
+      try {
+        await refreshSiteUser()
+        if ($siteUser) {
+          await loadRubrics()
+          await tick()
+          initialFormSnapshot = JSON.stringify(buildLocalDraftState())
+          const restored = restoreLocalDraftBuffer()
+          await tick()
+          lastObservedFormSnapshot = JSON.stringify(buildLocalDraftState())
+          autosavePrimed = true
+          if (restored && lastObservedFormSnapshot !== initialFormSnapshot) {
+            queueDraftCreation()
+          }
+        }
+      } finally {
+        loadingUser = false
+      }
+    }
+    initializeForm()
 
     const closeOnOutsideClick = (event: MouseEvent) => {
       if (!rubricMenuOpen || !rubricMenuRef) return
@@ -269,10 +350,16 @@
     if (authorRubric) createRubric = authorRubric
   }
 
-  $: currentDraftSnapshot = JSON.stringify(buildDraftPayload())
-  $: if (autosavePrimed && currentDraftSnapshot !== lastObservedDraftSnapshot) {
-    lastObservedDraftSnapshot = currentDraftSnapshot
-    queueDraftCreation()
+  $: currentFormSnapshot = JSON.stringify(buildLocalDraftState())
+  $: if (autosavePrimed && currentFormSnapshot !== lastObservedFormSnapshot) {
+    lastObservedFormSnapshot = currentFormSnapshot
+    if (currentFormSnapshot === initialFormSnapshot) {
+      clearAutosaveTimeout()
+      clearLocalDraftBuffer()
+    } else {
+      persistLocalDraftBuffer()
+      queueDraftCreation()
+    }
   }
 
   const createPost = async () => {
@@ -299,6 +386,7 @@
     creating = true
     try {
       const createdPost = await createUserPost(buildDraftPayload())
+      clearLocalDraftBuffer()
       resetForm()
       toast({
         content:
