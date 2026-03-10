@@ -1,4 +1,5 @@
 <script>
+  import { browser } from '$app/environment'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import SectionTitle from '$lib/components/ui/SectionTitle.svelte'
   import Post from '$lib/components/lemmy/post/Post.svelte'
@@ -24,10 +25,12 @@
   let isEditing = false
   let isSaving = false
   let loginModalOpen = false
+  let hasLocalAuthHint = false
   let pageContent = data?.pageContent ?? ''
   let editorValue = pageContent
   $: canEdit = !!$siteUser?.is_staff
   $: canManagePage = canEdit || !!($profile?.user && isAdmin($profile.user))
+  $: canShowEditButton = canManagePage || hasLocalAuthHint
   $: hiddenAuthorKeys = new Set(
     ($userSettings.hiddenAuthors ?? []).map((value) => value.toLowerCase())
   )
@@ -40,11 +43,22 @@
     (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '') + '/'
   ).toString()
   onMount(() => {
+    if (browser) {
+      const siteToken = localStorage.getItem('comuna.site.token')
+      const profileData = localStorage.getItem('profileData')
+      hasLocalAuthHint = Boolean(siteToken || profileData?.includes('"jwt"'))
+    }
     refreshSiteUser().catch(() => null)
   })
 
-  const startEditing = () => {
+  const startEditing = async () => {
     if (!canEdit) {
+      const refreshedUser = await refreshSiteUser().catch(() => null)
+      if (refreshedUser?.is_staff) {
+        editorValue = pageContent
+        isEditing = true
+        return
+      }
       loginModalOpen = true
       toast({
         content: 'Для редактирования этой страницы нужен вход в аккаунт сайта.',
@@ -88,7 +102,7 @@
   <Header pageHeader>
     <div class="flex w-full items-center justify-between gap-3">
       <h1 class="text-2xl font-bold">О проекте</h1>
-      {#if canManagePage && !isEditing}
+      {#if canShowEditButton && !isEditing}
         <Button size="sm" color="secondary" on:click={startEditing}>
           {#if canEdit}
             Редактировать
