@@ -5074,6 +5074,7 @@ def _resolve_manual_post_author(
     author_ids: list[int],
     author_source: str,
     author_username: str,
+    allow_default: bool = False,
 ) -> tuple[Author | None, str | None]:
     author = None
     personal_author_error = None
@@ -5097,6 +5098,15 @@ def _resolve_manual_post_author(
             return None, personal_author_error
         if personal_author:
             author = personal_author
+    elif allow_default:
+        if author_links:
+            author = author_links[0].author
+        else:
+            personal_author, personal_author_error = _get_or_create_personal_author(user)
+            if personal_author_error:
+                return None, personal_author_error
+            if personal_author:
+                author = personal_author
     else:
         return None, "author required"
     return author, None
@@ -5175,6 +5185,7 @@ def user_posts(request: HttpRequest) -> HttpResponse:
             author_ids=author_ids,
             author_source=author_source,
             author_username=author_username,
+            allow_default=is_draft,
         )
         if author_error:
             status_code = 404 if author_error == "author not found" else 400

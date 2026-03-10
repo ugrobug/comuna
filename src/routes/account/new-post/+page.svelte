@@ -37,7 +37,6 @@
   let creating = false
   let createError = ''
   let draftError = ''
-  let draftStatus = 'Черновик появится автоматически после первого изменения.'
   let draftCreating = false
   let rubricsLoading = false
   let autosavePrimed = false
@@ -198,11 +197,9 @@
     draftError = ''
 
     if (!hasMeaningfulDraftContent()) {
-      draftStatus = 'Черновик появится автоматически после первого изменения.'
       return
     }
 
-    draftStatus = 'Сохраняем черновик...'
     autosaveTimeout = setTimeout(async () => {
       draftCreating = true
       try {
@@ -218,7 +215,6 @@
         })
       } catch (error) {
         draftError = (error as Error)?.message ?? 'Не удалось сохранить черновик'
-        draftStatus = 'Автосохранение черновика не удалось.'
       } finally {
         draftCreating = false
       }
@@ -236,7 +232,6 @@
     createMusicReleaseData = createEmptyMusicReleaseTemplateData()
     createError = ''
     draftError = ''
-    draftStatus = 'Черновик появится автоматически после первого изменения.'
     lastObservedDraftSnapshot = JSON.stringify(buildDraftPayload())
   }
 
@@ -346,14 +341,6 @@
         </p>
       {/if}
       <div class="flex flex-col gap-4">
-        <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
-          <div class="font-medium">Авточерновик</div>
-          <div class="mt-1">{draftStatus}</div>
-          <div class="mt-1 text-xs opacity-80">
-            После первого автосохранения откроется постоянная ссылка редактирования и ссылка для шаринга зарегистрированным пользователям.
-          </div>
-        </div>
-
         <div
           class={`grid grid-cols-1 gap-4 items-start ${
             publishIdentityOptions.length > 1 ? 'md:grid-cols-2' : ''

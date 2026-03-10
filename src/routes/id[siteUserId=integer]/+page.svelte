@@ -14,7 +14,13 @@
     type BackendPublicSiteUserComun,
   } from '$lib/api/backend'
   import { env } from '$env/dynamic/public'
-  import { siteToken, siteUser } from '$lib/siteAuth'
+  import {
+    fetchUserPosts,
+    refreshSiteUser,
+    siteToken,
+    siteUser,
+    type SiteUserPost,
+  } from '$lib/siteAuth'
   import { userSettings } from '$lib/settings'
 
   export let data
@@ -27,6 +33,12 @@
   let totalPosts = data.totalPosts ?? 0
   let hasMore = posts.length >= pageSize && posts.length < totalPosts
   let loadingMore = false
+  let ownerPostsLoading = false
+  let ownerPostsLoaded = false
+  let ownerPostsError = ''
+  let ownerPosts: SiteUserPost[] = []
+  let profileTab: 'posts' | 'drafts' = 'posts'
+  let lastOwnerProfileId: number | null = null
   let lastPostsRef = data.posts
   let lastProfileRef = data.profile
   let lastAuthorsRef = data.authors
@@ -65,6 +77,17 @@
     return !hiddenAuthorKeys.has(key)
   }
   $: visiblePosts = posts.filter(isAuthorVisible)
+  $: isOwnProfile = Boolean(profile?.id && $siteUser?.id && profile.id === $siteUser.id)
+  $: ownerDrafts = ownerPosts.filter((item) => item.is_draft)
+  $: currentProfileId = profile?.id ?? null
+  $: if (currentProfileId !== lastOwnerProfileId) {
+    lastOwnerProfileId = currentProfileId
+    ownerPostsLoading = false
+    ownerPostsLoaded = false
+    ownerPostsError = ''
+    ownerPosts = []
+    profileTab = 'posts'
+  }
 
   const formatNumber = (value: number | undefined) => {
     if (!value && value !== 0) return '—'
@@ -100,7 +123,7 @@
   }
 
   const loadMore = async () => {
-    if (loadingMore || !hasMore) return
+    if (profileTab !== 'posts' || loadingMore || !hasMore) return
     const url = buildPageUrl(posts.length)
     if (!url) return
     loadingMore = true
@@ -148,6 +171,9 @@
 
   onMount(() => {
     if (!browser) return
+    if ($siteToken) {
+      void refreshSiteUser().catch(() => {})
+    }
     maybeLoadMore()
     window.addEventListener('scroll', onScroll, { passive: true })
   })
@@ -160,6 +186,46 @@
       scrollRaf = null
     }
   })
+
+  const loadOwnerPosts = async () => {
+    if (ownerPostsLoading || ownerPostsLoaded || !isOwnProfile) return
+    ownerPostsLoading = true
+    ownerPostsError = ''
+    try {
+      let offset = 0
+      let total = 0
+      const collected: SiteUserPost[] = []
+      do {
+        const payload = await fetchUserPosts(50, offset)
+        const nextItems = payload.posts ?? []
+        total = Number(payload.total ?? 0)
+        if (!nextItems.length) break
+        collected.push(...nextItems)
+        offset += nextItems.length
+      } while (collected.length < total)
+      ownerPosts = collected
+      ownerPostsLoaded = true
+    } catch (error) {
+      ownerPostsError = (error as Error)?.message ?? 'Не удалось загрузить черновики'
+    } finally {
+      ownerPostsLoading = false
+    }
+  }
+
+  const copyDraftShareLink = async (draft: SiteUserPost) => {
+    const token = draft.draft_share_token
+    if (!token) return
+    const url = `${$page.url.origin}/drafts/${encodeURIComponent(token)}`
+    try {
+      await navigator.clipboard.writeText(url)
+    } catch (error) {
+      console.error('Failed to copy draft share link:', error)
+    }
+  }
+
+  $: if (isOwnProfile && $siteToken && !ownerPostsLoaded && !ownerPostsLoading) {
+    void loadOwnerPosts()
+  }
 </script>
 
 <div class="flex flex-col gap-6 max-w-5xl w-full">
@@ -304,8 +370,33 @@
   </section>
 
   <section class="flex flex-col gap-3">
-    <div class="text-lg font-semibold text-slate-900 dark:text-zinc-100">Посты</div>
-    {#if visiblePosts.length}
+    <div class="flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        class={`rounded-full px-4 py-2 text-sm transition-colors ${
+          profileTab === 'posts'
+            ? 'bg-slate-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
+            : 'bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-zinc-300'
+        }`}
+        on:click={() => (profileTab = 'posts')}
+      >
+        Посты
+      </button>
+      {#if isOwnProfile}
+        <button
+          type="button"
+          class={`rounded-full px-4 py-2 text-sm transition-colors ${
+            profileTab === 'drafts'
+              ? 'bg-slate-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
+              : 'bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-zinc-300'
+          }`}
+          on:click={() => (profileTab = 'drafts')}
+        >
+          Черновики
+        </button>
+      {/if}
+    </div>
+    {#if profileTab === 'posts' && visiblePosts.length}
       <div class="flex flex-col gap-6" use:feedKeyboardShortcuts>
         {#each visiblePosts as backendPost (backendPost.id)}
           <Post
@@ -326,9 +417,66 @@
       {#if loadingMore}
         <div class="text-sm text-slate-500">Загрузка...</div>
       {/if}
-    {:else}
+    {:else if profileTab === 'posts'}
       <div class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-4 text-sm text-slate-500 dark:text-zinc-400">
         Пока нет публикаций.
+      </div>
+    {:else if ownerPostsLoading}
+      <div class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-4 text-sm text-slate-500 dark:text-zinc-400">
+        Загружаем черновики...
+      </div>
+    {:else if ownerPostsError}
+      <div class="rounded-2xl border border-red-200 dark:border-red-900/40 bg-white/95 dark:bg-zinc-900/85 p-4 text-sm text-red-600 dark:text-red-300">
+        {ownerPostsError}
+      </div>
+    {:else if ownerDrafts.length}
+      <div class="grid gap-3">
+        {#each ownerDrafts as draft (draft.id)}
+          <div class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-4">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div class="min-w-0">
+                <div class="text-lg font-semibold text-slate-900 dark:text-zinc-100 break-words">
+                  {draft.title || 'Без заголовка'}
+                </div>
+                <div class="mt-1 text-sm text-slate-500 dark:text-zinc-400">
+                  {#if draft.rubric}
+                    <span>{draft.rubric}</span>
+                    <span> · </span>
+                  {/if}
+                  <span>
+                    Обновлён {new Intl.DateTimeFormat('ru-RU', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    }).format(new Date(draft.updated_at || draft.created_at))}
+                  </span>
+                </div>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <a
+                  href={`/account/edit-post/${draft.id}`}
+                  class="rounded-full bg-slate-900 px-4 py-2 text-sm text-white dark:bg-zinc-100 dark:text-zinc-900"
+                >
+                  Открыть
+                </a>
+                {#if draft.draft_share_token}
+                  <button
+                    type="button"
+                    class="rounded-full bg-slate-100 px-4 py-2 text-sm text-slate-700 dark:bg-zinc-800 dark:text-zinc-300"
+                    on:click={() => copyDraftShareLink(draft)}
+                  >
+                    Скопировать ссылку
+                  </button>
+                {/if}
+              </div>
+            </div>
+          </div>
+        {/each}
+      </div>
+    {:else}
+      <div class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-4 text-sm text-slate-500 dark:text-zinc-400">
+        Пока нет черновиков.
       </div>
     {/if}
   </section>
