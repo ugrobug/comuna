@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy, onMount } from 'svelte'
   import { TextInput, toast } from 'mono-svelte'
   import {
     autofillMovieReviewTemplateByImdb,
@@ -34,6 +35,7 @@
   export let postVotePollData: PostVotePollTemplateData = createEmptyPostVotePollTemplateData()
   export let musicReleaseData: MusicReleaseTemplateData = createEmptyMusicReleaseTemplateData()
   export let allowedTemplateTypes: string[] | undefined = undefined
+  export let showTypeSelector = true
 
   let posterInput: HTMLInputElement | null = null
   let posterUploading = false
@@ -55,11 +57,22 @@
   let votePollItems: PostVotePollTemplateItem[] = []
   let votePollItemIds = new Set<number>()
   let votePollDeadlineInput = ''
+  let templateMenuOpen = false
+  let templateMenuRef: HTMLDivElement | null = null
+  let hasTemplateTypeChoice = false
+  let shouldRenderTemplateBlock = false
+  let selectedTemplateOption = POST_TEMPLATE_TYPE_OPTIONS[0]
 
   $: allowedTemplateTypeSet = new Set(normalizeAllowedPostTemplateTypes(allowedTemplateTypes))
   $: availableTemplateTypeOptions = POST_TEMPLATE_TYPE_OPTIONS.filter((option) =>
     option.value ? allowedTemplateTypeSet.has(option.value) : allowedTemplateTypeSet.has('basic')
   )
+  $: hasTemplateTypeChoice = availableTemplateTypeOptions.length > 1
+  $: shouldRenderTemplateBlock = (showTypeSelector && hasTemplateTypeChoice) || Boolean(templateType)
+  $: selectedTemplateOption =
+    availableTemplateTypeOptions.find((option) => option.value === templateType) ??
+    availableTemplateTypeOptions[0] ??
+    POST_TEMPLATE_TYPE_OPTIONS[0]
   $: if (!availableTemplateTypeOptions.some((option) => option.value === templateType)) {
     templateType = availableTemplateTypeOptions[0]?.value ?? ''
   }
@@ -186,6 +199,11 @@
   const onVotePollQuestionInput = (event: Event) => {
     const input = event.currentTarget as HTMLInputElement | null
     normalizeVotePollData({ question: input?.value || '' })
+  }
+
+  const selectTemplateType = (value: '' | PostTemplateType) => {
+    templateType = value
+    templateMenuOpen = false
   }
 
   $: watchProviderValues = selectedWatchProviders(movieReviewData.watch_where)
@@ -324,29 +342,78 @@
       imdbAutofillLoading = false
     }
   }
+
+  onMount(() => {
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!templateMenuOpen || !templateMenuRef) return
+      const target = event.target as Node | null
+      if (target && !templateMenuRef.contains(target)) {
+        templateMenuOpen = false
+      }
+    }
+    document.addEventListener('click', closeOnOutsideClick)
+    return () => {
+      document.removeEventListener('click', closeOnOutsideClick)
+    }
+  })
+
+  onDestroy(() => {
+    templateMenuOpen = false
+  })
 </script>
 
-<div class="template-fields rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50/70 dark:bg-zinc-900/50 p-4 sm:p-5 flex flex-col gap-4">
-  <div class="flex flex-col gap-1">
-    <h3 class="text-base font-semibold text-slate-900 dark:text-zinc-100">Шаблон публикации</h3>
-    <p class="text-sm text-slate-600 dark:text-zinc-400">
-      Можно выбрать тип записи с дополнительными полями. Ниже останется обычный блоковый редактор.
-    </p>
-  </div>
+{#if shouldRenderTemplateBlock}
+  <div class="template-fields rounded-xl bg-slate-50/70 dark:bg-zinc-900/50 p-4 sm:p-5 flex flex-col gap-4">
+    {#if showTypeSelector && hasTemplateTypeChoice}
+      <div class="relative w-full" bind:this={templateMenuRef}>
+        <button
+          type="button"
+          class="flex max-w-full items-center gap-2 text-left text-sm font-medium leading-tight text-slate-800 dark:text-zinc-200"
+          aria-haspopup="listbox"
+          aria-expanded={templateMenuOpen}
+          on:click={() => (templateMenuOpen = !templateMenuOpen)}
+        >
+          <span class="min-w-0 text-sm text-slate-700 dark:text-zinc-200 whitespace-normal break-words">
+            Тип публикации: <span class="font-medium">{selectedTemplateOption.label}</span>
+          </span>
+          <svg
+            class="h-4 w-4 text-slate-500 dark:text-zinc-400 flex-shrink-0"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            aria-hidden="true"
+          >
+            <path
+              fill-rule="evenodd"
+              d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.24 4.5a.75.75 0 01-1.08 0l-4.24-4.5a.75.75 0 01.02-1.06z"
+              clip-rule="evenodd"
+            />
+          </svg>
+        </button>
 
-  <label class="flex flex-col gap-1">
-    <span class="text-sm text-slate-700 dark:text-zinc-300">Тип шаблона</span>
-    <select
-      bind:value={templateType}
-      class="w-full rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm text-slate-900 dark:text-zinc-100"
-    >
-      {#each availableTemplateTypeOptions as option}
-        <option value={option.value}>{option.label}</option>
-      {/each}
-    </select>
-  </label>
+        {#if templateMenuOpen}
+          <div
+            class="absolute z-20 mt-2 w-full rounded-lg border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-lg max-h-72 overflow-auto"
+            role="listbox"
+          >
+            {#each availableTemplateTypeOptions as option}
+              <button
+                type="button"
+                class={`flex w-full items-center px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-zinc-800 ${
+                  templateType === option.value ? 'bg-slate-100 dark:bg-zinc-800' : ''
+                }`}
+                on:click={() => selectTemplateType(option.value)}
+              >
+                <span class="flex-1 whitespace-normal text-slate-700 dark:text-zinc-200">
+                  {option.label}
+                </span>
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    {/if}
 
-  {#if templateType === 'movie_review'}
+    {#if templateType === 'movie_review'}
     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
       <TextInput label="Название" bind:value={movieReviewData.title} placeholder="Например, Дюна: Часть вторая" />
       <TextInput
@@ -494,7 +561,7 @@
         </details>
       </div>
     </div>
-  {:else if templateType === 'music_release'}
+    {:else if templateType === 'music_release'}
     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
       <TextInput
         label="Название группы"
@@ -604,7 +671,7 @@
         </div>
       </div>
     </div>
-  {:else if templateType === 'post_vote_poll'}
+    {:else if templateType === 'post_vote_poll'}
     <div class="flex flex-col gap-4">
       <label class="flex flex-col gap-1">
         <span class="text-sm text-slate-700 dark:text-zinc-300">Вопрос голосования (необязательно)</span>
@@ -769,5 +836,6 @@
         </p>
       </div>
     </div>
-  {/if}
-</div>
+    {/if}
+  </div>
+{/if}

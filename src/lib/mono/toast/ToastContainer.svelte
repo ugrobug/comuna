@@ -6,13 +6,13 @@
 </script>
 
 <div
-  class="fixed right-0 bottom-0 flex flex-col items-end justify-end z-[200] p-4
-  group overflow-hidden h-screen min-w-[24rem] pointer-events-none gap-4"
+  class="fixed inset-x-0 top-0 flex flex-col items-center justify-start z-[200] px-4 pt-4
+  group overflow-visible pointer-events-none gap-4"
 >
   {#each $toasts as toast, index (toast.id)}
     <div
       animate:flip={{ duration: 500, easing: expoOut }}
-      class="pointer-events-auto transition-all
+      class="pointer-events-auto transition-all max-w-[min(32rem,calc(100vw-2rem))]
       duration-300"
     >
       <Toast {toast} />

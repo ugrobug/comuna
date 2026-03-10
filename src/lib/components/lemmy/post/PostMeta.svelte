@@ -22,7 +22,6 @@
   import ShieldIcon from '../moderation/ShieldIcon.svelte'
   import { userSettings, type View } from '$lib/settings'
   import Markdown from '$lib/components/markdown/Markdown.svelte'
-  import { Pencil } from 'svelte-hero-icons'
   import CommunityHeader from '../community/CommunityHeader.svelte'
   import { publishedToDate } from '$lib/components/util/date'
   import { postLink } from './helpers'
@@ -345,11 +344,6 @@
         {/if}
         {#if published}
           <span>{formatCustomDate(published)}</span>
-          {#if edited}
-            <div class="text-slate-400">
-              <Icon src={Pencil} micro size="14" />
-            </div>
-          {/if}
         {/if}
       </div>
     </div>

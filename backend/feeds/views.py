@@ -4424,7 +4424,10 @@ def login_user(request: HttpRequest) -> HttpResponse:
     username_or_email = (payload.get("username") or "").strip()
     password = payload.get("password") or ""
     if not username_or_email or not password:
-        return JsonResponse({"ok": False, "error": "invalid credentials"}, status=400)
+        return JsonResponse(
+            {"ok": False, "error": "Введите email или имя пользователя и пароль."},
+            status=400,
+        )
 
     user = None
     if "@" in username_or_email:
@@ -4435,7 +4438,13 @@ def login_user(request: HttpRequest) -> HttpResponse:
         user = authenticate(username=username_or_email, password=password)
 
     if not user:
-        return JsonResponse({"ok": False, "error": "invalid credentials"}, status=401)
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": "Неверный логин, email или пароль. Проверьте данные и попробуйте снова.",
+            },
+            status=401,
+        )
 
     token = _issue_token(user)
     return JsonResponse({"ok": True, "token": token, "user": _serialize_user(user)})

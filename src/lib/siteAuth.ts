@@ -112,6 +112,18 @@ export const siteUser = writable<SiteUser | null>(null)
 
 const buildUrl = (path: string) => `${getBackendBaseUrl()}${path}`
 
+const normalizeSiteAuthError = (message?: string | null, fallback = 'Не удалось выполнить вход') => {
+  const value = String(message || '').trim().toLowerCase()
+  if (!value) return fallback
+  if (value === 'invalid credentials') {
+    return 'Неверный логин, email или пароль. Проверьте данные и попробуйте снова.'
+  }
+  if (value === 'username and password are required') {
+    return 'Введите email или имя пользователя и пароль.'
+  }
+  return message as string
+}
+
 const parseApiResponse = async (response: Response) => {
   const raw = await response.text()
   if (!raw) {
@@ -235,7 +247,7 @@ export const login = async (username: string, password: string) => {
 
   const data = await parseApiResponse(response)
   if (!response.ok || !data?.token) {
-    throw new Error(data?.error || 'Не удалось войти')
+    throw new Error(normalizeSiteAuthError(data?.error, 'Не удалось войти'))
   }
 
   saveToken(data.token)
