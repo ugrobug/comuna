@@ -45,6 +45,8 @@ export type SiteUserPost = {
   created_at: string
   updated_at?: string
   is_pending?: boolean
+  is_draft?: boolean
+  draft_share_token?: string | null
   publish_at?: string | null
   rubric?: string | null
   rubric_slug?: string | null
@@ -85,6 +87,18 @@ export type SiteNotificationSettingsResponse = {
     username?: string | null
     first_name?: string | null
   }
+}
+
+export type SiteStaticPageContent = {
+  slug: string
+  title: string
+  content: string
+  exists: boolean
+  updated_at?: string | null
+  updated_by?: {
+    id: number
+    username: string
+  } | null
 }
 
 export type VotePollPostCandidate = PostVotePollTemplateItem
@@ -174,6 +188,42 @@ export const updateSiteProfile = async (payload: {
 
   siteUser.set(data.user)
   return data.user as SiteUser
+}
+
+export const fetchStaticPageContent = async (slug: string) => {
+  const response = await fetch(buildUrl(`/api/content-pages/${encodeURIComponent(slug)}/`), {
+    cache: 'no-store',
+  })
+  const data = await parseApiResponse(response)
+  if (!response.ok || !data?.page) {
+    throw new Error(data?.error || 'Не удалось загрузить страницу')
+  }
+  return data.page as SiteStaticPageContent
+}
+
+export const updateStaticPageContent = async (slug: string, payload: {
+  content: string
+  title?: string
+}) => {
+  const token = get(siteToken)
+  if (!token) {
+    throw new Error('Нужна авторизация')
+  }
+
+  const response = await fetch(buildUrl(`/api/content-pages/${encodeURIComponent(slug)}/`), {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  })
+
+  const data = await parseApiResponse(response)
+  if (!response.ok || !data?.page) {
+    throw new Error(data?.error || 'Не удалось сохранить страницу')
+  }
+  return data.page as SiteStaticPageContent
 }
 
 export const login = async (username: string, password: string) => {
@@ -350,6 +400,10 @@ export const updateUserPost = async (
   payload: {
     title?: string
     content?: string
+    author_source?: 'site'
+    author_username?: string
+    rubric_slug?: string
+    is_draft?: boolean
     tags?: string[]
     template?: SitePostTemplate | null
   }
@@ -398,11 +452,12 @@ export const deleteUserPost = async (postId: number) => {
 }
 
 export const createUserPost = async (payload: {
-  title: string
-  content: string
+  title?: string
+  content?: string
   author_source?: 'site'
   author_username?: string
   rubric_slug?: string
+  is_draft?: boolean
   tags?: string[]
   template?: SitePostTemplate | null
 }) => {
@@ -426,6 +481,29 @@ export const createUserPost = async (payload: {
   }
 
   return data?.post as SiteUserPost
+}
+
+export const fetchSharedDraft = async (shareToken: string) => {
+  const token = get(siteToken)
+  if (!token) {
+    throw new Error('Нужна авторизация')
+  }
+
+  const response = await fetch(
+    buildUrl(`/api/auth/drafts/shared/${encodeURIComponent(shareToken)}/`),
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  )
+
+  const data = await response.json().catch(() => null)
+  if (!response.ok || !data?.post) {
+    throw new Error(data?.error || 'Не удалось загрузить черновик')
+  }
+
+  return data.post as SiteUserPost
 }
 
 export const createComunPost = async (

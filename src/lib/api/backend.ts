@@ -264,6 +264,10 @@ export const buildTopAuthorsMonthUrl = (limit = 5): string => {
   return `${getBackendBaseUrl()}/api/authors/top-month/?${params.toString()}`
 }
 
+export const buildStaticPageContentUrl = (slug: string): string => {
+  return `${getBackendBaseUrl()}/api/content-pages/${encodeURIComponent(slug)}/`
+}
+
 const stableId = (input: string): number => {
   let hash = 0
   for (let i = 0; i < input.length; i += 1) {

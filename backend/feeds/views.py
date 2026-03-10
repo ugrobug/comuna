@@ -60,6 +60,7 @@ from .models import (
     POST_TEMPLATE_TYPE_POST_VOTE_POLL as MODEL_POST_TEMPLATE_TYPE_POST_VOTE_POLL,
     POST_TEMPLATE_TYPE_MUSIC_RELEASE as MODEL_POST_TEMPLATE_TYPE_MUSIC_RELEASE,
     SiteNotification,
+    StaticPageContent,
     SiteUserProfile,
     Tag,
     ThematicFeed,
@@ -338,6 +339,12 @@ _POST_TEMPLATE_MUSIC_STYLE_ALIASES = {
 }
 _IMDB_ID_RE = re.compile(r"(tt\d{5,12})", flags=re.IGNORECASE)
 _JUSTWATCH_PROVIDER_CACHE: dict[str, tuple[float, dict[int, str]]] = {}
+_EDITABLE_STATIC_PAGE_TITLES = {
+    "about": "О проекте",
+    "advertisement": "Реклама",
+    "authors": "Авторам",
+    "rules": "Правила",
+}
 
 
 def _issue_token(user: User) -> str:
@@ -794,6 +801,36 @@ def _serialize_public_site_user_author_card(request: HttpRequest, link: AuthorAd
         "description": (author.description or "").strip() or None,
         "rubric": rubric.name if rubric else None,
         "rubric_slug": rubric.slug if rubric else None,
+    }
+
+
+def _serialize_static_page_content(page: StaticPageContent | None, slug: str) -> dict:
+    normalized_slug = str(slug or "").strip().lower()
+    fallback_title = _EDITABLE_STATIC_PAGE_TITLES.get(normalized_slug, normalized_slug)
+    if not page:
+        return {
+            "slug": normalized_slug,
+            "title": fallback_title,
+            "content": "",
+            "exists": False,
+            "updated_at": None,
+            "updated_by": None,
+        }
+    updated_by = page.updated_by
+    return {
+        "slug": page.slug,
+        "title": page.title or fallback_title,
+        "content": page.content or "",
+        "exists": True,
+        "updated_at": page.updated_at.isoformat() if page.updated_at else None,
+        "updated_by": (
+            {
+                "id": updated_by.id,
+                "username": updated_by.username,
+            }
+            if updated_by
+            else None
+        ),
     }
 
 
@@ -4444,6 +4481,57 @@ def auth_me(request: HttpRequest) -> HttpResponse:
 
 
 @csrf_exempt
+def content_page_manage(request: HttpRequest, slug: str) -> HttpResponse:
+    page_slug = str(slug or "").strip().lower()
+    if page_slug not in _EDITABLE_STATIC_PAGE_TITLES:
+        return JsonResponse({"ok": False, "error": "page not found"}, status=404)
+
+    page = (
+        StaticPageContent.objects.select_related("updated_by")
+        .filter(slug=page_slug)
+        .first()
+    )
+
+    if request.method == "GET":
+        return JsonResponse({"ok": True, "page": _serialize_static_page_content(page, page_slug)})
+
+    if request.method not in ("PATCH", "POST"):
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    user = _get_user_from_request(request)
+    if not user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    if not user.is_staff:
+        return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+
+    if "content" not in payload:
+        return JsonResponse({"ok": False, "error": "content is required"}, status=400)
+    content = str(payload.get("content") or "").strip()
+    if len(content) > 200000:
+        return JsonResponse({"ok": False, "error": "content too long"}, status=400)
+
+    title = str(payload.get("title") or "").strip()
+    if not title:
+        title = _EDITABLE_STATIC_PAGE_TITLES[page_slug]
+    if len(title) > 160:
+        title = title[:160].strip()
+
+    if not page:
+        page = StaticPageContent(slug=page_slug)
+    page.title = title
+    page.content = content
+    page.updated_by = user
+    page.save()
+
+    return JsonResponse({"ok": True, "page": _serialize_static_page_content(page, page_slug)})
+
+
+@csrf_exempt
 def auth_movie_review_autofill(request: HttpRequest) -> HttpResponse:
     user = _get_user_from_request(request)
     if not user:
@@ -4776,7 +4864,8 @@ def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None
     is_favorite = (
         PostFavorite.objects.filter(post=post, user=user).exists() if user else False
     )
-    return {
+    is_draft = _is_post_draft(post)
+    payload = {
         "id": post.id,
         "title": _post_display_title(post),
         "template": _serialize_post_template(post),
@@ -4785,6 +4874,7 @@ def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None
         "created_at": post.created_at.isoformat(),
         "updated_at": post.updated_at.isoformat(),
         "is_pending": post.is_pending,
+        "is_draft": is_draft,
         "publish_at": post.publish_at.isoformat() if post.publish_at else None,
         "rubric": rubric.name if rubric else None,
         "rubric_slug": rubric.slug if rubric else None,
@@ -4802,6 +4892,34 @@ def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None
             **_author_admin_fields_for_user(user, post.author, rubric),
         },
     }
+    if is_draft and _user_can_manage_site_post(user, post):
+        payload["draft_share_token"] = _post_draft_share_token(post)
+    return payload
+
+
+@csrf_exempt
+def shared_draft_detail(request: HttpRequest, share_token: str) -> HttpResponse:
+    user = _get_user_from_request(request)
+    if not user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    if request.method != "GET":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    token = str(share_token or "").strip()
+    if not token:
+        return JsonResponse({"ok": False, "error": "draft not found"}, status=404)
+
+    try:
+        post = (
+            Post.objects.select_related("author", "rubric")
+            .prefetch_related("tags")
+            .filter(is_blocked=False, is_pending=True, author__is_blocked=False)
+            .get(raw_data__draft=True, raw_data__draft_share_token=token)
+        )
+    except Post.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "draft not found"}, status=404)
+
+    return JsonResponse({"ok": True, "post": _serialize_post_for_user(request, post, user)})
 
 
 def _post_public_path(post: Post) -> str:
@@ -4903,26 +5021,128 @@ def _get_or_create_personal_author(user: User) -> tuple[Author | None, str | Non
     return author, None
 
 
-@csrf_exempt
-def user_posts(request: HttpRequest) -> HttpResponse:
-    user = _get_user_from_request(request)
-    if not user:
-        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+def _is_post_draft(post: Post) -> bool:
+    raw_data = post.raw_data if isinstance(post.raw_data, dict) else {}
+    return bool(raw_data.get("draft"))
 
+
+def _post_draft_share_token(post: Post) -> str:
+    raw_data = post.raw_data if isinstance(post.raw_data, dict) else {}
+    return str(raw_data.get("draft_share_token") or "").strip()
+
+
+def _set_post_draft_state(raw_data: dict | None, is_draft: bool) -> dict:
+    next_raw = dict(raw_data or {})
+    if is_draft:
+        next_raw["draft"] = True
+        next_raw["draft_share_token"] = str(
+            next_raw.get("draft_share_token") or secrets.token_urlsafe(24)
+        )
+        next_raw["draft_saved_at"] = timezone.now().isoformat()
+    else:
+        next_raw.pop("draft", None)
+        next_raw.pop("draft_share_token", None)
+        next_raw.pop("draft_saved_at", None)
+    return next_raw
+
+
+def _get_personal_author_for_user(user: User) -> Author | None:
+    return Author.objects.filter(
+        username__iexact=(user.username or "").strip(),
+        channel_url="",
+        channel_id__isnull=True,
+    ).first()
+
+
+def _resolve_site_post_author_context(user: User):
     author_links = (
         AuthorAdmin.objects.filter(user=user, verified_at__isnull=False)
         .select_related("author")
         .order_by("author__username")
     )
     author_ids = [link.author_id for link in author_links]
-    personal_author = Author.objects.filter(
-        username__iexact=(user.username or "").strip(),
-        channel_url="",
-        channel_id__isnull=True,
-    ).first()
+    personal_author = _get_personal_author_for_user(user)
     if personal_author and personal_author.id not in author_ids:
         author_ids.append(personal_author.id)
+    return author_links, author_ids, personal_author
+
+
+def _resolve_manual_post_author(
+    user: User,
+    *,
+    author_links,
+    author_ids: list[int],
+    author_source: str,
+    author_username: str,
+) -> tuple[Author | None, str | None]:
+    author = None
     personal_author_error = None
+    if author_source == "site":
+        personal_author, personal_author_error = _get_or_create_personal_author(user)
+        if personal_author_error:
+            return None, personal_author_error
+        if personal_author:
+            author = personal_author
+    elif author_username:
+        author = (
+            Author.objects.filter(id__in=author_ids, username__iexact=author_username).first()
+        )
+        if not author:
+            return None, "author not found"
+    elif len(author_links) == 1:
+        author = author_links[0].author
+    elif not author_links:
+        personal_author, personal_author_error = _get_or_create_personal_author(user)
+        if personal_author_error:
+            return None, personal_author_error
+        if personal_author:
+            author = personal_author
+    else:
+        return None, "author required"
+    return author, None
+
+
+def _resolve_manual_post_rubric(
+    user: User,
+    *,
+    author: Author | None,
+    rubric_slug: str,
+    allow_empty: bool,
+) -> tuple[Rubric | None, str | None]:
+    rubric = None
+    if rubric_slug:
+        rubric = Rubric.objects.filter(slug__iexact=rubric_slug, is_active=True).first()
+        if not rubric:
+            return None, "rubric not found"
+    if not rubric:
+        rubric = author.rubric if author else None
+    if not rubric:
+        if allow_empty:
+            return None, None
+        return None, "rubric required"
+    if rubric.is_hidden and not user.is_staff:
+        return None, "rubric not allowed"
+    return rubric, None
+
+
+def _user_can_manage_site_post(user: User | None, post: Post) -> bool:
+    if not user:
+        return False
+    if AuthorAdmin.objects.filter(
+        user=user, author=post.author, verified_at__isnull=False
+    ).exists():
+        return True
+    personal_author = _get_personal_author_for_user(user)
+    return bool(personal_author and personal_author.id == post.author_id)
+
+
+@csrf_exempt
+def user_posts(request: HttpRequest) -> HttpResponse:
+    user = _get_user_from_request(request)
+    if not user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+
+    author_links, author_ids, _personal_author = _resolve_site_post_author_context(user)
 
     if request.method == "POST":
         try:
@@ -4935,6 +5155,7 @@ def user_posts(request: HttpRequest) -> HttpResponse:
         author_source = (payload.get("author_source") or "").strip().lower()
         author_username = (payload.get("author_username") or "").strip()
         rubric_slug = (payload.get("rubric_slug") or "").strip()
+        is_draft = bool(payload.get("is_draft"))
         explicit_tags = _parse_tag_payload(payload.get("tags"))
         template_payload, template_error = _normalize_post_template_payload(
             payload.get("template"),
@@ -4943,55 +5164,41 @@ def user_posts(request: HttpRequest) -> HttpResponse:
         if template_error:
             return JsonResponse({"ok": False, "error": template_error}, status=400)
 
-        if not title:
+        if not is_draft and not title:
             return JsonResponse({"ok": False, "error": "title is required"}, status=400)
-        if not content:
+        if not is_draft and not content:
             return JsonResponse({"ok": False, "error": "content is required"}, status=400)
 
-        author = None
-        if author_source == "site":
-            personal_author, personal_author_error = _get_or_create_personal_author(user)
-            if personal_author_error:
-                return JsonResponse({"ok": False, "error": personal_author_error}, status=400)
-            if personal_author:
-                author = personal_author
-        elif author_username:
-            author = (
-                Author.objects.filter(id__in=author_ids, username__iexact=author_username).first()
-            )
-            if not author:
-                return JsonResponse({"ok": False, "error": "author not found"}, status=404)
-        elif len(author_links) == 1:
-            author = author_links[0].author
-        elif not author_links:
-            personal_author, personal_author_error = _get_or_create_personal_author(user)
-            if personal_author_error:
-                return JsonResponse({"ok": False, "error": personal_author_error}, status=400)
-            if personal_author:
-                author = personal_author
-        else:
-            return JsonResponse({"ok": False, "error": "author required"}, status=400)
-
-        rubric = None
-        if rubric_slug:
-            rubric = Rubric.objects.filter(slug__iexact=rubric_slug, is_active=True).first()
-            if not rubric:
-                return JsonResponse({"ok": False, "error": "rubric not found"}, status=404)
-        if not rubric:
-            rubric = author.rubric if author else None
-        if not rubric:
-            return JsonResponse({"ok": False, "error": "rubric required"}, status=400)
-        if rubric.is_hidden and not user.is_staff:
-            return JsonResponse({"ok": False, "error": "rubric not allowed"}, status=403)
-        requested_template_type = _requested_template_type(template_payload)
-        template_access_error = _template_not_allowed_error(
-            requested_template_type,
-            _allowed_templates_for_rubric(rubric),
-            scope="rubric",
+        author, author_error = _resolve_manual_post_author(
+            user,
+            author_links=author_links,
+            author_ids=author_ids,
+            author_source=author_source,
+            author_username=author_username,
         )
-        if template_access_error:
-            return JsonResponse({"ok": False, "error": template_access_error}, status=400)
-        if _is_comuna_rubric(rubric):
+        if author_error:
+            status_code = 404 if author_error == "author not found" else 400
+            return JsonResponse({"ok": False, "error": author_error}, status=status_code)
+
+        rubric, rubric_error = _resolve_manual_post_rubric(
+            user,
+            author=author,
+            rubric_slug=rubric_slug,
+            allow_empty=is_draft,
+        )
+        if rubric_error:
+            status_code = 404 if rubric_error == "rubric not found" else 400
+            return JsonResponse({"ok": False, "error": rubric_error}, status=status_code)
+        requested_template_type = _requested_template_type(template_payload)
+        if rubric:
+            template_access_error = _template_not_allowed_error(
+                requested_template_type,
+                _allowed_templates_for_rubric(rubric),
+                scope="rubric",
+            )
+            if template_access_error:
+                return JsonResponse({"ok": False, "error": template_access_error}, status=400)
+        if rubric and _is_comuna_rubric(rubric):
             personal_author, personal_author_error = _get_or_create_personal_author(user)
             if personal_author_error:
                 return JsonResponse({"ok": False, "error": personal_author_error}, status=400)
@@ -5004,13 +5211,14 @@ def user_posts(request: HttpRequest) -> HttpResponse:
         except ValueError:
             return JsonResponse({"ok": False, "error": "unable to create post"}, status=500)
         delay_days = max(int(author.publish_delay_days or 0), 0)
-        publish_at = timezone.now() + timedelta(days=delay_days) if delay_days else None
+        publish_at = timezone.now() + timedelta(days=delay_days) if (delay_days and not is_draft) else None
 
         raw_data = {
             "source": "manual",
             **({"template": template_payload} if template_payload else {}),
         }
         _sync_template_derived_raw_data(raw_data, template_payload)
+        raw_data = _set_post_draft_state(raw_data, is_draft)
 
         post = Post.objects.create(
             author=author,
@@ -5021,12 +5229,13 @@ def user_posts(request: HttpRequest) -> HttpResponse:
             channel_url=channel_url,
             source_url=channel_url,
             raw_data=raw_data,
-            is_pending=False,
+            is_pending=is_draft,
             is_blocked=False,
             publish_at=publish_at,
         )
         _apply_post_tags(post, explicit_tags)
-        _maybe_notify_new_author(author, post)
+        if not is_draft:
+            _maybe_notify_new_author(author, post)
         return JsonResponse({"ok": True, "post": _serialize_post_for_user(request, post, user)})
 
     if request.method != "GET":
@@ -5114,14 +5323,10 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
     except Post.DoesNotExist:
         return JsonResponse({"ok": False, "error": "post not found"}, status=404)
 
+    author_links, author_ids, personal_author = _resolve_site_post_author_context(user)
     is_linked = AuthorAdmin.objects.filter(
         user=user, author=post.author, verified_at__isnull=False
     ).exists()
-    personal_author = Author.objects.filter(
-        username__iexact=(user.username or "").strip(),
-        channel_url="",
-        channel_id__isnull=True,
-    ).first()
     is_personal_author_owner = bool(personal_author and personal_author.id == post.author_id)
     can_staff_delete = bool(user.is_staff and request.method == "DELETE")
     if not is_linked and not is_personal_author_owner and not can_staff_delete:
@@ -5153,6 +5358,14 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
     title = payload.get("title") if "title" in payload else None
     content = payload.get("content") if "content" in payload else None
     tags_payload = payload.get("tags") if "tags" in payload else None
+    author_source = (payload.get("author_source") or "").strip().lower()
+    author_username = (payload.get("author_username") or "").strip()
+    rubric_slug = (payload.get("rubric_slug") or "").strip()
+    author_in_payload = "author_source" in payload or "author_username" in payload
+    rubric_in_payload = "rubric_slug" in payload
+    is_draft_in_payload = "is_draft" in payload
+    current_is_draft = _is_post_draft(post)
+    target_is_draft = bool(payload.get("is_draft")) if is_draft_in_payload else current_is_draft
     template_in_payload = "template" in payload
     template_payload = None
     if template_in_payload:
@@ -5163,14 +5376,60 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
         if template_error:
             return JsonResponse({"ok": False, "error": template_error}, status=400)
 
-    if title is None and content is None and tags_payload is None and not template_in_payload:
+    if not current_is_draft and target_is_draft:
+        return JsonResponse(
+            {"ok": False, "error": "published post cannot become draft"}, status=400
+        )
+
+    if (
+        title is None
+        and content is None
+        and tags_payload is None
+        and not template_in_payload
+        and not author_in_payload
+        and not rubric_in_payload
+        and not is_draft_in_payload
+    ):
         return JsonResponse({"ok": False, "error": "nothing to update"}, status=400)
 
     raw_data = dict(post.raw_data or {})
     raw_data_changed = False
+    next_author = post.author
+    next_rubric = post.rubric
+
+    if author_in_payload:
+        next_author, author_error = _resolve_manual_post_author(
+            user,
+            author_links=author_links,
+            author_ids=author_ids,
+            author_source=author_source,
+            author_username=author_username,
+        )
+        if author_error:
+            status_code = 404 if author_error == "author not found" else 400
+            return JsonResponse({"ok": False, "error": author_error}, status=status_code)
+
+    if rubric_in_payload or author_in_payload:
+        next_rubric, rubric_error = _resolve_manual_post_rubric(
+            user,
+            author=next_author,
+            rubric_slug=rubric_slug if rubric_in_payload else "",
+            allow_empty=target_is_draft,
+        )
+        if rubric_error:
+            status_code = 404 if rubric_error == "rubric not found" else 400
+            return JsonResponse({"ok": False, "error": rubric_error}, status=status_code)
+
+    if next_rubric and _is_comuna_rubric(next_rubric):
+        personal_author, personal_author_error = _get_or_create_personal_author(user)
+        if personal_author_error:
+            return JsonResponse({"ok": False, "error": personal_author_error}, status=400)
+        if personal_author:
+            next_author = personal_author
+
     if content is not None:
         content = str(content).strip()
-        if not content:
+        if not target_is_draft and not content:
             return JsonResponse({"ok": False, "error": "content is empty"}, status=400)
         if len(content) > 100000:
             return JsonResponse({"ok": False, "error": "content too long"}, status=400)
@@ -5192,11 +5451,13 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
                 scope="comun",
             )
         else:
-            template_access_error = _template_not_allowed_error(
-                requested_template_type,
-                _allowed_templates_for_rubric(post.rubric),
-                scope="rubric",
-            )
+            template_access_error = None
+            if next_rubric:
+                template_access_error = _template_not_allowed_error(
+                    requested_template_type,
+                    _allowed_templates_for_rubric(next_rubric),
+                    scope="rubric",
+                )
         if template_access_error:
             return JsonResponse({"ok": False, "error": template_access_error}, status=400)
         if template_payload:
@@ -5210,21 +5471,63 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
 
     if title is not None:
         title = str(title).strip()
-        if title:
+        if target_is_draft:
+            post.title = title[:255]
+        elif title:
             post.title = title[:255]
         else:
             source_text = _strip_html(post.content)
             post.title = _build_title(source_text)
 
+    if not target_is_draft and not next_rubric:
+        return JsonResponse({"ok": False, "error": "rubric required"}, status=400)
+
+    if author_in_payload or next_author.id != post.author_id:
+        post.author = next_author
+        channel_url = next_author.invite_url or next_author.channel_url
+        post.channel_url = channel_url
+        post.source_url = channel_url
+
+    if rubric_in_payload or author_in_payload:
+        post.rubric = next_rubric
+
+    if target_is_draft:
+        raw_data_changed = True
+    if current_is_draft != target_is_draft:
+        raw_data_changed = True
+    raw_data = _set_post_draft_state(raw_data, target_is_draft)
+
     if raw_data_changed:
         post.raw_data = raw_data
 
-    post.save(update_fields=["title", "content", "raw_data", "updated_at"])
+    post.is_pending = target_is_draft
+    if target_is_draft:
+        post.publish_at = None
+    elif current_is_draft and not target_is_draft:
+        delay_days = max(int(post.author.publish_delay_days or 0), 0)
+        post.publish_at = timezone.now() + timedelta(days=delay_days) if delay_days else None
+
+    post.save(
+        update_fields=[
+            "author",
+            "title",
+            "rubric",
+            "content",
+            "channel_url",
+            "source_url",
+            "is_pending",
+            "publish_at",
+            "raw_data",
+            "updated_at",
+        ]
+    )
     if tags_payload is not None:
         explicit_tags = _parse_tag_payload(tags_payload)
     else:
         explicit_tags = [tag.name for tag in post.tags.all()]
     _apply_post_tags(post, explicit_tags)
+    if current_is_draft and not target_is_draft:
+        _maybe_notify_new_author(post.author, post)
     return JsonResponse({"ok": True, "post": _serialize_post_for_user(request, post, user)})
 
 

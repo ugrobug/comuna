@@ -563,6 +563,29 @@ class ThematicFeed(models.Model):
         return self.name
 
 
+class StaticPageContent(models.Model):
+    slug = models.SlugField(max_length=80, unique=True)
+    title = models.CharField(max_length=160)
+    content = models.TextField(blank=True)
+    updated_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="updated_static_pages",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["slug"]
+        verbose_name = "Контент страницы"
+        verbose_name_plural = "Контент страниц"
+
+    def __str__(self) -> str:
+        return self.slug
+
+
 class ComunCategory(models.Model):
     name = models.CharField(max_length=120, unique=True)
     slug = models.SlugField(max_length=120, unique=True)

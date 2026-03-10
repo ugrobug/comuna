@@ -1,48 +1,91 @@
 <script>
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
-  import SectionTitle from '$lib/components/ui/SectionTitle.svelte'
+  import PostBody from '$lib/components/lemmy/post/PostBody.svelte'
+  import EditorJS from '$lib/components/editor/EditorJS.svelte'
+  import { Button, toast } from 'mono-svelte'
+  import { siteUser, updateStaticPageContent } from '$lib/siteAuth'
   import { env } from '$env/dynamic/public'
   import { page } from '$app/stores'
+
+  export let data
 
   const title = `Авторам — ${env.PUBLIC_SITE_TITLE || 'Comuna'}`
   const description =
     'Публикуйте посты Telegram-канала на сайте, чтобы их находили в Google и Яндексе и подписывались на ваш канал.'
+  let isEditing = false
+  let isSaving = false
+  let pageContent = data?.pageContent ?? ''
+  let editorValue = pageContent
+  $: canEdit = !!$siteUser?.is_staff
   $: canonicalUrl = new URL(
     $page.url.pathname,
     (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '') + '/'
   ).toString()
+
+  const startEditing = () => {
+    editorValue = pageContent
+    isEditing = true
+  }
+
+  const cancelEditing = () => {
+    editorValue = pageContent
+    isEditing = false
+  }
+
+  const savePage = async () => {
+    if (!canEdit) return
+    isSaving = true
+    try {
+      const updated = await updateStaticPageContent('authors', {
+        title: 'Авторам',
+        content: editorValue,
+      })
+      pageContent = updated.content ?? ''
+      editorValue = pageContent
+      isEditing = false
+      toast({ content: 'Страница сохранена', type: 'success' })
+    } catch (error) {
+      toast({
+        content: error instanceof Error ? error.message : 'Не удалось сохранить страницу',
+        type: 'error',
+      })
+    } finally {
+      isSaving = false
+    }
+  }
 </script>
 
 <div class="flex flex-col gap-6 max-w-3xl">
   <Header pageHeader>
-    <h1 class="text-2xl font-bold">Авторам</h1>
+    <div class="flex w-full items-center justify-between gap-3">
+      <h1 class="text-2xl font-bold">Авторам</h1>
+      {#if canEdit && !isEditing}
+        <Button size="sm" color="secondary" on:click={startEditing}>Редактировать</Button>
+      {/if}
+    </div>
   </Header>
 
-  <div class="flex flex-col gap-3 text-base leading-relaxed">
-    <p>
-      Telegram‑каналы почти не попадают в поисковую выдачу. Люди ищут темы в
-      Google и Яндексе, но ваши посты там не видят.
-    </p>
-    <p>
-      Мы решаем это через сайт: публикуем ваши материалы здесь, поисковые системы
-      их индексируют, и новые читатели находят ваш контент. Дальше они переходят
-      по ссылке на канал и подписываются. Это бесплатные подписчики и
-      дополнительный трафик.
-    </p>
-    <p>
-      Сайт работает как для публикации постов через телеграм, так и через личный
-      кабинет сайта.
-    </p>
-  </div>
-
-  <SectionTitle class="text-lg font-semibold">Как подключиться</SectionTitle>
-  <ol class="list-decimal pl-6 space-y-2 text-base leading-relaxed">
-    <li>Убедитесь, что канал публичный и у него есть @username.</li>
-    <li>Добавьте нашего бота <a href="https://t.me/comuna_tg_bot" target="_blank" rel="nofollow noopener">@comuna_tg_bot</a> в администраторы канала и дайте права читать сообщения, прав на чтение будет достаточно для работы.</li>
-    <li>В боте выберите тематику канала и режим публикации.</li>
-    <li>Публикуйте посты как обычно — они появятся на сайте.</li>
-    <li>Ваша страница будет доступна по адресу: <code>comuna.ru/ник_канала</code>.</li>
-  </ol>
+  {#if isEditing}
+    <div class="rounded-xl border border-slate-200 dark:border-zinc-800 p-4">
+      <EditorJS bind:value={editorValue} showPostSettings={false} />
+      <div class="mt-4 flex items-center gap-2">
+        <Button on:click={savePage} disabled={isSaving}>
+          {#if isSaving}
+            Сохранение...
+          {:else}
+            Сохранить
+          {/if}
+        </Button>
+        <Button color="secondary" on:click={cancelEditing} disabled={isSaving}>
+          Отмена
+        </Button>
+      </div>
+    </div>
+  {:else}
+    <div class="text-base leading-relaxed">
+      <PostBody body={pageContent} showFullBody={true} />
+    </div>
+  {/if}
 </div>
 
 <svelte:head>

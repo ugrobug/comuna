@@ -2,17 +2,26 @@
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import SectionTitle from '$lib/components/ui/SectionTitle.svelte'
   import Post from '$lib/components/lemmy/post/Post.svelte'
+  import PostBody from '$lib/components/lemmy/post/PostBody.svelte'
+  import EditorJS from '$lib/components/editor/EditorJS.svelte'
   import { feedKeyboardShortcuts } from '$lib/actions/feedKeyboardShortcuts'
   import { backendPostToPostView, buildBackendPostPath } from '$lib/api/backend'
+  import { siteUser, updateStaticPageContent } from '$lib/siteAuth'
   import { userSettings } from '$lib/settings'
   import { env } from '$env/dynamic/public'
   import { page } from '$app/stores'
+  import { Button, toast } from 'mono-svelte'
 
   export let data
 
   const title = `О проекте — ${env.PUBLIC_SITE_TITLE || 'Comuna'}`
   const description =
     'Comuna помогает Telegram-каналам получать органический трафик из поисковых систем за счет публикации контента на сайте.'
+  let isEditing = false
+  let isSaving = false
+  let pageContent = data?.pageContent ?? ''
+  let editorValue = pageContent
+  $: canEdit = !!$siteUser?.is_staff
   $: hiddenAuthorKeys = new Set(
     ($userSettings.hiddenAuthors ?? []).map((value) => value.toLowerCase())
   )
@@ -24,47 +33,71 @@
     $page.url.pathname,
     (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '') + '/'
   ).toString()
+
+  const startEditing = () => {
+    editorValue = pageContent
+    isEditing = true
+  }
+
+  const cancelEditing = () => {
+    editorValue = pageContent
+    isEditing = false
+  }
+
+  const savePage = async () => {
+    if (!canEdit) return
+    isSaving = true
+    try {
+      const updated = await updateStaticPageContent('about', {
+        title: 'О проекте',
+        content: editorValue,
+      })
+      pageContent = updated.content ?? ''
+      editorValue = pageContent
+      isEditing = false
+      toast({ content: 'Страница сохранена', type: 'success' })
+    } catch (error) {
+      toast({
+        content: error instanceof Error ? error.message : 'Не удалось сохранить страницу',
+        type: 'error',
+      })
+    } finally {
+      isSaving = false
+    }
+  }
 </script>
 
 <div class="flex flex-col gap-6 max-w-3xl">
   <Header pageHeader>
-    <h1 class="text-2xl font-bold">О проекте</h1>
+    <div class="flex w-full items-center justify-between gap-3">
+      <h1 class="text-2xl font-bold">О проекте</h1>
+      {#if canEdit && !isEditing}
+        <Button size="sm" color="secondary" on:click={startEditing}>Редактировать</Button>
+      {/if}
+    </div>
   </Header>
 
-  <div class="flex flex-col gap-3 text-base leading-relaxed">
-    <p>
-      Мы помогаем авторам Telegram‑каналов получать органический трафик из
-      поисковых систем. Контент каналов почти не индексируется, поэтому новые
-      читатели вас не находят.
-    </p>
-    <p>
-      Наш сайт публикует материалы из вашего канала и делает их доступными для
-      Google и Яндекса. Люди находят статьи, переходят на канал и подписываются.
-    </p>
-  </div>
-
-  <a
-    href="https://productradar.ru/product/comuna?utm_source=badge"
-    target="_blank"
-    rel="noopener noreferrer"
-    class="inline-block"
-  >
-    <img
-      src="https://productradar.ru/badge?period=week&amp;rank=1&amp;theme=white"
-      alt="Награда Продукт недели #1 | Product Radar"
-      width="252"
-      height="68"
-      style="object-fit: initial; border: none; margin:0; width: 252px; height: 68px; vertical-align: bottom;"
-    />
-  </a>
-
-  <SectionTitle class="text-lg font-semibold">Как это работает</SectionTitle>
-  <ol class="list-decimal pl-6 space-y-2 text-base leading-relaxed">
-    <li>Вы добавляете нашего бота в админы своего канала.</li>
-    <li>Мы автоматически создаем страницы с вашими постами.</li>
-    <li>Поисковые системы индексируют страницы.</li>
-    <li>Читатели приходят на сайт и подписываются на ваш канал.</li>
-  </ol>
+  {#if isEditing}
+    <div class="rounded-xl border border-slate-200 dark:border-zinc-800 p-4">
+      <EditorJS bind:value={editorValue} showPostSettings={false} />
+      <div class="mt-4 flex items-center gap-2">
+        <Button on:click={savePage} disabled={isSaving}>
+          {#if isSaving}
+            Сохранение...
+          {:else}
+            Сохранить
+          {/if}
+        </Button>
+        <Button color="secondary" on:click={cancelEditing} disabled={isSaving}>
+          Отмена
+        </Button>
+      </div>
+    </div>
+  {:else}
+    <div class="text-base leading-relaxed">
+      <PostBody body={pageContent} showFullBody={true} />
+    </div>
+  {/if}
 
   <SectionTitle class="text-lg font-semibold">Обновления Comuna</SectionTitle>
   {#if visiblePosts?.length}

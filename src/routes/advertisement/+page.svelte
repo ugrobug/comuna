@@ -1,41 +1,91 @@
 <script>
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
-  import SectionTitle from '$lib/components/ui/SectionTitle.svelte'
+  import PostBody from '$lib/components/lemmy/post/PostBody.svelte'
+  import EditorJS from '$lib/components/editor/EditorJS.svelte'
+  import { Button, toast } from 'mono-svelte'
+  import { siteUser, updateStaticPageContent } from '$lib/siteAuth'
   import { env } from '$env/dynamic/public'
   import { page } from '$app/stores'
+
+  export let data
 
   const title = `Реклама — ${env.PUBLIC_SITE_TITLE || 'Comuna'}`
   const description =
     'Рекламные возможности на Comuna: спонсорские блоки, интеграции и спецпроекты.'
+  let isEditing = false
+  let isSaving = false
+  let pageContent = data?.pageContent ?? ''
+  let editorValue = pageContent
+  $: canEdit = !!$siteUser?.is_staff
   $: canonicalUrl = new URL(
     $page.url.pathname,
     (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '') + '/'
   ).toString()
+
+  const startEditing = () => {
+    editorValue = pageContent
+    isEditing = true
+  }
+
+  const cancelEditing = () => {
+    editorValue = pageContent
+    isEditing = false
+  }
+
+  const savePage = async () => {
+    if (!canEdit) return
+    isSaving = true
+    try {
+      const updated = await updateStaticPageContent('advertisement', {
+        title: 'Реклама',
+        content: editorValue,
+      })
+      pageContent = updated.content ?? ''
+      editorValue = pageContent
+      isEditing = false
+      toast({ content: 'Страница сохранена', type: 'success' })
+    } catch (error) {
+      toast({
+        content: error instanceof Error ? error.message : 'Не удалось сохранить страницу',
+        type: 'error',
+      })
+    } finally {
+      isSaving = false
+    }
+  }
 </script>
 
 <div class="flex flex-col gap-6 max-w-3xl">
   <Header pageHeader>
-    <h1 class="text-2xl font-bold">Реклама</h1>
+    <div class="flex w-full items-center justify-between gap-3">
+      <h1 class="text-2xl font-bold">Реклама</h1>
+      {#if canEdit && !isEditing}
+        <Button size="sm" color="secondary" on:click={startEditing}>Редактировать</Button>
+      {/if}
+    </div>
   </Header>
 
-  <div class="flex flex-col gap-3 text-base leading-relaxed">
-    <p>
-      Мы открыты к рекламным интеграциям и партнерствам. Реклама показывается на
-      страницах сайта и помогает авторам получать больше внимания к контенту.
-    </p>
-  </div>
-
-  <SectionTitle class="text-lg font-semibold">Форматы</SectionTitle>
-  <ul class="list-disc pl-6 space-y-2 text-base leading-relaxed">
-    <li>Спонсорские блоки на страницах статей.</li>
-    <li>Интеграции в подборках и разделах сайта.</li>
-    <li>Спецпроекты под вашу задачу.</li>
-  </ul>
-
-  <SectionTitle class="text-lg font-semibold">Как связаться</SectionTitle>
-  <p class="text-base leading-relaxed">
-    Напишите нам, и мы подберем оптимальный формат под ваши цели.
-  </p>
+  {#if isEditing}
+    <div class="rounded-xl border border-slate-200 dark:border-zinc-800 p-4">
+      <EditorJS bind:value={editorValue} showPostSettings={false} />
+      <div class="mt-4 flex items-center gap-2">
+        <Button on:click={savePage} disabled={isSaving}>
+          {#if isSaving}
+            Сохранение...
+          {:else}
+            Сохранить
+          {/if}
+        </Button>
+        <Button color="secondary" on:click={cancelEditing} disabled={isSaving}>
+          Отмена
+        </Button>
+      </div>
+    </div>
+  {:else}
+    <div class="text-base leading-relaxed">
+      <PostBody body={pageContent} showFullBody={true} />
+    </div>
+  {/if}
 </div>
 
 <svelte:head>

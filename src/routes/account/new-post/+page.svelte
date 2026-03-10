@@ -1,8 +1,9 @@
 <script lang="ts">
+  import { goto } from '$app/navigation'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import { Button, Spinner, TextInput, toast } from 'mono-svelte'
   import EditorJS from '$lib/components/editor/EditorJS.svelte'
-  import { onMount } from 'svelte'
+  import { onDestroy, onMount } from 'svelte'
   import { deserializeEditorModel } from '$lib/util'
   import {
     createUserPost,
@@ -10,7 +11,7 @@
     siteToken,
     siteUser,
   } from '$lib/siteAuth'
-  import { buildRubricsUrl } from '$lib/api/backend'
+  import { buildBackendPostPath, buildRubricsUrl } from '$lib/api/backend'
   import PostTemplateFields from '$lib/components/site/post-templates/PostTemplateFields.svelte'
   import {
     buildPostTemplatePayload,
@@ -35,7 +36,13 @@
   let createRubric = ''
   let creating = false
   let createError = ''
+  let draftError = ''
+  let draftStatus = 'Черновик появится автоматически после первого изменения.'
+  let draftCreating = false
   let rubricsLoading = false
+  let autosavePrimed = false
+  let lastObservedDraftSnapshot = ''
+  let autosaveTimeout: ReturnType<typeof setTimeout> | null = null
   type RubricOption = {
     name: string
     slug: string
@@ -106,6 +113,51 @@
     }
   }
 
+  const buildTags = () =>
+    createTags
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter((tag) => tag.length > 0)
+
+  const buildTemplate = () =>
+    buildPostTemplatePayload(
+      createTemplateType,
+      createMovieReviewData,
+      createPostVotePollData,
+      createMusicReleaseData
+    )
+
+  const buildDraftPayload = () => {
+    const tags = buildTags()
+    const template = buildTemplate()
+    return {
+      title: createTitle.trim(),
+      content: createContent.trim(),
+      author_source: createAuthor === SITE_AUTHOR_CHOICE ? ('site' as const) : undefined,
+      author_username:
+        createAuthor && createAuthor !== SITE_AUTHOR_CHOICE
+          ? createAuthor.replace(/^channel:/, '')
+          : undefined,
+      rubric_slug: createRubric || undefined,
+      tags: tags.length ? tags : undefined,
+      template: template ?? undefined,
+    }
+  }
+
+  const hasMeaningfulDraftContent = () => {
+    if (createTitle.trim()) return true
+    if (!isEditorContentEmpty(createContent)) return true
+    if (buildTags().length) return true
+    if (createTemplateType) return true
+    return false
+  }
+
+  const clearAutosaveTimeout = () => {
+    if (!autosaveTimeout) return
+    clearTimeout(autosaveTimeout)
+    autosaveTimeout = null
+  }
+
   const loadRubrics = async () => {
     if (rubricsLoading) return
     rubricsLoading = true
@@ -140,10 +192,59 @@
     }
   }
 
+  const queueDraftCreation = () => {
+    if (!autosavePrimed || !$siteUser || creating || draftCreating) return
+    clearAutosaveTimeout()
+    draftError = ''
+
+    if (!hasMeaningfulDraftContent()) {
+      draftStatus = 'Черновик появится автоматически после первого изменения.'
+      return
+    }
+
+    draftStatus = 'Сохраняем черновик...'
+    autosaveTimeout = setTimeout(async () => {
+      draftCreating = true
+      try {
+        const draft = await createUserPost({
+          ...buildDraftPayload(),
+          is_draft: true,
+        })
+        toast({ content: 'Черновик создан', type: 'success' })
+        await goto(`/account/edit-post/${draft.id}`, {
+          replaceState: true,
+          noScroll: true,
+          keepFocus: true,
+        })
+      } catch (error) {
+        draftError = (error as Error)?.message ?? 'Не удалось сохранить черновик'
+        draftStatus = 'Автосохранение черновика не удалось.'
+      } finally {
+        draftCreating = false
+      }
+    }, 900)
+  }
+
+  const resetForm = () => {
+    clearAutosaveTimeout()
+    createTitle = ''
+    createContent = ''
+    createTags = ''
+    createTemplateType = ''
+    createMovieReviewData = createEmptyMovieReviewTemplateData()
+    createPostVotePollData = createEmptyPostVotePollTemplateData()
+    createMusicReleaseData = createEmptyMusicReleaseTemplateData()
+    createError = ''
+    draftError = ''
+    draftStatus = 'Черновик появится автоматически после первого изменения.'
+    lastObservedDraftSnapshot = JSON.stringify(buildDraftPayload())
+  }
+
   onMount(() => {
     refreshSiteUser().finally(() => {
       loadingUser = false
       loadRubrics()
+      autosavePrimed = true
     })
 
     const closeOnOutsideClick = (event: MouseEvent) => {
@@ -159,6 +260,10 @@
     }
   })
 
+  onDestroy(() => {
+    clearAutosaveTimeout()
+  })
+
   $: if ($siteUser && !createAuthor) {
     createAuthor = $siteUser.authors?.length
       ? `channel:${$siteUser.authors[0]?.username || ''}`
@@ -169,9 +274,17 @@
     if (authorRubric) createRubric = authorRubric
   }
 
+  $: currentDraftSnapshot = JSON.stringify(buildDraftPayload())
+  $: if (autosavePrimed && currentDraftSnapshot !== lastObservedDraftSnapshot) {
+    lastObservedDraftSnapshot = currentDraftSnapshot
+    queueDraftCreation()
+  }
+
   const createPost = async () => {
     if (!$siteUser) return
     createError = ''
+    draftError = ''
+    clearAutosaveTimeout()
     if (!createTitle.trim()) {
       createError = 'Укажите заголовок поста.'
       return
@@ -190,40 +303,14 @@
     }
     creating = true
     try {
-      const tags = createTags
-        .split(',')
-        .map((tag) => tag.trim())
-        .filter((tag) => tag.length > 0)
-      const template = buildPostTemplatePayload(
-        createTemplateType,
-        createMovieReviewData,
-        createPostVotePollData,
-        createMusicReleaseData
-      )
-      await createUserPost({
-        title: createTitle.trim(),
-        content: createContent.trim(),
-        author_source: createAuthor === SITE_AUTHOR_CHOICE ? 'site' : undefined,
-        author_username:
-          createAuthor && createAuthor !== SITE_AUTHOR_CHOICE
-            ? createAuthor.replace(/^channel:/, '')
-            : undefined,
-        rubric_slug: createRubric || undefined,
-        tags: tags.length ? tags : undefined,
-        template: template ?? undefined,
-      })
-      createTitle = ''
-      createContent = ''
-      createTags = ''
-      createTemplateType = ''
-      createMovieReviewData = createEmptyMovieReviewTemplateData()
-      createPostVotePollData = createEmptyPostVotePollTemplateData()
-      createMusicReleaseData = createEmptyMusicReleaseTemplateData()
+      const createdPost = await createUserPost(buildDraftPayload())
+      resetForm()
       toast({
         content:
           'Ваш пост опубликован! Не забудьте поделиться ссылкой на него в социальных сетях',
         type: 'success',
       })
+      await goto(buildBackendPostPath({ id: createdPost.id, title: createdPost.title }))
     } catch (err) {
       createError = (err as Error)?.message ?? 'Не удалось создать пост'
     } finally {
@@ -259,6 +346,14 @@
         </p>
       {/if}
       <div class="flex flex-col gap-4">
+        <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
+          <div class="font-medium">Авточерновик</div>
+          <div class="mt-1">{draftStatus}</div>
+          <div class="mt-1 text-xs opacity-80">
+            После первого автосохранения откроется постоянная ссылка редактирования и ссылка для шаринга зарегистрированным пользователям.
+          </div>
+        </div>
+
         <div
           class={`grid grid-cols-1 gap-4 items-start ${
             publishIdentityOptions.length > 1 ? 'md:grid-cols-2' : ''
@@ -385,24 +480,19 @@
         {#if createError}
           <p class="text-sm text-red-600">{createError}</p>
         {/if}
+        {#if draftError}
+          <p class="text-sm text-red-600">{draftError}</p>
+        {/if}
         <div class="flex flex-wrap gap-2">
-          <Button color="primary" on:click={createPost} loading={creating} disabled={creating}>
+          <Button
+            color="primary"
+            on:click={createPost}
+            loading={creating}
+            disabled={creating || draftCreating}
+          >
             Опубликовать
           </Button>
-          <Button
-            color="ghost"
-            on:click={() => {
-              createTitle = ''
-              createContent = ''
-              createTags = ''
-              createTemplateType = ''
-              createMovieReviewData = createEmptyMovieReviewTemplateData()
-              createPostVotePollData = createEmptyPostVotePollTemplateData()
-              createMusicReleaseData = createEmptyMusicReleaseTemplateData()
-              createError = ''
-            }}
-            disabled={creating}
-          >
+          <Button color="ghost" on:click={resetForm} disabled={creating || draftCreating}>
             Очистить
           </Button>
         </div>

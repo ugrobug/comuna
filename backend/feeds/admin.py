@@ -17,6 +17,7 @@ from .models import (
     Rubric,
     SiteNotification,
     SiteNotificationPreference,
+    StaticPageContent,
     Tag,
     TagRelation,
     TagRelationType,
@@ -308,6 +309,14 @@ class ThematicFeedAdmin(admin.ModelAdmin):
         return obj.blocked_tags.count()
 
     blocked_tags_count.short_description = "Искл. тегов"
+
+
+@admin.register(StaticPageContent)
+class StaticPageContentAdmin(admin.ModelAdmin):
+    list_display = ("slug", "title", "updated_by", "updated_at")
+    search_fields = ("slug", "title")
+    readonly_fields = ("created_at", "updated_at")
+    fields = ("slug", "title", "content", "updated_by", "created_at", "updated_at")
 
 
 @admin.register(ComunCategory)

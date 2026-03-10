@@ -1,45 +1,91 @@
 <script>
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
-  import SectionTitle from '$lib/components/ui/SectionTitle.svelte'
+  import PostBody from '$lib/components/lemmy/post/PostBody.svelte'
+  import EditorJS from '$lib/components/editor/EditorJS.svelte'
+  import { Button, toast } from 'mono-svelte'
+  import { siteUser, updateStaticPageContent } from '$lib/siteAuth'
   import { env } from '$env/dynamic/public'
   import { page } from '$app/stores'
+
+  export let data
 
   const title = `Правила — ${env.PUBLIC_SITE_TITLE || 'Comuna'}`
   const description =
     'Правила публикации и модерации контента на Comuna для владельцев Telegram-каналов.'
+  let isEditing = false
+  let isSaving = false
+  let pageContent = data?.pageContent ?? ''
+  let editorValue = pageContent
+  $: canEdit = !!$siteUser?.is_staff
   $: canonicalUrl = new URL(
     $page.url.pathname,
     (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '') + '/'
   ).toString()
+
+  const startEditing = () => {
+    editorValue = pageContent
+    isEditing = true
+  }
+
+  const cancelEditing = () => {
+    editorValue = pageContent
+    isEditing = false
+  }
+
+  const savePage = async () => {
+    if (!canEdit) return
+    isSaving = true
+    try {
+      const updated = await updateStaticPageContent('rules', {
+        title: 'Правила',
+        content: editorValue,
+      })
+      pageContent = updated.content ?? ''
+      editorValue = pageContent
+      isEditing = false
+      toast({ content: 'Страница сохранена', type: 'success' })
+    } catch (error) {
+      toast({
+        content: error instanceof Error ? error.message : 'Не удалось сохранить страницу',
+        type: 'error',
+      })
+    } finally {
+      isSaving = false
+    }
+  }
 </script>
 
 <div class="flex flex-col gap-6 max-w-3xl">
   <Header pageHeader>
-    <h1 class="text-2xl font-bold">Правила</h1>
+    <div class="flex w-full items-center justify-between gap-3">
+      <h1 class="text-2xl font-bold">Правила</h1>
+      {#if canEdit && !isEditing}
+        <Button size="sm" color="secondary" on:click={startEditing}>Редактировать</Button>
+      {/if}
+    </div>
   </Header>
 
-  <div class="flex flex-col gap-3 text-base leading-relaxed">
-    <p>
-      Мы публикуем материалы из Telegram‑каналов в открытом доступе. Чтобы
-      сохранить качество и безопасность, мы просим соблюдать простые правила.
-    </p>
-  </div>
-
-  <SectionTitle class="text-lg font-semibold">Что нельзя</SectionTitle>
-  <ul class="list-disc pl-6 space-y-2 text-base leading-relaxed">
-    <li>Нарушать законы РФ и других стран.</li>
-    <li>Публиковать экстремизм, угрозы, призывы к насилию.</li>
-    <li>Публиковать спам, мошенничество и фишинг.</li>
-    <li>Прямая реклама без дополнительной ценности.</li>
-    <li>Нарушать авторские права.</li>
-  </ul>
-
-  <SectionTitle class="text-lg font-semibold">Модерация</SectionTitle>
-  <p class="text-base leading-relaxed">
-    Мы можем скрывать отдельные публикации или полностью блокировать каналы,
-    нарушающие правила. Администрация не уведомляет о блокировке или удалении контента.
-    Для вопросов и апелляций — напишите нам.
-  </p>
+  {#if isEditing}
+    <div class="rounded-xl border border-slate-200 dark:border-zinc-800 p-4">
+      <EditorJS bind:value={editorValue} showPostSettings={false} />
+      <div class="mt-4 flex items-center gap-2">
+        <Button on:click={savePage} disabled={isSaving}>
+          {#if isSaving}
+            Сохранение...
+          {:else}
+            Сохранить
+          {/if}
+        </Button>
+        <Button color="secondary" on:click={cancelEditing} disabled={isSaving}>
+          Отмена
+        </Button>
+      </div>
+    </div>
+  {:else}
+    <div class="text-base leading-relaxed">
+      <PostBody body={pageContent} showFullBody={true} />
+    </div>
+  {/if}
 </div>
 
 <svelte:head>
