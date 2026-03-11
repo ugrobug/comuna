@@ -203,14 +203,6 @@
     musicReleaseData: createMusicReleaseData,
   })
 
-  const hasMeaningfulDraftInput = () => {
-    if (createTitle.trim()) return true
-    if (!isEditorContentEmpty(createContent)) return true
-    if (buildTags().length > 0) return true
-    if (createTemplateType) return true
-    return false
-  }
-
   const localDraftStorageKey = () =>
     $siteUser ? `${LOCAL_DRAFT_STORAGE_KEY}:${$siteUser.id}` : null
 
@@ -377,11 +369,7 @@
           await tick()
           lastObservedFormSnapshot = JSON.stringify(buildLocalDraftState())
           autosavePrimed = true
-          if (
-            restored &&
-            hasMeaningfulDraftInput() &&
-            lastObservedFormSnapshot !== initialFormSnapshot
-          ) {
+          if (restored && lastObservedFormSnapshot !== initialFormSnapshot) {
             queueDraftCreation()
           }
         }
@@ -427,7 +415,7 @@
   $: currentFormSnapshot = JSON.stringify(buildLocalDraftState())
   $: if (autosavePrimed && currentFormSnapshot !== lastObservedFormSnapshot) {
     lastObservedFormSnapshot = currentFormSnapshot
-    if (currentFormSnapshot === initialFormSnapshot || !hasMeaningfulDraftInput()) {
+    if (currentFormSnapshot === initialFormSnapshot) {
       lastSavedFormSnapshot = initialFormSnapshot
       clearAutosaveTimeout()
       clearLocalDraftBuffer()
