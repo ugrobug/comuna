@@ -268,18 +268,20 @@
     <h1 class="text-2xl font-bold">Публикация</h1>
   </Header>
 
-  <Post
-    post={postView}
-    view="cozy"
-    actions={true}
-    showReadMore={false}
-    showFullBody={true}
-    linkOverride={buildBackendPostPath(data.post)}
-    userUrlOverride={data.post.author?.username ? `/${data.post.author.username}` : undefined}
-    communityUrlOverride={data.post.rubric_slug ? `/rubrics/${data.post.rubric_slug}/posts` : undefined}
-    subscribeUrl={data.post.channel_url ?? data.post.author?.channel_url}
-    subscribeLabel="Подписаться"
-  />
+  <div class="rounded-xl border border-slate-200 border-b-slate-300 bg-white p-4 dark:border-zinc-800 dark:border-t-zinc-700 dark:bg-zinc-900 sm:p-6">
+    <Post
+      post={postView}
+      view="cozy"
+      actions={true}
+      showReadMore={false}
+      showFullBody={true}
+      linkOverride={buildBackendPostPath(data.post)}
+      userUrlOverride={data.post.author?.username ? `/${data.post.author.username}` : undefined}
+      communityUrlOverride={data.post.rubric_slug ? `/rubrics/${data.post.rubric_slug}/posts` : undefined}
+      subscribeUrl={data.post.channel_url ?? data.post.author?.channel_url}
+      subscribeLabel="Подписаться"
+    />
+  </div>
 
   <PostComments postId={data.post.id} postAuthor={data.post.author?.username ?? null} />
 </div>
