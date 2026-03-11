@@ -45,6 +45,7 @@
   let initialFormSnapshot = ''
   let lastSavedFormSnapshot = ''
   let lastObservedFormSnapshot = ''
+  let currentFormSnapshot = ''
   let autosaveTimeout: ReturnType<typeof setTimeout> | null = null
   type RubricOption = {
     name: string

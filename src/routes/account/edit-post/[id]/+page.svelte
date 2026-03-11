@@ -91,6 +91,7 @@
   let saveError = ''
   let autosavePrimed = false
   let lastObservedEditSnapshot = ''
+  let currentEditSnapshot = ''
   let autosaveTimeout: ReturnType<typeof setTimeout> | null = null
   let draftSavedNoticeVisible = false
   let draftSavedNoticeTimer: ReturnType<typeof setTimeout> | null = null
