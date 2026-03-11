@@ -77,6 +77,7 @@
   let createPostVotePollData: PostVotePollTemplateData = createEmptyPostVotePollTemplateData()
   let createMusicReleaseData: MusicReleaseTemplateData = createEmptyMusicReleaseTemplateData()
   let templateEditorBlockSettings: TemplateEditorBlockSettings = {}
+  let firstDraftChangeAt: number | null = null
 
   type PublishIdentityOption = {
     value: string
@@ -330,7 +331,8 @@
         })
         clearLocalDraftBuffer()
         toast({ content: 'Черновик создан', type: 'success' })
-        await goto(`/account/edit-post/${draft.id}`, {
+        const firstChangeAt = firstDraftChangeAt ?? Date.now()
+        await goto(`/account/edit-post/${draft.id}?first_change_at=${firstChangeAt}`, {
           replaceState: true,
           noScroll: true,
           keepFocus: true,
@@ -345,6 +347,7 @@
 
   const resetForm = () => {
     clearAutosaveTimeout()
+    firstDraftChangeAt = null
     createTitle = ''
     createContent = ''
     createTags = ''
@@ -428,6 +431,7 @@
       clearAutosaveTimeout()
       clearLocalDraftBuffer()
     } else {
+      if (!firstDraftChangeAt) firstDraftChangeAt = Date.now()
       persistLocalDraftBuffer()
       queueDraftCreation()
     }

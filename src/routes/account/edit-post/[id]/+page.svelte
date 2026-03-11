@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { browser } from '$app/environment'
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
@@ -231,6 +232,26 @@
     }, delay)
   }
 
+  const getFirstChangeAtFromUrl = () => {
+    const raw = $page.url.searchParams.get('first_change_at')
+    if (!raw) return null
+    const parsed = Number(raw)
+    if (!Number.isFinite(parsed) || parsed <= 0) return null
+    return parsed
+  }
+
+  const clearFirstChangeAtFromUrl = async () => {
+    if (!browser) return
+    if (!$page.url.searchParams.has('first_change_at')) return
+    const url = new URL($page.url)
+    url.searchParams.delete('first_change_at')
+    await goto(`${url.pathname}${url.search}`, {
+      replaceState: true,
+      noScroll: true,
+      keepFocus: true,
+    })
+  }
+
   const formatSavedAt = (value?: string | null) => {
     if (!value) return ''
     const date = new Date(value)
@@ -289,6 +310,13 @@
     clearDraftSavedNoticeTimer()
     firstDraftChangeAt = null
     firstDraftAutosaveCompleted = false
+    const firstChangeAtFromUrl = getFirstChangeAtFromUrl()
+    if (firstChangeAtFromUrl && currentPost.is_draft) {
+      firstDraftChangeAt = firstChangeAtFromUrl
+      firstDraftAutosaveCompleted = true
+      scheduleDraftSavedNotice()
+      void clearFirstChangeAtFromUrl()
+    }
   }
 
   const loadRubrics = async () => {

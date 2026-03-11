@@ -5140,6 +5140,10 @@ def _resolve_manual_post_rubric(
             return None, None
         return None, "rubric required"
     if rubric.is_hidden and not user.is_staff:
+        if allow_empty:
+            # Drafts can temporarily keep hidden rubric context (e.g. channel default).
+            # On publish, validation runs with allow_empty=False and will enforce visibility.
+            return rubric, None
         return None, "rubric not allowed"
     return rubric, None
 
