@@ -8,6 +8,7 @@
   import { deserializeEditorModel } from '$lib/util'
   import {
     createUserPost,
+    fetchUserPost,
     refreshSiteUser,
     siteToken,
     siteUser,
@@ -356,6 +357,18 @@
     }
   }
 
+  const validateRestoredDraftId = async () => {
+    if (!draftId) return
+    try {
+      await fetchUserPost(draftId)
+    } catch (error) {
+      if (!isMissingDraftError(error)) return
+      draftId = null
+      firstDraftAutosaveCompleted = false
+      persistLocalDraftBuffer()
+    }
+  }
+
   const scheduleDraftSavedNotice = () => {
     if (!draftId || draftSavedNoticeVisible) return
     clearDraftSavedNoticeTimer()
@@ -425,6 +438,7 @@
         const draft = await saveDraftRecord()
         const isFirstSave = !previousDraftId || previousDraftId !== draft.id
         draftId = draft.id
+        draftError = ''
         lastSavedFormSnapshot = sentSnapshot
         persistLocalDraftBuffer()
         const latestSnapshot = JSON.stringify(buildLocalDraftState())
@@ -478,6 +492,9 @@
           initialFormSnapshot = JSON.stringify(buildLocalDraftState())
           lastSavedFormSnapshot = initialFormSnapshot
           const restored = restoreLocalDraftBuffer()
+          if (restored) {
+            await validateRestoredDraftId()
+          }
           await tick()
           lastObservedFormSnapshot = JSON.stringify(buildLocalDraftState())
           autosavePrimed = true
