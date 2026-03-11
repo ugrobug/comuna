@@ -63,6 +63,7 @@
 
   const SITE_AUTHOR_CHOICE = '__site__'
   const DRAFT_NOTICE_DELAY_MS = 10_000
+  const DRAFT_NOTICE_VISIBLE_MS = 5_000
 
   let loading = true
   let loadError = ''
@@ -108,6 +109,7 @@
   let autosaveTimeout: ReturnType<typeof setTimeout> | null = null
   let draftSavedNoticeVisible = false
   let draftSavedNoticeTimer: ReturnType<typeof setTimeout> | null = null
+  let draftSavedNoticeHideTimer: ReturnType<typeof setTimeout> | null = null
   let firstDraftChangeAt: number | null = null
   let firstDraftAutosaveCompleted = false
 
@@ -258,6 +260,12 @@
     draftSavedNoticeTimer = null
   }
 
+  const clearDraftSavedNoticeHideTimer = () => {
+    if (!draftSavedNoticeHideTimer) return
+    clearTimeout(draftSavedNoticeHideTimer)
+    draftSavedNoticeHideTimer = null
+  }
+
   const getAvatarFallback = (identity: PublishIdentityOption | undefined) => {
     const source = identity?.shortLabel?.trim() || identity?.username?.trim() || 'A'
     return source.charAt(0).toUpperCase()
@@ -266,10 +274,14 @@
   const scheduleDraftSavedNotice = () => {
     if (!post?.is_draft || draftSavedNoticeVisible) return
     clearDraftSavedNoticeTimer()
+    clearDraftSavedNoticeHideTimer()
     const elapsed = Date.now() - (firstDraftChangeAt ?? Date.now())
     const delay = Math.max(0, DRAFT_NOTICE_DELAY_MS - elapsed)
     draftSavedNoticeTimer = setTimeout(() => {
       draftSavedNoticeVisible = true
+      draftSavedNoticeHideTimer = setTimeout(() => {
+        draftSavedNoticeVisible = false
+      }, DRAFT_NOTICE_VISIBLE_MS)
     }, delay)
   }
 
@@ -349,6 +361,7 @@
     lastObservedEditSnapshot = JSON.stringify(buildEditPayload())
     draftSavedNoticeVisible = false
     clearDraftSavedNoticeTimer()
+    clearDraftSavedNoticeHideTimer()
     firstDraftChangeAt = null
     firstDraftAutosaveCompleted = false
     const firstChangeAtFromUrl = getFirstChangeAtFromUrl()
@@ -563,6 +576,7 @@
   onDestroy(() => {
     clearAutosaveTimeout()
     clearDraftSavedNoticeTimer()
+    clearDraftSavedNoticeHideTimer()
   })
 
   $: if (post?.is_draft && !editRubric && selectedChannelIdentity?.rubric_slug) {

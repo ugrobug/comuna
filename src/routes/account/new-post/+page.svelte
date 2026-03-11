@@ -11,6 +11,7 @@
     refreshSiteUser,
     siteToken,
     siteUser,
+    updateUserPost,
   } from '$lib/siteAuth'
   import { buildBackendPostPath, buildRubricsUrl } from '$lib/api/backend'
   import PostTemplateFields from '$lib/components/site/post-templates/PostTemplateFields.svelte'
@@ -40,6 +41,7 @@
   let createError = ''
   let draftError = ''
   let draftCreating = false
+  let draftId: number | null = null
   let rubricsLoading = false
   let autosavePrimed = false
   let initialFormSnapshot = ''
@@ -79,6 +81,13 @@
   let createMusicReleaseData: MusicReleaseTemplateData = createEmptyMusicReleaseTemplateData()
   let templateEditorBlockSettings: TemplateEditorBlockSettings = {}
   let firstDraftChangeAt: number | null = null
+  let firstDraftAutosaveCompleted = false
+  let draftSavedNoticeVisible = false
+  let draftSavedNoticeTimer: ReturnType<typeof setTimeout> | null = null
+  let draftSavedNoticeHideTimer: ReturnType<typeof setTimeout> | null = null
+
+  const DRAFT_NOTICE_DELAY_MS = 10_000
+  const DRAFT_NOTICE_VISIBLE_MS = 5_000
 
   type PublishIdentityOption = {
     value: string
@@ -141,6 +150,7 @@
     availableTemplateTypeOptions.find((option) => option.value === createTemplateType) ??
     availableTemplateTypeOptions[0] ??
     POST_TEMPLATE_TYPE_OPTIONS[0]
+  $: profileDraftsPath = $siteUser?.id ? `/id${$siteUser.id}` : '/settings'
   $: if (!availableTemplateTypeOptions.some((option) => option.value === createTemplateType)) {
     createTemplateType = availableTemplateTypeOptions[0]?.value ?? ''
   }
@@ -269,6 +279,61 @@
     autosaveTimeout = null
   }
 
+  const clearDraftSavedNoticeTimer = () => {
+    if (!draftSavedNoticeTimer) return
+    clearTimeout(draftSavedNoticeTimer)
+    draftSavedNoticeTimer = null
+  }
+
+  const clearDraftSavedNoticeHideTimer = () => {
+    if (!draftSavedNoticeHideTimer) return
+    clearTimeout(draftSavedNoticeHideTimer)
+    draftSavedNoticeHideTimer = null
+  }
+
+  const clearDraftSavedNotice = () => {
+    draftSavedNoticeVisible = false
+    clearDraftSavedNoticeTimer()
+    clearDraftSavedNoticeHideTimer()
+  }
+
+  const replaceDraftUrl = () => {
+    if (!browser || !draftId) return
+    const url = new URL(window.location.href)
+    url.pathname = `/account/edit-post/${draftId}`
+    if (firstDraftChangeAt) {
+      url.searchParams.set('first_change_at', String(firstDraftChangeAt))
+    } else {
+      url.searchParams.delete('first_change_at')
+    }
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}`)
+  }
+
+  const finalizeDraftNoticeUrl = () => {
+    if (!browser || !draftId) return
+    const url = new URL(window.location.href)
+    if (url.pathname !== `/account/edit-post/${draftId}` || !url.searchParams.has('first_change_at')) {
+      return
+    }
+    url.searchParams.delete('first_change_at')
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}`)
+  }
+
+  const scheduleDraftSavedNotice = () => {
+    if (!draftId || draftSavedNoticeVisible) return
+    clearDraftSavedNoticeTimer()
+    clearDraftSavedNoticeHideTimer()
+    const elapsed = Date.now() - (firstDraftChangeAt ?? Date.now())
+    const delay = Math.max(0, DRAFT_NOTICE_DELAY_MS - elapsed)
+    draftSavedNoticeTimer = setTimeout(() => {
+      draftSavedNoticeVisible = true
+      finalizeDraftNoticeUrl()
+      draftSavedNoticeHideTimer = setTimeout(() => {
+        draftSavedNoticeVisible = false
+      }, DRAFT_NOTICE_VISIBLE_MS)
+    }, delay)
+  }
+
   const getAvatarFallback = (identity: PublishIdentityOption | undefined) => {
     const source = identity?.shortLabel?.trim() || identity?.username?.trim() || 'A'
     return source.charAt(0).toUpperCase()
@@ -308,7 +373,7 @@
     }
   }
 
-  const queueDraftCreation = () => {
+  const queueDraftSave = () => {
     if (!autosavePrimed || !$siteUser || creating || draftCreating) return
     if (currentFormSnapshot === lastSavedFormSnapshot) return
     clearAutosaveTimeout()
@@ -317,30 +382,48 @@
     autosaveTimeout = setTimeout(async () => {
       if (currentFormSnapshot === lastSavedFormSnapshot) return
       draftCreating = true
+      const sentSnapshot = currentFormSnapshot
+      let needsAnotherSave = false
       try {
-        const draft = await createUserPost({
-          ...buildDraftPayload(),
-          is_draft: true,
-        })
-        clearLocalDraftBuffer()
-        toast({ content: 'Черновик создан', type: 'success' })
-        const firstChangeAt = firstDraftChangeAt ?? Date.now()
-        await goto(`/account/edit-post/${draft.id}?first_change_at=${firstChangeAt}`, {
-          replaceState: true,
-          noScroll: true,
-          keepFocus: true,
-        })
+        const draft = draftId
+          ? await updateUserPost(draftId, {
+              ...buildDraftPayload(),
+              is_draft: true,
+            })
+          : await createUserPost({
+              ...buildDraftPayload(),
+              is_draft: true,
+            })
+        const isFirstSave = !draftId
+        draftId = draft.id
+        lastSavedFormSnapshot = sentSnapshot
+        const latestSnapshot = JSON.stringify(buildLocalDraftState())
+        needsAnotherSave = latestSnapshot !== sentSnapshot
+        if (isFirstSave) {
+          replaceDraftUrl()
+        }
+        if (!firstDraftAutosaveCompleted) {
+          firstDraftAutosaveCompleted = true
+          scheduleDraftSavedNotice()
+        }
       } catch (error) {
         draftError = (error as Error)?.message ?? 'Не удалось сохранить черновик'
       } finally {
         draftCreating = false
+        if (needsAnotherSave) {
+          queueDraftSave()
+        }
       }
     }, 900)
   }
 
   const resetForm = () => {
     clearAutosaveTimeout()
-    firstDraftChangeAt = null
+    if (!draftId) {
+      firstDraftChangeAt = null
+      firstDraftAutosaveCompleted = false
+      clearDraftSavedNotice()
+    }
     createTitle = ''
     createContent = ''
     createTags = ''
@@ -351,9 +434,11 @@
     createError = ''
     draftError = ''
     clearLocalDraftBuffer()
-    initialFormSnapshot = JSON.stringify(buildLocalDraftState())
-    lastSavedFormSnapshot = initialFormSnapshot
-    lastObservedFormSnapshot = initialFormSnapshot
+    if (!draftId) {
+      initialFormSnapshot = JSON.stringify(buildLocalDraftState())
+      lastSavedFormSnapshot = initialFormSnapshot
+      lastObservedFormSnapshot = initialFormSnapshot
+    }
   }
 
   onMount(() => {
@@ -370,7 +455,7 @@
           lastObservedFormSnapshot = JSON.stringify(buildLocalDraftState())
           autosavePrimed = true
           if (restored && lastObservedFormSnapshot !== initialFormSnapshot) {
-            queueDraftCreation()
+            queueDraftSave()
           }
         }
       } finally {
@@ -400,6 +485,7 @@
 
   onDestroy(() => {
     clearAutosaveTimeout()
+    clearDraftSavedNotice()
   })
 
   $: if ($siteUser && !createAuthor) {
@@ -415,14 +501,24 @@
   $: currentFormSnapshot = JSON.stringify(buildLocalDraftState())
   $: if (autosavePrimed && currentFormSnapshot !== lastObservedFormSnapshot) {
     lastObservedFormSnapshot = currentFormSnapshot
-    if (currentFormSnapshot === initialFormSnapshot) {
+    if (currentFormSnapshot === initialFormSnapshot && !draftId) {
       lastSavedFormSnapshot = initialFormSnapshot
       clearAutosaveTimeout()
       clearLocalDraftBuffer()
+      firstDraftChangeAt = null
+      firstDraftAutosaveCompleted = false
+      clearDraftSavedNotice()
     } else {
       if (!firstDraftChangeAt) firstDraftChangeAt = Date.now()
-      persistLocalDraftBuffer()
-      queueDraftCreation()
+      if (currentFormSnapshot === initialFormSnapshot) {
+        clearLocalDraftBuffer()
+      } else {
+        persistLocalDraftBuffer()
+      }
+      if (draftId) {
+        replaceDraftUrl()
+      }
+      queueDraftSave()
     }
   }
 
@@ -449,8 +545,14 @@
     }
     creating = true
     try {
-      const createdPost = await createUserPost(buildDraftPayload())
+      const createdPost = draftId
+        ? await updateUserPost(draftId, {
+            ...buildDraftPayload(),
+            is_draft: false,
+          })
+        : await createUserPost(buildDraftPayload())
       clearLocalDraftBuffer()
+      draftId = null
       resetForm()
       toast({
         content:
@@ -497,6 +599,12 @@
       Войдите, чтобы создавать посты.
     </p>
   {:else}
+    {#if draftSavedNoticeVisible && draftId}
+      <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-200">
+        Материал сохранен как черновик, дальнейшее сохранение идет автоматически.
+        Все черновики <a href={profileDraftsPath} class="underline decoration-emerald-500/70 underline-offset-2 hover:text-emerald-700 dark:hover:text-emerald-100">в профиле</a>.
+      </div>
+    {/if}
     <div class="rounded-xl border border-slate-200 dark:border-zinc-800 p-6">
       <div class="flex flex-col gap-4">
         <div class="rounded-2xl bg-slate-100 px-4 py-4 dark:bg-zinc-900/80">
