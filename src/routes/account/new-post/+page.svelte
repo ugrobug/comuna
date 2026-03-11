@@ -231,6 +231,8 @@
       key,
       JSON.stringify({
         saved_at: new Date().toISOString(),
+        draft_id: draftId,
+        first_change_at: firstDraftChangeAt,
         ...buildLocalDraftState(),
       })
     )
@@ -247,6 +249,8 @@
       const nextAuthor = String(parsed?.author || '')
       const nextRubric = String(parsed?.rubric || '')
       const nextTemplateType = String(parsed?.templateType || '') as '' | PostTemplateType
+      const nextDraftId = Number(parsed?.draft_id ?? 0)
+      const nextFirstChangeAt = Number(parsed?.first_change_at ?? 0)
       const authorExists =
         !nextAuthor || publishIdentityOptions.some((item) => item.value === nextAuthor)
       const rubricExists = !nextRubric || rubrics.some((item) => item.slug === nextRubric)
@@ -266,6 +270,9 @@
         parsed?.postVotePollData ?? createEmptyPostVotePollTemplateData()
       createMusicReleaseData =
         parsed?.musicReleaseData ?? createEmptyMusicReleaseTemplateData()
+      draftId = Number.isFinite(nextDraftId) && nextDraftId > 0 ? nextDraftId : null
+      firstDraftChangeAt =
+        Number.isFinite(nextFirstChangeAt) && nextFirstChangeAt > 0 ? nextFirstChangeAt : null
       return true
     } catch {
       localStorage.removeItem(key)
@@ -297,28 +304,6 @@
     clearDraftSavedNoticeHideTimer()
   }
 
-  const replaceDraftUrl = () => {
-    if (!browser || !draftId) return
-    const url = new URL(window.location.href)
-    url.pathname = `/account/edit-post/${draftId}`
-    if (firstDraftChangeAt) {
-      url.searchParams.set('first_change_at', String(firstDraftChangeAt))
-    } else {
-      url.searchParams.delete('first_change_at')
-    }
-    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}`)
-  }
-
-  const finalizeDraftNoticeUrl = () => {
-    if (!browser || !draftId) return
-    const url = new URL(window.location.href)
-    if (url.pathname !== `/account/edit-post/${draftId}` || !url.searchParams.has('first_change_at')) {
-      return
-    }
-    url.searchParams.delete('first_change_at')
-    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}`)
-  }
-
   const scheduleDraftSavedNotice = () => {
     if (!draftId || draftSavedNoticeVisible) return
     clearDraftSavedNoticeTimer()
@@ -327,7 +312,6 @@
     const delay = Math.max(0, DRAFT_NOTICE_DELAY_MS - elapsed)
     draftSavedNoticeTimer = setTimeout(() => {
       draftSavedNoticeVisible = true
-      finalizeDraftNoticeUrl()
       draftSavedNoticeHideTimer = setTimeout(() => {
         draftSavedNoticeVisible = false
       }, DRAFT_NOTICE_VISIBLE_MS)
@@ -397,12 +381,10 @@
         const isFirstSave = !draftId
         draftId = draft.id
         lastSavedFormSnapshot = sentSnapshot
+        persistLocalDraftBuffer()
         const latestSnapshot = JSON.stringify(buildLocalDraftState())
         needsAnotherSave = latestSnapshot !== sentSnapshot
-        if (isFirstSave) {
-          replaceDraftUrl()
-        }
-        if (!firstDraftAutosaveCompleted) {
+        if (isFirstSave || !firstDraftAutosaveCompleted) {
           firstDraftAutosaveCompleted = true
           scheduleDraftSavedNotice()
         }
@@ -514,9 +496,6 @@
         clearLocalDraftBuffer()
       } else {
         persistLocalDraftBuffer()
-      }
-      if (draftId) {
-        replaceDraftUrl()
       }
       queueDraftSave()
     }
