@@ -870,7 +870,7 @@
               Опубликовать
             </Button>
             <Button color="ghost" on:click={copyDraftShareLink} disabled={!draftShareUrl || publishing}>
-              Скопировать ссылку
+              Поделиться
             </Button>
             {#if draftSharePath}
               <Button color="ghost" href={draftSharePath} target="_blank" rel="noreferrer" disabled={publishing}>
@@ -890,10 +890,10 @@
             >
               Открыть пост
             </Button>
+            <Button color="ghost" href="/settings" disabled={saving || publishing}>
+              Назад к настройкам
+            </Button>
           {/if}
-          <Button color="ghost" href="/settings" disabled={saving || publishing}>
-            Назад к настройкам
-          </Button>
         </div>
       </div>
     </div>
