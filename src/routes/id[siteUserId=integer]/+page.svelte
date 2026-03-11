@@ -15,6 +15,7 @@
   } from '$lib/api/backend'
   import { env } from '$env/dynamic/public'
   import {
+    deleteUserPost,
     fetchUserPosts,
     refreshSiteUser,
     siteToken,
@@ -37,6 +38,7 @@
   let ownerPostsLoaded = false
   let ownerPostsError = ''
   let ownerPosts: SiteUserPost[] = []
+  let deletingDraftId: number | null = null
   let profileTab: 'posts' | 'drafts' = 'posts'
   let lastOwnerProfileId: number | null = null
   let lastPostsRef = data.posts
@@ -220,6 +222,22 @@
       await navigator.clipboard.writeText(url)
     } catch (error) {
       console.error('Failed to copy draft share link:', error)
+    }
+  }
+
+  const removeDraft = async (draft: SiteUserPost) => {
+    if (deletingDraftId === draft.id) return
+    const shouldDelete = confirm('Удалить черновик?')
+    if (!shouldDelete) return
+    deletingDraftId = draft.id
+    ownerPostsError = ''
+    try {
+      await deleteUserPost(draft.id)
+      ownerPosts = ownerPosts.filter((item) => item.id !== draft.id)
+    } catch (error) {
+      ownerPostsError = (error as Error)?.message ?? 'Не удалось удалить черновик'
+    } finally {
+      deletingDraftId = null
     }
   }
 
@@ -454,12 +472,22 @@
                 </div>
               </div>
               <div class="flex flex-wrap gap-2">
-                <a
-                  href={`/account/edit-post/${draft.id}`}
-                  class="rounded-full bg-slate-900 px-4 py-2 text-sm text-white dark:bg-zinc-100 dark:text-zinc-900"
+                <button
+                  type="button"
+                  class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-red-200 bg-red-50 text-red-600 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300 dark:hover:bg-red-900/50"
+                  aria-label="Удалить черновик"
+                  title="Удалить черновик"
+                  on:click={() => removeDraft(draft)}
+                  disabled={deletingDraftId === draft.id}
                 >
-                  Открыть
-                </a>
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M3 6h18" />
+                    <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
+                    <path d="M19 6l-1 14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1L5 6" />
+                    <path d="M10 11v6" />
+                    <path d="M14 11v6" />
+                  </svg>
+                </button>
                 {#if draft.draft_share_token}
                   <button
                     type="button"

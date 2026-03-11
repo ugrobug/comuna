@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { browser } from '$app/environment'
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
@@ -57,6 +58,9 @@
   }
 
   const SITE_AUTHOR_CHOICE = '__site__'
+  const DRAFT_NOTICE_QUEUE_KEY = 'comuna.site.draft.notice.queue.v1'
+  const DRAFT_NOTICE_SHOWN_KEY = 'comuna.site.draft.notice.shown.v1'
+  const DRAFT_NOTICE_DELAY_MS = 10_000
 
   let loading = true
   let loadError = ''
@@ -90,6 +94,10 @@
   let autosavePrimed = false
   let lastObservedEditSnapshot = ''
   let autosaveTimeout: ReturnType<typeof setTimeout> | null = null
+  let draftSavedNoticeVisible = false
+  let draftSavedNoticeTimer: ReturnType<typeof setTimeout> | null = null
+  let firstDraftChangeAt: number | null = null
+  let draftSavedNoticeShown = false
 
   $: selectedRubric = rubrics.find((rubric) => rubric.slug === editRubric)
   $: publishIdentityOptions = (() => {
@@ -134,6 +142,7 @@
       ? `/drafts/${encodeURIComponent(post.draft_share_token)}`
       : ''
   $: draftShareUrl = draftSharePath ? `${$page.url.origin}${draftSharePath}` : ''
+  $: profileDraftsPath = $siteUser?.id ? `/id${$siteUser.id}` : '/settings'
 
   const detectContentType = (content: string): boolean => {
     if (!content || content.trim() === '') {
@@ -209,6 +218,74 @@
     autosaveTimeout = null
   }
 
+  const clearDraftSavedNoticeTimer = () => {
+    if (!draftSavedNoticeTimer) return
+    clearTimeout(draftSavedNoticeTimer)
+    draftSavedNoticeTimer = null
+  }
+
+  const readStorageMap = (key: string) => {
+    if (!browser) return {} as Record<string, number | boolean>
+    try {
+      const raw = localStorage.getItem(key)
+      if (!raw) return {}
+      const parsed = JSON.parse(raw)
+      if (!parsed || typeof parsed !== 'object') return {}
+      return parsed as Record<string, number | boolean>
+    } catch {
+      return {}
+    }
+  }
+
+  const writeStorageMap = (key: string, map: Record<string, number | boolean>) => {
+    if (!browser) return
+    localStorage.setItem(key, JSON.stringify(map))
+  }
+
+  const getQueuedDraftNotice = (postId: number) => {
+    if (!browser) return null
+    const queue = readStorageMap(DRAFT_NOTICE_QUEUE_KEY) as Record<string, number>
+    const changedAt = Number(queue[String(postId)] || 0)
+    if (!changedAt) return null
+    return changedAt
+  }
+
+  const clearQueuedDraftNotice = (postId: number) => {
+    if (!browser) return
+    const queue = readStorageMap(DRAFT_NOTICE_QUEUE_KEY) as Record<string, number>
+    const key = String(postId)
+    if (!(key in queue)) return
+    delete queue[key]
+    writeStorageMap(DRAFT_NOTICE_QUEUE_KEY, queue)
+  }
+
+  const isDraftNoticeAlreadyShown = (postId: number) => {
+    const shownMap = readStorageMap(DRAFT_NOTICE_SHOWN_KEY) as Record<string, boolean>
+    return Boolean(shownMap[String(postId)])
+  }
+
+  const markDraftNoticeShown = (postId: number) => {
+    if (!browser) return
+    const shownMap = readStorageMap(DRAFT_NOTICE_SHOWN_KEY) as Record<string, boolean>
+    shownMap[String(postId)] = true
+    writeStorageMap(DRAFT_NOTICE_SHOWN_KEY, shownMap)
+  }
+
+  const scheduleDraftSavedNotice = (changedAt: number) => {
+    if (!post?.is_draft || draftSavedNoticeShown || draftSavedNoticeVisible) return
+    clearDraftSavedNoticeTimer()
+    const elapsed = Date.now() - changedAt
+    const delay = Math.max(0, DRAFT_NOTICE_DELAY_MS - elapsed)
+    draftSavedNoticeTimer = setTimeout(() => {
+      draftSavedNoticeVisible = true
+      if (post?.id) {
+        markDraftNoticeShown(post.id)
+        clearQueuedDraftNotice(post.id)
+        draftSavedNoticeShown = true
+      }
+    }, delay)
+  }
+
   const formatSavedAt = (value?: string | null) => {
     if (!value) return ''
     const date = new Date(value)
@@ -263,6 +340,19 @@
     editTags = tagNames.join(', ')
     isJsonContent = detectContentType(editContent)
     lastObservedEditSnapshot = JSON.stringify(buildEditPayload())
+    draftSavedNoticeVisible = false
+    clearDraftSavedNoticeTimer()
+    firstDraftChangeAt = null
+    draftSavedNoticeShown = isDraftNoticeAlreadyShown(currentPost.id)
+    if (draftSavedNoticeShown) {
+      clearQueuedDraftNotice(currentPost.id)
+    } else {
+      const queuedChangeAt = getQueuedDraftNotice(currentPost.id)
+      if (queuedChangeAt) {
+        firstDraftChangeAt = queuedChangeAt
+        scheduleDraftSavedNotice(queuedChangeAt)
+      }
+    }
   }
 
   const loadRubrics = async () => {
@@ -322,11 +412,13 @@
     clearAutosaveTimeout()
     saveError = ''
     autosaveTimeout = setTimeout(async () => {
+      const postId = post?.id
+      if (!postId) return
       autosaving = true
       const sentSnapshot = JSON.stringify(buildEditPayload())
       let needsAnotherSave = false
       try {
-        const updated = await updateUserPost(post.id, {
+        const updated = await updateUserPost(postId, {
           ...buildEditPayload(),
           is_draft: true,
         })
@@ -444,6 +536,7 @@
 
   onDestroy(() => {
     clearAutosaveTimeout()
+    clearDraftSavedNoticeTimer()
   })
 
   $: if (post?.is_draft && !editRubric && selectedChannelIdentity?.rubric_slug) {
@@ -453,6 +546,10 @@
 
   $: currentEditSnapshot = JSON.stringify(buildEditPayload())
   $: if (autosavePrimed && post?.is_draft && currentEditSnapshot !== lastObservedEditSnapshot) {
+    if (!firstDraftChangeAt) {
+      firstDraftChangeAt = Date.now()
+      scheduleDraftSavedNotice(firstDraftChangeAt)
+    }
     lastObservedEditSnapshot = currentEditSnapshot
     queueDraftAutosave()
   }
@@ -473,6 +570,12 @@
   {:else if loadError}
     <p class="text-sm text-red-600">{loadError}</p>
   {:else if post}
+    {#if draftSavedNoticeVisible && post.is_draft}
+      <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-200">
+        Материал сохранен как черновик, дальнейшее сохранение идет автоматически.
+        Все черновики <a href={profileDraftsPath} class="underline decoration-emerald-500/70 underline-offset-2 hover:text-emerald-700 dark:hover:text-emerald-100">в профиле</a>.
+      </div>
+    {/if}
     <div class="rounded-xl border border-slate-200 dark:border-zinc-800 p-4 sm:p-6 flex flex-col gap-4">
       {#if publishIdentityOptions.length > 1}
         <label class="flex flex-col gap-1 w-full">

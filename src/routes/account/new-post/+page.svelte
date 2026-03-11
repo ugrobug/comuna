@@ -72,11 +72,13 @@
   let selectedChannelIdentity: PublishIdentityOption | undefined
   const SITE_AUTHOR_CHOICE = '__site__'
   const LOCAL_DRAFT_STORAGE_KEY = 'comuna.site.new-post.buffer.v1'
+  const DRAFT_NOTICE_QUEUE_KEY = 'comuna.site.draft.notice.queue.v1'
   let createTemplateType: '' | PostTemplateType = ''
   let createMovieReviewData: MovieReviewTemplateData = createEmptyMovieReviewTemplateData()
   let createPostVotePollData: PostVotePollTemplateData = createEmptyPostVotePollTemplateData()
   let createMusicReleaseData: MusicReleaseTemplateData = createEmptyMusicReleaseTemplateData()
   let templateEditorBlockSettings: TemplateEditorBlockSettings = {}
+  let firstDraftChangeAt: number | null = null
 
   type PublishIdentityOption = {
     value: string
@@ -275,6 +277,31 @@
     autosaveTimeout = null
   }
 
+  const readDraftNoticeQueue = () => {
+    if (!browser) return {} as Record<string, number>
+    try {
+      const raw = localStorage.getItem(DRAFT_NOTICE_QUEUE_KEY)
+      if (!raw) return {}
+      const parsed = JSON.parse(raw)
+      if (!parsed || typeof parsed !== 'object') return {}
+      return parsed as Record<string, number>
+    } catch {
+      return {}
+    }
+  }
+
+  const writeDraftNoticeQueue = (queue: Record<string, number>) => {
+    if (!browser) return
+    localStorage.setItem(DRAFT_NOTICE_QUEUE_KEY, JSON.stringify(queue))
+  }
+
+  const enqueueDraftSavedNotice = (draftId: number, changedAt: number) => {
+    if (!browser) return
+    const queue = readDraftNoticeQueue()
+    queue[String(draftId)] = changedAt
+    writeDraftNoticeQueue(queue)
+  }
+
   const getAvatarFallback = (identity: PublishIdentityOption | undefined) => {
     const source = identity?.shortLabel?.trim() || identity?.username?.trim() || 'A'
     return source.charAt(0).toUpperCase()
@@ -328,6 +355,7 @@
           ...buildDraftPayload(),
           is_draft: true,
         })
+        enqueueDraftSavedNotice(draft.id, firstDraftChangeAt ?? Date.now())
         clearLocalDraftBuffer()
         toast({ content: 'Черновик создан', type: 'success' })
         await goto(`/account/edit-post/${draft.id}`, {
@@ -345,6 +373,7 @@
 
   const resetForm = () => {
     clearAutosaveTimeout()
+    firstDraftChangeAt = null
     createTitle = ''
     createContent = ''
     createTags = ''
@@ -428,6 +457,7 @@
       clearAutosaveTimeout()
       clearLocalDraftBuffer()
     } else {
+      if (!firstDraftChangeAt) firstDraftChangeAt = Date.now()
       persistLocalDraftBuffer()
       queueDraftCreation()
     }
