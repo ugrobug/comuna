@@ -214,16 +214,12 @@
     }
   }
 
-  const copyDraftShareLink = async (draft: SiteUserPost) => {
-    const token = draft.draft_share_token
-    if (!token) return
-    const url = `${$page.url.origin}/drafts/${encodeURIComponent(token)}`
-    try {
-      await navigator.clipboard.writeText(url)
-    } catch (error) {
-      console.error('Failed to copy draft share link:', error)
-    }
-  }
+  const draftViewHref = (draft: SiteUserPost) =>
+    draft.draft_share_token
+      ? `/drafts/${encodeURIComponent(draft.draft_share_token)}`
+      : `/account/edit-post/${draft.id}`
+
+  const draftEditHref = (draft: SiteUserPost) => `/account/edit-post/${draft.id}`
 
   const removeDraft = async (draft: SiteUserPost) => {
     if (deletingDraftId === draft.id) return
@@ -453,9 +449,12 @@
           <div class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-4">
             <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div class="min-w-0">
-                <div class="text-lg font-semibold text-slate-900 dark:text-zinc-100 break-words">
+                <a
+                  href={draftViewHref(draft)}
+                  class="text-lg font-semibold text-slate-900 transition-colors hover:text-slate-700 hover:underline dark:text-zinc-100 dark:hover:text-zinc-200 break-words"
+                >
                   {draft.title || 'Без заголовка'}
-                </div>
+                </a>
                 <div class="mt-1 text-sm text-slate-500 dark:text-zinc-400">
                   {#if draft.rubric}
                     <span>{draft.rubric}</span>
@@ -472,6 +471,17 @@
                 </div>
               </div>
               <div class="flex flex-wrap gap-2">
+                <a
+                  href={draftEditHref(draft)}
+                  class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-700 transition-colors hover:bg-slate-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+                  aria-label="Редактировать черновик"
+                  title="Редактировать черновик"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 20h9" />
+                    <path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z" />
+                  </svg>
+                </a>
                 <button
                   type="button"
                   class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-red-200 bg-red-50 text-red-600 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300 dark:hover:bg-red-900/50"
@@ -488,15 +498,6 @@
                     <path d="M14 11v6" />
                   </svg>
                 </button>
-                {#if draft.draft_share_token}
-                  <button
-                    type="button"
-                    class="rounded-full bg-slate-100 px-4 py-2 text-sm text-slate-700 dark:bg-zinc-800 dark:text-zinc-300"
-                    on:click={() => copyDraftShareLink(draft)}
-                  >
-                    Скопировать ссылку
-                  </button>
-                {/if}
               </div>
             </div>
           </div>
