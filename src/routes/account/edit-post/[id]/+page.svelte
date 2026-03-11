@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { browser } from '$app/environment'
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
@@ -58,8 +57,6 @@
   }
 
   const SITE_AUTHOR_CHOICE = '__site__'
-  const DRAFT_NOTICE_QUEUE_KEY = 'comuna.site.draft.notice.queue.v1'
-  const DRAFT_NOTICE_SHOWN_KEY = 'comuna.site.draft.notice.shown.v1'
   const DRAFT_NOTICE_DELAY_MS = 10_000
 
   let loading = true
@@ -97,7 +94,7 @@
   let draftSavedNoticeVisible = false
   let draftSavedNoticeTimer: ReturnType<typeof setTimeout> | null = null
   let firstDraftChangeAt: number | null = null
-  let draftSavedNoticeShown = false
+  let firstDraftAutosaveCompleted = false
 
   $: selectedRubric = rubrics.find((rubric) => rubric.slug === editRubric)
   $: publishIdentityOptions = (() => {
@@ -224,65 +221,13 @@
     draftSavedNoticeTimer = null
   }
 
-  const readStorageMap = (key: string) => {
-    if (!browser) return {} as Record<string, number | boolean>
-    try {
-      const raw = localStorage.getItem(key)
-      if (!raw) return {}
-      const parsed = JSON.parse(raw)
-      if (!parsed || typeof parsed !== 'object') return {}
-      return parsed as Record<string, number | boolean>
-    } catch {
-      return {}
-    }
-  }
-
-  const writeStorageMap = (key: string, map: Record<string, number | boolean>) => {
-    if (!browser) return
-    localStorage.setItem(key, JSON.stringify(map))
-  }
-
-  const getQueuedDraftNotice = (postId: number) => {
-    if (!browser) return null
-    const queue = readStorageMap(DRAFT_NOTICE_QUEUE_KEY) as Record<string, number>
-    const changedAt = Number(queue[String(postId)] || 0)
-    if (!changedAt) return null
-    return changedAt
-  }
-
-  const clearQueuedDraftNotice = (postId: number) => {
-    if (!browser) return
-    const queue = readStorageMap(DRAFT_NOTICE_QUEUE_KEY) as Record<string, number>
-    const key = String(postId)
-    if (!(key in queue)) return
-    delete queue[key]
-    writeStorageMap(DRAFT_NOTICE_QUEUE_KEY, queue)
-  }
-
-  const isDraftNoticeAlreadyShown = (postId: number) => {
-    const shownMap = readStorageMap(DRAFT_NOTICE_SHOWN_KEY) as Record<string, boolean>
-    return Boolean(shownMap[String(postId)])
-  }
-
-  const markDraftNoticeShown = (postId: number) => {
-    if (!browser) return
-    const shownMap = readStorageMap(DRAFT_NOTICE_SHOWN_KEY) as Record<string, boolean>
-    shownMap[String(postId)] = true
-    writeStorageMap(DRAFT_NOTICE_SHOWN_KEY, shownMap)
-  }
-
-  const scheduleDraftSavedNotice = (changedAt: number) => {
-    if (!post?.is_draft || draftSavedNoticeShown || draftSavedNoticeVisible) return
+  const scheduleDraftSavedNotice = () => {
+    if (!post?.is_draft || draftSavedNoticeVisible) return
     clearDraftSavedNoticeTimer()
-    const elapsed = Date.now() - changedAt
+    const elapsed = Date.now() - (firstDraftChangeAt ?? Date.now())
     const delay = Math.max(0, DRAFT_NOTICE_DELAY_MS - elapsed)
     draftSavedNoticeTimer = setTimeout(() => {
       draftSavedNoticeVisible = true
-      if (post?.id) {
-        markDraftNoticeShown(post.id)
-        clearQueuedDraftNotice(post.id)
-        draftSavedNoticeShown = true
-      }
     }, delay)
   }
 
@@ -343,16 +288,7 @@
     draftSavedNoticeVisible = false
     clearDraftSavedNoticeTimer()
     firstDraftChangeAt = null
-    draftSavedNoticeShown = isDraftNoticeAlreadyShown(currentPost.id)
-    if (draftSavedNoticeShown) {
-      clearQueuedDraftNotice(currentPost.id)
-    } else {
-      const queuedChangeAt = getQueuedDraftNotice(currentPost.id)
-      if (queuedChangeAt) {
-        firstDraftChangeAt = queuedChangeAt
-        scheduleDraftSavedNotice(queuedChangeAt)
-      }
-    }
+    firstDraftAutosaveCompleted = false
   }
 
   const loadRubrics = async () => {
@@ -426,6 +362,10 @@
         const latestSnapshot = JSON.stringify(buildEditPayload())
         needsAnotherSave = latestSnapshot !== sentSnapshot
         lastObservedEditSnapshot = latestSnapshot
+        if (!firstDraftAutosaveCompleted) {
+          firstDraftAutosaveCompleted = true
+          scheduleDraftSavedNotice()
+        }
       } catch (err) {
         saveError = (err as Error)?.message ?? 'Не удалось сохранить черновик'
       } finally {
@@ -546,10 +486,7 @@
 
   $: currentEditSnapshot = JSON.stringify(buildEditPayload())
   $: if (autosavePrimed && post?.is_draft && currentEditSnapshot !== lastObservedEditSnapshot) {
-    if (!firstDraftChangeAt) {
-      firstDraftChangeAt = Date.now()
-      scheduleDraftSavedNotice(firstDraftChangeAt)
-    }
+    if (!firstDraftChangeAt) firstDraftChangeAt = Date.now()
     lastObservedEditSnapshot = currentEditSnapshot
     queueDraftAutosave()
   }
