@@ -304,6 +304,58 @@
     clearDraftSavedNoticeHideTimer()
   }
 
+  const isMissingDraftError = (error: unknown) => {
+    const message = ((error as Error)?.message || '').toLowerCase()
+    return (
+      message.includes('post not found') ||
+      message.includes('draft not found') ||
+      message.includes('черновик не найден') ||
+      message.includes('пост не найден')
+    )
+  }
+
+  const saveDraftRecord = async () => {
+    if (!draftId) {
+      return await createUserPost({
+        ...buildDraftPayload(),
+        is_draft: true,
+      })
+    }
+
+    try {
+      return await updateUserPost(draftId, {
+        ...buildDraftPayload(),
+        is_draft: true,
+      })
+    } catch (error) {
+      if (!isMissingDraftError(error)) throw error
+      draftId = null
+      persistLocalDraftBuffer()
+      return await createUserPost({
+        ...buildDraftPayload(),
+        is_draft: true,
+      })
+    }
+  }
+
+  const publishDraftOrCreatePost = async () => {
+    if (!draftId) {
+      return await createUserPost(buildDraftPayload())
+    }
+
+    try {
+      return await updateUserPost(draftId, {
+        ...buildDraftPayload(),
+        is_draft: false,
+      })
+    } catch (error) {
+      if (!isMissingDraftError(error)) throw error
+      draftId = null
+      persistLocalDraftBuffer()
+      return await createUserPost(buildDraftPayload())
+    }
+  }
+
   const scheduleDraftSavedNotice = () => {
     if (!draftId || draftSavedNoticeVisible) return
     clearDraftSavedNoticeTimer()
@@ -369,16 +421,9 @@
       const sentSnapshot = currentFormSnapshot
       let needsAnotherSave = false
       try {
-        const draft = draftId
-          ? await updateUserPost(draftId, {
-              ...buildDraftPayload(),
-              is_draft: true,
-            })
-          : await createUserPost({
-              ...buildDraftPayload(),
-              is_draft: true,
-            })
-        const isFirstSave = !draftId
+        const previousDraftId = draftId
+        const draft = await saveDraftRecord()
+        const isFirstSave = !previousDraftId || previousDraftId !== draft.id
         draftId = draft.id
         lastSavedFormSnapshot = sentSnapshot
         persistLocalDraftBuffer()
@@ -524,12 +569,7 @@
     }
     creating = true
     try {
-      const createdPost = draftId
-        ? await updateUserPost(draftId, {
-            ...buildDraftPayload(),
-            is_draft: false,
-          })
-        : await createUserPost(buildDraftPayload())
+      const createdPost = await publishDraftOrCreatePost()
       clearLocalDraftBuffer()
       draftId = null
       resetForm()
