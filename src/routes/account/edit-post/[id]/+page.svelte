@@ -434,16 +434,13 @@
       if (!postId) return
       autosaving = true
       const sentSnapshot = JSON.stringify(buildEditPayload())
-      let needsAnotherSave = false
       try {
         const updated = await updateUserPost(postId, {
           ...buildEditPayload(),
           is_draft: true,
         })
         post = updated
-        const latestSnapshot = JSON.stringify(buildEditPayload())
-        needsAnotherSave = latestSnapshot !== sentSnapshot
-        lastObservedEditSnapshot = latestSnapshot
+        lastObservedEditSnapshot = JSON.stringify(buildEditPayload())
         if (!firstDraftAutosaveCompleted) {
           firstDraftAutosaveCompleted = true
           scheduleDraftSavedNotice()
@@ -452,7 +449,7 @@
         saveError = (err as Error)?.message ?? 'Не удалось сохранить черновик'
       } finally {
         autosaving = false
-        if (needsAnotherSave) {
+        if (JSON.stringify(buildEditPayload()) !== sentSnapshot) {
           queueDraftAutosave()
         }
       }

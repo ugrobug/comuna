@@ -432,7 +432,6 @@
       if (currentFormSnapshot === lastSavedFormSnapshot) return
       draftCreating = true
       const sentSnapshot = currentFormSnapshot
-      let needsAnotherSave = false
       try {
         const previousDraftId = draftId
         const draft = await saveDraftRecord()
@@ -441,8 +440,6 @@
         draftError = ''
         lastSavedFormSnapshot = sentSnapshot
         persistLocalDraftBuffer()
-        const latestSnapshot = JSON.stringify(buildLocalDraftState())
-        needsAnotherSave = latestSnapshot !== sentSnapshot
         if (isFirstSave || !firstDraftAutosaveCompleted) {
           firstDraftAutosaveCompleted = true
           scheduleDraftSavedNotice()
@@ -451,7 +448,7 @@
         draftError = (error as Error)?.message ?? 'Не удалось сохранить черновик'
       } finally {
         draftCreating = false
-        if (needsAnotherSave) {
+        if (currentFormSnapshot !== lastSavedFormSnapshot) {
           queueDraftSave()
         }
       }
