@@ -10,6 +10,7 @@
     Megaphone,
     DocumentText,
     InformationCircle,
+    QuestionMarkCircle,
     PencilSquare,
     ClipboardDocumentList,
     Bookmark,
@@ -36,6 +37,7 @@
     env.PUBLIC_PROJECT_ADVRTISEMENT || '/advertisement';
   const PUBLIC_PROJECT_AUTHORS = env.PUBLIC_PROJECT_AUTHORS || '/authors';
   const PUBLIC_PROJECT_RULES = env.PUBLIC_PROJECT_RULES || '/rules';
+  const PUBLIC_PROJECT_FAQ = env.PUBLIC_PROJECT_FAQ || '/faq';
   const SHOW_FOLDERS = false;
 
   let loginModalOpen = false;
@@ -292,6 +294,13 @@
         on:click={handleNavigation}
       >
         <span slot="label">О Проекте</span>
+      </SidebarButton>
+      <SidebarButton
+        href={PUBLIC_PROJECT_FAQ}
+        icon={QuestionMarkCircle}
+        on:click={handleNavigation}
+      >
+        <span slot="label">FAQ</span>
       </SidebarButton>
       <SidebarButton 
         href={PUBLIC_PROJECT_ADVRTISEMENT} 

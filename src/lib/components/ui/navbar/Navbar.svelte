@@ -23,6 +23,7 @@
     ArrowPath,
     DocumentText,
     InformationCircle,
+    QuestionMarkCircle,
     Megaphone,
     ClipboardDocumentList,
     ChevronDown,
@@ -67,6 +68,7 @@
     env.PUBLIC_PROJECT_ADVRTISEMENT || '/advertisement';
   const PUBLIC_PROJECT_AUTHORS = env.PUBLIC_PROJECT_AUTHORS || '/authors';
   const PUBLIC_PROJECT_RULES = env.PUBLIC_PROJECT_RULES || '/rules';
+  const PUBLIC_PROJECT_FAQ = env.PUBLIC_PROJECT_FAQ || '/faq';
   const SHOW_FOLDERS = false;
   
   // Переменная для случайного слогана
@@ -536,6 +538,9 @@
         <div class="flex flex-col gap-1">
           <SidebarButton href={PUBLIC_PROJECT_ABOUT} icon={InformationCircle} on:click={() => { sidebarOpen = false; }}>
             <span slot="label">О Проекте</span>
+          </SidebarButton>
+          <SidebarButton href={PUBLIC_PROJECT_FAQ} icon={QuestionMarkCircle} on:click={() => { sidebarOpen = false; }}>
+            <span slot="label">FAQ</span>
           </SidebarButton>
           <SidebarButton href={PUBLIC_PROJECT_ADVRTISEMENT} icon={Megaphone} on:click={() => { sidebarOpen = false; }}>
             <span slot="label">Реклама</span>

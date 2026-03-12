@@ -8,6 +8,7 @@
     Megaphone,
     DocumentText,
     InformationCircle,
+    QuestionMarkCircle,
     ChevronDown,
     PencilSquare,
     ClipboardDocumentList,
@@ -35,6 +36,7 @@
     env.PUBLIC_PROJECT_ADVRTISEMENT || '/advertisement';
   const PUBLIC_PROJECT_AUTHORS = env.PUBLIC_PROJECT_AUTHORS || '/authors';
   const PUBLIC_PROJECT_RULES = env.PUBLIC_PROJECT_RULES || '/rules';
+  const PUBLIC_PROJECT_FAQ = env.PUBLIC_PROJECT_FAQ || '/faq';
   const SHOW_FOLDERS = false;
 
   let topCommunities: Array<{
@@ -394,6 +396,9 @@
     <div class="flex flex-col gap-1">
       <SidebarButton href={PUBLIC_PROJECT_ABOUT} icon={InformationCircle}>
         <span slot="label">О Проекте</span>
+      </SidebarButton>
+      <SidebarButton href={PUBLIC_PROJECT_FAQ} icon={QuestionMarkCircle}>
+        <span slot="label">FAQ</span>
       </SidebarButton>
       <SidebarButton href={PUBLIC_PROJECT_ADVRTISEMENT} icon={Megaphone}>
         <span slot="label">Реклама</span>

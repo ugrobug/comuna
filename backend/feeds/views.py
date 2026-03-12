@@ -8927,6 +8927,7 @@ def sitemap_static_xml(request: HttpRequest) -> HttpResponse:
         "/authors",
         "/rubrics",
         "/about",
+        "/faq",
         "/advertisement",
         "/rules",
     ]
