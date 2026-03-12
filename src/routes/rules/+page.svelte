@@ -1,13 +1,10 @@
 <script>
-  import { browser } from '$app/environment'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import PostBody from '$lib/components/lemmy/post/PostBody.svelte'
-  import EditorJS from '$lib/components/editor/EditorJS.svelte'
-  import LoginModal from '$lib/components/auth/LoginModal.svelte'
-  import { profile } from '$lib/auth'
-  import { isAdmin } from '$lib/components/lemmy/moderation/moderation'
+  import TipTapEditor from '$lib/components/editor/TipTapEditor.svelte'
   import { Button, toast } from 'mono-svelte'
   import { onMount } from 'svelte'
+  import { normalizeStaticPageEditorValue } from '$lib/staticPageEditor'
   import { refreshSiteUser, siteUser, updateStaticPageContent } from '$lib/siteAuth'
   import { env } from '$env/dynamic/public'
   import { page } from '$app/stores'
@@ -19,42 +16,20 @@
     'Правила публикации и модерации контента на Comuna для владельцев Telegram-каналов.'
   let isEditing = false
   let isSaving = false
-  let loginModalOpen = false
-  let hasLocalAuthHint = false
   let pageContent = data?.pageContent ?? ''
   let editorValue = pageContent
   $: canEdit = !!$siteUser?.is_staff
-  $: canManagePage = canEdit || !!($profile?.user && isAdmin($profile.user))
-  $: canShowEditButton = canManagePage || hasLocalAuthHint
   $: canonicalUrl = new URL(
     $page.url.pathname,
     (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '') + '/'
   ).toString()
   onMount(() => {
-    if (browser) {
-      const siteToken = localStorage.getItem('comuna.site.token')
-      const profileData = localStorage.getItem('profileData')
-      hasLocalAuthHint = Boolean(siteToken || profileData?.includes('"jwt"'))
-    }
     refreshSiteUser().catch(() => null)
   })
 
-  const startEditing = async () => {
-    if (!canEdit) {
-      const refreshedUser = await refreshSiteUser().catch(() => null)
-      if (refreshedUser?.is_staff) {
-        editorValue = pageContent
-        isEditing = true
-        return
-      }
-      loginModalOpen = true
-      toast({
-        content: 'Для редактирования этой страницы нужен вход в аккаунт сайта.',
-        type: 'info',
-      })
-      return
-    }
-    editorValue = pageContent
+  const startEditing = () => {
+    if (!canEdit) return
+    editorValue = normalizeStaticPageEditorValue(pageContent)
     isEditing = true
   }
 
@@ -90,13 +65,9 @@
   <Header pageHeader>
     <div class="flex w-full items-center justify-between gap-3">
       <h1 class="text-2xl font-bold">Правила</h1>
-      {#if canShowEditButton && !isEditing}
+      {#if canEdit && !isEditing}
         <Button size="sm" color="secondary" on:click={startEditing}>
-          {#if canEdit}
-            Редактировать
-          {:else}
-            Войти для редактирования
-          {/if}
+          Редактировать
         </Button>
       {/if}
     </div>
@@ -104,7 +75,7 @@
 
   {#if isEditing}
     <div class="rounded-xl border border-slate-200 dark:border-zinc-800 p-4">
-      <EditorJS bind:value={editorValue} showPostSettings={false} />
+      <TipTapEditor bind:value={editorValue} placeholder="Введите содержимое страницы" includeMetaTags={false} />
       <div class="mt-4 flex items-center gap-2">
         <Button on:click={savePage} disabled={isSaving}>
           {#if isSaving}
@@ -124,8 +95,6 @@
     </div>
   {/if}
 </div>
-
-<LoginModal bind:open={loginModalOpen} />
 
 <svelte:head>
   <title>{title}</title>
