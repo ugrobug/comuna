@@ -82,7 +82,7 @@
   })
 </script>
 
-<div class="mx-auto flex max-w-3xl flex-col gap-6">
+<div class="flex max-w-3xl flex-col gap-6">
   <Header pageHeader>
     <h1 class="text-2xl font-bold">Предпросмотр публикации</h1>
   </Header>
