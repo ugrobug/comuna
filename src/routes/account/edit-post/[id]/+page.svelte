@@ -105,6 +105,7 @@
   let saveError = ''
   let autosavePrimed = false
   let lastObservedEditSnapshot = ''
+  let lastSavedEditSnapshot = ''
   let currentEditSnapshot = ''
   let autosaveTimeout: ReturnType<typeof setTimeout> | null = null
   let draftSavedNoticeVisible = false
@@ -358,7 +359,9 @@
     )
     editTags = tagNames.join(', ')
     isJsonContent = detectContentType(editContent)
-    lastObservedEditSnapshot = JSON.stringify(buildEditPayload())
+    const snapshot = JSON.stringify(buildEditPayload())
+    lastObservedEditSnapshot = snapshot
+    lastSavedEditSnapshot = snapshot
     draftSavedNoticeVisible = false
     clearDraftSavedNoticeTimer()
     clearDraftSavedNoticeHideTimer()
@@ -440,6 +443,7 @@
           is_draft: true,
         })
         post = updated
+        lastSavedEditSnapshot = sentSnapshot
         lastObservedEditSnapshot = JSON.stringify(buildEditPayload())
         if (!firstDraftAutosaveCompleted) {
           firstDraftAutosaveCompleted = true
@@ -449,11 +453,36 @@
         saveError = (err as Error)?.message ?? 'Не удалось сохранить черновик'
       } finally {
         autosaving = false
-        if (JSON.stringify(buildEditPayload()) !== sentSnapshot) {
+        if (JSON.stringify(buildEditPayload()) !== lastSavedEditSnapshot) {
           queueDraftAutosave()
         }
       }
     }, 900)
+  }
+
+  const flushDraftAutosave = async (options?: { keepalive?: boolean }) => {
+    const postId = post?.id
+    if (!post?.is_draft || !postId || !autosavePrimed || publishing) return
+    const targetSnapshot = JSON.stringify(buildEditPayload())
+    if (targetSnapshot === lastSavedEditSnapshot) return
+    clearAutosaveTimeout()
+
+    try {
+      const updated = await updateUserPost(postId, {
+        ...buildEditPayload(),
+        is_draft: true,
+      }, options)
+      post = updated
+      lastSavedEditSnapshot = targetSnapshot
+      lastObservedEditSnapshot = targetSnapshot
+      saveError = ''
+      if (!firstDraftAutosaveCompleted) {
+        firstDraftAutosaveCompleted = true
+        scheduleDraftSavedNotice()
+      }
+    } catch (err) {
+      saveError = (err as Error)?.message ?? 'Не удалось сохранить черновик'
+    }
   }
 
   const validateForPublish = () => {
@@ -551,6 +580,16 @@
   onMount(() => {
     loadPost()
 
+    const flushOnPageHide = () => {
+      void flushDraftAutosave({ keepalive: true })
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        void flushDraftAutosave({ keepalive: true })
+      }
+    }
+
     const closeOnOutsideClick = (event: MouseEvent) => {
       const target = event.target as Node | null
       if (rubricMenuOpen && rubricMenuRef && target && !rubricMenuRef.contains(target)) {
@@ -565,8 +604,12 @@
       }
     }
     document.addEventListener('click', closeOnOutsideClick)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('pagehide', flushOnPageHide)
     return () => {
       document.removeEventListener('click', closeOnOutsideClick)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('pagehide', flushOnPageHide)
     }
   })
 

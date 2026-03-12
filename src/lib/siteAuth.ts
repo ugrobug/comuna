@@ -418,6 +418,9 @@ export const updateUserPost = async (
     is_draft?: boolean
     tags?: string[]
     template?: SitePostTemplate | null
+  },
+  options?: {
+    keepalive?: boolean
   }
 ) => {
   const token = get(siteToken)
@@ -431,6 +434,7 @@ export const updateUserPost = async (
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
+    keepalive: options?.keepalive,
     body: JSON.stringify(payload),
   })
 
@@ -472,6 +476,8 @@ export const createUserPost = async (payload: {
   is_draft?: boolean
   tags?: string[]
   template?: SitePostTemplate | null
+}, options?: {
+  keepalive?: boolean
 }) => {
   const token = get(siteToken)
   if (!token) {
@@ -484,6 +490,7 @@ export const createUserPost = async (payload: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
+    keepalive: options?.keepalive,
     body: JSON.stringify(payload),
   })
 

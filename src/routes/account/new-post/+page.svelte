@@ -315,19 +315,19 @@
     )
   }
 
-  const saveDraftRecord = async () => {
+  const saveDraftRecord = async (options?: { keepalive?: boolean }) => {
     if (!draftId) {
       return await createUserPost({
         ...buildDraftPayload(),
         is_draft: true,
-      })
+      }, options)
     }
 
     try {
       return await updateUserPost(draftId, {
         ...buildDraftPayload(),
         is_draft: true,
-      })
+      }, options)
     } catch (error) {
       if (!isMissingDraftError(error)) throw error
       draftId = null
@@ -335,7 +335,7 @@
       return await createUserPost({
         ...buildDraftPayload(),
         is_draft: true,
-      })
+      }, options)
     }
   }
 
@@ -366,6 +366,31 @@
       draftId = null
       firstDraftAutosaveCompleted = false
       persistLocalDraftBuffer()
+    }
+  }
+
+  const flushDraftSave = async (options?: { keepalive?: boolean; allowWhileCreating?: boolean }) => {
+    if (!autosavePrimed || !$siteUser || creating) return
+    const targetSnapshot = JSON.stringify(buildLocalDraftState())
+    if (targetSnapshot === lastSavedFormSnapshot) return
+    if (draftCreating && !draftId && !options?.allowWhileCreating) return
+
+    clearAutosaveTimeout()
+
+    try {
+      const previousDraftId = draftId
+      const draft = await saveDraftRecord(options)
+      const isFirstSave = !previousDraftId || previousDraftId !== draft.id
+      draftId = draft.id
+      draftError = ''
+      lastSavedFormSnapshot = targetSnapshot
+      persistLocalDraftBuffer()
+      if (isFirstSave || !firstDraftAutosaveCompleted) {
+        firstDraftAutosaveCompleted = true
+        scheduleDraftSavedNotice()
+      }
+    } catch (error) {
+      draftError = (error as Error)?.message ?? 'Не удалось сохранить черновик'
     }
   }
 
@@ -431,19 +456,8 @@
     autosaveTimeout = setTimeout(async () => {
       if (currentFormSnapshot === lastSavedFormSnapshot) return
       draftCreating = true
-      const sentSnapshot = currentFormSnapshot
       try {
-        const previousDraftId = draftId
-        const draft = await saveDraftRecord()
-        const isFirstSave = !previousDraftId || previousDraftId !== draft.id
-        draftId = draft.id
-        draftError = ''
-        lastSavedFormSnapshot = sentSnapshot
-        persistLocalDraftBuffer()
-        if (isFirstSave || !firstDraftAutosaveCompleted) {
-          firstDraftAutosaveCompleted = true
-          scheduleDraftSavedNotice()
-        }
+        await flushDraftSave({ allowWhileCreating: true })
       } catch (error) {
         draftError = (error as Error)?.message ?? 'Не удалось сохранить черновик'
       } finally {
@@ -505,6 +519,16 @@
     }
     initializeForm()
 
+    const flushOnPageHide = () => {
+      void flushDraftSave({ keepalive: true })
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        void flushDraftSave({ keepalive: true })
+      }
+    }
+
     const closeOnOutsideClick = (event: MouseEvent) => {
       const target = event.target as Node | null
       if (rubricMenuOpen && rubricMenuRef && target && !rubricMenuRef.contains(target)) {
@@ -519,8 +543,12 @@
       }
     }
     document.addEventListener('click', closeOnOutsideClick)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('pagehide', flushOnPageHide)
     return () => {
       document.removeEventListener('click', closeOnOutsideClick)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('pagehide', flushOnPageHide)
     }
   })
 
