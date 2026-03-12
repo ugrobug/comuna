@@ -43,6 +43,7 @@
   let draftError = ''
   let draftCreating = false
   let draftId: number | null = null
+  let draftShareToken = ''
   let rubricsLoading = false
   let autosavePrimed = false
   let initialFormSnapshot = ''
@@ -152,6 +153,9 @@
     availableTemplateTypeOptions[0] ??
     POST_TEMPLATE_TYPE_OPTIONS[0]
   $: profileDraftsPath = $siteUser?.id ? `/id${$siteUser.id}` : '/settings'
+  $: draftSharePath = draftShareToken ? `/drafts/${encodeURIComponent(draftShareToken)}` : ''
+  $: draftShareUrl = draftSharePath && browser ? `${window.location.origin}${draftSharePath}` : ''
+  $: draftPreviewPath = draftId ? `/account/edit-post/${draftId}/preview` : ''
   $: if (!availableTemplateTypeOptions.some((option) => option.value === createTemplateType)) {
     createTemplateType = availableTemplateTypeOptions[0]?.value ?? ''
   }
@@ -331,6 +335,7 @@
     } catch (error) {
       if (!isMissingDraftError(error)) throw error
       draftId = null
+      draftShareToken = ''
       persistLocalDraftBuffer()
       return await createUserPost({
         ...buildDraftPayload(),
@@ -352,6 +357,7 @@
     } catch (error) {
       if (!isMissingDraftError(error)) throw error
       draftId = null
+      draftShareToken = ''
       persistLocalDraftBuffer()
       return await createUserPost(buildDraftPayload())
     }
@@ -360,10 +366,12 @@
   const validateRestoredDraftId = async () => {
     if (!draftId) return
     try {
-      await fetchUserPost(draftId)
+      const restoredDraft = await fetchUserPost(draftId)
+      draftShareToken = restoredDraft.draft_share_token ?? ''
     } catch (error) {
       if (!isMissingDraftError(error)) return
       draftId = null
+      draftShareToken = ''
       firstDraftAutosaveCompleted = false
       persistLocalDraftBuffer()
     }
@@ -382,6 +390,7 @@
       const draft = await saveDraftRecord(options)
       const isFirstSave = !previousDraftId || previousDraftId !== draft.id
       draftId = draft.id
+      draftShareToken = draft.draft_share_token ?? ''
       draftError = ''
       lastSavedFormSnapshot = targetSnapshot
       persistLocalDraftBuffer()
@@ -479,6 +488,7 @@
     createTitle = ''
     createContent = ''
     createTags = ''
+    draftShareToken = ''
     createTemplateType = ''
     createMovieReviewData = createEmptyMovieReviewTemplateData()
     createPostVotePollData = createEmptyPostVotePollTemplateData()
@@ -614,6 +624,7 @@
       const createdPost = await publishDraftOrCreatePost()
       clearLocalDraftBuffer()
       draftId = null
+      draftShareToken = ''
       resetForm()
       toast({
         content:
@@ -642,6 +653,22 @@
   const selectTemplateType = (value: '' | PostTemplateType) => {
     createTemplateType = value
     templateMenuOpen = false
+  }
+
+  const copyDraftShareLink = async () => {
+    if (!draftShareUrl) return
+    try {
+      await navigator.clipboard.writeText(draftShareUrl)
+      toast({ content: 'Ссылка на черновик скопирована', type: 'success' })
+    } catch {
+      toast({ content: 'Не удалось скопировать ссылку', type: 'error' })
+    }
+  }
+
+  const openDraftPreview = async () => {
+    await flushDraftSave()
+    if (!draftPreviewPath) return
+    await goto(draftPreviewPath)
   }
 </script>
 
@@ -924,6 +951,14 @@
           >
             Опубликовать
           </Button>
+          {#if draftId}
+            <Button color="ghost" on:click={copyDraftShareLink} disabled={!draftShareUrl || creating}>
+              Поделиться
+            </Button>
+            <Button color="ghost" on:click={openDraftPreview} disabled={creating}>
+              Предпросмотр
+            </Button>
+          {/if}
           <Button color="ghost" on:click={resetForm} disabled={creating}>
             Очистить
           </Button>

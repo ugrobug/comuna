@@ -561,6 +561,12 @@
     }
   }
 
+  const openDraftPreview = async () => {
+    await flushDraftAutosave()
+    if (!post?.id) return
+    await goto(`/account/edit-post/${post.id}/preview`)
+  }
+
   const selectRubric = (slug: string) => {
     editRubric = slug
     rubricMenuOpen = false
@@ -927,8 +933,8 @@
               Поделиться
             </Button>
             {#if draftSharePath}
-              <Button color="ghost" href={draftSharePath} target="_blank" rel="noreferrer" disabled={publishing}>
-                Открыть просмотр
+              <Button color="ghost" on:click={openDraftPreview} disabled={publishing}>
+                Предпросмотр
               </Button>
             {/if}
           {:else}

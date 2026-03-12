@@ -1,8 +1,10 @@
 <script lang="ts">
+  import { page } from '$app/stores'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
-  import PostBody from '$lib/components/lemmy/post/PostBody.svelte'
+  import Post from '$lib/components/lemmy/post/Post.svelte'
   import { Button, Spinner } from 'mono-svelte'
   import { fetchSharedDraft, refreshSiteUser, type SiteUserPost } from '$lib/siteAuth'
+  import { siteUserPostToPostView } from '$lib/siteUserPostPreview'
   import { onMount } from 'svelte'
 
   export let data: { shareToken: string }
@@ -12,18 +14,7 @@
   let loadError = ''
   let loggedIn = false
 
-  const formatDate = (value?: string | null) => {
-    if (!value) return ''
-    const date = new Date(value)
-    if (Number.isNaN(date.getTime())) return ''
-    return new Intl.DateTimeFormat('ru-RU', {
-      day: '2-digit',
-      month: 'long',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(date)
-  }
+  $: draftPostView = draft ? siteUserPostToPostView(draft) : null
 
   onMount(() => {
     const loadDraft = async () => {
@@ -68,43 +59,20 @@
       {/if}
     </div>
   {:else if draft}
-    <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 sm:p-7">
-      <div class="flex flex-col gap-3 border-b border-slate-200 pb-5 dark:border-zinc-800">
-        <div class="text-xs uppercase tracking-[0.24em] text-slate-500 dark:text-zinc-400">
-          Приватный предпросмотр черновика
-        </div>
-        <h2 class="text-3xl font-semibold text-slate-950 dark:text-zinc-50">
-          {draft.title || 'Без заголовка'}
-        </h2>
-        <div class="flex flex-wrap gap-x-4 gap-y-2 text-sm text-slate-500 dark:text-zinc-400">
-          <span>@{draft.author?.username || 'author'}</span>
-          {#if draft.rubric}
-            <span>{draft.rubric}</span>
-          {/if}
-          <span>Обновлён {formatDate(draft.updated_at || draft.created_at)}</span>
-        </div>
-        {#if draft.tags?.length}
-          <div class="flex flex-wrap gap-2 pt-1">
-            {#each draft.tags as tag}
-              <span class="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600 dark:border-zinc-700 dark:text-zinc-300">
-                #{typeof tag === 'string' ? tag : tag.name}
-              </span>
-            {/each}
-          </div>
-        {/if}
+    <div class="rounded-2xl border border-slate-200 bg-white px-4 py-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 sm:px-6 sm:py-6">
+      <div class="mb-4 text-xs uppercase tracking-[0.24em] text-slate-500 dark:text-zinc-400">
+        Приватный предпросмотр черновика
       </div>
-
-      <div class="pt-6">
-        <PostBody
-          body={draft.content || ''}
-          title={draft.title || ''}
-          template={draft.template}
+      {#if draftPostView}
+        <Post
+          post={draftPostView}
+          actions={false}
+          view="cozy"
           showFullBody={true}
-          collapsible={false}
-          allowPollVoting={false}
-          postId={null}
+          showReadMore={false}
+          linkOverride={$page.url.pathname}
         />
-      </div>
-    </article>
+      {/if}
+    </div>
   {/if}
 </div>
