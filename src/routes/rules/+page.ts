@@ -1,27 +1,3 @@
-import { buildStaticPageContentUrl } from '$lib/api/backend'
-import { getDefaultStaticPageContent } from '$lib/staticPageContent'
+import { loadEditableStaticPage } from '$lib/staticPageRoute'
 
-const STATIC_PAGE_SLUG = 'rules'
-
-export const load = async ({ fetch, url }) => {
-  const requestUrl = new URL(buildStaticPageContentUrl(STATIC_PAGE_SLUG), url.origin)
-  const response = await fetch(requestUrl.toString(), { cache: 'no-store' })
-
-  let pageContent = getDefaultStaticPageContent('rules')
-  let pageExists = false
-
-  if (response.ok) {
-    const data = await response.json().catch(() => ({}))
-    if (data?.page) {
-      pageExists = !!data.page.exists
-      if (pageExists) {
-        pageContent = data.page.content ?? ''
-      }
-    }
-  }
-
-  return {
-    pageContent,
-    pageExists,
-  }
-}
+export const load = async ({ fetch, url }) => loadEditableStaticPage({ fetch, url }, 'rules')
