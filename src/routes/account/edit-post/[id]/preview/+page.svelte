@@ -82,7 +82,7 @@
   })
 </script>
 
-<div class="mx-auto flex max-w-4xl flex-col gap-6">
+<div class="mx-auto flex max-w-3xl flex-col gap-6">
   <Header pageHeader>
     <h1 class="text-2xl font-bold">Предпросмотр публикации</h1>
   </Header>
@@ -97,7 +97,7 @@
       {loadError}
     </div>
   {:else if post && postView}
-    <div class="rounded-2xl border border-slate-200 bg-white px-4 py-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 sm:px-6 sm:py-6">
+    <div class="rounded-xl border border-slate-200 border-b-slate-300 bg-white p-4 dark:border-zinc-800 dark:border-t-zinc-700 dark:bg-zinc-900 sm:p-6">
       <div class="mb-4 text-xs uppercase tracking-[0.24em] text-slate-500 dark:text-zinc-400">
         Так публикация будет выглядеть после выхода
       </div>
