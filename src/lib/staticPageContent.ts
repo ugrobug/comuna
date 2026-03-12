@@ -1,5 +1,37 @@
 export type EditableStaticPageSlug = 'about' | 'advertisement' | 'authors' | 'rules'
 
+export const EDITABLE_STATIC_PAGE_META: Record<
+  EditableStaticPageSlug,
+  {
+    heading: string
+    description: string
+  }
+> = {
+  about: {
+    heading: 'О проекте',
+    description:
+      'Comuna помогает Telegram-каналам получать органический трафик из поисковых систем за счет публикации контента на сайте.',
+  },
+  advertisement: {
+    heading: 'Реклама',
+    description:
+      'Рекламные возможности на Comuna: спонсорские блоки, интеграции и спецпроекты.',
+  },
+  authors: {
+    heading: 'Авторам',
+    description:
+      'Публикуйте посты Telegram-канала на сайте, чтобы их находили в Google и Яндексе и подписывались на ваш канал.',
+  },
+  rules: {
+    heading: 'Правила',
+    description:
+      'Правила публикации и модерации контента на Comuna для владельцев Telegram-каналов.',
+  },
+}
+
+export const isEditableStaticPageSlug = (value: string): value is EditableStaticPageSlug =>
+  Object.prototype.hasOwnProperty.call(EDITABLE_STATIC_PAGE_META, value)
+
 const encodeEditorPayload = (payload: unknown): string => {
   const json = JSON.stringify(payload)
   const bufferCtor = (globalThis as any)?.Buffer

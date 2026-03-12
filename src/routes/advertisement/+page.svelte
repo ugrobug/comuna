@@ -1,18 +1,22 @@
 <script>
-  import EditableStaticPage from '$lib/components/static-pages/EditableStaticPage.svelte'
+  import StaticPageArticle from '$lib/components/static-pages/StaticPageArticle.svelte'
   import { env } from '$env/dynamic/public'
+  import { EDITABLE_STATIC_PAGE_META } from '$lib/staticPageContent'
 
   export let data
 
-  const seoTitle = `Реклама — ${env.PUBLIC_SITE_TITLE || 'Comuna'}`
-  const description =
-    'Рекламные возможности на Comuna: спонсорские блоки, интеграции и спецпроекты.'
+  const meta = EDITABLE_STATIC_PAGE_META.advertisement
+  const seoTitle = `${meta.heading} — ${env.PUBLIC_SITE_TITLE || 'Comuna'}`
 </script>
 
-<EditableStaticPage
-  {data}
-  slug="advertisement"
-  heading="Реклама"
-  {description}
-  {seoTitle}
-/>
+<div class="flex max-w-3xl flex-col gap-6">
+  <StaticPageArticle heading={meta.heading} pageContent={data?.pageContent ?? ''} />
+</div>
+
+<svelte:head>
+  <title>{seoTitle}</title>
+  <meta name="description" content={meta.description} />
+  <meta property="og:title" content={seoTitle} />
+  <meta property="og:description" content={meta.description} />
+  <meta property="og:type" content="website" />
+</svelte:head>
