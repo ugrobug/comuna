@@ -7,12 +7,14 @@ export type TemplateEditorBlockType =
   | 'image'
   | 'quote'
   | 'code'
+  | 'divider'
   | 'spoiler'
   | 'gallery'
   | 'map'
   | 'compare'
   | 'link'
   | 'embed'
+  | 'post_link'
   | 'music'
   | 'movie_time'
   | 'movie_card'
@@ -108,12 +110,14 @@ const TEMPLATE_EDITOR_BLOCK_TYPE_VALUES = new Set<TemplateEditorBlockType>([
   'image',
   'quote',
   'code',
+  'divider',
   'spoiler',
   'gallery',
   'map',
   'compare',
   'link',
   'embed',
+  'post_link',
   'music',
   'movie_time',
   'movie_card',
@@ -125,12 +129,14 @@ const ALL_TEMPLATE_EDITOR_BLOCK_OPTIONS: TemplateEditorBlockOption[] = [
   { type: 'image', label: 'Изображение' },
   { type: 'quote', label: 'Цитата' },
   { type: 'code', label: 'Код' },
+  { type: 'divider', label: 'Разделитель' },
   { type: 'spoiler', label: 'Спойлер' },
   { type: 'gallery', label: 'Галерея' },
   { type: 'map', label: 'Карта' },
   { type: 'compare', label: 'Сравнение изображений' },
   { type: 'link', label: 'Ссылка' },
   { type: 'embed', label: 'Встраивание (Embed)' },
+  { type: 'post_link', label: 'Ссылка на пост' },
   { type: 'music', label: 'Музыка' },
   { type: 'movie_time', label: 'Время в фильме' },
   { type: 'movie_card', label: 'Карточка фильма' },

@@ -7,7 +7,7 @@
   import PostComments from '$lib/components/site/PostComments.svelte'
   import { backendPostToPostView, buildBackendPostPath, buildPostReadUrl, buildPostViewUrl } from '$lib/api/backend'
   import { siteToken } from '$lib/siteAuth'
-  import { deserializeEditorModel } from '$lib/util'
+  import { parseSerializedEditorModel, looksLikeSerializedEditorModel } from '$lib/util'
 
   export let data
 
@@ -27,21 +27,7 @@
     if (!raw) return ''
 
     const parseEditorPayload = (candidate: string): any | null => {
-      try {
-        const parsed = JSON.parse(candidate)
-        if (parsed && typeof parsed === 'object' && Array.isArray(parsed.blocks)) {
-          return parsed
-        }
-      } catch {
-        // noop
-      }
-
-      if (!/^[A-Za-z0-9+/_-]*={0,2}$/.test(candidate)) return null
-      const decoded = deserializeEditorModel(candidate)
-      if (decoded && typeof decoded === 'object' && Array.isArray(decoded.blocks)) {
-        return decoded
-      }
-      return null
+      return parseSerializedEditorModel(candidate)
     }
 
     const editorPayload = parseEditorPayload(raw)
@@ -78,6 +64,7 @@
       }
     }
 
+    if (looksLikeSerializedEditorModel(raw)) return ''
     const text = stripHtml(raw)
     if (!text) return ''
     if (text.length <= max) return text

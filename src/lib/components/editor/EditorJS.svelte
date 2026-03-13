@@ -7,6 +7,13 @@
     normalizeTemplateEditorBlockTypes,
     type PostTemplateType,
   } from '$lib/postTemplates'
+  import { buildPostDetailUrl, buildSearchUrl } from '$lib/api/backend'
+  import {
+    buildPostLinkSnapshot,
+    normalizeInternalPostReference,
+    normalizePostLinkBlockData,
+    type PostLinkSnapshot,
+  } from '$lib/postLinkBlocks'
   import {
     uploadImage,
     serializeEditorModel,
@@ -246,6 +253,336 @@
       };
       console.log('Returning saved data:', savedData);
       return savedData;
+    }
+  }
+
+  class PostLinkTool {
+    private data = normalizePostLinkBlockData({})
+    private wrapper: HTMLElement | null = null
+    private preview: HTMLElement | null = null
+    private results: HTMLElement | null = null
+    private status: HTMLElement | null = null
+    private referenceInput: HTMLInputElement | null = null
+    private announcementInput: HTMLTextAreaElement | null = null
+    private lookupTimer: number | null = null
+    private lookupRequestId = 0
+
+    static get toolbox() {
+      return {
+        title: 'Ссылка на пост',
+        icon: `<img src="${icons.link}" width="16" height="16" />`,
+      }
+    }
+
+    constructor({ data }: { data?: unknown }) {
+      this.data = normalizePostLinkBlockData(data)
+    }
+
+    private escapeHtml(value: string): string {
+      return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+    }
+
+    private updateStatus(message: string, tone: 'muted' | 'error' = 'muted') {
+      if (!this.status) return
+      this.status.textContent = message
+      this.status.dataset.tone = tone
+    }
+
+    private renderPreviewCard(snapshot: PostLinkSnapshot, announcement: string): string {
+      const rubricLabel = snapshot.rubric || ''
+      const authorLabel = snapshot.author_title || snapshot.author_username || ''
+      const previewText = snapshot.preview_text || ''
+      const previewImage = snapshot.preview_image_url || ''
+      const announcementHtml = announcement
+        ? `<div class="post-link-tool-preview__note">
+            <p>${this.escapeHtml(announcement)}</p>
+          </div>`
+        : ''
+      const imageHtml = previewImage
+        ? `<div class="post-link-tool-preview__image">
+            <img src="${this.escapeHtml(previewImage)}" alt="${this.escapeHtml(snapshot.title || 'Превью поста')}" loading="lazy">
+          </div>`
+        : ''
+      const rubricIconHtml = snapshot.rubric_icon_url
+        ? `<img class="post-link-tool-preview__rubric-icon" src="${this.escapeHtml(snapshot.rubric_icon_url)}" alt="" loading="lazy">`
+        : ''
+      const rubricHtml = rubricLabel
+        ? `<span class="post-link-tool-preview__rubric">${rubricIconHtml}${this.escapeHtml(rubricLabel)}</span>`
+        : ''
+      const authorHtml = authorLabel
+        ? `<span class="post-link-tool-preview__author">${this.escapeHtml(authorLabel)}</span>`
+        : ''
+      const metaHtml =
+        rubricHtml || authorHtml
+          ? `<div class="post-link-tool-preview__meta">${rubricHtml}${authorHtml}</div>`
+          : ''
+
+      return `${announcementHtml}<div class="post-link-tool-preview__card${previewImage ? '' : ' post-link-tool-preview__card--no-image'}">
+          ${imageHtml}
+          <div class="post-link-tool-preview__content">
+            ${metaHtml}
+            <div class="post-link-tool-preview__title">${this.escapeHtml(snapshot.title || 'Пост')}</div>
+            ${
+              previewText
+                ? `<div class="post-link-tool-preview__text">${this.escapeHtml(previewText)}</div>`
+                : ''
+            }
+            <div class="post-link-tool-preview__path">${this.escapeHtml(snapshot.path || `/b/post/${snapshot.post_id}`)}</div>
+          </div>
+        </div>`
+    }
+
+    private updatePreview() {
+      if (!this.preview) return
+      const announcement = this.announcementInput?.value.trim() || this.data.announcement || ''
+      this.data.announcement = announcement
+
+      if (this.data.snapshot?.post_id) {
+        this.preview.innerHTML = this.renderPreviewCard(this.data.snapshot, announcement)
+        this.updateStatus('Превью готово. В посте блок будет показан как встроенная карточка.')
+        return
+      }
+
+      this.preview.innerHTML = ''
+      this.updateStatus('Поддерживаются только внутренние материалы Comuna.', 'muted')
+    }
+
+    private applySnapshot(snapshot: PostLinkSnapshot) {
+      this.data.snapshot = snapshot
+      this.data.post_id = snapshot.post_id
+      this.data.url = snapshot.path
+      if (this.referenceInput) {
+        this.referenceInput.value = snapshot.path
+      }
+      this.updatePreview()
+    }
+
+    private async fetchPostSnapshot(postId: number): Promise<PostLinkSnapshot | null> {
+      const response = await fetch(buildPostDetailUrl(postId), {
+        credentials: 'include',
+      })
+      if (!response.ok) return null
+      const payload = await response.json()
+      if (!payload?.ok || !payload?.post) return null
+      return buildPostLinkSnapshot(payload.post)
+    }
+
+    private async searchPostSnapshots(query: string): Promise<PostLinkSnapshot[]> {
+      const response = await fetch(buildSearchUrl(query, 1, 6, 'Posts', 'New'), {
+        credentials: 'include',
+      })
+      if (!response.ok) return []
+      const payload = await response.json()
+      const posts = Array.isArray(payload?.posts) ? payload.posts : []
+      return posts
+        .map((post: any) => buildPostLinkSnapshot(post))
+        .filter((item: PostLinkSnapshot) => item.post_id > 0)
+    }
+
+    private renderSearchResults(items: PostLinkSnapshot[]) {
+      if (!this.results) return
+      this.results.innerHTML = ''
+
+      if (!items.length) {
+        this.results.innerHTML =
+          '<div class="post-link-tool-results__empty">Ничего не найдено. Попробуйте другое название.</div>'
+        return
+      }
+
+      items.forEach((item) => {
+        const button = document.createElement('button')
+        button.type = 'button'
+        button.className = 'post-link-tool-results__item'
+        button.innerHTML = `
+          <div class="post-link-tool-results__item-title">${this.escapeHtml(item.title || 'Пост')}</div>
+          <div class="post-link-tool-results__item-meta">
+            <span>${this.escapeHtml(item.rubric || 'Без рубрики')}</span>
+            <span>${this.escapeHtml(item.author_title || item.author_username || 'Автор')}</span>
+          </div>
+          ${
+            item.preview_text
+              ? `<div class="post-link-tool-results__item-text">${this.escapeHtml(item.preview_text)}</div>`
+              : ''
+          }
+        `
+        button.addEventListener('click', () => {
+          this.applySnapshot(item)
+          if (this.searchInput) {
+            this.searchInput.value = item.title || ''
+          }
+          this.results && (this.results.innerHTML = '')
+        })
+        this.results?.appendChild(button)
+      })
+    }
+
+    private scheduleLookup() {
+      if (this.lookupTimer !== null) {
+        window.clearTimeout(this.lookupTimer)
+      }
+
+      const query = this.referenceInput?.value.trim() || ''
+      if (!query) {
+        if (this.results) this.results.innerHTML = ''
+        this.data.snapshot = null
+        this.data.url = ''
+        this.data.post_id = undefined
+        this.updatePreview()
+        return
+      }
+
+      const normalized = normalizeInternalPostReference(query, this.data.snapshot?.title)
+      this.data.url = normalized.path || query
+      this.data.post_id = normalized.postId || undefined
+      this.data.snapshot =
+        normalized.postId === this.data.snapshot?.post_id ? this.data.snapshot : null
+
+      const requestId = ++this.lookupRequestId
+      this.lookupTimer = window.setTimeout(async () => {
+        if (normalized.postId) {
+          this.updateStatus('Загружаю материал по ссылке...')
+          const snapshot = await this.fetchPostSnapshot(normalized.postId)
+          if (requestId !== this.lookupRequestId) return
+          if (!snapshot) {
+            this.data.snapshot = null
+            this.updatePreview()
+            this.updateStatus('Не удалось загрузить этот пост. Проверьте ссылку.', 'error')
+            return
+          }
+          if (this.results) this.results.innerHTML = ''
+          this.applySnapshot(snapshot)
+          return
+        }
+
+        if (query.length < 2) {
+          if (this.results) this.results.innerHTML = ''
+          this.updatePreview()
+          this.updateStatus('Введите минимум 2 символа или вставьте ссылку на пост.', 'muted')
+          return
+        }
+
+        if (this.results) {
+          this.results.innerHTML =
+            '<div class="post-link-tool-results__empty">Ищу подходящие посты...</div>'
+        }
+        const items = await this.searchPostSnapshots(query)
+        if (requestId !== this.lookupRequestId) return
+        this.renderSearchResults(items)
+        this.updatePreview()
+      }, 220)
+    }
+
+    render() {
+      const wrapper = document.createElement('div')
+      wrapper.classList.add('post-link-tool')
+      this.wrapper = wrapper
+
+      const title = document.createElement('div')
+      title.classList.add('post-link-tool__title')
+      title.textContent = 'Ссылка на пост'
+
+      const referenceInput = document.createElement('input')
+      referenceInput.type = 'text'
+      referenceInput.classList.add('post-link-tool__input')
+      referenceInput.placeholder = 'Вставьте ссылку на пост или начните искать материал'
+      referenceInput.value = this.data.url || this.data.snapshot?.title || ''
+      this.referenceInput = referenceInput
+
+      const referenceField = document.createElement('div')
+      referenceField.classList.add('post-link-tool__field')
+      referenceField.appendChild(referenceInput)
+
+      const results = document.createElement('div')
+      results.classList.add('post-link-tool-results')
+      this.results = results
+
+      const announcementLabel = document.createElement('label')
+      announcementLabel.classList.add('post-link-tool__label')
+      announcementLabel.textContent = 'Анонс'
+
+      const announcementInput = document.createElement('textarea')
+      announcementInput.classList.add('post-link-tool__textarea')
+      announcementInput.rows = 3
+      announcementInput.placeholder = 'Почему эта отсылка здесь?'
+      announcementInput.value = this.data.announcement || ''
+      this.announcementInput = announcementInput
+
+      const announcementField = document.createElement('div')
+      announcementField.classList.add('post-link-tool__field')
+      announcementField.appendChild(announcementLabel)
+      announcementField.appendChild(announcementInput)
+
+      const status = document.createElement('div')
+      status.classList.add('post-link-tool__status')
+      this.status = status
+
+      const preview = document.createElement('div')
+      preview.classList.add('post-link-tool-preview')
+      this.preview = preview
+
+      referenceInput.addEventListener('input', () => this.scheduleLookup())
+      announcementInput.addEventListener('input', () => this.updatePreview())
+
+      wrapper.appendChild(title)
+      wrapper.appendChild(referenceField)
+      wrapper.appendChild(results)
+      wrapper.appendChild(announcementField)
+      wrapper.appendChild(status)
+      wrapper.appendChild(preview)
+
+      this.updatePreview()
+      return wrapper
+    }
+
+    save() {
+      const normalized = normalizePostLinkBlockData({
+        url: this.referenceInput?.value.trim() || this.data.url,
+        announcement: this.announcementInput?.value.trim() || this.data.announcement,
+        post_id: this.data.post_id,
+        snapshot: this.data.snapshot,
+      })
+      const hasResolvedPost = Boolean(normalized.post_id)
+      return {
+        url: hasResolvedPost ? normalized.url || '' : '',
+        announcement: normalized.announcement || '',
+        post_id: hasResolvedPost ? normalized.post_id || null : null,
+        snapshot: normalized.snapshot || null,
+      }
+    }
+  }
+
+  class DividerTool {
+    static get toolbox() {
+      return {
+        title: 'Разделитель',
+        icon: `
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M2 8H14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            <path d="M6 5H10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" opacity="0.45"/>
+            <path d="M6 11H10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" opacity="0.45"/>
+          </svg>
+        `,
+      }
+    }
+
+    render() {
+      const wrapper = document.createElement('div')
+      wrapper.classList.add('divider-tool')
+
+      const line = document.createElement('div')
+      line.classList.add('divider-tool__line')
+
+      wrapper.appendChild(line)
+      return wrapper
+    }
+
+    save() {
+      return {}
     }
   }
 
@@ -2589,6 +2926,11 @@
               },
             }
           : {}),
+        ...(enabledTemplateBlockTypes.has('divider')
+          ? {
+              divider: DividerTool,
+            }
+          : {}),
         ...(enabledTemplateBlockTypes.has('spoiler')
           ? {
               spoiler: SpoilerTool,
@@ -2618,6 +2960,11 @@
         ...(enabledTemplateBlockTypes.has('movie_time')
           ? {
               movie_time: MovieTimeTool,
+            }
+          : {}),
+        ...(enabledTemplateBlockTypes.has('post_link')
+          ? {
+              post_link: PostLinkTool,
             }
           : {}),
         ...(enabledTemplateBlockTypes.has('music')
@@ -3635,6 +3982,305 @@
   @media (max-width: 760px) {
     :global(.movie-time-tool__grid) {
       grid-template-columns: 1fr;
+    }
+  }
+
+  :global(.divider-tool) {
+    padding: 0.55rem 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  :global(.divider-tool__line) {
+    width: 100%;
+    height: 1px;
+    border-radius: 999px;
+    background:
+      linear-gradient(
+        90deg,
+        rgba(148, 163, 184, 0) 0%,
+        rgba(148, 163, 184, 0.6) 18%,
+        rgba(148, 163, 184, 0.9) 50%,
+        rgba(148, 163, 184, 0.6) 82%,
+        rgba(148, 163, 184, 0) 100%
+      );
+    box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.08);
+  }
+
+  :global(.dark .divider-tool__line) {
+    background:
+      linear-gradient(
+        90deg,
+        rgba(63, 63, 70, 0) 0%,
+        rgba(103, 232, 249, 0.24) 18%,
+        rgba(56, 189, 248, 0.52) 50%,
+        rgba(103, 232, 249, 0.24) 82%,
+        rgba(63, 63, 70, 0) 100%
+      );
+    box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.08);
+  }
+
+  :global(.post-link-tool) {
+    border-radius: 0.9rem;
+    border: 1px solid rgba(56, 189, 248, 0.34);
+    background:
+      radial-gradient(130% 140% at 0% 0%, rgba(56, 189, 248, 0.18), rgba(56, 189, 248, 0) 60%),
+      linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(30, 41, 59, 0.9));
+    color: #e2e8f0;
+    padding: 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+
+  :global(.dark .post-link-tool) {
+    border-color: #3f3f46;
+  }
+
+  :global(.post-link-tool__title) {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #fff;
+  }
+
+  :global(.post-link-tool__label) {
+    font-size: 0.78rem;
+    color: #cbd5e1;
+    margin-top: 0.05rem;
+  }
+
+  :global(.post-link-tool__field) {
+    display: flex;
+    flex-direction: column;
+    gap: 0.42rem;
+    padding: 0 0.08rem;
+  }
+
+  :global(.post-link-tool__input),
+  :global(.post-link-tool__textarea) {
+    width: 100%;
+    border-radius: 0.7rem;
+    border: 1px solid rgba(56, 189, 248, 0.32);
+    background: rgba(15, 23, 42, 0.45);
+    color: #f8fafc;
+    font-size: 0.87rem;
+    line-height: 1.3;
+    padding: 0.55rem 0.7rem;
+  }
+
+  :global(.post-link-tool__input::placeholder),
+  :global(.post-link-tool__textarea::placeholder) {
+    color: #94a3b8;
+  }
+
+  :global(.post-link-tool__input:focus),
+  :global(.post-link-tool__textarea:focus) {
+    outline: none;
+    border-color: rgba(56, 189, 248, 0.72);
+    box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.16);
+  }
+
+  :global(.post-link-tool__textarea) {
+    min-height: 4.6rem;
+    resize: vertical;
+  }
+
+  :global(.post-link-tool__status) {
+    font-size: 0.8rem;
+    line-height: 1.4;
+    color: #cbd5e1;
+  }
+
+  :global(.post-link-tool__status[data-tone='error']) {
+    color: #fca5a5;
+  }
+
+  :global(.post-link-tool-results) {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+
+  :global(.post-link-tool-results__empty) {
+    border-radius: 0.7rem;
+    border: 1px solid rgba(56, 189, 248, 0.2);
+    background: rgba(15, 23, 42, 0.35);
+    color: #cbd5e1;
+    font-size: 0.82rem;
+    padding: 0.62rem 0.7rem;
+  }
+
+  :global(.post-link-tool-results__item) {
+    width: 100%;
+    text-align: left;
+    border-radius: 0.8rem;
+    border: 1px solid rgba(56, 189, 248, 0.22);
+    background: rgba(15, 23, 42, 0.45);
+    padding: 0.7rem 0.78rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    cursor: pointer;
+    transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+  }
+
+  :global(.post-link-tool-results__item:hover) {
+    transform: translateY(-1px);
+    border-color: rgba(56, 189, 248, 0.46);
+    box-shadow: 0 10px 24px rgba(2, 6, 23, 0.26);
+  }
+
+  :global(.post-link-tool-results__item-title) {
+    font-size: 0.96rem;
+    font-weight: 700;
+    color: #f8fafc;
+  }
+
+  :global(.post-link-tool-results__item-meta) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem 0.8rem;
+    font-size: 0.76rem;
+    color: #67e8f9;
+  }
+
+  :global(.post-link-tool-results__item-text) {
+    font-size: 0.82rem;
+    line-height: 1.45;
+    color: #cbd5e1;
+  }
+
+  :global(.post-link-tool-preview) {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+  }
+
+  :global(.post-link-tool-preview__card) {
+    display: grid;
+    grid-template-columns: minmax(0, 112px) minmax(0, 1fr);
+    gap: 0.85rem;
+    align-items: stretch;
+    border-radius: 1rem;
+    border: 1px solid rgba(251, 191, 36, 0.38);
+    background:
+      radial-gradient(130% 140% at 0% 0%, rgba(251, 191, 36, 0.22), rgba(251, 191, 36, 0) 60%),
+      linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.9));
+    padding: 0.85rem;
+    color: inherit;
+    text-decoration: none;
+  }
+
+  :global(.post-link-tool-preview__card--no-image) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  :global(.post-link-tool-preview__image) {
+    border-radius: 0.8rem;
+    overflow: hidden;
+    min-height: 108px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(15, 23, 42, 0.5);
+  }
+
+  :global(.post-link-tool-preview__image img) {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+  }
+
+  :global(.post-link-tool-preview__content) {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0 0.05rem 0 0.15rem;
+  }
+
+  :global(.post-link-tool-preview__meta) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem 0.75rem;
+    align-items: center;
+  }
+
+  :global(.post-link-tool-preview__rubric),
+  :global(.post-link-tool-preview__author) {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.72rem;
+    line-height: 1.2;
+    border-radius: 999px;
+    padding: 0.24rem 0.58rem;
+    background: rgba(15, 23, 42, 0.42);
+  }
+
+  :global(.post-link-tool-preview__rubric) {
+    color: #fde68a;
+    font-weight: 700;
+    border: 1px solid rgba(251, 191, 36, 0.38);
+  }
+
+  :global(.post-link-tool-preview__author) {
+    color: #cbd5e1;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+  }
+
+  :global(.post-link-tool-preview__rubric-icon) {
+    width: 0.95rem;
+    height: 0.95rem;
+    border-radius: 9999px;
+    object-fit: cover;
+  }
+
+  :global(.post-link-tool-preview__title) {
+    margin: 0;
+    color: #fff;
+    font-size: 1.1rem;
+    line-height: 1.2;
+    font-weight: 700;
+  }
+
+  :global(.post-link-tool-preview__text) {
+    color: #cbd5e1;
+    font-size: 0.84rem;
+    line-height: 1.5;
+  }
+
+  :global(.post-link-tool-preview__note) {
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 0.7rem;
+    background: rgba(15, 23, 42, 0.42);
+    padding: 0.48rem 0.62rem;
+  }
+
+  :global(.post-link-tool-preview__note p) {
+    margin: 0;
+    color: #f8fafc;
+    font-size: 0.86rem;
+    line-height: 1.35;
+  }
+
+  :global(.post-link-tool-preview__path) {
+    color: #f59e0b;
+    font-size: 0.82rem;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  @media (max-width: 760px) {
+    :global(.post-link-tool-preview__card) {
+      grid-template-columns: 1fr;
+    }
+
+    :global(.post-link-tool-preview__image) {
+      min-height: 160px;
     }
   }
 

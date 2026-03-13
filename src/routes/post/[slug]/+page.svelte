@@ -50,7 +50,8 @@
   import PostFeed from '$lib/components/lemmy/post/feed/PostFeed.svelte'
   import { postFeed } from '$lib/lemmy/postfeed'
   import {
-    deserializeEditorModel,
+    parseSerializedEditorModel,
+    looksLikeSerializedEditorModel,
     buildOpenStreetMapEmbedUrl,
     normalizeOpenStreetMapZoom,
   } from '$lib/util'
@@ -241,36 +242,7 @@
 
   // Функция для проверки JSON контента
   function isJsonContent(content: string): boolean {
-    // Пропускаем пустые строки
-    if (!content || content.trim() === '') {
-      return false;
-    }
-
-    // Если контент начинается с < и заканчивается на >, это вероятно HTML
-    if (content.trim().startsWith('<') && content.trim().endsWith('>')) {
-      return false;
-    }
-
-    try {
-      // Сначала пробуем парсить как обычный JSON
-      const parsed = JSON.parse(content);
-      return parsed && typeof parsed === 'object' && 'blocks' in parsed;
-    } catch {
-      try {
-        // Проверяем, похоже ли это на base64
-        const isBase64 = /^[A-Za-z0-9+/_-]*={0,2}$/.test(content);
-        
-        if (!isBase64) {
-          return false;
-        }
-        
-        // Если похоже на base64, пробуем десериализовать
-        const decoded = deserializeEditorModel(content);
-        return decoded && typeof decoded === 'object' && 'blocks' in decoded;
-      } catch {
-        return false;
-      }
-    }
+    return parseSerializedEditorModel(content) !== null
   }
 
   // Функция для извлечения превью изображения из контента
@@ -279,15 +251,8 @@
 
     if (isJsonContent(content)) {
       try {
-        let parsed;
-        
-        // Пробуем парсить как обычный JSON
-        try {
-          parsed = JSON.parse(content);
-        } catch {
-          // Если не получилось, пробуем десериализовать из base64
-          parsed = deserializeEditorModel(content);
-        }
+        const parsed = parseSerializedEditorModel(content)
+        if (!parsed) return null
         
         if (parsed.additional?.previewImage) {
           return parsed.additional.previewImage.trim();
@@ -641,16 +606,7 @@
 
   function convertJsonToHtml(jsonContent: string): string {
     try {
-      let content;
-      
-      // Пробуем парсить как обычный JSON
-      try {
-        content = JSON.parse(jsonContent);
-      } catch {
-        // Если не получилось, пробуем десериализовать из base64
-        content = deserializeEditorModel(jsonContent);
-      }
-      
+      const content = parseSerializedEditorModel(jsonContent)
       if (!content.blocks) return '';
       
       const previewImage = content.additional?.previewImage 
@@ -1293,31 +1249,22 @@
       // Проверяем, является ли контент JSON или base64
       if (isJsonContent(cleanHtml)) {
         try {
-          let parsed;
-          try {
-            parsed = JSON.parse(cleanHtml);
-          } catch {
-            // Проверяем, похоже ли это на base64
-            const isBase64 = /^[A-Za-z0-9+/_-]*={0,2}$/.test(cleanHtml);
-            if (!isBase64) {
-              throw new Error('Not a base64 string');
-            }
-            parsed = deserializeEditorModel(cleanHtml);
-          }
-          
+          const parsed = parseSerializedEditorModel(cleanHtml)
+          if (!parsed) return ''
           const renderedContent = renderContent(parsed);
           return sanitizeHtml(renderedContent, type === 'meta' as any);
         } catch (error) {
           console.error('Error parsing JSON/base64 content:', error);
-          // В случае ошибки возвращаем очищенный HTML
-          return sanitizeHtml(cleanHtml, type === 'meta' as any);
+          return looksLikeSerializedEditorModel(cleanHtml)
+            ? ''
+            : sanitizeHtml(cleanHtml, type === 'meta' as any);
         }
       }
       
       return sanitizeHtml(cleanHtml, type === 'meta' as any);
     } catch (error) {
       console.error('Error in stripHtml:', error);
-      return html;
+      return looksLikeSerializedEditorModel(html) ? '' : html;
     }
   }
 
@@ -1398,20 +1345,8 @@
     // Проверяем, является ли контент JSON или base64
     if (isJsonContent(post.body)) {
       try {
-        let parsed;
-        
-        // Пробуем парсить как обычный JSON
-        try {
-          parsed = JSON.parse(post.body);
-        } catch {
-          // Если не получилось, пробуем десериализовать из base64
-          const isBase64 = /^[A-Za-z0-9+/_-]*={0,2}$/.test(post.body);
-          if (!isBase64) {
-            throw new Error('Not a base64 string');
-          }
-          parsed = deserializeEditorModel(post.body);
-        }
-        
+        const parsed = parseSerializedEditorModel(post.body)
+        if (!parsed) return 'Пост'
         if (parsed.additional?.metaTitle) {
           return parsed.additional.metaTitle.trim();
         }
@@ -1445,20 +1380,8 @@
     // Проверяем, является ли контент JSON или base64
     if (isJsonContent(post.body)) {
       try {
-        let parsed;
-        
-        // Пробуем парсить как обычный JSON
-        try {
-          parsed = JSON.parse(post.body);
-        } catch {
-          // Если не получилось, пробуем десериализовать из base64
-          const isBase64 = /^[A-Za-z0-9+/_-]*={0,2}$/.test(post.body);
-          if (!isBase64) {
-            throw new Error('Not a base64 string');
-          }
-          parsed = deserializeEditorModel(post.body);
-        }
-        
+        const parsed = parseSerializedEditorModel(post.body)
+        if (!parsed) return ''
         // Если есть метаописание в дополнительных данных, используем его
         if (parsed.additional?.metaDescription) {
           return stripHtml(parsed.additional.metaDescription.trim());

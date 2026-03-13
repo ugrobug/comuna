@@ -6,7 +6,12 @@
   import { browser } from '$app/environment'
   import { afterUpdate, createEventDispatcher, onMount, tick } from 'svelte'
   import { page } from '$app/stores'
-  import { deserializeEditorModel, buildOpenStreetMapEmbedUrl, normalizeOpenStreetMapZoom } from '$lib/util'
+  import {
+    parseSerializedEditorModel,
+    looksLikeSerializedEditorModel,
+    buildOpenStreetMapEmbedUrl,
+    normalizeOpenStreetMapZoom,
+  } from '$lib/util'
   import { buildPostPollVoteUrl } from '$lib/api/backend'
   import { siteToken } from '$lib/siteAuth'
   import {
@@ -20,6 +25,11 @@
     movieReviewWatchWhereLabels,
     type SitePostTemplate,
   } from '$lib/postTemplates'
+  import {
+    normalizePostLinkBlockData,
+    normalizeInternalPostReference,
+    type PostLinkSnapshot,
+  } from '$lib/postLinkBlocks'
   
   let DOMPurify: any
   let purifyConfigured = false
@@ -99,6 +109,7 @@
   let lastProcessedBody = '';
   let processedBody = '';
   const maxPreviewLength = 250;
+  const hydratedPostLinkSnapshots = new Map<number, PostLinkSnapshot>()
 
   const normalizeTextForCompare = (value: string): string =>
     value
@@ -519,6 +530,123 @@
     }
   }
 
+  const applyHydratedPostLinkSnapshot = (wrapper: HTMLElement, snapshot: PostLinkSnapshot) => {
+    const anchor = wrapper.querySelector('.post-linked-material__card') as HTMLAnchorElement | null
+    if (anchor && snapshot.path) {
+      anchor.setAttribute('href', snapshot.path)
+    }
+
+    const titleElement = wrapper.querySelector('[data-post-link-title]') as HTMLElement | null
+    if (titleElement && snapshot.title) {
+      titleElement.textContent = snapshot.title
+    }
+
+    const textElement = wrapper.querySelector('[data-post-link-text]') as HTMLElement | null
+    if (textElement) {
+      const nextText = (snapshot.preview_text || '').trim()
+      if (nextText) {
+        textElement.textContent = nextText
+        textElement.removeAttribute('hidden')
+      } else {
+        textElement.textContent = ''
+        textElement.setAttribute('hidden', 'hidden')
+      }
+    }
+
+    const imageContainer = wrapper.querySelector('[data-post-link-image]') as HTMLElement | null
+    if (imageContainer) {
+      const imageUrl = (snapshot.preview_image_url || '').trim()
+      const imageTitle = (snapshot.title || 'Превью поста').trim()
+      if (imageUrl) {
+        imageContainer.removeAttribute('hidden')
+        imageContainer.innerHTML = `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(imageTitle)}" loading="lazy" />`
+        anchor?.classList.remove('post-linked-material__card--no-image')
+      } else {
+        imageContainer.innerHTML = ''
+        imageContainer.setAttribute('hidden', 'hidden')
+      }
+    }
+
+    wrapper.removeAttribute('data-post-link-needs-hydration')
+    wrapper.setAttribute('data-post-link-hydrated', '1')
+  }
+
+  const fetchPostLinkSnapshotFromPage = async (
+    path: string,
+    postId: number
+  ): Promise<PostLinkSnapshot | null> => {
+    if (!browser || !path) return null
+
+    try {
+      const response = await fetch(path, { credentials: 'include' })
+      if (!response.ok) return null
+
+      const html = await response.text()
+      const parser = new DOMParser()
+      const doc = parser.parseFromString(html, 'text/html')
+
+      const readMeta = (selector: string) =>
+        (doc.querySelector(selector)?.getAttribute('content') || '').trim()
+
+      const ogTitle = readMeta('meta[property="og:title"]')
+      const rawTitle = ogTitle || doc.querySelector('h1')?.textContent?.trim() || ''
+      const title = rawTitle.replace(/\s+—\s+Comuna\s*$/i, '').trim()
+
+      const previewText =
+        readMeta('meta[property="og:description"]') ||
+        readMeta('meta[name="description"]') ||
+        ''
+      const previewImageUrl = readMeta('meta[property="og:image"]')
+
+      if (!title && !previewText && !previewImageUrl) return null
+
+      return {
+        post_id: postId,
+        path,
+        title,
+        author_title: '',
+        author_username: '',
+        preview_text: previewText || undefined,
+        preview_image_url: previewImageUrl || undefined,
+      }
+    } catch (error) {
+      console.error('Failed to fetch post link snapshot from page', error)
+      return null
+    }
+  }
+
+  const hydratePostLinkCards = async () => {
+    if (!browser || !element) return
+
+    const wrappers = Array.from(
+      element.querySelectorAll('[data-post-link-id][data-post-link-needs-hydration="1"]')
+    ) as HTMLElement[]
+
+    await Promise.all(
+      wrappers.map(async (wrapper) => {
+        const postId = Number(wrapper.getAttribute('data-post-link-id') || '')
+        if (!Number.isFinite(postId) || postId <= 0) return
+
+        const cached = hydratedPostLinkSnapshots.get(postId)
+        if (cached) {
+          applyHydratedPostLinkSnapshot(wrapper, cached)
+          return
+        }
+
+        try {
+          const anchor = wrapper.querySelector('.post-linked-material__card') as HTMLAnchorElement | null
+          const path = (anchor?.getAttribute('href') || '').trim()
+          const snapshot = await fetchPostLinkSnapshotFromPage(path, postId)
+          if (!snapshot) return
+          hydratedPostLinkSnapshots.set(postId, snapshot)
+          applyHydratedPostLinkSnapshot(wrapper, snapshot)
+        } catch (error) {
+          console.error('Failed to hydrate post link card', error)
+        }
+      })
+    )
+  }
+
   // Функция для добавления preload в head
   function addPreloadLink(url: string, srcset: string | null = null) {
     if (!browser) return;
@@ -543,36 +671,7 @@
   }
 
   function isJsonContent(content: string): boolean {
-    // Пропускаем пустые строки
-    if (!content || content.trim() === '') {
-      return false;
-    }
-
-    // Если контент начинается с < и заканчивается на >, это вероятно HTML
-    if (content.trim().startsWith('<') && content.trim().endsWith('>')) {
-      return false;
-    }
-
-    try {
-      // Сначала пробуем парсить как обычный JSON
-      const parsed = JSON.parse(content);
-      return parsed && typeof parsed === 'object' && 'blocks' in parsed;
-    } catch {
-      try {
-        // Проверяем, похоже ли это на base64
-        const isBase64 = /^[A-Za-z0-9+/_-]*={0,2}$/.test(content);
-        
-        if (!isBase64) {
-          return false;
-        }
-        
-        // Если похоже на base64, пробуем десериализовать
-        const decoded = deserializeEditorModel(content);
-        return decoded && typeof decoded === 'object' && 'blocks' in decoded;
-      } catch {
-        return false;
-      }
-    }
+    return parseSerializedEditorModel(content) !== null
   }
 
   function processJsonBlock(block: any): string {
@@ -755,6 +854,73 @@
           ${originalTitleHtml}
           ${metaHtml}
         </div>
+      </div>`
+    }
+
+    const renderPostLinkBlock = (raw: any): string => {
+      if (!isTemplateEditorBlockEnabled(template?.type ?? '', 'post_link')) return ''
+
+      const normalized = normalizePostLinkBlockData(raw)
+      const snapshot = normalized.snapshot as PostLinkSnapshot | null
+      const normalizedRef = normalizeInternalPostReference(
+        normalized.url || snapshot?.path || '',
+        snapshot?.title
+      )
+      const resolvedPostId = normalizedRef.postId || snapshot?.post_id || normalized.post_id || null
+      const href = escapeHtml(
+        normalizedRef.path || snapshot?.path || normalized.url || '#'
+      )
+      const announcement = escapeHtml(normalized.announcement || '')
+      const titleText = escapeHtml(
+        snapshot?.title || (resolvedPostId ? `Материал #${resolvedPostId}` : 'Материал Comuna')
+      )
+      const authorText = escapeHtml(snapshot?.author_title || snapshot?.author_username || '')
+      const rubricText = escapeHtml(snapshot?.rubric || '')
+      const previewText = escapeHtml(snapshot?.preview_text || '')
+      const previewImage = escapeHtml(snapshot?.preview_image_url || '')
+      const rubricIcon = escapeHtml(snapshot?.rubric_icon_url || '')
+      const needsHydration = !snapshot?.title || !snapshot?.preview_text || !snapshot?.preview_image_url
+
+      if (!resolvedPostId) return ''
+
+      const announcementHtml = announcement
+        ? `<div class="post-linked-material__note">
+            <p>${announcement}</p>
+          </div>`
+        : ''
+      const imageHtml = previewImage
+        ? `<div class="post-linked-material__image">
+            <img src="${previewImage}" alt="${titleText}" loading="lazy" />
+          </div>`
+        : ''
+      const rubricIconHtml = rubricIcon
+        ? `<img class="post-linked-material__rubric-icon" src="${rubricIcon}" alt="" loading="lazy" />`
+        : ''
+      const rubricHtml = rubricText
+        ? `<span class="post-linked-material__rubric">${rubricIconHtml}${rubricText}</span>`
+        : ''
+      const authorHtml = authorText
+        ? `<span class="post-linked-material__author">${authorText}</span>`
+        : ''
+      const metaHtml =
+        rubricHtml || authorHtml
+          ? `<div class="post-linked-material__meta">${rubricHtml}${authorHtml}</div>`
+          : ''
+      const previewTextHtml = previewText
+        ? `<p class="post-linked-material__text" data-post-link-text>${previewText}</p>`
+        : '<p class="post-linked-material__text" data-post-link-text hidden></p>'
+
+      return `<div class="post-linked-material" data-post-link-id="${resolvedPostId}"${needsHydration ? ' data-post-link-needs-hydration="1"' : ''}>
+        ${announcementHtml}
+        <a href="${href}" class="post-linked-material__card${previewImage ? '' : ' post-linked-material__card--no-image'}">
+          ${imageHtml || '<div class="post-linked-material__image" data-post-link-image hidden></div>'}
+          <div class="post-linked-material__content">
+            ${metaHtml}
+            <div class="post-linked-material__title" data-post-link-title>${titleText}</div>
+            ${previewTextHtml}
+            <span class="post-linked-material__action">Открыть материал</span>
+          </div>
+        </a>
       </div>`
     }
 
@@ -1041,6 +1207,9 @@
         </blockquote>`;
       case 'code':
         return `<pre><code>${block.data.code}</code></pre>`;
+      case 'delimiter':
+      case 'divider':
+        return '<div class="post-divider" aria-hidden="true"></div>'
       case 'image':
         return processImage(block.data.file.url, '', block.data.file.alt || '', block.data.file.title || '', block.data.file.caption || '');
       case 'gallery':
@@ -1060,6 +1229,9 @@
       case 'movie_card':
       case 'movieCard':
         return renderMovieCardBlock(block.data)
+      case 'post_link':
+      case 'postlink':
+        return renderPostLinkBlock(block.data)
       case 'spoiler':
         return renderLegacySpoilerBlock(block.data)
       case 'music':
@@ -1080,16 +1252,7 @@
 
   function convertJsonToHtml(jsonContent: string): string {
     try {
-      let content;
-      
-      // Пробуем парсить как обычный JSON
-      try {
-        content = JSON.parse(jsonContent);
-      } catch {
-        // Если не получилось, пробуем десериализовать из base64
-        content = deserializeEditorModel(jsonContent);
-      }
-      
+      const content = parseSerializedEditorModel(jsonContent)
       if (!content.blocks) return '';
       
       // Обрабатываем мета-информацию
@@ -1389,6 +1552,17 @@
     return ''
   }
 
+  function extractPreviewPostLinkFromJson(content: any): string {
+    const blocks = Array.isArray(content?.blocks) ? content.blocks : []
+    for (const block of blocks) {
+      if (!block || typeof block !== 'object') continue
+      if (block.type !== 'post_link' && block.type !== 'postLink') continue
+      const html = processJsonBlock(block)
+      if (html) return html
+    }
+    return ''
+  }
+
   function extractFirstImageFromHtml(html: string): { url: string; alt: string; title: string } | null {
     if (browser) {
       const tempDiv = document.createElement('div');
@@ -1440,19 +1614,13 @@
     // Проверяем, является ли контент JSON или base64
     if (isJsonContent(html)) {
       try {
-        let content;
-        
-        // Пробуем парсить как обычный JSON
-        try {
-          content = JSON.parse(html);
-        } catch {
-          // Если не получилось, пробуем десериализовать из base64
-          content = deserializeEditorModel(html);
-        }
+        const content = parseSerializedEditorModel(html)
+        if (!content) return ''
         
         let previewContent = '';
         const previewParagraph = extractPreviewParagraphFromJson(content);
         const previewMovieCard = extractPreviewMovieCardFromJson(content)
+        const previewPostLink = extractPreviewPostLinkFromJson(content)
         let previewText = '';
         let previewImageUrl = content?.additional?.previewImage?.trim() || '';
         let previewImageAlt = 'Preview image';
@@ -1462,8 +1630,12 @@
           previewContent += previewMovieCard
         }
 
+        if (!previewContent && previewPostLink) {
+          previewContent += previewPostLink
+        }
+
         // Сначала добавляем изображение превью, если оно есть
-        if (!previewMovieCard && !previewImageUrl) {
+        if (!previewMovieCard && !previewPostLink && !previewImageUrl) {
           const fallbackImage = extractPreviewImageFromJson(content);
           if (fallbackImage?.url) {
             previewImageUrl = fallbackImage.url;
@@ -1472,7 +1644,7 @@
           }
         }
 
-        if (!previewMovieCard && previewImageUrl) {
+        if (!previewMovieCard && !previewPostLink && previewImageUrl) {
           previewContent += processImage(
             previewImageUrl,
             '',
@@ -1501,7 +1673,7 @@
         return previewParagraph || convertJsonToHtml(html);
       } catch (error) {
         console.error('Error processing JSON content:', error);
-        return html;
+        return looksLikeSerializedEditorModel(html) ? '' : html;
       }
     }
 
@@ -1582,9 +1754,10 @@
 
   function sanitizeHtml(html: string) {
     const withNoFollow = addTelegramNoFollow(html)
+    const withCompactLinks = normalizeLongLinks(withNoFollow)
     if (browser && DOMPurify) {
       // Обрабатываем изображения
-      const processedHtml = withNoFollow.replace(/<img[^>]+src="([^"]+)"[^>]*>/gi, (match, src) => {
+      const processedHtml = withCompactLinks.replace(/<img[^>]+src="([^"]+)"[^>]*>/gi, (match, src) => {
         return processImage(src, html);
       });
 
@@ -1639,14 +1812,21 @@
           'data-poll-id',
           'data-music-provider',
           'data-spoiler-open',
+          'data-post-link-id',
+          'data-post-link-needs-hydration',
+          'data-post-link-hydrated',
+          'data-post-link-title',
+          'data-post-link-text',
+          'data-post-link-image',
           'role',
           'tabindex',
           'aria-expanded',
+          'hidden',
         ],
       });
     }
     // Если мы на сервере или DOMPurify еще не загружен, возвращаем исходный HTML
-    return withNoFollow;
+    return withCompactLinks;
   }
 
   function escapeHtml(value: string): string {
@@ -1698,6 +1878,77 @@
           })
         }
         return `<a${pre}href=${quote}${href}${quote}${post} rel="nofollow noopener">`
+      }
+    )
+  }
+
+  function truncateMiddle(value: string, maxLength = 52): string {
+    if (value.length <= maxLength) return value
+    const visibleLength = Math.max(8, maxLength - 1)
+    const leftLength = Math.ceil(visibleLength * 0.6)
+    const rightLength = Math.max(4, visibleLength - leftLength)
+    return `${value.slice(0, leftLength)}…${value.slice(-rightLength)}`
+  }
+
+  function normalizeComparableUrl(value: string): string {
+    return value
+      .trim()
+      .replace(/^https?:\/\//i, '')
+      .replace(/^www\./i, '')
+      .replace(/\/+$/g, '')
+      .replace(/\s+/g, '')
+      .toLowerCase()
+  }
+
+  function buildCompactLinkLabel(href: string, maxLength = 52): string {
+    try {
+      const parsed = new URL(href)
+      const host = parsed.hostname.replace(/^www\./i, '')
+      const path = parsed.pathname === '/' ? '' : parsed.pathname
+      const query = parsed.search || ''
+      const hash = parsed.hash || ''
+      const visible = `${host}${path}${query}${hash}`
+      return truncateMiddle(visible, maxLength)
+    } catch {
+      return truncateMiddle(href, maxLength)
+    }
+  }
+
+  function normalizeLongLinks(html: string): string {
+    if (!html) return html
+
+    if (browser) {
+      const temp = document.createElement('div')
+      temp.innerHTML = html
+      temp.querySelectorAll('a[href]').forEach((link) => {
+        const href = link.getAttribute('href') || ''
+        const text = (link.textContent || '').trim()
+        if (!href || !text) return
+        if (normalizeComparableUrl(text) !== normalizeComparableUrl(href)) return
+
+        const compactLabel = buildCompactLinkLabel(href)
+        if (compactLabel === text) return
+
+        link.textContent = compactLabel
+        if (!link.getAttribute('title')) {
+          link.setAttribute('title', href)
+        }
+      })
+      return temp.innerHTML
+    }
+
+    return html.replace(
+      /<a\b([^>]*?)href=(["'])([^"']+)\2([^>]*)>([^<]+)<\/a>/gi,
+      (match, pre, quote, href, post, text) => {
+        const plainText = String(text || '').trim()
+        if (!plainText) return match
+        if (normalizeComparableUrl(plainText) !== normalizeComparableUrl(href)) return match
+
+        const compactLabel = buildCompactLinkLabel(href)
+        if (compactLabel === plainText) return match
+
+        const titleAttr = /\stitle=/.test(match) ? '' : ` title=${quote}${href}${quote}`
+        return `<a${pre}href=${quote}${href}${quote}${post}${titleAttr}>${escapeHtml(compactLabel)}</a>`
       }
     )
   }
@@ -1757,6 +2008,7 @@
     element?.addEventListener('keydown', keydownHandler)
     setTimeout(setupGalleries, 0);
     setTimeout(setupImageComparisons, 0);
+    void hydratePostLinkCards()
     setTimeout(() => {
       if (!element) return
       if (!collapsible || showFullBody) {
@@ -1785,6 +2037,7 @@
     }
     setTimeout(setupGalleries, 0);
     setTimeout(setupImageComparisons, 0);
+    void hydratePostLinkCards()
     setTimeout(() => {
       if (!element) return
       if (!collapsible || showFullBody) {
@@ -1933,12 +2186,46 @@
     min-width: 0;
   }
 
+  :global(.post-content a) {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
   :global(.post-content blockquote footer) {
     @apply mt-2 text-sm text-slate-500 dark:text-zinc-400 not-italic;
   }
 
   :global(.post-content .post-gallery) {
     @apply my-4;
+  }
+
+  :global(.post-content .post-divider) {
+    margin: 1.35rem 0;
+    height: 1px;
+    border-radius: 999px;
+    background:
+      linear-gradient(
+        90deg,
+        rgba(148, 163, 184, 0) 0%,
+        rgba(148, 163, 184, 0.48) 18%,
+        rgba(148, 163, 184, 0.82) 50%,
+        rgba(148, 163, 184, 0.48) 82%,
+        rgba(148, 163, 184, 0) 100%
+      );
+    box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.05);
+  }
+
+  :global(.dark .post-content .post-divider) {
+    background:
+      linear-gradient(
+        90deg,
+        rgba(63, 63, 70, 0) 0%,
+        rgba(103, 232, 249, 0.2) 18%,
+        rgba(56, 189, 248, 0.42) 50%,
+        rgba(103, 232, 249, 0.2) 82%,
+        rgba(63, 63, 70, 0) 100%
+      );
+    box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.05);
   }
 
   :global(.post-content .post-gallery img) {
@@ -2193,6 +2480,145 @@
 
   :global(.post-content .post-movie-card__meta-link:hover) {
     color: #fbbf24;
+  }
+
+  :global(.post-content .post-linked-material) {
+    margin: 1rem 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+  }
+
+  :global(.post-content .post-linked-material__card) {
+    display: grid;
+    grid-template-columns: minmax(0, 144px) minmax(0, 1fr);
+    gap: 0.85rem;
+    align-items: stretch;
+    border-radius: 1rem;
+    border: 1px solid rgba(251, 191, 36, 0.4);
+    background:
+      radial-gradient(130% 140% at 0% 0%, rgba(251, 191, 36, 0.24), rgba(251, 191, 36, 0) 60%),
+      linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.9));
+    color: inherit;
+    text-decoration: none;
+    overflow: hidden;
+    transition:
+      transform 0.18s ease,
+      border-color 0.18s ease,
+      box-shadow 0.18s ease;
+  }
+
+  :global(.post-content .post-linked-material__card--no-image) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  :global(.post-content .post-linked-material__card:hover) {
+    transform: translateY(-1px);
+    border-color: rgba(251, 191, 36, 0.5);
+    box-shadow: 0 16px 30px rgba(15, 23, 42, 0.16);
+    text-decoration: none;
+  }
+
+  :global(.post-content .post-linked-material__image) {
+    min-height: 140px;
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(15, 23, 42, 0.5);
+  }
+
+  :global(.post-content .post-linked-material__image img) {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+  }
+
+  :global(.post-content .post-linked-material__content) {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    padding: 0.9rem;
+  }
+
+  :global(.post-content .post-linked-material__meta) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem 0.8rem;
+    align-items: center;
+  }
+
+  :global(.post-content .post-linked-material__rubric),
+  :global(.post-content .post-linked-material__author) {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.72rem;
+    line-height: 1.2;
+    border-radius: 999px;
+    padding: 0.24rem 0.58rem;
+    background: rgba(15, 23, 42, 0.42);
+  }
+
+  :global(.post-content .post-linked-material__rubric) {
+    color: #fde68a;
+    font-weight: 700;
+    border: 1px solid rgba(251, 191, 36, 0.38);
+  }
+
+  :global(.post-content .post-linked-material__author) {
+    color: #cbd5e1;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+  }
+
+  :global(.post-content .post-linked-material__rubric-icon) {
+    width: 0.98rem;
+    height: 0.98rem;
+    border-radius: 9999px;
+    object-fit: cover;
+  }
+
+  :global(.post-content .post-linked-material__title) {
+    margin: 0;
+    color: #fff;
+    font-size: 1.2rem;
+    line-height: 1.2;
+    font-weight: 700;
+  }
+
+  :global(.post-content .post-linked-material__text) {
+    margin: 0;
+    color: #cbd5e1;
+    font-size: 0.88rem;
+    line-height: 1.55;
+  }
+
+  :global(.post-content .post-linked-material__note) {
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 0.7rem;
+    background: rgba(15, 23, 42, 0.42);
+    padding: 0.48rem 0.62rem;
+  }
+
+  :global(.post-content .post-linked-material__note p) {
+    margin: 0;
+    color: #f8fafc;
+    font-size: 0.86rem;
+    line-height: 1.35;
+  }
+
+  :global(.post-content .post-linked-material__action) {
+    display: inline-flex;
+    width: fit-content;
+    align-items: center;
+    gap: 0.4rem;
+    border-radius: 999px;
+    border: 1px solid rgba(251, 191, 36, 0.38);
+    background: rgba(15, 23, 42, 0.42);
+    color: #fde68a;
+    font-size: 0.76rem;
+    line-height: 1.1;
+    font-weight: 700;
+    padding: 0.36rem 0.68rem;
   }
 
   :global(.post-content .post-movie-time) {
@@ -2475,6 +2901,18 @@
   }
 
   @media (max-width: 640px) {
+    :global(.post-content .post-linked-material__card) {
+      grid-template-columns: 1fr;
+    }
+
+    :global(.post-content .post-linked-material__image) {
+      min-height: 180px;
+    }
+
+    :global(.post-content .post-linked-material__content) {
+      padding: 0 0.85rem 0.85rem;
+    }
+
     :global(.post-content .post-movie-card) {
       grid-template-columns: 1fr;
       gap: 0.6rem;
