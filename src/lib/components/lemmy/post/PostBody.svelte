@@ -924,6 +924,54 @@
       </div>`
     }
 
+    const renderInlinePollBlock = (raw: any): string => {
+      if (!isTemplateEditorBlockEnabled(template?.type ?? '', 'poll')) return ''
+
+      const question = typeof raw?.question === 'string' ? raw.question.trim() : ''
+      const allowsMultipleAnswers = Boolean(raw?.allows_multiple_answers)
+      const options = Array.isArray(raw?.options)
+        ? raw.options
+            .map((item: unknown) => (typeof item === 'string' ? item.trim() : ''))
+            .filter(Boolean)
+            .slice(0, 10)
+        : []
+      if (!question || options.length < 2) return ''
+
+      const uidSource =
+        typeof raw?.uid === 'string' && raw.uid.trim()
+          ? raw.uid.trim()
+          : `poll-${question
+              .split('')
+              .reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0)}`
+      const groupName = escapeHtml(uidSource.replace(/[^a-zA-Z0-9_-]/g, '-') || 'poll-block')
+      const inputType = allowsMultipleAnswers ? 'checkbox' : 'radio'
+      const modeLabel = allowsMultipleAnswers
+        ? 'Можно выбрать несколько вариантов'
+        : 'Можно выбрать только один вариант'
+      const optionsHtml = options
+        .map(
+          (option: string, index: number) => `<label class="post-inline-poll__option">
+              <span class="post-inline-poll__control">
+                <input type="${inputType}" name="${groupName}" value="${index}" />
+                <span class="post-inline-poll__marker" aria-hidden="true"></span>
+              </span>
+              <span class="post-inline-poll__option-text">${escapeHtml(option)}</span>
+            </label>`
+        )
+        .join('')
+
+      return `<div class="post-inline-poll">
+        <div class="post-inline-poll__head">
+          <div class="post-inline-poll__eyebrow">Опрос</div>
+          <div class="post-inline-poll__question">${escapeHtml(question)}</div>
+          <div class="post-inline-poll__mode">${modeLabel}</div>
+        </div>
+        <div class="post-inline-poll__options">
+          ${optionsHtml}
+        </div>
+      </div>`
+    }
+
     const renderMovieTimeBlock = (raw: any): string => {
       if (!isTemplateEditorBlockEnabled(template?.type ?? '', 'movie_time')) return ''
       const rawTime = typeof raw?.time === 'string' ? raw.time.trim() : ''
@@ -1207,6 +1255,8 @@
         </blockquote>`;
       case 'code':
         return `<pre><code>${block.data.code}</code></pre>`;
+      case 'poll':
+        return renderInlinePollBlock(block.data)
       case 'delimiter':
       case 'divider':
         return '<div class="post-divider" aria-hidden="true"></div>'
@@ -2226,6 +2276,118 @@
         rgba(63, 63, 70, 0) 100%
       );
     box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.05);
+  }
+
+  :global(.post-content .post-inline-poll) {
+    margin: 1.1rem 0;
+    border-radius: 1rem;
+    border: 1px solid rgba(16, 185, 129, 0.28);
+    background:
+      radial-gradient(130% 140% at 0% 0%, rgba(52, 211, 153, 0.18), rgba(52, 211, 153, 0) 60%),
+      linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.9));
+    color: #e2e8f0;
+    padding: 0.9rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+  }
+
+  :global(.post-content .post-inline-poll__head) {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  :global(.post-content .post-inline-poll__eyebrow) {
+    color: #86efac;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  :global(.post-content .post-inline-poll__question) {
+    color: #fff;
+    font-size: 1.02rem;
+    font-weight: 700;
+    line-height: 1.3;
+  }
+
+  :global(.post-content .post-inline-poll__mode) {
+    color: #bbf7d0;
+    font-size: 0.8rem;
+    line-height: 1.4;
+  }
+
+  :global(.post-content .post-inline-poll__options) {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+
+  :global(.post-content .post-inline-poll__option) {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.72rem;
+    align-items: start;
+    padding: 0.7rem 0.78rem;
+    border-radius: 0.82rem;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(15, 23, 42, 0.38);
+    cursor: pointer;
+    transition: border-color 0.18s ease, transform 0.18s ease, background 0.18s ease;
+  }
+
+  :global(.post-content .post-inline-poll__option:hover) {
+    transform: translateY(-1px);
+    border-color: rgba(52, 211, 153, 0.42);
+    background: rgba(15, 23, 42, 0.48);
+  }
+
+  :global(.post-content .post-inline-poll__control) {
+    position: relative;
+    width: 1.15rem;
+    height: 1.15rem;
+    margin-top: 0.1rem;
+    flex: 0 0 auto;
+  }
+
+  :global(.post-content .post-inline-poll__control input) {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  :global(.post-content .post-inline-poll__marker) {
+    position: absolute;
+    inset: 0;
+    border-radius: 999px;
+    border: 1px solid rgba(134, 239, 172, 0.5);
+    background: rgba(15, 23, 42, 0.5);
+    transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+  }
+
+  :global(.post-content .post-inline-poll__control input[type='checkbox'] + .post-inline-poll__marker) {
+    border-radius: 0.35rem;
+  }
+
+  :global(.post-content .post-inline-poll__control input:checked + .post-inline-poll__marker) {
+    border-color: rgba(110, 231, 183, 0.92);
+    background:
+      radial-gradient(circle at 50% 50%, rgba(16, 185, 129, 0.95) 0 34%, transparent 35%),
+      rgba(16, 185, 129, 0.18);
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.14);
+  }
+
+  :global(.post-content .post-inline-poll__option-text) {
+    color: #f8fafc;
+    font-size: 0.92rem;
+    line-height: 1.45;
+  }
+
+  :global(.dark .post-content .post-inline-poll) {
+    border-color: rgba(52, 211, 153, 0.22);
   }
 
   :global(.post-content .post-gallery img) {

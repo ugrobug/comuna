@@ -73,6 +73,7 @@
     unorderedList: `${iconPath}/list-ul.svg`,
     orderedList: `${iconPath}/list-ol.svg`,
     checklist: `${iconPath}/list-check.svg`,
+    poll: `${iconPath}/list-check.svg`,
     clock: `${iconPath}/clock.svg`,
     music: `${iconPath}/music-note.svg`,
     map: `${iconPath}/geo-alt.svg`,
@@ -583,6 +584,228 @@
 
     save() {
       return {}
+    }
+  }
+
+  class PollTool {
+    private data: {
+      uid: string
+      question: string
+      allows_multiple_answers: boolean
+      options: string[]
+    }
+    private questionInput: HTMLTextAreaElement | null = null
+    private multipleInput: HTMLInputElement | null = null
+    private optionsContainer: HTMLElement | null = null
+    private preview: HTMLElement | null = null
+
+    static get toolbox() {
+      return {
+        title: 'Опрос',
+        icon: `<img src="${icons.poll}" width="16" height="16" />`,
+      }
+    }
+
+    constructor({ data }: { data?: any }) {
+      const rawOptions = Array.isArray(data?.options)
+        ? data.options
+            .map((item: unknown) => (typeof item === 'string' ? item.trim() : ''))
+            .filter(Boolean)
+            .slice(0, 10)
+        : []
+
+      this.data = {
+        uid:
+          typeof data?.uid === 'string' && data.uid.trim()
+            ? data.uid.trim()
+            : `poll-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+        question: typeof data?.question === 'string' ? data.question.trim() : '',
+        allows_multiple_answers: Boolean(data?.allows_multiple_answers),
+        options: rawOptions.length ? rawOptions : ['', ''],
+      }
+    }
+
+    private syncPreview() {
+      if (!this.preview) return
+      const question = this.questionInput?.value.trim() || this.data.question
+      const allowsMultiple = this.multipleInput?.checked ?? this.data.allows_multiple_answers
+      const options = this.collectOptions()
+      const optionTypeLabel = allowsMultiple ? 'Можно выбрать несколько вариантов' : 'Только один вариант'
+      const optionItems = options.length
+        ? options
+            .map(
+              (option, index) => `
+                <div class="poll-tool__preview-option">
+                  <span class="poll-tool__preview-index">${index + 1}</span>
+                  <span>${this.escapeHtml(option)}</span>
+                </div>
+              `
+            )
+            .join('')
+        : '<div class="poll-tool__preview-empty">Добавь варианты ответов</div>'
+
+      this.preview.innerHTML = `
+        <div class="poll-tool__preview-head">
+          <div class="poll-tool__preview-question">${this.escapeHtml(question || 'Вопрос опроса')}</div>
+          <div class="poll-tool__preview-mode">${optionTypeLabel}</div>
+        </div>
+        <div class="poll-tool__preview-options">${optionItems}</div>
+      `
+    }
+
+    private escapeHtml(value: string): string {
+      return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+    }
+
+    private collectOptions(): string[] {
+      if (!this.optionsContainer) {
+        return this.data.options.filter(Boolean).slice(0, 10)
+      }
+      const values = Array.from(
+        this.optionsContainer.querySelectorAll<HTMLInputElement>('.poll-tool__option-input')
+      )
+        .map((input) => input.value.trim())
+        .filter(Boolean)
+        .slice(0, 10)
+      this.data.options = values.length ? values : ['', '']
+      return values
+    }
+
+    private renderOptions() {
+      if (!this.optionsContainer) return
+      this.optionsContainer.innerHTML = ''
+      const options = this.data.options.slice(0, 10)
+
+      options.forEach((value, index) => {
+        const row = document.createElement('div')
+        row.classList.add('poll-tool__option-row')
+
+        const indexBadge = document.createElement('span')
+        indexBadge.classList.add('poll-tool__option-index')
+        indexBadge.textContent = String(index + 1)
+
+        const input = document.createElement('input')
+        input.type = 'text'
+        input.classList.add('poll-tool__option-input')
+        input.placeholder = `Вариант ${index + 1}`
+        input.value = value
+        input.addEventListener('input', () => {
+          this.data.options[index] = input.value
+          this.syncPreview()
+        })
+
+        const removeButton = document.createElement('button')
+        removeButton.type = 'button'
+        removeButton.classList.add('poll-tool__remove')
+        removeButton.textContent = 'Удалить'
+        removeButton.disabled = options.length <= 2
+        removeButton.addEventListener('click', () => {
+          if (this.data.options.length <= 2) return
+          this.data.options.splice(index, 1)
+          this.renderOptions()
+          this.syncPreview()
+        })
+
+        row.appendChild(indexBadge)
+        row.appendChild(input)
+        row.appendChild(removeButton)
+        this.optionsContainer?.appendChild(row)
+      })
+
+      const addButton = document.createElement('button')
+      addButton.type = 'button'
+      addButton.classList.add('poll-tool__add')
+      addButton.textContent =
+        this.data.options.length >= 10 ? 'Максимум 10 вариантов' : 'Добавить вариант'
+      addButton.disabled = this.data.options.length >= 10
+      addButton.addEventListener('click', () => {
+        if (this.data.options.length >= 10) return
+        this.data.options.push('')
+        this.renderOptions()
+      })
+      this.optionsContainer.appendChild(addButton)
+    }
+
+    render() {
+      const wrapper = document.createElement('div')
+      wrapper.classList.add('poll-tool')
+
+      const title = document.createElement('div')
+      title.classList.add('poll-tool__title')
+      title.textContent = 'Опрос'
+
+      const questionLabel = document.createElement('label')
+      questionLabel.classList.add('poll-tool__label')
+      questionLabel.textContent = 'Вопрос'
+
+      const questionInput = document.createElement('textarea')
+      questionInput.classList.add('poll-tool__textarea')
+      questionInput.rows = 3
+      questionInput.placeholder = 'Например: Какой фильм Финчера сильнее всего?'
+      questionInput.value = this.data.question
+      questionInput.addEventListener('input', () => {
+        this.data.question = questionInput.value
+        this.syncPreview()
+      })
+      this.questionInput = questionInput
+
+      const multipleToggle = document.createElement('label')
+      multipleToggle.classList.add('poll-tool__toggle')
+
+      const multipleInput = document.createElement('input')
+      multipleInput.type = 'checkbox'
+      multipleInput.checked = this.data.allows_multiple_answers
+      multipleInput.addEventListener('change', () => {
+        this.data.allows_multiple_answers = multipleInput.checked
+        this.syncPreview()
+      })
+      this.multipleInput = multipleInput
+
+      const multipleLabel = document.createElement('span')
+      multipleLabel.textContent = 'Может быть несколько ответов'
+
+      multipleToggle.appendChild(multipleInput)
+      multipleToggle.appendChild(multipleLabel)
+
+      const optionsLabel = document.createElement('label')
+      optionsLabel.classList.add('poll-tool__label')
+      optionsLabel.textContent = 'Варианты ответа'
+
+      const optionsContainer = document.createElement('div')
+      optionsContainer.classList.add('poll-tool__options')
+      this.optionsContainer = optionsContainer
+
+      const preview = document.createElement('div')
+      preview.classList.add('poll-tool__preview')
+      this.preview = preview
+
+      wrapper.appendChild(title)
+      wrapper.appendChild(questionLabel)
+      wrapper.appendChild(questionInput)
+      wrapper.appendChild(multipleToggle)
+      wrapper.appendChild(optionsLabel)
+      wrapper.appendChild(optionsContainer)
+      wrapper.appendChild(preview)
+
+      this.renderOptions()
+      this.syncPreview()
+
+      return wrapper
+    }
+
+    save() {
+      const options = this.collectOptions()
+      return {
+        uid: this.data.uid,
+        question: this.questionInput?.value.trim() || '',
+        allows_multiple_answers: this.multipleInput?.checked || false,
+        options,
+      }
     }
   }
 
@@ -2926,6 +3149,11 @@
               },
             }
           : {}),
+        ...(enabledTemplateBlockTypes.has('poll')
+          ? {
+              poll: PollTool,
+            }
+          : {}),
         ...(enabledTemplateBlockTypes.has('divider')
           ? {
               divider: DividerTool,
@@ -3990,6 +4218,196 @@
     display: flex;
     align-items: center;
     justify-content: center;
+  }
+
+  :global(.poll-tool) {
+    border-radius: 0.9rem;
+    border: 1px solid rgba(16, 185, 129, 0.36);
+    background:
+      radial-gradient(120% 120% at 0% 0%, rgba(52, 211, 153, 0.16), rgba(52, 211, 153, 0) 60%),
+      linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.9));
+    color: #e2e8f0;
+    padding: 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+  }
+
+  :global(.dark .poll-tool) {
+    border-color: rgba(52, 211, 153, 0.42);
+  }
+
+  :global(.poll-tool__title) {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #fff;
+  }
+
+  :global(.poll-tool__label) {
+    color: #d1fae5;
+    font-size: 0.76rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+
+  :global(.poll-tool__textarea),
+  :global(.poll-tool__option-input) {
+    width: 100%;
+    border-radius: 0.72rem;
+    border: 1px solid rgba(52, 211, 153, 0.28);
+    background: rgba(15, 23, 42, 0.45);
+    color: #f8fafc;
+    font-size: 0.86rem;
+    line-height: 1.35;
+    padding: 0.58rem 0.72rem;
+  }
+
+  :global(.poll-tool__textarea) {
+    resize: vertical;
+    min-height: 4.5rem;
+  }
+
+  :global(.poll-tool__textarea::placeholder),
+  :global(.poll-tool__option-input::placeholder) {
+    color: #86efac;
+  }
+
+  :global(.poll-tool__textarea:focus),
+  :global(.poll-tool__option-input:focus) {
+    outline: none;
+    border-color: rgba(52, 211, 153, 0.82);
+    box-shadow: 0 0 0 2px rgba(52, 211, 153, 0.14);
+  }
+
+  :global(.poll-tool__toggle) {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    width: fit-content;
+    padding: 0.45rem 0.7rem;
+    border-radius: 999px;
+    border: 1px solid rgba(52, 211, 153, 0.26);
+    background: rgba(15, 23, 42, 0.38);
+    color: #f0fdf4;
+    font-size: 0.82rem;
+    cursor: pointer;
+  }
+
+  :global(.poll-tool__toggle input) {
+    accent-color: rgb(16 185 129);
+  }
+
+  :global(.poll-tool__options) {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+
+  :global(.poll-tool__option-row) {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 0.55rem;
+    align-items: center;
+  }
+
+  :global(.poll-tool__option-index) {
+    width: 1.8rem;
+    height: 1.8rem;
+    border-radius: 999px;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(52, 211, 153, 0.28);
+    background: rgba(15, 23, 42, 0.4);
+    color: #a7f3d0;
+    font-size: 0.78rem;
+    font-weight: 700;
+  }
+
+  :global(.poll-tool__remove),
+  :global(.poll-tool__add) {
+    border: 1px solid rgba(52, 211, 153, 0.24);
+    background: rgba(15, 23, 42, 0.42);
+    color: #d1fae5;
+    border-radius: 0.7rem;
+    font-size: 0.78rem;
+    line-height: 1.2;
+    padding: 0.55rem 0.72rem;
+    transition: border-color 0.18s ease, transform 0.18s ease;
+  }
+
+  :global(.poll-tool__remove:hover:not(:disabled)),
+  :global(.poll-tool__add:hover:not(:disabled)) {
+    border-color: rgba(52, 211, 153, 0.48);
+    transform: translateY(-1px);
+  }
+
+  :global(.poll-tool__remove:disabled),
+  :global(.poll-tool__add:disabled) {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  :global(.poll-tool__preview) {
+    border-radius: 0.78rem;
+    border: 1px solid rgba(52, 211, 153, 0.24);
+    background: rgba(15, 23, 42, 0.42);
+    padding: 0.72rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+  }
+
+  :global(.poll-tool__preview-head) {
+    display: flex;
+    flex-direction: column;
+    gap: 0.22rem;
+  }
+
+  :global(.poll-tool__preview-question) {
+    color: #fff;
+    font-size: 0.94rem;
+    font-weight: 700;
+    line-height: 1.3;
+  }
+
+  :global(.poll-tool__preview-mode) {
+    color: #a7f3d0;
+    font-size: 0.78rem;
+    line-height: 1.35;
+  }
+
+  :global(.poll-tool__preview-options) {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  :global(.poll-tool__preview-option) {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    color: #e2e8f0;
+    font-size: 0.83rem;
+    line-height: 1.35;
+  }
+
+  :global(.poll-tool__preview-index) {
+    width: 1.45rem;
+    height: 1.45rem;
+    border-radius: 999px;
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    background: rgba(16, 185, 129, 0.16);
+    border: 1px solid rgba(52, 211, 153, 0.24);
+    color: #6ee7b7;
+    font-size: 0.72rem;
+    font-weight: 700;
+  }
+
+  :global(.poll-tool__preview-empty) {
+    color: #94a3b8;
+    font-size: 0.8rem;
   }
 
   :global(.divider-tool__line) {

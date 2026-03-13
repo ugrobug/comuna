@@ -49,6 +49,22 @@ const truncateText = (value: string, maxLength = 180): string => {
   return `${clean.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`
 }
 
+const normalizePreviewTextCandidate = (value: string): string => {
+  const raw = trimOrEmpty(value)
+  if (!raw) return ''
+
+  const parsed = parseSerializedEditorModel(raw)
+  if (parsed) {
+    return extractPreviewTextFromJson(parsed)
+  }
+
+  if (looksLikeSerializedEditorModel(raw)) {
+    return ''
+  }
+
+  return truncateText(stripHtmlTags(raw))
+}
+
 const extractPreviewTextFromJson = (content: any): string => {
   if (trimOrEmpty(content?.additional?.previewDescription)) {
     return truncateText(trimOrEmpty(content.additional.previewDescription))
@@ -239,8 +255,8 @@ export const buildPostLinkSnapshot = (post: PostLinkSnapshotSource): PostLinkSna
     extractTemplatePreviewImage(post.template) ||
     extractPreviewImageFromContent(rawContent)
   const previewText =
-    trimOrEmpty(post.preview_text) ||
-    trimOrEmpty(post.preview_description) ||
+    normalizePreviewTextCandidate(trimOrEmpty(post.preview_text)) ||
+    normalizePreviewTextCandidate(trimOrEmpty(post.preview_description)) ||
     extractPreviewTextFromContent(rawContent)
 
   const snapshot: PostLinkSnapshot = {

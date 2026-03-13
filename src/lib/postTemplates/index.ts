@@ -7,6 +7,7 @@ export type TemplateEditorBlockType =
   | 'image'
   | 'quote'
   | 'code'
+  | 'poll'
   | 'divider'
   | 'spoiler'
   | 'gallery'
@@ -110,6 +111,7 @@ const TEMPLATE_EDITOR_BLOCK_TYPE_VALUES = new Set<TemplateEditorBlockType>([
   'image',
   'quote',
   'code',
+  'poll',
   'divider',
   'spoiler',
   'gallery',
@@ -129,6 +131,7 @@ const ALL_TEMPLATE_EDITOR_BLOCK_OPTIONS: TemplateEditorBlockOption[] = [
   { type: 'image', label: 'Изображение' },
   { type: 'quote', label: 'Цитата' },
   { type: 'code', label: 'Код' },
+  { type: 'poll', label: 'Опрос' },
   { type: 'divider', label: 'Разделитель' },
   { type: 'spoiler', label: 'Спойлер' },
   { type: 'gallery', label: 'Галерея' },
