@@ -14,7 +14,6 @@
     buildComunPostCategoryUrl,
     buildComunPostsUrl,
     buildComunUrl,
-    buildComunVoteUrl,
     buildTagsEnsureUrl,
     type BackendComun,
     type BackendComunCategory,
@@ -40,7 +39,6 @@
   const scrollThreshold = 400
   let scrollRaf: number | null = null
   let categorySavingPostIds = new Set<number>()
-  let comunVoteSaving = false
 
   let settingsOpen = false
   let settingsLoading = false
@@ -219,11 +217,6 @@
   $: welcomePostView = comun?.welcome_post ? backendPostToPostView(comun.welcome_post) : null
   $: comunTopMembers = comun?.activity?.top_members ?? []
   $: comunParticipantsCount = comun?.activity?.participants_count ?? comunTopMembers.length
-  $: comunRating = comun?.rating ?? { score: 0, upvotes: 0, downvotes: 0, user_vote: 0 }
-  $: comunRatingScore = Number(comunRating?.score ?? 0)
-  $: comunRatingUpvotes = Number(comunRating?.upvotes ?? 0)
-  $: comunRatingDownvotes = Number(comunRating?.downvotes ?? 0)
-  $: comunUserVote = Number(comunRating?.user_vote ?? 0)
   $: minimumAuthorRatingToPost = Math.max(Number(comun?.minimum_author_rating_to_post ?? 0) || 0, 0)
   $: comunBacklogCategory =
     (comun?.categories ?? []).find((category) => category.slug === COMUN_BACKLOG_CATEGORY_SLUG) ?? null
@@ -678,53 +671,6 @@
       myFeedComuns: Array.from(next),
     }
     toast({ content: 'Посты этой комуны будут попадать в "Мою ленту"' })
-  }
-
-  const voteComun = async (value: 1 | -1) => {
-    const slug = (comun?.slug ?? '').trim()
-    if (!slug || comunVoteSaving) return
-    if (!$siteToken) {
-      const next = encodeURIComponent(`${$page.url.pathname}${$page.url.search}`)
-      goto(`/account?next=${next}`)
-      return
-    }
-    comunVoteSaving = true
-    try {
-      const response = await fetch(buildComunVoteUrl(slug), {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({ value }),
-      })
-      const payload = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        throw new Error(payload?.error || 'Не удалось сохранить голос')
-      }
-      if (payload?.rating && comun) {
-        comun = {
-          ...comun,
-          rating: payload.rating,
-        }
-      }
-      const appliedVote = Number(payload?.rating?.user_vote ?? 0)
-      if (appliedVote === 1) {
-        toast({
-          content: 'Разместите свой текущий или потенциальный кейс использования - это поможет команде',
-          type: 'success',
-        })
-      } else if (appliedVote === -1) {
-        toast({
-          content:
-            'Разместите пост с описанием, чем продукт не нравится и как сделать лучше - это очень поможет команде',
-          type: 'warning',
-        })
-      } else {
-        toast({ content: 'Голос по комуне снят' })
-      }
-    } catch (error) {
-      toast({ content: error instanceof Error ? error.message : 'Ошибка голосования', type: 'error' })
-    } finally {
-      comunVoteSaving = false
-    }
   }
 
   const authHeaders = () => {
@@ -1283,44 +1229,12 @@
           </div>
         </div>
         <div class="flex flex-wrap items-center gap-2">
-          <div class="inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50/80 dark:bg-zinc-800/50 px-2 py-2">
-            <div class="px-2 text-xs">
-              <div class="uppercase tracking-wide text-[10px] text-slate-500 dark:text-zinc-400">
-                Рейтинг
-              </div>
-              <div class="font-semibold text-slate-900 dark:text-zinc-100">
-                {comunRatingScore > 0 ? '+' : ''}{comunRatingScore}
-              </div>
-            </div>
-            <button
-              type="button"
-              class="rounded-lg border px-2 py-1 text-xs transition-colors disabled:opacity-60 disabled:cursor-not-allowed {comunUserVote === 1
-                ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300'
-                : 'border-slate-200 dark:border-zinc-700 hover:bg-white dark:hover:bg-zinc-900/80'}"
-              on:click={() => voteComun(1)}
-              disabled={comunVoteSaving}
-              title="Буду использовать"
-            >
-              Буду использовать · {comunRatingUpvotes}
-            </button>
-            <button
-              type="button"
-              class="rounded-lg border px-2 py-1 text-xs transition-colors disabled:opacity-60 disabled:cursor-not-allowed {comunUserVote === -1
-                ? 'border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-300'
-                : 'border-slate-200 dark:border-zinc-700 hover:bg-white dark:hover:bg-zinc-900/80'}"
-              on:click={() => voteComun(-1)}
-              disabled={comunVoteSaving}
-              title="Не нравится"
-            >
-              Не нравится · {comunRatingDownvotes}
-            </button>
-          </div>
           <Button
             color={isSubscribedToComun ? 'ghost' : undefined}
             on:click={toggleComunInMyFeed}
             title={isSubscribedToComun ? 'Убрать коммуну из Моей ленты' : 'Добавить коммуну в Мою ленту'}
           >
-            {isSubscribedToComun ? 'В моей ленте' : 'В мою ленту'}
+            {isSubscribedToComun ? 'Вы подписаны' : 'Подписаться'}
           </Button>
           {#if publicRoadmapUrl && roadmapCanOpenModal}
             <a
