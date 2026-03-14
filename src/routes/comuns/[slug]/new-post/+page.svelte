@@ -48,6 +48,7 @@
     label: string
     kind: 'site' | 'channel'
     username?: string
+    author_rating?: number | null
   }
   let publishIdentityOptions: PublishIdentityOption[] = []
   let createTemplateType: '' | PostTemplateType = ''
@@ -73,6 +74,14 @@
       .replace(/[_\s]+/g, '-')
       .replace(/-+/g, '-')
       .trim()
+
+  const formatRatingValue = (value?: number | null) => {
+    const normalized = Math.max(Number(value ?? 0) || 0, 0)
+    return new Intl.NumberFormat('ru-RU', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    }).format(normalized)
+  }
 
   const refreshComunAccess = async () => {
     if (!comun?.slug || !$siteToken) {
@@ -127,7 +136,8 @@
     }
     createCategoryAutofilledFromQuery = true
   }
-  $: canCreateInComun = Boolean($siteToken && comun?.can_moderate)
+  $: minimumAuthorRatingToPost = Math.max(Number(comun?.minimum_author_rating_to_post ?? 0) || 0, 0)
+  $: canCreateInComun = Boolean($siteToken && comun?.can_post)
   $: productTagName = comun?.product_tag?.name?.trim() ?? ''
   $: comunAllowedTemplateTypes = normalizeAllowedPostTemplateTypes(
     comun?.allowed_template_types ?? comun?.allowed_post_templates
@@ -154,25 +164,46 @@
     for (const author of $siteUser.authors ?? []) {
       items.push({
         value: `channel:${author.username}`,
-        label: `@${author.username}${author.title ? ` — ${author.title}` : ''}`,
+        label: `@${author.username}${author.title ? ` — ${author.title}` : ''} · рейтинг ${formatRatingValue(author.author_rating)}`,
         kind: 'channel',
         username: author.username,
+        author_rating: typeof author.author_rating === 'number' ? author.author_rating : null,
       })
     }
     return items
   })()
   $: if ($siteUser && !createAuthorChoice) {
-    createAuthorChoice = $siteUser.authors?.length
-      ? `channel:${$siteUser.authors[0]?.username || ''}`
-      : SITE_AUTHOR_CHOICE
+    const eligibleOption =
+      publishIdentityOptions.find(
+        (option) =>
+          option.kind === 'channel' &&
+          Math.max(Number(option.author_rating ?? 0) || 0, 0) >= minimumAuthorRatingToPost
+      ) ?? null
+    createAuthorChoice =
+      eligibleOption?.value ??
+      ($siteUser.authors?.length ? `channel:${$siteUser.authors[0]?.username || ''}` : SITE_AUTHOR_CHOICE)
   }
+  $: selectedAuthorOption =
+    publishIdentityOptions.find((option) => option.value === createAuthorChoice) ?? null
+  $: selectedAuthorRating =
+    selectedAuthorOption?.kind === 'channel'
+      ? Math.max(Number(selectedAuthorOption.author_rating ?? 0) || 0, 0)
+      : null
+  $: selectedAuthorBelowMinimum =
+    minimumAuthorRatingToPost > 0 &&
+    selectedAuthorOption?.kind === 'channel' &&
+    selectedAuthorRating !== null &&
+    selectedAuthorRating < minimumAuthorRatingToPost
 
   const createPost = async () => {
     if (!$siteUser || !comun?.slug) return
     createError = ''
 
     if (!canCreateInComun) {
-      createError = 'Добавлять записи в коммуну могут только модераторы.'
+      createError =
+        minimumAuthorRatingToPost > 0
+          ? `Публикация в этой комуне доступна авторам с рейтингом от ${formatRatingValue(minimumAuthorRatingToPost)}.`
+          : 'Сейчас вы не можете публиковать записи в эту коммуну.'
       return
     }
     if (!productTagName) {
@@ -263,10 +294,21 @@
       </div>
     {:else if authCheckDone && !canCreateInComun}
       <p class="text-sm text-slate-500 dark:text-zinc-400">
-        Добавлять записи в коммуну могут только её модераторы.
+        {#if minimumAuthorRatingToPost > 0}
+          Публикация в этой комуне доступна авторам с рейтингом от
+          {formatRatingValue(minimumAuthorRatingToPost)}.
+        {:else}
+          Сейчас вы не можете публиковать записи в эту коммуну.
+        {/if}
       </p>
     {:else}
       <div class="flex flex-col gap-4">
+        {#if minimumAuthorRatingToPost > 0}
+          <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+            Порог публикации: рейтинг автора от {formatRatingValue(minimumAuthorRatingToPost)}.
+          </div>
+        {/if}
+
         <div class="rounded-lg border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/40 px-3 py-2 text-sm text-slate-700 dark:text-zinc-300">
           {#if productTagName}
             Тег продукта <span class="font-semibold">#{productTagName}</span> будет добавлен автоматически.
@@ -287,6 +329,13 @@
               {/each}
             </select>
           </label>
+        {/if}
+
+        {#if selectedAuthorBelowMinimum}
+          <div class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-200">
+            У выбранного автора рейтинг {formatRatingValue(selectedAuthorRating)}, а для публикации в этой
+            комуне нужен рейтинг от {formatRatingValue(minimumAuthorRatingToPost)}.
+          </div>
         {/if}
 
         {#if comunCategories.length}

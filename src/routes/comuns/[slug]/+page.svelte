@@ -202,9 +202,17 @@
   $: visiblePosts = posts.filter(isAuthorVisible)
 
   const isModerator = () => Boolean(comun?.can_moderate && $siteToken)
+  const canPostInComun = () => Boolean(comun?.can_post && $siteToken)
   const canManageComunModerators = () => Boolean(comun?.can_manage_moderators && $siteToken)
   const isComunCreator = () =>
     Boolean($siteToken && $siteUser?.id && comun?.creator?.id && $siteUser.id === comun.creator.id)
+  const formatRatingValue = (value?: number | null) => {
+    const normalized = Math.max(Number(value ?? 0) || 0, 0)
+    return new Intl.NumberFormat('ru-RU', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    }).format(normalized)
+  }
 
   $: siteTitle = env.PUBLIC_SITE_TITLE || 'Comuna'
   $: comunName = comun?.name || 'Комуна'
@@ -216,6 +224,7 @@
   $: comunRatingUpvotes = Number(comunRating?.upvotes ?? 0)
   $: comunRatingDownvotes = Number(comunRating?.downvotes ?? 0)
   $: comunUserVote = Number(comunRating?.user_vote ?? 0)
+  $: minimumAuthorRatingToPost = Math.max(Number(comun?.minimum_author_rating_to_post ?? 0) || 0, 0)
   $: comunBacklogCategory =
     (comun?.categories ?? []).find((category) => category.slug === COMUN_BACKLOG_CATEGORY_SLUG) ?? null
   $: myFeedComunSlugs = ($userSettings.myFeedComuns ?? []).map((slug) => slug.trim()).filter(Boolean)
@@ -309,6 +318,10 @@
       logo_url: (value?.logo_url ?? '').trim(),
       product_description: (value?.product_description ?? '').trim(),
       target_audience: (value?.target_audience ?? '').trim(),
+      minimum_author_rating_to_post: Math.max(
+        Number(value?.minimum_author_rating_to_post ?? 0) || 0,
+        0
+      ),
       hide_from_home: Boolean(value?.hide_from_home),
       hide_from_fresh: Boolean(value?.hide_from_fresh),
       product_tag_id: value?.product_tag_id ?? value?.product_tag?.id ?? null,
@@ -1006,6 +1019,10 @@
           logo_url: settingsDraft.logo_url ?? '',
           product_description: settingsDraft.product_description ?? '',
           target_audience: settingsDraft.target_audience ?? '',
+          minimum_author_rating_to_post: Math.max(
+            Number(settingsDraft.minimum_author_rating_to_post ?? 0) || 0,
+            0
+          ),
           hide_from_home: canManageComunModerators() ? Boolean(settingsDraft.hide_from_home) : undefined,
           hide_from_fresh: canManageComunModerators() ? Boolean(settingsDraft.hide_from_fresh) : undefined,
           moderator_ids: canManageComunModerators() ? comunModeratorIds(settingsDraft) : undefined,
@@ -1533,14 +1550,20 @@
     </Portal>
   {/if}
 
-  {#if isModerator() && comun?.slug}
+  {#if comun?.slug}
     <section class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-4 sm:p-5">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div class="text-sm text-slate-600 dark:text-zinc-400">
-          Опубликуйте запись прямо в коммуну. Тег продукта будет подставлен автоматически.
+          {#if canPostInComun()}
+            Опубликуйте запись прямо в коммуну. Тег продукта будет подставлен автоматически.
+          {:else if minimumAuthorRatingToPost > 0}
+            Публикация открыта для авторов с рейтингом от {formatRatingValue(minimumAuthorRatingToPost)}.
+          {:else}
+            Войдите, чтобы опубликовать запись прямо в коммуну.
+          {/if}
         </div>
-        <Button on:click={() => goto(`/comuns/${comun.slug}/new-post`)}>
-          Добавить
+        <Button on:click={openRoadmapSubmitFlow}>
+          {canPostInComun() ? 'Добавить' : 'Открыть форму'}
         </Button>
       </div>
     </section>
@@ -1724,6 +1747,23 @@
         <label class="flex flex-col gap-1">
           <span class="text-sm text-slate-700 dark:text-zinc-300">Целевая аудитория</span>
           <textarea bind:value={settingsDraft.target_audience} rows="2" class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"></textarea>
+        </label>
+
+        <label class="flex flex-col gap-1">
+          <span class="text-sm text-slate-700 dark:text-zinc-300">
+            Минимальный рейтинг автора для публикации
+          </span>
+          <input
+            bind:value={settingsDraft.minimum_author_rating_to_post}
+            type="number"
+            min="0"
+            step="0.5"
+            class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"
+          />
+          <span class="text-xs text-slate-500 dark:text-zinc-400">
+            `0` означает, что писать в коммуну может любой автор. Сейчас установлен порог от
+            {formatRatingValue(settingsDraft.minimum_author_rating_to_post)}.
+          </span>
         </label>
 
         {#if canManageComunModerators()}

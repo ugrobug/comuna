@@ -377,6 +377,7 @@ export type BackendComun = {
   logo_url?: string | null
   product_description?: string | null
   target_audience?: string | null
+  minimum_author_rating_to_post?: number
   rating?: BackendComunRating
   hide_from_home?: boolean
   hide_from_fresh?: boolean
@@ -387,6 +388,7 @@ export type BackendComun = {
   sort_order?: number
   can_moderate?: boolean
   can_manage_moderators?: boolean
+  can_post?: boolean
   creator?: { id?: number; username?: string | null; display_name?: string | null }
   moderators?: Array<{ id: number; username: string; display_name?: string | null }>
   moderators_count?: number

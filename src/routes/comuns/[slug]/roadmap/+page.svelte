@@ -219,7 +219,7 @@
 
   const openSubmitFlow = () => {
     if (!comun?.slug) return
-    if ($siteToken && comun?.can_moderate) {
+    if ($siteToken) {
       goto(`/comuns/${comun.slug}/new-post`)
       return
     }
@@ -406,7 +406,7 @@
             </div>
             <div class="mt-2 flex flex-wrap gap-2">
               <Button size="sm" on:click={openSubmitFlow}>
-                {comun?.can_moderate && $siteToken ? 'Добавить карточку' : 'Предложить идею'}
+                {$siteToken ? 'Добавить карточку' : 'Предложить идею'}
               </Button>
               {#if comun?.slug}
                 <a href={`/comuns/${comun.slug}`} class="ghost-link ghost-link--small">
@@ -492,12 +492,12 @@
           <div class="mt-4 flex flex-wrap gap-2">
             {#if comun?.slug}
               <a href={`/comuns/${comun.slug}`} class="ghost-link">Открыть коммуну</a>
-              {#if comun?.can_moderate && $siteToken}
+              {#if $siteToken}
                 <a href={`/comuns/${comun.slug}/settings`} class="ghost-link">Настройки комуны</a>
               {/if}
             {/if}
             <Button on:click={openSubmitFlow}>
-              {comun?.can_moderate && $siteToken ? 'Добавить карточку' : 'Предложить идею'}
+              {$siteToken ? 'Добавить карточку' : 'Предложить идею'}
             </Button>
           </div>
         </section>

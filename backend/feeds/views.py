@@ -1153,6 +1153,82 @@ def _author_rating_value(total_rating: int | None) -> float:
     return round((total_rating or 0) * 0.05, 2)
 
 
+def _format_rating_value(value: float | int | None) -> str:
+    try:
+        normalized = round(float(value or 0), 2)
+    except (TypeError, ValueError):
+        normalized = 0.0
+    if not math.isfinite(normalized) or normalized < 0:
+        normalized = 0.0
+    return f"{normalized:.2f}".rstrip("0").rstrip(".") or "0"
+
+
+def _normalize_comun_minimum_author_rating(value: object) -> tuple[float | None, str | None]:
+    if value in (None, ""):
+        return 0.0, None
+    raw_value = str(value).strip().replace(",", ".")
+    try:
+        normalized = round(float(raw_value), 2)
+    except (TypeError, ValueError):
+        return None, "invalid minimum author rating"
+    if not math.isfinite(normalized) or normalized < 0:
+        return None, "invalid minimum author rating"
+    return normalized, None
+
+
+def _comun_minimum_author_rating_value(comun: Comun) -> float:
+    try:
+        normalized = round(float(getattr(comun, "minimum_author_rating_to_post", 0) or 0), 2)
+    except (TypeError, ValueError):
+        normalized = 0.0
+    if not math.isfinite(normalized) or normalized < 0:
+        return 0.0
+    return normalized
+
+
+def _comun_post_access_state(
+    user: User | None,
+    comun: Comun,
+    *,
+    author: Author | None = None,
+) -> tuple[bool, float, float | None]:
+    minimum_rating = _comun_minimum_author_rating_value(comun)
+    if not user:
+        return False, minimum_rating, None
+    if _comun_is_moderator(user, comun):
+        return True, minimum_rating, None
+    if minimum_rating <= 0:
+        return True, minimum_rating, None
+
+    if author is not None:
+        author_rating = _author_rating_value(getattr(author, "rating_total", 0))
+        return author_rating >= minimum_rating, minimum_rating, author_rating
+
+    author_ids, _author_links = _public_user_author_ids(user)
+    if not author_ids:
+        return False, minimum_rating, 0.0
+
+    max_author_rating = 0.0
+    for total_rating in Author.objects.filter(id__in=author_ids).values_list("rating_total", flat=True):
+        max_author_rating = max(max_author_rating, _author_rating_value(total_rating))
+    return max_author_rating >= minimum_rating, minimum_rating, max_author_rating
+
+
+def _comun_post_access_error_message(
+    comun: Comun,
+    *,
+    author_rating: float | None = None,
+) -> str:
+    minimum_text = _format_rating_value(_comun_minimum_author_rating_value(comun))
+    if author_rating is None:
+        return f"Для публикации в этой комуне нужен рейтинг автора не ниже {minimum_text}."
+    current_text = _format_rating_value(author_rating)
+    return (
+        f"Для публикации в этой комуне нужен рейтинг автора не ниже {minimum_text}. "
+        f"У выбранного автора сейчас {current_text}."
+    )
+
+
 def _stable_unit_float(*parts: object) -> float:
     key = ":".join(str(part) for part in parts).encode("utf-8", "ignore")
     digest = hashlib.sha256(key).digest()
@@ -7814,6 +7890,7 @@ def _serialize_comun(
         "logo_url": comun.logo_url,
         "product_description": comun.product_description,
         "target_audience": comun.target_audience,
+        "minimum_author_rating_to_post": _comun_minimum_author_rating_value(comun),
         "rating": _serialize_comun_rating(comun, current_user=current_user),
         "hide_from_home": bool(comun.hide_from_home),
         "hide_from_fresh": bool(comun.hide_from_fresh),
@@ -7863,6 +7940,7 @@ def _serialize_comun(
         "welcome_post": welcome_post_payload,
         "can_moderate": _comun_is_moderator(current_user, comun),
         "can_manage_moderators": _comun_can_manage_moderators(current_user, comun),
+        "can_post": _comun_post_access_state(current_user, comun)[0],
     }
     if include_activity:
         payload["activity"] = _serialize_comun_activity(request, comun)
@@ -8296,6 +8374,13 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
         comun.product_description = str(body.get("product_description") or "").strip()
     if "target_audience" in body:
         comun.target_audience = str(body.get("target_audience") or "").strip()
+    if "minimum_author_rating_to_post" in body:
+        minimum_author_rating_to_post, minimum_author_rating_error = _normalize_comun_minimum_author_rating(
+            body.get("minimum_author_rating_to_post")
+        )
+        if minimum_author_rating_error:
+            return JsonResponse({"ok": False, "error": minimum_author_rating_error}, status=400)
+        comun.minimum_author_rating_to_post = minimum_author_rating_to_post or 0
     if "allowed_template_types" in body:
         comun.allowed_post_templates = normalize_allowed_post_templates(
             body.get("allowed_template_types")
@@ -8471,8 +8556,6 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
     if request.method == "POST":
         if not current_user:
             return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
-        if not _comun_is_moderator(current_user, comun):
-            return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
         if not comun.product_tag_id:
             return JsonResponse(
                 {
@@ -8556,6 +8639,20 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
                 return JsonResponse({"ok": False, "error": personal_author_error}, status=400)
         if not author:
             return JsonResponse({"ok": False, "error": "author not found"}, status=400)
+
+        can_post, _minimum_rating, author_rating = _comun_post_access_state(
+            current_user,
+            comun,
+            author=author,
+        )
+        if not can_post:
+            return JsonResponse(
+                {
+                    "ok": False,
+                    "error": _comun_post_access_error_message(comun, author_rating=author_rating),
+                },
+                status=403,
+            )
 
         try:
             message_id = _generate_manual_message_id(author)

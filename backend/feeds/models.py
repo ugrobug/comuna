@@ -655,6 +655,13 @@ class Comun(models.Model):
     logo_url = models.URLField(max_length=500, blank=True, verbose_name="Логотип (URL)")
     product_description = models.TextField(blank=True, verbose_name="Описание продукта")
     target_audience = models.TextField(blank=True, verbose_name="Целевая аудитория")
+    minimum_author_rating_to_post = models.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        default=0,
+        verbose_name="Минимальный рейтинг автора для публикации",
+        help_text="Если больше нуля, писать в коммуну смогут только авторы с указанным рейтингом или выше.",
+    )
     rating_score = models.IntegerField(default=0, verbose_name="Рейтинг")
     votes_up = models.PositiveIntegerField(default=0, verbose_name="Буду использовать")
     votes_down = models.PositiveIntegerField(default=0, verbose_name="Не нравится")

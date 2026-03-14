@@ -109,6 +109,10 @@
       logo_url: (value?.logo_url ?? '').trim(),
       product_description: (value?.product_description ?? '').trim(),
       target_audience: (value?.target_audience ?? '').trim(),
+      minimum_author_rating_to_post: Math.max(
+        Number(value?.minimum_author_rating_to_post ?? 0) || 0,
+        0
+      ),
       hide_from_home: Boolean(value?.hide_from_home),
       hide_from_fresh: Boolean(value?.hide_from_fresh),
       product_tag_id: value?.product_tag_id ?? value?.product_tag?.id ?? null,
@@ -284,6 +288,14 @@
   const normalizeTagInput = (value: string) =>
     value.trim().replace(/^#+/, '').replace(/\s+/g, ' ').trim()
 
+  const formatRatingValue = (value?: number | null) => {
+    const normalized = Math.max(Number(value ?? 0) || 0, 0)
+    return new Intl.NumberFormat('ru-RU', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    }).format(normalized)
+  }
+
   $: normalizedTagSearch = settingsTagSearch.trim().toLowerCase()
   $: normalizedTagCreateValue = normalizeTagInput(settingsTagSearch)
   $: hasExactTagMatch = (settingsTagOptions ?? []).some((tag) => {
@@ -381,6 +393,10 @@
           logo_url: settingsDraft.logo_url ?? '',
           product_description: settingsDraft.product_description ?? '',
           target_audience: settingsDraft.target_audience ?? '',
+          minimum_author_rating_to_post: Math.max(
+            Number(settingsDraft.minimum_author_rating_to_post ?? 0) || 0,
+            0
+          ),
           allowed_template_types: comunAllowedTemplateTypes(settingsDraft),
           hide_from_home: canManageComunModerators() ? Boolean(settingsDraft.hide_from_home) : undefined,
           hide_from_fresh: canManageComunModerators() ? Boolean(settingsDraft.hide_from_fresh) : undefined,
@@ -588,6 +604,23 @@
             rows="2"
             class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"
           ></textarea>
+        </label>
+
+        <label class="flex flex-col gap-1">
+          <span class="text-sm text-slate-700 dark:text-zinc-300">
+            Минимальный рейтинг автора для публикации
+          </span>
+          <input
+            bind:value={settingsDraft.minimum_author_rating_to_post}
+            type="number"
+            min="0"
+            step="0.5"
+            class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"
+          />
+          <span class="text-xs text-slate-500 dark:text-zinc-400">
+            `0` означает, что писать в коммуну может любой автор. Сейчас установлен порог от
+            {formatRatingValue(settingsDraft.minimum_author_rating_to_post)}.
+          </span>
         </label>
 
         {#if canManageComunModerators()}
