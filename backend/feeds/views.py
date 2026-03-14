@@ -8931,50 +8931,109 @@ def comun_post_category_update(request: HttpRequest, slug: str, post_id: int) ->
     )
 
 
-def top_authors_month(request: HttpRequest) -> HttpResponse:
-    limit_raw = request.GET.get("limit", "5")
-    try:
-        limit = min(max(int(limit_raw), 1), 20)
-    except ValueError:
-        limit = 5
+_TOP_AUTHORS_PERIODS: dict[str, int | None] = {
+    "week": 7,
+    "month": 30,
+    "all": None,
+}
 
-    cutoff = timezone.now() - timedelta(days=30)
+
+def _normalize_top_authors_period(raw_value: str | None, *, default: str = "month") -> str:
+    value = (raw_value or "").strip().lower()
+    if value in _TOP_AUTHORS_PERIODS:
+        return value
+    return default
+
+
+def _parse_top_authors_limit(
+    raw_value: str | None, *, default: int = 5, max_limit: int = 1000
+) -> int | None:
+    value = (raw_value or "").strip().lower()
+    if not value:
+        return default
+    if value in {"all", "0"}:
+        return None
+    try:
+        parsed = int(value)
+    except ValueError:
+        return default
+    if parsed <= 0:
+        return None
+    return min(parsed, max_limit)
+
+
+def _top_authors_response(request: HttpRequest, *, default_period: str = "month") -> HttpResponse:
+    period = _normalize_top_authors_period(request.GET.get("period"), default=default_period)
+    limit = _parse_top_authors_limit(request.GET.get("limit"), default=5)
     now = timezone.now()
+
     score_expr = Cast(F("posts__rating"), IntegerField()) + Cast(
         F("posts__comments_count"), IntegerField()
     ) * Value(5)
-    posts_filter = Q(
-        posts__created_at__gte=cutoff,
-        posts__is_blocked=False,
-        posts__is_pending=False,
-    ) & (Q(posts__publish_at__isnull=True) | Q(posts__publish_at__lte=now))
+    posts_filter = Q(posts__is_blocked=False, posts__is_pending=False) & (
+        Q(posts__publish_at__isnull=True) | Q(posts__publish_at__lte=now)
+    )
 
-    authors = (
+    period_days = _TOP_AUTHORS_PERIODS.get(period)
+    if period_days is not None:
+        cutoff = now - timedelta(days=period_days)
+        posts_filter &= Q(posts__created_at__gte=cutoff)
+
+    authors_qs = (
         Author.objects.filter(is_blocked=False)
         .filter(Q(shadow_banned=False) | Q(force_home=True))
         .annotate(
-            month_score=Sum(score_expr, filter=posts_filter),
-            month_posts=Count("posts", filter=posts_filter),
+            score=Sum(score_expr, filter=posts_filter),
+            posts_count=Count("posts", filter=posts_filter),
         )
-        .filter(month_posts__gt=0)
-        .order_by("-month_score", "-month_posts", "username")[:limit]
+        .filter(posts_count__gt=0)
+        .order_by("-score", "-posts_count", "username")
     )
+
+    total_authors = authors_qs.count()
+    authors = authors_qs if limit is None else authors_qs[:limit]
 
     serialized = []
     for author in authors:
-        serialized.append(
-            {
-                "username": author.username,
-                "title": author.title,
-                "avatar_url": _author_avatar_url(request, author),
-                "channel_url": author.invite_url or author.channel_url,
-                "month_score": author.month_score or 0,
-                "month_posts": author.month_posts or 0,
-                "author_rating": _author_rating_value(author.rating_total),
-            }
-        )
+        score = author.score or 0
+        posts_count = author.posts_count or 0
+        item = {
+            "username": author.username,
+            "title": author.title,
+            "avatar_url": _author_avatar_url(request, author),
+            "channel_url": author.invite_url or author.channel_url,
+            "score": score,
+            "posts_count": posts_count,
+            "author_rating": _author_rating_value(author.rating_total),
+            "period": period,
+        }
+        if period == "month":
+            item["month_score"] = score
+            item["month_posts"] = posts_count
+        elif period == "week":
+            item["week_score"] = score
+            item["week_posts"] = posts_count
+        else:
+            item["all_time_score"] = score
+            item["all_time_posts"] = posts_count
+        serialized.append(item)
 
-    return JsonResponse({"ok": True, "authors": serialized})
+    return JsonResponse(
+        {
+            "ok": True,
+            "period": period,
+            "authors": serialized,
+            "total_authors": total_authors,
+        }
+    )
+
+
+def top_authors(request: HttpRequest) -> HttpResponse:
+    return _top_authors_response(request)
+
+
+def top_authors_month(request: HttpRequest) -> HttpResponse:
+    return _top_authors_response(request, default_period="month")
 
 
 def search_content(request: HttpRequest) -> HttpResponse:

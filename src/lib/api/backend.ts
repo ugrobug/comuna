@@ -263,6 +263,37 @@ export const buildSearchUrl = (
   return `${getBackendBaseUrl()}/api/search/?${params.toString()}`
 }
 
+export type BackendTopAuthorPeriod = 'week' | 'month' | 'all'
+
+export type BackendTopAuthor = {
+  username: string
+  title?: string | null
+  channel_url?: string | null
+  avatar_url?: string | null
+  author_rating?: number
+  score: number
+  posts_count: number
+  period: BackendTopAuthorPeriod
+  month_score?: number
+  month_posts?: number
+  week_score?: number
+  week_posts?: number
+  all_time_score?: number
+  all_time_posts?: number
+}
+
+export const buildTopAuthorsUrl = (options?: {
+  period?: BackendTopAuthorPeriod
+  limit?: number | 'all'
+}): string => {
+  const params = new URLSearchParams()
+  params.set('period', options?.period ?? 'month')
+  if (options?.limit !== undefined) {
+    params.set('limit', String(options.limit))
+  }
+  return `${getBackendBaseUrl()}/api/authors/top/?${params.toString()}`
+}
+
 export const buildTopAuthorsMonthUrl = (limit = 5): string => {
   const params = new URLSearchParams({ limit: String(limit) })
   return `${getBackendBaseUrl()}/api/authors/top-month/?${params.toString()}`
