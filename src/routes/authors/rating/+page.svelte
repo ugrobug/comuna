@@ -81,10 +81,6 @@
         <div class="text-3xl font-semibold tracking-tight text-slate-950 dark:text-zinc-50 sm:text-4xl">
           Лучшие авторы сайта {periodTitleMap[data.period]}
         </div>
-        <p class="text-sm leading-6 text-slate-600 dark:text-zinc-400 sm:text-base">
-          По умолчанию рейтинг показывает результат за последний месяц. Переключите период, чтобы
-          посмотреть динамику за неделю или за все время.
-        </p>
       </div>
 
       <div class="flex flex-wrap gap-2">

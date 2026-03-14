@@ -33,19 +33,9 @@
     return value.toLocaleString('ru-RU')
   }
 
-  const rankClassName = (index: number) => {
-    if (index === 0) return 'rank-badge rank-badge--gold'
-    if (index === 1) return 'rank-badge rank-badge--silver'
-    if (index === 2) return 'rank-badge rank-badge--bronze'
-    return 'rank-badge rank-badge--default'
-  }
+  const rankClassName = (_index: number) => 'rank-badge rank-badge--default'
 
-  const rowClassName = (index: number) => {
-    if (index === 0) return 'author-row author-row--gold'
-    if (index === 1) return 'author-row author-row--silver'
-    if (index === 2) return 'author-row author-row--bronze'
-    return 'author-row'
-  }
+  const rowClassName = (_index: number) => 'author-row'
 </script>
 
 <div class="flex flex-col gap-2 bg-white dark:bg-zinc-900 rounded-xl p-4">
@@ -133,30 +123,6 @@
     background: rgb(39 39 42 / 0.8);
   }
 
-  .author-row--gold {
-    background: linear-gradient(90deg, rgb(254 243 199 / 0.9), transparent 55%);
-  }
-
-  .author-row--silver {
-    background: linear-gradient(90deg, rgb(226 232 240 / 0.9), transparent 55%);
-  }
-
-  .author-row--bronze {
-    background: linear-gradient(90deg, rgb(254 215 170 / 0.9), transparent 55%);
-  }
-
-  :global(.dark) .author-row--gold {
-    background: linear-gradient(90deg, rgb(120 53 15 / 0.35), transparent 55%);
-  }
-
-  :global(.dark) .author-row--silver {
-    background: linear-gradient(90deg, rgb(71 85 105 / 0.35), transparent 55%);
-  }
-
-  :global(.dark) .author-row--bronze {
-    background: linear-gradient(90deg, rgb(124 45 18 / 0.35), transparent 55%);
-  }
-
   .rank-badge {
     width: 1.5rem;
     height: 1.5rem;
@@ -167,21 +133,6 @@
     font-size: 0.75rem;
     font-weight: 700;
     flex-shrink: 0;
-  }
-
-  .rank-badge--gold {
-    background: rgb(245 158 11);
-    color: white;
-  }
-
-  .rank-badge--silver {
-    background: rgb(148 163 184);
-    color: white;
-  }
-
-  .rank-badge--bronze {
-    background: rgb(234 88 12);
-    color: white;
   }
 
   .rank-badge--default {
