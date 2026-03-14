@@ -31,7 +31,7 @@
   import { siteToken } from '$lib/siteAuth'
   import PostTemplateHeader from '$lib/components/site/post-templates/PostTemplateHeader.svelte'
   import PostTemplateRatingFooter from '$lib/components/site/post-templates/PostTemplateRatingFooter.svelte'
-  import type { SitePostTemplate } from '$lib/postTemplates'
+  import { getTemplateEditorBlockTypes, type SitePostTemplate } from '$lib/postTemplates'
 
   export let post: PostView
   export let actions: boolean = true
@@ -79,7 +79,10 @@
   $: extraVotePollParticipationCount = Math.max(backendVotePollParticipations.length - 1, 0)
   $: showTemplateHeader = Boolean(isBackendPost && showFullBody && backendTemplate)
   $: showTemplateRatingFooter = Boolean(
-    isBackendPost && showFullBody && backendTemplate && backendPostRating
+    isBackendPost &&
+      showFullBody &&
+      backendPostRating &&
+      getTemplateEditorBlockTypes(backendTemplate?.type ?? '').includes('post_rating')
   )
   $: showTemplateHeaderPreview = Boolean(
     isBackendPost &&

@@ -3360,8 +3360,6 @@ def _serialize_post_rating(
 ) -> dict | None:
     resolved_template = template_payload if isinstance(template_payload, dict) else _serialize_post_template(post)
     template_type = _template_type_from_payload(resolved_template)
-    if template_type == _POST_TEMPLATE_TYPE_BASIC:
-        return None
 
     aggregate = PostRatingVote.objects.filter(post=post).aggregate(
         average_value=Avg("value"),

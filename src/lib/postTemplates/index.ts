@@ -19,6 +19,7 @@ export type TemplateEditorBlockType =
   | 'music'
   | 'movie_time'
   | 'movie_card'
+  | 'post_rating'
 
 export type TemplateEditorBlockOption = {
   type: TemplateEditorBlockType
@@ -123,6 +124,7 @@ const TEMPLATE_EDITOR_BLOCK_TYPE_VALUES = new Set<TemplateEditorBlockType>([
   'music',
   'movie_time',
   'movie_card',
+  'post_rating',
 ])
 
 const ALL_TEMPLATE_EDITOR_BLOCK_OPTIONS: TemplateEditorBlockOption[] = [
@@ -143,6 +145,7 @@ const ALL_TEMPLATE_EDITOR_BLOCK_OPTIONS: TemplateEditorBlockOption[] = [
   { type: 'music', label: 'Музыка' },
   { type: 'movie_time', label: 'Время в фильме' },
   { type: 'movie_card', label: 'Карточка фильма' },
+  { type: 'post_rating', label: 'Рейтинг' },
 ]
 
 const BLOCKS_WITHOUT_MOVIE_CARD = ALL_TEMPLATE_EDITOR_BLOCK_OPTIONS.filter(
