@@ -12,7 +12,7 @@
     buildOpenStreetMapEmbedUrl,
     normalizeOpenStreetMapZoom,
   } from '$lib/util'
-  import { buildPostPollVoteUrl } from '$lib/api/backend'
+  import { buildPostPollVoteUrl, type BackendPoll } from '$lib/api/backend'
   import { siteToken } from '$lib/siteAuth'
   import {
     formatMovieReviewReleaseDate,
@@ -85,6 +85,7 @@
   export let body: string
   export let postId: number | null = null
   export let allowPollVoting = false
+  export let poll: BackendPoll | null = null
   export let title: string | undefined = undefined
   export let template: SitePostTemplate | null | undefined = null
   export let view: View = 'cozy'
@@ -937,38 +938,53 @@
         : []
       if (!question || options.length < 2) return ''
 
-      const uidSource =
-        typeof raw?.uid === 'string' && raw.uid.trim()
-          ? raw.uid.trim()
-          : `poll-${question
-              .split('')
-              .reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0)}`
-      const groupName = escapeHtml(uidSource.replace(/[^a-zA-Z0-9_-]/g, '-') || 'poll-block')
-      const inputType = allowsMultipleAnswers ? 'checkbox' : 'radio'
+      const activePoll =
+        poll &&
+        poll.question.trim() === question &&
+        Array.isArray(poll.options) &&
+        poll.options.length === options.length
+          ? poll
+          : null
+      const selectedSet = new Set(activePoll?.user_selection || [])
+      const totalVoters = Math.max(Number(activePoll?.total_voter_count || 0), 0)
       const modeLabel = allowsMultipleAnswers
         ? 'Можно выбрать несколько вариантов'
         : 'Можно выбрать только один вариант'
-      const optionsHtml = options
-        .map(
-          (option: string, index: number) => `<label class="post-inline-poll__option">
-              <span class="post-inline-poll__control">
-                <input type="${inputType}" name="${groupName}" value="${index}" />
-                <span class="post-inline-poll__marker" aria-hidden="true"></span>
-              </span>
-              <span class="post-inline-poll__option-text">${escapeHtml(option)}</span>
-            </label>`
-        )
+      const optionItems = options
+        .map((option: string, index: number) => {
+          const optionPayload = activePoll?.options?.[index]
+          const count = Math.max(Number(optionPayload?.voter_count || 0), 0)
+          const percent = totalVoters > 0 ? Math.round((count / totalVoters) * 100) : 0
+          const isSelected = selectedSet.has(index)
+          const label = totalVoters > 0 ? `${count} (${percent}%)` : `${count}`
+          return `<li class="post-poll-option${isSelected ? ' is-selected' : ''}" data-option-index="${index}">
+            ${isSelected ? '✓ ' : ''}${escapeHtml(option)} <b>${label}</b>
+          </li>`
+        })
         .join('')
+      const metaParts: string[] = []
+      if (allowsMultipleAnswers) {
+        metaParts.push('Можно выбрать несколько вариантов')
+      }
+      if (activePoll?.is_closed) {
+        metaParts.push('Опрос завершен')
+      } else {
+        metaParts.push('Нажмите вариант, чтобы проголосовать')
+      }
+      metaParts.push(`Голосов: ${totalVoters}`)
+      const pollId = typeof raw?.uid === 'string' && raw.uid.trim() ? raw.uid.trim() : ''
+      const attrs = [
+        `data-poll-multiple="${allowsMultipleAnswers ? '1' : '0'}"`,
+        `data-poll-closed="${activePoll?.is_closed ? '1' : '0'}"`,
+        pollId ? `data-poll-id="${escapeHtml(pollId)}"` : '',
+      ]
+        .filter(Boolean)
+        .join(' ')
 
-      return `<div class="post-inline-poll">
-        <div class="post-inline-poll__head">
-          <div class="post-inline-poll__eyebrow">Опрос</div>
-          <div class="post-inline-poll__question">${escapeHtml(question)}</div>
-          <div class="post-inline-poll__mode">${modeLabel}</div>
-        </div>
-        <div class="post-inline-poll__options">
-          ${optionsHtml}
-        </div>
+      return `<div class="post-poll post-inline-poll" ${attrs}>
+        <div class="post-poll-question"><b>${escapeHtml(question)}</b></div>
+        <ul class="post-poll-options">${optionItems}</ul>
+        <div class="post-poll-meta">${metaParts.join(' · ')}</div>
       </div>`
     }
 

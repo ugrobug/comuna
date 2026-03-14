@@ -262,6 +262,7 @@
           element="section"
           body={post.post.body}
           template={backendTemplate}
+          poll={backendPoll}
           postId={isBackendPost ? post.post.id : null}
           allowPollVoting={isBackendPost}
           title={post.post.name}
@@ -331,6 +332,7 @@
             element="section"
             body={post.post.body}
             template={backendTemplate}
+            poll={backendPoll}
             postId={isBackendPost ? post.post.id : null}
             allowPollVoting={isBackendPost}
             title={post.post.name}
@@ -353,6 +355,7 @@
             element="section"
             body={post.post.body}
             template={backendTemplate}
+            poll={backendPoll}
             postId={isBackendPost ? post.post.id : null}
             allowPollVoting={isBackendPost}
             title={post.post.name}

@@ -2286,9 +2286,66 @@ def _build_post_vote_poll_raw_poll(template_data: object) -> dict | None:
 
 
 _TEMPLATE_POLL_SOURCE_POST_VOTE = "template_post_vote_poll"
+_CONTENT_POLL_SOURCE_INLINE = "content_inline_poll"
 
 
-def _sync_template_derived_raw_data(raw_data: dict, template_payload: dict | None) -> None:
+def _extract_inline_poll_from_content(raw_content: str) -> dict | None:
+    payload = _decode_editor_payload(raw_content)
+    if not payload:
+        return None
+
+    for block in payload.get("blocks") or []:
+        if not isinstance(block, dict):
+            continue
+        block_type = str(block.get("type") or "").strip().lower()
+        if block_type != "poll":
+            continue
+        block_data = block.get("data")
+        if not isinstance(block_data, dict):
+            continue
+
+        question = str(block_data.get("question") or "").strip()
+        raw_options = block_data.get("options")
+        if not question or not isinstance(raw_options, list):
+            return None
+
+        option_items: list[dict[str, object]] = []
+        for raw_option in raw_options[:10]:
+            text = str(raw_option or "").strip()
+            if not text:
+                continue
+            option_items.append(
+                {
+                    "text": text,
+                    "voter_count": 0,
+                }
+            )
+        if len(option_items) < 2:
+            return None
+
+        uid = str(block_data.get("uid") or "").strip()
+        raw_poll: dict[str, object] = {
+            "question": question,
+            "options": option_items,
+            "is_anonymous": False,
+            "allows_multiple_answers": bool(block_data.get("allows_multiple_answers")),
+            "is_closed": False,
+            "total_voter_count": 0,
+        }
+        if uid:
+            raw_poll["id"] = uid
+        return raw_poll
+
+    return None
+
+
+def _content_contains_inline_poll(raw_content: str) -> bool:
+    return _extract_inline_poll_from_content(raw_content) is not None
+
+
+def _sync_template_derived_raw_data(
+    raw_data: dict, template_payload: dict | None, content: str | None = None
+) -> None:
     template_type = str(template_payload.get("type") or "").strip().lower() if template_payload else ""
     if template_type == _POST_TEMPLATE_TYPE_POST_VOTE_POLL:
         poll_payload = _build_post_vote_poll_raw_poll(template_payload.get("data"))
@@ -2298,7 +2355,17 @@ def _sync_template_derived_raw_data(raw_data: dict, template_payload: dict | Non
             raw_data.pop("poll_html", None)
         return
 
-    if str(raw_data.get("poll_source") or "") == _TEMPLATE_POLL_SOURCE_POST_VOTE:
+    inline_poll_payload = _extract_inline_poll_from_content(content or "")
+    if inline_poll_payload:
+        raw_data["poll"] = inline_poll_payload
+        raw_data["poll_source"] = _CONTENT_POLL_SOURCE_INLINE
+        raw_data.pop("poll_html", None)
+        return
+
+    if str(raw_data.get("poll_source") or "") in {
+        _TEMPLATE_POLL_SOURCE_POST_VOTE,
+        _CONTENT_POLL_SOURCE_INLINE,
+    }:
         raw_data.pop("poll", None)
         raw_data.pop("poll_source", None)
         raw_data.pop("poll_html", None)
@@ -3259,6 +3326,9 @@ def _content_with_live_poll(post: Post, user: User | None = None) -> tuple[str, 
         else ""
     )
     if template_type == _POST_TEMPLATE_TYPE_POST_VOTE_POLL:
+        return content, live_poll["poll"]
+
+    if _content_contains_inline_poll(content):
         return content, live_poll["poll"]
 
     poll_html = live_poll["html"]
@@ -5241,7 +5311,7 @@ def user_posts(request: HttpRequest) -> HttpResponse:
             "source": "manual",
             **({"template": template_payload} if template_payload else {}),
         }
-        _sync_template_derived_raw_data(raw_data, template_payload)
+        _sync_template_derived_raw_data(raw_data, template_payload, content)
         raw_data = _set_post_draft_state(raw_data, is_draft)
 
         post = Post.objects.create(
@@ -5488,9 +5558,14 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
             raw_data["template"] = template_payload
         else:
             raw_data.pop("template", None)
-        _sync_template_derived_raw_data(raw_data, template_payload)
+        _sync_template_derived_raw_data(raw_data, template_payload, content)
         raw_data["manual_edit"] = True
         raw_data["manual_updated_at"] = timezone.now().isoformat()
+        raw_data_changed = True
+
+    if content is not None or template_in_payload:
+        effective_template_payload = raw_data.get("template") if isinstance(raw_data.get("template"), dict) else None
+        _sync_template_derived_raw_data(raw_data, effective_template_payload, post.content)
         raw_data_changed = True
 
     if title is not None:
@@ -8407,7 +8482,7 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
             "comun_category_id": category.id if category else None,
             **({"template": template_payload} if template_payload else {}),
         }
-        _sync_template_derived_raw_data(raw_data, template_payload)
+        _sync_template_derived_raw_data(raw_data, template_payload, content)
 
         post = Post.objects.create(
             author=author,
