@@ -27,9 +27,10 @@
   import PostBody from './PostBody.svelte'
   import { profile } from '$lib/auth'
   import { getTagKey, getTagName, normalizeTag, type TagItem } from '$lib/tags'
-  import { buildPostReadUrl, type BackendPoll } from '$lib/api/backend'
+  import { buildPostReadUrl, type BackendPoll, type BackendPostRating } from '$lib/api/backend'
   import { siteToken } from '$lib/siteAuth'
   import PostTemplateHeader from '$lib/components/site/post-templates/PostTemplateHeader.svelte'
+  import PostTemplateRatingFooter from '$lib/components/site/post-templates/PostTemplateRatingFooter.svelte'
   import type { SitePostTemplate } from '$lib/postTemplates'
 
   export let post: PostView
@@ -70,12 +71,16 @@
   $: backendTags = (post.post as { tags?: TagItem[] }).tags ?? []
   $: backendTemplate = (post.post as { template?: SitePostTemplate | null }).template ?? null
   $: backendPoll = (post.post as { poll?: BackendPoll | null }).poll ?? null
+  $: backendPostRating = (post.post as { post_rating?: BackendPostRating | null }).post_rating ?? null
   $: backendVotePollParticipations = (
     post.post as { vote_poll_participations?: VotePollParticipation[] }
   ).vote_poll_participations ?? []
   $: activeVotePollParticipation = backendVotePollParticipations[0] ?? null
   $: extraVotePollParticipationCount = Math.max(backendVotePollParticipations.length - 1, 0)
   $: showTemplateHeader = Boolean(isBackendPost && showFullBody && backendTemplate)
+  $: showTemplateRatingFooter = Boolean(
+    isBackendPost && showFullBody && backendTemplate && backendPostRating
+  )
   $: showTemplateHeaderPreview = Boolean(
     isBackendPost &&
       !showFullBody &&
@@ -298,6 +303,13 @@
               <span class="text-white whitespace-nowrap">Подписаться на телеграм автора</span>
             </Button>
           </div>
+        {/if}
+        {#if showTemplateRatingFooter}
+          <PostTemplateRatingFooter
+            postId={post.post.id}
+            rating={backendPostRating}
+            allowVoting={isBackendPost}
+          />
         {/if}
       </div>
     {:else}

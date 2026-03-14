@@ -27,7 +27,7 @@ from math import ceil
 from html import escape, unescape
 from xml.sax.saxutils import escape as xml_escape
 from django.db import transaction
-from django.db.models import Count, Exists, F, IntegerField, OuterRef, Q, Sum, Value
+from django.db.models import Avg, Count, Exists, F, IntegerField, OuterRef, Q, Sum, Value
 from django.db.models.functions import Cast
 
 from django.conf import settings
@@ -51,6 +51,7 @@ from .models import (
     PostFavorite,
     PostLike,
     PostPollVote,
+    PostRatingVote,
     PostRead,
     PostTemplateConfig,
     Rubric,
@@ -3342,6 +3343,50 @@ def _content_with_live_poll(post: Post, user: User | None = None) -> tuple[str, 
     return content, live_poll["poll"]
 
 
+def _template_type_from_payload(template_payload: dict | None) -> str:
+    if not isinstance(template_payload, dict):
+        return _POST_TEMPLATE_TYPE_BASIC
+    template_type = str(template_payload.get("type") or "").strip().lower()
+    if template_type in _POST_TEMPLATE_TYPES:
+        return template_type
+    return _POST_TEMPLATE_TYPE_BASIC
+
+
+def _serialize_post_rating(
+    post: Post,
+    user: User | None = None,
+    *,
+    template_payload: dict | None = None,
+) -> dict | None:
+    resolved_template = template_payload if isinstance(template_payload, dict) else _serialize_post_template(post)
+    template_type = _template_type_from_payload(resolved_template)
+    if template_type == _POST_TEMPLATE_TYPE_BASIC:
+        return None
+
+    aggregate = PostRatingVote.objects.filter(post=post).aggregate(
+        average_value=Avg("value"),
+        votes_count=Count("id"),
+    )
+    average_raw = aggregate.get("average_value")
+    average_value = round(float(average_raw), 1) if average_raw is not None else None
+    votes_count = max(int(aggregate.get("votes_count") or 0), 0)
+    user_vote = None
+    if user:
+        user_vote = (
+            PostRatingVote.objects.filter(post=post, user=user).values_list("value", flat=True).first()
+        )
+        if user_vote is not None:
+            user_vote = int(user_vote)
+
+    return {
+        "scale_min": 1,
+        "scale_max": 10,
+        "average_value": average_value,
+        "votes_count": votes_count,
+        "user_vote": user_vote,
+    }
+
+
 def _extract_telegram_poll(message: dict) -> tuple[str, str]:
     poll = message.get("poll")
     payload = _build_poll_payload(poll)
@@ -4940,6 +4985,7 @@ def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None
         request, post.author, rubric, post.channel_url
     )
     content, poll_payload = _content_with_live_poll(post, user)
+    template_payload = _serialize_post_template(post)
     is_favorite = (
         PostFavorite.objects.filter(post=post, user=user).exists() if user else False
     )
@@ -4947,9 +4993,10 @@ def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None
     payload = {
         "id": post.id,
         "title": _post_display_title(post),
-        "template": _serialize_post_template(post),
+        "template": template_payload,
         "content": content,
         "poll": poll_payload,
+        "post_rating": _serialize_post_rating(post, user, template_payload=template_payload),
         "created_at": post.created_at.isoformat(),
         "updated_at": post.updated_at.isoformat(),
         "is_pending": post.is_pending,
@@ -6056,6 +6103,60 @@ def post_poll_vote(request: HttpRequest, post_id: int) -> HttpResponse:
             "ok": True,
             "poll": live_poll["poll"],
             "poll_html": live_poll["html"],
+        }
+    )
+
+
+@csrf_exempt
+def post_rating_vote(request: HttpRequest, post_id: int) -> HttpResponse:
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    user = _get_user_from_request(request)
+    if not user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+
+    try:
+        now = timezone.now()
+        post = (
+            Post.objects.filter(is_blocked=False, is_pending=False, author__is_blocked=False)
+            .filter(_publish_ready_filter(now))
+            .get(id=post_id)
+        )
+    except Post.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "post not found"}, status=404)
+
+    template_payload = _serialize_post_template(post)
+    if _template_type_from_payload(template_payload) == _POST_TEMPLATE_TYPE_BASIC:
+        return JsonResponse({"ok": False, "error": "rating is not available"}, status=400)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8")) if request.body else {}
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+    if not isinstance(payload, dict):
+        return JsonResponse({"ok": False, "error": "invalid payload"}, status=400)
+
+    raw_value = payload.get("value", payload.get("rating", payload.get("score")))
+    try:
+        rating_value = int(raw_value)
+    except (TypeError, ValueError):
+        return JsonResponse({"ok": False, "error": "invalid rating value"}, status=400)
+
+    if rating_value < 1 or rating_value > 10:
+        return JsonResponse({"ok": False, "error": "invalid rating value"}, status=400)
+
+    PostRatingVote.objects.update_or_create(
+        post=post,
+        user=user,
+        defaults={"value": rating_value},
+    )
+
+    rating_payload = _serialize_post_rating(post, user, template_payload=template_payload)
+    return JsonResponse(
+        {
+            "ok": True,
+            "post_rating": rating_payload,
         }
     )
 
@@ -8016,18 +8117,20 @@ def _serialize_backend_post_card(
     now = now or timezone.now()
     rubric = post.rubric
     content, poll_payload = _content_with_live_poll(post, current_user)
+    template_payload = _serialize_post_template(post)
     author_channel_url, author_title = _author_display_fields(
         request, post.author, rubric, post.channel_url
     )
     return {
         "id": post.id,
         "title": _post_display_title(post),
-        "template": _serialize_post_template(post),
+        "template": template_payload,
         "rubric": rubric.name if rubric else None,
         "rubric_slug": rubric.slug if rubric else None,
         "rubric_icon_url": _rubric_icon_url(request, rubric),
         "content": content,
         "poll": poll_payload,
+        "post_rating": _serialize_post_rating(post, current_user, template_payload=template_payload),
         "source_url": post.source_url,
         "channel_url": author_channel_url,
         "created_at": post.created_at.isoformat(),

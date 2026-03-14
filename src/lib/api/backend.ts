@@ -74,6 +74,10 @@ export const buildPostPollVoteUrl = (id: number | string): string => {
   return `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/poll-vote/`
 }
 
+export const buildPostRatingVoteUrl = (id: number | string): string => {
+  return `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/rating-vote/`
+}
+
 export const buildTagsListUrl = (): string => {
   return `${getBackendBaseUrl()}/api/tags/`
 }
@@ -472,6 +476,14 @@ export type BackendPostVotePollParticipation = {
   close_at?: string | null
 }
 
+export type BackendPostRating = {
+  scale_min: number
+  scale_max: number
+  average_value?: number | null
+  votes_count: number
+  user_vote?: number | null
+}
+
 export type BackendPost = {
   id: number
   title: string
@@ -479,6 +491,7 @@ export type BackendPost = {
   template?: SitePostTemplate | null
   vote_poll_participations?: BackendPostVotePollParticipation[]
   poll?: BackendPoll | null
+  post_rating?: BackendPostRating | null
   created_at: string
   source_url?: string | null
   channel_url?: string | null
@@ -523,6 +536,7 @@ export const backendPostToPostView = (
       template: post.template ?? null,
       vote_poll_participations: post.vote_poll_participations ?? [],
       poll: post.poll ?? null,
+      post_rating: post.post_rating ?? null,
       url: '',
       tags: post.tags ?? [],
       published: post.created_at,
