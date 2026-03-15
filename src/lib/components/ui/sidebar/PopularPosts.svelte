@@ -68,7 +68,7 @@
           class={`${rowClassName(index)} block group py-3 first:pt-1 last:pb-1`}
         >
           <div class="flex flex-col gap-2">
-            <div class="flex items-center gap-2">
+            <div class="flex min-w-0 items-center gap-2">
               <div class={rankClassName(index)}>
                 {index + 1}
               </div>
@@ -78,7 +78,7 @@
                 width={32}
                 class_="w-8 h-8 rounded-full"
               />
-              <span class="text-sm font-medium text-slate-900 dark:text-zinc-200">
+              <span class="min-w-0 flex-1 truncate text-sm font-medium text-slate-900 dark:text-zinc-200">
                 {author.title || author.username}
               </span>
             </div>

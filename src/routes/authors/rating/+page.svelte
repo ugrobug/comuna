@@ -104,36 +104,38 @@
   </section>
 
   {#if data.authors.length}
-    <section class="grid gap-4 lg:grid-cols-3">
+    <section class="flex flex-col gap-4">
       {#each topThree as author, index}
         <a href={`/${author.username}`} class={heroCardClass(index)}>
-          <div class="flex items-start gap-4">
-            <div class="hero-avatar-stack">
-              <Avatar
-                url={author.avatar_url || undefined}
-                alt={author.title || author.username}
-                width={64}
-                class_="hero-avatar-image h-16 w-16 rounded-full ring-4 ring-white/70 dark:ring-zinc-950/70"
-              />
-              <div class={`${rankBadgeClass(index)} hero-rank-badge`}>
-                {index + 1}
-              </div>
-            </div>
-            <div class="min-w-0 flex-1">
-              <div class="stat-card stat-card--hero">
-                <div class="stat-card__label">{heroRatingLabelMap[data.period]}</div>
-                <div class="mt-3 flex items-center gap-2 text-slate-900 dark:text-zinc-50">
-                  <Icon src={Trophy} size="18" class="text-amber-500" />
-                  <div class="stat-card__value stat-card__value--inline">
-                    {formatNumber(author.rating ?? author.score)}
-                  </div>
+          <div class="hero-card__body">
+            <div class="flex min-w-0 flex-1 items-center gap-4">
+              <div class="hero-avatar-stack">
+                <Avatar
+                  url={author.avatar_url || undefined}
+                  alt={author.title || author.username}
+                  width={64}
+                  class_="hero-avatar-image h-16 w-16 rounded-full ring-4 ring-white/70 dark:ring-zinc-950/70"
+                />
+                <div class={`${rankBadgeClass(index)} hero-rank-badge`}>
+                  {index + 1}
                 </div>
               </div>
-              <div class="hero-card__title">
-                {author.title || author.username}
+              <div class="min-w-0 flex-1">
+                <div class="hero-card__title">
+                  {author.title || author.username}
+                </div>
+                <div class="mt-1 truncate text-sm text-slate-500 dark:text-zinc-400">
+                  @{author.username}
+                </div>
               </div>
-              <div class="mt-1 truncate text-sm text-slate-500 dark:text-zinc-400">
-                @{author.username}
+            </div>
+            <div class="stat-card stat-card--hero">
+              <div class="stat-card__label">{heroRatingLabelMap[data.period]}</div>
+              <div class="mt-3 flex items-center gap-2 text-slate-900 dark:text-zinc-50">
+                <Icon src={Trophy} size="18" class="text-amber-500" />
+                <div class="stat-card__value stat-card__value--inline">
+                  {formatNumber(author.rating ?? author.score)}
+                </div>
               </div>
             </div>
           </div>
@@ -266,6 +268,13 @@
     box-shadow: 0 16px 32px rgb(15 23 42 / 0.08);
   }
 
+  .hero-card__body {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
   .hero-card--gold {
     background: linear-gradient(180deg, rgb(255 251 235), white 55%);
   }
@@ -348,7 +357,8 @@
   }
 
   .stat-card--hero {
-    margin-bottom: 1rem;
+    min-width: 12rem;
+    flex-shrink: 0;
   }
 
   :global(.dark) .stat-card {
@@ -429,6 +439,16 @@
   }
 
   @media (max-width: 640px) {
+    .hero-card__body {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .stat-card--hero {
+      width: 100%;
+      min-width: 0;
+    }
+
     .rating-row {
       flex-direction: column;
       align-items: flex-start;
