@@ -119,24 +119,21 @@
                 {index + 1}
               </div>
             </div>
-            <div class="min-w-0">
+            <div class="min-w-0 flex-1">
+              <div class="stat-card stat-card--hero">
+                <div class="stat-card__label">{heroRatingLabelMap[data.period]}</div>
+                <div class="mt-3 flex items-center gap-2 text-slate-900 dark:text-zinc-50">
+                  <Icon src={Trophy} size="18" class="text-amber-500" />
+                  <div class="stat-card__value stat-card__value--inline">
+                    {formatNumber(author.rating ?? author.score)}
+                  </div>
+                </div>
+              </div>
               <div class="hero-card__title">
                 {author.title || author.username}
               </div>
               <div class="mt-1 truncate text-sm text-slate-500 dark:text-zinc-400">
                 @{author.username}
-              </div>
-            </div>
-          </div>
-
-          <div class="mt-6 text-sm">
-            <div class="stat-card">
-              <div class="stat-card__label">{heroRatingLabelMap[data.period]}</div>
-              <div class="mt-3 flex items-center gap-2 text-slate-900 dark:text-zinc-50">
-                <Icon src={Trophy} size="18" class="text-amber-500" />
-                <div class="stat-card__value stat-card__value--inline">
-                  {formatNumber(author.rating ?? author.score)}
-                </div>
               </div>
             </div>
           </div>
@@ -163,7 +160,7 @@
         {#each remainingAuthors as author, offset}
           {@const rank = offset + 4}
           <a href={`/${author.username}`} class="rating-row">
-            <div class="flex items-center gap-4">
+            <div class="flex min-w-0 flex-1 items-center gap-4">
               <div class="row-rank">
                 {rank}
               </div>
@@ -183,7 +180,7 @@
               </div>
             </div>
 
-            <div class="flex items-center gap-6 text-right">
+            <div class="flex shrink-0 items-center gap-6 text-right">
               <div class="min-w-[88px]">
                 <div class="text-xs uppercase tracking-wide text-slate-400 dark:text-zinc-500">
                   Рейтинг
@@ -348,6 +345,10 @@
     border-radius: 1.25rem;
     background: rgb(255 255 255 / 0.75);
     padding: 0.875rem 1rem;
+  }
+
+  .stat-card--hero {
+    margin-bottom: 1rem;
   }
 
   :global(.dark) .stat-card {
