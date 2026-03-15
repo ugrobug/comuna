@@ -1,11 +1,12 @@
 <script lang="ts">
   import { browser } from '$app/environment'
   import { portalTooltip } from '$lib/actions/portalTooltip'
-  import { siteUser } from '$lib/siteAuth'
+  import { siteToken, siteUser } from '$lib/siteAuth'
 
   export let enabled = true
 
   const AUTH_DISMISS_PREFIX = 'comuna.keyboard-shortcuts-hint.dismissed.user.'
+  const AUTH_PENDING_DISMISS_KEY = 'comuna.keyboard-shortcuts-hint.dismissed.auth'
   const GUEST_DISMISS_KEY = 'comuna.keyboard-shortcuts-hint.dismissed.guest'
 
   const shortcuts = [
@@ -19,13 +20,31 @@
   let dismissed = false
   let initializedForIdentity: string | null = null
 
-  const currentIdentity = () => ($siteUser?.id ? `user:${$siteUser.id}` : 'guest')
+  const hasAuthenticatedSession = () => Boolean($siteToken)
+  const currentIdentity = () =>
+    $siteUser?.id
+      ? `user:${$siteUser.id}`
+      : hasAuthenticatedSession()
+        ? 'auth-pending'
+        : 'guest'
 
   const readDismissed = () => {
     if (!browser) return false
     try {
       if ($siteUser?.id) {
-        return localStorage.getItem(`${AUTH_DISMISS_PREFIX}${$siteUser.id}`) === '1'
+        const userKey = `${AUTH_DISMISS_PREFIX}${$siteUser.id}`
+        const isDismissed =
+          localStorage.getItem(userKey) === '1' ||
+          localStorage.getItem(AUTH_PENDING_DISMISS_KEY) === '1'
+        if (isDismissed) {
+          localStorage.setItem(userKey, '1')
+          localStorage.removeItem(AUTH_PENDING_DISMISS_KEY)
+          sessionStorage.removeItem(GUEST_DISMISS_KEY)
+        }
+        return isDismissed
+      }
+      if (hasAuthenticatedSession()) {
+        return localStorage.getItem(AUTH_PENDING_DISMISS_KEY) === '1'
       }
       return sessionStorage.getItem(GUEST_DISMISS_KEY) === '1'
     } catch {
@@ -36,8 +55,12 @@
   const writeDismissed = () => {
     if (!browser) return
     try {
-      if ($siteUser?.id) {
-        localStorage.setItem(`${AUTH_DISMISS_PREFIX}${$siteUser.id}`, '1')
+      if ($siteUser?.id || hasAuthenticatedSession()) {
+        localStorage.setItem(AUTH_PENDING_DISMISS_KEY, '1')
+        if ($siteUser?.id) {
+          localStorage.setItem(`${AUTH_DISMISS_PREFIX}${$siteUser.id}`, '1')
+        }
+        sessionStorage.removeItem(GUEST_DISMISS_KEY)
       } else {
         sessionStorage.setItem(GUEST_DISMISS_KEY, '1')
       }
