@@ -12,7 +12,7 @@
     buildOpenStreetMapEmbedUrl,
     normalizeOpenStreetMapZoom,
   } from '$lib/util'
-  import { buildPostPollVoteUrl, type BackendPoll } from '$lib/api/backend'
+  import { buildPostPollVoteUrl, type BackendPoll, type BackendPollOption } from '$lib/api/backend'
   import { siteToken } from '$lib/siteAuth'
   import {
     formatMovieReviewReleaseDate,
@@ -109,8 +109,70 @@
   let hasPreview = false;
   let lastProcessedBody = '';
   let processedBody = '';
+  let localPoll: BackendPoll | null = null
+  let lastPollRef: BackendPoll | null = null
+  let pollVoting = false
   const maxPreviewLength = 250;
   const hydratedPostLinkSnapshots = new Map<number, PostLinkSnapshot>()
+
+  const clonePollOption = (option: BackendPollOption): BackendPollOption => ({ ...option })
+
+  const clonePoll = (value: BackendPoll | null | undefined): BackendPoll | null =>
+    value
+      ? {
+          ...value,
+          options: Array.isArray(value.options) ? value.options.map(clonePollOption) : [],
+          user_selection: Array.isArray(value.user_selection) ? [...value.user_selection] : [],
+        }
+      : null
+
+  const normalizePollSelection = (selection: number[]): number[] =>
+    Array.from(
+      new Set(
+        selection
+          .map((value) => Number(value))
+          .filter((value) => Number.isInteger(value) && value >= 0)
+      )
+    ).sort((a, b) => a - b)
+
+  const applyOptimisticPollSelection = (
+    source: BackendPoll | null,
+    nextSelection: number[]
+  ): BackendPoll | null => {
+    if (!source) return null
+
+    const previousSelection = new Set(normalizePollSelection(source.user_selection ?? []))
+    const nextSelectionSet = new Set(normalizePollSelection(nextSelection))
+    const nextPoll = clonePoll(source)
+    if (!nextPoll) return null
+
+    nextPoll.options = nextPoll.options.map((option, index) => {
+      let voterCount = Math.max(Number(option.voter_count || 0), 0)
+      if (previousSelection.has(index) && !nextSelectionSet.has(index)) {
+        voterCount = Math.max(0, voterCount - 1)
+      }
+      if (!previousSelection.has(index) && nextSelectionSet.has(index)) {
+        voterCount += 1
+      }
+      return {
+        ...option,
+        voter_count: voterCount,
+      }
+    })
+
+    const hadPreviousVote = previousSelection.size > 0
+    const hasNextVote = nextSelectionSet.size > 0
+    let totalVoterCount = Math.max(Number(nextPoll.total_voter_count || 0), 0)
+    if (!hadPreviousVote && hasNextVote) {
+      totalVoterCount += 1
+    } else if (hadPreviousVote && !hasNextVote) {
+      totalVoterCount = Math.max(0, totalVoterCount - 1)
+    }
+
+    nextPoll.total_voter_count = totalVoterCount
+    nextPoll.user_selection = Array.from(nextSelectionSet).sort((a, b) => a - b)
+    return nextPoll
+  }
 
   const normalizeTextForCompare = (value: string): string =>
     value
@@ -119,6 +181,11 @@
       .replace(/[.!?]+$/g, '')
       .trim()
       .toLowerCase()
+
+  $: if (poll !== lastPollRef) {
+    lastPollRef = poll
+    localPoll = clonePoll(poll)
+  }
 
   const stripLeadingTitleFromHtml = (html: string): string => {
     const rawTitle = (title || '').trim()
@@ -403,7 +470,12 @@
       return
     }
 
-    pollElement.setAttribute('data-poll-voting', '1')
+    const previousPollState = clonePoll(localPoll ?? poll)
+    const optimisticPoll = applyOptimisticPollSelection(previousPollState, nextSelection)
+    if (optimisticPoll) {
+      localPoll = optimisticPoll
+    }
+    pollVoting = true
     try {
       const response = await fetch(buildPostPollVoteUrl(postId), {
         method: 'POST',
@@ -417,17 +489,17 @@
       if (!response.ok || !data?.ok) {
         throw new Error(data?.error || 'Не удалось проголосовать')
       }
-      if (typeof data.poll_html === 'string' && data.poll_html.trim()) {
-        pollElement.outerHTML = data.poll_html
+      if (data?.poll && typeof data.poll === 'object') {
+        localPoll = clonePoll(data.poll as BackendPoll)
       }
     } catch (error) {
+      localPoll = previousPollState
       toast({
         content: (error as Error)?.message ?? 'Не удалось проголосовать',
         type: 'error',
       })
     } finally {
-      const currentPoll = element?.querySelector<HTMLElement>('.post-poll')
-      currentPoll?.removeAttribute('data-poll-voting')
+      pollVoting = false
     }
   }
 
@@ -443,7 +515,7 @@
     event.preventDefault()
     event.stopPropagation()
 
-    if (pollElement.getAttribute('data-poll-voting') === '1') return
+    if (pollVoting || pollElement.getAttribute('data-poll-voting') === '1') return
     if (pollElement.getAttribute('data-poll-closed') === '1') {
       toast({ content: 'Опрос завершен', type: 'warning' })
       return
@@ -939,11 +1011,11 @@
       if (!question || options.length < 2) return ''
 
       const activePoll =
-        poll &&
-        poll.question.trim() === question &&
-        Array.isArray(poll.options) &&
-        poll.options.length === options.length
-          ? poll
+        localPoll &&
+        localPoll.question.trim() === question &&
+        Array.isArray(localPoll.options) &&
+        localPoll.options.length === options.length
+          ? localPoll
           : null
       const selectedSet = new Set(activePoll?.user_selection || [])
       const totalVoters = Math.max(Number(activePoll?.total_voter_count || 0), 0)
@@ -2019,13 +2091,20 @@
     )
   }
 
-  // Сбрасываем флаг при изменении body
   $: {
     isFirstImage = true;
     firstImageUrl = null;
     firstImageSrcset = null;
     hasPreview = false;
     processedBody = extractPreviewContent(body);
+    void localPoll
+  }
+
+  // Сбрасываем состояние превью только при смене исходного контента/режима отображения
+  $: {
+    void body
+    void showFullBody
+    void collapsible
     if (!showFullBody && collapsible) {
       expanded = false
       hasOverflow = false
