@@ -107,17 +107,13 @@
     <section class="grid gap-4 lg:grid-cols-3">
       {#each topThree as author, index}
         <a href={`/${author.username}`} class={heroCardClass(index)}>
-          <div class="flex items-start justify-between gap-4">
+          <div class="flex items-start">
             <div class={rankBadgeClass(index)}>
               {index + 1}
             </div>
-            <div class="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-zinc-300">
-              <Icon src={Trophy} size="16" class="text-amber-500" />
-              {formatNumber(author.rating ?? author.score)}
-            </div>
           </div>
 
-          <div class="mt-5 flex items-center gap-4">
+          <div class="mt-5 flex items-start gap-4">
             <Avatar
               url={author.avatar_url || undefined}
               alt={author.title || author.username}
@@ -125,23 +121,24 @@
               class_="h-16 w-16 rounded-full ring-4 ring-white/70 dark:ring-zinc-950/70"
             />
             <div class="min-w-0">
-              <div class="truncate text-xl font-semibold text-slate-950 dark:text-zinc-50">
+              <div class="hero-card__title">
                 {author.title || author.username}
               </div>
-              <div class="truncate text-sm text-slate-500 dark:text-zinc-400">
+              <div class="mt-1 truncate text-sm text-slate-500 dark:text-zinc-400">
                 @{author.username}
               </div>
             </div>
           </div>
 
-          <div class="mt-6 grid grid-cols-2 gap-3 text-sm">
+          <div class="mt-6 text-sm">
             <div class="stat-card">
               <div class="stat-card__label">{heroRatingLabelMap[data.period]}</div>
-              <div class="stat-card__value">{formatNumber(author.rating ?? author.score)}</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-card__label">Постов</div>
-              <div class="stat-card__value">{formatNumber(author.posts_count)}</div>
+              <div class="mt-3 flex items-center gap-2 text-slate-900 dark:text-zinc-50">
+                <Icon src={Trophy} size="18" class="text-amber-500" />
+                <div class="stat-card__value stat-card__value--inline">
+                  {formatNumber(author.rating ?? author.score)}
+                </div>
+              </div>
             </div>
           </div>
         </a>
@@ -351,6 +348,10 @@
     color: rgb(15 23 42);
   }
 
+  .stat-card__value--inline {
+    margin-top: 0;
+  }
+
   :global(.dark) .stat-card__label {
     color: rgb(161 161 170);
   }
@@ -388,6 +389,22 @@
     font-weight: 700;
     color: rgb(100 116 139);
     flex-shrink: 0;
+  }
+
+  .hero-card__title {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    font-size: 1.25rem;
+    font-weight: 600;
+    line-height: 1.2;
+    color: rgb(15 23 42);
+    overflow-wrap: anywhere;
+  }
+
+  :global(.dark) .hero-card__title {
+    color: rgb(244 244 245);
   }
 
   @media (max-width: 640px) {
