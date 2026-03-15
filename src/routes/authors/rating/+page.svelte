@@ -107,19 +107,18 @@
     <section class="grid gap-4 lg:grid-cols-3">
       {#each topThree as author, index}
         <a href={`/${author.username}`} class={heroCardClass(index)}>
-          <div class="flex items-start">
-            <div class={rankBadgeClass(index)}>
-              {index + 1}
+          <div class="flex items-start gap-4">
+            <div class="hero-avatar-stack">
+              <Avatar
+                url={author.avatar_url || undefined}
+                alt={author.title || author.username}
+                width={64}
+                class_="hero-avatar-image h-16 w-16 rounded-full ring-4 ring-white/70 dark:ring-zinc-950/70"
+              />
+              <div class={`${rankBadgeClass(index)} hero-rank-badge`}>
+                {index + 1}
+              </div>
             </div>
-          </div>
-
-          <div class="mt-5 flex items-start gap-4">
-            <Avatar
-              url={author.avatar_url || undefined}
-              alt={author.title || author.username}
-              width={64}
-              class_="h-8 w-8 rounded-full ring-4 ring-white/70 dark:ring-zinc-950/70"
-            />
             <div class="min-w-0">
               <div class="hero-card__title">
                 {author.title || author.username}
@@ -310,6 +309,27 @@
     font-size: 1.125rem;
     font-weight: 700;
     color: white;
+  }
+
+  .hero-avatar-stack {
+    position: relative;
+    flex-shrink: 0;
+    width: 4.75rem;
+    height: 4.75rem;
+  }
+
+  .hero-avatar-image {
+    display: block;
+  }
+
+  .hero-rank-badge {
+    position: absolute;
+    right: -0.15rem;
+    bottom: -0.15rem;
+    width: 2rem;
+    height: 2rem;
+    font-size: 0.875rem;
+    box-shadow: 0 10px 24px rgb(15 23 42 / 0.18);
   }
 
   .rank-badge--gold {
