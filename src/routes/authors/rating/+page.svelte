@@ -31,9 +31,9 @@
   }
 
   const heroRatingLabelMap: Record<BackendTopAuthorPeriod, string> = {
-    week: 'Рейтинг за 7 дней',
-    month: 'Рейтинг за 30 дней',
-    all: 'Рейтинг',
+    week: 'Рейтинг автора',
+    month: 'Рейтинг автора',
+    all: 'Рейтинг автора',
   }
 
   const formatNumber = (value: number | undefined) => {
@@ -118,7 +118,7 @@
               url={author.avatar_url || undefined}
               alt={author.title || author.username}
               width={64}
-              class_="h-16 w-16 rounded-full ring-4 ring-white/70 dark:ring-zinc-950/70"
+              class_="h-8 w-8 rounded-full ring-4 ring-white/70 dark:ring-zinc-950/70"
             />
             <div class="min-w-0">
               <div class="hero-card__title">
