@@ -874,6 +874,52 @@ class PostLike(models.Model):
         return f"{self.post_id}:{self.user_id}"
 
 
+class AuthorRatingEvent(models.Model):
+    EVENT_TYPE_POST_LIKE = "post_like"
+    EVENT_TYPE_COMMENT_LIKE = "comment_like"
+    EVENT_TYPE_CHOICES = (
+        (EVENT_TYPE_POST_LIKE, "Лайк поста"),
+        (EVENT_TYPE_COMMENT_LIKE, "Лайк комментария"),
+    )
+
+    author = models.ForeignKey(Author, on_delete=models.CASCADE, related_name="rating_events")
+    actor = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="author_rating_events",
+    )
+    post = models.ForeignKey(
+        Post,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="author_rating_events",
+    )
+    comment = models.ForeignKey(
+        PostComment,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="author_rating_events",
+    )
+    event_type = models.CharField(max_length=32, choices=EVENT_TYPE_CHOICES)
+    delta = models.IntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["author", "created_at"]),
+            models.Index(fields=["created_at"]),
+        ]
+        verbose_name = "Изменение рейтинга автора"
+        verbose_name_plural = "Изменения рейтинга авторов"
+
+    def __str__(self) -> str:
+        return f"{self.author_id}:{self.event_type}:{self.delta}"
+
+
 class PostPollVote(models.Model):
     post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="poll_votes")
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="post_poll_votes")

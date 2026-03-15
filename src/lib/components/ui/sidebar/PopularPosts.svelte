@@ -85,7 +85,7 @@
             <div class="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-zinc-400">
               <span class="flex items-center gap-1">
                 <Icon src={Trophy} size="14" class="text-amber-500" />
-                {formatNumber(author.score)}
+                {formatNumber(author.rating ?? author.score)}
               </span>
               <span class="flex items-center gap-1">
                 {formatNumber(author.posts_count)} постов

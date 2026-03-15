@@ -27,8 +27,8 @@ from math import ceil
 from html import escape, unescape
 from xml.sax.saxutils import escape as xml_escape
 from django.db import transaction
-from django.db.models import Avg, Count, Exists, F, IntegerField, OuterRef, Q, Sum, Value
-from django.db.models.functions import Cast
+from django.db.models import Avg, Count, Exists, F, IntegerField, OuterRef, Q, Subquery, Sum, Value
+from django.db.models.functions import Cast, Coalesce
 
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse
@@ -38,6 +38,7 @@ from django.contrib.auth import authenticate, get_user_model
 
 from .models import (
     Author,
+    AuthorRatingEvent,
     AuthorAdmin,
     AuthorVerificationCode,
     BotSession,
@@ -1161,6 +1162,28 @@ def _format_rating_value(value: float | int | None) -> str:
     if not math.isfinite(normalized) or normalized < 0:
         normalized = 0.0
     return f"{normalized:.2f}".rstrip("0").rstrip(".") or "0"
+
+
+def _apply_author_rating_delta(
+    *,
+    author_id: int,
+    delta: int,
+    event_type: str,
+    actor_id: int | None = None,
+    post_id: int | None = None,
+    comment_id: int | None = None,
+) -> None:
+    if not delta:
+        return
+    Author.objects.filter(id=author_id).update(rating_total=F("rating_total") + delta)
+    AuthorRatingEvent.objects.create(
+        author_id=author_id,
+        actor_id=actor_id,
+        post_id=post_id,
+        comment_id=comment_id,
+        event_type=event_type,
+        delta=delta,
+    )
 
 
 def _normalize_comun_minimum_author_rating(value: object) -> tuple[float | None, str | None]:
@@ -5980,8 +6003,13 @@ def comment_like(request: HttpRequest, comment_id: int) -> HttpResponse:
         delta = 1
 
     if delta:
-        Author.objects.filter(id=comment.post.author_id).update(
-            rating_total=F("rating_total") + delta
+        _apply_author_rating_delta(
+            author_id=comment.post.author_id,
+            delta=delta,
+            event_type=AuthorRatingEvent.EVENT_TYPE_COMMENT_LIKE,
+            actor_id=user.id,
+            post_id=comment.post_id,
+            comment_id=comment.id,
         )
 
     likes_count = PostCommentLike.objects.filter(comment=comment).count()
@@ -6042,7 +6070,13 @@ def post_like(request: HttpRequest, post_id: int) -> HttpResponse:
 
     if delta:
         Post.objects.filter(id=post.id).update(rating=F("rating") + delta)
-        Author.objects.filter(id=post.author_id).update(rating_total=F("rating_total") + delta)
+        _apply_author_rating_delta(
+            author_id=post.author_id,
+            delta=delta,
+            event_type=AuthorRatingEvent.EVENT_TYPE_POST_LIKE,
+            actor_id=user.id,
+            post_id=post.id,
+        )
 
     liked = new_vote == 1
 
@@ -8967,9 +9001,6 @@ def _top_authors_response(request: HttpRequest, *, default_period: str = "month"
     limit = _parse_top_authors_limit(request.GET.get("limit"), default=5)
     now = timezone.now()
 
-    score_expr = Cast(F("posts__rating"), IntegerField()) + Cast(
-        F("posts__comments_count"), IntegerField()
-    ) * Value(5)
     posts_filter = Q(posts__is_blocked=False, posts__is_pending=False) & (
         Q(posts__publish_at__isnull=True) | Q(posts__publish_at__lte=now)
     )
@@ -8982,39 +9013,60 @@ def _top_authors_response(request: HttpRequest, *, default_period: str = "month"
     authors_qs = (
         Author.objects.filter(is_blocked=False)
         .filter(Q(shadow_banned=False) | Q(force_home=True))
-        .annotate(
-            score=Sum(score_expr, filter=posts_filter),
-            posts_count=Count("posts", filter=posts_filter),
-        )
-        .filter(posts_count__gt=0)
-        .order_by("-score", "-posts_count", "username")
+        .annotate(posts_count=Count("posts", filter=posts_filter, distinct=True))
     )
+
+    if period == "all":
+        authors_qs = authors_qs.annotate(
+            period_rating_total=Cast(F("rating_total"), IntegerField())
+        ).order_by("-period_rating_total", "-posts_count", "username")
+    else:
+        period_rating_total_subquery = (
+            AuthorRatingEvent.objects.filter(
+                author_id=OuterRef("pk"),
+                created_at__gte=cutoff,
+            )
+            .values("author_id")
+            .annotate(total=Coalesce(Sum("delta"), Value(0)))
+            .values("total")[:1]
+        )
+        authors_qs = authors_qs.annotate(
+            period_rating_total=Coalesce(
+                Subquery(period_rating_total_subquery, output_field=IntegerField()),
+                Value(0),
+            )
+        ).order_by("-period_rating_total", "-rating_total", "-posts_count", "username")
 
     total_authors = authors_qs.count()
     authors = authors_qs if limit is None else authors_qs[:limit]
 
     serialized = []
     for author in authors:
-        score = author.score or 0
+        rating_total = author.period_rating_total or 0
+        rating_value = _author_rating_value(rating_total)
         posts_count = author.posts_count or 0
         item = {
             "username": author.username,
             "title": author.title,
             "avatar_url": _author_avatar_url(request, author),
             "channel_url": author.invite_url or author.channel_url,
-            "score": score,
+            "rating": rating_value,
+            "score": rating_value,
             "posts_count": posts_count,
             "author_rating": _author_rating_value(author.rating_total),
             "period": period,
         }
         if period == "month":
-            item["month_score"] = score
+            item["month_rating"] = rating_value
+            item["month_score"] = rating_value
             item["month_posts"] = posts_count
         elif period == "week":
-            item["week_score"] = score
+            item["week_rating"] = rating_value
+            item["week_score"] = rating_value
             item["week_posts"] = posts_count
         else:
-            item["all_time_score"] = score
+            item["all_time_rating"] = rating_value
+            item["all_time_score"] = rating_value
             item["all_time_posts"] = posts_count
         serialized.append(item)
 

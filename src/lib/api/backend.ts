@@ -271,13 +271,17 @@ export type BackendTopAuthor = {
   channel_url?: string | null
   avatar_url?: string | null
   author_rating?: number
-  score: number
+  rating: number
+  score?: number
   posts_count: number
   period: BackendTopAuthorPeriod
+  month_rating?: number
   month_score?: number
   month_posts?: number
+  week_rating?: number
   week_score?: number
   week_posts?: number
+  all_time_rating?: number
   all_time_score?: number
   all_time_posts?: number
 }

@@ -24,10 +24,16 @@
     all: 'за все время',
   }
 
-  const scoreLabelMap: Record<BackendTopAuthorPeriod, string> = {
-    week: 'Очки за 7 дней',
-    month: 'Очки за 30 дней',
-    all: 'Очки за все время',
+  const ratingLabelMap: Record<BackendTopAuthorPeriod, string> = {
+    week: 'Рейтинг за 7 дней',
+    month: 'Рейтинг за 30 дней',
+    all: 'Рейтинг за все время',
+  }
+
+  const heroRatingLabelMap: Record<BackendTopAuthorPeriod, string> = {
+    week: 'Рейтинг за 7 дней',
+    month: 'Рейтинг за 30 дней',
+    all: 'Рейтинг',
   }
 
   const formatNumber = (value: number | undefined) => {
@@ -107,7 +113,7 @@
             </div>
             <div class="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-zinc-300">
               <Icon src={Trophy} size="16" class="text-amber-500" />
-              {formatNumber(author.score)}
+              {formatNumber(author.rating ?? author.score)}
             </div>
           </div>
 
@@ -130,8 +136,8 @@
 
           <div class="mt-6 grid grid-cols-2 gap-3 text-sm">
             <div class="stat-card">
-              <div class="stat-card__label">{scoreLabelMap[data.period]}</div>
-              <div class="stat-card__value">{formatNumber(author.score)}</div>
+              <div class="stat-card__label">{heroRatingLabelMap[data.period]}</div>
+              <div class="stat-card__value">{formatNumber(author.rating ?? author.score)}</div>
             </div>
             <div class="stat-card">
               <div class="stat-card__label">Постов</div>
@@ -153,7 +159,7 @@
           </div>
         </div>
         <div class="hidden text-sm text-slate-500 dark:text-zinc-400 sm:block">
-          {scoreLabelMap[data.period]}
+          {ratingLabelMap[data.period]}
         </div>
       </div>
 
@@ -184,10 +190,10 @@
             <div class="flex items-center gap-6 text-right">
               <div class="min-w-[88px]">
                 <div class="text-xs uppercase tracking-wide text-slate-400 dark:text-zinc-500">
-                  Очки
+                  Рейтинг
                 </div>
                 <div class="text-base font-semibold text-slate-900 dark:text-zinc-100">
-                  {formatNumber(author.score)}
+                  {formatNumber(author.rating ?? author.score)}
                 </div>
               </div>
               <div class="min-w-[72px]">
