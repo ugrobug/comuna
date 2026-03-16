@@ -8,7 +8,9 @@
   import { login } from '$lib/siteAuth'
 
   export let open = false
-  let authMode: 'login' | 'signup' = 'login'
+  export let initialMode: 'login' | 'signup' = 'login'
+  let authMode: 'login' | 'signup' = initialMode
+  let wasOpen = false
 
   let loginData = {
     username: '',
@@ -45,12 +47,21 @@
 
   function handleModalClose() {
     open = false
-    authMode = 'login'
+    authMode = initialMode
     loginData = {
       username: '',
       password: '',
       loading: false,
     }
+  }
+
+  $: if (open && !wasOpen) {
+    authMode = initialMode
+    wasOpen = true
+  }
+
+  $: if (!open && wasOpen) {
+    wasOpen = false
   }
 </script>
 

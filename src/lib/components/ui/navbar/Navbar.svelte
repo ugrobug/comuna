@@ -282,7 +282,7 @@
             </MenuButton>
             <MenuButton
               link
-              href="/create/community"
+              href="/comuns?create=1"
               disabled={!$profile?.jwt ||
                 !$profile?.user ||
                 ($site?.site_view.local_site.community_creation_admin_only &&

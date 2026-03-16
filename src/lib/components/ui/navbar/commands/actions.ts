@@ -368,7 +368,7 @@ export function getGroups(
           icon: PencilSquare,
         },
         {
-          href: '/create/community',
+          href: '/comuns?create=1',
           name: t.get('routes.createCommunity'),
           icon: Newspaper,
         },

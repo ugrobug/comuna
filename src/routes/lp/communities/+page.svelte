@@ -1,6 +1,7 @@
 <script lang="ts">
   import { page } from '$app/stores'
   import { env } from '$env/dynamic/public'
+  import LoginModal from '$lib/components/auth/LoginModal.svelte'
   import type { IconSource } from 'svelte-hero-icons'
   import {
     ArrowTrendingUp,
@@ -88,6 +89,8 @@
     'Разбор кейса: контекст, решение, результат, выводы для сообщества.',
   ]
 
+  let signupModalOpen = false
+
   $: canonicalUrl = new URL(
     $page.url.pathname,
     (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '') + '/'
@@ -118,7 +121,7 @@
         </p>
 
         <div class="hero-actions">
-          <a class="cta-primary" href="/create/community">Создать сообщество</a>
+          <a class="cta-primary" href="/comuns?create=1">Создать сообщество</a>
           <a class="cta-secondary" href="#telegram-migration">Перенести аудиторию из Telegram</a>
         </div>
 
@@ -302,11 +305,19 @@
       </div>
 
       <div class="cta-buttons">
-        <a class="cta-primary cta-primary--light" href="/create/community">Запустить сообщество</a>
-        <a class="cta-secondary cta-secondary--light" href="/signup">Создать аккаунт</a>
+        <a class="cta-primary cta-primary--light" href="/comuns?create=1">Запустить сообщество</a>
+        <button
+          type="button"
+          class="cta-secondary cta-secondary--light"
+          on:click={() => (signupModalOpen = true)}
+        >
+          Создать аккаунт
+        </button>
       </div>
     </div>
   </section>
+
+  <LoginModal bind:open={signupModalOpen} initialMode="signup" />
 </div>
 
 <style>
