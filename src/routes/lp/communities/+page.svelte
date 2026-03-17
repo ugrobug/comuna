@@ -2,6 +2,8 @@
   import { page } from '$app/stores'
   import { env } from '$env/dynamic/public'
   import LoginModal from '$lib/components/auth/LoginModal.svelte'
+  import EditorJS from '$lib/components/editor/EditorJS.svelte'
+  import type { TemplateEditorBlockType } from '$lib/postTemplates'
   import type { IconSource } from 'svelte-hero-icons'
   import {
     ArrowTrendingUp,
@@ -29,7 +31,7 @@
   }
 
   type VisualCommunity = {
-    image: string
+    tone: string
     title: string
     text: string
   }
@@ -128,17 +130,17 @@
 
   const showcaseCommunities: VisualCommunity[] = [
     {
-      image: '/communities/technology.webp',
+      tone: 'technology',
       title: 'Технологическое сообщество',
       text: 'Подходит для новостей, разборов продуктов, инженерных колонок и экспертных обсуждений.',
     },
     {
-      image: '/communities/science.webp',
+      tone: 'science',
       title: 'Научная вертикаль',
       text: 'Можно оформить правила для рецензий, заметок, дискуссий и популяризаторских публикаций.',
     },
     {
-      image: '/communities/music.webp',
+      tone: 'music',
       title: 'Культурное комьюнити',
       text: 'Редакционные подборки, рецензии, анонсы и пользовательские посты живут в одном узнаваемом пространстве.',
     },
@@ -157,6 +159,76 @@
     'Подборка: критерии отбора, карточки объектов, рекомендации редакции.',
     'Кейс: контекст, решение, результат, что можно повторить у себя.',
   ]
+
+  const editorDemoBlockTypes: TemplateEditorBlockType[] = [
+    'header',
+    'list',
+    'image',
+    'quote',
+    'code',
+    'divider',
+    'spoiler',
+    'gallery',
+    'compare',
+    'embed',
+    'link',
+    'poll',
+  ]
+
+  let editorDemoValue = JSON.stringify({
+    blocks: [
+      {
+        type: 'header',
+        data: {
+          text: 'Шаблон поста для сообщества',
+          level: 2,
+        },
+      },
+      {
+        type: 'paragraph',
+        data: {
+          text: 'Этот шаблон можно заранее собрать для авторов сообщества: структура уже задана, участнику остается только заполнить блоки по смыслу.',
+        },
+      },
+      {
+        type: 'header',
+        data: {
+          text: 'Что должно быть в материале',
+          level: 3,
+        },
+      },
+      {
+        type: 'list',
+        data: {
+          style: 'unordered',
+          items: [
+            'Лид с основной мыслью публикации',
+            'Ключевые тезисы или критерии оценки',
+            'Факты, примеры, иллюстрации или цитаты',
+            'Вывод и приглашение к обсуждению',
+          ],
+        },
+      },
+      {
+        type: 'quote',
+        data: {
+          text: 'Автор сообщества заранее продумывает структуру. Пользователь приходит уже в понятную форму публикации.',
+          caption: 'Смысл шаблонного редактора',
+          alignment: 'left',
+        },
+      },
+      {
+        type: 'divider',
+        data: {},
+      },
+      {
+        type: 'paragraph',
+        data: {
+          text: 'Попробуйте добавить свои блоки через плюс слева: список, галерею, цитату, код, опрос, сравнение изображений или embed.',
+        },
+      },
+    ],
+  })
 
   let signupModalOpen = false
 
@@ -211,10 +283,7 @@
 
       <div class="hero-visual">
         <article class="hero-visual__card hero-visual__card--large">
-          <img
-            src="/communities/technology.webp"
-            alt="Пример технологического сообщества"
-          />
+          <div class="gradient-media gradient-media--technology" aria-hidden="true"></div>
           <div class="hero-visual__caption">
             <span>Управляемая среда</span>
             <strong>Роли, типы постов, шаблоны и собственный стиль страницы</strong>
@@ -223,11 +292,7 @@
 
         <div class="hero-visual__grid">
           <article class="hero-visual__card">
-            <img
-              src="/communities/science.webp"
-              alt="Пример научного сообщества"
-              loading="lazy"
-            />
+            <div class="gradient-media gradient-media--science" aria-hidden="true"></div>
             <div class="hero-visual__caption hero-visual__caption--compact">
               <span>Для тематики</span>
               <strong>с отдельными правилами публикации</strong>
@@ -331,11 +396,7 @@
       </div>
 
       <div class="template-visual">
-        <img
-          src="/img/communityBackground1.webp"
-          alt="Оформленная страница сообщества"
-          loading="lazy"
-        />
+        <div class="gradient-media gradient-media--template" aria-hidden="true"></div>
         <div class="template-visual__note">
           <span>Шаблон публикации</span>
           <strong>Материал выходит по понятной структуре</strong>
@@ -343,6 +404,77 @@
             Автору легче начать, редактору легче проверять, читателю легче
             воспринимать.
           </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="content-section content-section--editor">
+    <div class="section-shell editor-showcase">
+      <div class="section-heading">
+        <div class="eyebrow">Редактор сообщества</div>
+        <h2>Наш редактор помогает собирать шаблоны из блоков и отдавать их авторам как готовую структуру</h2>
+        <p>
+          Это не просто поле для текста. Внутри сообщества вы можете заранее
+          собрать структуру публикации из блоков: заголовков, списков, цитат,
+          галерей, embed-блоков, сравнений изображений и других элементов.
+          После этого пользователи пишут не с нуля, а внутри уже подготовленного
+          сценария.
+        </p>
+      </div>
+
+      <div class="editor-promo-grid">
+        <article class="message-card">
+          <div class="message-card__number">Шаблон</div>
+          <h3>Структура поста задается заранее</h3>
+          <p>
+            Вы можете продумать композицию материала до публикации: где нужен
+            лид, где список критериев, где цитата, где иллюстрации и где финальный
+            блок для обсуждения.
+          </p>
+        </article>
+
+        <article class="message-card">
+          <div class="message-card__number">Блоки</div>
+          <h3>Из множества блоков собирается свой формат сообщества</h3>
+          <p>
+            Для одних сообществ важны обзоры и рейтинги, для других подборки,
+            галереи и embed-контент. Редактор не ограничивает вас одной формой
+            публикации.
+          </p>
+        </article>
+
+        <article class="message-card">
+          <div class="message-card__number">Практика</div>
+          <h3>Ниже встроен реальный редактор, которым можно пользоваться</h3>
+          <p>
+            Это не скриншот. Попробуйте нажать на плюс слева, добавить блоки и
+            посмотреть, как может выглядеть шаблон поста для вашего сообщества.
+          </p>
+        </article>
+      </div>
+
+      <div class="editor-demo-shell">
+        <div class="editor-demo-head">
+          <div>
+            <div class="editor-demo-label">Живой демо-режим</div>
+            <strong>Реальный редактор без сохранения</strong>
+          </div>
+          <p>
+            Здесь можно поиграться с блоками и представить, как будет выглядеть
+            шаблон публикации внутри вашего сообщества.
+          </p>
+        </div>
+
+        <div class="editor-demo">
+          <EditorJS
+            bind:value={editorDemoValue}
+            placeholder="Добавьте новый блок через плюс слева"
+            label=""
+            enableAutosave={false}
+            showPostSettings={false}
+            enabledTemplateEditorBlockTypes={editorDemoBlockTypes}
+          />
         </div>
       </div>
     </div>
@@ -363,7 +495,7 @@
       <div class="showcase-grid">
         {#each showcaseCommunities as community}
           <article class="showcase-card">
-            <img src={community.image} alt={community.title} loading="lazy" />
+            <div class={`gradient-media gradient-media--${community.tone}`} aria-hidden="true"></div>
             <div class="showcase-card__body">
               <h3>{community.title}</h3>
               <p>{community.text}</p>
@@ -680,13 +812,40 @@
     box-shadow: 0 18px 60px rgba(35, 44, 79, 0.08);
   }
 
-  .hero-visual__card img,
-  .template-visual img,
-  .showcase-card img {
+  .gradient-media {
     display: block;
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    background-size: cover;
+    background-position: center;
+  }
+
+  .gradient-media--technology {
+    background:
+      radial-gradient(circle at 22% 24%, rgba(110, 231, 255, 0.55), transparent 24%),
+      radial-gradient(circle at 80% 18%, rgba(59, 130, 246, 0.42), transparent 28%),
+      linear-gradient(135deg, #133b67 0%, #1d5f89 42%, #3aa4b0 100%);
+  }
+
+  .gradient-media--science {
+    background:
+      radial-gradient(circle at 28% 22%, rgba(167, 243, 208, 0.36), transparent 24%),
+      radial-gradient(circle at 78% 70%, rgba(96, 165, 250, 0.4), transparent 28%),
+      linear-gradient(145deg, #142549 0%, #1f4d78 48%, #2f7c7a 100%);
+  }
+
+  .gradient-media--template {
+    background:
+      radial-gradient(circle at 18% 22%, rgba(255, 214, 170, 0.42), transparent 24%),
+      radial-gradient(circle at 74% 18%, rgba(251, 146, 60, 0.24), transparent 26%),
+      linear-gradient(135deg, #7b402d 0%, #b7643d 45%, #df9a52 100%);
+  }
+
+  .gradient-media--music {
+    background:
+      radial-gradient(circle at 24% 24%, rgba(254, 205, 211, 0.38), transparent 24%),
+      radial-gradient(circle at 78% 20%, rgba(253, 186, 116, 0.28), transparent 26%),
+      linear-gradient(140deg, #5a1f35 0%, #9b3653 42%, #e28a47 100%);
   }
 
   .hero-visual__card--large {
@@ -815,12 +974,80 @@
     line-height: 1.1 !important;
   }
 
+  .editor-showcase {
+    gap: 1.5rem;
+  }
+
+  .editor-promo-grid {
+    display: grid;
+    gap: 1rem;
+  }
+
+  .editor-demo-shell {
+    display: grid;
+    gap: 1rem;
+    padding: 1.4rem;
+    border-radius: 1.8rem;
+    border: 1px solid var(--landing-line);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.82)),
+      linear-gradient(135deg, rgba(23, 61, 138, 0.08), transparent);
+    box-shadow: 0 20px 70px rgba(35, 44, 79, 0.08);
+  }
+
+  .editor-demo-head {
+    display: grid;
+    gap: 0.65rem;
+  }
+
+  .editor-demo-label {
+    color: var(--landing-accent-dark);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .editor-demo-head strong {
+    display: block;
+    font-size: clamp(1.4rem, 3vw, 2rem);
+    font-weight: 500;
+    letter-spacing: -0.03em;
+  }
+
+  .editor-demo-head p {
+    margin: 0;
+    max-width: 42rem;
+    color: var(--landing-muted);
+    line-height: 1.65;
+  }
+
+  .editor-demo {
+    overflow: hidden;
+    border-radius: 1.4rem;
+    border: 1px solid rgba(57, 76, 116, 0.12);
+    background: rgba(255, 255, 255, 0.72);
+  }
+
+  .editor-demo :global(.editor-container) {
+    padding: 1rem;
+  }
+
+  .editor-demo :global(.editor-content) {
+    min-height: 30rem;
+    background: rgba(255, 255, 255, 0.95);
+  }
+
   .content-section {
     padding: 1rem 0 3.5rem;
   }
 
   .content-section--contrast {
     padding-top: 0.25rem;
+  }
+
+  .content-section--editor {
+    padding-top: 0;
   }
 
   .content-section--gallery {
@@ -943,7 +1170,7 @@
     line-height: 1.45;
   }
 
-  .showcase-card img {
+  .showcase-card .gradient-media {
     aspect-ratio: 1.2 / 1;
   }
 
@@ -998,6 +1225,7 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
+    .editor-promo-grid,
     .showcase-grid,
     .migration-grid {
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1050,6 +1278,18 @@
     .hero-visual__card:not(.hero-visual__card--large),
     .template-visual {
       min-height: 14rem;
+    }
+
+    .editor-demo-shell {
+      padding: 1rem;
+    }
+
+    .editor-demo :global(.editor-container) {
+      padding: 0.65rem;
+    }
+
+    .editor-demo :global(.editor-content) {
+      min-height: 24rem;
     }
 
     .hero-visual__caption,
