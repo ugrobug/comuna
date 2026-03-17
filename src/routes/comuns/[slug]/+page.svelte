@@ -889,7 +889,7 @@
       (settingsDraft?.categories ?? []).map((item) => item.id)) as number[]
   )
   $: filteredTagOptions = (settingsTagOptions ?? []).filter((tag) => {
-    if (!normalizedTagSearch) return true
+    if (!normalizedTagSearch) return false
     return [tag.name, tag.lemma ?? ''].some((value) => value.toLowerCase().includes(normalizedTagSearch))
   }).slice(0, 30)
   $: normalizedUserSearch = settingsUserSearch.trim().toLowerCase()
@@ -899,7 +899,7 @@
     !settingsHasChanges && !settingsSaving && !settingsLogoUploading && !settingsTagCreating
   $: filteredUserOptions = (settingsUserOptions ?? [])
     .filter((user) => {
-      if (!normalizedUserSearch) return true
+      if (!normalizedUserSearch) return false
       return [user.username, user.display_name ?? '']
         .some((value) => value.toLowerCase().includes(normalizedUserSearch))
     })
@@ -914,6 +914,7 @@
       display_name: fromDraft?.display_name ?? null,
     }
   })
+  $: selectedProductTag = settingsDraft?.product_tag ?? null
 
   const createTagAndChooseDraft = async () => {
     const tagName = normalizeTagInput(settingsTagSearch)
@@ -1293,10 +1294,19 @@
               Сайт
             </a>
           {/if}
-          {#if isComunCreator() && comun?.slug}
-            <Button color="ghost" on:click={() => goto(`/comuns/${comun.slug}/settings`)}>
-              Настройки сообщества
-            </Button>
+          {#if isModerator() && comun?.slug}
+            <button
+              type="button"
+              class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 text-slate-700 transition hover:bg-slate-50 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-800/60"
+              on:click={() => goto(`/comuns/${comun.slug}/settings`)}
+              title="Настройки сообщества"
+              aria-label="Настройки сообщества"
+            >
+              <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="3.2"></circle>
+                <path d="M19.4 15a1 1 0 0 0 .2 1.1l.1.1a2 2 0 0 1 0 2.8 2 2 0 0 1-2.8 0l-.1-.1a1 1 0 0 0-1.1-.2 1 1 0 0 0-.6.9V20a2 2 0 0 1-4 0v-.2a1 1 0 0 0-.7-.9 1 1 0 0 0-1 .2l-.2.1a2 2 0 0 1-2.8 0 2 2 0 0 1 0-2.8l.1-.1a1 1 0 0 0 .2-1.1 1 1 0 0 0-.9-.6H4a2 2 0 0 1 0-4h.2a1 1 0 0 0 .9-.7 1 1 0 0 0-.2-1l-.1-.2a2 2 0 0 1 0-2.8 2 2 0 0 1 2.8 0l.1.1a1 1 0 0 0 1.1.2 1 1 0 0 0 .6-.9V4a2 2 0 0 1 4 0v.2a1 1 0 0 0 .7.9 1 1 0 0 0 1-.2l.2-.1a2 2 0 0 1 2.8 0 2 2 0 0 1 0 2.8l-.1.1a1 1 0 0 0-.2 1.1 1 1 0 0 0 .9.6h.2a2 2 0 0 1 0 4h-.2a1 1 0 0 0-.9.7z"></path>
+              </svg>
+            </button>
           {/if}
         </div>
       </div>
@@ -1691,7 +1701,7 @@
         </div>
 
         <label class="flex flex-col gap-1">
-          <span class="text-sm text-slate-700 dark:text-zinc-300">Описание продукта</span>
+          <span class="text-sm text-slate-700 dark:text-zinc-300">Описание сообщества</span>
           <textarea bind:value={settingsDraft.product_description} rows="4" class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"></textarea>
         </label>
 
@@ -1770,29 +1780,6 @@
               placeholder="Поиск пользователя по имени или логину..."
               class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"
             />
-            <div class="max-h-52 overflow-auto rounded-xl border border-slate-200 dark:border-zinc-800 divide-y divide-slate-100 dark:divide-zinc-800">
-              {#if filteredUserOptions.length}
-                {#each filteredUserOptions as user}
-                  <div class="flex items-center justify-between gap-2 px-3 py-2">
-                    <div class="min-w-0">
-                      <div class="text-sm font-medium text-slate-900 dark:text-zinc-100 truncate">
-                        {userDisplayName(user)}
-                      </div>
-                      <div class="text-xs text-slate-500 dark:text-zinc-400 truncate">@{user.username}</div>
-                    </div>
-                    <Button
-                      size="sm"
-                      on:click={() => addDraftModerator(user.id)}
-                      disabled={draftModeratorIdSet.has(user.id)}
-                    >
-                      {draftModeratorIdSet.has(user.id) ? 'Добавлен' : 'Добавить'}
-                    </Button>
-                  </div>
-                {/each}
-              {:else}
-                <div class="px-3 py-2 text-sm text-slate-500 dark:text-zinc-400">Пользователи не найдены</div>
-              {/if}
-            </div>
             <div class="flex flex-col gap-2">
               <div class="text-xs uppercase tracking-wide text-slate-500 dark:text-zinc-400">Выбранные модераторы</div>
               <div class="flex flex-col gap-2">
@@ -1817,26 +1804,51 @@
                 {/each}
               </div>
             </div>
+            <div class="max-h-52 overflow-auto rounded-xl border border-slate-200 dark:border-zinc-800 divide-y divide-slate-100 dark:divide-zinc-800">
+              {#if filteredUserOptions.length}
+                {#each filteredUserOptions as user}
+                  <div class="flex items-center justify-between gap-2 px-3 py-2">
+                    <div class="min-w-0">
+                      <div class="text-sm font-medium text-slate-900 dark:text-zinc-100 truncate">
+                        {userDisplayName(user)}
+                      </div>
+                      <div class="text-xs text-slate-500 dark:text-zinc-400 truncate">@{user.username}</div>
+                    </div>
+                    <Button
+                      size="sm"
+                      on:click={() => addDraftModerator(user.id)}
+                      disabled={draftModeratorIdSet.has(user.id)}
+                    >
+                      {draftModeratorIdSet.has(user.id) ? 'Добавлен' : 'Добавить'}
+                    </Button>
+                  </div>
+                {/each}
+              {:else}
+                <div class="px-3 py-2 text-sm text-slate-500 dark:text-zinc-400">
+                  {normalizedUserSearch ? 'Пользователи не найдены' : 'Начните вводить имя или логин для поиска'}
+                </div>
+              {/if}
+            </div>
           </div>
         {/if}
 
         <div class="flex flex-col gap-2">
           <div class="text-sm text-slate-700 dark:text-zinc-300">Тег продукта (посты с этим тегом попадут в сообщество)</div>
+          <input
+            bind:value={settingsTagSearch}
+            placeholder="Поиск тега..."
+            class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"
+          />
           <div class="flex flex-wrap items-center gap-2">
-            {#if settingsDraft.product_tag}
+            {#if selectedProductTag}
               <span class="rounded-full bg-slate-100 dark:bg-zinc-800 px-3 py-1 text-sm">
-                #{settingsDraft.product_tag.name}
+                #{selectedProductTag.name}
               </span>
               <Button color="ghost" size="sm" on:click={clearDraftTag}>Сбросить</Button>
             {:else}
               <span class="text-sm text-slate-500 dark:text-zinc-400">Тег не выбран</span>
             {/if}
           </div>
-          <input
-            bind:value={settingsTagSearch}
-            placeholder="Поиск тега..."
-            class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"
-          />
           <div class="max-h-48 overflow-auto rounded-xl border border-slate-200 dark:border-zinc-800 divide-y divide-slate-100 dark:divide-zinc-800">
             {#if normalizedTagCreateValue && !hasExactTagMatch}
               <div class="flex items-center justify-between gap-2 px-3 py-2 bg-slate-50 dark:bg-zinc-900/60">
@@ -1871,7 +1883,11 @@
               {/each}
             {:else}
               <div class="px-3 py-2 text-sm text-slate-500 dark:text-zinc-400">
-                {normalizedTagCreateValue && !hasExactTagMatch ? 'Можно добавить новый тег выше' : 'Ничего не найдено'}
+                {normalizedTagCreateValue && !hasExactTagMatch
+                  ? 'Можно добавить новый тег выше'
+                  : normalizedTagSearch
+                    ? 'Ничего не найдено'
+                    : 'Начните вводить название тега для поиска'}
               </div>
             {/if}
           </div>
@@ -1909,25 +1925,18 @@
         </label>
       </div>
 
-      {#if canDeleteComun()}
-        <div class="rounded-2xl border border-rose-200 dark:border-rose-900/50 bg-rose-50/80 dark:bg-rose-950/20 px-4 py-4">
-          <div class="text-sm font-semibold text-rose-700 dark:text-rose-300">Удаление сообщества</div>
-          <div class="mt-2 text-sm text-rose-700 dark:text-rose-300">
-            Посты пользователей не будут удалены. Они останутся на сайте без привязки к сообществу.
-          </div>
-          <div class="mt-3">
-            <Button
-              color="ghost"
-              on:click={openDeleteComunModal}
-              disabled={settingsSaving || settingsLogoUploading || deleteComunSaving}
-            >
-              Удалить сообщество
-            </Button>
-          </div>
-        </div>
-      {/if}
-
-      <div class="flex justify-end gap-2 pt-2">
+      <div class="flex justify-between gap-2 pt-2">
+        {#if canDeleteComun()}
+          <Button
+            color="ghost"
+            on:click={openDeleteComunModal}
+            disabled={settingsSaving || settingsLogoUploading || deleteComunSaving}
+          >
+            Удалить сообщество
+          </Button>
+        {:else}
+          <span></span>
+        {/if}
         <Button on:click={saveSettings} disabled={settingsSaving || settingsLogoUploading || deleteComunSaving}>
           {settingsSaving ? 'Сохраняем...' : 'Сохранить'}
         </Button>
