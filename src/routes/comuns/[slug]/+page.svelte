@@ -318,6 +318,7 @@
         Number(value?.minimum_author_rating_to_post ?? 0) || 0,
         0
       ),
+      only_moderators_can_post: Boolean(value?.only_moderators_can_post),
       hide_from_home: Boolean(value?.hide_from_home),
       hide_from_fresh: Boolean(value?.hide_from_fresh),
       product_tag_id: value?.product_tag_id ?? value?.product_tag?.id ?? null,
@@ -973,6 +974,7 @@
             Number(settingsDraft.minimum_author_rating_to_post ?? 0) || 0,
             0
           ),
+          only_moderators_can_post: Boolean(settingsDraft.only_moderators_can_post),
           hide_from_home: canManageComunModerators() ? Boolean(settingsDraft.hide_from_home) : undefined,
           hide_from_fresh: canManageComunModerators() ? Boolean(settingsDraft.hide_from_fresh) : undefined,
           moderator_ids: canManageComunModerators() ? comunModeratorIds(settingsDraft) : undefined,
@@ -1242,10 +1244,6 @@
                 title="Записи опубликованные с данным тегом на всем сайте будут отображаться в этом сообществе"
               >
                 Тег продукта: <span class="font-medium">#{comun.product_tag.name}</span>
-              </div>
-            {:else}
-              <div class="mt-1 text-sm text-amber-700 dark:text-amber-300">
-                Тег продукта пока не выбран. Посты в ленте не появятся, пока модератор не задаст тег.
               </div>
             {/if}
             {#if comun?.creator?.username}
@@ -1727,6 +1725,27 @@
           </span>
         </label>
 
+        <label class="flex items-start gap-2 cursor-pointer rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-3">
+          <input
+            type="checkbox"
+            checked={Boolean(settingsDraft.only_moderators_can_post)}
+            on:change={() =>
+              (settingsDraft = {
+                ...settingsDraft,
+                only_moderators_can_post: !Boolean(settingsDraft.only_moderators_can_post),
+              })}
+            class="mt-0.5"
+          />
+          <span class="min-w-0">
+            <span class="block text-sm text-slate-900 dark:text-zinc-100">
+              Писать в сообщество могут только администраторы и модераторы
+            </span>
+            <span class="block text-xs text-slate-500 dark:text-zinc-400">
+              Если включить, новые записи смогут создавать только создатель сообщества, его модераторы и администраторы сайта.
+            </span>
+          </span>
+        </label>
+
         {#if canManageComunModerators()}
           <div class="flex flex-col gap-2 rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-3">
             <div class="text-sm font-medium text-slate-900 dark:text-zinc-100">Видимость постов сообщества в общих лентах</div>
@@ -1824,9 +1843,11 @@
                   </div>
                 {/each}
               {:else}
-                <div class="px-3 py-2 text-sm text-slate-500 dark:text-zinc-400">
-                  {normalizedUserSearch ? 'Пользователи не найдены' : 'Начните вводить имя или логин для поиска'}
-                </div>
+                {#if normalizedUserSearch}
+                  <div class="px-3 py-2 text-sm text-slate-500 dark:text-zinc-400">
+                    Пользователи не найдены
+                  </div>
+                {/if}
               {/if}
             </div>
           </div>
@@ -1882,13 +1903,15 @@
                 </div>
               {/each}
             {:else}
-              <div class="px-3 py-2 text-sm text-slate-500 dark:text-zinc-400">
-                {normalizedTagCreateValue && !hasExactTagMatch
-                  ? 'Можно добавить новый тег выше'
-                  : normalizedTagSearch
-                    ? 'Ничего не найдено'
-                    : 'Начните вводить название тега для поиска'}
-              </div>
+              {#if normalizedTagCreateValue && !hasExactTagMatch}
+                <div class="px-3 py-2 text-sm text-slate-500 dark:text-zinc-400">
+                  Можно добавить новый тег выше
+                </div>
+              {:else if normalizedTagSearch}
+                <div class="px-3 py-2 text-sm text-slate-500 dark:text-zinc-400">
+                  Ничего не найдено
+                </div>
+              {/if}
             {/if}
           </div>
         </div>

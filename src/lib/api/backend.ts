@@ -415,6 +415,7 @@ export type BackendComun = {
   tags?: BackendTag[]
   tag_ids?: number[]
   minimum_author_rating_to_post?: number
+  only_moderators_can_post?: boolean
   rating?: BackendComunRating
   hide_from_home?: boolean
   hide_from_fresh?: boolean

@@ -1251,6 +1251,8 @@ def _comun_post_access_state(
         return False, minimum_rating, None
     if _comun_is_moderator(user, comun):
         return True, minimum_rating, None
+    if bool(getattr(comun, "only_moderators_can_post", False)):
+        return False, minimum_rating, None
     if minimum_rating <= 0:
         return True, minimum_rating, None
 
@@ -1273,6 +1275,8 @@ def _comun_post_access_error_message(
     *,
     author_rating: float | None = None,
 ) -> str:
+    if bool(getattr(comun, "only_moderators_can_post", False)):
+        return "Публикация в этом сообществе доступна только создателю и модераторам."
     minimum_text = _format_rating_value(_comun_minimum_author_rating_value(comun))
     if author_rating is None:
         return f"Для публикации в этой комуне нужен рейтинг автора не ниже {minimum_text}."
@@ -8038,6 +8042,7 @@ def _serialize_comun(
         "product_description": comun.product_description,
         "target_audience": comun.target_audience,
         "minimum_author_rating_to_post": _comun_minimum_author_rating_value(comun),
+        "only_moderators_can_post": bool(getattr(comun, "only_moderators_can_post", False)),
         "rating": _serialize_comun_rating(comun, current_user=current_user),
         "hide_from_home": bool(comun.hide_from_home),
         "hide_from_fresh": bool(comun.hide_from_fresh),
@@ -8576,6 +8581,8 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
         if minimum_author_rating_error:
             return JsonResponse({"ok": False, "error": minimum_author_rating_error}, status=400)
         comun.minimum_author_rating_to_post = minimum_author_rating_to_post or 0
+    if "only_moderators_can_post" in body:
+        comun.only_moderators_can_post = bool(body.get("only_moderators_can_post"))
     if "allowed_template_types" in body:
         comun.allowed_post_templates = normalize_allowed_post_templates(
             body.get("allowed_template_types")

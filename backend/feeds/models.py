@@ -687,6 +687,11 @@ class Comun(models.Model):
         verbose_name="Минимальный рейтинг автора для публикации",
         help_text="Если больше нуля, писать в коммуну смогут только авторы с указанным рейтингом или выше.",
     )
+    only_moderators_can_post = models.BooleanField(
+        default=False,
+        verbose_name="Публикация только для создателя и модераторов",
+        help_text="Если включено, писать в коммуну смогут только ее создатель, модераторы и администраторы сайта.",
+    )
     rating_score = models.IntegerField(default=0, verbose_name="Рейтинг")
     votes_up = models.PositiveIntegerField(default=0, verbose_name="Буду использовать")
     votes_down = models.PositiveIntegerField(default=0, verbose_name="Не нравится")

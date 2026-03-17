@@ -137,6 +137,7 @@
     createCategoryAutofilledFromQuery = true
   }
   $: minimumAuthorRatingToPost = Math.max(Number(comun?.minimum_author_rating_to_post ?? 0) || 0, 0)
+  $: onlyModeratorsCanPost = Boolean(comun?.only_moderators_can_post)
   $: canCreateInComun = Boolean($siteToken && comun?.can_post)
   $: productTagName = comun?.product_tag?.name?.trim() ?? ''
   $: comunAllowedTemplateTypes = normalizeAllowedPostTemplateTypes(
@@ -201,7 +202,9 @@
 
     if (!canCreateInComun) {
       createError =
-        minimumAuthorRatingToPost > 0
+        onlyModeratorsCanPost
+          ? 'Публикация в этом сообществе доступна только создателю и модераторам.'
+          : minimumAuthorRatingToPost > 0
           ? `Публикация в этом сообществе доступна авторам с рейтингом от ${formatRatingValue(minimumAuthorRatingToPost)}.`
           : 'Сейчас вы не можете публиковать записи в это сообщество.'
       return
@@ -294,7 +297,9 @@
       </div>
     {:else if authCheckDone && !canCreateInComun}
       <p class="text-sm text-slate-500 dark:text-zinc-400">
-        {#if minimumAuthorRatingToPost > 0}
+        {#if onlyModeratorsCanPost}
+          Публикация в этом сообществе доступна только создателю и модераторам.
+        {:else if minimumAuthorRatingToPost > 0}
           Публикация в этом сообществе доступна авторам с рейтингом от
           {formatRatingValue(minimumAuthorRatingToPost)}.
         {:else}
