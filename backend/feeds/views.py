@@ -856,7 +856,7 @@ def _serialize_comun_profile_card(
         "name": comun.name,
         "slug": comun.slug,
         "website_url": comun.website_url,
-        "logo_url": comun.logo_url,
+        "logo_url": _comun_logo_url(request, comun),
         "product_description": comun.product_description,
         "target_audience": comun.target_audience,
         "role": role,
@@ -1371,6 +1371,15 @@ def _rubric_icon_url(request: HttpRequest | None, rubric: Rubric | None) -> str 
     if not rubric:
         return None
     return _media_url(request, rubric.icon_thumb) or _media_url(request, rubric.icon_url)
+
+
+def _comun_logo_url(request: HttpRequest | None, comun: Comun | None) -> str | None:
+    if not comun:
+        return None
+    explicit_logo = str(getattr(comun, "logo_url", "") or "").strip()
+    if explicit_logo:
+        return explicit_logo
+    return _rubric_icon_url(request, getattr(comun, "source_rubric", None))
 
 
 def _format_lastmod(value) -> str | None:
@@ -8057,7 +8066,7 @@ def _serialize_comun(
         "name": comun.name,
         "slug": comun.slug,
         "website_url": comun.website_url,
-        "logo_url": comun.logo_url,
+        "logo_url": _comun_logo_url(request, comun),
         "product_description": comun.product_description,
         "target_audience": comun.target_audience,
         "minimum_author_rating_to_post": _comun_minimum_author_rating_value(comun),
