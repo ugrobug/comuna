@@ -1334,10 +1334,15 @@
 
       {#if comunTopMembers.length}
         <div class="flex flex-col gap-2 pt-1">
-          <div class="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-zinc-400">
-            <span class="uppercase tracking-wide">Рейтинг активности</span>
-            <span>•</span>
-            <span>{comunParticipantsCount} участников</span>
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-zinc-400">
+              <span class="uppercase tracking-wide">Рейтинг активности</span>
+              <span>•</span>
+              <span>{comunParticipantsCount} участников</span>
+            </div>
+            {#if comun?.slug}
+              <Button size="sm" on:click={openComunPostEditor}>Написать</Button>
+            {/if}
           </div>
           <div class="flex flex-wrap items-center gap-2">
             {#each comunTopMembers as member}
@@ -1360,12 +1365,6 @@
               </a>
             {/each}
           </div>
-        </div>
-      {/if}
-
-      {#if comun?.slug}
-        <div class="flex justify-end pt-1">
-          <Button on:click={openComunPostEditor}>Написать</Button>
         </div>
       {/if}
 
