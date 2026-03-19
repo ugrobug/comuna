@@ -1,6 +1,7 @@
 <script lang="ts">
   import { browser } from '$app/environment'
   import { goto } from '$app/navigation'
+  import { page } from '$app/stores'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import { Button, Spinner, TextInput, toast } from 'mono-svelte'
   import EditorJS from '$lib/components/editor/EditorJS.svelte'
@@ -88,6 +89,7 @@
 
   const DRAFT_NOTICE_DELAY_MS = 10_000
   const DRAFT_NOTICE_VISIBLE_MS = 5_000
+  $: requestedComunSlug = String($page.url.searchParams.get('comun') || '').trim()
 
   type PublishIdentityOption = {
     value: string
@@ -104,7 +106,12 @@
     .map((slug) => String(slug || '').trim())
     .filter(Boolean)
   $: availableComuns = comuns.filter((comun) =>
-    normalizedMyFeedComunSlugs.includes(comun.slug) && Boolean(comun.can_post)
+    Boolean(comun.can_post) &&
+    (
+      normalizedMyFeedComunSlugs.includes(comun.slug) ||
+      comun.slug === requestedComunSlug ||
+      comun.slug === createComunSlug
+    )
   )
   $: selectedComun = availableComuns.find((comun) => comun.slug === createComunSlug)
   $: selectedComunCategories = selectedComun?.categories ?? []
@@ -502,6 +509,15 @@
           initialFormSnapshot = JSON.stringify(buildLocalDraftState())
           lastSavedFormSnapshot = initialFormSnapshot
           const restored = restoreLocalDraftBuffer()
+          if (requestedComunSlug) {
+            const requestedComun = comuns.find(
+              (comun) => comun.slug === requestedComunSlug && Boolean(comun.can_post)
+            )
+            if (requestedComun) {
+              createComunSlug = requestedComun.slug
+              createComunCategoryId = ''
+            }
+          }
           if (restored) {
             await validateRestoredDraftId()
           }

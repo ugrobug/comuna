@@ -274,6 +274,11 @@
     publicRoadmapModalOpen = false
   }
 
+  const openComunPostEditor = () => {
+    if (!comun?.slug) return
+    goto(`/account/new-post?comun=${encodeURIComponent(comun.slug)}`)
+  }
+
   const onPublicRoadmapLinkClick = (event: MouseEvent) => {
     if (
       event.defaultPrevented ||
@@ -1354,6 +1359,12 @@
               </a>
             {/each}
           </div>
+        </div>
+      {/if}
+
+      {#if comun?.slug}
+        <div class="flex justify-end pt-1">
+          <Button on:click={openComunPostEditor}>Написать</Button>
         </div>
       {/if}
 
