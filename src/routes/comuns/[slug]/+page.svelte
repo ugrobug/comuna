@@ -1334,36 +1334,36 @@
 
       {#if comunTopMembers.length}
         <div class="flex flex-col gap-2 pt-1">
-          <div class="flex flex-wrap items-center justify-between gap-3">
-            <div class="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-zinc-400">
-              <span class="uppercase tracking-wide">Рейтинг активности</span>
-              <span>•</span>
-              <span>{comunParticipantsCount} участников</span>
+          <div class="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-zinc-400">
+            <span class="uppercase tracking-wide">Рейтинг активности</span>
+            <span>•</span>
+            <span>{comunParticipantsCount} участников</span>
+          </div>
+          <div class="flex flex-wrap items-end justify-between gap-3">
+            <div class="flex flex-wrap items-center gap-2">
+              {#each comunTopMembers as member}
+                <a
+                  href={`/id${member.user_id}`}
+                  class="inline-flex items-center justify-center h-9 w-9 rounded-full overflow-hidden border border-slate-200 dark:border-zinc-800 bg-slate-100 dark:bg-zinc-800 text-xs font-semibold text-slate-700 dark:text-zinc-200 hover:ring-2 hover:ring-blue-300/70 dark:hover:ring-blue-700/70 focus:outline-none focus:ring-2 focus:ring-blue-400/80 dark:focus:ring-blue-600/80 transition-shadow"
+                  title={`#${member.rank} @${member.username} — ${member.points} баллов`}
+                  aria-label={`#${member.rank} ${member.username}, ${member.points} баллов`}
+                >
+                  {#if member.avatar_url}
+                    <img
+                      src={member.avatar_url}
+                      alt={`Аватар @${member.username}`}
+                      class="h-full w-full object-cover"
+                      loading="lazy"
+                    />
+                  {:else}
+                    {userInitials(member.username)}
+                  {/if}
+                </a>
+              {/each}
             </div>
             {#if comun?.slug}
-              <Button size="sm" on:click={openComunPostEditor}>Написать</Button>
+              <Button size="sm" class="self-end" on:click={openComunPostEditor}>Написать</Button>
             {/if}
-          </div>
-          <div class="flex flex-wrap items-center gap-2">
-            {#each comunTopMembers as member}
-              <a
-                href={`/id${member.user_id}`}
-                class="inline-flex items-center justify-center h-9 w-9 rounded-full overflow-hidden border border-slate-200 dark:border-zinc-800 bg-slate-100 dark:bg-zinc-800 text-xs font-semibold text-slate-700 dark:text-zinc-200 hover:ring-2 hover:ring-blue-300/70 dark:hover:ring-blue-700/70 focus:outline-none focus:ring-2 focus:ring-blue-400/80 dark:focus:ring-blue-600/80 transition-shadow"
-                title={`#${member.rank} @${member.username} — ${member.points} баллов`}
-                aria-label={`#${member.rank} ${member.username}, ${member.points} баллов`}
-              >
-                {#if member.avatar_url}
-                  <img
-                    src={member.avatar_url}
-                    alt={`Аватар @${member.username}`}
-                    class="h-full w-full object-cover"
-                    loading="lazy"
-                  />
-                {:else}
-                  {userInitials(member.username)}
-                {/if}
-              </a>
-            {/each}
           </div>
         </div>
       {/if}
