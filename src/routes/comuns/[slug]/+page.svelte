@@ -1513,25 +1513,6 @@
     </Portal>
   {/if}
 
-  {#if comun?.slug}
-    <section class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-4 sm:p-5">
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <div class="text-sm text-slate-600 dark:text-zinc-400">
-          {#if canPostInComun()}
-            Опубликуйте запись прямо в сообщество. Оно будет привязано автоматически.
-          {:else if minimumAuthorRatingToPost > 0}
-            Публикация открыта для авторов с рейтингом от {formatRatingValue(minimumAuthorRatingToPost)}.
-          {:else}
-            Войдите, чтобы опубликовать запись прямо в сообщество.
-          {/if}
-        </div>
-        <Button on:click={openRoadmapSubmitFlow}>
-          {canPostInComun() ? 'Добавить' : 'Открыть форму'}
-        </Button>
-      </div>
-    </section>
-  {/if}
-
   {#if comun?.welcome_post}
     <section class="rounded-2xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/60 dark:bg-blue-950/20 p-4 sm:p-5">
       <div class="mb-3 text-sm font-semibold text-blue-800 dark:text-blue-300">
