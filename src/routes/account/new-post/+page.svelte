@@ -20,7 +20,6 @@
     buildComunsUrl,
     type BackendComun,
   } from '$lib/api/backend'
-  import { userSettings } from '$lib/settings'
   import PostTemplateFields from '$lib/components/site/post-templates/PostTemplateFields.svelte'
   import {
     POST_TEMPLATE_TYPE_OPTIONS,
@@ -90,6 +89,7 @@
   const DRAFT_NOTICE_DELAY_MS = 10_000
   const DRAFT_NOTICE_VISIBLE_MS = 5_000
   $: requestedComunSlug = String($page.url.searchParams.get('comun') || '').trim()
+  $: requestedFresh = $page.url.searchParams.get('fresh') === '1'
 
   type PublishIdentityOption = {
     value: string
@@ -102,17 +102,7 @@
     rubric_slug?: string | null
   }
 
-  $: normalizedMyFeedComunSlugs = ($userSettings.myFeedComuns ?? [])
-    .map((slug) => String(slug || '').trim())
-    .filter(Boolean)
-  $: availableComuns = comuns.filter((comun) =>
-    Boolean(comun.can_post) &&
-    (
-      normalizedMyFeedComunSlugs.includes(comun.slug) ||
-      comun.slug === requestedComunSlug ||
-      comun.slug === createComunSlug
-    )
-  )
+  $: availableComuns = comuns.filter((comun) => Boolean(comun.can_post))
   $: selectedComun = availableComuns.find((comun) => comun.slug === createComunSlug)
   $: selectedComunCategories = selectedComun?.categories ?? []
   $: selectedTargetLabel = selectedComun?.name || 'Выберите сообщество'
@@ -508,7 +498,10 @@
           await tick()
           initialFormSnapshot = JSON.stringify(buildLocalDraftState())
           lastSavedFormSnapshot = initialFormSnapshot
-          const restored = restoreLocalDraftBuffer()
+          if (requestedFresh) {
+            clearLocalDraftBuffer()
+          }
+          const restored = requestedFresh ? false : restoreLocalDraftBuffer()
           if (requestedComunSlug) {
             const requestedComun = comuns.find(
               (comun) => comun.slug === requestedComunSlug && Boolean(comun.can_post)
@@ -844,7 +837,7 @@
                       </div>
                       {#if filteredComuns.length}
                         <div class="px-3 pb-1 pt-3 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-zinc-500">
-                          Мои комуны
+                          Сообщества
                         </div>
                         {#each filteredComuns as comun}
                           <button
