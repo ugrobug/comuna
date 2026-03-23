@@ -1,7 +1,14 @@
 <script lang="ts">
-  import { buildPostPollVoteUrl, type BackendPoll, type BackendPollOption } from '$lib/api/backend'
+  import { browser } from '$app/environment'
+  import {
+    buildPostDetailUrl,
+    buildPostPollVoteUrl,
+    type BackendPoll,
+    type BackendPollOption,
+  } from '$lib/api/backend'
   import { siteToken } from '$lib/siteAuth'
   import { toast } from 'mono-svelte'
+  import { onMount } from 'svelte'
   import {
     formatPostVotePollDeadline,
     postVotePollOptionLabel,
@@ -18,6 +25,103 @@
   let voting = false
   let localPoll: BackendPoll | null = null
   let lastPollRef: BackendPoll | null = null
+  let restoreInFlight = false
+  let restoredToken: string | null = null
+
+  const clonePoll = (value: BackendPoll | null | undefined): BackendPoll | null =>
+    value
+      ? {
+          ...value,
+          options: Array.isArray(value.options) ? value.options.map((option) => ({ ...option })) : [],
+          user_selection: Array.isArray(value.user_selection) ? [...value.user_selection] : [],
+        }
+      : null
+
+  const applyServerPoll = (value: BackendPoll | null | undefined) => {
+    localPoll = clonePoll(value)
+  }
+
+  const normalizeSelection = (selection: number[]): number[] =>
+    Array.from(
+      new Set(
+        selection
+          .map((value) => Number(value))
+          .filter((value) => Number.isInteger(value) && value >= 0)
+      )
+    ).sort((a, b) => a - b)
+
+  const applyOptimisticPollSelection = (
+    source: BackendPoll | null,
+    nextSelection: number[]
+  ): BackendPoll | null => {
+    if (!source) return null
+
+    const nextPoll = clonePoll(source)
+    if (!nextPoll) return null
+
+    const previousSelection = new Set(normalizeSelection(source.user_selection ?? []))
+    const nextSelectionSet = new Set(normalizeSelection(nextSelection))
+
+    nextPoll.options = nextPoll.options.map((option, index) => {
+      let voterCount = Math.max(Number(option.voter_count || 0), 0)
+      if (previousSelection.has(index) && !nextSelectionSet.has(index)) {
+        voterCount = Math.max(0, voterCount - 1)
+      }
+      if (!previousSelection.has(index) && nextSelectionSet.has(index)) {
+        voterCount += 1
+      }
+      return {
+        ...option,
+        voter_count: voterCount,
+      }
+    })
+
+    let totalVoterCount = Math.max(Number(nextPoll.total_voter_count || 0), 0)
+    if (!previousSelection.size && nextSelectionSet.size) {
+      totalVoterCount += 1
+    } else if (previousSelection.size && !nextSelectionSet.size) {
+      totalVoterCount = Math.max(0, totalVoterCount - 1)
+    }
+
+    nextPoll.total_voter_count = totalVoterCount
+    nextPoll.user_selection = Array.from(nextSelectionSet).sort((a, b) => a - b)
+    return nextPoll
+  }
+
+  const formatVoteCount = (count: number): string => {
+    const safeCount = Math.max(0, Math.floor(count))
+    const mod10 = safeCount % 10
+    const mod100 = safeCount % 100
+    if (mod10 === 1 && mod100 !== 11) return `${safeCount} голос`
+    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+      return `${safeCount} голоса`
+    }
+    return `${safeCount} голосов`
+  }
+
+  const restoreCurrentUserPollState = async () => {
+    if (!browser || !allowPollVoting || !pollPostId || restoreInFlight) return
+    const token = $siteToken
+    if (!token || selectedSet.size > 0 || restoredToken === token) return
+
+    restoreInFlight = true
+    restoredToken = token
+    try {
+      const response = await fetch(buildPostDetailUrl(pollPostId), {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+      const payload = await response.json().catch(() => null)
+      if (response.ok && payload?.post?.poll && typeof payload.post.poll === 'object') {
+        applyServerPoll(payload.post.poll as BackendPoll)
+      }
+    } catch (error) {
+      console.error('Failed to restore poll state:', error)
+    } finally {
+      restoreInFlight = false
+    }
+  }
 
   $: data = template.data
   $: items = Array.isArray(data.items) ? data.items : []
@@ -30,13 +134,8 @@
 
   $: if (poll !== lastPollRef) {
     lastPollRef = poll
-    localPoll = poll
-      ? {
-          ...poll,
-          options: Array.isArray(poll.options) ? poll.options.map((option) => ({ ...option })) : [],
-          user_selection: Array.isArray(poll.user_selection) ? [...poll.user_selection] : [],
-        }
-      : null
+    restoredToken = null
+    applyServerPoll(poll)
   }
 
   $: fallbackOptions = items.map((item, index) => ({
@@ -53,6 +152,7 @@
       .map((value) => Number(value))
       .filter((value) => Number.isInteger(value) && value >= 0)
   )
+  $: hasUserVote = selectedSet.size > 0
   $: allowsMultiple = Boolean(localPoll?.allows_multiple_answers ?? data.allows_multiple_answers)
   $: deadlineValue = localPoll?.close_at || data.ends_at
   $: deadlineLabel = formatPostVotePollDeadline(deadlineValue)
@@ -60,6 +160,14 @@
   $: isClosed =
     Boolean(localPoll?.is_closed) ||
     (Number.isFinite(deadlineTimestamp) ? deadlineTimestamp <= Date.now() : false)
+  $: showResults = hasUserVote || isClosed
+  $: if (browser && allowPollVoting && pollPostId && $siteToken && !hasUserVote) {
+    void restoreCurrentUserPollState()
+  }
+
+  onMount(() => {
+    void restoreCurrentUserPollState()
+  })
 
   const looksSerializedTitle = (value: string): boolean => {
     const raw = (value || '').trim()
@@ -122,7 +230,14 @@
       return
     }
 
+    const previousPoll = clonePoll(localPoll ?? poll)
+    const optimisticPoll = applyOptimisticPollSelection(previousPoll, selection)
+    if (optimisticPoll) {
+      localPoll = optimisticPoll
+    }
+
     voting = true
+    let payload: any = null
     try {
       const response = await fetch(buildPostPollVoteUrl(pollPostId), {
         method: 'POST',
@@ -132,22 +247,17 @@
         },
         body: JSON.stringify({ options: selection }),
       })
-      const payload = await response.json().catch(() => ({}))
+      payload = await response.json().catch(() => ({}))
+      if (payload?.poll && typeof payload.poll === 'object') {
+        applyServerPoll(payload.poll as BackendPoll)
+      }
       if (!response.ok || !payload?.ok) {
         throw new Error(payload?.error || 'Не удалось проголосовать')
       }
-      if (payload?.poll && typeof payload.poll === 'object') {
-        localPoll = {
-          ...payload.poll,
-          options: Array.isArray(payload.poll.options)
-            ? payload.poll.options.map((option: BackendPollOption) => ({ ...option }))
-            : [],
-          user_selection: Array.isArray(payload.poll.user_selection)
-            ? payload.poll.user_selection.map((value: unknown) => Number(value))
-            : [],
-        }
-      }
     } catch (error) {
+      if (!payload?.poll) {
+        localPoll = previousPoll
+      }
       toast({
         content: (error as Error)?.message ?? 'Не удалось проголосовать',
         type: 'error',
@@ -163,7 +273,7 @@
       toast({ content: 'Голосование завершено', type: 'warning' })
       return
     }
-    if (voting) return
+    if (voting || hasUserVote) return
 
     const next = new Set(
       (localPoll?.user_selection ?? [])
@@ -204,8 +314,18 @@
     {/if}
 
     <div class="vote-poll-hero__meta">
-      <span>Голосов: {totalVotes}</span>
-      <span>{allowsMultiple ? 'Можно выбрать несколько вариантов' : 'Один вариант ответа'}</span>
+      {#if showResults}
+        <span>{formatVoteCount(totalVotes)}</span>
+      {/if}
+      <span>
+        {#if isClosed}
+          Опрос завершен
+        {:else if showResults}
+          Вы уже проголосовали
+        {:else}
+          {allowsMultiple ? 'Можно выбрать несколько вариантов' : 'Один вариант ответа'}
+        {/if}
+      </span>
     </div>
 
     {#if pollOptions.length}
@@ -215,48 +335,71 @@
           {@const selected = selectedSet.has(optionIndex)}
           {@const count = Math.max(Number(option.voter_count || 0), 0)}
           {@const percent = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0}
-          <div class={`vote-poll-item ${selected ? 'is-selected' : ''}`}>
+          <div class={`vote-poll-item ${showResults ? 'vote-poll-item--result' : 'vote-poll-item--choice'} ${selected ? 'is-selected' : ''}`}>
             <div class="vote-poll-item__main">
-              <span class="vote-poll-item__index">#{optionIndex + 1}</span>
+              {#if showResults}
+                <div class={`vote-poll-item__check ${selected ? 'is-selected' : ''}`} aria-hidden="true">
+                  {#if selected}✓{/if}
+                </div>
+              {:else}
+                <span class="vote-poll-item__index">#{optionIndex + 1}</span>
+              {/if}
               <div class="vote-poll-item__content">
                 <div class="vote-poll-item__title">{optionTitle(option)}</div>
                 {#if optionAuthor(option)}
                   <div class="vote-poll-item__author">@{optionAuthor(option)}</div>
                 {/if}
               </div>
-              <div class="vote-poll-item__stats">
-                {count}
-                {#if totalVotes > 0}
-                  <span>({percent}%)</span>
+              {#if showResults}
+                <div class="vote-poll-item__stats">{percent}%</div>
+              {/if}
+            </div>
+            {#if showResults}
+              <div class="vote-poll-item__progress">
+                <span class={`vote-poll-item__progress-fill ${selected ? 'is-selected' : ''}`} style={`width: ${percent}%`}></span>
+              </div>
+              <div class="vote-poll-item__result-meta">
+                <span>{formatVoteCount(count)}</span>
+                {#if selected}
+                  <span class="vote-poll-item__badge">Ваш голос</span>
                 {/if}
               </div>
-            </div>
-            <div class="vote-poll-item__actions">
-              <a
-                href={optionPath(option)}
-                target="_blank"
-                rel="noopener"
-                class="vote-poll-item__link"
-              >
-                Открыть пост
-              </a>
-              <button
-                type="button"
-                class="vote-poll-item__vote-btn"
-                disabled={voting || isClosed || !allowPollVoting || !pollPostId}
-                on:click|preventDefault|stopPropagation={() => toggleOptionVote(optionIndex)}
-              >
-                {#if selected}
-                  {allowsMultiple ? 'Убрать голос' : 'Снять голос'}
-                {:else}
+            {:else}
+              <div class="vote-poll-item__actions">
+                <a
+                  href={optionPath(option)}
+                  target="_blank"
+                  rel="noopener"
+                  class="vote-poll-item__link"
+                >
+                  Открыть пост
+                </a>
+                <button
+                  type="button"
+                  class="vote-poll-item__vote-btn"
+                  disabled={voting || isClosed || !allowPollVoting || !pollPostId || restoreInFlight}
+                  on:click|preventDefault|stopPropagation={() => toggleOptionVote(optionIndex)}
+                >
                   Голосовать
-                {/if}
-              </button>
-            </div>
+                </button>
+              </div>
+            {/if}
           </div>
         {/each}
       </div>
     {/if}
+
+    <div class="vote-poll-hero__status">
+      {#if restoreInFlight && !showResults}
+        Проверяем ваш голос...
+      {:else if isClosed}
+        Опрос завершен
+      {:else if showResults}
+        Результаты обновлены
+      {:else}
+        Выберите вариант, чтобы проголосовать
+      {/if}
+    </div>
   </div>
 </section>
 
@@ -367,6 +510,14 @@
     background: rgba(16, 185, 129, 0.14);
   }
 
+  .vote-poll-item--choice {
+    cursor: default;
+  }
+
+  .vote-poll-item--result {
+    gap: 0.7rem;
+  }
+
   .vote-poll-item__main {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
@@ -380,6 +531,27 @@
     line-height: 1.2;
     font-weight: 700;
     min-width: 2.1rem;
+  }
+
+  .vote-poll-item__check {
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 9999px;
+    border: 1px solid rgba(148, 163, 184, 0.4);
+    color: transparent;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.92rem;
+    line-height: 1;
+    font-weight: 700;
+    background: rgba(15, 23, 42, 0.48);
+  }
+
+  .vote-poll-item__check.is-selected {
+    border-color: rgba(52, 211, 153, 0.62);
+    background: rgba(16, 185, 129, 0.2);
+    color: #6ee7b7;
   }
 
   .vote-poll-item__content {
@@ -412,10 +584,25 @@
     white-space: nowrap;
   }
 
-  .vote-poll-item__stats span {
-    color: #94a3b8;
-    font-weight: 500;
-    margin-left: 0.24rem;
+  .vote-poll-item__progress {
+    width: 100%;
+    height: 0.72rem;
+    border-radius: 9999px;
+    overflow: hidden;
+    background: rgba(100, 116, 139, 0.5);
+  }
+
+  .vote-poll-item__progress-fill {
+    display: block;
+    height: 100%;
+    width: 0;
+    border-radius: inherit;
+    background: rgba(100, 116, 139, 0.95);
+    transition: width 180ms ease;
+  }
+
+  .vote-poll-item__progress-fill.is-selected {
+    background: linear-gradient(90deg, rgba(52, 211, 153, 0.92), rgba(16, 185, 129, 0.95));
   }
 
   .vote-poll-item__actions {
@@ -446,6 +633,32 @@
   .vote-poll-item__vote-btn[disabled] {
     opacity: 0.58;
     cursor: default;
+  }
+
+  .vote-poll-item__result-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.45rem 0.6rem;
+    font-size: 0.78rem;
+    line-height: 1.2;
+    color: #cbd5e1;
+  }
+
+  .vote-poll-item__badge {
+    border-radius: 9999px;
+    border: 1px solid rgba(52, 211, 153, 0.45);
+    background: rgba(16, 185, 129, 0.14);
+    color: #86efac;
+    padding: 0.16rem 0.48rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+  }
+
+  .vote-poll-hero__status {
+    color: #94a3b8;
+    font-size: 0.78rem;
+    line-height: 1.25;
   }
 
   @media (max-width: 640px) {
