@@ -6248,14 +6248,35 @@ def post_poll_vote(request: HttpRequest, post_id: int) -> HttpResponse:
         return JsonResponse({"ok": False, "error": "multiple options are not allowed"}, status=400)
 
     existing = PostPollVote.objects.filter(post=post, user=user).first()
-    if normalized:
-        if existing:
-            existing.selected_options = normalized
-            existing.save(update_fields=["selected_options", "updated_at"])
-        else:
-            PostPollVote.objects.create(post=post, user=user, selected_options=normalized)
-    elif existing:
-        existing.delete()
+    existing_selection = (
+        _normalize_poll_selection(existing.selected_options, options_count) if existing else []
+    )
+    if existing_selection:
+        live_poll = _live_poll_for_post(post, user)
+        if not live_poll:
+            return JsonResponse({"ok": False, "error": "poll not found"}, status=404)
+        if normalized == existing_selection:
+            return JsonResponse(
+                {
+                    "ok": True,
+                    "poll": live_poll["poll"],
+                    "poll_html": live_poll["html"],
+                }
+            )
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": "already voted",
+                "poll": live_poll["poll"],
+                "poll_html": live_poll["html"],
+            },
+            status=400,
+        )
+
+    if not normalized:
+        return JsonResponse({"ok": False, "error": "options are required"}, status=400)
+
+    PostPollVote.objects.create(post=post, user=user, selected_options=normalized)
 
     live_poll = _live_poll_for_post(post, user)
     if not live_poll:

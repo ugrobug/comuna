@@ -127,6 +127,20 @@
         }
       : null
 
+  const mergeServerPollWithSelection = (
+    serverPoll: BackendPoll | null,
+    fallbackSelection: number[]
+  ): BackendPoll | null => {
+    const cloned = clonePoll(serverPoll)
+    if (!cloned) return null
+    const normalizedFallback = normalizePollSelection(fallbackSelection)
+    const normalizedServerSelection = normalizePollSelection(cloned.user_selection ?? [])
+    if (!normalizedServerSelection.length && normalizedFallback.length) {
+      cloned.user_selection = normalizedFallback
+    }
+    return cloned
+  }
+
   const normalizePollSelection = (selection: number[]): number[] =>
     Array.from(
       new Set(
@@ -508,13 +522,18 @@
       })
       const data = await response.json().catch(() => ({}))
       if (!response.ok || !data?.ok) {
+        if (data?.poll && typeof data.poll === 'object') {
+          localPoll = mergeServerPollWithSelection(data.poll as BackendPoll, nextSelection)
+        }
         throw new Error(data?.error || 'Не удалось проголосовать')
       }
       if (data?.poll && typeof data.poll === 'object') {
-        localPoll = clonePoll(data.poll as BackendPoll)
+        localPoll = mergeServerPollWithSelection(data.poll as BackendPoll, nextSelection)
       }
     } catch (error) {
-      localPoll = previousPollState
+      if ((error as Error)?.message !== 'already voted') {
+        localPoll = previousPollState
+      }
       toast({
         content: (error as Error)?.message ?? 'Не удалось проголосовать',
         type: 'error',
