@@ -537,6 +537,7 @@
     event.stopPropagation()
 
     if (pollVoting || pollElement.getAttribute('data-poll-voting') === '1') return
+    if (pollElement.getAttribute('data-poll-locked') === '1') return
     if (pollElement.getAttribute('data-poll-closed') === '1') {
       toast({ content: 'Опрос завершен', type: 'warning' })
       return
@@ -1039,6 +1040,7 @@
           ? localPoll
           : null
       const selectedSet = new Set(activePoll?.user_selection || [])
+      const hasUserVote = selectedSet.size > 0
       const totalVoters = Math.max(Number(activePoll?.total_voter_count || 0), 0)
       const modeLabel = allowsMultipleAnswers
         ? 'Можно выбрать несколько вариантов'
@@ -1049,10 +1051,18 @@
           const count = Math.max(Number(optionPayload?.voter_count || 0), 0)
           const percent = totalVoters > 0 ? Math.round((count / totalVoters) * 100) : 0
           const isSelected = selectedSet.has(index)
-          return `<div class="post-poll-option post-inline-poll__option${isSelected ? ' is-selected' : ''}" data-option-index="${index}">
-            <div class="post-inline-poll__control" aria-hidden="true">
-              <span class="post-inline-poll__marker"></span>
-            </div>
+          const optionStateClass = hasUserVote
+            ? ` post-inline-poll__option--locked${isSelected ? ' post-inline-poll__option--selected-vote' : ''}`
+            : ''
+          const leadingControl = hasUserVote
+            ? isSelected
+              ? `<div class="post-inline-poll__checkmark" aria-hidden="true">✓</div>`
+              : ''
+            : `<div class="post-inline-poll__control" aria-hidden="true">
+                <span class="post-inline-poll__marker"></span>
+              </div>`
+          return `<div class="post-poll-option post-inline-poll__option${isSelected ? ' is-selected' : ''}${optionStateClass}" data-option-index="${index}">
+            ${leadingControl}
             <div class="post-inline-poll__option-main">
               <div class="post-inline-poll__option-row">
                 <span class="post-inline-poll__option-text">${escapeHtml(option)}</span>
@@ -1069,11 +1079,14 @@
         .join('')
       const statusLabel = activePoll?.is_closed
         ? 'Опрос завершен'
-        : 'Нажмите на вариант, чтобы проголосовать'
+        : hasUserVote
+          ? 'Вы уже проголосовали'
+          : 'Нажмите на вариант, чтобы проголосовать'
       const pollId = typeof raw?.uid === 'string' && raw.uid.trim() ? raw.uid.trim() : ''
       const attrs = [
         `data-poll-multiple="${allowsMultipleAnswers ? '1' : '0'}"`,
         `data-poll-closed="${activePoll?.is_closed ? '1' : '0'}"`,
+        `data-poll-locked="${hasUserVote ? '1' : '0'}"`,
         pollId ? `data-poll-id="${escapeHtml(pollId)}"` : '',
       ]
         .filter(Boolean)
@@ -1983,6 +1996,7 @@
           'data-compare-position',
           'data-poll-multiple',
           'data-poll-closed',
+          'data-poll-locked',
           'data-poll-id',
           'data-music-provider',
           'data-spoiler-open',
@@ -2475,6 +2489,16 @@
     background: rgba(15, 23, 42, 0.48);
   }
 
+  :global(.post-content .post-inline-poll__option--locked) {
+    cursor: default;
+  }
+
+  :global(.post-content .post-inline-poll__option--locked:hover) {
+    transform: none;
+    border-color: rgba(255, 255, 255, 0.12);
+    background: rgba(15, 23, 42, 0.38);
+  }
+
   :global(.post-content .post-inline-poll__control) {
     position: relative;
     width: 1.15rem;
@@ -2517,6 +2541,23 @@
       radial-gradient(circle at 50% 50%, rgba(16, 185, 129, 0.95) 0 34%, transparent 35%),
       rgba(16, 185, 129, 0.18);
     box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.14);
+  }
+
+  :global(.post-content .post-inline-poll__checkmark) {
+    width: 1.15rem;
+    height: 1.15rem;
+    margin-top: 0.1rem;
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: rgba(59, 130, 246, 0.22);
+    color: #bfdbfe;
+    font-size: 0.78rem;
+    font-weight: 800;
+    line-height: 1;
+    box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.28);
   }
 
   :global(.post-content .post-inline-poll__option-main) {
