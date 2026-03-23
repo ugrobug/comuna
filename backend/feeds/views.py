@@ -1499,9 +1499,12 @@ def _post_display_title(post: Post) -> str:
                 return poll_title
 
     content = post.content or ""
-    editor_payload_title = _extract_editor_payload_title(content)
-    if editor_payload_title:
-        return editor_payload_title
+    editor_payload = _decode_editor_payload(content)
+    if editor_payload:
+        editor_payload_title = _extract_editor_payload_title(content)
+        if editor_payload_title:
+            return editor_payload_title
+        return "Пост"
 
     content_text = _strip_html(content).strip()
     if content_text:
