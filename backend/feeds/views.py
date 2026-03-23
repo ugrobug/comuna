@@ -6266,7 +6266,7 @@ def post_poll_vote(request: HttpRequest, post_id: int) -> HttpResponse:
         return JsonResponse(
             {
                 "ok": False,
-                "error": "already voted",
+                "error": "Вы уже проголосовали в этом опросе",
                 "poll": live_poll["poll"],
                 "poll_html": live_poll["html"],
             },

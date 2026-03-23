@@ -531,7 +531,7 @@
         localPoll = mergeServerPollWithSelection(data.poll as BackendPoll, nextSelection)
       }
     } catch (error) {
-      if ((error as Error)?.message !== 'already voted') {
+      if ((error as Error)?.message !== 'Вы уже проголосовали в этом опросе') {
         localPoll = previousPollState
       }
       toast({
