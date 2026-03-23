@@ -1520,6 +1520,34 @@
       </figure>`
     }
 
+    const renderTableBlock = (raw: any): string => {
+      const sourceRows = Array.isArray(raw?.content) ? raw.content : []
+      const rows = sourceRows
+        .map((row: unknown) =>
+          Array.isArray(row)
+            ? row.map((cell) => escapeHtml(String(cell ?? '')).replace(/\r?\n/g, '<br>'))
+            : []
+        )
+        .filter((row: string[]) => row.length > 0)
+
+      if (!rows.length) return ''
+
+      const withHeadings = Boolean(raw?.withHeadings)
+      const headRow = withHeadings ? rows[0] : null
+      const bodyRows = withHeadings ? rows.slice(1) : rows
+
+      const headHtml = headRow?.length
+        ? `<thead><tr>${headRow.map((cell) => `<th>${cell || '&nbsp;'}</th>`).join('')}</tr></thead>`
+        : ''
+      const bodyHtml = bodyRows.length
+        ? `<tbody>${bodyRows
+            .map((row: string[]) => `<tr>${row.map((cell) => `<td>${cell || '&nbsp;'}</td>`).join('')}</tr>`)
+            .join('')}</tbody>`
+        : ''
+
+      return `<div class="post-table-wrap"><table>${headHtml}${bodyHtml}</table></div>`
+    }
+
     switch (block.type) {
       case 'paragraph':
         return `<p>${block.data.text}</p>`;
@@ -1535,6 +1563,8 @@
         return block.data.style === 'ordered' 
           ? `<ol>${items}</ol>` 
           : `<ul class="${listClass}">${items}</ul>`;
+      case 'table':
+        return renderTableBlock(block.data)
       case 'quote':
         return `<blockquote>
           <p>${block.data.text}</p>
@@ -2115,6 +2145,12 @@
           'audio',
           'source',
           'progress',
+          'table',
+          'thead',
+          'tbody',
+          'tr',
+          'td',
+          'th',
           'figure',
           'figcaption',
           'input',

@@ -587,6 +587,220 @@
     }
   }
 
+  class TableTool {
+    private data: {
+      withHeadings: boolean
+      content: string[][]
+    }
+    private grid: HTMLDivElement | null = null
+    private headingToggle: HTMLInputElement | null = null
+
+    static get toolbox() {
+      return {
+        title: 'Таблица',
+        icon: `
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="1.5" y="2" width="13" height="12" rx="2" stroke="currentColor" stroke-width="1.4"/>
+            <path d="M1.5 6H14.5M6 2V14M10.5 2V14" stroke="currentColor" stroke-width="1.2"/>
+          </svg>
+        `,
+      }
+    }
+
+    constructor({ data }: { data?: any }) {
+      this.data = {
+        withHeadings: Boolean(data?.withHeadings),
+        content: this.normalizeContent(data?.content),
+      }
+    }
+
+    private normalizeCell(value: unknown): string {
+      return typeof value === 'string' ? value : String(value ?? '')
+    }
+
+    private normalizeContent(value: unknown): string[][] {
+      const rows = Array.isArray(value) ? value : []
+      const normalizedRows = rows
+        .map((row) =>
+          Array.isArray(row) ? row.map((cell) => this.normalizeCell(cell)) : []
+        )
+        .filter((row) => row.length > 0)
+
+      const rowCount = Math.max(2, normalizedRows.length || 0)
+      const columnCount = Math.max(2, ...normalizedRows.map((row) => row.length), 0)
+
+      return Array.from({ length: rowCount }, (_, rowIndex) =>
+        Array.from({ length: columnCount }, (_, columnIndex) =>
+          normalizedRows[rowIndex]?.[columnIndex] ?? ''
+        )
+      )
+    }
+
+    private updateCell(rowIndex: number, columnIndex: number, value: string) {
+      if (!this.data.content[rowIndex]) return
+      this.data.content[rowIndex][columnIndex] = value
+    }
+
+    private addRow() {
+      const columnCount = this.data.content[0]?.length || 2
+      this.data.content = [
+        ...this.data.content,
+        Array.from({ length: columnCount }, () => ''),
+      ]
+      this.renderGrid()
+    }
+
+    private removeRow() {
+      if (this.data.content.length <= 2) return
+      this.data.content = this.data.content.slice(0, -1)
+      this.renderGrid()
+    }
+
+    private addColumn() {
+      this.data.content = this.data.content.map((row) => [...row, ''])
+      this.renderGrid()
+    }
+
+    private removeColumn() {
+      const columnCount = this.data.content[0]?.length || 0
+      if (columnCount <= 2) return
+      this.data.content = this.data.content.map((row) => row.slice(0, -1))
+      this.renderGrid()
+    }
+
+    private renderGrid() {
+      if (!this.grid) return
+
+      this.grid.innerHTML = ''
+
+      const controls = document.createElement('div')
+      controls.classList.add('table-tool__controls')
+
+      const makeButton = (label: string, onClick: () => void, disabled = false) => {
+        const button = document.createElement('button')
+        button.type = 'button'
+        button.classList.add('table-tool__action')
+        button.textContent = label
+        button.disabled = disabled
+        button.addEventListener('click', onClick)
+        return button
+      }
+
+      controls.appendChild(makeButton('Добавить строку', () => this.addRow()))
+      controls.appendChild(
+        makeButton('Удалить строку', () => this.removeRow(), this.data.content.length <= 2)
+      )
+      controls.appendChild(makeButton('Добавить столбец', () => this.addColumn()))
+      controls.appendChild(
+        makeButton(
+          'Удалить столбец',
+          () => this.removeColumn(),
+          (this.data.content[0]?.length || 0) <= 2
+        )
+      )
+
+      const tableWrap = document.createElement('div')
+      tableWrap.classList.add('table-tool__wrap')
+
+      const table = document.createElement('table')
+      table.classList.add('table-tool__table')
+
+      const body = document.createElement('tbody')
+
+      this.data.content.forEach((row, rowIndex) => {
+        const tr = document.createElement('tr')
+
+        row.forEach((cell, columnIndex) => {
+          const td = document.createElement('td')
+          td.classList.add('table-tool__cell')
+          if (this.data.withHeadings && rowIndex === 0) {
+            td.classList.add('table-tool__cell--heading')
+          }
+
+          const input = document.createElement('input')
+          input.type = 'text'
+          input.classList.add('table-tool__input')
+          if (this.data.withHeadings && rowIndex === 0) {
+            input.classList.add('table-tool__input--heading')
+            input.placeholder = `Заголовок ${columnIndex + 1}`
+          } else {
+            input.placeholder = `Ячейка ${rowIndex + 1}.${columnIndex + 1}`
+          }
+          input.value = cell
+          input.addEventListener('input', () => {
+            this.updateCell(rowIndex, columnIndex, input.value)
+          })
+
+          td.appendChild(input)
+          tr.appendChild(td)
+        })
+
+        body.appendChild(tr)
+      })
+
+      table.appendChild(body)
+      tableWrap.appendChild(table)
+
+      this.grid.appendChild(controls)
+      this.grid.appendChild(tableWrap)
+    }
+
+    render() {
+      const wrapper = document.createElement('div')
+      wrapper.classList.add('table-tool')
+
+      const title = document.createElement('div')
+      title.classList.add('table-tool__title')
+      title.textContent = 'Таблица'
+
+      const hint = document.createElement('p')
+      hint.classList.add('table-tool__hint')
+      hint.textContent = 'Заполни ячейки и при необходимости добавь строки или столбцы.'
+
+      const headingToggle = document.createElement('label')
+      headingToggle.classList.add('table-tool__toggle')
+
+      const headingInput = document.createElement('input')
+      headingInput.type = 'checkbox'
+      headingInput.checked = this.data.withHeadings
+      headingInput.addEventListener('change', () => {
+        this.data.withHeadings = headingInput.checked
+        this.renderGrid()
+      })
+      this.headingToggle = headingInput
+
+      const headingText = document.createElement('span')
+      headingText.textContent = 'Первая строка — заголовки'
+
+      headingToggle.appendChild(headingInput)
+      headingToggle.appendChild(headingText)
+
+      const grid = document.createElement('div')
+      grid.classList.add('table-tool__grid')
+      this.grid = grid
+
+      wrapper.appendChild(title)
+      wrapper.appendChild(hint)
+      wrapper.appendChild(headingToggle)
+      wrapper.appendChild(grid)
+
+      this.renderGrid()
+
+      return wrapper
+    }
+
+    save() {
+      const content = this.normalizeContent(this.data.content).map((row) =>
+        row.map((cell) => cell.trim())
+      )
+
+      return {
+        withHeadings: this.headingToggle?.checked || false,
+        content,
+      }
+    }
+  }
+
   class PollTool {
     private data: {
       uid: string
@@ -3120,6 +3334,11 @@
               },
             }
           : {}),
+        ...(enabledTemplateBlockTypes.has('table')
+          ? {
+              table: TableTool,
+            }
+          : {}),
         ...(enabledTemplateBlockTypes.has('image')
           ? {
               image: CustomImageTool,
@@ -3421,6 +3640,7 @@
             "Text": "Текст",
             "Heading": "Заголовок",
             "List": "Список",
+            "Table": "Таблица",
             "Quote": "Цитата",
             "Code": "Код",
             "Image": "Изображение",
@@ -4408,6 +4628,127 @@
   :global(.poll-tool__preview-empty) {
     color: #94a3b8;
     font-size: 0.8rem;
+  }
+
+  :global(.table-tool) {
+    border-radius: 0.9rem;
+    border: 1px solid rgba(96, 165, 250, 0.3);
+    background:
+      radial-gradient(120% 120% at 0% 0%, rgba(96, 165, 250, 0.16), rgba(96, 165, 250, 0) 58%),
+      linear-gradient(135deg, rgba(15, 23, 42, 0.94), rgba(30, 41, 59, 0.9));
+    color: #e2e8f0;
+    padding: 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+  }
+
+  :global(.table-tool__title) {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #fff;
+  }
+
+  :global(.table-tool__hint) {
+    margin: 0;
+    color: #cbd5e1;
+    font-size: 0.78rem;
+    line-height: 1.4;
+  }
+
+  :global(.table-tool__toggle) {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    color: #dbeafe;
+    font-size: 0.82rem;
+    font-weight: 500;
+  }
+
+  :global(.table-tool__toggle input) {
+    accent-color: #60a5fa;
+  }
+
+  :global(.table-tool__grid) {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+  }
+
+  :global(.table-tool__controls) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+  }
+
+  :global(.table-tool__action) {
+    border: 1px solid rgba(96, 165, 250, 0.26);
+    background: rgba(15, 23, 42, 0.42);
+    color: #dbeafe;
+    border-radius: 0.7rem;
+    font-size: 0.78rem;
+    line-height: 1.2;
+    padding: 0.55rem 0.72rem;
+    transition: border-color 0.18s ease, transform 0.18s ease;
+  }
+
+  :global(.table-tool__action:hover:not(:disabled)) {
+    border-color: rgba(96, 165, 250, 0.48);
+    transform: translateY(-1px);
+  }
+
+  :global(.table-tool__action:disabled) {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  :global(.table-tool__wrap) {
+    overflow-x: auto;
+    border-radius: 0.78rem;
+    border: 1px solid rgba(96, 165, 250, 0.22);
+    background: rgba(15, 23, 42, 0.35);
+    padding: 0.35rem;
+  }
+
+  :global(.table-tool__table) {
+    width: 100%;
+    min-width: 420px;
+    border-collapse: collapse;
+  }
+
+  :global(.table-tool__cell) {
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    padding: 0;
+    background: rgba(15, 23, 42, 0.18);
+  }
+
+  :global(.table-tool__cell--heading) {
+    background: rgba(59, 130, 246, 0.12);
+  }
+
+  :global(.table-tool__input) {
+    width: 100%;
+    min-width: 8rem;
+    border: 0;
+    background: transparent;
+    color: #f8fafc;
+    font-size: 0.84rem;
+    line-height: 1.35;
+    padding: 0.68rem 0.72rem;
+  }
+
+  :global(.table-tool__input::placeholder) {
+    color: #94a3b8;
+  }
+
+  :global(.table-tool__input:focus) {
+    outline: none;
+    background: rgba(15, 23, 42, 0.24);
+  }
+
+  :global(.table-tool__input--heading) {
+    font-weight: 700;
+    color: #eff6ff;
   }
 
   :global(.divider-tool__line) {

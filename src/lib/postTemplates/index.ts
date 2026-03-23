@@ -4,6 +4,7 @@ export type PostTemplateCode = 'basic' | PostTemplateType
 export type TemplateEditorBlockType =
   | 'header'
   | 'list'
+  | 'table'
   | 'image'
   | 'quote'
   | 'code'
@@ -109,6 +110,7 @@ const POST_TEMPLATE_CODE_VALUES = new Set<PostTemplateCode>([
 const TEMPLATE_EDITOR_BLOCK_TYPE_VALUES = new Set<TemplateEditorBlockType>([
   'header',
   'list',
+  'table',
   'image',
   'quote',
   'code',
@@ -130,6 +132,7 @@ const TEMPLATE_EDITOR_BLOCK_TYPE_VALUES = new Set<TemplateEditorBlockType>([
 const ALL_TEMPLATE_EDITOR_BLOCK_OPTIONS: TemplateEditorBlockOption[] = [
   { type: 'header', label: 'Заголовок' },
   { type: 'list', label: 'Список' },
+  { type: 'table', label: 'Таблица' },
   { type: 'image', label: 'Изображение' },
   { type: 'quote', label: 'Цитата' },
   { type: 'code', label: 'Код' },
