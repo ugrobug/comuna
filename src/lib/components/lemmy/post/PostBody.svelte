@@ -208,6 +208,11 @@
       .trim()
       .toLowerCase()
 
+  const matchesInlinePollOptionSet = (left: BackendPollOption[] = [], right: string[] = []): boolean => {
+    if (left.length !== right.length) return false
+    return left.every((option, index) => normalizeTextForCompare(option.text || '') === normalizeTextForCompare(right[index] || ''))
+  }
+
   $: if (poll !== lastPollRef) {
     lastPollRef = poll
     localPoll = clonePoll(poll)
@@ -1051,11 +1056,20 @@
         : []
       if (!question || options.length < 2) return ''
 
+      const pollId = typeof raw?.uid === 'string' && raw.uid.trim() ? raw.uid.trim() : ''
+      const localPollId =
+        localPoll && typeof localPoll.id === 'string' && localPoll.id.trim() ? localPoll.id.trim() : ''
       const activePoll =
         localPoll &&
-        localPoll.question.trim() === question &&
-        Array.isArray(localPoll.options) &&
-        localPoll.options.length === options.length
+        (
+          (pollId && localPollId && localPollId === pollId) ||
+          (
+            !pollId &&
+            normalizeTextForCompare(localPoll.question || '') === normalizeTextForCompare(question) &&
+            Array.isArray(localPoll.options) &&
+            matchesInlinePollOptionSet(localPoll.options, options)
+          )
+        )
           ? localPoll
           : null
       const selectedSet = new Set(activePoll?.user_selection || [])
@@ -1108,7 +1122,6 @@
         : hasUserVote
           ? 'Вы уже проголосовали'
           : 'Нажмите на вариант, чтобы проголосовать'
-      const pollId = typeof raw?.uid === 'string' && raw.uid.trim() ? raw.uid.trim() : ''
       const attrs = [
         `data-poll-multiple="${allowsMultipleAnswers ? '1' : '0'}"`,
         `data-poll-closed="${activePoll?.is_closed ? '1' : '0'}"`,
