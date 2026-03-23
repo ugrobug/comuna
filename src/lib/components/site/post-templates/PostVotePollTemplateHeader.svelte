@@ -37,10 +37,6 @@
         }
       : null
 
-  const applyServerPoll = (value: BackendPoll | null | undefined) => {
-    localPoll = clonePoll(value)
-  }
-
   const normalizeSelection = (selection: number[]): number[] =>
     Array.from(
       new Set(
@@ -99,13 +95,95 @@
     return `${safeCount} голосов`
   }
 
-  const restoreCurrentUserPollState = async () => {
+  const storageKeyForPoll = (postId: number | null): string => {
+    if (!Number.isInteger(postId) || Number(postId) <= 0) return ''
+    return `comuna:template-poll:${postId}`
+  }
+
+  const getPollIdentity = (value: BackendPoll | null | undefined): string => {
+    const pollId = String(value?.id || '').trim()
+    if (pollId) return pollId
+    const questionValue = String(value?.question || '').trim()
+    const optionsValue = Array.isArray(value?.options)
+      ? value.options.map((option) => String(option?.text || '').trim()).join('|')
+      : ''
+    return `${questionValue}::${optionsValue}`
+  }
+
+  const mergePollWithFallback = (
+    primary: BackendPoll | null | undefined,
+    fallback: BackendPoll | null | undefined
+  ): BackendPoll | null => {
+    const next = clonePoll(primary) ?? clonePoll(fallback)
+    if (!next) return null
+
+    const fallbackPoll = clonePoll(fallback)
+    if (!fallbackPoll) return next
+
+    const nextSelection = normalizeSelection(next.user_selection ?? [])
+    const fallbackSelection = normalizeSelection(fallbackPoll.user_selection ?? [])
+    if (!nextSelection.length && fallbackSelection.length) {
+      next.user_selection = fallbackSelection
+    }
+
+    return next
+  }
+
+  const readStoredPoll = (): BackendPoll | null => {
+    if (!browser) return null
+    const storageKey = storageKeyForPoll(pollPostId)
+    if (!storageKey) return null
+    try {
+      const raw = localStorage.getItem(storageKey)
+      if (!raw) return null
+      const parsed = JSON.parse(raw)
+      if (!parsed || typeof parsed !== 'object' || !parsed.poll || typeof parsed.poll !== 'object') {
+        return null
+      }
+      const storedPoll = clonePoll(parsed.poll as BackendPoll)
+      if (!storedPoll) return null
+      const currentIdentity = getPollIdentity(poll)
+      const storedIdentity = getPollIdentity(storedPoll)
+      if (currentIdentity && storedIdentity && currentIdentity !== storedIdentity) {
+        localStorage.removeItem(storageKey)
+        return null
+      }
+      return storedPoll
+    } catch (error) {
+      console.error('Failed to read stored poll state:', error)
+      return null
+    }
+  }
+
+  const persistPoll = (value: BackendPoll | null | undefined) => {
+    if (!browser) return
+    const storageKey = storageKeyForPoll(pollPostId)
+    if (!storageKey) return
+    if (!value) {
+      localStorage.removeItem(storageKey)
+      return
+    }
+    try {
+      localStorage.setItem(storageKey, JSON.stringify({ poll: clonePoll(value) }))
+    } catch (error) {
+      console.error('Failed to persist poll state:', error)
+    }
+  }
+
+  const applyPollState = (
+    value: BackendPoll | null | undefined,
+    fallback: BackendPoll | null | undefined = localPoll
+  ) => {
+    localPoll = mergePollWithFallback(value, fallback)
+    persistPoll(localPoll)
+  }
+
+  const refreshPollState = async (tokenOverride?: string | null) => {
     if (!browser || !allowPollVoting || !pollPostId || restoreInFlight) return
-    const token = $siteToken
-    if (!token || selectedSet.size > 0 || restoredToken === token) return
+    const token = tokenOverride ?? $siteToken
+    if (!token) return
 
     restoreInFlight = true
-    restoredToken = token
     try {
       const response = await fetch(buildPostDetailUrl(pollPostId), {
         headers: {
@@ -114,13 +192,26 @@
       })
       const payload = await response.json().catch(() => null)
       if (response.ok && payload?.post?.poll && typeof payload.post.poll === 'object') {
-        applyServerPoll(payload.post.poll as BackendPoll)
+        applyPollState(payload.post.poll as BackendPoll)
       }
     } catch (error) {
       console.error('Failed to restore poll state:', error)
     } finally {
       restoreInFlight = false
     }
+  }
+
+  const restoreCurrentUserPollState = async () => {
+    if (!browser || !allowPollVoting || !pollPostId) return
+    const storedPoll = readStoredPoll()
+    if (storedPoll) {
+      applyPollState(storedPoll, poll)
+    }
+    const token = $siteToken
+    if (!token || restoredToken === token) return
+
+    restoredToken = token
+    await refreshPollState(token)
   }
 
   $: data = template.data
@@ -135,7 +226,7 @@
   $: if (poll !== lastPollRef) {
     lastPollRef = poll
     restoredToken = null
-    applyServerPoll(poll)
+    applyPollState(poll, readStoredPoll())
   }
 
   $: fallbackOptions = items.map((item, index) => ({
@@ -234,6 +325,7 @@
     const optimisticPoll = applyOptimisticPollSelection(previousPoll, selection)
     if (optimisticPoll) {
       localPoll = optimisticPoll
+      persistPoll(localPoll)
     }
 
     voting = true
@@ -249,14 +341,16 @@
       })
       payload = await response.json().catch(() => ({}))
       if (payload?.poll && typeof payload.poll === 'object') {
-        applyServerPoll(payload.poll as BackendPoll)
+        applyPollState(payload.poll as BackendPoll, optimisticPoll ?? previousPoll)
       }
       if (!response.ok || !payload?.ok) {
         throw new Error(payload?.error || 'Не удалось проголосовать')
       }
+      await refreshPollState(token)
     } catch (error) {
       if (!payload?.poll) {
         localPoll = previousPoll
+        persistPoll(localPoll)
       }
       toast({
         content: (error as Error)?.message ?? 'Не удалось проголосовать',
