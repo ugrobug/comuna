@@ -2,13 +2,8 @@
   import { browser } from '$app/environment'
   import { page } from '$app/stores'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
-  import TemplateTypeDropdown from '$lib/components/comuns/TemplateTypeDropdown.svelte'
   import { Button, Modal, toast } from 'mono-svelte'
   import { buildComunsUrl, buildTagsEnsureUrl, type BackendComun } from '$lib/api/backend'
-  import {
-    normalizeAllowedPostTemplateTypes,
-    type PostTemplateCode,
-  } from '$lib/postTemplates'
   import { refreshSiteUser, siteToken, siteUser, uploadSiteImage } from '$lib/siteAuth'
   import { goto } from '$app/navigation'
 
@@ -33,15 +28,8 @@
   let createTagInput = ''
   let createTagSaving = false
   let description = ''
-  let selectedTemplateTypes: PostTemplateCode[] = ['basic']
   let createTags: Array<{ id: number; name: string; lemma?: string | null }> = []
   let createLogoInput: HTMLInputElement | null = null
-  const templateTypeOptions: Array<{ value: PostTemplateCode; label: string }> = [
-    { value: 'basic', label: 'Пост' },
-    { value: 'movie_review', label: 'Кинообзор' },
-    { value: 'post_vote_poll', label: 'Голосование за посты' },
-    { value: 'music_release', label: 'Музыкальный релиз' },
-  ]
 
   const hashString = (value?: string | null) => {
     const source = (value ?? '').trim() || 'comuna'
@@ -97,7 +85,6 @@
     createTagSaving = false
     createTags = []
     description = ''
-    selectedTemplateTypes = ['basic']
   }
 
   const normalizeTagInput = (value: string) =>
@@ -147,10 +134,6 @@
     if (event.key !== 'Enter') return
     event.preventDefault()
     void addCreateTag()
-  }
-
-  const setSelectedTemplateTypes = (values: PostTemplateCode[]) => {
-    selectedTemplateTypes = normalizeAllowedPostTemplateTypes(values)
   }
 
   const authHeaders = () => {
@@ -232,7 +215,6 @@
           description,
           product_description: description,
           tag_ids: createTags.map((tag) => tag.id),
-          allowed_template_types: normalizeAllowedPostTemplateTypes(selectedTemplateTypes),
         }),
       })
       const payload = await response.json().catch(() => ({}))
@@ -366,7 +348,7 @@
   <div class="w-full max-w-2xl flex flex-col gap-4">
     <div class="text-lg font-semibold text-slate-900 dark:text-zinc-100">Создать сообщество</div>
     <div class="text-sm text-slate-600 dark:text-zinc-400">
-      После создания откроются настройки сообщества, где можно донастроить категории, тег продукта и приветственный пост.
+      После создания откроются настройки сообщества, где можно донастроить категории, теги, модераторов, приветственный пост и многое другое.
     </div>
 
     <label class="flex flex-col gap-1">
@@ -461,21 +443,6 @@
           {/each}
         </div>
       {/if}
-    </div>
-
-    <div class="flex flex-col gap-3">
-      <div>
-        <div class="text-sm text-slate-700 dark:text-zinc-300">Доступные шаблоны публикации</div>
-        <div class="text-xs text-slate-500 dark:text-zinc-400">
-          Выберите, какие форматы постов можно публиковать в этом сообществе.
-        </div>
-      </div>
-      <TemplateTypeDropdown
-        options={templateTypeOptions}
-        selectedValues={normalizeAllowedPostTemplateTypes(selectedTemplateTypes)}
-        helperText="Можно выбрать несколько шаблонов. Хотя бы один должен остаться включенным."
-        on:change={(event) => setSelectedTemplateTypes(event.detail)}
-      />
     </div>
 
     <div class="flex justify-end gap-2 pt-2">
