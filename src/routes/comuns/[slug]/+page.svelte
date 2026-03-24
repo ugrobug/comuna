@@ -329,6 +329,9 @@
       welcome_post_ref: String(value?.welcome_post_ref ?? value?.welcome_post_id ?? '').trim(),
     })
 
+  const comunWelcomePostRef = (value: BackendComun | null) =>
+    String(value?.welcome_post_ref ?? value?.welcome_post_id ?? '').trim()
+
   const userInitials = (username?: string | null) =>
     (username || '?').trim().slice(0, 1).toUpperCase() || '?'
 
@@ -956,6 +959,8 @@
     settingsSaving = true
     settingsError = ''
     try {
+      const welcomePostRef = comunWelcomePostRef(settingsDraft)
+      const currentWelcomePostRef = comunWelcomePostRef(comun)
       const response = await fetch(buildComunUrl(comun.slug), {
         method: 'PATCH',
         headers: authHeaders(),
@@ -976,7 +981,8 @@
           moderator_ids: canManageComunModerators() ? comunModeratorIds(settingsDraft) : undefined,
           product_tag_id: settingsDraft.product_tag_id ?? null,
           category_ids: settingsDraft.category_ids ?? (settingsDraft.categories ?? []).map((category) => category.id),
-          welcome_post_ref: settingsDraft.welcome_post_ref ?? '',
+          welcome_post_ref:
+            welcomePostRef !== currentWelcomePostRef ? welcomePostRef : undefined,
         }),
       })
       const payload = await response.json().catch(() => ({}))

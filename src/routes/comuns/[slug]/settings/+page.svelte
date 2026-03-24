@@ -201,6 +201,9 @@
       welcome_post_ref: String(value?.welcome_post_ref ?? value?.welcome_post_id ?? '').trim(),
     })
 
+  const comunWelcomePostRef = (value: BackendComun | null) =>
+    String(value?.welcome_post_ref ?? value?.welcome_post_id ?? '').trim()
+
   const canModerate = () => Boolean(comun?.can_moderate && $siteToken)
   const canManageComunModerators = () => Boolean(comun?.can_manage_moderators && $siteToken)
   const canDeleteComun = () => Boolean(comun?.can_manage_moderators && $siteToken)
@@ -684,6 +687,8 @@
     settingsSaving = true
     settingsError = ''
     try {
+      const welcomePostRef = comunWelcomePostRef(settingsDraft)
+      const currentWelcomePostRef = comunWelcomePostRef(comun)
       const response = await fetch(buildComunUrl(slug), {
         method: 'PATCH',
         headers: authHeaders(),
@@ -711,7 +716,8 @@
           category_ids:
             settingsDraft.category_ids ??
             (settingsDraft.categories ?? []).map((category) => category.id),
-          welcome_post_ref: settingsDraft.welcome_post_ref ?? '',
+          welcome_post_ref:
+            welcomePostRef !== currentWelcomePostRef ? welcomePostRef : undefined,
         }),
       })
       const payload = await response.json().catch(() => ({}))
