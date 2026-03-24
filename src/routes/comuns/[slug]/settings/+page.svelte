@@ -137,17 +137,6 @@
   const comunCategoryTemplateTypes = (category?: BackendComunCategory | null) =>
     normalizeAllowedPostTemplateTypeOverrides(category?.category_allowed_template_types)
 
-  const comunCategoryEffectiveTemplateTypes = (
-    value: BackendComun | null,
-    category?: BackendComunCategory | null
-  ) =>
-    normalizeAllowedPostTemplateTypes(
-      category?.allowed_template_types ??
-        (comunCategoryTemplateTypes(category).length
-          ? comunCategoryTemplateTypes(category)
-          : comunAllowedTemplateTypes(value))
-    )
-
   const comunCategoryTemplateTypesById = (value: BackendComun | null) => {
     const entries = (value?.categories ?? [])
       .filter((category) => Number(category?.id) > 0)
@@ -1351,9 +1340,6 @@
         {:else if settingsTab === 'categories'}
           <div class="flex flex-col gap-2">
             <div class="text-sm text-slate-700 dark:text-zinc-300">Доступные шаблоны публикаций</div>
-            <div class="text-xs text-slate-500 dark:text-zinc-400">
-              Определяет, какие типы постов можно публиковать внутри сообщества.
-            </div>
             <TemplateTypeDropdown
               options={settingsTemplateTypeOptions}
               selectedValues={comunAllowedTemplateTypes(settingsDraft)}
@@ -1364,9 +1350,6 @@
 
           <div class="flex flex-col gap-2">
             <div class="text-sm text-slate-700 dark:text-zinc-300">Внутренние категории</div>
-            <div class="text-xs text-slate-500 dark:text-zinc-400">
-              Эти категории принадлежат только этому сообществу. Можно создать свои прямо здесь.
-            </div>
             <div class="flex gap-2">
               <input
                 bind:value={settingsCategorySearch}
@@ -1399,9 +1382,6 @@
                       />
                       <span class="min-w-0">
                         <span class="block text-sm font-medium text-slate-900 dark:text-zinc-100">{category.name}</span>
-                        {#if category.description}
-                          <span class="block text-xs text-slate-500 dark:text-zinc-400">{category.description}</span>
-                        {/if}
                       </span>
                     </label>
                     <div class="flex flex-col gap-2">
@@ -1413,12 +1393,7 @@
                         selectedValues={comunCategoryTemplateTypes(category)}
                         disabled={settingsSaving}
                         allowEmpty={true}
-                        placeholder="Наследовать шаблоны сообщества"
-                        helperText={
-                          comunCategoryTemplateTypes(category).length
-                            ? `Только для категории: ${comunCategoryEffectiveTemplateTypes(settingsDraft, category).map((item) => settingsTemplateTypeOptions.find((option) => option.value === item)?.label ?? item).join(', ')}`
-                            : `Сейчас использует шаблоны сообщества: ${comunAllowedTemplateTypes(settingsDraft).map((item) => settingsTemplateTypeOptions.find((option) => option.value === item)?.label ?? item).join(', ')}`
-                        }
+                        placeholder="Шаблоны категории"
                         on:change={(event) => setDraftCategoryTemplateTypes(category.id, event.detail)}
                       />
                     </div>
