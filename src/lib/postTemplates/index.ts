@@ -177,6 +177,21 @@ export const normalizeAllowedPostTemplateTypes = (value: unknown): PostTemplateC
   return normalized.length ? normalized : ['basic']
 }
 
+export const normalizeAllowedPostTemplateTypeOverrides = (value: unknown): PostTemplateCode[] => {
+  const source = Array.isArray(value) ? value : typeof value === 'string' ? [value] : []
+  const seen = new Set<PostTemplateCode>()
+  const normalized: PostTemplateCode[] = []
+  for (const item of source) {
+    const code = typeof item === 'string' ? item.trim().toLowerCase() : ''
+    if (!POST_TEMPLATE_CODE_VALUES.has(code as PostTemplateCode)) continue
+    const typedCode = code as PostTemplateCode
+    if (seen.has(typedCode)) continue
+    seen.add(typedCode)
+    normalized.push(typedCode)
+  }
+  return normalized
+}
+
 export const resolveTemplateCode = (
   templateType: '' | PostTemplateType | null | undefined
 ): PostTemplateCode => {

@@ -138,6 +138,27 @@ def normalize_allowed_post_templates(raw_value: object) -> list[str]:
     return normalized
 
 
+def normalize_allowed_post_templates_override(raw_value: object) -> list[str]:
+    if isinstance(raw_value, str):
+        candidates = [raw_value]
+    elif isinstance(raw_value, (list, tuple, set)):
+        candidates = list(raw_value)
+    else:
+        candidates = []
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        value = str(candidate or "").strip().lower()
+        if not value or value not in POST_TEMPLATE_TYPE_VALUES:
+            continue
+        if value in seen:
+            continue
+        seen.add(value)
+        normalized.append(value)
+    return normalized
+
+
 def template_editor_block_choices_for_template(template_type: str) -> tuple[tuple[str, str], ...]:
     normalized_template_type = str(template_type or "").strip().lower()
     available_blocks = set(
@@ -607,6 +628,12 @@ class ComunCategory(models.Model):
     slug = models.SlugField(max_length=120)
     description = models.TextField(blank=True)
     sort_order = models.PositiveIntegerField(default=0)
+    allowed_post_templates = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name="Доступные шаблоны поста",
+        help_text="Если список пустой, категория использует общие шаблоны сообщества.",
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

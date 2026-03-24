@@ -27,6 +27,7 @@
     createEmptyMusicReleaseTemplateData,
     createEmptyMovieReviewTemplateData,
     createEmptyPostVotePollTemplateData,
+    normalizeAllowedPostTemplateTypeOverrides,
     normalizeAllowedPostTemplateTypes,
     normalizeTemplateEditorBlockSettings,
     resolveEnabledTemplateEditorBlockTypes,
@@ -106,9 +107,17 @@
   $: selectedComun = availableComuns.find((comun) => comun.slug === createComunSlug)
   $: selectedComunCategories = selectedComun?.categories ?? []
   $: selectedTargetLabel = selectedComun?.name || 'Выберите сообщество'
+  $: selectedComunCategory =
+    selectedComunCategories.find((category) => String(category.id) === createComunCategoryId) ?? null
   $: selectedAllowedTemplateTypes = normalizeAllowedPostTemplateTypes(
-    selectedComun?.allowed_template_types ??
-      selectedComun?.allowed_post_templates
+    selectedComunCategory?.allowed_template_types ??
+      (normalizeAllowedPostTemplateTypeOverrides(
+        selectedComunCategory?.category_allowed_template_types
+      ).length
+        ? normalizeAllowedPostTemplateTypeOverrides(
+            selectedComunCategory?.category_allowed_template_types
+          )
+        : selectedComun?.allowed_template_types ?? selectedComun?.allowed_post_templates)
   )
   $: filteredComuns = (() => {
     const query = rubricSearchQuery.trim().toLowerCase()
@@ -576,6 +585,9 @@
     !selectedComunCategories.some((category) => String(category.id) === createComunCategoryId)
   ) {
     createComunCategoryId = ''
+  }
+  $: if (createTemplateType && !selectedAllowedTemplateTypes.includes(createTemplateType)) {
+    createTemplateType = availableTemplateTypeOptions[0]?.value ?? ''
   }
 
   $: currentFormSnapshot = JSON.stringify(buildLocalDraftState())

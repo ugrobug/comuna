@@ -15,6 +15,7 @@
   } from '$lib/api/backend'
   import { siteToken, uploadSiteImage } from '$lib/siteAuth'
   import {
+    normalizeAllowedPostTemplateTypeOverrides,
     normalizeAllowedPostTemplateTypes,
     type PostTemplateCode,
   } from '$lib/postTemplates'
@@ -132,6 +133,28 @@
       value?.allowed_template_types ?? value?.allowed_post_templates
     )
 
+  const comunCategoryTemplateTypes = (category?: BackendComunCategory | null) =>
+    normalizeAllowedPostTemplateTypeOverrides(category?.category_allowed_template_types)
+
+  const comunCategoryEffectiveTemplateTypes = (
+    value: BackendComun | null,
+    category?: BackendComunCategory | null
+  ) =>
+    normalizeAllowedPostTemplateTypes(
+      category?.allowed_template_types ??
+        (comunCategoryTemplateTypes(category).length
+          ? comunCategoryTemplateTypes(category)
+          : comunAllowedTemplateTypes(value))
+    )
+
+  const comunCategoryTemplateTypesById = (value: BackendComun | null) => {
+    const entries = (value?.categories ?? [])
+      .filter((category) => Number(category?.id) > 0)
+      .map((category) => [String(category.id), comunCategoryTemplateTypes(category)] as const)
+      .sort((a, b) => Number(a[0]) - Number(b[0]))
+    return Object.fromEntries(entries)
+  }
+
   const normalizeTemplateTypeOptions = (value: unknown): TemplateTypeOption[] => {
     const source = Array.isArray(value) ? value : []
     const normalized: TemplateTypeOption[] = []
@@ -168,6 +191,7 @@
       hide_from_fresh: Boolean(value?.hide_from_fresh),
       source_tag_ids: comunSourceTagIds(value),
       allowed_template_types: comunAllowedTemplateTypes(value),
+      category_template_types_by_id: comunCategoryTemplateTypesById(value),
       category_ids: comunCategoryIds(value),
       moderator_ids: comunModeratorIds(value),
       excluded_author_ids: comunExcludedAuthorIds(value),
@@ -388,10 +412,52 @@
 
   const setDraftAllowedTemplateTypes = (values: PostTemplateCode[]) => {
     if (!settingsDraft) return
+    const normalizedValues = normalizeAllowedPostTemplateTypes(values)
     settingsDraft = {
       ...settingsDraft,
-      allowed_template_types: normalizeAllowedPostTemplateTypes(values),
+      allowed_template_types: normalizedValues,
+      categories: (settingsDraft.categories ?? []).map((category) =>
+        comunCategoryTemplateTypes(category).length
+          ? category
+          : {
+              ...category,
+              allowed_template_types: normalizedValues,
+              inherits_comun_template_types: true,
+            }
+      ),
     }
+  }
+
+  const setDraftCategoryTemplateTypes = (categoryId: number, values: PostTemplateCode[]) => {
+    if (!settingsDraft) return
+    const normalizedValues = normalizeAllowedPostTemplateTypeOverrides(values)
+    settingsDraft = {
+      ...settingsDraft,
+      categories: (settingsDraft.categories ?? []).map((category) =>
+        category.id === categoryId
+          ? {
+              ...category,
+              category_allowed_template_types: normalizedValues,
+              allowed_template_types: normalizedValues.length
+                ? normalizedValues
+                : comunAllowedTemplateTypes(settingsDraft),
+              inherits_comun_template_types: normalizedValues.length === 0,
+            }
+          : category
+      ),
+    }
+    settingsCategoryOptions = (settingsCategoryOptions ?? []).map((category) =>
+      category.id === categoryId
+        ? {
+            ...category,
+            category_allowed_template_types: normalizedValues,
+            allowed_template_types: normalizedValues.length
+              ? normalizedValues
+              : comunAllowedTemplateTypes(settingsDraft),
+            inherits_comun_template_types: normalizedValues.length === 0,
+          }
+        : category
+    )
   }
 
   const clearDraftLogo = () => {
@@ -632,6 +698,7 @@
           only_moderators_can_post: Boolean(settingsDraft.only_moderators_can_post),
           forbid_external_links: Boolean(settingsDraft.forbid_external_links),
           allowed_template_types: comunAllowedTemplateTypes(settingsDraft),
+          category_template_types_by_id: comunCategoryTemplateTypesById(settingsDraft),
           hide_from_home: canManageComunModerators() ? Boolean(settingsDraft.hide_from_home) : undefined,
           hide_from_fresh: canManageComunModerators() ? Boolean(settingsDraft.hide_from_fresh) : undefined,
           moderator_ids: canManageComunModerators() ? comunModeratorIds(settingsDraft) : undefined,
@@ -1261,20 +1328,40 @@
             <div class="grid gap-2 sm:grid-cols-2">
               {#if filteredCategoryOptions.length}
                 {#each filteredCategoryOptions as category}
-                  <label class="rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-2 flex items-start gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={draftCategoryIdSet.has(category.id)}
-                      on:change={() => toggleDraftCategory(category.id)}
-                      class="mt-0.5"
-                    />
-                    <span class="min-w-0">
-                      <span class="block text-sm font-medium text-slate-900 dark:text-zinc-100">{category.name}</span>
-                      {#if category.description}
-                        <span class="block text-xs text-slate-500 dark:text-zinc-400">{category.description}</span>
-                      {/if}
-                    </span>
-                  </label>
+                  <div class="rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-3 flex flex-col gap-3">
+                    <label class="flex items-start gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={draftCategoryIdSet.has(category.id)}
+                        on:change={() => toggleDraftCategory(category.id)}
+                        class="mt-0.5"
+                      />
+                      <span class="min-w-0">
+                        <span class="block text-sm font-medium text-slate-900 dark:text-zinc-100">{category.name}</span>
+                        {#if category.description}
+                          <span class="block text-xs text-slate-500 dark:text-zinc-400">{category.description}</span>
+                        {/if}
+                      </span>
+                    </label>
+                    <div class="flex flex-col gap-2">
+                      <div class="text-xs uppercase tracking-wide text-slate-500 dark:text-zinc-400">
+                        Шаблоны категории
+                      </div>
+                      <TemplateTypeDropdown
+                        options={settingsTemplateTypeOptions}
+                        selectedValues={comunCategoryTemplateTypes(category)}
+                        disabled={settingsSaving}
+                        allowEmpty={true}
+                        placeholder="Наследовать шаблоны сообщества"
+                        helperText={
+                          comunCategoryTemplateTypes(category).length
+                            ? `Только для категории: ${comunCategoryEffectiveTemplateTypes(settingsDraft, category).map((item) => settingsTemplateTypeOptions.find((option) => option.value === item)?.label ?? item).join(', ')}`
+                            : `Сейчас использует шаблоны сообщества: ${comunAllowedTemplateTypes(settingsDraft).map((item) => settingsTemplateTypeOptions.find((option) => option.value === item)?.label ?? item).join(', ')}`
+                        }
+                        on:change={(event) => setDraftCategoryTemplateTypes(category.id, event.detail)}
+                      />
+                    </div>
+                  </div>
                 {/each}
               {:else}
                 <div class="rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-2 text-sm text-slate-500 dark:text-zinc-400 sm:col-span-2">

@@ -14,6 +14,7 @@
     createEmptyMusicReleaseTemplateData,
     createEmptyMovieReviewTemplateData,
     createEmptyPostVotePollTemplateData,
+    normalizeAllowedPostTemplateTypeOverrides,
     normalizeAllowedPostTemplateTypes,
     normalizeTemplateEditorBlockSettings,
     resolveEnabledTemplateEditorBlockTypes,
@@ -138,12 +139,27 @@
   $: minimumAuthorRatingToPost = Math.max(Number(comun?.minimum_author_rating_to_post ?? 0) || 0, 0)
   $: onlyModeratorsCanPost = Boolean(comun?.only_moderators_can_post)
   $: canCreateInComun = Boolean($siteToken && comun?.can_post)
+  $: selectedComunCategory =
+    comunCategories.find((category) => String(category.id) === createCategoryId) ?? null
   $: comunAllowedTemplateTypes = normalizeAllowedPostTemplateTypes(
-    comun?.allowed_template_types ?? comun?.allowed_post_templates
+    selectedComunCategory?.allowed_template_types ??
+      (normalizeAllowedPostTemplateTypeOverrides(
+        selectedComunCategory?.category_allowed_template_types
+      ).length
+        ? normalizeAllowedPostTemplateTypeOverrides(
+            selectedComunCategory?.category_allowed_template_types
+          )
+        : comun?.allowed_template_types ?? comun?.allowed_post_templates)
   )
   $: templateEditorBlockSettings = normalizeTemplateEditorBlockSettings(
     comun?.options?.template_editor_blocks_by_template ?? comun?.template_editor_blocks_by_template
   )
+  $: if (
+    createTemplateType &&
+    !comunAllowedTemplateTypes.includes(createTemplateType)
+  ) {
+    createTemplateType = ''
+  }
   $: editorEnabledTemplateBlockTypes = resolveEnabledTemplateEditorBlockTypes(
     createTemplateType,
     templateEditorBlockSettings

@@ -13,6 +13,7 @@
   export let placeholder = 'Выберите шаблоны'
   export let searchPlaceholder = 'Поиск шаблона...'
   export let helperText = ''
+  export let allowEmpty = false
 
   const dispatch = createEventDispatcher<{
     change: PostTemplateCode[]
@@ -36,7 +37,7 @@
   const toggleValue = (value: PostTemplateCode) => {
     const nextSelected = new Set(selectedValues)
     if (nextSelected.has(value)) {
-      if (nextSelected.size === 1) return
+      if (!allowEmpty && nextSelected.size === 1) return
       nextSelected.delete(value)
     } else {
       nextSelected.add(value)
@@ -75,7 +76,10 @@
               <input
                 type="checkbox"
                 checked={selectedSet.has(option.value)}
-                disabled={disabled || (selectedSet.has(option.value) && selectedSet.size === 1)}
+                disabled={
+                  disabled ||
+                  (!allowEmpty && selectedSet.has(option.value) && selectedSet.size === 1)
+                }
                 on:change={() => toggleValue(option.value)}
               />
               <span>{option.label}</span>

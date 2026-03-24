@@ -70,6 +70,7 @@ from .models import (
     VkAccount,
     default_enabled_template_editor_blocks,
     normalize_allowed_post_templates,
+    normalize_allowed_post_templates_override,
     normalize_template_editor_blocks_for_template,
     template_editor_block_choices_for_template,
 )
@@ -2575,6 +2576,22 @@ def _allowed_templates_for_comun(comun: Comun | None) -> list[str]:
     if not comun:
         return normalize_allowed_post_templates(None)
     return normalize_allowed_post_templates(comun.allowed_post_templates)
+
+
+def _allowed_template_overrides_for_comun_category(category: ComunCategory | None) -> list[str]:
+    if not category:
+        return []
+    return normalize_allowed_post_templates_override(category.allowed_post_templates)
+
+
+def _allowed_templates_for_comun_category(
+    comun: Comun | None,
+    category: ComunCategory | None,
+) -> list[str]:
+    category_overrides = _allowed_template_overrides_for_comun_category(category)
+    if category_overrides:
+        return category_overrides
+    return _allowed_templates_for_comun(comun)
 
 
 def _requested_template_type(template_payload: dict | None) -> str:
@@ -5741,14 +5758,22 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
     if template_in_payload:
         requested_template_type = _requested_template_type(template_payload)
         comun_for_template = None
+        comun_category_for_template = None
         comun_slug = _post_comun_slug(post)
         if comun_slug:
             comun_for_template = Comun.objects.filter(slug=comun_slug).first()
         if comun_for_template:
+            assignment = (
+                ComunPostCategoryAssignment.objects.select_related("category")
+                .filter(comun=comun_for_template, post=post)
+                .first()
+            )
+            if assignment and assignment.category_id:
+                comun_category_for_template = assignment.category
             template_access_error = _template_not_allowed_error(
                 requested_template_type,
-                _allowed_templates_for_comun(comun_for_template),
-                scope="comun",
+                _allowed_templates_for_comun_category(comun_for_template, comun_category_for_template),
+                scope="comun category" if comun_category_for_template else "comun",
             )
         else:
             template_access_error = None
@@ -7979,13 +8004,17 @@ def _comun_can_manage_moderators(user: User | None, comun: Comun) -> bool:
     return comun.creator_id == user.id
 
 
-def _serialize_comun_category(category: ComunCategory) -> dict:
+def _serialize_comun_category(category: ComunCategory, comun: Comun | None = None) -> dict:
+    category_allowed_template_types = _allowed_template_overrides_for_comun_category(category)
     return {
         "id": category.id,
         "name": category.name,
         "slug": category.slug,
         "description": category.description,
         "sort_order": category.sort_order,
+        "category_allowed_template_types": category_allowed_template_types,
+        "allowed_template_types": _allowed_templates_for_comun_category(comun, category),
+        "inherits_comun_template_types": not bool(category_allowed_template_types),
     }
 
 
@@ -8139,7 +8168,7 @@ def _serialize_comun(
         ],
         "moderators_count": len(moderators),
         "excluded_authors_count": len(excluded_authors),
-        "categories": [_serialize_comun_category(category) for category in categories],
+        "categories": [_serialize_comun_category(category, comun) for category in categories],
         "categories_count": len(categories),
         "source_tags": [
             {
@@ -8221,7 +8250,7 @@ def _serialize_comun(
     if include_options:
         payload["options"] = {
             "categories": [
-                _serialize_comun_category(category)
+                _serialize_comun_category(category, comun)
                 for category in categories
             ],
             "tags": [
@@ -8945,6 +8974,32 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
             selected_categories[category.id] = category
         comun.categories.set(selected_categories.keys())
 
+    if "category_template_types_by_id" in body:
+        raw_category_templates = body.get("category_template_types_by_id")
+        if not isinstance(raw_category_templates, dict):
+            return JsonResponse(
+                {"ok": False, "error": "category_template_types_by_id must be an object"},
+                status=400,
+            )
+        category_updates: dict[int, list[str]] = {}
+        for raw_category_id, raw_template_types in raw_category_templates.items():
+            category_id = _parse_post_reference_to_id(raw_category_id)
+            if not category_id:
+                continue
+            category_updates[category_id] = normalize_allowed_post_templates_override(
+                raw_template_types
+            )
+        for category in ComunCategory.objects.filter(
+            comun=comun,
+            is_active=True,
+            id__in=list(category_updates.keys()),
+        ):
+            next_allowed_templates = category_updates.get(category.id, [])
+            if category.allowed_post_templates == next_allowed_templates:
+                continue
+            category.allowed_post_templates = next_allowed_templates
+            category.save(update_fields=["allowed_post_templates", "updated_at"])
+
     if "blocked_tag_ids" in body or "excluded_tag_ids" in body:
         blocked_tag_ids = _parse_int_list(
             body.get("blocked_tag_ids")
@@ -9086,14 +9141,6 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
         )
         if template_error:
             return JsonResponse({"ok": False, "error": template_error}, status=400)
-        requested_template_type = _requested_template_type(template_payload)
-        template_access_error = _template_not_allowed_error(
-            requested_template_type,
-            _allowed_templates_for_comun(comun),
-            scope="comun",
-        )
-        if template_access_error:
-            return JsonResponse({"ok": False, "error": template_access_error}, status=400)
         if not title:
             return JsonResponse({"ok": False, "error": "title is required"}, status=400)
         if not content:
@@ -9119,6 +9166,15 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
                     {"ok": False, "error": "category not found"},
                     status=400,
                 )
+
+        requested_template_type = _requested_template_type(template_payload)
+        template_access_error = _template_not_allowed_error(
+            requested_template_type,
+            _allowed_templates_for_comun_category(comun, category),
+            scope="comun category" if category else "comun",
+        )
+        if template_access_error:
+            return JsonResponse({"ok": False, "error": template_access_error}, status=400)
 
         author_links = list(
             AuthorAdmin.objects.filter(user=current_user, verified_at__isnull=False)
@@ -9232,7 +9288,7 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
         serialized_post = _serialize_post_for_user(request, post, current_user)
         serialized_post["comun_category_id"] = category.id if category else None
         serialized_post["comun_category"] = (
-            _serialize_comun_category(category) if category else None
+            _serialize_comun_category(category, comun) if category else None
         )
         return JsonResponse({"ok": True, "post": serialized_post})
 
@@ -9270,7 +9326,9 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
                     request, comun, current_user=current_user, include_activity=True
                 ),
                 "posts": [],
-                "selected_category": _serialize_comun_category(selected_category) if selected_category else None,
+                "selected_category": (
+                    _serialize_comun_category(selected_category, comun) if selected_category else None
+                ),
                 "total_count": 0,
                 "category_counts": [
                     {
@@ -9348,7 +9406,7 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
         )
         assignment = assignments.get(post.id)
         if assignment and assignment.category_id:
-            item["comun_category"] = _serialize_comun_category(assignment.category)
+            item["comun_category"] = _serialize_comun_category(assignment.category, comun)
             item["comun_category_id"] = assignment.category_id
         else:
             item["comun_category"] = None
@@ -9362,7 +9420,9 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
                 request, comun, current_user=current_user, include_activity=True
             ),
             "posts": serialized_posts,
-            "selected_category": _serialize_comun_category(selected_category) if selected_category else None,
+            "selected_category": (
+                _serialize_comun_category(selected_category, comun) if selected_category else None
+            ),
             "total_count": total_count,
             "category_counts": category_counts_payload,
             "uncategorized_count": uncategorized_count,
@@ -9444,7 +9504,7 @@ def comun_post_category_update(request: HttpRequest, slug: str, post_id: int) ->
             "assignment": {
                 "post_id": post.id,
                 "category_id": assignment.category_id,
-                "category": _serialize_comun_category(category),
+                "category": _serialize_comun_category(category, comun),
             },
         }
     )

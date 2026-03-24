@@ -25,6 +25,7 @@
     isMovieReviewTemplate,
     isMusicReleaseTemplate,
     isPostVotePollTemplate,
+    normalizeAllowedPostTemplateTypeOverrides,
     normalizeAllowedPostTemplateTypes,
     normalizeMusicReleaseTemplateData,
     normalizeMovieReviewTemplateData,
@@ -84,6 +85,7 @@
   let editTags = ''
   let editAuthor = ''
   let editComunSlug = ''
+  let editComunCategoryId = ''
   let isJsonContent = true
   let editTemplateType: '' | PostTemplateType = ''
   let editMovieReviewData: MovieReviewTemplateData = createEmptyMovieReviewTemplateData()
@@ -107,6 +109,8 @@
   let firstDraftAutosaveCompleted = false
 
   $: selectedComun = comuns.find((comun) => comun.slug === editComunSlug)
+  $: selectedComunCategory =
+    selectedComun?.categories?.find((category) => String(category.id) === editComunCategoryId) ?? null
   $: filteredComuns = (() => {
     const query = rubricSearchQuery.trim().toLowerCase()
     if (!query) return comuns
@@ -154,7 +158,14 @@
   $: allowedTemplateTypes = (() => {
     const values = new Set<string>(['basic'])
     for (const item of normalizeAllowedPostTemplateTypes(
-      selectedComun?.allowed_template_types ?? selectedComun?.allowed_post_templates
+      selectedComunCategory?.allowed_template_types ??
+        (normalizeAllowedPostTemplateTypeOverrides(
+          selectedComunCategory?.category_allowed_template_types
+        ).length
+          ? normalizeAllowedPostTemplateTypeOverrides(
+              selectedComunCategory?.category_allowed_template_types
+            )
+          : selectedComun?.allowed_template_types ?? selectedComun?.allowed_post_templates)
     )) {
       values.add(item)
     }
@@ -333,6 +344,7 @@
     editContent = currentPost.content || ''
     editComunSlug =
       comuns.find((comun) => comun.source_rubric?.slug === currentPost.rubric_slug)?.slug || ''
+    editComunCategoryId = currentPost.comun_category_id ? String(currentPost.comun_category_id) : ''
     editAuthor = resolveAuthorValue(currentPost)
     editMovieReviewData = createEmptyMovieReviewTemplateData()
     editPostVotePollData = createEmptyPostVotePollTemplateData()
@@ -625,6 +637,13 @@
     const authorRubric = selectedChannelIdentity.rubric_slug || ''
     const authorComun = comuns.find((comun) => comun.source_rubric?.slug === authorRubric)
     if (authorComun?.slug) editComunSlug = authorComun.slug
+  }
+  $: if (
+    editComunSlug &&
+    editComunCategoryId &&
+    !selectedComun?.categories?.some((category) => String(category.id) === editComunCategoryId)
+  ) {
+    editComunCategoryId = ''
   }
 
   $: currentEditSnapshot = JSON.stringify(buildEditPayload())
