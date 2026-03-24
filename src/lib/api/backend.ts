@@ -414,6 +414,7 @@ export type BackendComun = {
   website_url?: string | null
   logo_url?: string | null
   product_description?: string | null
+  rules_text?: string | null
   target_audience?: string | null
   tags?: BackendTag[]
   tag_ids?: number[]
@@ -484,6 +485,7 @@ export type BackendPublicSiteUserComun = {
   website_url?: string | null
   logo_url?: string | null
   product_description?: string | null
+  rules_text?: string | null
   target_audience?: string | null
   tags?: BackendTag[]
   role?: 'creator' | 'moderator' | string

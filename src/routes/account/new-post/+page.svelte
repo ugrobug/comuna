@@ -928,6 +928,17 @@
                   </div>
                 {/if}
 
+                {#if selectedComun?.rules_text}
+                  <div class="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm dark:border-zinc-800 dark:bg-zinc-900/80">
+                    <div class="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-zinc-500">
+                      Правила сообщества
+                    </div>
+                    <div class="mt-2 whitespace-pre-line leading-relaxed text-slate-700 dark:text-zinc-300">
+                      {selectedComun.rules_text}
+                    </div>
+                  </div>
+                {/if}
+
                 {#if hasTemplateTypeChoice}
                   <div class="relative mt-3" bind:this={templateMenuRef}>
                     <button

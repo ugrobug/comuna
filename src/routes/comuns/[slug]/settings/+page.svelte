@@ -52,7 +52,7 @@
     avatar_url?: string | null
   }
   type TemplateTypeOption = { value: PostTemplateCode; label: string }
-  type ComunSettingsTabKey = 'description' | 'availability' | 'moderation' | 'categories'
+  type ComunSettingsTabKey = 'description' | 'availability' | 'moderation' | 'categories' | 'rules'
   const fallbackTemplateTypeOptions: TemplateTypeOption[] = [
     { value: 'basic', label: 'Пост' },
     { value: 'movie_review', label: 'Кинообзор' },
@@ -64,6 +64,7 @@
     { value: 'availability', label: 'Доступность' },
     { value: 'moderation', label: 'Модерирование' },
     { value: 'categories', label: 'Категории и шаблоны' },
+    { value: 'rules', label: 'Правила' },
   ]
   const allowedTemplateCodes = new Set<PostTemplateCode>([
     'basic',
@@ -180,6 +181,7 @@
       website_url: (value?.website_url ?? '').trim(),
       logo_url: (value?.logo_url ?? '').trim(),
       product_description: (value?.product_description ?? '').trim(),
+      rules_text: (value?.rules_text ?? '').trim(),
       target_audience: (value?.target_audience ?? '').trim(),
       minimum_author_rating_to_post: Math.max(
         Number(value?.minimum_author_rating_to_post ?? 0) || 0,
@@ -690,6 +692,7 @@
           website_url: settingsDraft.website_url ?? '',
           logo_url: settingsDraft.logo_url ?? '',
           product_description: settingsDraft.product_description ?? '',
+          rules_text: settingsDraft.rules_text ?? '',
           target_audience: settingsDraft.target_audience ?? '',
           minimum_author_rating_to_post: Math.max(
             Number(settingsDraft.minimum_author_rating_to_post ?? 0) || 0,
@@ -1287,7 +1290,7 @@
               {/if}
             </div>
           </div>
-        {:else}
+        {:else if settingsTab === 'categories'}
           <div class="flex flex-col gap-2">
             <div class="text-sm text-slate-700 dark:text-zinc-300">Доступные шаблоны публикаций</div>
             <div class="text-xs text-slate-500 dark:text-zinc-400">
@@ -1369,6 +1372,19 @@
                 </div>
               {/if}
             </div>
+          </div>
+        {:else}
+          <div class="flex flex-col gap-3">
+            <div class="text-sm text-slate-700 dark:text-zinc-300">Правила сообщества</div>
+            <div class="text-xs text-slate-500 dark:text-zinc-400">
+              Эти правила будут публично показаны всем участникам сообщества, при публикациях и общении они должны соотсветствовать вашим правилам, а модераторы будут отслеживать их исполнение. Правила не должны противоречить общим правилам сайта
+            </div>
+            <textarea
+              bind:value={settingsDraft.rules_text}
+              rows="12"
+              class="min-h-[18rem] rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-3"
+              placeholder="Опишите правила сообщества"
+            ></textarea>
           </div>
         {/if}
       </div>

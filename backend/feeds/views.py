@@ -864,6 +864,7 @@ def _serialize_comun_profile_card(
         "website_url": comun.website_url,
         "logo_url": _comun_logo_url(request, comun),
         "product_description": comun.product_description,
+        "rules_text": comun.rules_text,
         "target_audience": comun.target_audience,
         "role": role,
         "can_moderate": _comun_is_moderator(current_user, comun),
@@ -8696,6 +8697,7 @@ def comuns_list_create(request: HttpRequest) -> HttpResponse:
     website_url = str(body.get("website_url") or "").strip()
     logo_url = str(body.get("logo_url") or "").strip()
     product_description = str(body.get("description") or body.get("product_description") or "").strip()
+    rules_text = str(body.get("rules_text") or body.get("rules") or "").strip()
     target_audience = str(body.get("target_audience") or "").strip()
     allowed_template_types = normalize_allowed_post_templates(body.get("allowed_template_types"))
     tag_ids = _parse_int_list(body.get("tag_ids"))[:5]
@@ -8754,6 +8756,7 @@ def comuns_list_create(request: HttpRequest) -> HttpResponse:
         website_url=website_url,
         logo_url=logo_url,
         product_description=product_description,
+        rules_text=rules_text,
         target_audience=target_audience,
         allowed_post_templates=allowed_template_types,
     )
@@ -8852,6 +8855,8 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
         comun.logo_url = str(body.get("logo_url") or "").strip()
     if "product_description" in body:
         comun.product_description = str(body.get("product_description") or "").strip()
+    if "rules_text" in body or "rules" in body:
+        comun.rules_text = str(body.get("rules_text") or body.get("rules") or "").strip()
     if "target_audience" in body:
         comun.target_audience = str(body.get("target_audience") or "").strip()
     if "minimum_author_rating_to_post" in body:

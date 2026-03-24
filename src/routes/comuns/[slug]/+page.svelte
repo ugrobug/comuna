@@ -314,6 +314,7 @@
       website_url: (value?.website_url ?? '').trim(),
       logo_url: (value?.logo_url ?? '').trim(),
       product_description: (value?.product_description ?? '').trim(),
+      rules_text: (value?.rules_text ?? '').trim(),
       target_audience: (value?.target_audience ?? '').trim(),
       minimum_author_rating_to_post: Math.max(
         Number(value?.minimum_author_rating_to_post ?? 0) || 0,
@@ -963,6 +964,7 @@
           website_url: settingsDraft.website_url ?? '',
           logo_url: settingsDraft.logo_url ?? '',
           product_description: settingsDraft.product_description ?? '',
+          rules_text: settingsDraft.rules_text ?? '',
           target_audience: settingsDraft.target_audience ?? '',
           minimum_author_rating_to_post: Math.max(
             Number(settingsDraft.minimum_author_rating_to_post ?? 0) || 0,
@@ -1222,6 +1224,17 @@
       {#if comun?.product_description}
         <div class="text-sm leading-relaxed text-slate-700 dark:text-zinc-300 whitespace-pre-line">
           {comun.product_description}
+        </div>
+      {/if}
+
+      {#if comun?.rules_text}
+        <div class="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-4 dark:border-zinc-800 dark:bg-zinc-900/50">
+          <div class="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-zinc-500">
+            Правила сообщества
+          </div>
+          <div class="mt-2 whitespace-pre-line text-sm leading-relaxed text-slate-700 dark:text-zinc-300">
+            {comun.rules_text}
+          </div>
         </div>
       {/if}
 
@@ -1567,6 +1580,16 @@
         <label class="flex flex-col gap-1">
           <span class="text-sm text-slate-700 dark:text-zinc-300">Описание сообщества</span>
           <textarea bind:value={settingsDraft.product_description} rows="4" class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"></textarea>
+        </label>
+
+        <label class="flex flex-col gap-1">
+          <span class="text-sm text-slate-700 dark:text-zinc-300">Правила сообщества</span>
+          <textarea
+            bind:value={settingsDraft.rules_text}
+            rows="8"
+            class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"
+            placeholder="Правила будут показаны участникам сообщества"
+          ></textarea>
         </label>
 
         <label class="flex flex-col gap-1">

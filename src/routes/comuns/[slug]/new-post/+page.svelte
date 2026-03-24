@@ -351,6 +351,17 @@
           {/if}
         </div>
 
+        {#if comun?.rules_text}
+          <div class="rounded-lg border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-3 py-3">
+            <div class="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-zinc-500">
+              Правила сообщества
+            </div>
+            <div class="mt-2 whitespace-pre-line text-sm leading-relaxed text-slate-700 dark:text-zinc-300">
+              {comun.rules_text}
+            </div>
+          </div>
+        {/if}
+
         {#if publishIdentityOptions.length > 1}
           <label class="flex flex-col gap-1">
             <span class="text-sm text-slate-700 dark:text-zinc-300">Публиковать от имени</span>

@@ -736,6 +736,7 @@ class Comun(models.Model):
     website_url = models.URLField(max_length=500, blank=True, verbose_name="Веб-сайт")
     logo_url = models.URLField(max_length=500, blank=True, verbose_name="Логотип (URL)")
     product_description = models.TextField(blank=True, verbose_name="Описание продукта")
+    rules_text = models.TextField(blank=True, verbose_name="Правила сообщества")
     target_audience = models.TextField(blank=True, verbose_name="Целевая аудитория")
     minimum_author_rating_to_post = models.DecimalField(
         max_digits=8,
