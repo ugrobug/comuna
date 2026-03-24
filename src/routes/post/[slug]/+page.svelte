@@ -57,6 +57,7 @@
   } from '$lib/util'
   import { buildPostReadUrl } from '$lib/api/backend'
   import { siteToken } from '$lib/siteAuth'
+  import { renderQuoteBlockHtml } from '$lib/quoteBlock'
 
   export let data
 
@@ -520,11 +521,7 @@
           ? `<ol${anchorId}>${items}</ol>` 
           : `<ul${anchorId} class="${listClass}">${items}</ul>`;
       case 'quote':
-        const cleanCaption = block.data.caption?.trim();
-        return `<blockquote${anchorId}>
-          <p>${block.data.text}</p>
-          ${cleanCaption ? `<footer>${cleanCaption}</footer>` : ''}
-        </blockquote>`;
+        return renderQuoteBlockHtml(block.data, { anchorId });
       case 'code':
         return `<pre${anchorId}><code>${block.data.code}</code></pre>`;
       case 'spoiler':
@@ -1057,11 +1054,7 @@
             ? `<ol${anchorId}>${items}</ol>` 
             : `<ul${anchorId} class="${block.data.style === 'checklist' ? 'checklist' : ''}">${items}</ul>`;
         case 'quote':
-          const cleanCaption = block.data.caption?.trim();
-          return `<blockquote${anchorId}>
-            <p>${block.data.text}</p>
-            ${cleanCaption ? `<footer>${cleanCaption}</footer>` : ''}
-          </blockquote>`;
+          return renderQuoteBlockHtml(block.data, { anchorId });
         case 'code':
           return `<pre${anchorId}><code>${block.data.code}</code></pre>`;
         case 'spoiler':
@@ -2101,6 +2094,41 @@
 
   :global(.post-content blockquote footer) {
     @apply mt-2 text-sm text-slate-500 dark:text-zinc-400 not-italic;
+  }
+
+  :global(.post-content .post-quote__footer) {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  :global(.post-content .post-quote__caption) {
+    color: inherit;
+  }
+
+  :global(.post-content .post-quote__author) {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.7rem;
+  }
+
+  :global(.post-content .post-quote__author-photo) {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 999px;
+    object-fit: cover;
+    flex-shrink: 0;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+  }
+
+  :global(.post-content .post-quote__author-name) {
+    color: rgb(15 23 42);
+    font-weight: 500;
+    line-height: 1.35;
+  }
+
+  :global(.dark .post-content .post-quote__author-name) {
+    color: rgb(228 228 231);
   }
 
   :global(.post-content ul) {

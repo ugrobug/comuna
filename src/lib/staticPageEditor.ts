@@ -1,4 +1,5 @@
 import { deserializeEditorModel } from '$lib/util'
+import { renderQuoteBlockHtml } from '$lib/quoteBlock'
 
 const escapeHtml = (value: string) =>
   value
@@ -81,10 +82,7 @@ const renderBlock = (block: Record<string, any>) => {
       return renderListItems(items, ordered)
     }
     case 'quote': {
-      const text = typeof data?.text === 'string' ? data.text.trim() : ''
-      const caption = typeof data?.caption === 'string' ? data.caption.trim() : ''
-      if (!text && !caption) return ''
-      return `<blockquote>${text ? `<p>${text}</p>` : ''}${caption ? `<footer>${caption}</footer>` : ''}</blockquote>`
+      return renderQuoteBlockHtml(data)
     }
     case 'delimiter':
       return '<hr />'

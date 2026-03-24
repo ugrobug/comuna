@@ -22,6 +22,7 @@
     normalizeOpenStreetMapZoom,
     buildOpenStreetMapEmbedUrl,
   } from '$lib/util'
+  import { normalizeQuoteBlockData } from '$lib/quoteBlock'
   import { get } from 'svelte/store'
   import { Button, toast } from 'mono-svelte'
   import CustomInputTune from './CustomInputTune'
@@ -584,6 +585,228 @@
 
     save() {
       return {}
+    }
+  }
+
+  class QuoteTool {
+    private data: {
+      text: string
+      caption: string
+      author_name: string
+      author_photo: string
+    }
+    private textInput: HTMLDivElement | null = null
+    private captionInput: HTMLDivElement | null = null
+    private authorNameInput: HTMLDivElement | null = null
+    private authorPhotoInput: HTMLInputElement | null = null
+    private authorPhotoPreview: HTMLDivElement | null = null
+    private authorPhotoUploadButton: HTMLButtonElement | null = null
+
+    static get toolbox() {
+      return {
+        title: 'Цитата',
+        icon: `<img src="${icons.quote}" width="16" height="16" />`,
+      }
+    }
+
+    constructor({ data }: { data?: any }) {
+      const normalized = normalizeQuoteBlockData(data)
+      this.data = {
+        text: normalized.text,
+        caption: normalized.caption,
+        author_name: normalized.authorName,
+        author_photo: normalized.authorPhoto,
+      }
+    }
+
+    private createEditableField(placeholder: string, value: string, extraClass?: string) {
+      const field = document.createElement('div')
+      field.classList.add('quote-tool__editable')
+      if (extraClass) field.classList.add(extraClass)
+      field.contentEditable = 'true'
+      field.dataset.placeholder = placeholder
+      if (value) {
+        field.innerHTML = value
+      }
+      field.addEventListener('input', () => {
+        if (field.innerHTML === '<br>') {
+          field.innerHTML = ''
+        }
+      })
+      return field
+    }
+
+    private getEditableValue(field: HTMLDivElement | null) {
+      if (!field) return ''
+      const html = field.innerHTML.trim()
+      const text = (field.textContent || '').replace(/\u200B/g, '').trim()
+      if (!html || !text || /^<br\s*\/?>$/i.test(html)) return ''
+      return html
+    }
+
+    private updateAuthorPhotoPreview() {
+      if (!this.authorPhotoPreview) return
+      const nextUrl = this.authorPhotoInput?.value.trim() || ''
+      this.data.author_photo = nextUrl
+      this.authorPhotoPreview.innerHTML = ''
+      this.authorPhotoPreview.hidden = !nextUrl
+      if (!nextUrl) return
+
+      const image = document.createElement('img')
+      image.classList.add('quote-tool__author-preview-image')
+      image.src = nextUrl
+      image.alt = 'Автор цитаты'
+      image.loading = 'lazy'
+      this.authorPhotoPreview.appendChild(image)
+    }
+
+    private async handleAuthorPhotoSelected(file: File) {
+      if (!this.authorPhotoUploadButton) return
+      const initialLabel = this.authorPhotoUploadButton.textContent || 'Загрузить фото'
+      this.authorPhotoUploadButton.disabled = true
+      this.authorPhotoUploadButton.textContent = 'Загрузка...'
+      try {
+        const uploaded = await uploadEditorImage(file)
+        const nextUrl = uploaded?.url
+          ? uploaded.useWebp
+            ? `${uploaded.url}?format=webp`
+            : uploaded.url
+          : ''
+        if (!nextUrl) return
+        this.data.author_photo = nextUrl
+        if (this.authorPhotoInput) {
+          this.authorPhotoInput.value = nextUrl
+        }
+        this.updateAuthorPhotoPreview()
+      } catch (error) {
+        toast({
+          content: humanizeUploadError(error),
+          type: 'error',
+        })
+      } finally {
+        this.authorPhotoUploadButton.disabled = false
+        this.authorPhotoUploadButton.textContent = initialLabel
+      }
+    }
+
+    render() {
+      const wrapper = document.createElement('div')
+      wrapper.classList.add('quote-tool')
+
+      const title = document.createElement('div')
+      title.classList.add('quote-tool__title')
+      title.textContent = 'Цитата'
+
+      const textLabel = document.createElement('label')
+      textLabel.classList.add('quote-tool__label')
+      textLabel.textContent = 'Текст цитаты'
+
+      const textInput = this.createEditableField(
+        'Введите текст цитаты',
+        this.data.text,
+        'quote-tool__text'
+      )
+      this.textInput = textInput
+
+      const captionLabel = document.createElement('label')
+      captionLabel.classList.add('quote-tool__label')
+      captionLabel.textContent = 'Подпись'
+
+      const captionInput = this.createEditableField(
+        'Подпись или источник цитаты (необязательно)',
+        this.data.caption,
+        'quote-tool__caption'
+      )
+      this.captionInput = captionInput
+
+      const authorTitle = document.createElement('div')
+      authorTitle.classList.add('quote-tool__section-title')
+      authorTitle.textContent = 'Автор цитаты'
+
+      const authorPhotoLabel = document.createElement('label')
+      authorPhotoLabel.classList.add('quote-tool__label')
+      authorPhotoLabel.textContent = 'Фото автора'
+
+      const authorPhotoRow = document.createElement('div')
+      authorPhotoRow.classList.add('quote-tool__photo-row')
+
+      const authorPhotoPreview = document.createElement('div')
+      authorPhotoPreview.classList.add('quote-tool__author-preview')
+      this.authorPhotoPreview = authorPhotoPreview
+
+      const authorPhotoControls = document.createElement('div')
+      authorPhotoControls.classList.add('quote-tool__photo-controls')
+
+      const authorPhotoInput = document.createElement('input')
+      authorPhotoInput.type = 'text'
+      authorPhotoInput.classList.add('quote-tool__photo-input')
+      authorPhotoInput.placeholder = 'Ссылка на фото автора (необязательно)'
+      authorPhotoInput.value = this.data.author_photo
+      authorPhotoInput.addEventListener('input', () => {
+        this.updateAuthorPhotoPreview()
+      })
+      this.authorPhotoInput = authorPhotoInput
+
+      const authorPhotoFileInput = document.createElement('input')
+      authorPhotoFileInput.type = 'file'
+      authorPhotoFileInput.accept = 'image/*'
+      authorPhotoFileInput.style.display = 'none'
+      authorPhotoFileInput.addEventListener('change', async () => {
+        const file = authorPhotoFileInput.files?.[0]
+        if (!file) return
+        await this.handleAuthorPhotoSelected(file)
+        authorPhotoFileInput.value = ''
+      })
+
+      const authorPhotoUploadButton = document.createElement('button')
+      authorPhotoUploadButton.type = 'button'
+      authorPhotoUploadButton.classList.add('quote-tool__upload')
+      authorPhotoUploadButton.textContent = 'Загрузить фото'
+      authorPhotoUploadButton.addEventListener('click', () => {
+        authorPhotoFileInput.click()
+      })
+      this.authorPhotoUploadButton = authorPhotoUploadButton
+
+      authorPhotoControls.appendChild(authorPhotoInput)
+      authorPhotoControls.appendChild(authorPhotoUploadButton)
+      authorPhotoControls.appendChild(authorPhotoFileInput)
+      authorPhotoRow.appendChild(authorPhotoPreview)
+      authorPhotoRow.appendChild(authorPhotoControls)
+
+      const authorNameLabel = document.createElement('label')
+      authorNameLabel.classList.add('quote-tool__label')
+      authorNameLabel.textContent = 'Текст автора'
+
+      const authorNameInput = this.createEditableField(
+        'Имя автора цитаты (необязательно)',
+        this.data.author_name,
+        'quote-tool__author-name'
+      )
+      this.authorNameInput = authorNameInput
+
+      wrapper.appendChild(title)
+      wrapper.appendChild(textLabel)
+      wrapper.appendChild(textInput)
+      wrapper.appendChild(captionLabel)
+      wrapper.appendChild(captionInput)
+      wrapper.appendChild(authorTitle)
+      wrapper.appendChild(authorPhotoLabel)
+      wrapper.appendChild(authorPhotoRow)
+      wrapper.appendChild(authorNameLabel)
+      wrapper.appendChild(authorNameInput)
+
+      this.updateAuthorPhotoPreview()
+
+      return wrapper
+    }
+
+    save() {
+      return {
+        text: this.getEditableValue(this.textInput),
+        caption: this.getEditableValue(this.captionInput),
+        author_name: this.getEditableValue(this.authorNameInput),
+        author_photo: this.authorPhotoInput?.value.trim() || '',
+      }
     }
   }
 
@@ -3275,8 +3498,6 @@
       { default: EditorJS },
       { default: Header },
       { default: List },
-      { default: Image },
-      { default: Quote },
       { default: Code },
       { default: AlignmentBlockTune },
       { default: LinkTool },
@@ -3285,8 +3506,6 @@
       import('@editorjs/editorjs'),
       import('@editorjs/header'),
       import('@editorjs/list'),
-      import('@editorjs/image'),
-      import('@editorjs/quote'),
       import('@editorjs/code'),
       import('editorjs-text-alignment-blocktune'),
       import('@editorjs/link'),
@@ -3347,7 +3566,7 @@
         ...(enabledTemplateBlockTypes.has('quote')
           ? {
               quote: {
-                class: Quote,
+                class: QuoteTool,
                 inlineToolbar: ['bold', 'italic', 'customInlineLink'],
                 toolbox: {
                   title: 'Цитата',
@@ -4431,6 +4650,143 @@
     :global(.movie-time-tool__grid) {
       grid-template-columns: 1fr;
     }
+  }
+
+  :global(.quote-tool) {
+    border-radius: 0.9rem;
+    border: 1px solid rgba(251, 146, 60, 0.34);
+    background:
+      radial-gradient(120% 120% at 0% 0%, rgba(251, 146, 60, 0.16), rgba(251, 146, 60, 0) 60%),
+      linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.9));
+    color: #e2e8f0;
+    padding: 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+  }
+
+  :global(.quote-tool__title),
+  :global(.quote-tool__section-title) {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #fff7ed;
+  }
+
+  :global(.quote-tool__section-title) {
+    margin-top: 0.25rem;
+  }
+
+  :global(.quote-tool__label) {
+    color: #fed7aa;
+    font-size: 0.76rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+
+  :global(.quote-tool__editable) {
+    width: 100%;
+    min-height: 3.5rem;
+    border-radius: 0.72rem;
+    border: 1px solid rgba(251, 146, 60, 0.28);
+    background: rgba(15, 23, 42, 0.45);
+    color: #f8fafc;
+    font-size: 0.86rem;
+    line-height: 1.5;
+    padding: 0.65rem 0.75rem;
+    outline: none;
+  }
+
+  :global(.quote-tool__caption),
+  :global(.quote-tool__author-name) {
+    min-height: 2.75rem;
+  }
+
+  :global(.quote-tool__editable:empty::before) {
+    content: attr(data-placeholder);
+    color: #fdba74;
+    pointer-events: none;
+  }
+
+  :global(.quote-tool__editable:focus) {
+    border-color: rgba(251, 146, 60, 0.82);
+    box-shadow: 0 0 0 2px rgba(251, 146, 60, 0.14);
+  }
+
+  :global(.quote-tool__photo-row) {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.75rem;
+    align-items: center;
+  }
+
+  :global(.quote-tool__author-preview) {
+    width: 3rem;
+    height: 3rem;
+    border-radius: 999px;
+    border: 1px solid rgba(251, 146, 60, 0.28);
+    background: rgba(15, 23, 42, 0.38);
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  :global(.quote-tool__author-preview[hidden]) {
+    display: none;
+  }
+
+  :global(.quote-tool__author-preview-image) {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  :global(.quote-tool__photo-controls) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+    align-items: center;
+  }
+
+  :global(.quote-tool__photo-input) {
+    flex: 1 1 15rem;
+    min-width: 0;
+    border-radius: 0.72rem;
+    border: 1px solid rgba(251, 146, 60, 0.28);
+    background: rgba(15, 23, 42, 0.45);
+    color: #f8fafc;
+    font-size: 0.84rem;
+    line-height: 1.35;
+    padding: 0.58rem 0.72rem;
+  }
+
+  :global(.quote-tool__photo-input::placeholder) {
+    color: #fdba74;
+  }
+
+  :global(.quote-tool__photo-input:focus) {
+    outline: none;
+    border-color: rgba(251, 146, 60, 0.82);
+    box-shadow: 0 0 0 2px rgba(251, 146, 60, 0.14);
+  }
+
+  :global(.quote-tool__upload) {
+    border: 1px solid rgba(251, 146, 60, 0.26);
+    background: rgba(15, 23, 42, 0.42);
+    color: #ffedd5;
+    border-radius: 0.7rem;
+    font-size: 0.78rem;
+    line-height: 1.2;
+    padding: 0.55rem 0.72rem;
+    transition: border-color 0.18s ease, transform 0.18s ease;
+  }
+
+  :global(.quote-tool__upload:hover:not(:disabled)) {
+    border-color: rgba(251, 146, 60, 0.48);
+    transform: translateY(-1px);
+  }
+
+  :global(.quote-tool__upload:disabled) {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 
   :global(.divider-tool) {
