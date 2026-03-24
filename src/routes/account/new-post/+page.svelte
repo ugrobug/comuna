@@ -109,6 +109,12 @@
   $: selectedTargetLabel = selectedComun?.name || 'Выберите сообщество'
   $: selectedComunCategory =
     selectedComunCategories.find((category) => String(category.id) === createComunCategoryId) ?? null
+  $: selectedCategoryOnlyModeratorsCanPost = Boolean(
+    selectedComunCategory?.only_moderators_can_post
+  )
+  $: selectedCategoryRestrictedForCurrentUser = Boolean(
+    selectedCategoryOnlyModeratorsCanPost && !selectedComun?.can_moderate
+  )
   $: selectedAllowedTemplateTypes = normalizeAllowedPostTemplateTypes(
     selectedComunCategory?.allowed_template_types ??
       (normalizeAllowedPostTemplateTypeOverrides(
@@ -632,6 +638,10 @@
       createError = 'Выберите сообщество для публикации.'
       return
     }
+    if (selectedCategoryRestrictedForCurrentUser) {
+      createError = `Публикация в категории "${selectedComunCategory?.name ?? ''}" доступна только создателю и модераторам.`
+      return
+    }
     const template = buildTemplate()
     if (
       selectedComun?.forbid_external_links &&
@@ -925,6 +935,12 @@
                         <option value={String(category.id)}>{category.name}</option>
                       {/each}
                     </select>
+                  </div>
+                {/if}
+
+                {#if selectedCategoryRestrictedForCurrentUser}
+                  <div class="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-200">
+                    В категории "{selectedComunCategory?.name}" писать могут только администраторы и модераторы сообщества.
                   </div>
                 {/if}
 

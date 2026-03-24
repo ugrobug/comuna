@@ -634,6 +634,11 @@ class ComunCategory(models.Model):
         verbose_name="Доступные шаблоны поста",
         help_text="Если список пустой, категория использует общие шаблоны сообщества.",
     )
+    only_moderators_can_post = models.BooleanField(
+        default=False,
+        verbose_name="Публикация только для создателя и модераторов",
+        help_text="Если включено, писать в эту категорию смогут только создатель сообщества, модераторы и администраторы сайта.",
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

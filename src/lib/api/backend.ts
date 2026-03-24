@@ -380,6 +380,7 @@ export type BackendComunCategory = {
   slug: string
   description?: string | null
   sort_order?: number
+  only_moderators_can_post?: boolean
   allowed_template_types?: string[]
   category_allowed_template_types?: string[]
   inherits_comun_template_types?: boolean

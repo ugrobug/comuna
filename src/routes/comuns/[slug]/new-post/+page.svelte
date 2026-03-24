@@ -141,6 +141,12 @@
   $: canCreateInComun = Boolean($siteToken && comun?.can_post)
   $: selectedComunCategory =
     comunCategories.find((category) => String(category.id) === createCategoryId) ?? null
+  $: selectedCategoryOnlyModeratorsCanPost = Boolean(
+    selectedComunCategory?.only_moderators_can_post
+  )
+  $: selectedCategoryRestrictedForCurrentUser = Boolean(
+    selectedCategoryOnlyModeratorsCanPost && !comun?.can_moderate
+  )
   $: comunAllowedTemplateTypes = normalizeAllowedPostTemplateTypes(
     selectedComunCategory?.allowed_template_types ??
       (normalizeAllowedPostTemplateTypeOverrides(
@@ -221,6 +227,10 @@
           : minimumAuthorRatingToPost > 0
           ? `Публикация в этом сообществе доступна авторам с рейтингом от ${formatRatingValue(minimumAuthorRatingToPost)}.`
           : 'Сейчас вы не можете публиковать записи в это сообщество.'
+      return
+    }
+    if (selectedCategoryRestrictedForCurrentUser) {
+      createError = `Публикация в категории "${selectedComunCategory?.name ?? ''}" доступна только создателю и модераторам.`
       return
     }
     if (!createTitle.trim()) {
@@ -396,6 +406,12 @@
               {/each}
             </select>
           </label>
+        {/if}
+
+        {#if selectedCategoryRestrictedForCurrentUser}
+          <div class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-200">
+            В категории "{selectedComunCategory?.name}" писать могут только администраторы и модераторы сообщества.
+          </div>
         {/if}
 
         <TextInput label="Заголовок" bind:value={createTitle} />

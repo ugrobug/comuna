@@ -1262,6 +1262,7 @@ def _comun_post_access_state(
     comun: Comun,
     *,
     author: Author | None = None,
+    category: ComunCategory | None = None,
 ) -> tuple[bool, float, float | None]:
     minimum_rating = _comun_minimum_author_rating_value(comun)
     if not user:
@@ -1269,6 +1270,8 @@ def _comun_post_access_state(
     if _comun_is_moderator(user, comun):
         return True, minimum_rating, None
     if bool(getattr(comun, "only_moderators_can_post", False)):
+        return False, minimum_rating, None
+    if category is not None and bool(getattr(category, "only_moderators_can_post", False)):
         return False, minimum_rating, None
     if minimum_rating <= 0:
         return True, minimum_rating, None
@@ -1291,9 +1294,14 @@ def _comun_post_access_error_message(
     comun: Comun,
     *,
     author_rating: float | None = None,
+    category: ComunCategory | None = None,
 ) -> str:
     if bool(getattr(comun, "only_moderators_can_post", False)):
         return "Публикация в этом сообществе доступна только создателю и модераторам."
+    if category is not None and bool(getattr(category, "only_moderators_can_post", False)):
+        return (
+            f'Публикация в категории "{category.name}" доступна только создателю и модераторам.'
+        )
     minimum_text = _format_rating_value(_comun_minimum_author_rating_value(comun))
     if author_rating is None:
         return f"Для публикации в этой комуне нужен рейтинг автора не ниже {minimum_text}."
@@ -8013,6 +8021,7 @@ def _serialize_comun_category(category: ComunCategory, comun: Comun | None = Non
         "slug": category.slug,
         "description": category.description,
         "sort_order": category.sort_order,
+        "only_moderators_can_post": bool(getattr(category, "only_moderators_can_post", False)),
         "category_allowed_template_types": category_allowed_template_types,
         "allowed_template_types": _allowed_templates_for_comun_category(comun, category),
         "inherits_comun_template_types": not bool(category_allowed_template_types),
@@ -9006,6 +9015,20 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
             category.allowed_post_templates = next_allowed_templates
             category.save(update_fields=["allowed_post_templates", "updated_at"])
 
+    if "category_only_moderators_can_post_ids" in body:
+        category_only_moderators_can_post_ids = set(
+            _parse_int_list(body.get("category_only_moderators_can_post_ids"))
+        )
+        for category in ComunCategory.objects.filter(
+            comun=comun,
+            is_active=True,
+        ):
+            next_only_moderators_can_post = category.id in category_only_moderators_can_post_ids
+            if bool(category.only_moderators_can_post) == next_only_moderators_can_post:
+                continue
+            category.only_moderators_can_post = next_only_moderators_can_post
+            category.save(update_fields=["only_moderators_can_post", "updated_at"])
+
     if "blocked_tag_ids" in body or "excluded_tag_ids" in body:
         blocked_tag_ids = _parse_int_list(
             body.get("blocked_tag_ids")
@@ -9221,12 +9244,17 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
             current_user,
             comun,
             author=author,
+            category=category,
         )
         if not can_post:
             return JsonResponse(
                 {
                     "ok": False,
-                    "error": _comun_post_access_error_message(comun, author_rating=author_rating),
+                    "error": _comun_post_access_error_message(
+                        comun,
+                        author_rating=author_rating,
+                        category=category,
+                    ),
                 },
                 status=403,
             )

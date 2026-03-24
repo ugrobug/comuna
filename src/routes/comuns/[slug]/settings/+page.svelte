@@ -156,6 +156,13 @@
     return Object.fromEntries(entries)
   }
 
+  const comunCategoryOnlyModeratorIds = (value: BackendComun | null) =>
+    normalizeIds(
+      (value?.categories ?? [])
+        .filter((category) => Boolean(category?.only_moderators_can_post))
+        .map((category) => category.id ?? 0)
+    )
+
   const normalizeTemplateTypeOptions = (value: unknown): TemplateTypeOption[] => {
     const source = Array.isArray(value) ? value : []
     const normalized: TemplateTypeOption[] = []
@@ -194,6 +201,7 @@
       source_tag_ids: comunSourceTagIds(value),
       allowed_template_types: comunAllowedTemplateTypes(value),
       category_template_types_by_id: comunCategoryTemplateTypesById(value),
+      category_only_moderators_can_post_ids: comunCategoryOnlyModeratorIds(value),
       category_ids: comunCategoryIds(value),
       moderator_ids: comunModeratorIds(value),
       excluded_author_ids: comunExcludedAuthorIds(value),
@@ -281,6 +289,26 @@
     if (current.has(categoryId)) current.delete(categoryId)
     else current.add(categoryId)
     settingsDraft = { ...settingsDraft, category_ids: Array.from(current) as number[] }
+  }
+
+  const setDraftCategoryOnlyModeratorIds = (ids: number[]) => {
+    if (!settingsDraft) return
+    const restrictedIds = new Set(normalizeIds(ids))
+    settingsDraft = {
+      ...settingsDraft,
+      categories: (settingsDraft.categories ?? []).map((category) => ({
+        ...category,
+        only_moderators_can_post: restrictedIds.has(Number(category.id)),
+      })),
+    }
+  }
+
+  const toggleDraftCategoryOnlyModerators = (categoryId: number) => {
+    if (!settingsDraft) return
+    const current = new Set(comunCategoryOnlyModeratorIds(settingsDraft))
+    if (current.has(categoryId)) current.delete(categoryId)
+    else current.add(categoryId)
+    setDraftCategoryOnlyModeratorIds(Array.from(current))
   }
 
   const setDraftModeratorIds = (ids: number[]) => {
@@ -707,6 +735,7 @@
           forbid_external_links: Boolean(settingsDraft.forbid_external_links),
           allowed_template_types: comunAllowedTemplateTypes(settingsDraft),
           category_template_types_by_id: comunCategoryTemplateTypesById(settingsDraft),
+          category_only_moderators_can_post_ids: comunCategoryOnlyModeratorIds(settingsDraft),
           hide_from_home: canManageComunModerators() ? Boolean(settingsDraft.hide_from_home) : undefined,
           hide_from_fresh: canManageComunModerators() ? Boolean(settingsDraft.hide_from_fresh) : undefined,
           moderator_ids: canManageComunModerators() ? comunModeratorIds(settingsDraft) : undefined,
@@ -1019,6 +1048,29 @@
               </span>
             </span>
           </label>
+
+          {#if (settingsDraft.categories ?? []).length}
+            <div class="flex flex-col gap-2 rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-3">
+              <div class="text-sm font-medium text-slate-900 dark:text-zinc-100">
+                Категории, где писать могут только администраторы и модераторы
+              </div>
+              {#each settingsDraft.categories ?? [] as category (category.id)}
+                <label class="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    class="mt-0.5"
+                    checked={Boolean(category.only_moderators_can_post)}
+                    on:change={() => toggleDraftCategoryOnlyModerators(category.id)}
+                  />
+                  <span class="min-w-0">
+                    <span class="block text-sm text-slate-900 dark:text-zinc-100">
+                      {category.name}
+                    </span>
+                  </span>
+                </label>
+              {/each}
+            </div>
+          {/if}
 
           {#if canManageComunModerators()}
             <div class="flex flex-col gap-2 rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-3">
