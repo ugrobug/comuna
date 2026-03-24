@@ -1392,9 +1392,6 @@
                       </button>
                     </div>
                     <div class="flex flex-col gap-2">
-                      <div class="text-xs uppercase tracking-wide text-slate-500 dark:text-zinc-400">
-                        Шаблоны категории
-                      </div>
                       <TemplateTypeDropdown
                         options={settingsTemplateTypeOptions}
                         selectedValues={comunCategoryTemplateTypes(category)}
