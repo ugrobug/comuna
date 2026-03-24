@@ -98,18 +98,21 @@ _COMUN_ACTIVITY_POINTS = {
     "read": 1,
 }
 _COMMENT_PERSONAS = (
-    {"key": "persona_1", "username": "anna_m"},
-    {"key": "persona_2", "username": "igor_p"},
-    {"key": "persona_3", "username": "olga_v"},
-    {"key": "persona_4", "username": "sergey_k"},
-    {"key": "persona_5", "username": "maria_t"},
-    {"key": "persona_6", "username": "nikita_l"},
-    {"key": "persona_7", "username": "elena_s"},
-    {"key": "persona_8", "username": "denis_r"},
-    {"key": "persona_9", "username": "kate_n"},
-    {"key": "persona_10", "username": "alex_b"},
+    {"key": "persona_1", "username": "anna_m", "display_name": "Анна М.", "bio": "Часто обсуждает новые релизы и сериалы."},
+    {"key": "persona_2", "username": "igor_p", "display_name": "Игорь П.", "bio": "Любит спорить о киноиндустрии и трендах."},
+    {"key": "persona_3", "username": "olga_v", "display_name": "Ольга В.", "bio": "Следит за фестивалями, кастом и премьерами."},
+    {"key": "persona_4", "username": "sergey_k", "display_name": "Сергей К.", "bio": "Собирает новости о продакшене и сериалах."},
+    {"key": "persona_5", "username": "maria_t", "display_name": "Мария Т.", "bio": "Комментирует актерские работы и сценарии."},
+    {"key": "persona_6", "username": "nikita_l", "display_name": "Никита Л.", "bio": "Следит за анонсами, кассой и стримингами."},
+    {"key": "persona_7", "username": "elena_s", "display_name": "Елена С.", "bio": "Пишет о любимых франшизах и премьерах."},
+    {"key": "persona_8", "username": "denis_r", "display_name": "Денис Р.", "bio": "Смотрит новинки и обсуждает их без спойлеров."},
+    {"key": "persona_9", "username": "kate_n", "display_name": "Катя Н.", "bio": "Любит разговоры про жанры, актеров и сериалы."},
+    {"key": "persona_10", "username": "alex_b", "display_name": "Алекс Б.", "bio": "Следит за индустрией и громкими релизами."},
 )
 _COMMENT_PERSONAS_BY_KEY = {item["key"]: item for item in _COMMENT_PERSONAS}
+_COMMENT_PERSONAS_BY_USERNAME = {
+    str(item["username"]).strip().lower(): item for item in _COMMENT_PERSONAS
+}
 _POST_TEMPLATE_TYPE_BASIC = MODEL_POST_TEMPLATE_TYPE_BASIC
 _POST_TEMPLATE_TYPE_MOVIE_REVIEW = MODEL_POST_TEMPLATE_TYPE_MOVIE_REVIEW
 _POST_TEMPLATE_TYPE_POST_VOTE_POLL = MODEL_POST_TEMPLATE_TYPE_POST_VOTE_POLL
@@ -1041,6 +1044,61 @@ def _comment_display_username(comment: PostComment) -> str:
         pass
     username = (getattr(comment.user, "username", "") or "").strip()
     return username or "user"
+
+
+def _comment_persona_by_username(username: str | None) -> dict | None:
+    key = (username or "").strip().lower()
+    if not key:
+        return None
+    return _COMMENT_PERSONAS_BY_USERNAME.get(key)
+
+
+def _comment_persona_profile_path(username: str | None) -> str | None:
+    persona = _comment_persona_by_username(username)
+    if not persona:
+        return None
+    return f"/people/{urllib.parse.quote(persona['username'])}"
+
+
+def _serialize_comment_user(comment: PostComment) -> dict:
+    persona = _comment_persona_by_username(getattr(comment, "persona_username", ""))
+    if persona:
+        return {
+            "id": None,
+            "username": persona["username"],
+            "display_name": persona.get("display_name") or persona["username"],
+            "profile_url": _comment_persona_profile_path(persona["username"]),
+            "is_mask": True,
+        }
+
+    display_name = ""
+    try:
+        display_name = (getattr(comment.user.site_profile, "display_name", "") or "").strip()
+    except Exception:
+        display_name = ""
+
+    return {
+        "id": comment.user_id,
+        "username": (getattr(comment.user, "username", "") or "").strip() or "user",
+        "display_name": display_name or None,
+        "profile_url": f"/id{comment.user_id}" if comment.user_id else None,
+        "is_mask": False,
+    }
+
+
+def _serialize_site_comment(comment: PostComment, *, liked_by_me: bool = False, likes_count: int = 0, can_edit: bool = False) -> dict:
+    return {
+        "id": comment.id,
+        "body": "" if comment.is_deleted else comment.body,
+        "created_at": comment.created_at.isoformat(),
+        "updated_at": comment.updated_at.isoformat(),
+        "parent_id": comment.parent_id,
+        "is_deleted": comment.is_deleted,
+        "likes_count": likes_count,
+        "liked_by_me": liked_by_me,
+        "can_edit": can_edit,
+        "user": _serialize_comment_user(comment),
+    }
 
 
 def _comment_personas_for_user(user: User | None) -> list[dict]:
@@ -5140,6 +5198,75 @@ def public_user_profile(request: HttpRequest, user_id: int) -> HttpResponse:
     )
 
 
+def comment_persona_profile(request: HttpRequest, username: str) -> HttpResponse:
+    if request.method != "GET":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    persona = _comment_persona_by_username(username)
+    if not persona:
+        return JsonResponse({"ok": False, "error": "persona not found"}, status=404)
+
+    limit_raw = request.GET.get("limit", "20")
+    offset_raw = request.GET.get("offset", "0")
+    try:
+        limit = min(max(int(limit_raw), 1), 100)
+    except ValueError:
+        limit = 20
+    try:
+        offset = max(int(offset_raw), 0)
+    except ValueError:
+        offset = 0
+
+    now = timezone.now()
+    comments_qs = (
+        PostComment.objects.filter(
+            persona_username__iexact=persona["username"],
+            is_deleted=False,
+            post__is_blocked=False,
+            post__is_pending=False,
+            post__author__is_blocked=False,
+        )
+        .filter(_publish_ready_filter(now))
+        .select_related("post", "post__author", "user")
+        .annotate(likes_count=Count("likes", distinct=True))
+        .order_by("-created_at")
+    )
+    total_comments = comments_qs.count()
+    comments = list(comments_qs[offset : offset + limit])
+    unique_posts_count = comments_qs.values("post_id").distinct().count() if total_comments else 0
+
+    payload_comments = [
+        {
+            "id": comment.id,
+            "body": comment.body,
+            "created_at": comment.created_at.isoformat(),
+            "likes_count": comment.likes_count,
+            "post": {
+                "id": comment.post_id,
+                "title": _post_display_title(comment.post),
+                "path": _post_public_path(comment.post),
+            },
+        }
+        for comment in comments
+    ]
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "persona": {
+                "username": persona["username"],
+                "display_name": persona.get("display_name") or persona["username"],
+                "bio": persona.get("bio") or "",
+                "profile_url": _comment_persona_profile_path(persona["username"]),
+                "comments_count": total_comments,
+                "posts_count": unique_posts_count,
+            },
+            "comments": payload_comments,
+            "total_comments": total_comments,
+        }
+    )
+
+
 @csrf_exempt
 def author_verification_code(request: HttpRequest) -> HttpResponse:
     user = _get_user_from_request(request)
@@ -5899,21 +6026,12 @@ def post_comments(request: HttpRequest, post_id: int) -> HttpResponse:
                 )
             )
         serialized = [
-            {
-                "id": comment.id,
-                "body": "" if comment.is_deleted else comment.body,
-                "created_at": comment.created_at.isoformat(),
-                "updated_at": comment.updated_at.isoformat(),
-                "parent_id": comment.parent_id,
-                "is_deleted": comment.is_deleted,
-                "likes_count": comment.likes_count,
-                "liked_by_me": comment.id in liked_ids,
-                "can_edit": bool(user and comment.user_id == user.id and not comment.is_deleted),
-                "user": {
-                    "id": comment.user_id,
-                    "username": _comment_display_username(comment),
-                },
-            }
+            _serialize_site_comment(
+                comment,
+                liked_by_me=comment.id in liked_ids,
+                likes_count=comment.likes_count,
+                can_edit=bool(user and comment.user_id == user.id and not comment.is_deleted),
+            )
             for comment in comments
         ]
         return JsonResponse(
@@ -5974,21 +6092,12 @@ def post_comments(request: HttpRequest, post_id: int) -> HttpResponse:
     return JsonResponse(
         {
             "ok": True,
-            "comment": {
-                "id": comment.id,
-                "body": comment.body,
-                "created_at": comment.created_at.isoformat(),
-                "updated_at": comment.updated_at.isoformat(),
-                "parent_id": comment.parent_id,
-                "is_deleted": comment.is_deleted,
-                "likes_count": 0,
-                "liked_by_me": False,
-                "can_edit": True,
-                "user": {
-                    "id": comment.user_id,
-                    "username": _comment_display_username(comment),
-                },
-            },
+            "comment": _serialize_site_comment(
+                comment,
+                liked_by_me=False,
+                likes_count=0,
+                can_edit=True,
+            ),
             "comments_count": post.comments_count,
         }
     )
@@ -6034,21 +6143,12 @@ def comment_detail(request: HttpRequest, comment_id: int) -> HttpResponse:
         return JsonResponse(
             {
                 "ok": True,
-                "comment": {
-                    "id": comment.id,
-                    "body": comment.body,
-                    "created_at": comment.created_at.isoformat(),
-                    "updated_at": comment.updated_at.isoformat(),
-                    "parent_id": comment.parent_id,
-                    "is_deleted": comment.is_deleted,
-                    "likes_count": likes_count,
-                    "liked_by_me": liked_by_me,
-                    "can_edit": True,
-                    "user": {
-                        "id": comment.user_id,
-                        "username": _comment_display_username(comment),
-                    },
-                },
+                "comment": _serialize_site_comment(
+                    comment,
+                    liked_by_me=liked_by_me,
+                    likes_count=likes_count,
+                    can_edit=True,
+                ),
             }
         )
 

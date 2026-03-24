@@ -9,8 +9,11 @@ export type SiteComment = {
   liked_by_me?: boolean
   can_edit?: boolean
   user: {
-    id: number
+    id?: number | null
     username: string
+    display_name?: string | null
+    profile_url?: string | null
+    is_mask?: boolean
   }
 }
 

@@ -49,6 +49,22 @@ export const buildCommentLikeUrl = (id: number | string): string => {
   return `${getBackendBaseUrl()}/api/comments/${encodeURIComponent(id)}/like/`
 }
 
+export const buildCommentPersonaProfileUrl = (
+  username: string,
+  options?: { limit?: number; offset?: number }
+): string => {
+  const base = `${getBackendBaseUrl()}/api/comment-personas/${encodeURIComponent(username)}/profile/`
+  const params = new URLSearchParams()
+  if (typeof options?.limit === 'number') {
+    params.set('limit', String(options.limit))
+  }
+  if (typeof options?.offset === 'number') {
+    params.set('offset', String(options.offset))
+  }
+  const query = params.toString()
+  return query ? `${base}?${query}` : base
+}
+
 export const buildRecentCommentsUrl = (limit = 5): string => {
   const params = new URLSearchParams({ limit: String(limit) })
   return `${getBackendBaseUrl()}/api/comments/recent/?${params.toString()}`
@@ -504,6 +520,27 @@ export type BackendPublicSiteUserAuthor = {
   description?: string | null
   rubric?: string | null
   rubric_slug?: string | null
+}
+
+export type BackendCommentPersonaProfile = {
+  username: string
+  display_name?: string | null
+  bio?: string | null
+  profile_url?: string | null
+  comments_count?: number
+  posts_count?: number
+}
+
+export type BackendCommentPersonaComment = {
+  id: number
+  body: string
+  created_at: string
+  likes_count?: number
+  post?: {
+    id: number
+    title: string
+    path: string
+  } | null
 }
 
 export type BackendPollOption = {

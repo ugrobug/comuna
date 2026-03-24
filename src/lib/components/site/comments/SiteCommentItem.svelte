@@ -31,7 +31,10 @@
   $: isAuthor = postAuthor && node.comment.user.username === postAuthor
   $: isDeleted = Boolean(node.comment.is_deleted)
   $: commentDate = new Date(node.comment.created_at)
-  $: commenterProfileUrl = node.comment.user?.id ? `/id${node.comment.user.id}` : null
+  $: commenterProfileUrl =
+    node.comment.user?.profile_url || (node.comment.user?.id ? `/id${node.comment.user.id}` : null)
+  $: commenterLabel = node.comment.user?.username || 'user'
+  $: commenterAlt = node.comment.user?.display_name || commenterLabel
   $: edited =
     node.comment.updated_at &&
     new Date(node.comment.updated_at).getTime() > commentDate.getTime()
@@ -103,7 +106,7 @@
 
 <li class="relative flex flex-col gap-3 rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 shadow-sm">
   <div class="flex gap-3">
-    <Avatar width={depth > 0 ? 28 : 36} alt={node.comment.user.username} />
+    <Avatar width={depth > 0 ? 28 : 36} alt={commenterAlt} />
     <div class="flex-1 min-w-0">
       <div class="flex items-center gap-2 text-xs text-slate-500 dark:text-zinc-400 flex-wrap">
         {#if commenterProfileUrl}
@@ -111,11 +114,11 @@
             href={commenterProfileUrl}
             class="text-sm font-semibold text-slate-900 dark:text-zinc-100 hover:text-sky-600 dark:hover:text-sky-400 transition"
           >
-            @{node.comment.user.username}
+            @{commenterLabel}
           </a>
         {:else}
           <span class="text-sm font-semibold text-slate-900 dark:text-zinc-100">
-            @{node.comment.user.username}
+            @{commenterLabel}
           </span>
         {/if}
         {#if isAuthor}
