@@ -8130,6 +8130,7 @@ def _serialize_comun(
         "website_url": comun.website_url,
         "logo_url": _comun_logo_url(request, comun),
         "product_description": comun.product_description,
+        "rules_text": comun.rules_text,
         "target_audience": comun.target_audience,
         "minimum_author_rating_to_post": _comun_minimum_author_rating_value(comun),
         "only_moderators_can_post": bool(getattr(comun, "only_moderators_can_post", False)),
