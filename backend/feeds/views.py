@@ -1331,7 +1331,7 @@ def _user_max_author_rating(user: User | None) -> float:
 def _comun_creation_access_state(user: User | None) -> tuple[bool, float, float]:
     minimum_rating = round(_COMUN_CREATION_MIN_AUTHOR_RATING, 2)
     max_author_rating = _user_max_author_rating(user)
-    can_create = bool(user and user.is_staff) or max_author_rating > 0
+    can_create = bool(user and user.is_staff) or max_author_rating >= 0
     return can_create, minimum_rating, max_author_rating
 
 
