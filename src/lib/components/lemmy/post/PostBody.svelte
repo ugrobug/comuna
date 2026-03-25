@@ -35,6 +35,7 @@
     normalizeInternalPostReference,
     type PostLinkSnapshot,
   } from '$lib/postLinkBlocks'
+  import { buildAuthorPublicPath, normalizeAuthorBlockData } from '$lib/authorBlocks'
   import { renderQuoteBlockHtml } from '$lib/quoteBlock'
   
   let DOMPurify: any
@@ -1158,6 +1159,42 @@
       </div>`
     }
 
+    const renderAuthorBlock = (raw: any): string => {
+      if (!isTemplateEditorBlockEnabled(template?.type ?? '', 'author')) return ''
+
+      const normalized = normalizeAuthorBlockData(raw)
+      const username = normalized.snapshot?.username || normalized.username || ''
+      if (!username) return ''
+
+      const displayTitle = normalized.snapshot?.title || username
+      const href = escapeHtml(normalized.snapshot?.path || buildAuthorPublicPath(username) || '#')
+      const titleText = escapeHtml(displayTitle)
+      const captionText = escapeHtml(normalized.caption || '')
+      const avatarUrl = escapeHtml(normalized.snapshot?.avatar_url || '')
+      const initial = escapeHtml((displayTitle[0] || username[0] || 'A').toUpperCase())
+
+      const avatarHtml = avatarUrl
+        ? `<span class="post-author-card__avatar">
+            <img src="${avatarUrl}" alt="${titleText}" loading="lazy" />
+          </span>`
+        : `<span class="post-author-card__avatar post-author-card__avatar--fallback">${initial}</span>`
+      const captionHtml = captionText
+        ? `<span class="post-author-card__caption">${captionText}</span>`
+        : ''
+
+      return `<div class="post-author-card">
+        <span class="post-author-card__line"></span>
+        <div class="post-author-card__body">
+          ${avatarHtml}
+          <div class="post-author-card__content">
+            <a href="${href}" class="post-author-card__name">${titleText}</a>
+            ${captionHtml}
+          </div>
+        </div>
+        <span class="post-author-card__line"></span>
+      </div>`
+    }
+
     const renderInlinePollBlock = (raw: any): string => {
       if (!isTemplateEditorBlockEnabled(template?.type ?? '', 'poll')) return ''
 
@@ -1597,6 +1634,8 @@
       case 'post_link':
       case 'postlink':
         return renderPostLinkBlock(block.data)
+      case 'author':
+        return renderAuthorBlock(block.data)
       case 'spoiler':
         return renderLegacySpoilerBlock(block.data)
       case 'music':
@@ -3306,6 +3345,85 @@
     padding: 0.36rem 0.68rem;
   }
 
+  :global(.post-content .post-author-card) {
+    margin: 1rem 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: 0.95rem;
+    align-items: center;
+  }
+
+  :global(.post-content .post-author-card__line) {
+    height: 1px;
+    background:
+      linear-gradient(90deg, rgba(251, 191, 36, 0), rgba(251, 191, 36, 0.6), rgba(251, 191, 36, 0));
+  }
+
+  :global(.post-content .post-author-card__body) {
+    min-width: 0;
+    display: inline-grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.85rem;
+    align-items: center;
+    padding: 0.48rem 0.9rem 0.48rem 0.48rem;
+    border-radius: 999px;
+    border: 1px solid rgba(251, 191, 36, 0.36);
+    background:
+      radial-gradient(120% 120% at 0% 0%, rgba(251, 191, 36, 0.18), rgba(251, 191, 36, 0) 62%),
+      linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.9));
+    box-shadow: 0 12px 26px rgba(15, 23, 42, 0.12);
+  }
+
+  :global(.post-content .post-author-card__avatar) {
+    width: 3rem;
+    height: 3rem;
+    border-radius: 999px;
+    overflow: hidden;
+    border: 1px solid rgba(251, 191, 36, 0.36);
+    background: rgba(15, 23, 42, 0.58);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #fde68a;
+    font-weight: 800;
+    flex-shrink: 0;
+  }
+
+  :global(.post-content .post-author-card__avatar img) {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+  }
+
+  :global(.post-content .post-author-card__content) {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.08rem;
+  }
+
+  :global(.post-content .post-author-card__name) {
+    color: #fff;
+    font-size: 0.98rem;
+    line-height: 1.2;
+    font-weight: 700;
+    text-decoration: underline;
+    text-decoration-color: rgba(251, 191, 36, 0.45);
+    text-underline-offset: 0.15em;
+  }
+
+  :global(.post-content .post-author-card__name:hover) {
+    color: #fde68a;
+    text-decoration-color: rgba(251, 191, 36, 0.72);
+  }
+
+  :global(.post-content .post-author-card__caption) {
+    color: #cbd5e1;
+    font-size: 0.82rem;
+    line-height: 1.35;
+  }
+
   :global(.post-content .post-movie-time) {
     margin: 0 0.28rem;
     display: inline-flex;
@@ -3605,6 +3723,16 @@
 
     :global(.post-content .post-movie-card__poster) {
       max-width: 150px;
+    }
+
+    :global(.post-content .post-author-card) {
+      grid-template-columns: 1fr;
+      gap: 0.55rem;
+    }
+
+    :global(.post-content .post-author-card__body) {
+      width: 100%;
+      border-radius: 1rem;
     }
   }
 

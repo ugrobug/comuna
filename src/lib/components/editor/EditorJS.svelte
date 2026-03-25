@@ -9,6 +9,11 @@
   } from '$lib/postTemplates'
   import { buildPostDetailUrl, buildSearchUrl } from '$lib/api/backend'
   import {
+    buildAuthorBlockSnapshot,
+    normalizeAuthorBlockData,
+    type AuthorBlockSnapshot,
+  } from '$lib/authorBlocks'
+  import {
     buildPostLinkSnapshot,
     normalizeInternalPostReference,
     normalizePostLinkBlockData,
@@ -585,6 +590,253 @@
 
     save() {
       return {}
+    }
+  }
+
+  class AuthorTool {
+    private data = normalizeAuthorBlockData({})
+    private preview: HTMLElement | null = null
+    private results: HTMLElement | null = null
+    private status: HTMLElement | null = null
+    private referenceInput: HTMLInputElement | null = null
+    private captionInput: HTMLTextAreaElement | null = null
+    private lookupTimer: number | null = null
+    private lookupRequestId = 0
+
+    static get toolbox() {
+      return {
+        title: 'Автор',
+        icon: `
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M8 8.1C9.76731 8.1 11.2 6.66731 11.2 4.9C11.2 3.13269 9.76731 1.7 8 1.7C6.23269 1.7 4.8 3.13269 4.8 4.9C4.8 6.66731 6.23269 8.1 8 8.1Z" stroke="currentColor" stroke-width="1.4"/>
+            <path d="M2.1 13.9C2.65434 11.6718 4.63257 10.1 8 10.1C11.3674 10.1 13.3457 11.6718 13.9 13.9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+          </svg>
+        `,
+      }
+    }
+
+    constructor({ data }: { data?: unknown }) {
+      this.data = normalizeAuthorBlockData(data)
+    }
+
+    private escapeHtml(value: string): string {
+      return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+    }
+
+    private updateStatus(message: string, tone: 'muted' | 'error' = 'muted') {
+      if (!this.status) return
+      this.status.textContent = message
+      this.status.dataset.tone = tone
+    }
+
+    private renderAvatar(snapshot: AuthorBlockSnapshot): string {
+      const displayName = snapshot.title || snapshot.username || 'Автор'
+      const initial = this.escapeHtml((displayName[0] || 'A').toUpperCase())
+      if (snapshot.avatar_url) {
+        return `<div class="author-tool-preview__avatar">
+          <img src="${this.escapeHtml(snapshot.avatar_url)}" alt="${this.escapeHtml(displayName)}" loading="lazy">
+        </div>`
+      }
+      return `<div class="author-tool-preview__avatar author-tool-preview__avatar--fallback">${initial}</div>`
+    }
+
+    private renderPreviewCard(snapshot: AuthorBlockSnapshot, caption: string): string {
+      const captionHtml = caption
+        ? `<div class="author-tool-preview__caption">${this.escapeHtml(caption)}</div>`
+        : ''
+      return `<div class="author-tool-preview__shell">
+        <span class="author-tool-preview__line"></span>
+        <div class="author-tool-preview__card">
+          ${this.renderAvatar(snapshot)}
+          <div class="author-tool-preview__content">
+            <div class="author-tool-preview__name">${this.escapeHtml(snapshot.title || snapshot.username)}</div>
+            ${captionHtml}
+          </div>
+        </div>
+        <span class="author-tool-preview__line"></span>
+      </div>`
+    }
+
+    private updatePreview() {
+      if (!this.preview) return
+      const caption = this.captionInput?.value.trim() || this.data.caption || ''
+      this.data.caption = caption
+
+      if (this.data.snapshot?.username) {
+        this.preview.innerHTML = this.renderPreviewCard(this.data.snapshot, caption)
+        this.updateStatus('Автор выбран. В посте имя будет вести на страницу автора.')
+        return
+      }
+
+      this.preview.innerHTML = ''
+      this.updateStatus('Начните искать автора и выберите его из списка.')
+    }
+
+    private applySnapshot(snapshot: AuthorBlockSnapshot) {
+      this.data.snapshot = snapshot
+      this.data.username = snapshot.username
+      if (this.referenceInput) {
+        this.referenceInput.value = snapshot.title || snapshot.username
+      }
+      this.updatePreview()
+    }
+
+    private async searchAuthors(query: string): Promise<AuthorBlockSnapshot[]> {
+      const response = await fetch(buildSearchUrl(query, 1, 6, 'Authors', 'New'), {
+        credentials: 'include',
+      })
+      if (!response.ok) return []
+      const payload = await response.json()
+      const authors = Array.isArray(payload?.authors) ? payload.authors : []
+      return authors
+        .map((author: any) => buildAuthorBlockSnapshot(author))
+        .filter((item: AuthorBlockSnapshot | null): item is AuthorBlockSnapshot => Boolean(item))
+    }
+
+    private renderSearchResults(items: AuthorBlockSnapshot[]) {
+      if (!this.results) return
+      this.results.innerHTML = ''
+
+      if (!items.length) {
+        this.results.innerHTML =
+          '<div class="author-tool-results__empty">Ничего не найдено. Попробуйте другое имя или ник.</div>'
+        return
+      }
+
+      items.forEach((item) => {
+        const button = document.createElement('button')
+        button.type = 'button'
+        button.className = 'author-tool-results__item'
+        button.innerHTML = `
+          ${this.renderAvatar(item)}
+          <div class="author-tool-results__content">
+            <div class="author-tool-results__title">${this.escapeHtml(item.title || item.username)}</div>
+            <div class="author-tool-results__meta">@${this.escapeHtml(item.username)}</div>
+          </div>
+        `
+        button.addEventListener('click', () => {
+          this.applySnapshot(item)
+          if (this.results) this.results.innerHTML = ''
+        })
+        this.results?.appendChild(button)
+      })
+    }
+
+    private scheduleLookup() {
+      if (this.lookupTimer !== null) {
+        window.clearTimeout(this.lookupTimer)
+      }
+
+      const query = this.referenceInput?.value.trim() || ''
+      if (!query) {
+        if (this.results) this.results.innerHTML = ''
+        this.data.snapshot = null
+        this.data.username = undefined
+        this.updatePreview()
+        return
+      }
+
+      this.data.snapshot = null
+      this.data.username = undefined
+
+      if (query.length < 2) {
+        if (this.results) this.results.innerHTML = ''
+        this.updatePreview()
+        this.updateStatus('Введите минимум 2 символа, чтобы найти автора.')
+        return
+      }
+
+      const requestId = ++this.lookupRequestId
+      this.lookupTimer = window.setTimeout(async () => {
+        if (this.results) {
+          this.results.innerHTML =
+            '<div class="author-tool-results__empty">Ищу авторов...</div>'
+        }
+        const items = await this.searchAuthors(query)
+        if (requestId !== this.lookupRequestId) return
+        this.renderSearchResults(items)
+        this.updatePreview()
+      }, 220)
+    }
+
+    render() {
+      const wrapper = document.createElement('div')
+      wrapper.classList.add('author-tool')
+
+      const title = document.createElement('div')
+      title.classList.add('author-tool__title')
+      title.textContent = 'Автор'
+
+      const referenceInput = document.createElement('input')
+      referenceInput.type = 'text'
+      referenceInput.classList.add('author-tool__input')
+      referenceInput.placeholder = 'Начните вводить имя или ник автора'
+      referenceInput.value = this.data.snapshot?.title || this.data.username || ''
+      this.referenceInput = referenceInput
+
+      const referenceField = document.createElement('div')
+      referenceField.classList.add('author-tool__field')
+      referenceField.appendChild(referenceInput)
+
+      const results = document.createElement('div')
+      results.classList.add('author-tool-results')
+      this.results = results
+
+      const captionLabel = document.createElement('label')
+      captionLabel.classList.add('author-tool__label')
+      captionLabel.textContent = 'Подпись'
+
+      const captionInput = document.createElement('textarea')
+      captionInput.classList.add('author-tool__textarea')
+      captionInput.rows = 2
+      captionInput.placeholder = 'Короткая подпись к автору'
+      captionInput.value = this.data.caption || ''
+      this.captionInput = captionInput
+
+      const captionField = document.createElement('div')
+      captionField.classList.add('author-tool__field')
+      captionField.appendChild(captionLabel)
+      captionField.appendChild(captionInput)
+
+      const status = document.createElement('div')
+      status.classList.add('author-tool__status')
+      this.status = status
+
+      const preview = document.createElement('div')
+      preview.classList.add('author-tool-preview')
+      this.preview = preview
+
+      referenceInput.addEventListener('input', () => this.scheduleLookup())
+      captionInput.addEventListener('input', () => this.updatePreview())
+
+      wrapper.appendChild(title)
+      wrapper.appendChild(referenceField)
+      wrapper.appendChild(results)
+      wrapper.appendChild(captionField)
+      wrapper.appendChild(status)
+      wrapper.appendChild(preview)
+
+      this.updatePreview()
+      return wrapper
+    }
+
+    save() {
+      const normalized = normalizeAuthorBlockData({
+        caption: this.captionInput?.value.trim() || this.data.caption,
+        username: this.data.username,
+        snapshot: this.data.snapshot,
+      })
+      const hasAuthor = Boolean(normalized.snapshot?.username)
+      return {
+        caption: normalized.caption || '',
+        username: hasAuthor ? normalized.snapshot?.username || '' : '',
+        snapshot: hasAuthor ? normalized.snapshot || null : null,
+      }
     }
   }
 
@@ -3575,6 +3827,11 @@
               },
             }
           : {}),
+        ...(enabledTemplateBlockTypes.has('author')
+          ? {
+              author: AuthorTool,
+            }
+          : {}),
         ...(enabledTemplateBlockTypes.has('code')
           ? {
               code: {
@@ -5396,6 +5653,215 @@
 
     :global(.post-link-tool-preview__image) {
       min-height: 160px;
+    }
+  }
+
+  :global(.author-tool) {
+    border-radius: 0.9rem;
+    border: 1px solid rgba(251, 191, 36, 0.34);
+    background:
+      radial-gradient(circle at top left, rgba(251, 191, 36, 0.12), transparent 54%),
+      linear-gradient(135deg, rgba(23, 23, 23, 0.98), rgba(30, 41, 59, 0.95));
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+  }
+
+  :global(.dark .author-tool) {
+    border-color: rgba(251, 191, 36, 0.3);
+  }
+
+  :global(.author-tool__title) {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #fff;
+  }
+
+  :global(.author-tool__label) {
+    font-size: 0.78rem;
+    color: #fde68a;
+  }
+
+  :global(.author-tool__field) {
+    display: flex;
+    flex-direction: column;
+    gap: 0.42rem;
+  }
+
+  :global(.author-tool__input),
+  :global(.author-tool__textarea) {
+    width: 100%;
+    border-radius: 0.7rem;
+    border: 1px solid rgba(251, 191, 36, 0.24);
+    background: rgba(15, 23, 42, 0.72);
+    color: #fff;
+    padding: 0.82rem 0.95rem;
+    font-size: 0.9rem;
+  }
+
+  :global(.author-tool__input::placeholder),
+  :global(.author-tool__textarea::placeholder) {
+    color: #fdba74;
+  }
+
+  :global(.author-tool__input:focus),
+  :global(.author-tool__textarea:focus) {
+    outline: none;
+    border-color: rgba(251, 191, 36, 0.72);
+    box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.14);
+  }
+
+  :global(.author-tool__textarea) {
+    min-height: 4rem;
+    resize: vertical;
+  }
+
+  :global(.author-tool__status) {
+    font-size: 0.8rem;
+    line-height: 1.4;
+    color: #cbd5e1;
+  }
+
+  :global(.author-tool__status[data-tone='error']) {
+    color: #fca5a5;
+  }
+
+  :global(.author-tool-results) {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+
+  :global(.author-tool-results__empty) {
+    border-radius: 0.7rem;
+    border: 1px solid rgba(251, 191, 36, 0.2);
+    background: rgba(15, 23, 42, 0.44);
+    padding: 0.85rem 0.95rem;
+    color: #cbd5e1;
+    font-size: 0.82rem;
+  }
+
+  :global(.author-tool-results__item) {
+    width: 100%;
+    text-align: left;
+    border-radius: 0.78rem;
+    border: 1px solid rgba(251, 191, 36, 0.24);
+    background: rgba(15, 23, 42, 0.58);
+    padding: 0.75rem 0.85rem;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.7rem;
+    align-items: center;
+    color: inherit;
+    cursor: pointer;
+    transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+  }
+
+  :global(.author-tool-results__item:hover) {
+    transform: translateY(-1px);
+    border-color: rgba(251, 191, 36, 0.48);
+    background: rgba(30, 41, 59, 0.72);
+  }
+
+  :global(.author-tool-results__content) {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.12rem;
+  }
+
+  :global(.author-tool-results__title) {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #fff;
+  }
+
+  :global(.author-tool-results__meta) {
+    font-size: 0.8rem;
+    color: #cbd5e1;
+  }
+
+  :global(.author-tool-preview) {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  :global(.author-tool-preview__shell) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: 0.9rem;
+    align-items: center;
+  }
+
+  :global(.author-tool-preview__line) {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(251, 191, 36, 0.55), transparent);
+  }
+
+  :global(.author-tool-preview__card) {
+    min-width: 0;
+    display: inline-grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.75rem;
+    align-items: center;
+    border-radius: 999px;
+    border: 1px solid rgba(251, 191, 36, 0.28);
+    background: rgba(15, 23, 42, 0.66);
+    padding: 0.45rem 0.85rem 0.45rem 0.45rem;
+  }
+
+  :global(.author-tool-preview__avatar) {
+    width: 3rem;
+    height: 3rem;
+    border-radius: 999px;
+    overflow: hidden;
+    border: 1px solid rgba(251, 191, 36, 0.28);
+    background: rgba(30, 41, 59, 0.9);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #fde68a;
+    font-weight: 800;
+  }
+
+  :global(.author-tool-preview__avatar img) {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  :global(.author-tool-preview__content) {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.12rem;
+  }
+
+  :global(.author-tool-preview__name) {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #fff;
+    line-height: 1.2;
+  }
+
+  :global(.author-tool-preview__caption) {
+    font-size: 0.8rem;
+    color: #cbd5e1;
+    line-height: 1.35;
+  }
+
+  @media (max-width: 760px) {
+    :global(.author-tool-preview__shell) {
+      grid-template-columns: 1fr;
+      gap: 0.55rem;
+    }
+
+    :global(.author-tool-preview__card) {
+      width: 100%;
+      border-radius: 1rem;
     }
   }
 
