@@ -29,14 +29,8 @@
   import { getTagKey, getTagName, normalizeTag, type TagItem } from '$lib/tags'
   import { buildPostReadUrl, type BackendPoll, type BackendPostRating } from '$lib/api/backend'
   import { siteToken } from '$lib/siteAuth'
-  import { parseSerializedEditorModel } from '$lib/util'
   import PostTemplateHeader from '$lib/components/site/post-templates/PostTemplateHeader.svelte'
-  import PostTemplateRatingFooter from '$lib/components/site/post-templates/PostTemplateRatingFooter.svelte'
-  import {
-    getTemplateEditorBlockTypes,
-    normalizeTemplateEditorBlockTypes,
-    type SitePostTemplate,
-  } from '$lib/postTemplates'
+  import { type SitePostTemplate } from '$lib/postTemplates'
 
   export let post: PostView
   export let actions: boolean = true
@@ -76,40 +70,15 @@
   $: backendTags = (post.post as { tags?: TagItem[] }).tags ?? []
   $: backendTemplate = (post.post as { template?: SitePostTemplate | null }).template ?? null
   $: backendPoll = (post.post as { poll?: BackendPoll | null }).poll ?? null
-  $: backendPostRating = (post.post as { post_rating?: BackendPostRating | null }).post_rating ?? null
-  $: backendEnabledTemplateEditorBlocks = normalizeTemplateEditorBlockTypes(
-    (
-      post.post as {
-        enabled_template_editor_blocks?: string[] | null
-      }
-    ).enabled_template_editor_blocks ?? []
-  )
+  $: backendPostRatings = (
+    post.post as { post_ratings?: Record<string, BackendPostRating> | null }
+  ).post_ratings ?? {}
   $: backendVotePollParticipations = (
     post.post as { vote_poll_participations?: VotePollParticipation[] }
   ).vote_poll_participations ?? []
   $: activeVotePollParticipation = backendVotePollParticipations[0] ?? null
   $: extraVotePollParticipationCount = Math.max(backendVotePollParticipations.length - 1, 0)
-  $: bodyContainsPostRatingBlock = (() => {
-    const rawBody = typeof post.post?.body === 'string' ? post.post.body : ''
-    if (!rawBody) return false
-    const parsed = parseSerializedEditorModel(rawBody)
-    const blocks = Array.isArray(parsed?.blocks) ? parsed.blocks : []
-    return blocks.some((block: any) => {
-      const type = String(block?.type || '').trim().toLowerCase()
-      return type === 'post_rating' || type === 'postrating'
-    })
-  })()
   $: showTemplateHeader = Boolean(isBackendPost && showFullBody && backendTemplate)
-  $: showTemplateRatingFooter = Boolean(
-      showFullBody &&
-      backendPostRating &&
-      bodyContainsPostRatingBlock &&
-      (
-        backendEnabledTemplateEditorBlocks.length
-          ? backendEnabledTemplateEditorBlocks
-          : getTemplateEditorBlockTypes(backendTemplate?.type ?? '')
-      ).includes('post_rating')
-  )
   $: showTemplateHeaderPreview = Boolean(
     isBackendPost &&
       !showFullBody &&
@@ -297,6 +266,7 @@
           body={post.post.body}
           template={backendTemplate}
           poll={backendPoll}
+          postRatings={backendPostRatings}
           postId={isBackendPost ? post.post.id : null}
           allowPollVoting={isBackendPost}
           title={post.post.name}
@@ -367,6 +337,7 @@
             body={post.post.body}
             template={backendTemplate}
             poll={backendPoll}
+            postRatings={backendPostRatings}
             postId={isBackendPost ? post.post.id : null}
             allowPollVoting={isBackendPost}
             title={post.post.name}
@@ -390,6 +361,7 @@
             body={post.post.body}
             template={backendTemplate}
             poll={backendPoll}
+            postRatings={backendPostRatings}
             postId={isBackendPost ? post.post.id : null}
             allowPollVoting={isBackendPost}
             title={post.post.name}
@@ -401,16 +373,6 @@
         </a>
       {/if}
     {/if}
-  {/if}
-
-  {#if showTemplateRatingFooter}
-    <div style="grid-area: body;">
-      <PostTemplateRatingFooter
-        postId={post.post.id}
-        rating={backendPostRating}
-        allowVoting={isBackendPost}
-      />
-    </div>
   {/if}
 
   <!-- Возвращаем отдельную ссылку "читать далее" -->

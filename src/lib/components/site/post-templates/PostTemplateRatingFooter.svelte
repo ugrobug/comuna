@@ -79,7 +79,6 @@
     <div class="template-rating-footer__surface">
       <div class="template-rating-footer__copy">
         <div class="template-rating-footer__eyebrow">Рейтинг</div>
-        <h3 class="template-rating-footer__title">Оцените материал</h3>
       </div>
 
       <div class="template-rating-footer__content">
@@ -142,16 +141,8 @@
     color: rgba(253, 224, 71, 0.82);
   }
 
-  .template-rating-footer__title {
-    margin: 0;
-    font-size: 1.4rem;
-    font-weight: 800;
-    line-height: 1.05;
-    color: #f8fafc;
-  }
-
   .template-rating-footer__content {
-    margin-top: 1rem;
+    margin-top: 0.55rem;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 1rem;

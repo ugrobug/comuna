@@ -1037,17 +1037,18 @@ class PostPollVote(models.Model):
 class PostRatingVote(models.Model):
     post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="rating_votes")
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="post_rating_votes")
+    block_id = models.CharField(max_length=64, blank=True, default="")
     value = models.PositiveSmallIntegerField(default=1)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ("post", "user")
+        unique_together = ("post", "user", "block_id")
         verbose_name = "Оценка поста"
         verbose_name_plural = "Оценки постов"
 
     def __str__(self) -> str:
-        return f"{self.post_id}:{self.user_id}:{self.value}"
+        return f"{self.post_id}:{self.user_id}:{self.block_id}:{self.value}"
 
 
 class PostRead(models.Model):

@@ -15,8 +15,10 @@
   import {
     buildPostDetailUrl,
     buildPostPollVoteUrl,
+    buildPostRatingVoteUrl,
     type BackendPoll,
     type BackendPollOption,
+    type BackendPostRating,
   } from '$lib/api/backend'
   import { siteToken } from '$lib/siteAuth'
   import {
@@ -35,6 +37,7 @@
     normalizeInternalPostReference,
     type PostLinkSnapshot,
   } from '$lib/postLinkBlocks'
+  import { showImage } from '$lib/components/ui/ExpandableImage.svelte'
   import { buildAuthorPublicPath, normalizeAuthorBlockData } from '$lib/authorBlocks'
   import { renderQuoteBlockHtml } from '$lib/quoteBlock'
   
@@ -93,6 +96,7 @@
   export let postId: number | null = null
   export let allowPollVoting = false
   export let poll: BackendPoll | null = null
+  export let postRatings: Record<string, BackendPostRating> | null = null
   export let title: string | undefined = undefined
   export let template: SitePostTemplate | null | undefined = null
   export let view: View = 'cozy'
@@ -120,6 +124,10 @@
   let lastPollRef: BackendPoll | null = null
   let pollVoting = false
   let pollRenderState = ''
+  let localPostRatings: Record<string, BackendPostRating> = {}
+  let lastPostRatingsRef: Record<string, BackendPostRating> | null = null
+  let postRatingsVoting = false
+  let postRatingsRenderState = ''
   let pollRestoreInFlight = false
   let restoredPollToken: string | null = null
   const maxPreviewLength = 250;
@@ -135,6 +143,26 @@
           user_selection: Array.isArray(value.user_selection) ? [...value.user_selection] : [],
         }
       : null
+
+  const clonePostRating = (value: BackendPostRating | null | undefined): BackendPostRating | null =>
+    value ? { ...value } : null
+
+  const normalizePostRatingsMap = (
+    value: Record<string, BackendPostRating> | null | undefined
+  ): Record<string, BackendPostRating> => {
+    if (!value || typeof value !== 'object') return {}
+    return Object.fromEntries(
+      Object.entries(value)
+        .map(([blockId, rating]) => {
+          const key = String(blockId || '').trim()
+          if (!key) return null
+          const cloned = clonePostRating(rating)
+          if (!cloned) return null
+          return [key, cloned]
+        })
+        .filter(Boolean) as Array<[string, BackendPostRating]>
+    )
+  }
 
   const mergeServerPollWithSelection = (
     serverPoll: BackendPoll | null,
@@ -305,6 +333,20 @@
           options: localPoll.options.map((option) => option.voter_count),
         })
       : ''
+  $: if (postRatings !== lastPostRatingsRef) {
+    lastPostRatingsRef = postRatings
+    localPostRatings = normalizePostRatingsMap(postRatings)
+  }
+  $: postRatingsRenderState = JSON.stringify(
+    Object.entries(localPostRatings)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([blockId, rating]) => [
+        blockId,
+        Number(rating?.average_value ?? 0),
+        Number(rating?.votes_count ?? 0),
+        Number(rating?.user_vote ?? 0),
+      ])
+  )
 
   const refreshPollFromServer = async (tokenOverride?: string | null) => {
     if (!browser || !allowPollVoting || !postId || pollRestoreInFlight) return
@@ -427,6 +469,7 @@
       const mainImage = document.createElement('img');
       const first = images[0];
       mainImage.src = getImgAttr(first, 'src');
+      const firstExpandedSrc = getImgAttr(first, 'data-expandable-src');
       const firstSrcset = getImgAttr(first, 'srcset');
       if (firstSrcset) {
         mainImage.setAttribute('srcset', firstSrcset);
@@ -436,6 +479,10 @@
         mainImage.setAttribute('sizes', firstSizes);
       }
       mainImage.alt = getImgAttr(first, 'alt');
+      mainImage.setAttribute('data-expandable-image', '1');
+      if (firstExpandedSrc) {
+        mainImage.setAttribute('data-expandable-src', firstExpandedSrc);
+      }
       mainWrapper.appendChild(mainImage);
 
       const thumbs = document.createElement('div');
@@ -456,6 +503,12 @@
           mainImage.removeAttribute('sizes');
         }
         mainImage.alt = getImgAttr(img, 'alt');
+        const expandedSrc = getImgAttr(img, 'data-expandable-src');
+        if (expandedSrc) {
+          mainImage.setAttribute('data-expandable-src', expandedSrc);
+        } else {
+          mainImage.removeAttribute('data-expandable-src');
+        }
         thumbs.querySelectorAll('.featured-gallery-thumb').forEach((item) => {
           item.classList.remove('active');
         });
@@ -566,6 +619,29 @@
 
       applyPosition(node.getAttribute('data-compare-position') ?? 50)
     })
+  }
+
+  const isExpandableImage = (image: HTMLImageElement | null): image is HTMLImageElement => {
+    if (!image || !element?.contains(image)) return false
+    if (!image.hasAttribute('data-expandable-image')) return false
+    if (
+      image.closest(
+        '.post-image-compare, .post-map, .post-quote__author, .featured-gallery-thumb, [data-post-link-id]'
+      )
+    ) {
+      return false
+    }
+    return true
+  }
+
+  const openExpandedImage = (image: HTMLImageElement) => {
+    const src =
+      image.getAttribute('data-expandable-src') ||
+      image.currentSrc ||
+      image.getAttribute('src') ||
+      ''
+    if (!src) return
+    showImage(src, image.getAttribute('alt') || image.getAttribute('title') || '')
   }
 
   const expand = async (event?: Event) => {
@@ -705,6 +781,72 @@
     }
 
     await submitPollVote(pollElement, Array.from(next).sort((a, b) => a - b))
+  }
+
+  const submitPostRatingVote = async (blockId: string, value: number) => {
+    if (!postId) return
+    const token = $siteToken
+    if (!token) {
+      toast({ content: 'Необходимо зарегистрироваться', type: 'warning' })
+      return
+    }
+    if (!Number.isInteger(value) || value < 1 || value > 10 || postRatingsVoting) {
+      return
+    }
+
+    postRatingsVoting = true
+    try {
+      const response = await fetch(buildPostRatingVoteUrl(postId), {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ block_id: blockId, value }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || 'Не удалось сохранить оценку')
+      }
+
+      const nextBlockId =
+        typeof payload?.block_id === 'string' && payload.block_id.trim()
+          ? payload.block_id.trim()
+          : blockId
+      if (payload?.post_rating && typeof payload.post_rating === 'object') {
+        localPostRatings = {
+          ...localPostRatings,
+          [nextBlockId]: { ...(payload.post_rating as BackendPostRating) },
+        }
+      }
+    } catch (error) {
+      toast({
+        content: (error as Error)?.message ?? 'Не удалось сохранить оценку',
+        type: 'error',
+      })
+    } finally {
+      postRatingsVoting = false
+    }
+  }
+
+  const handlePostRatingClick = async (event: Event) => {
+    if (!browser || !postId || !element) return
+    const target = event.target as HTMLElement | null
+    if (!target) return
+    const button = target.closest('.post-inline-rating__item') as HTMLElement | null
+    if (!button) return
+    const ratingElement = button.closest('[data-rating-block-id]') as HTMLElement | null
+    if (!ratingElement || !element.contains(ratingElement)) return
+
+    event.preventDefault()
+    event.stopPropagation()
+
+    const blockId = String(ratingElement.getAttribute('data-rating-block-id') || '').trim()
+    const rawValue = button.getAttribute('data-rating-value')
+    const value = rawValue === null ? Number.NaN : Number(rawValue)
+    if (!blockId || !Number.isInteger(value)) return
+
+    await submitPostRatingVote(blockId, value)
   }
 
   const openMapModal = (mapElement: HTMLElement) => {
@@ -909,7 +1051,7 @@
     return parseSerializedEditorModel(content) !== null
   }
 
-  function processJsonBlock(block: any): string {
+  function processJsonBlock(block: any, index = -1): string {
     const renderMapBlock = (raw: any): string => {
       const lat = Number(raw?.lat)
       const lng = Number(raw?.lng)
@@ -1192,6 +1334,79 @@
           </div>
         </div>
         <span class="post-author-card__line"></span>
+      </div>`
+    }
+
+    const resolvePostRatingBlockId = (block: any, index: number): string => {
+      const rawBlockId =
+        (typeof block?.id === 'string' && block.id.trim()
+          ? block.id
+          : typeof block?.data?.block_id === 'string' && block.data.block_id.trim()
+            ? block.data.block_id
+            : `post-rating-${index + 1}`) || `post-rating-${index + 1}`
+      return rawBlockId
+        .trim()
+        .replace(/[^A-Za-z0-9_-]+/g, '-')
+        .replace(/^[-_]+|[-_]+$/g, '')
+        .slice(0, 64) || `post-rating-${index + 1}`
+    }
+
+    const renderPostRatingBlock = (block: any, index: number): string => {
+      if (!isTemplateEditorBlockEnabled(template?.type ?? '', 'post_rating')) return ''
+
+      const blockId = resolvePostRatingBlockId(block, index)
+      const activeRating = clonePostRating(localPostRatings[blockId]) ?? {
+        block_id: blockId,
+        scale_min: 1,
+        scale_max: 10,
+        average_value: null,
+        votes_count: 0,
+        user_vote: null,
+      }
+      const scaleMin = Number(activeRating.scale_min ?? 1)
+      const scaleMax = Number(activeRating.scale_max ?? 10)
+      const selectedValue = Number(activeRating.user_vote ?? 0)
+      const votesCount = Math.max(Number(activeRating.votes_count ?? 0), 0)
+      const averageValue =
+        typeof activeRating.average_value === 'number' ? activeRating.average_value : null
+      const averageLabel =
+        averageValue === null
+          ? '—'
+          : Number.isInteger(averageValue)
+            ? String(averageValue)
+            : averageValue.toFixed(1)
+      const values = Array.from(
+        { length: Math.max(scaleMax - scaleMin + 1, 0) },
+        (_, offset) => scaleMin + offset
+      )
+      const itemsHtml = values
+        .map((value) => {
+          const selectedClass = selectedValue === value ? ' is-selected' : ''
+          return `<button
+            type="button"
+            class="post-inline-rating__item${selectedClass}"
+            data-rating-value="${value}"
+            aria-pressed="${selectedValue === value ? 'true' : 'false'}"
+          >${value}</button>`
+        })
+        .join('')
+
+      return `<div class="post-inline-rating" data-rating-block-id="${escapeHtml(blockId)}">
+        <div class="post-inline-rating__eyebrow">Рейтинг</div>
+        <div class="post-inline-rating__content">
+          <div class="post-inline-rating__scale" role="group" aria-label="Оценка материала от 1 до 10">
+            ${itemsHtml}
+          </div>
+          <div class="post-inline-rating__stats" aria-live="polite">
+            <div class="post-inline-rating__average">${escapeHtml(averageLabel)}</div>
+            <div class="post-inline-rating__meta">
+              <span>средняя оценка</span>
+              <span>${escapeHtml(
+                `${votesCount} ${votesCount === 1 ? 'голос' : votesCount < 5 ? 'голоса' : 'голосов'}`
+              )}</span>
+            </div>
+          </div>
+        </div>
       </div>`
     }
 
@@ -1611,7 +1826,7 @@
         return renderInlinePollBlock(block.data)
       case 'post_rating':
       case 'postrating':
-        return ''
+        return renderPostRatingBlock(block, index)
       case 'delimiter':
       case 'divider':
         return '<div class="post-divider" aria-hidden="true"></div>'
@@ -1711,14 +1926,14 @@
         targetParts.push(html)
       }
 
-      for (const block of content.blocks) {
+      for (const [index, block] of content.blocks.entries()) {
         const blockType = String(block?.type || '').toLowerCase()
         if (blockType === 'spoiler') {
           const rawData = block?.data || {}
           const legacyContent =
             typeof rawData?.content === 'string' ? rawData.content.trim() : ''
           if (legacyContent) {
-            const html = processJsonBlock(block)
+            const html = processJsonBlock(block, index)
             appendHtmlToCurrentScope(html, blockType)
             continue
           }
@@ -1749,7 +1964,7 @@
           continue
         }
 
-        const html = processJsonBlock(block)
+        const html = processJsonBlock(block, index)
         appendHtmlToCurrentScope(html, blockType)
       }
 
@@ -1826,11 +2041,14 @@
       const altAttr = alt ? `alt="${alt}"` : 'alt="Post image"';
       const titleAttr = title ? `title="${title}"` : '';
       const captionHtml = caption ? `<div class="image-alt-text">${caption}</div>` : '';
+      const expandedImageUrl = `${baseUrl}?format=webp&quality=90`;
       
       const imgHtml = `<img 
         src="${minImageUrl}" 
         srcset="${srcset}" 
         sizes="${sizesAttr}" 
+        data-expandable-image="1"
+        data-expandable-src="${expandedImageUrl}"
         ${loadingAttrs}
         ${altAttr}
         ${titleAttr}
@@ -1839,7 +2057,7 @@
 
       return imgHtml;
     }
-    return `<img src="${imgUrl}" ${alt ? `alt="${alt}"` : 'alt="Post image"'} ${title ? `title="${title}"` : ''} class="w-full h-auto">`;
+    return `<img src="${imgUrl}" data-expandable-image="1" data-expandable-src="${imgUrl}" ${alt ? `alt="${alt}"` : 'alt="Post image"'} ${title ? `title="${title}"` : ''} class="w-full h-auto">`;
   }
 
   // Добавляем функцию для определения, находится ли изображение выше сгиба
@@ -2227,8 +2445,12 @@
           'data-poll-closed',
           'data-poll-locked',
           'data-poll-id',
+          'data-rating-block-id',
+          'data-rating-value',
           'data-music-provider',
           'data-spoiler-open',
+          'data-expandable-image',
+          'data-expandable-src',
           'data-post-link-id',
           'data-post-link-needs-hydration',
           'data-post-link-hydrated',
@@ -2377,6 +2599,7 @@
     hasPreview = false;
     processedBody = extractPreviewContent(body);
     void pollRenderState
+    void postRatingsRenderState
   }
 
   $: if (browser && allowPollVoting && postId && $siteToken) {
@@ -2404,6 +2627,13 @@
     void restoreInlinePollState()
     const clickHandler = (event: Event) => {
       const target = event.target as HTMLElement | null
+      const clickedImage = target?.closest('img') as HTMLImageElement | null
+      if (isExpandableImage(clickedImage)) {
+        event.preventDefault()
+        event.stopPropagation()
+        openExpandedImage(clickedImage)
+        return
+      }
       const spoilerTrigger = target?.closest('.post-spoiler__trigger') as HTMLElement | null
       if (spoilerTrigger && element?.contains(spoilerTrigger)) {
         const spoilerElement = spoilerTrigger.closest('.post-spoiler') as HTMLElement | null
@@ -2418,6 +2648,11 @@
         event.preventDefault()
         event.stopPropagation()
         openMapModal(mapElement)
+        return
+      }
+      const ratingButton = target?.closest('.post-inline-rating__item') as HTMLElement | null
+      if (ratingButton && element?.contains(ratingButton)) {
+        void handlePostRatingClick(event)
         return
       }
       void handlePollClick(event)
@@ -2620,6 +2855,14 @@
     word-break: break-word;
   }
 
+  :global(.post-content img[data-expandable-image]) {
+    cursor: zoom-in;
+  }
+
+  :global(.post-content .featured-gallery-thumb img[data-expandable-image]) {
+    cursor: pointer;
+  }
+
   :global(.post-content blockquote footer) {
     @apply mt-2 text-sm text-slate-500 dark:text-zinc-400 not-italic;
   }
@@ -2690,6 +2933,101 @@
         rgba(63, 63, 70, 0) 100%
       );
     box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.05);
+  }
+
+  :global(.post-content .post-inline-rating) {
+    margin: 1.1rem 0;
+    border-radius: 1rem;
+    border: 1px solid rgba(251, 191, 36, 0.34);
+    background:
+      radial-gradient(130% 140% at 0% 0%, rgba(251, 191, 36, 0.2), rgba(251, 191, 36, 0) 60%),
+      linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.9));
+    color: #f8fafc;
+    padding: 1rem 1.1rem;
+  }
+
+  :global(.post-content .post-inline-rating__eyebrow) {
+    color: #fde68a;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
+  :global(.post-content .post-inline-rating__content) {
+    margin-top: 0.55rem;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 1rem;
+    align-items: center;
+  }
+
+  :global(.post-content .post-inline-rating__scale) {
+    display: grid;
+    grid-template-columns: repeat(10, minmax(0, 1fr));
+    gap: 0.35rem;
+    padding: 0.35rem;
+    border-radius: 1rem;
+    background: rgba(15, 23, 42, 0.26);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(10px);
+  }
+
+  :global(.post-content .post-inline-rating__item) {
+    min-width: 0;
+    height: 2.8rem;
+    border: 0;
+    border-radius: 0.8rem;
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(241, 245, 249, 0.9);
+    font-size: 1rem;
+    font-weight: 800;
+    cursor: pointer;
+    transition:
+      transform 0.18s ease,
+      background 0.18s ease,
+      color 0.18s ease,
+      box-shadow 0.18s ease;
+  }
+
+  :global(.post-content .post-inline-rating__item:hover) {
+    transform: translateY(-1px);
+    background: rgba(245, 191, 64, 0.18);
+    color: #fff6d6;
+    box-shadow: inset 0 0 0 1px rgba(245, 191, 64, 0.34);
+  }
+
+  :global(.post-content .post-inline-rating__item.is-selected) {
+    background: linear-gradient(135deg, rgba(245, 191, 64, 0.92), rgba(251, 191, 36, 0.76));
+    color: #1f2937;
+    box-shadow:
+      0 12px 26px rgba(245, 191, 64, 0.22),
+      inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  }
+
+  :global(.post-content .post-inline-rating__stats) {
+    min-width: 9rem;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.3rem;
+    color: rgba(226, 232, 240, 0.86);
+  }
+
+  :global(.post-content .post-inline-rating__average) {
+    font-size: clamp(2rem, 5vw, 3rem);
+    font-weight: 900;
+    line-height: 0.95;
+    color: #fff2bf;
+  }
+
+  :global(.post-content .post-inline-rating__meta) {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.05rem;
+    font-size: 0.82rem;
+    line-height: 1.3;
   }
 
   :global(.post-content .post-inline-poll) {
@@ -2953,6 +3291,24 @@
 
   :global(.dark .post-content .post-inline-poll) {
     border-color: rgba(251, 191, 36, 0.22);
+  }
+
+  @media (max-width: 720px) {
+    :global(.post-content .post-inline-rating__content) {
+      grid-template-columns: 1fr;
+    }
+
+    :global(.post-content .post-inline-rating__stats) {
+      align-items: flex-start;
+    }
+
+    :global(.post-content .post-inline-rating__meta) {
+      align-items: flex-start;
+    }
+
+    :global(.post-content .post-inline-rating__scale) {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
   }
 
   :global(.post-content .post-gallery img) {

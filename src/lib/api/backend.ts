@@ -535,6 +535,7 @@ export type BackendPostVotePollParticipation = {
 }
 
 export type BackendPostRating = {
+  block_id?: string
   scale_min: number
   scale_max: number
   average_value?: number | null
@@ -550,6 +551,7 @@ export type BackendPost = {
   enabled_template_editor_blocks?: string[]
   vote_poll_participations?: BackendPostVotePollParticipation[]
   poll?: BackendPoll | null
+  post_ratings?: Record<string, BackendPostRating>
   post_rating?: BackendPostRating | null
   created_at: string
   source_url?: string | null
@@ -596,6 +598,7 @@ export const backendPostToPostView = (
       enabled_template_editor_blocks: post.enabled_template_editor_blocks ?? [],
       vote_poll_participations: post.vote_poll_participations ?? [],
       poll: post.poll ?? null,
+      post_ratings: post.post_ratings ?? {},
       post_rating: post.post_rating ?? null,
       url: '',
       tags: post.tags ?? [],

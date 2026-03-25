@@ -3672,37 +3672,127 @@ def _template_type_from_payload(template_payload: dict | None) -> str:
     return _POST_TEMPLATE_TYPE_BASIC
 
 
-def _serialize_post_rating(
-    post: Post,
-    user: User | None = None,
+def _normalize_editor_block_identifier(
+    value: object,
     *,
-    template_payload: dict | None = None,
-) -> dict | None:
-    resolved_template = template_payload if isinstance(template_payload, dict) else _serialize_post_template(post)
-    template_type = _template_type_from_payload(resolved_template)
+    fallback_prefix: str,
+    fallback_index: int,
+) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        raw = f"{fallback_prefix}-{fallback_index + 1}"
+    normalized = re.sub(r"[^A-Za-z0-9_-]+", "-", raw).strip("-_")
+    if not normalized:
+        normalized = f"{fallback_prefix}-{fallback_index + 1}"
+    return normalized[:64]
 
-    aggregate = PostRatingVote.objects.filter(post=post).aggregate(
+
+def _extract_inline_post_rating_blocks(raw_content: str) -> list[str]:
+    payload = _decode_editor_payload(raw_content)
+    if not payload:
+        return []
+
+    block_ids: list[str] = []
+    seen: set[str] = set()
+    for index, raw_block in enumerate(payload.get("blocks") or []):
+        if not isinstance(raw_block, dict):
+            continue
+        block_type = str(raw_block.get("type") or "").strip().lower()
+        if block_type not in {"post_rating", "postrating"}:
+            continue
+        block_data = raw_block.get("data")
+        data_block_id = block_data.get("block_id") if isinstance(block_data, dict) else ""
+        block_id = _normalize_editor_block_identifier(
+            raw_block.get("id") or data_block_id,
+            fallback_prefix="post-rating",
+            fallback_index=index,
+        )
+        if block_id in seen:
+            continue
+        seen.add(block_id)
+        block_ids.append(block_id)
+    return block_ids
+
+
+def _serialize_post_rating_block(
+    post: Post,
+    user: User | None,
+    block_id: str,
+    *,
+    include_legacy_votes: bool = False,
+) -> dict:
+    current_votes = PostRatingVote.objects.filter(post=post, block_id=block_id)
+    current_aggregate = current_votes.aggregate(
         average_value=Avg("value"),
         votes_count=Count("id"),
     )
-    average_raw = aggregate.get("average_value")
-    average_value = round(float(average_raw), 1) if average_raw is not None else None
-    votes_count = max(int(aggregate.get("votes_count") or 0), 0)
+
+    votes_count = max(int(current_aggregate.get("votes_count") or 0), 0)
+    average_raw = current_aggregate.get("average_value")
+    weighted_sum = float(average_raw) * votes_count if average_raw is not None else 0.0
+
     user_vote = None
     if user:
-        user_vote = (
-            PostRatingVote.objects.filter(post=post, user=user).values_list("value", flat=True).first()
-        )
+        user_vote = current_votes.values_list("value", flat=True).first()
         if user_vote is not None:
             user_vote = int(user_vote)
 
+    if include_legacy_votes:
+        legacy_votes = PostRatingVote.objects.filter(post=post, block_id="")
+        legacy_aggregate = legacy_votes.aggregate(
+            average_value=Avg("value"),
+            votes_count=Count("id"),
+        )
+        legacy_votes_count = max(int(legacy_aggregate.get("votes_count") or 0), 0)
+        legacy_average_raw = legacy_aggregate.get("average_value")
+        if legacy_average_raw is not None and legacy_votes_count > 0:
+            weighted_sum += float(legacy_average_raw) * legacy_votes_count
+            votes_count += legacy_votes_count
+        if user and user_vote is None:
+            legacy_user_vote = legacy_votes.filter(user=user).values_list("value", flat=True).first()
+            if legacy_user_vote is not None:
+                user_vote = int(legacy_user_vote)
+
+    average_value = round(weighted_sum / votes_count, 1) if votes_count > 0 else None
     return {
+        "block_id": block_id,
         "scale_min": 1,
         "scale_max": 10,
         "average_value": average_value,
         "votes_count": votes_count,
         "user_vote": user_vote,
     }
+
+
+def _serialize_post_ratings(post: Post, user: User | None = None) -> dict[str, dict]:
+    block_ids = _extract_inline_post_rating_blocks(post.content or "")
+    if not block_ids:
+        return {}
+
+    include_legacy_votes = len(block_ids) == 1
+    return {
+        block_id: _serialize_post_rating_block(
+            post,
+            user,
+            block_id,
+            include_legacy_votes=include_legacy_votes and index == 0,
+        )
+        for index, block_id in enumerate(block_ids)
+    }
+
+
+def _serialize_post_rating(
+    post: Post,
+    user: User | None = None,
+    *,
+    template_payload: dict | None = None,
+) -> dict | None:
+    del template_payload
+    ratings = _serialize_post_ratings(post, user)
+    if not ratings:
+        return None
+    first_key = next(iter(ratings.keys()), "")
+    return ratings.get(first_key)
 
 
 def _serialize_enabled_template_editor_blocks(
@@ -5327,6 +5417,7 @@ def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None
         "enabled_template_editor_blocks": _serialize_enabled_template_editor_blocks(template_payload),
         "content": content,
         "poll": poll_payload,
+        "post_ratings": _serialize_post_ratings(post, user),
         "post_rating": _serialize_post_rating(post, user, template_payload=template_payload),
         "created_at": post.created_at.isoformat(),
         "updated_at": post.updated_at.isoformat(),
@@ -6475,10 +6566,6 @@ def post_rating_vote(request: HttpRequest, post_id: int) -> HttpResponse:
     except Post.DoesNotExist:
         return JsonResponse({"ok": False, "error": "post not found"}, status=404)
 
-    template_payload = _serialize_post_template(post)
-    if _template_type_from_payload(template_payload) == _POST_TEMPLATE_TYPE_BASIC:
-        return JsonResponse({"ok": False, "error": "rating is not available"}, status=400)
-
     try:
         payload = json.loads(request.body.decode("utf-8")) if request.body else {}
     except json.JSONDecodeError:
@@ -6495,17 +6582,39 @@ def post_rating_vote(request: HttpRequest, post_id: int) -> HttpResponse:
     if rating_value < 1 or rating_value > 10:
         return JsonResponse({"ok": False, "error": "invalid rating value"}, status=400)
 
+    available_block_ids = _extract_inline_post_rating_blocks(post.content or "")
+    if not available_block_ids:
+        return JsonResponse({"ok": False, "error": "rating is not available"}, status=400)
+
+    raw_block_id = str(payload.get("block_id") or payload.get("rating_block_id") or "").strip()
+    if raw_block_id:
+        block_id = _normalize_editor_block_identifier(
+            raw_block_id,
+            fallback_prefix="post-rating",
+            fallback_index=0,
+        )
+    elif len(available_block_ids) == 1:
+        block_id = available_block_ids[0]
+    else:
+        return JsonResponse({"ok": False, "error": "block_id is required"}, status=400)
+
+    if block_id not in available_block_ids:
+        return JsonResponse({"ok": False, "error": "rating block not found"}, status=404)
+
     PostRatingVote.objects.update_or_create(
         post=post,
         user=user,
+        block_id=block_id,
         defaults={"value": rating_value},
     )
 
-    rating_payload = _serialize_post_rating(post, user, template_payload=template_payload)
+    rating_payload = _serialize_post_rating_block(post, user, block_id)
     return JsonResponse(
         {
             "ok": True,
+            "block_id": block_id,
             "post_rating": rating_payload,
+            "post_ratings": _serialize_post_ratings(post, user),
         }
     )
 
@@ -8758,6 +8867,7 @@ def _serialize_backend_post_card(
         "rubric_icon_url": _rubric_icon_url(request, rubric),
         "content": content,
         "poll": poll_payload,
+        "post_ratings": _serialize_post_ratings(post, current_user),
         "post_rating": _serialize_post_rating(post, current_user, template_payload=template_payload),
         "source_url": post.source_url,
         "channel_url": author_channel_url,

@@ -595,10 +595,21 @@
   }
 
   class PostRatingTool {
+    private block: { id?: string } | null = null
+    private data: { block_id: string } = { block_id: '' }
+
     static get toolbox() {
       return {
         title: 'Рейтинг',
         icon: `<img src="${icons.rating}" width="16" height="16" />`,
+      }
+    }
+
+    constructor({ data, block }: { data?: { block_id?: unknown }; block?: { id?: string } }) {
+      this.block = block || null
+      this.data = {
+        block_id:
+          typeof data?.block_id === 'string' && data.block_id.trim() ? data.block_id.trim() : '',
       }
     }
 
@@ -608,14 +619,20 @@
       wrapper.innerHTML = `
         <div class="post-rating-tool__title">Рейтинг публикации</div>
         <div class="post-rating-tool__subtitle">
-          После публикации блок появится под статьей и позволит читателям поставить оценку от 1 до 10.
+          После публикации блок появится прямо в этом месте и позволит читателям поставить оценку от 1 до 10.
         </div>
       `
       return wrapper
     }
 
     save() {
-      return { enabled: true }
+      const nextBlockId =
+        this.data.block_id ||
+        (typeof this.block?.id === 'string' && this.block.id.trim() ? this.block.id.trim() : '')
+      return {
+        enabled: true,
+        block_id: nextBlockId,
+      }
     }
   }
 

@@ -47,6 +47,7 @@ export type SiteUserPost = {
   content: string
   template?: SitePostTemplate | null
   enabled_template_editor_blocks?: string[]
+  post_ratings?: Record<string, BackendPostRating>
   post_rating?: BackendPostRating | null
   created_at: string
   updated_at?: string
