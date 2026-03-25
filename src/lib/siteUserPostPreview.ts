@@ -6,6 +6,8 @@ export const siteUserPostToBackendPost = (post: SiteUserPost): BackendPost => ({
   title: post.title || '',
   content: post.content || '',
   template: post.template ?? null,
+  enabled_template_editor_blocks: post.enabled_template_editor_blocks ?? [],
+  post_rating: post.post_rating ?? null,
   created_at: post.created_at,
   rubric: post.rubric ?? null,
   rubric_slug: post.rubric_slug ?? null,

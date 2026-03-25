@@ -3,6 +3,7 @@ import {
   buildBackendPostPath,
   buildPostDetailUrl,
   buildSearchUrl,
+  type BackendPostRating,
   getBackendBaseUrl,
 } from '$lib/api/backend'
 import type {
@@ -45,6 +46,8 @@ export type SiteUserPost = {
   title: string
   content: string
   template?: SitePostTemplate | null
+  enabled_template_editor_blocks?: string[]
+  post_rating?: BackendPostRating | null
   created_at: string
   updated_at?: string
   is_pending?: boolean
