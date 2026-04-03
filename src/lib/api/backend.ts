@@ -583,6 +583,7 @@ export type BackendPost = {
   likes_count?: number
   views_count?: number
   is_favorite?: boolean
+  can_manage?: boolean
   tags?: BackendTag[]
   comun_category?: BackendComunCategory | null
   comun_category_id?: number | null
@@ -642,6 +643,7 @@ export const backendPostToPostView = (
       id: creatorId,
       name: authorName,
       display_name: authorTitle,
+      can_manage_backend: Boolean(post.can_manage),
       avatar: author?.avatar_url ?? undefined,
       actor_id: authorChannelUrl || `https://t.me/${authorName}`,
       comuna_notify_comments: author?.notify_comments_enabled,

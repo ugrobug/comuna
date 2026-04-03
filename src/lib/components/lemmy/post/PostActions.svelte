@@ -105,6 +105,7 @@
   $: buttonHeight = view == 'compact' ? 'h-7' : 'h-8'
   $: buttonSquare = view == 'compact' ? 'w-7 h-7' : 'w-8 h-8'
   $: isBackendPost = backendPostId !== null
+  $: backendCanManage = Boolean((post?.creator as any)?.can_manage_backend)
   $: backendCreatorUsername = (post.creator?.name ?? '').trim().toLowerCase()
   $: backendOwnedAuthorUsernames = $siteUser
     ? [
@@ -118,8 +119,9 @@
     Boolean(
       isBackendPost &&
         $siteToken &&
-        backendCreatorUsername &&
-        backendOwnedAuthorUsernames.includes(backendCreatorUsername)
+        (backendCanManage ||
+          (backendCreatorUsername &&
+            backendOwnedAuthorUsernames.includes(backendCreatorUsername)))
     )
   $: canDeleteBackendPost = canEditBackendPost || Boolean(isBackendPost && $siteUser?.is_staff)
   $: if (backendLikes !== null && backendLikes !== undefined) backendLikesCount = backendLikes

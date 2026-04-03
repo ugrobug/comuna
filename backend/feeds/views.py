@@ -5437,6 +5437,7 @@ def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None
         "views_count": _post_total_views(post),
         "tags": _serialize_tags(post.tags.all()),
         "is_favorite": is_favorite,
+        "can_manage": _user_can_manage_site_post(user, post),
         "author": {
             "username": post.author.username,
             "title": author_title,
