@@ -6699,6 +6699,7 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
         .filter(Q(rubric__isnull=True) | Q(rubric__is_hidden=False))
         .count()
     )
+    linked_comun = _author_telegram_source_comun(author)
     site_user_id = _site_user_id_for_author(author)
     author_channel_url = author.invite_url or author.channel_url
     serialized = []
@@ -6751,6 +6752,8 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
                 "posts_count": posts_count,
                 "author_rating": _author_rating_value(author.rating_total),
                 "site_user_id": site_user_id,
+                "linked_comun_slug": linked_comun.slug if linked_comun and linked_comun.is_active else None,
+                "linked_comun_name": linked_comun.name if linked_comun and linked_comun.is_active else None,
             },
             "posts": serialized,
         }

@@ -17,6 +17,10 @@ export const load = async ({ params, fetch, url }) => {
   }
 
   const data = await response.json()
+  const linkedComunSlug = String(data?.author?.linked_comun_slug ?? '').trim()
+  if (linkedComunSlug) {
+    throw redirect(301, `/comuns/${linkedComunSlug}`)
+  }
   const siteUserId = Number(data?.author?.site_user_id ?? 0)
   if (Number.isFinite(siteUserId) && siteUserId > 0) {
     throw redirect(301, `/id${siteUserId}`)
