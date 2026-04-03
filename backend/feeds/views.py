@@ -6917,7 +6917,10 @@ def _normalize_comun_category_name(raw_name: object) -> str:
 
 
 def _generate_unique_comun_category_slug(comun: Comun, name: str) -> str:
-    base_slug = slugify(str(name or "").strip())[:120]
+    normalized_name = str(name or "").strip()
+    base_slug = slugify(normalized_name)[:120]
+    if not base_slug:
+        base_slug = _slugify_title(normalized_name)[:120]
     if not base_slug:
         return ""
     slug = base_slug

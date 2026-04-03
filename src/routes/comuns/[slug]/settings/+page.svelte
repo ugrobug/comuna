@@ -732,13 +732,13 @@
         (category) =>
           normalizeCategoryInput(category.name).toLowerCase() === categoryName.toLowerCase()
       )
-      if (createdCategory && settingsDraft) {
+      if (!createdCategory) {
+        throw new Error('Категория не появилась после сохранения. Попробуйте еще раз.')
+      }
+      if (settingsDraft) {
         settingsDraft = {
           ...settingsDraft,
-          category_ids: normalizeIds([
-            ...comunCategoryIds(settingsDraft),
-            createdCategory.id,
-          ]),
+          category_ids: normalizeIds([...comunCategoryIds(settingsDraft), createdCategory.id]),
         }
       }
       settingsCategorySearch = ''
