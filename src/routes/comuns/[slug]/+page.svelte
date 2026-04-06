@@ -156,7 +156,6 @@
   let roadmapPreviewRequestSeq = 0
   let publicRoadmapModalOpen = false
   let publicRoadmapBodyOverflowBeforeOpen: string | null = null
-  let publicRoadmapUrl = ''
 
   $: if (data?.posts && data.posts !== lastPostsRef) {
     lastPostsRef = data.posts
@@ -229,7 +228,6 @@
     (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '') + '/'
   ).toString()
   $: roadmapEnabled = Boolean(comun?.roadmap_enabled ?? true)
-  $: publicRoadmapUrl = comun?.slug ? `/comuns/${comun.slug}/roadmap` : ''
   $: if (browser) {
     if (publicRoadmapModalOpen) {
       if (publicRoadmapBodyOverflowBeforeOpen === null) {
@@ -271,21 +269,6 @@
   const openComunPostEditor = () => {
     if (!comun?.slug) return
     goto(`/account/new-post?comun=${encodeURIComponent(comun.slug)}`)
-  }
-
-  const onPublicRoadmapLinkClick = (event: MouseEvent) => {
-    if (
-      event.defaultPrevented ||
-      event.button !== 0 ||
-      event.metaKey ||
-      event.ctrlKey ||
-      event.shiftKey ||
-      event.altKey
-    ) {
-      return
-    }
-    event.preventDefault()
-    openPublicRoadmapModal()
   }
 
   const onWindowKeydown = (event: KeyboardEvent) => {
@@ -1159,16 +1142,6 @@
           >
             {isSubscribedToComun ? 'Вы подписаны' : 'Подписаться'}
           </Button>
-          {#if roadmapEnabled && publicRoadmapUrl && roadmapCanOpenModal}
-            <a
-              href={publicRoadmapUrl}
-              on:click={onPublicRoadmapLinkClick}
-              class="inline-flex items-center rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-zinc-800/60"
-              title="Открыть публичную дорожную карту во всплывающем окне"
-            >
-              Публичный roadmap
-            </a>
-          {/if}
           {#if comun?.website_url}
             <a
               href={comun.website_url}
