@@ -80,6 +80,8 @@
   export let backendComments: number | null = null
   export let backendLikes: number | null = null
   export let backendViews: number | null = null
+  export let userUrlOverride: string | undefined = undefined
+  export let communityUrlOverride: string | undefined = undefined
 
   const dispatcher = createEventDispatcher<{
     edit: PostView
@@ -105,6 +107,8 @@
   $: buttonHeight = view == 'compact' ? 'h-7' : 'h-8'
   $: buttonSquare = view == 'compact' ? 'w-7 h-7' : 'w-8 h-8'
   $: isBackendPost = backendPostId !== null
+  $: resolvedUserLink = userUrlOverride ?? userLink(post.creator)
+  $: resolvedCommunityLink = communityUrlOverride ?? communityLink(post.community)
   $: backendCanManage = Boolean((post?.creator as any)?.can_manage_backend)
   $: backendCreatorUsername = (post.creator?.name ?? '').trim().toLowerCase()
   $: backendOwnedAuthorUsernames = $siteUser
@@ -553,7 +557,7 @@
       <Icon slot="prefix" src={EllipsisHorizontal} width={16} micro />
     </Button>
     <MenuDivider>{$t('post.actions.more.creator')}</MenuDivider>
-    <MenuButton link href={userLink(post.creator)}>
+    <MenuButton link href={resolvedUserLink}>
       <Icon
         src={UserCircle}
         size="16"
@@ -565,7 +569,7 @@
         {post.creator.display_name || post.creator.name}
       </TextProps>
     </MenuButton>
-    <MenuButton link href={communityLink(post.community)}>
+    <MenuButton link href={resolvedCommunityLink}>
       <Icon
         src={Newspaper}
         size="16"

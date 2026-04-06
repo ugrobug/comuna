@@ -399,6 +399,8 @@
       backendComments={isBackendPost ? post.counts.comments : null}
       backendLikes={isBackendPost ? post.counts.score : null}
       backendViews={isBackendPost ? backendViewsValue : null}
+      {userUrlOverride}
+      {communityUrlOverride}
     />
   {:else if view == 'compact'}
     <div class="flex flex-row items-center gap-2 text-sm">
