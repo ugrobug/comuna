@@ -224,7 +224,7 @@ const isInternalComunaUrl = (value: string) => {
     const parsed = new URL(normalized)
     const hostname = parsed.hostname.trim().toLowerCase().replace(/\.+$/, '')
     if (!hostname) return true
-    return INTERNAL_COMUNA_HOSTS.has(hostname) || hostname.endsWith('.comuna.ru')
+    return INTERNAL_COMUNA_HOSTS.has(hostname)
   } catch {
     return false
   }

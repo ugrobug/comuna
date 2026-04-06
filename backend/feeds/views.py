@@ -8893,7 +8893,7 @@ def _is_internal_comuna_url(url_value: str) -> bool:
     hostname = (parsed.hostname or "").strip().lower().rstrip(".")
     if not hostname:
         return True
-    return hostname in _INTERNAL_COMUNA_HOSTS or hostname.endswith(".comuna.ru")
+    return hostname in _INTERNAL_COMUNA_HOSTS
 
 
 def _text_contains_external_links(value: str | None) -> bool:
