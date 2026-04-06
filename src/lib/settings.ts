@@ -212,6 +212,20 @@ export const defaultSettings: Settings = {
 
 export const userSettings = writable(defaultSettings)
 
+export const subscribeToComunBySlug = (slug?: string | null) => {
+  const normalizedSlug = String(slug ?? '').trim()
+  if (!normalizedSlug) return
+
+  userSettings.update((settings) => {
+    const next = new Set((settings.myFeedComuns ?? []).map((value) => value.trim()).filter(Boolean))
+    next.add(normalizedSlug)
+    return {
+      ...settings,
+      myFeedComuns: Array.from(next),
+    }
+  })
+}
+
 const migrate = (settings: any): Settings => {
   if (typeof settings?.moderation?.removalReasonPreset == 'string') {
     settings.moderation.presets = [

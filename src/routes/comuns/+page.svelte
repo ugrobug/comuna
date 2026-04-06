@@ -6,6 +6,7 @@
   import { buildComunsUrl, buildTagsEnsureUrl, type BackendComun } from '$lib/api/backend'
   import { refreshSiteUser, siteToken, siteUser, uploadSiteImage } from '$lib/siteAuth'
   import { goto } from '$app/navigation'
+  import { subscribeToComunBySlug } from '$lib/settings'
 
   export let data
 
@@ -224,6 +225,7 @@
       }
       createOpen = false
       resetForm()
+      subscribeToComunBySlug(payload.comun.slug)
       toast({ content: 'Сообщество создано', type: 'success' })
       goto(`/comuns/${payload.comun.slug}/settings`)
     } catch (error) {

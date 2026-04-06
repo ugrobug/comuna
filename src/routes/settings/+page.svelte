@@ -1,5 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation'
+  import { subscribeToComunBySlug } from '$lib/settings'
   import { defaultSettings, userSettings } from '$lib/settings'
   import Setting from './Setting.svelte'
   import { toast, Modal, TextArea, TextInput } from 'mono-svelte'
@@ -266,6 +267,7 @@
       if (!response.ok || !payload?.comun?.slug) {
         throw new Error(payload?.error || 'Не удалось создать сообщество')
       }
+      subscribeToComunBySlug(payload.comun.slug)
       await refreshSiteUser()
       toast({
         content: payload?.created === false ? 'Сообщество уже существует' : 'Сообщество создано',
