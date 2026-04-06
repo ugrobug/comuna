@@ -664,6 +664,40 @@ class ComunCategory(models.Model):
         return self.name
 
 
+class ComunGlossaryTerm(models.Model):
+    comun = models.ForeignKey(
+        "Comun",
+        on_delete=models.CASCADE,
+        related_name="glossary_terms",
+        verbose_name="Сообщество",
+    )
+    term = models.CharField(max_length=180, verbose_name="Термин")
+    slug = models.SlugField(max_length=180, verbose_name="Slug термина")
+    definition = models.TextField(blank=True, verbose_name="Расшифровка")
+    sort_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["sort_order", "term"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["comun", "slug"],
+                name="feeds_unique_comun_glossary_term_slug_per_comun",
+            ),
+            models.UniqueConstraint(
+                fields=["comun", "term"],
+                name="feeds_unique_comun_glossary_term_name_per_comun",
+            ),
+        ]
+        verbose_name = "Термин глоссария сообщества"
+        verbose_name_plural = "Термины глоссария сообществ"
+
+    def __str__(self) -> str:
+        return self.term
+
+
 class Comun(models.Model):
     name = models.CharField(max_length=160, unique=True)
     slug = models.SlugField(max_length=160, unique=True)
@@ -760,6 +794,11 @@ class Comun(models.Model):
     product_description = models.TextField(blank=True, verbose_name="Описание продукта")
     rules_text = models.TextField(blank=True, verbose_name="Правила сообщества")
     target_audience = models.TextField(blank=True, verbose_name="Целевая аудитория")
+    glossary_enabled = models.BooleanField(
+        default=False,
+        verbose_name="Включить глоссарий",
+        help_text="Если включено, в сообществе будет доступна публичная страница глоссария и вставка терминов в публикации.",
+    )
     minimum_author_rating_to_post = models.DecimalField(
         max_digits=8,
         decimal_places=2,

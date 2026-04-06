@@ -74,7 +74,7 @@ import ComunSidebarInfo from '$lib/components/ui/sidebar/ComunSidebarInfo.svelte
   $: isPostFormRoute = $page.url.pathname.includes('/create/post') || $page.url.pathname.includes('/edit/post')
   $: isLandingRoute =
     $page.url.pathname === '/lp' || $page.url.pathname.startsWith('/lp/')
-  $: isComunRoute = $page.route.id === '/comuns/[slug]'
+  $: isComunRoute = ($page.route.id ?? '').startsWith('/comuns/[slug]')
   $: sidebarComun = isComunRoute ? ($page.data.comun ?? null) : null
 
   // Получаем текущий URL для канонической ссылки

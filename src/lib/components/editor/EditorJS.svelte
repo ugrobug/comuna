@@ -3437,6 +3437,225 @@
     }
   }
 
+  class CustomInlineGlossaryTermTool {
+    private api: any;
+    private button: HTMLButtonElement | null = null;
+    private tag = 'SPAN';
+    private className = 'post-glossary-term';
+    private iconSVG = `<span style="display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;font-size:11px;font-weight:700;">Т</span>`;
+
+    static get isInline() {
+      return true;
+    }
+
+    static get title() {
+      return 'Термин';
+    }
+
+    constructor({ api }: { api: any }) {
+      this.api = api;
+    }
+
+    private getTerms() {
+      return normalizeGlossaryTermOptions(glossaryTerms)
+    }
+
+    render() {
+      this.button = document.createElement('button')
+      this.button.type = 'button'
+      this.button.classList.add('ce-inline-tool')
+      this.button.innerHTML = this.iconSVG
+      this.button.title = 'Термин'
+      return this.button
+    }
+
+    surround(range: Range) {
+      if (!range) return
+      const selectedText = range.extractContents()
+      const termWrapper = document.createElement(this.tag) as HTMLSpanElement
+      if (selectedText.textContent?.trim()) {
+        termWrapper.className = this.className
+        termWrapper.appendChild(selectedText)
+        range.insertNode(termWrapper)
+        this.showInlinePopup(termWrapper)
+      } else {
+        range.insertNode(selectedText)
+      }
+    }
+
+    private triggerSave() {
+      if (this.api?.saver?.save) {
+        this.api.saver.save().then((data: any) => updateMarkdown(data)).catch(() => null)
+        return
+      }
+      if (typeof editor !== 'undefined' && editor?.save) {
+        editor.save().then((data: any) => updateMarkdown(data)).catch(() => null)
+      }
+    }
+
+    private applyTerm(termWrapper: HTMLSpanElement, term: { term: string; slug: string; definition: string }) {
+      termWrapper.classList.add(this.className)
+      termWrapper.setAttribute('data-glossary-term', term.term)
+      termWrapper.setAttribute('data-glossary-slug', term.slug)
+      termWrapper.setAttribute('data-glossary-definition', term.definition)
+      termWrapper.setAttribute('title', term.term)
+    }
+
+    private unwrap(termWrapper: HTMLSpanElement) {
+      const textNode = document.createTextNode(termWrapper.textContent || '')
+      termWrapper.parentNode?.replaceChild(textNode, termWrapper)
+    }
+
+    showInlinePopup(termWrapper: HTMLSpanElement) {
+      const existingPopups = document.querySelectorAll('.ce-glossary-popup')
+      existingPopups.forEach((popup) => popup.remove())
+
+      const popup = document.createElement('div')
+      popup.className = 'ce-glossary-popup'
+
+      const searchInput = document.createElement('input')
+      searchInput.type = 'text'
+      searchInput.className = 'ce-glossary-popup__input'
+      searchInput.placeholder = 'Найти термин...'
+
+      const list = document.createElement('div')
+      list.className = 'ce-glossary-popup__list'
+
+      const removeButton = document.createElement('button')
+      removeButton.type = 'button'
+      removeButton.className = 'ce-glossary-popup__remove'
+      removeButton.textContent = 'Убрать термин'
+
+      const terms = this.getTerms()
+
+      const renderResults = (query: string) => {
+        list.innerHTML = ''
+        const normalizedQuery = query.trim().toLowerCase()
+        const results = terms.filter((term) => {
+          if (!normalizedQuery) return true
+          return [term.term, term.definition].some((value) =>
+            value.toLowerCase().includes(normalizedQuery)
+          )
+        })
+
+        if (!results.length) {
+          const empty = document.createElement('div')
+          empty.className = 'ce-glossary-popup__empty'
+          empty.textContent = 'Ничего не найдено'
+          list.appendChild(empty)
+          return
+        }
+
+        for (const term of results.slice(0, 20)) {
+          const item = document.createElement('button')
+          item.type = 'button'
+          item.className = 'ce-glossary-popup__item'
+          item.innerHTML = `
+            <div class="ce-glossary-popup__item-term">${escapeInlineHtml(term.term)}</div>
+            <div class="ce-glossary-popup__item-definition">${escapeInlineHtml(term.definition)}</div>
+          `
+          item.addEventListener('click', (event) => {
+            event.preventDefault()
+            event.stopPropagation()
+            this.applyTerm(termWrapper, term)
+            popup.remove()
+            setTimeout(() => this.triggerSave(), 50)
+          })
+          list.appendChild(item)
+        }
+      }
+
+      searchInput.addEventListener('input', () => renderResults(searchInput.value))
+      removeButton.addEventListener('click', (event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        this.unwrap(termWrapper)
+        popup.remove()
+        setTimeout(() => this.triggerSave(), 50)
+      })
+
+      popup.appendChild(searchInput)
+      popup.appendChild(list)
+      popup.appendChild(removeButton)
+      popup.style.visibility = 'hidden'
+      popup.style.position = 'absolute'
+      document.body.appendChild(popup)
+
+      const termRect = termWrapper.getBoundingClientRect()
+      const popupRect = popup.getBoundingClientRect()
+      let top = termRect.bottom + window.scrollY + 8
+      let left = termRect.left + window.scrollX
+      if (left + popupRect.width > window.innerWidth - 12) {
+        left = window.innerWidth - popupRect.width - 12
+      }
+      if (left < 12) left = 12
+      if (top + popupRect.height > window.innerHeight + window.scrollY - 12) {
+        top = termRect.top + window.scrollY - popupRect.height - 8
+      }
+      popup.style.top = `${top}px`
+      popup.style.left = `${left}px`
+      popup.style.visibility = 'visible'
+      setTimeout(() => popup.classList.add('visible'), 10)
+
+      renderResults(termWrapper.getAttribute('data-glossary-term') || termWrapper.textContent || '')
+      searchInput.focus()
+      searchInput.select()
+
+      const handleClickOutside = (event: MouseEvent) => {
+        if (!popup.contains(event.target as Node) && !termWrapper.contains(event.target as Node)) {
+          if (!termWrapper.getAttribute('data-glossary-definition')) {
+            this.unwrap(termWrapper)
+            setTimeout(() => this.triggerSave(), 50)
+          }
+          popup.remove()
+          document.removeEventListener('click', handleClickOutside)
+        }
+      }
+
+      setTimeout(() => {
+        document.addEventListener('click', handleClickOutside)
+      }, 100)
+    }
+
+    checkState() {
+      const selection = window.getSelection()
+      if (!selection || selection.rangeCount === 0) return false
+      const range = selection.getRangeAt(0)
+      const parentNode =
+        range.commonAncestorContainer.nodeType === Node.TEXT_NODE
+          ? range.commonAncestorContainer.parentNode
+          : range.commonAncestorContainer
+      return !!(parentNode as Element)?.closest(`.${this.className}`)
+    }
+
+    clear() {
+      const selection = window.getSelection()
+      if (!selection || selection.rangeCount === 0) return
+      const range = selection.getRangeAt(0)
+      const parentNode =
+        range.commonAncestorContainer.nodeType === Node.TEXT_NODE
+          ? range.commonAncestorContainer.parentNode
+          : range.commonAncestorContainer
+      const termWrapper = (parentNode as Element)?.closest(`.${this.className}`) as HTMLSpanElement | null
+      if (termWrapper) {
+        this.unwrap(termWrapper)
+        setTimeout(() => this.triggerSave(), 50)
+      }
+    }
+
+    static get sanitize() {
+      return {
+        span: {
+          class: true,
+          'data-glossary-term': true,
+          'data-glossary-slug': true,
+          'data-glossary-definition': true,
+          title: true,
+        },
+      }
+    }
+  }
+
   interface AdditionalData {
     previewImage: string
     previewDescription: string
@@ -3450,19 +3669,49 @@
     [key: string]: any
   }
 
+  type GlossaryTermOption = {
+    id?: number | null
+    term: string
+    slug?: string | null
+    definition: string
+  }
+
   export let value = ''
   export let placeholder = ''
   export let label = ''
   export let postTemplateType: '' | PostTemplateType = ''
   export let enabledTemplateEditorBlockTypes: string[] | undefined = undefined
+  export let glossaryTerms: GlossaryTermOption[] = []
   export let postId: string | number | null = null // ID поста для автосохранения
   export let enableAutosave: boolean = true // Разрешение автосохранения
   export let onContentChange: (() => void) | null = null // Callback для уведомления PostForm об изменениях
+
+  const normalizeGlossaryTermOptions = (terms: GlossaryTermOption[]) =>
+    (Array.isArray(terms) ? terms : [])
+      .map((term) => ({
+        id: Number(term?.id ?? 0) || 0,
+        term: String(term?.term ?? '').trim(),
+        slug: String(term?.slug ?? '').trim(),
+        definition: String(term?.definition ?? '').trim(),
+      }))
+      .filter((term) => term.term && term.definition)
+
+  const escapeInlineHtml = (value: string) =>
+    String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
 
   let previewImage = ''
   let previewDescription = ''
   let metaDescription = ''
   let metaTitle = ''
+  $: hasGlossaryTerms = normalizeGlossaryTermOptions(glossaryTerms).length > 0
+  $: inlineTextToolbar = hasGlossaryTerms
+    ? ['bold', 'italic', 'customInlineLink', 'customInlineGlossaryTerm']
+    : ['bold', 'italic', 'customInlineLink']
   let draftLastSaved: Date | null = null
   let autosaveTimeout: NodeJS.Timeout | null = null
   let isUpdatingFromInternal = false // Флаг для предотвращения циклов обновления
@@ -3837,7 +4086,7 @@
           ? {
               list: {
                 class: List,
-                inlineToolbar: ['bold', 'italic', 'customInlineLink'],
+                inlineToolbar: inlineTextToolbar,
                 toolbox: {
                   title: 'Список',
                   icon: `<img src="${icons.unorderedList}" width="16" height="16" />`
@@ -3862,7 +4111,7 @@
           ? {
               quote: {
                 class: QuoteTool,
-                inlineToolbar: ['bold', 'italic', 'customInlineLink'],
+                inlineToolbar: inlineTextToolbar,
                 toolbox: {
                   title: 'Цитата',
                   icon: `<img src="${icons.quote}" width="16" height="16" />`
@@ -3957,6 +4206,7 @@
             }
           : {}),
         customInlineLink: CustomInlineLinkTool,
+        customInlineGlossaryTerm: CustomInlineGlossaryTermTool,
         ...(enabledTemplateBlockTypes.has('embed')
           ? {
               embed: {
@@ -4134,7 +4384,7 @@
       : {}),
       },
       tunes: ["anchorInput"],
-      inlineToolbar: ['bold', 'italic', 'customInlineLink'],
+      inlineToolbar: inlineTextToolbar,
       i18n: {
         messages: {
           ui: {
@@ -4251,8 +4501,9 @@
           editorElement.addEventListener('click', (e: Event) => {
             const target = e.target as HTMLElement;
             const linkElement = target.closest('a') as HTMLAnchorElement;
+            const glossaryTermElement = target.closest('.post-glossary-term') as HTMLSpanElement | null;
             
-            console.log('👆 Клик в редакторе:', { target, linkElement });
+            console.log('👆 Клик в редакторе:', { target, linkElement, glossaryTermElement });
             
             if (linkElement && !(e as MouseEvent).ctrlKey && !(e as MouseEvent).metaKey) {
               console.log('🔗 Клик по ссылке обнаружен:', linkElement.href);
@@ -4262,6 +4513,14 @@
               // Создаем временный экземпляр tool для показа попапа с правильным API
               const tempTool = new CustomInlineLinkTool({ api: editor });
               tempTool.showInlinePopup(linkElement);
+              return
+            }
+
+            if (glossaryTermElement) {
+              e.preventDefault();
+              e.stopPropagation();
+              const tempTool = new CustomInlineGlossaryTermTool({ api: editor });
+              tempTool.showInlinePopup(glossaryTermElement);
             }
           });
         } else {
@@ -6965,5 +7224,150 @@
   :global(.link-tool__input--select) {
     width: 200px;
     margin-bottom: 0;
+  }
+
+  :global(.codex-editor .post-glossary-term),
+  :global(.ce-block .post-glossary-term) {
+    background: rgba(14, 165, 233, 0.12);
+    color: #0f766e;
+    border-bottom: 1px dashed rgba(15, 118, 110, 0.5);
+    cursor: pointer;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  :global(.codex-editor .post-glossary-term:hover),
+  :global(.ce-block .post-glossary-term:hover) {
+    background: rgba(14, 165, 233, 0.2);
+  }
+
+  :global(.dark .codex-editor .post-glossary-term),
+  :global(.dark .ce-block .post-glossary-term) {
+    background: rgba(34, 197, 94, 0.16);
+    color: #bbf7d0;
+    border-bottom-color: rgba(187, 247, 208, 0.5);
+  }
+
+  :global(.ce-glossary-popup) {
+    width: min(360px, calc(100vw - 24px));
+    border-radius: 16px;
+    border: 1px solid rgb(226 232 240);
+    background: rgba(255, 255, 255, 0.98);
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+    padding: 12px;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 0.16s ease, transform 0.16s ease;
+    z-index: 1000;
+  }
+
+  :global(.ce-glossary-popup.visible) {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  :global(.dark .ce-glossary-popup) {
+    border-color: rgb(63 63 70);
+    background: rgba(24, 24, 27, 0.98);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  }
+
+  :global(.ce-glossary-popup__input) {
+    width: 100%;
+    border-radius: 12px;
+    border: 1px solid rgb(203 213 225);
+    background: white;
+    color: rgb(15 23 42);
+    padding: 0.625rem 0.875rem;
+    font-size: 0.95rem;
+    outline: none;
+  }
+
+  :global(.dark .ce-glossary-popup__input) {
+    border-color: rgb(82 82 91);
+    background: rgb(39 39 42);
+    color: rgb(244 244 245);
+  }
+
+  :global(.ce-glossary-popup__list) {
+    display: flex;
+    max-height: 280px;
+    margin-top: 0.75rem;
+    flex-direction: column;
+    gap: 0.5rem;
+    overflow: auto;
+  }
+
+  :global(.ce-glossary-popup__item) {
+    width: 100%;
+    border-radius: 12px;
+    border: 1px solid rgb(226 232 240);
+    background: rgb(248 250 252);
+    padding: 0.75rem;
+    text-align: left;
+    transition: border-color 0.16s ease, background-color 0.16s ease;
+  }
+
+  :global(.ce-glossary-popup__item:hover) {
+    border-color: rgb(56 189 248);
+    background: rgb(240 249 255);
+  }
+
+  :global(.dark .ce-glossary-popup__item) {
+    border-color: rgb(63 63 70);
+    background: rgb(39 39 42);
+  }
+
+  :global(.dark .ce-glossary-popup__item:hover) {
+    border-color: rgb(16 185 129);
+    background: rgb(24 24 27);
+  }
+
+  :global(.ce-glossary-popup__item-term) {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: rgb(15 23 42);
+  }
+
+  :global(.dark .ce-glossary-popup__item-term) {
+    color: rgb(244 244 245);
+  }
+
+  :global(.ce-glossary-popup__item-definition) {
+    margin-top: 0.35rem;
+    font-size: 0.82rem;
+    line-height: 1.45;
+    color: rgb(71 85 105);
+  }
+
+  :global(.dark .ce-glossary-popup__item-definition) {
+    color: rgb(161 161 170);
+  }
+
+  :global(.ce-glossary-popup__empty) {
+    padding: 0.25rem 0;
+    font-size: 0.9rem;
+    color: rgb(100 116 139);
+  }
+
+  :global(.dark .ce-glossary-popup__empty) {
+    color: rgb(161 161 170);
+  }
+
+  :global(.ce-glossary-popup__remove) {
+    margin-top: 0.75rem;
+    width: 100%;
+    border-radius: 12px;
+    border: 1px solid rgb(254 205 211);
+    background: rgb(255 241 242);
+    color: rgb(190 24 93);
+    padding: 0.625rem 0.875rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
+
+  :global(.dark .ce-glossary-popup__remove) {
+    border-color: rgba(190, 24, 93, 0.35);
+    background: rgba(136, 19, 55, 0.2);
+    color: rgb(251 207 232);
   }
 </style> 

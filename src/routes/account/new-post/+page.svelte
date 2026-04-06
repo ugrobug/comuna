@@ -1024,6 +1024,9 @@
             placeholder="Текст поста"
             postTemplateType={createTemplateType}
             enabledTemplateEditorBlockTypes={editorEnabledTemplateBlockTypes}
+            glossaryTerms={
+              selectedComun?.glossary_enabled ? selectedComun?.glossary_terms ?? [] : []
+            }
             enableAutosave={false}
             postId={null}
             showPostSettings={false}

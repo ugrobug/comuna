@@ -44,6 +44,7 @@ from .models import (
     BotSession,
     Comun,
     ComunCategory,
+    ComunGlossaryTerm,
     ComunPostCategoryAssignment,
     ComunVote,
     Post,
@@ -6964,6 +6965,117 @@ def _ensure_comun_category_by_name(
     return category, True
 
 
+def _normalize_comun_glossary_term(raw_value: object) -> str:
+    return re.sub(r"\s+", " ", str(raw_value or "").strip())[:180]
+
+
+def _normalize_comun_glossary_definition(raw_value: object) -> str:
+    return str(raw_value or "").strip()[:5000]
+
+
+def _generate_unique_comun_glossary_term_slug(
+    comun: Comun,
+    term: str,
+    *,
+    exclude_term_id: int | None = None,
+) -> str:
+    normalized_term = str(term or "").strip()
+    base_slug = slugify(normalized_term)[:180]
+    if not base_slug:
+        base_slug = _slugify_title(normalized_term)[:180]
+    if not base_slug:
+        base_slug = f"term-{secrets.token_hex(4)}"
+    slug = base_slug
+    suffix = 2
+    queryset = ComunGlossaryTerm.objects.filter(comun=comun)
+    if exclude_term_id:
+        queryset = queryset.exclude(id=exclude_term_id)
+    while queryset.filter(slug=slug).exists():
+        suffix_literal = f"-{suffix}"
+        max_base_length = max(180 - len(suffix_literal), 1)
+        slug = f"{base_slug[:max_base_length]}{suffix_literal}"
+        suffix += 1
+    return slug
+
+
+def _comun_glossary_queryset(comun: Comun):
+    return ComunGlossaryTerm.objects.filter(comun=comun)
+
+
+def _active_comun_glossary_queryset(comun: Comun):
+    return _comun_glossary_queryset(comun).filter(is_active=True)
+
+
+def _serialize_comun_glossary_term(term: ComunGlossaryTerm) -> dict:
+    return {
+        "id": term.id,
+        "term": term.term,
+        "slug": term.slug,
+        "definition": term.definition,
+        "sort_order": term.sort_order,
+    }
+
+
+def _sync_comun_glossary_terms(comun: Comun, raw_terms: object) -> None:
+    if not isinstance(raw_terms, list):
+        return
+
+    existing_terms = {
+        term.id: term for term in _comun_glossary_queryset(comun)
+    }
+    kept_ids: set[int] = set()
+
+    for index, item in enumerate(raw_terms):
+        if not isinstance(item, dict):
+            continue
+
+        term_name = _normalize_comun_glossary_term(item.get("term") or item.get("name"))
+        definition = _normalize_comun_glossary_definition(
+            item.get("definition") or item.get("description")
+        )
+        if not term_name or not definition:
+            continue
+
+        term_id = _parse_post_reference_to_id(item.get("id"))
+        existing_term = existing_terms.get(term_id) if term_id else None
+        next_slug = _generate_unique_comun_glossary_term_slug(
+            comun,
+            term_name,
+            exclude_term_id=existing_term.id if existing_term else None,
+        )
+
+        if existing_term:
+            existing_term.term = term_name
+            existing_term.definition = definition
+            existing_term.slug = next_slug
+            existing_term.sort_order = index
+            existing_term.is_active = True
+            existing_term.save(
+                update_fields=[
+                    "term",
+                    "definition",
+                    "slug",
+                    "sort_order",
+                    "is_active",
+                    "updated_at",
+                ]
+            )
+            kept_ids.add(existing_term.id)
+            continue
+
+        created_term = ComunGlossaryTerm.objects.create(
+            comun=comun,
+            term=term_name,
+            definition=definition,
+            slug=next_slug,
+            sort_order=index,
+            is_active=True,
+        )
+        kept_ids.add(created_term.id)
+
+    _comun_glossary_queryset(comun).exclude(id__in=list(kept_ids)).delete()
+
+
 def _comun_category_queryset(comun: Comun):
     return ComunCategory.objects.filter(comun=comun)
 
@@ -8505,6 +8617,7 @@ def _serialize_comun(
     telegram_source_author = getattr(comun, "telegram_source_author", None)
     tags = list(comun.tags.filter(is_active=True).order_by("name"))
     blocked_tags = list(comun.blocked_tags.filter(is_active=True).order_by("name"))
+    glossary_terms = list(_active_comun_glossary_queryset(comun).order_by("sort_order", "term"))
     welcome_post_payload = None
     if comun.welcome_post_id:
         welcome_post = (
@@ -8525,6 +8638,9 @@ def _serialize_comun(
         "product_description": comun.product_description,
         "rules_text": comun.rules_text,
         "target_audience": comun.target_audience,
+        "glossary_enabled": bool(getattr(comun, "glossary_enabled", False)),
+        "glossary_terms": [_serialize_comun_glossary_term(term) for term in glossary_terms],
+        "glossary_terms_count": len(glossary_terms),
         "minimum_author_rating_to_post": _comun_minimum_author_rating_value(comun),
         "only_moderators_can_post": bool(getattr(comun, "only_moderators_can_post", False)),
         "forbid_external_links": bool(getattr(comun, "forbid_external_links", False)),
@@ -9387,6 +9503,8 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
         comun.rules_text = str(body.get("rules_text") or body.get("rules") or "").strip()
     if "target_audience" in body:
         comun.target_audience = str(body.get("target_audience") or "").strip()
+    if "glossary_enabled" in body:
+        comun.glossary_enabled = bool(body.get("glossary_enabled"))
     if "minimum_author_rating_to_post" in body:
         minimum_author_rating_to_post, minimum_author_rating_error = _normalize_comun_minimum_author_rating(
             body.get("minimum_author_rating_to_post")
@@ -9634,6 +9752,9 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
             else body.get("excluded_tag_ids")
         )
         comun.blocked_tags.set(Tag.objects.filter(id__in=blocked_tag_ids, is_active=True))
+
+    if "glossary_terms" in body:
+        _sync_comun_glossary_terms(comun, body.get("glossary_terms"))
 
     comun = (
         Comun.objects.filter(id=comun.id)

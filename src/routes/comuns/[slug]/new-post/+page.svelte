@@ -429,6 +429,7 @@
             placeholder="Текст поста"
             postTemplateType={createTemplateType}
             enabledTemplateEditorBlockTypes={editorEnabledTemplateBlockTypes}
+            glossaryTerms={comun?.glossary_enabled ? comun?.glossary_terms ?? [] : []}
             enableAutosave={false}
             postId={null}
             showPostSettings={false}

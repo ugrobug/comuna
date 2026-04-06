@@ -2456,6 +2456,9 @@
           'data-post-link-title',
           'data-post-link-text',
           'data-post-link-image',
+          'data-glossary-term',
+          'data-glossary-slug',
+          'data-glossary-definition',
           'role',
           'tabindex',
           'aria-expanded',
@@ -4294,5 +4297,54 @@
     color: var(--btn-primary-color);
     text-decoration: none;
     box-shadow: var(--btn-primary-shadow-hover);
+  }
+
+  :global(.post-content .post-glossary-term) {
+    position: relative;
+    border-bottom: 1px dashed rgb(14 165 233 / 0.7);
+    background: rgb(14 165 233 / 0.08);
+    color: rgb(15 118 110);
+    cursor: help;
+    transition: background-color 0.18s ease, color 0.18s ease;
+  }
+
+  :global(.dark .post-content .post-glossary-term) {
+    border-bottom-color: rgb(74 222 128 / 0.65);
+    background: rgb(34 197 94 / 0.14);
+    color: rgb(187 247 208);
+  }
+
+  :global(.post-content .post-glossary-term:hover) {
+    background: rgb(14 165 233 / 0.16);
+  }
+
+  :global(.dark .post-content .post-glossary-term:hover) {
+    background: rgb(34 197 94 / 0.22);
+  }
+
+  :global(.post-content .post-glossary-term::after) {
+    content: attr(data-glossary-definition);
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 0.7rem);
+    z-index: 20;
+    width: min(22rem, 80vw);
+    transform: translateX(-50%);
+    border-radius: 14px;
+    background: rgba(15, 23, 42, 0.96);
+    box-shadow: 0 18px 40px rgba(15, 23, 42, 0.22);
+    color: white;
+    padding: 0.7rem 0.85rem;
+    font-size: 0.82rem;
+    line-height: 1.45;
+    opacity: 0;
+    pointer-events: none;
+    white-space: normal;
+    transition: opacity 0.18s ease, transform 0.18s ease;
+  }
+
+  :global(.post-content .post-glossary-term:hover::after) {
+    opacity: 1;
+    transform: translateX(-50%) translateY(-2px);
   }
 </style>

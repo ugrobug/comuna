@@ -102,6 +102,10 @@ export const buildComunUrl = (slug: string): string => {
   return `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/`
 }
 
+export const buildComunGlossaryPath = (slug: string): string => {
+  return `/comuns/${encodeURIComponent(slug)}/glossary`
+}
+
 export const buildComunVoteUrl = (slug: string): string => {
   return `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/vote/`
 }
@@ -390,6 +394,14 @@ export type BackendComunCategory = {
   inherits_comun_template_types?: boolean
 }
 
+export type BackendComunGlossaryTerm = {
+  id: number
+  term: string
+  slug: string
+  definition: string
+  sort_order?: number
+}
+
 export type BackendComunActivityMember = {
   user_id: number
   username: string
@@ -421,6 +433,9 @@ export type BackendComun = {
   product_description?: string | null
   rules_text?: string | null
   target_audience?: string | null
+  glossary_enabled?: boolean
+  glossary_terms?: BackendComunGlossaryTerm[]
+  glossary_terms_count?: number
   tags?: BackendTag[]
   tag_ids?: number[]
   minimum_author_rating_to_post?: number
