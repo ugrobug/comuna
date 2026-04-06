@@ -1176,7 +1176,7 @@
       {/if}
 
       {#if comun?.target_audience}
-        <div class="text-sm text-slate-600 dark:text-zinc-400">
+        <div class="text-sm text-slate-600 dark:text-zinc-400 whitespace-pre-line">
           <span class="font-medium text-slate-800 dark:text-zinc-200">Для кого:</span>
           {comun.target_audience}
         </div>
