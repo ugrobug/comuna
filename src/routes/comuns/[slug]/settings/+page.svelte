@@ -11,7 +11,6 @@
     buildTagsEnsureUrl,
     type BackendComun,
     type BackendComunCategory,
-    type BackendComunGlossaryTerm,
     type BackendTag,
   } from '$lib/api/backend'
   import { siteToken, uploadSiteImage } from '$lib/siteAuth'
@@ -41,7 +40,6 @@
   let settingsTagSearch = ''
   let settingsBlockedTagSearch = ''
   let settingsCategorySearch = ''
-  let settingsGlossarySearch = ''
   let settingsUserSearch = ''
   let settingsAuthorSearch = ''
   let settingsCategoryOptions: BackendComunCategory[] = []
@@ -61,7 +59,6 @@
     avatar_url?: string | null
   }
   type TemplateTypeOption = { value: PostTemplateCode; label: string }
-  type GlossaryDraftTerm = BackendComunGlossaryTerm & { localId: string }
   type ComunSettingsTabKey = 'description' | 'availability' | 'moderation' | 'categories' | 'rules'
   const fallbackTemplateTypeOptions: TemplateTypeOption[] = [
     { value: 'basic', label: 'Пост' },
@@ -87,7 +84,6 @@
   let settingsAuthorOptions: ComunAuthorOption[] = []
   let settingsTemplateTypeOptions: TemplateTypeOption[] = fallbackTemplateTypeOptions
   let settingsTelegramChannelOptions: ComunTelegramChannelOption[] = []
-  let settingsGlossaryTerms: GlossaryDraftTerm[] = []
   let settingsLogoInput: HTMLInputElement | null = null
   let settingsTab: ComunSettingsTabKey = 'description'
 
@@ -100,23 +96,6 @@
 
   const cloneComun = (value: BackendComun | null): BackendComun | null =>
     value ? JSON.parse(JSON.stringify(value)) : null
-
-  const createGlossaryLocalId = () =>
-    `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-
-  const normalizeGlossaryTerms = (
-    terms: Array<BackendComunGlossaryTerm | GlossaryDraftTerm> | null | undefined
-  ): GlossaryDraftTerm[] =>
-    (terms ?? [])
-      .map((term) => ({
-        id: Number(term?.id ?? 0) || 0,
-        localId: (term as GlossaryDraftTerm)?.localId || createGlossaryLocalId(),
-        term: String(term?.term ?? '').trim(),
-        slug: String(term?.slug ?? '').trim(),
-        definition: String(term?.definition ?? '').trim(),
-        sort_order: Number(term?.sort_order ?? 0) || 0,
-      }))
-      .filter((term) => term.term || term.definition)
 
   const normalizeIds = (values: Array<number | null | undefined>) =>
     Array.from(
@@ -286,7 +265,6 @@
       }
       comun = payload.comun
       settingsDraft = cloneComun(payload.comun)
-      settingsGlossaryTerms = normalizeGlossaryTerms(payload.comun?.glossary_terms)
       settingsCategoryOptions = payload.comun?.options?.categories ?? []
       settingsTagOptions = payload.comun?.options?.tags ?? []
       settingsUserOptions = payload.comun?.options?.users ?? []
@@ -356,56 +334,6 @@
           }
         : null,
     }
-  }
-
-  const addDraftGlossaryTerm = () => {
-    settingsDraft = {
-      ...(settingsDraft ?? {}),
-      glossary_enabled: true,
-    } as BackendComun
-    settingsGlossaryTerms = [
-      ...settingsGlossaryTerms,
-      {
-        id: 0,
-        localId: createGlossaryLocalId(),
-        term: '',
-        slug: '',
-        definition: '',
-        sort_order: settingsGlossaryTerms.length,
-      },
-    ]
-  }
-
-  const updateDraftGlossaryTerm = (
-    localId: string,
-    field: 'term' | 'definition',
-    value: string
-  ) => {
-    settingsGlossaryTerms = settingsGlossaryTerms.map((term, index) =>
-      term.localId === localId
-        ? {
-            ...term,
-            [field]: value,
-            sort_order: index,
-          }
-        : { ...term, sort_order: index }
-    )
-  }
-
-  const removeDraftGlossaryTerm = (localId: string) => {
-    settingsGlossaryTerms = settingsGlossaryTerms
-      .filter((term) => term.localId !== localId)
-      .map((term, index) => ({ ...term, sort_order: index }))
-  }
-
-  const onGlossaryTermTitleInput = (localId: string, event: Event) => {
-    const target = event.currentTarget as HTMLInputElement | null
-    updateDraftGlossaryTerm(localId, 'term', target?.value ?? '')
-  }
-
-  const onGlossaryTermDefinitionInput = (localId: string, event: Event) => {
-    const target = event.currentTarget as HTMLTextAreaElement | null
-    updateDraftGlossaryTerm(localId, 'definition', target?.value ?? '')
   }
 
   const onTelegramChannelInput = (event: Event) => {
@@ -656,13 +584,6 @@
       )
     })
     .slice(0, 40)
-  $: normalizedGlossarySearch = settingsGlossarySearch.trim().toLowerCase()
-  $: filteredGlossaryTerms = settingsGlossaryTerms.filter((term) => {
-    if (!normalizedGlossarySearch) return true
-    return [term.term, term.definition].some((value) =>
-      value.toLowerCase().includes(normalizedGlossarySearch)
-    )
-  })
   $: filteredTagOptions = (settingsTagOptions ?? [])
     .filter((tag) => {
       if (!normalizedTagSearch) return false
@@ -684,23 +605,7 @@
   $: normalizedUserSearch = settingsUserSearch.trim().toLowerCase()
   $: draftModeratorIdSet = new Set<number>(comunModeratorIds(settingsDraft))
   $: draftExcludedAuthorIdSet = new Set<number>(comunExcludedAuthorIds(settingsDraft))
-  $: draftGlossaryTermsComparable = JSON.stringify(
-    settingsGlossaryTerms.map((term) => ({
-      id: Number(term.id) || 0,
-      term: term.term.trim(),
-      definition: term.definition.trim(),
-    }))
-  )
-  $: comunGlossaryTermsComparable = JSON.stringify(
-    normalizeGlossaryTerms(comun?.glossary_terms).map((term) => ({
-      id: Number(term.id) || 0,
-      term: term.term.trim(),
-      definition: term.definition.trim(),
-    }))
-  )
-  $: settingsHasChanges =
-    settingsComparable(settingsDraft) !== settingsComparable(comun) ||
-    draftGlossaryTermsComparable !== comunGlossaryTermsComparable
+  $: settingsHasChanges = settingsComparable(settingsDraft) !== settingsComparable(comun)
   $: filteredUserOptions = (settingsUserOptions ?? [])
     .filter((user) => {
       if (!normalizedUserSearch) return false
@@ -866,12 +771,6 @@
           target_audience: settingsDraft.target_audience ?? '',
           glossary_enabled: Boolean(settingsDraft.glossary_enabled),
           roadmap_enabled: Boolean(settingsDraft.roadmap_enabled ?? true),
-          glossary_terms: settingsGlossaryTerms.map((term, index) => ({
-            id: Number(term.id) || undefined,
-            term: term.term.trim(),
-            definition: term.definition.trim(),
-            sort_order: index,
-          })),
           minimum_author_rating_to_post: Math.max(
             Number(settingsDraft.minimum_author_rating_to_post ?? 0) || 0,
             0
@@ -905,7 +804,6 @@
       }
       comun = payload.comun ?? comun
       settingsDraft = cloneComun(comun)
-      settingsGlossaryTerms = normalizeGlossaryTerms(comun?.glossary_terms)
       settingsCategoryOptions =
         payload.comun?.options?.categories ?? payload.comun?.categories ?? settingsCategoryOptions
       settingsTagOptions = payload.comun?.options?.tags ?? settingsTagOptions
@@ -1588,80 +1486,6 @@
               </span>
             </label>
           </div>
-
-          {#if settingsDraft.glossary_enabled}
-            <div class="flex flex-col gap-3 rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-3">
-              <div class="flex flex-wrap items-center justify-between gap-2">
-                <div class="text-sm font-medium text-slate-900 dark:text-zinc-100">
-                  Термины глоссария
-                </div>
-                <Button size="sm" on:click={addDraftGlossaryTerm} disabled={settingsSaving}>
-                  Добавить термин
-                </Button>
-              </div>
-              <input
-                bind:value={settingsGlossarySearch}
-                placeholder="Поиск по термину или расшифровке..."
-                class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"
-              />
-              <div class="grid gap-3">
-                {#if filteredGlossaryTerms.length}
-                  {#each filteredGlossaryTerms as glossaryTerm (glossaryTerm.localId)}
-                    <div class="rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-3 py-3">
-                      <div class="flex items-start justify-between gap-3">
-                        <div class="flex-1 grid gap-3">
-                          <label class="flex flex-col gap-1">
-                            <span class="text-xs uppercase tracking-wide text-slate-500 dark:text-zinc-400">
-                              Термин
-                            </span>
-                            <input
-                              value={glossaryTerm.term}
-                              on:input={(event) => onGlossaryTermTitleInput(glossaryTerm.localId, event)}
-                              class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"
-                              placeholder="Например: Шот-лист"
-                            />
-                          </label>
-                          <label class="flex flex-col gap-1">
-                            <span class="text-xs uppercase tracking-wide text-slate-500 dark:text-zinc-400">
-                              Расшифровка
-                            </span>
-                            <textarea
-                              rows="3"
-                              on:input={(event) =>
-                                onGlossaryTermDefinitionInput(glossaryTerm.localId, event)}
-                              class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"
-                              placeholder="Короткое объяснение термина, которое будет показано при наведении"
-                            >{glossaryTerm.definition}</textarea>
-                          </label>
-                        </div>
-                        <button
-                          type="button"
-                          class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 dark:border-zinc-700 dark:text-zinc-400 dark:hover:border-rose-900/60 dark:hover:bg-rose-950/30 dark:hover:text-rose-300"
-                          title="Удалить термин"
-                          aria-label="Удалить термин"
-                          on:click={() => removeDraftGlossaryTerm(glossaryTerm.localId)}
-                        >
-                          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <path d="M3 6h18"></path>
-                            <path d="M8 6V4.8c0-.9.7-1.6 1.6-1.6h4.8c.9 0 1.6.7 1.6 1.6V6"></path>
-                            <path d="M18 6v12.2c0 .9-.7 1.6-1.6 1.6H7.6c-.9 0-1.6-.7-1.6-1.6V6"></path>
-                            <path d="M10 10.5v5"></path>
-                            <path d="M14 10.5v5"></path>
-                          </svg>
-                        </button>
-                      </div>
-                    </div>
-                  {/each}
-                {:else}
-                  <div class="rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-3 text-sm text-slate-500 dark:text-zinc-400">
-                    {normalizedGlossarySearch
-                      ? 'Термины не найдены'
-                      : 'Добавьте термины, чтобы участники могли ссылаться на них в публикациях.'}
-                  </div>
-                {/if}
-              </div>
-            </div>
-          {/if}
 
           <div class="flex flex-col gap-2">
             <div class="text-sm text-slate-700 dark:text-zinc-300">Доступные шаблоны публикаций</div>

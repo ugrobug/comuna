@@ -106,6 +106,10 @@ export const buildComunGlossaryPath = (slug: string): string => {
   return `/comuns/${encodeURIComponent(slug)}/glossary`
 }
 
+export const buildComunRoadmapPath = (slug: string): string => {
+  return `/comuns/${encodeURIComponent(slug)}/roadmap`
+}
+
 export const buildComunVoteUrl = (slug: string): string => {
   return `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/vote/`
 }

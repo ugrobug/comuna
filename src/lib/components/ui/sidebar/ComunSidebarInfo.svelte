@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { buildComunGlossaryPath, type BackendComun } from '$lib/api/backend'
+  import { buildComunGlossaryPath, buildComunRoadmapPath, type BackendComun } from '$lib/api/backend'
 
   export let comun: BackendComun | null = null
 
@@ -23,6 +23,7 @@
   $: creator = comun?.creator
   $: moderators = comun?.moderators ?? []
   $: glossaryPath = comun?.slug ? buildComunGlossaryPath(comun.slug) : '/comuns'
+  $: roadmapPath = comun?.slug ? buildComunRoadmapPath(comun.slug) : '/comuns'
   $: moderatorList = (() => {
     const seen = new Set<number>()
     const result: SidebarMember[] = []
@@ -79,6 +80,21 @@
         class="mt-4 inline-flex items-center rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-900 transition hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-800"
       >
         Открыть глоссарий
+      </a>
+    </section>
+  {/if}
+
+  {#if comun?.roadmap_enabled}
+    <section class="rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/85">
+      <div class="text-base font-semibold text-slate-900 dark:text-zinc-100">Дорожная карта</div>
+      <div class="mt-2 text-sm leading-relaxed text-slate-600 dark:text-zinc-400">
+        Публичные этапы и приоритеты сообщества в одном месте.
+      </div>
+      <a
+        href={roadmapPath}
+        class="mt-4 inline-flex items-center rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-900 transition hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-800"
+      >
+        Открыть дорожную карту
       </a>
     </section>
   {/if}
