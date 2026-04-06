@@ -132,6 +132,7 @@
   let restoredPollToken: string | null = null
   const maxPreviewLength = 250;
   const hydratedPostLinkSnapshots = new Map<number, PostLinkSnapshot>()
+  type TocEntry = { id: string; text: string; level: 2 | 3 }
 
   const clonePollOption = (option: BackendPollOption): BackendPollOption => ({ ...option })
 
@@ -1050,7 +1051,11 @@
     return parseSerializedEditorModel(content) !== null
   }
 
-  function processJsonBlock(block: any, index = -1): string {
+  function processJsonBlock(
+    block: any,
+    index = -1,
+    tocEntriesByIndex: Map<number, TocEntry> = new Map()
+  ): string {
     const renderMapBlock = (raw: any): string => {
       const lat = Number(raw?.lat)
       const lng = Number(raw?.lng)
@@ -1421,6 +1426,25 @@
           </div>
         </div>
       </div>`
+    }
+
+    const renderTocBlock = (): string => {
+      if (!isTemplateEditorBlockEnabled(template?.type ?? '', 'toc')) return ''
+      const tocEntries = Array.from(tocEntriesByIndex.values())
+      if (!tocEntries.length) return ''
+
+      const itemsHtml = tocEntries
+        .map(
+          (entry) => `<li class="post-toc__item post-toc__item--level-${entry.level}">
+            <a href="#${escapeHtml(entry.id)}" class="post-toc__link">${escapeHtml(entry.text)}</a>
+          </li>`
+        )
+        .join('')
+
+      return `<nav class="post-toc" aria-label="Оглавление">
+        <div class="post-toc__title">Оглавление</div>
+        <ol class="post-toc__list">${itemsHtml}</ol>
+      </nav>`
     }
 
     const renderInlinePollBlock = (raw: any): string => {
@@ -1818,7 +1842,14 @@
       case 'paragraph':
         return `<p>${block.data.text}</p>`;
       case 'header':
-        return `<h${block.data.level}>${block.data.text}</h${block.data.level}>`;
+        const headingLevel = Number(block?.data?.level)
+        const safeHeadingLevel =
+          Number.isInteger(headingLevel) && headingLevel >= 1 && headingLevel <= 6
+            ? headingLevel
+            : 2
+        const tocEntry = tocEntriesByIndex.get(index)
+        const headingId = tocEntry?.id ? ` id="${escapeHtml(tocEntry.id)}"` : ''
+        return `<h${safeHeadingLevel}${headingId}>${block.data.text}</h${safeHeadingLevel}>`;
       case 'list':
         const listClass = block.data.style === 'checklist' ? 'checklist' : '';
         const items = block.data.items.map((item: any) => 
@@ -1839,6 +1870,9 @@
         return `<pre><code>${block.data.code}</code></pre>`;
       case 'poll':
         return renderInlinePollBlock(block.data)
+      case 'toc':
+      case 'tableofcontents':
+        return renderTocBlock()
       case 'post_rating':
       case 'postrating':
         return renderPostRatingBlock(block, index)
@@ -1891,6 +1925,7 @@
     try {
       const content = parseSerializedEditorModel(jsonContent)
       if (!content.blocks) return '';
+      const { byIndex: tocEntriesByIndex } = buildTocEntries(content.blocks)
       
       // Обрабатываем мета-информацию
       const previewImage = content.additional?.previewImage 
@@ -1948,7 +1983,7 @@
           const legacyContent =
             typeof rawData?.content === 'string' ? rawData.content.trim() : ''
           if (legacyContent) {
-            const html = processJsonBlock(block, index)
+            const html = processJsonBlock(block, index, tocEntriesByIndex)
             appendHtmlToCurrentScope(html, blockType)
             continue
           }
@@ -1979,7 +2014,7 @@
           continue
         }
 
-        const html = processJsonBlock(block, index)
+        const html = processJsonBlock(block, index, tocEntriesByIndex)
         appendHtmlToCurrentScope(html, blockType)
       }
 
@@ -2404,6 +2439,13 @@
       return DOMPurify.sanitize(processedHtml, {
         ALLOWED_TAGS: [
           'p',
+          'h1',
+          'h2',
+          'h3',
+          'h4',
+          'h5',
+          'h6',
+          'nav',
           'span',
           'b',
           'i',
@@ -2479,6 +2521,8 @@
           'tabindex',
           'aria-expanded',
           'hidden',
+          'id',
+          'aria-label',
         ],
       });
     }
@@ -2502,6 +2546,47 @@
       return temp.textContent || '';
     }
     return value.replace(/<[^>]*>/g, '');
+  }
+
+  function slugifyHeadingText(value: string): string {
+    const normalized = stripHtmlTags(value)
+      .toLowerCase()
+      .replace(/&[a-z0-9#]+;/gi, ' ')
+      .replace(/[^a-zа-яё0-9]+/gi, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 64)
+    return normalized || 'section'
+  }
+
+  function buildTocEntries(blocks: any[]): { items: TocEntry[]; byIndex: Map<number, TocEntry> } {
+    const items: TocEntry[] = []
+    const byIndex = new Map<number, TocEntry>()
+    const slugCounts = new Map<string, number>()
+    if (!Array.isArray(blocks)) return { items, byIndex }
+
+    blocks.forEach((block, index) => {
+      const blockType = String(block?.type || '').toLowerCase()
+      if (blockType !== 'header') return
+      const level = Number(block?.data?.level)
+      if (level !== 2 && level !== 3) return
+
+      const text = stripHtmlTags(String(block?.data?.text || '')).replace(/\s+/g, ' ').trim()
+      if (!text) return
+
+      const baseSlug = slugifyHeadingText(text)
+      const slugIndex = slugCounts.get(baseSlug) ?? 0
+      slugCounts.set(baseSlug, slugIndex + 1)
+
+      const entry: TocEntry = {
+        id: slugIndex > 0 ? `${baseSlug}-${slugIndex + 1}` : baseSlug,
+        text,
+        level: level as 2 | 3,
+      }
+      items.push(entry)
+      byIndex.set(index, entry)
+    })
+
+    return { items, byIndex }
   }
 
   function addTelegramNoFollow(html: string): string {
@@ -2951,6 +3036,82 @@
         rgba(63, 63, 70, 0) 100%
       );
     box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.05);
+  }
+
+  :global(.post-content .post-toc) {
+    margin: 1rem 0 1.2rem;
+    border-radius: 1rem;
+    border: 1px solid rgba(251, 191, 36, 0.34);
+    background:
+      radial-gradient(130% 140% at 0% 0%, rgba(251, 191, 36, 0.18), rgba(251, 191, 36, 0) 60%),
+      linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(30, 41, 59, 0.9));
+    color: #e2e8f0;
+    padding: 0.9rem 1rem 0.95rem;
+  }
+
+  :global(.post-content .post-toc__title) {
+    color: #fde68a;
+    font-size: 0.76rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    margin-bottom: 0.65rem;
+  }
+
+  :global(.post-content .post-toc__list) {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 0.5rem;
+  }
+
+  :global(.post-content .post-toc__item) {
+    margin: 0;
+    padding: 0;
+  }
+
+  :global(.post-content .post-toc__item--level-3) {
+    padding-left: 1rem;
+  }
+
+  :global(.post-content .post-toc__link) {
+    display: inline-flex;
+    align-items: flex-start;
+    gap: 0.55rem;
+    color: #f8fafc;
+    font-size: 0.96rem;
+    line-height: 1.4;
+    text-decoration: none;
+  }
+
+  :global(.post-content .post-toc__link::before) {
+    content: '';
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 999px;
+    margin-top: 0.42rem;
+    flex-shrink: 0;
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.98), rgba(245, 158, 11, 0.92));
+    box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.2);
+  }
+
+  :global(.post-content .post-toc__item--level-3 .post-toc__link::before) {
+    width: 0.36rem;
+    height: 0.36rem;
+    margin-top: 0.48rem;
+    opacity: 0.88;
+  }
+
+  :global(.post-content .post-toc__link:hover) {
+    color: #fde68a;
+    text-decoration: underline;
+    text-underline-offset: 0.16em;
+  }
+
+  :global(.post-content h2[id]),
+  :global(.post-content h3[id]) {
+    scroll-margin-top: 6rem;
   }
 
   :global(.post-content .post-inline-rating) {
@@ -4118,6 +4279,14 @@
   }
 
   @media (max-width: 640px) {
+    :global(.post-content .post-toc) {
+      padding: 0.82rem 0.85rem 0.88rem;
+    }
+
+    :global(.post-content .post-toc__item--level-3) {
+      padding-left: 0.8rem;
+    }
+
     :global(.post-content .post-linked-material__card) {
       grid-template-columns: 1fr;
     }

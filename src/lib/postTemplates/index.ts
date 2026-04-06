@@ -2,6 +2,7 @@ export type PostTemplateType = 'movie_review' | 'post_vote_poll' | 'music_releas
 export type PostTemplateCode = 'basic' | PostTemplateType
 
 export type TemplateEditorBlockType =
+  | 'toc'
   | 'header'
   | 'list'
   | 'table'
@@ -110,6 +111,7 @@ const POST_TEMPLATE_CODE_VALUES = new Set<PostTemplateCode>([
 ])
 
 const TEMPLATE_EDITOR_BLOCK_TYPE_VALUES = new Set<TemplateEditorBlockType>([
+  'toc',
   'header',
   'list',
   'table',
@@ -134,6 +136,7 @@ const TEMPLATE_EDITOR_BLOCK_TYPE_VALUES = new Set<TemplateEditorBlockType>([
 ])
 
 const ALL_TEMPLATE_EDITOR_BLOCK_OPTIONS: TemplateEditorBlockOption[] = [
+  { type: 'toc', label: 'Оглавление' },
   { type: 'header', label: 'Заголовок' },
   { type: 'list', label: 'Список' },
   { type: 'table', label: 'Таблица' },
