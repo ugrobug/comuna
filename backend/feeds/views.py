@@ -34,6 +34,7 @@ from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
+from PIL import Image, UnidentifiedImageError
 from django.contrib.auth import authenticate, get_user_model
 
 from .models import (
@@ -5868,6 +5869,14 @@ def user_upload(request: HttpRequest) -> HttpResponse:
     max_bytes = getattr(settings, "USER_UPLOAD_MAX_BYTES", 10 * 1024 * 1024)
     if upload.size and upload.size > max_bytes:
         return JsonResponse({"ok": False, "error": "file is too large"}, status=400)
+
+    try:
+        upload.seek(0)
+        with Image.open(upload) as image:
+            image.verify()
+        upload.seek(0)
+    except (UnidentifiedImageError, OSError, ValueError):
+        return JsonResponse({"ok": False, "error": "invalid image file"}, status=400)
 
     base_name = get_valid_filename(os.path.splitext(upload.name or "image")[0])
     ext = os.path.splitext(upload.name or "")[1].lower()

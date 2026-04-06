@@ -102,6 +102,14 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
+USER_UPLOAD_MAX_BYTES = int(os.environ.get("USER_UPLOAD_MAX_BYTES", str(10 * 1024 * 1024)))
+DATA_UPLOAD_MAX_MEMORY_SIZE = int(
+    os.environ.get("DATA_UPLOAD_MAX_MEMORY_SIZE", str(max(USER_UPLOAD_MAX_BYTES + 2 * 1024 * 1024, 12 * 1024 * 1024)))
+)
+FILE_UPLOAD_MAX_MEMORY_SIZE = int(
+    os.environ.get("FILE_UPLOAD_MAX_MEMORY_SIZE", str(max(USER_UPLOAD_MAX_BYTES, 10 * 1024 * 1024)))
+)
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")

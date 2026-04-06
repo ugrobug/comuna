@@ -581,6 +581,10 @@ export const uploadSiteImage = async (image: File) => {
   if (image.size > maxBytes) {
     throw new Error('Файл слишком большой (максимум 10 МБ)')
   }
+  const normalizedType = String(image.type || '').toLowerCase()
+  if (normalizedType && !['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(normalizedType)) {
+    throw new Error('Неподдерживаемый формат файла. Допустимы JPG, PNG, WEBP и GIF')
+  }
   const formData = new FormData()
   formData.append('image', image)
 
@@ -597,9 +601,14 @@ export const uploadSiteImage = async (image: File) => {
   if (contentType.includes('application/json')) {
     data = await response.json()
   } else {
-    await response.text()
+    const text = await response.text()
     if (!response.ok) {
-      if (response.status === 413) {
+      const normalizedText = text.toLowerCase()
+      if (
+        response.status === 413 ||
+        normalizedText.includes('requestdatatoobig') ||
+        normalizedText.includes('too large')
+      ) {
         throw new Error('Файл слишком большой (максимум 10 МБ)')
       }
       throw new Error('Сервер вернул некорректный ответ при загрузке изображения')
@@ -607,6 +616,16 @@ export const uploadSiteImage = async (image: File) => {
     throw new Error('Сервер вернул некорректный ответ при загрузке изображения')
   }
   if (!response.ok || !data?.url) {
+    const errorMessage = String(data?.error || '').toLowerCase()
+    if (errorMessage.includes('too large')) {
+      throw new Error('Файл слишком большой (максимум 10 МБ)')
+    }
+    if (errorMessage.includes('unsupported file type')) {
+      throw new Error('Неподдерживаемый формат файла. Допустимы JPG, PNG, WEBP и GIF')
+    }
+    if (errorMessage.includes('invalid image file')) {
+      throw new Error('Файл поврежден или не является корректным изображением')
+    }
     throw new Error(data?.error || 'Не удалось загрузить изображение')
   }
   return data.url as string
