@@ -2703,7 +2703,9 @@
     private inferProviderFromUrl(value: string): string {
       const raw = value.trim().toLowerCase()
       if (!raw) return 'unknown'
-      if (raw.includes('open.spotify.com/track/')) return 'spotify'
+      if (raw.includes('open.spotify.com/track/') || raw.includes('open.spotify.com/playlist/')) {
+        return 'spotify'
+      }
       if (raw.includes('music.yandex.ru/') || raw.includes('music.yandex.com/')) {
         return 'yandex_music'
       }
@@ -2729,7 +2731,7 @@
       const subtitle = document.createElement('p')
       subtitle.classList.add('music-tool__subtitle')
       subtitle.textContent =
-        'Вставьте ссылку на трек. Поддержка: Spotify, Яндекс Музыка, SoundCloud.'
+        'Вставьте ссылку на трек или плейлист. Поддержка: Spotify, Яндекс Музыка, SoundCloud.'
 
       const providerLabel = document.createElement('label')
       providerLabel.classList.add('music-tool__label')
@@ -2754,7 +2756,7 @@
       const urlInput = document.createElement('input')
       urlInput.type = 'url'
       urlInput.classList.add('music-tool__input')
-      urlInput.placeholder = 'https://open.spotify.com/track/...'
+      urlInput.placeholder = 'https://open.spotify.com/track/... или .../playlist/...'
       urlInput.value = this.data.url
 
       const captionInput = document.createElement('textarea')
@@ -2772,7 +2774,7 @@
         this.data.caption = captionInput.value.trim()
 
         if (!this.data.url) {
-          preview.textContent = 'После вставки ссылки в посте появится встроенный плеер.'
+          preview.textContent = 'После вставки ссылки в посте появится встроенный плеер для трека или плейлиста.'
           return
         }
 

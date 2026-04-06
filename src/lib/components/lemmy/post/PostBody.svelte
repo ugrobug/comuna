@@ -1663,6 +1663,9 @@
       const buildYandexTrackEmbedUrl = (trackId: string, albumId: string): string =>
         `https://music.yandex.ru/iframe/album/${albumId}/track/${trackId}`
 
+      const buildYandexPlaylistEmbedUrl = (owner: string, playlistId: string): string =>
+        `https://music.yandex.ru/iframe/#playlist/${encodeURIComponent(owner)}/${playlistId}`
+
       const parseMusicEmbed = (
         value: string,
         hint: string
@@ -1671,6 +1674,7 @@
         providerLabel: string
         embedUrl: string
         title: string
+        frameClassName?: string
       } | null => {
         let parsed: URL
         try {
@@ -1694,6 +1698,22 @@
             providerLabel: 'Spotify',
             embedUrl: `https://open.spotify.com/embed/track/${trackId}?utm_source=comuna`,
             title: 'Плеер Spotify',
+          }
+        }
+
+        const spotifyPlaylistMatch = path.match(/\/playlist\/([a-zA-Z0-9]+)(?:\/|$)/)
+        if (
+          spotifyPlaylistMatch &&
+          (hint === 'auto' || hint === 'spotify') &&
+          (host === 'open.spotify.com' || host.endsWith('.spotify.com'))
+        ) {
+          const playlistId = spotifyPlaylistMatch[1]
+          return {
+            provider: 'spotify',
+            providerLabel: 'Spotify',
+            embedUrl: `https://open.spotify.com/embed/playlist/${playlistId}?utm_source=comuna`,
+            title: 'Плейлист Spotify',
+            frameClassName: 'post-music__frame--playlist',
           }
         }
 
@@ -1749,6 +1769,40 @@
           }
         }
 
+        const yandexPlaylistMatch = path.match(/\/users\/([^/]+)\/playlists\/(\d+)(?:\/|$)/i)
+        if (
+          yandexPlaylistMatch &&
+          (hint === 'auto' || hint === 'yandex_music') &&
+          (host === 'music.yandex.ru' || host === 'music.yandex.com')
+        ) {
+          const owner = decodeURIComponent(yandexPlaylistMatch[1])
+          const playlistId = yandexPlaylistMatch[2]
+          return {
+            provider: 'yandex_music',
+            providerLabel: 'Яндекс Музыка',
+            embedUrl: buildYandexPlaylistEmbedUrl(owner, playlistId),
+            title: 'Плейлист Яндекс Музыки',
+            frameClassName: 'post-music__frame--playlist',
+          }
+        }
+
+        const yandexIframePlaylistMatch = parsed.hash.match(/#playlist\/([^/]+)\/(\d+)(?:\/|$)/i)
+        if (
+          yandexIframePlaylistMatch &&
+          (hint === 'auto' || hint === 'yandex_music') &&
+          (host === 'music.yandex.ru' || host === 'music.yandex.com')
+        ) {
+          const owner = decodeURIComponent(yandexIframePlaylistMatch[1])
+          const playlistId = yandexIframePlaylistMatch[2]
+          return {
+            provider: 'yandex_music',
+            providerLabel: 'Яндекс Музыка',
+            embedUrl: buildYandexPlaylistEmbedUrl(owner, playlistId),
+            title: 'Плейлист Яндекс Музыки',
+            frameClassName: 'post-music__frame--playlist',
+          }
+        }
+
         if (
           (hint === 'auto' || hint === 'soundcloud') &&
           (host === 'soundcloud.com' || host.endsWith('.soundcloud.com') || host === 'snd.sc')
@@ -1798,8 +1852,8 @@
             Открыть трек
           </a>
         </div>
-        <iframe
-          class="post-music__frame"
+          <iframe
+          class="post-music__frame${parsedEmbed.frameClassName ? ` ${parsedEmbed.frameClassName}` : ''}"
           src="${escapeHtml(parsedEmbed.embedUrl)}"
           loading="lazy"
           title="${escapeHtml(parsedEmbed.title)}"
@@ -4262,6 +4316,14 @@
 
   :global(.post-content .post-music[data-music-provider='yandex_music'] .post-music__frame) {
     min-height: 200px;
+  }
+
+  :global(.post-content .post-music__frame--playlist) {
+    min-height: 352px;
+  }
+
+  :global(.post-content .post-music[data-music-provider='yandex_music'] .post-music__frame--playlist) {
+    min-height: 340px;
   }
 
   :global(.post-content .post-music__caption) {

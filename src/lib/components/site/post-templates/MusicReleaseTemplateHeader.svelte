@@ -16,6 +16,12 @@
     height: number
   }
 
+  const buildYandexTrackEmbedUrl = (trackId: string, albumId: string): string =>
+    `https://music.yandex.ru/iframe/album/${albumId}/track/${trackId}`
+
+  const buildYandexPlaylistEmbedUrl = (owner: string, playlistId: string): string =>
+    `https://music.yandex.ru/iframe/#playlist/${encodeURIComponent(owner)}/${playlistId}`
+
   const normalizeExternalUrl = (value: string | undefined): string => {
     const raw = (value || '').trim()
     if (!raw) return ''
@@ -55,7 +61,7 @@
         return {
           provider: 'yandex_music',
           providerLabel: 'Яндекс Музыка',
-          embedUrl: `https://music.yandex.ru/iframe/album/${albumId}/track/${trackId}`,
+          embedUrl: buildYandexTrackEmbedUrl(trackId, albumId),
           title: 'Плеер Яндекс Музыки',
           height: 244,
         }
@@ -68,7 +74,7 @@
         return {
           provider: 'yandex_music',
           providerLabel: 'Яндекс Музыка',
-          embedUrl: `https://music.yandex.ru/iframe/album/${albumId}/track/${trackId}`,
+          embedUrl: buildYandexTrackEmbedUrl(trackId, albumId),
           title: 'Плеер Яндекс Музыки',
           height: 244,
         }
@@ -82,10 +88,36 @@
           return {
             provider: 'yandex_music',
             providerLabel: 'Яндекс Музыка',
-            embedUrl: `https://music.yandex.ru/iframe/album/${albumId}/track/${trackId}`,
+            embedUrl: buildYandexTrackEmbedUrl(trackId, albumId),
             title: 'Плеер Яндекс Музыки',
             height: 244,
           }
+        }
+      }
+
+      const playlistMatch = path.match(/\/users\/([^/]+)\/playlists\/(\d+)(?:\/|$)/i)
+      if (playlistMatch) {
+        const owner = decodeURIComponent(playlistMatch[1])
+        const playlistId = playlistMatch[2]
+        return {
+          provider: 'yandex_music',
+          providerLabel: 'Яндекс Музыка',
+          embedUrl: buildYandexPlaylistEmbedUrl(owner, playlistId),
+          title: 'Плейлист Яндекс Музыки',
+          height: 340,
+        }
+      }
+
+      const iframePlaylistMatch = parsed.hash.match(/#playlist\/([^/]+)\/(\d+)(?:\/|$)/i)
+      if (iframePlaylistMatch) {
+        const owner = decodeURIComponent(iframePlaylistMatch[1])
+        const playlistId = iframePlaylistMatch[2]
+        return {
+          provider: 'yandex_music',
+          providerLabel: 'Яндекс Музыка',
+          embedUrl: buildYandexPlaylistEmbedUrl(owner, playlistId),
+          title: 'Плейлист Яндекс Музыки',
+          height: 340,
         }
       }
     }
@@ -108,6 +140,17 @@
           providerLabel: 'Spotify',
           embedUrl: `https://open.spotify.com/embed/album/${albumMatch[1]}?utm_source=comuna`,
           title: 'Плеер Spotify',
+          height: 352,
+        }
+      }
+
+      const playlistMatch = path.match(/\/playlist\/([A-Za-z0-9]+)(?:\/|$)/)
+      if (playlistMatch) {
+        return {
+          provider: 'spotify',
+          providerLabel: 'Spotify',
+          embedUrl: `https://open.spotify.com/embed/playlist/${playlistMatch[1]}?utm_source=comuna`,
+          title: 'Плейлист Spotify',
           height: 352,
         }
       }
