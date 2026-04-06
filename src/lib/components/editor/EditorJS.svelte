@@ -636,6 +636,90 @@
     }
   }
 
+  class CalloutTool {
+    private textInput: HTMLTextAreaElement | null = null
+    private preview: HTMLElement | null = null
+    private data: { text: string } = { text: '' }
+
+    static get toolbox() {
+      return {
+        title: 'Врезка',
+        icon: `
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M3 4.25C3 3.55964 3.55964 3 4.25 3H11.75C12.4404 3 13 3.55964 13 4.25V11.75C13 12.4404 12.4404 13 11.75 13H4.25C3.55964 13 3 12.4404 3 11.75V4.25Z" stroke="currentColor" stroke-width="1.3"/>
+            <path d="M5.25 6H10.75" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+            <path d="M5.25 8H9.75" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" opacity="0.82"/>
+            <path d="M5.25 10H8.75" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" opacity="0.64"/>
+          </svg>
+        `,
+      }
+    }
+
+    constructor({ data }: { data?: { text?: unknown } }) {
+      this.data = {
+        text: typeof data?.text === 'string' ? data.text.trim() : '',
+      }
+    }
+
+    private escapeHtml(value: string): string {
+      return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+    }
+
+    private updatePreview() {
+      if (!this.preview) return
+      const text = this.textInput?.value.trim() || ''
+      this.data.text = text
+      const previewText = text || 'Здесь будет выделенный фрагмент текста.'
+      this.preview.innerHTML = `
+        <div class="callout-tool-preview__line"></div>
+        <div class="callout-tool-preview__body">
+          <div class="callout-tool-preview__eyebrow">Врезка</div>
+          <div class="callout-tool-preview__text">${this.escapeHtml(previewText).replace(/\r?\n/g, '<br>')}</div>
+        </div>
+      `
+    }
+
+    render() {
+      const wrapper = document.createElement('div')
+      wrapper.classList.add('callout-tool')
+
+      const title = document.createElement('div')
+      title.classList.add('callout-tool__title')
+      title.textContent = 'Врезка'
+
+      const textarea = document.createElement('textarea')
+      textarea.classList.add('callout-tool__textarea')
+      textarea.rows = 4
+      textarea.placeholder = 'Текст, который нужно визуально выделить в материале'
+      textarea.value = this.data.text
+      this.textInput = textarea
+
+      const preview = document.createElement('div')
+      preview.classList.add('callout-tool-preview')
+      this.preview = preview
+
+      textarea.addEventListener('input', () => this.updatePreview())
+
+      wrapper.appendChild(title)
+      wrapper.appendChild(textarea)
+      wrapper.appendChild(preview)
+
+      this.updatePreview()
+      return wrapper
+    }
+
+    save() {
+      return {
+        text: this.textInput?.value.trim() || '',
+      }
+    }
+  }
+
   class AuthorTool {
     private data = normalizeAuthorBlockData({})
     private preview: HTMLElement | null = null
@@ -4119,6 +4203,11 @@
               },
             }
           : {}),
+        ...(enabledTemplateBlockTypes.has('callout')
+          ? {
+              callout: CalloutTool,
+            }
+          : {}),
         ...(enabledTemplateBlockTypes.has('author')
           ? {
               author: AuthorTool,
@@ -5387,6 +5476,105 @@
     font-size: 0.82rem;
     line-height: 1.45;
     color: #cbd5e1;
+  }
+
+  :global(.callout-tool) {
+    border-radius: 0.9rem;
+    border: 1px solid rgba(251, 191, 36, 0.34);
+    background:
+      radial-gradient(circle at top left, rgba(251, 191, 36, 0.12), transparent 54%),
+      linear-gradient(135deg, rgba(23, 23, 23, 0.98), rgba(30, 41, 59, 0.95));
+    color: #e2e8f0;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+  }
+
+  :global(.dark .callout-tool) {
+    border-color: rgba(251, 191, 36, 0.3);
+  }
+
+  :global(.callout-tool__title) {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #fff;
+  }
+
+  :global(.callout-tool__textarea) {
+    width: 100%;
+    min-height: 5.4rem;
+    resize: vertical;
+    border-radius: 0.78rem;
+    border: 1px solid rgba(251, 191, 36, 0.24);
+    background: rgba(15, 23, 42, 0.72);
+    color: #fff;
+    font-size: 0.92rem;
+    line-height: 1.55;
+    padding: 0.9rem 1rem;
+  }
+
+  :global(.callout-tool__textarea::placeholder) {
+    color: #fdba74;
+  }
+
+  :global(.callout-tool__textarea:focus) {
+    outline: none;
+    border-color: rgba(251, 191, 36, 0.72);
+    box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.14);
+  }
+
+  :global(.callout-tool-preview) {
+    display: grid;
+    grid-template-columns: 2.6rem minmax(0, 1fr);
+    gap: 0.9rem;
+    align-items: stretch;
+  }
+
+  :global(.callout-tool-preview__line) {
+    border-radius: 999px;
+    background:
+      linear-gradient(180deg, rgba(251, 191, 36, 0.18), rgba(251, 191, 36, 0.78), rgba(251, 191, 36, 0.18));
+    box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.12);
+  }
+
+  :global(.callout-tool-preview__body) {
+    border-radius: 1rem;
+    border: 1px solid rgba(251, 191, 36, 0.26);
+    background: rgba(15, 23, 42, 0.62);
+    padding: 0.9rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.38rem;
+    min-width: 0;
+  }
+
+  :global(.callout-tool-preview__eyebrow) {
+    color: #fde68a;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  :global(.callout-tool-preview__text) {
+    color: #f8fafc;
+    font-size: 0.95rem;
+    line-height: 1.55;
+  }
+
+  @media (max-width: 760px) {
+    :global(.callout-tool-preview) {
+      grid-template-columns: 1fr;
+      gap: 0.55rem;
+    }
+
+    :global(.callout-tool-preview__line) {
+      height: 4px;
+      width: 100%;
+      background:
+        linear-gradient(90deg, rgba(251, 191, 36, 0.18), rgba(251, 191, 36, 0.78), rgba(251, 191, 36, 0.18));
+    }
   }
 
   :global(.poll-tool) {

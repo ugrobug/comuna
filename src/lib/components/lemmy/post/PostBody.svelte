@@ -1336,6 +1336,21 @@
       </div>`
     }
 
+    const renderCalloutBlock = (raw: any): string => {
+      if (!isTemplateEditorBlockEnabled(template?.type ?? '', 'callout')) return ''
+
+      const text = typeof raw?.text === 'string' ? raw.text.trim() : ''
+      if (!text) return ''
+
+      return `<div class="post-callout">
+        <span class="post-callout__line" aria-hidden="true"></span>
+        <div class="post-callout__body">
+          <span class="post-callout__eyebrow">Врезка</span>
+          <div class="post-callout__text">${escapeHtml(text).replace(/\r?\n/g, '<br>')}</div>
+        </div>
+      </div>`
+    }
+
     const resolvePostRatingBlockId = (block: any, index: number): string => {
       const rawBlockId =
         (typeof block?.id === 'string' && block.id.trim()
@@ -1819,6 +1834,8 @@
         return renderTableBlock(block.data)
       case 'quote':
         return renderQuoteBlockHtml(block.data)
+      case 'callout':
+        return renderCalloutBlock(block.data)
       case 'code':
         return `<pre><code>${block.data.code}</code></pre>`;
       case 'poll':
@@ -3785,6 +3802,52 @@
     line-height: 1.35;
   }
 
+  :global(.post-content .post-callout) {
+    margin: 1.1rem 0;
+    display: grid;
+    grid-template-columns: 0.36rem minmax(0, 1fr);
+    gap: 0.95rem;
+    align-items: stretch;
+  }
+
+  :global(.post-content .post-callout__line) {
+    width: 100%;
+    border-radius: 999px;
+    background:
+      linear-gradient(180deg, rgba(251, 191, 36, 0.16), rgba(251, 191, 36, 0.85), rgba(251, 191, 36, 0.16));
+    box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.12);
+  }
+
+  :global(.post-content .post-callout__body) {
+    min-width: 0;
+    border-radius: 1rem;
+    border: 1px solid rgba(251, 191, 36, 0.32);
+    background:
+      radial-gradient(120% 120% at 0% 0%, rgba(251, 191, 36, 0.18), rgba(251, 191, 36, 0) 62%),
+      linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.9));
+    box-shadow: 0 12px 26px rgba(15, 23, 42, 0.12);
+    padding: 1rem 1.05rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.42rem;
+  }
+
+  :global(.post-content .post-callout__eyebrow) {
+    color: #fde68a;
+    font-size: 0.72rem;
+    line-height: 1.2;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+
+  :global(.post-content .post-callout__text) {
+    color: #f8fafc;
+    font-size: 1rem;
+    line-height: 1.7;
+    font-weight: 500;
+  }
+
   :global(.post-content .post-movie-time) {
     margin: 0 0.28rem;
     display: inline-flex;
@@ -4094,6 +4157,17 @@
     :global(.post-content .post-author-card__body) {
       width: 100%;
       border-radius: 1rem;
+    }
+
+    :global(.post-content .post-callout) {
+      grid-template-columns: 1fr;
+      gap: 0.55rem;
+    }
+
+    :global(.post-content .post-callout__line) {
+      height: 4px;
+      background:
+        linear-gradient(90deg, rgba(251, 191, 36, 0.16), rgba(251, 191, 36, 0.85), rgba(251, 191, 36, 0.16));
     }
   }
 

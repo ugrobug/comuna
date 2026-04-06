@@ -7,6 +7,7 @@ export type TemplateEditorBlockType =
   | 'table'
   | 'image'
   | 'quote'
+  | 'callout'
   | 'author'
   | 'code'
   | 'poll'
@@ -114,6 +115,7 @@ const TEMPLATE_EDITOR_BLOCK_TYPE_VALUES = new Set<TemplateEditorBlockType>([
   'table',
   'image',
   'quote',
+  'callout',
   'author',
   'code',
   'poll',
@@ -137,6 +139,7 @@ const ALL_TEMPLATE_EDITOR_BLOCK_OPTIONS: TemplateEditorBlockOption[] = [
   { type: 'table', label: 'Таблица' },
   { type: 'image', label: 'Изображение' },
   { type: 'quote', label: 'Цитата' },
+  { type: 'callout', label: 'Врезка' },
   { type: 'author', label: 'Автор' },
   { type: 'code', label: 'Код' },
   { type: 'poll', label: 'Опрос' },
