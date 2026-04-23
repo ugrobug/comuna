@@ -189,7 +189,7 @@
       <div class="flex flex-col gap-1">
         {#each items as item}
           <a
-            href={item.link_url || '/settings#notifications'}
+            href={item.link_url || '/settings#notifications-history'}
             class="block rounded-lg px-2 py-2 transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800 {item.is_read ? '' : 'bg-blue-50/70 dark:bg-blue-950/30'}"
             on:click={() => {
               onMarkRead(item).catch(() => {})
@@ -222,10 +222,10 @@
 
     <div class="pt-1 mt-1 border-t border-slate-200 dark:border-zinc-800">
       <a
-        href="/settings#notifications"
+        href="/settings#notifications-history"
         class="block rounded-lg px-2 py-2 text-sm text-slate-700 dark:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
       >
-        Настройки оповещений
+        Все оповещения
       </a>
     </div>
   </div>

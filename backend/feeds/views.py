@@ -556,6 +556,13 @@ def _maybe_notify_author_comment(post: Post, comment: PostComment) -> None:
     telegram_bot._send_bot_message(int(author.admin_chat_id), text)
 
 
+def _site_comment_link(post: Post, comment: PostComment | None = None) -> str:
+    base_path = _post_public_path(post)
+    if comment and getattr(comment, "id", None):
+        return f"{base_path}#site-comment-{comment.id}"
+    return f"{base_path}#comments"
+
+
 def _author_owner_users_for_notifications(author: Author) -> list[User]:
     user_ids = set(
         AuthorAdmin.objects.filter(author=author, verified_at__isnull=False).values_list(
@@ -571,6 +578,81 @@ def _author_owner_users_for_notifications(author: Author) -> list[User]:
     if not user_ids:
         return []
     return list(User.objects.filter(id__in=user_ids))
+
+
+def _maybe_notify_post_comment(post: Post, comment: PostComment) -> None:
+    recipients = _author_owner_users_for_notifications(post.author)
+    if not recipients:
+        return
+
+    commenter_name = _comment_display_username(comment) or "Пользователь"
+    post_title = _post_display_title(post)
+    comment_preview = _comment_preview(comment.body)
+    link_url = _site_comment_link(post, comment)
+    payload = {
+        "post_id": post.id,
+        "comment_id": comment.id,
+        "comment_parent_id": comment.parent_id,
+        "commenter_user_id": comment.user_id,
+        "commenter_name": commenter_name,
+        "post_author_id": post.author_id,
+    }
+    message = (
+        f"Пользователь {commenter_name} оставил комментарий к вашему посту "
+        f"«{post_title}»: {comment_preview}"
+    )
+
+    for recipient in recipients:
+        if recipient.id == comment.user_id:
+            continue
+        create_user_notification(
+            user=recipient,
+            event_key="post_comment",
+            title="Новый комментарий к вашему посту",
+            message=message,
+            link_url=link_url,
+            payload=payload,
+        )
+
+
+def _maybe_notify_comment_reply(
+    post: Post,
+    parent: PostComment | None,
+    comment: PostComment,
+) -> None:
+    if not parent:
+        return
+    if parent.is_deleted:
+        return
+    if getattr(parent, "persona_key", ""):
+        return
+    if not parent.user_id or parent.user_id == comment.user_id:
+        return
+
+    replier_name = _comment_display_username(comment) or "Пользователь"
+    post_title = _post_display_title(post)
+    comment_preview = _comment_preview(comment.body)
+    link_url = _site_comment_link(post, comment)
+    payload = {
+        "post_id": post.id,
+        "comment_id": comment.id,
+        "parent_comment_id": parent.id,
+        "replier_user_id": comment.user_id,
+        "replier_name": replier_name,
+    }
+    message = (
+        f"Пользователь {replier_name} ответил на ваш комментарий "
+        f"в посте «{post_title}»: {comment_preview}"
+    )
+
+    create_user_notification(
+        user=parent.user,
+        event_key="comment_reply",
+        title="Ответ на ваш комментарий",
+        message=message,
+        link_url=link_url,
+        payload=payload,
+    )
 
 
 def _is_voting_comun_category(category: ComunCategory | None) -> bool:
@@ -2039,6 +2121,8 @@ def post_comments(request: HttpRequest, post_id: int) -> HttpResponse:
     )
     Post.objects.filter(id=post.id).update(comments_count=F("comments_count") + 1)
     post.refresh_from_db(fields=["comments_count"])
+    _maybe_notify_post_comment(post, comment)
+    _maybe_notify_comment_reply(post, parent, comment)
     _maybe_notify_author_comment(post, comment)
 
     return JsonResponse(

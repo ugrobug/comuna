@@ -226,14 +226,17 @@ def list_site_notifications_for_user(
     user: User,
     *,
     limit: int = 10,
+    offset: int = 0,
     unread_only: bool = False,
-) -> tuple[list[SiteNotification], int]:
+) -> tuple[list[SiteNotification], int, int]:
     safe_limit = min(max(int(limit or 10), 1), 50)
+    safe_offset = max(int(offset or 0), 0)
     base_qs = SiteNotification.objects.filter(user=user, is_site=True)
     list_qs = base_qs.filter(read_at__isnull=True) if unread_only else base_qs
-    items = list(list_qs.order_by("-created_at", "-id")[:safe_limit])
+    total_count = list_qs.count()
+    items = list(list_qs.order_by("-created_at", "-id")[safe_offset : safe_offset + safe_limit])
     unread_count = base_qs.filter(read_at__isnull=True).count()
-    return items, unread_count
+    return items, unread_count, total_count
 
 
 def mark_site_notification_read_for_user(

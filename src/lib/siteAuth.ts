@@ -75,6 +75,7 @@ export type SiteNotificationItem = {
   title: string
   message: string
   link_url?: string | null
+  payload?: Record<string, unknown>
   is_read: boolean
   read_at?: string | null
   created_at: string
@@ -742,13 +743,20 @@ export const searchPostsForVotePoll = async (
   return normalized
 }
 
-export const fetchSiteNotifications = async (limit = 10, unreadOnly = false) => {
+export const fetchSiteNotifications = async (
+  limit = 10,
+  unreadOnly = false,
+  offset = 0
+) => {
   const token = get(siteToken)
   if (!token) {
     throw new Error('Нужна авторизация')
   }
 
-  const params = new URLSearchParams({ limit: String(limit) })
+  const params = new URLSearchParams({
+    limit: String(limit),
+    offset: String(Math.max(0, offset)),
+  })
   if (unreadOnly) {
     params.set('unread_only', '1')
   }
@@ -767,6 +775,7 @@ export const fetchSiteNotifications = async (limit = 10, unreadOnly = false) => 
   return {
     items: (data?.items || []) as SiteNotificationItem[],
     unread_count: Number(data?.unread_count || 0),
+    total_count: Number(data?.total_count || 0),
   }
 }
 

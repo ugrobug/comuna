@@ -56,10 +56,6 @@
     node.comment.updated_at &&
     new Date(node.comment.updated_at).getTime() > commentDate.getTime()
 
-  const forward = (event: CustomEvent) => {
-    dispatch(event.type, event.detail)
-  }
-
   const setComment = (comment: SiteComment) => {
     node = { ...node, comment }
   }
@@ -121,7 +117,7 @@
 
 <LoginModal bind:open={showLoginModal} />
 
-<li class={itemClass}>
+<li class={itemClass} id={`site-comment-${node.comment.id}`}>
   <div class="flex gap-2 sm:gap-3">
     <Avatar
       url={node.comment.user?.avatar_url || undefined}
@@ -261,9 +257,9 @@
           {postId}
           {postAuthor}
           {commentMasks}
-          on:reply={forward}
-          on:update={forward}
-          on:remove={forward}
+          on:reply={(event) => dispatch('reply', event.detail)}
+          on:update={(event) => dispatch('update', event.detail)}
+          on:remove={(event) => dispatch('remove', event.detail)}
         />
       {/each}
     </ul>

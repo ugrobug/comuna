@@ -59,10 +59,15 @@ def auth_notifications(request: HttpRequest) -> HttpResponse:
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
 
     limit_raw = request.GET.get("limit", "10")
+    offset_raw = request.GET.get("offset", "0")
     try:
         limit = min(max(int(limit_raw), 1), 50)
     except ValueError:
         limit = 10
+    try:
+        offset = max(int(offset_raw), 0)
+    except ValueError:
+        offset = 0
 
     unread_only = (request.GET.get("unread_only") or "").strip().lower() in (
         "1",
@@ -70,9 +75,10 @@ def auth_notifications(request: HttpRequest) -> HttpResponse:
         "yes",
     )
 
-    notifications, unread_count = list_site_notifications_for_user(
+    notifications, unread_count, total_count = list_site_notifications_for_user(
         user,
         limit=limit,
+        offset=offset,
         unread_only=unread_only,
     )
 
@@ -81,6 +87,7 @@ def auth_notifications(request: HttpRequest) -> HttpResponse:
             "ok": True,
             "items": [_serialize_site_notification_item(item) for item in notifications],
             "unread_count": unread_count,
+            "total_count": total_count,
         }
     )
 
