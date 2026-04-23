@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from django.conf import settings
 from django.http import HttpRequest
 
 from ratings.service import author_rating_value
@@ -11,6 +12,9 @@ def _author_avatar_url(request: HttpRequest | None, author: Any) -> str | None:
     avatar_image = getattr(author, "avatar_image", None)
     if avatar_image:
         try:
+            site_base = (getattr(settings, "SITE_BASE_URL", "") or "").rstrip("/")
+            if site_base:
+                return f"{site_base}{avatar_image.url}"
             if request is not None:
                 return request.build_absolute_uri(avatar_image.url)
             return avatar_image.url

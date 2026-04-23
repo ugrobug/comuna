@@ -470,6 +470,7 @@ def _serialize_comment_user(comment: PostComment) -> dict:
             "display_name": (
                 getattr(getattr(persona_user, "site_profile", None), "display_name", "") or persona.get("display_name") or persona["username"]
             ),
+            "avatar_url": _site_user_avatar_url(None, persona_user) if persona_user else None,
             "profile_url": f"/id{persona_user_id}" if persona_user_id else None,
             "is_mask": True,
         }
@@ -484,6 +485,7 @@ def _serialize_comment_user(comment: PostComment) -> dict:
         "id": comment.user_id,
         "username": (getattr(comment.user, "username", "") or "").strip() or "user",
         "display_name": display_name or None,
+        "avatar_url": _site_user_avatar_url(None, comment.user),
         "profile_url": f"/id{comment.user_id}" if comment.user_id else None,
         "is_mask": False,
     }
@@ -2315,10 +2317,7 @@ def recent_comments(request: HttpRequest) -> HttpResponse:
             "id": comment.id,
             "body": comment.body,
             "created_at": comment.created_at.isoformat(),
-            "user": {
-                "id": comment.user_id,
-                "username": _comment_display_username(comment),
-            },
+            "user": _serialize_comment_user(comment),
             "post": {"id": comment.post_id, "title": _post_display_title(comment.post)},
         }
         for comment in comments

@@ -10,7 +10,11 @@
     body: string
     created_at: string
     user: {
+      id: number
       username: string
+      display_name?: string | null
+      avatar_url?: string | null
+      profile_url?: string | null
     }
     post: {
       id: number
@@ -30,6 +34,9 @@
     if (normalized.length <= 160) return normalized
     return `${normalized.slice(0, 160)}...`
   }
+
+  const commentUserLabel = (comment: RecentComment) =>
+    (comment.user.display_name || '').trim() || comment.user.username
 
   async function fetchRecentComments() {
     try {
@@ -77,7 +84,7 @@
         >
           <div class="flex items-start gap-2">
             <Avatar
-              url={undefined}
+              url={comment.user.avatar_url || undefined}
               alt={comment.user.username}
               width={28}
               class_="w-7 h-7 rounded-full"
@@ -85,7 +92,7 @@
             <div class="flex flex-col gap-1 min-w-0">
               <div class="flex items-center gap-2 text-xs text-slate-500 dark:text-zinc-400">
                 <span class="font-medium text-slate-900 dark:text-zinc-200">
-                  {comment.user.username}
+                  {commentUserLabel(comment)}
                 </span>
                 <span>•</span>
                 <RelativeDate date={new Date(comment.created_at)} />

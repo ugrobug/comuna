@@ -33,8 +33,15 @@
   $: commentDate = new Date(node.comment.created_at)
   $: commenterProfileUrl =
     node.comment.user?.profile_url || (node.comment.user?.id ? `/id${node.comment.user.id}` : null)
-  $: commenterLabel = node.comment.user?.username || 'user'
-  $: commenterAlt = node.comment.user?.display_name || commenterLabel
+  $: commenterLabel =
+    (node.comment.user?.display_name || '').trim() || node.comment.user?.username || 'user'
+  $: commenterHandle =
+    node.comment.user?.username &&
+    (node.comment.user?.display_name || '').trim() &&
+    node.comment.user.display_name?.trim() !== node.comment.user.username
+      ? `@${node.comment.user.username}`
+      : ''
+  $: commenterAlt = commenterLabel
   $: edited =
     node.comment.updated_at &&
     new Date(node.comment.updated_at).getTime() > commentDate.getTime()
@@ -106,7 +113,11 @@
 
 <li class="relative flex flex-col gap-3 rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 shadow-sm">
   <div class="flex gap-3">
-    <Avatar width={depth > 0 ? 28 : 36} alt={commenterAlt} />
+    <Avatar
+      url={node.comment.user?.avatar_url || undefined}
+      width={depth > 0 ? 28 : 36}
+      alt={commenterAlt}
+    />
     <div class="flex-1 min-w-0">
       <div class="flex items-center gap-2 text-xs text-slate-500 dark:text-zinc-400 flex-wrap">
         {#if commenterProfileUrl}
@@ -114,11 +125,16 @@
             href={commenterProfileUrl}
             class="text-sm font-semibold text-slate-900 dark:text-zinc-100 hover:text-sky-600 dark:hover:text-sky-400 transition"
           >
-            @{commenterLabel}
+            {commenterLabel}
           </a>
         {:else}
           <span class="text-sm font-semibold text-slate-900 dark:text-zinc-100">
-            @{commenterLabel}
+            {commenterLabel}
+          </span>
+        {/if}
+        {#if commenterHandle}
+          <span class="text-xs text-slate-400 dark:text-zinc-500">
+            {commenterHandle}
           </span>
         {/if}
         {#if isAuthor}

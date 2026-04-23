@@ -12,6 +12,7 @@ export type SiteComment = {
     id?: number | null
     username: string
     display_name?: string | null
+    avatar_url?: string | null
     profile_url?: string | null
     is_mask?: boolean
   }
