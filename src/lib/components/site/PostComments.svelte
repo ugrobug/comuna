@@ -121,7 +121,7 @@
   {:else if comments.length === 0}
     <p class="text-sm text-slate-500">Комментариев пока нет.</p>
   {:else}
-    <ul class="flex flex-col gap-6">
+    <ul class="flex flex-col gap-4">
       {#each commentTree as node (node.comment.id)}
         <SiteCommentItem
           {node}

@@ -28,6 +28,16 @@
   let deleting = false
   let showLoginModal = false
 
+  $: isReply = depth > 0
+  $: avatarSize = depth > 0 ? 28 : 36
+  $: itemClass = isReply
+    ? 'relative flex flex-col gap-2 rounded-none border-0 bg-transparent px-0 py-0 shadow-none'
+    : 'relative flex flex-col gap-3 rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 shadow-sm'
+  $: childrenClass =
+    depth >= 2
+      ? 'mt-3 ml-0 pl-3 sm:pl-4 border-l border-slate-200 dark:border-zinc-800 flex flex-col gap-3'
+      : 'mt-3 ml-3 pl-3 sm:ml-4 sm:pl-4 border-l border-slate-200 dark:border-zinc-800 flex flex-col gap-3'
+
   $: isAuthor = postAuthor && node.comment.user.username === postAuthor
   $: isDeleted = Boolean(node.comment.is_deleted)
   $: commentDate = new Date(node.comment.created_at)
@@ -111,11 +121,11 @@
 
 <LoginModal bind:open={showLoginModal} />
 
-<li class="relative flex flex-col gap-3 rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 shadow-sm">
-  <div class="flex gap-3">
+<li class={itemClass}>
+  <div class="flex gap-2 sm:gap-3">
     <Avatar
       url={node.comment.user?.avatar_url || undefined}
-      width={depth > 0 ? 28 : 36}
+      width={avatarSize}
       alt={commenterAlt}
     />
     <div class="flex-1 min-w-0">
@@ -149,7 +159,7 @@
       </div>
 
       {#if editing}
-        <div class="mt-3">
+        <div class="mt-2">
           <SiteCommentForm
             {postId}
             {commentMasks}
@@ -167,7 +177,7 @@
           />
         </div>
       {:else}
-        <div class="mt-2 text-sm text-slate-800 dark:text-zinc-100">
+        <div class="mt-1.5 text-sm text-slate-800 dark:text-zinc-100">
           {#if isDeleted}
             <span class="italic text-slate-500">Комментарий удален</span>
           {:else}
@@ -177,7 +187,7 @@
       {/if}
 
       {#if !editing}
-        <div class="mt-3 flex items-center gap-3 text-xs text-slate-500 dark:text-zinc-400">
+        <div class="mt-2 flex items-center gap-3 text-xs text-slate-500 dark:text-zinc-400 flex-wrap">
           <button
             type="button"
             class="flex items-center gap-1 hover:text-slate-700 dark:hover:text-zinc-200 transition"
@@ -222,7 +232,7 @@
       {/if}
 
       {#if replying}
-        <div class="mt-3">
+        <div class="mt-2">
           <SiteCommentForm
             {postId}
             {commentMasks}
@@ -243,7 +253,7 @@
   </div>
 
   {#if node.children.length > 0}
-    <ul class="mt-4 ml-4 pl-4 border-l border-slate-200 dark:border-zinc-800 flex flex-col gap-4">
+    <ul class={childrenClass}>
       {#each node.children as child (child.comment.id)}
         <svelte:self
           node={child}
