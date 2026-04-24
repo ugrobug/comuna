@@ -35,22 +35,11 @@
   let createTitle = ''
   let createContent = ''
   let createCategoryId = ''
-  let createAuthorChoice = ''
   let creating = false
   let createError = ''
   let comunCategories: NonNullable<BackendComun['categories']> = []
   let canCreateInComun = false
   let createCategoryAutofilledFromQuery = false
-  const SITE_AUTHOR_CHOICE = '__site__'
-
-  type PublishIdentityOption = {
-    value: string
-    label: string
-    kind: 'site' | 'channel'
-    username?: string
-    author_rating?: number | null
-  }
-  let publishIdentityOptions: PublishIdentityOption[] = []
   let createTemplateType: '' | PostTemplateType = ''
   let createMovieReviewData: MovieReviewTemplateData = createEmptyMovieReviewTemplateData()
   let createPostVotePollData: PostVotePollTemplateData = createEmptyPostVotePollTemplateData()
@@ -171,50 +160,6 @@
     templateEditorBlockSettings
   )
   $: editorTemplateBlocksKey = `${createTemplateType || 'basic'}:${editorEnabledTemplateBlockTypes.join(',')}`
-  $: publishIdentityOptions = (() => {
-    if (!$siteUser) return [] as PublishIdentityOption[]
-    const siteLabelBase = ($siteUser.display_name || '').trim() || `@${$siteUser.username}`
-    const items: PublishIdentityOption[] = [
-      {
-        value: SITE_AUTHOR_CHOICE,
-        label: siteLabelBase,
-        kind: 'site',
-        username: $siteUser.username,
-      },
-    ]
-    for (const author of $siteUser.authors ?? []) {
-      items.push({
-        value: `channel:${author.username}`,
-        label: `@${author.username}${author.title ? ` — ${author.title}` : ''} · рейтинг ${formatRatingValue(author.author_rating)}`,
-        kind: 'channel',
-        username: author.username,
-        author_rating: typeof author.author_rating === 'number' ? author.author_rating : null,
-      })
-    }
-    return items
-  })()
-  $: if ($siteUser && !createAuthorChoice) {
-    const eligibleOption =
-      publishIdentityOptions.find(
-        (option) =>
-          option.kind === 'channel' &&
-          Math.max(Number(option.author_rating ?? 0) || 0, 0) >= minimumAuthorRatingToPost
-      ) ?? null
-    createAuthorChoice =
-      eligibleOption?.value ??
-      ($siteUser.authors?.length ? `channel:${$siteUser.authors[0]?.username || ''}` : SITE_AUTHOR_CHOICE)
-  }
-  $: selectedAuthorOption =
-    publishIdentityOptions.find((option) => option.value === createAuthorChoice) ?? null
-  $: selectedAuthorRating =
-    selectedAuthorOption?.kind === 'channel'
-      ? Math.max(Number(selectedAuthorOption.author_rating ?? 0) || 0, 0)
-      : null
-  $: selectedAuthorBelowMinimum =
-    minimumAuthorRatingToPost > 0 &&
-    selectedAuthorOption?.kind === 'channel' &&
-    selectedAuthorRating !== null &&
-    selectedAuthorRating < minimumAuthorRatingToPost
 
   const createPost = async () => {
     if (!$siteUser || !comun?.slug) return
@@ -266,11 +211,7 @@
       await createComunPost(comun.slug, {
         title: createTitle.trim(),
         content: createContent.trim(),
-        author_source: createAuthorChoice === SITE_AUTHOR_CHOICE ? 'site' : undefined,
-        author_username:
-          createAuthorChoice && createAuthorChoice !== SITE_AUTHOR_CHOICE
-            ? createAuthorChoice.replace(/^channel:/, '')
-            : undefined,
+        author_source: 'site',
         comun_category_id: createCategoryId ? Number(createCategoryId) : null,
         template: template ?? undefined,
       })
@@ -369,27 +310,6 @@
             <div class="mt-2 whitespace-pre-line text-sm leading-relaxed text-slate-700 dark:text-zinc-300">
               {comun.rules_text}
             </div>
-          </div>
-        {/if}
-
-        {#if publishIdentityOptions.length > 1}
-          <label class="flex flex-col gap-1">
-            <span class="text-sm text-slate-700 dark:text-zinc-300">Публиковать от имени</span>
-            <select
-              bind:value={createAuthorChoice}
-              class="w-full rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"
-            >
-              {#each publishIdentityOptions as authorOption}
-                <option value={authorOption.value}>{authorOption.label}</option>
-              {/each}
-            </select>
-          </label>
-        {/if}
-
-        {#if selectedAuthorBelowMinimum}
-          <div class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-200">
-            У выбранного автора рейтинг {formatRatingValue(selectedAuthorRating)}, а для публикации в этой
-            сообществе нужен рейтинг от {formatRatingValue(minimumAuthorRatingToPost)}.
           </div>
         {/if}
 

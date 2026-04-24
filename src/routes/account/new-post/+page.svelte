@@ -73,7 +73,6 @@
   let selectedTemplateOption = POST_TEMPLATE_TYPE_OPTIONS[0]
   let publishIdentityOptions: PublishIdentityOption[] = []
   let selectedIdentity: PublishIdentityOption | undefined
-  let selectedChannelIdentity: PublishIdentityOption | undefined
   const SITE_AUTHOR_CHOICE = '__site__'
   const LOCAL_DRAFT_STORAGE_KEY = 'comuna.site.new-post.buffer.v1'
   let createTemplateType: '' | PostTemplateType = ''
@@ -97,11 +96,9 @@
     value: string
     label: string
     shortLabel: string
-    kind: 'site' | 'channel'
+    kind: 'site'
     username?: string
-    title?: string | null
     avatar_url?: string | null
-    rubric_slug?: string | null
   }
 
   $: availableComuns = comuns.filter((comun) => Boolean(comun.can_post))
@@ -139,7 +136,7 @@
   $: publishIdentityOptions = (() => {
     if (!$siteUser) return [] as PublishIdentityOption[]
     const siteLabelBase = ($siteUser.display_name || '').trim() || `@${$siteUser.username}`
-    const items: PublishIdentityOption[] = [
+    return [
       {
         value: SITE_AUTHOR_CHOICE,
         label: siteLabelBase,
@@ -149,22 +146,8 @@
         avatar_url: $siteUser.avatar_url ?? null,
       },
     ]
-    for (const author of $siteUser.authors ?? []) {
-      items.push({
-        value: `channel:${author.username}`,
-        label: `@${author.username}${author.title ? ` — ${author.title}` : ''}`,
-        shortLabel: author.title?.trim() || `@${author.username}`,
-        kind: 'channel',
-        username: author.username,
-        title: author.title ?? null,
-        avatar_url: author.avatar_url ?? null,
-        rubric_slug: author.rubric_slug ?? null,
-      })
-    }
-    return items
   })()
   $: selectedIdentity = publishIdentityOptions.find((item) => item.value === createAuthor)
-  $: selectedChannelIdentity = selectedIdentity?.kind === 'channel' ? selectedIdentity : undefined
   $: allowedTemplateTypeSet = new Set(selectedAllowedTemplateTypes)
   $: availableTemplateTypeOptions = POST_TEMPLATE_TYPE_OPTIONS.filter((option) =>
     option.value ? allowedTemplateTypeSet.has(option.value) : allowedTemplateTypeSet.has('basic')
@@ -217,11 +200,7 @@
     return {
       title: createTitle.trim(),
       content: createContent.trim(),
-      author_source: createAuthor === SITE_AUTHOR_CHOICE ? ('site' as const) : undefined,
-      author_username:
-        createAuthor && createAuthor !== SITE_AUTHOR_CHOICE
-          ? createAuthor.replace(/^channel:/, '')
-          : undefined,
+      author_source: 'site' as const,
       tags: tags.length ? tags : undefined,
       template: template ?? undefined,
     }
@@ -582,9 +561,7 @@
   })
 
   $: if ($siteUser && !createAuthor) {
-    createAuthor = $siteUser.authors?.length
-      ? `channel:${$siteUser.authors[0]?.username || ''}`
-      : SITE_AUTHOR_CHOICE
+    createAuthor = SITE_AUTHOR_CHOICE
   }
   $: if (
     createComunSlug &&
@@ -631,10 +608,6 @@
       createError = 'Текст поста не может быть пустым.'
       return
     }
-    if (publishIdentityOptions.length > 1 && !createAuthor) {
-      createError = 'Выберите автора публикации.'
-      return
-    }
     if (!createComunSlug) {
       createError = 'Выберите сообщество для публикации.'
       return
@@ -661,11 +634,7 @@
       await createComunPost(createComunSlug, {
         title: createTitle.trim(),
         content: createContent.trim(),
-        author_source: createAuthor === SITE_AUTHOR_CHOICE ? ('site' as const) : undefined,
-        author_username:
-          createAuthor && createAuthor !== SITE_AUTHOR_CHOICE
-            ? createAuthor.replace(/^channel:/, '')
-            : undefined,
+        author_source: 'site' as const,
         comun_category_id: createComunCategoryId ? Number(createComunCategoryId) : null,
         template: template ?? undefined,
       })

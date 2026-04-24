@@ -48,11 +48,9 @@
     value: string
     label: string
     shortLabel: string
-    kind: 'site' | 'channel'
+    kind: 'site'
     username?: string
-    title?: string | null
     avatar_url?: string | null
-    rubric_slug?: string | null
   }
 
   const SITE_AUTHOR_CHOICE = '__site__'
@@ -75,7 +73,6 @@
   let selectedComun: BackendComun | undefined
   let publishIdentityOptions: PublishIdentityOption[] = []
   let selectedIdentity: PublishIdentityOption | undefined
-  let selectedChannelIdentity: PublishIdentityOption | undefined
   let templateEditorBlockSettings: TemplateEditorBlockSettings = {}
   let availableTemplateTypeOptions = POST_TEMPLATE_TYPE_OPTIONS
   let selectedTemplateOption = POST_TEMPLATE_TYPE_OPTIONS[0]
@@ -125,7 +122,7 @@
   $: publishIdentityOptions = (() => {
     if (!$siteUser) return [] as PublishIdentityOption[]
     const siteLabelBase = ($siteUser.display_name || '').trim() || `@${$siteUser.username}`
-    const items: PublishIdentityOption[] = [
+    return [
       {
         value: SITE_AUTHOR_CHOICE,
         label: siteLabelBase,
@@ -135,22 +132,8 @@
         avatar_url: $siteUser.avatar_url ?? null,
       },
     ]
-    for (const author of $siteUser.authors ?? []) {
-      items.push({
-        value: `channel:${author.username}`,
-        label: `@${author.username}${author.title ? ` — ${author.title}` : ''}`,
-        shortLabel: author.title?.trim() || `@${author.username}`,
-        kind: 'channel',
-        username: author.username,
-        title: author.title ?? null,
-        avatar_url: author.avatar_url ?? null,
-        rubric_slug: author.rubric_slug ?? null,
-      })
-    }
-    return items
   })()
   $: selectedIdentity = publishIdentityOptions.find((item) => item.value === editAuthor)
-  $: selectedChannelIdentity = selectedIdentity?.kind === 'channel' ? selectedIdentity : undefined
   $: editorEnabledTemplateBlockTypes = resolveEnabledTemplateEditorBlockTypes(
     editTemplateType,
     templateEditorBlockSettings
@@ -242,14 +225,11 @@
   const buildEditPayload = () => {
     const tags = buildTags()
     const template = buildTemplate()
+    const useSiteAuthor = Boolean(post?.is_draft)
     return {
       title: editTitle,
       content: editContent.trim(),
-      author_source: editAuthor === SITE_AUTHOR_CHOICE ? ('site' as const) : undefined,
-      author_username:
-        editAuthor && editAuthor !== SITE_AUTHOR_CHOICE
-          ? editAuthor.replace(/^channel:/, '')
-          : undefined,
+      author_source: useSiteAuthor ? ('site' as const) : undefined,
       rubric_slug: selectedComun?.source_rubric?.slug || undefined,
       tags,
       template: editTemplateType ? template : null,
@@ -326,17 +306,6 @@
   }
 
   const resolveAuthorValue = (currentPost: SiteUserPost) => {
-    const username = currentPost.author?.username || ''
-    if ($siteUser?.username && username === $siteUser.username) {
-      return SITE_AUTHOR_CHOICE
-    }
-    const channelOption = publishIdentityOptions.find(
-      (item) => item.kind === 'channel' && item.username === username
-    )
-    if (channelOption) return channelOption.value
-    if ($siteUser?.authors?.length) {
-      return `channel:${$siteUser.authors[0]?.username || ''}`
-    }
     return SITE_AUTHOR_CHOICE
   }
 
@@ -634,11 +603,6 @@
     clearDraftSavedNoticeHideTimer()
   })
 
-  $: if (post?.is_draft && !editComunSlug && selectedChannelIdentity?.rubric_slug) {
-    const authorRubric = selectedChannelIdentity.rubric_slug || ''
-    const authorComun = comuns.find((comun) => comun.source_rubric?.slug === authorRubric)
-    if (authorComun?.slug) editComunSlug = authorComun.slug
-  }
   $: if (
     editComunSlug &&
     editComunCategoryId &&

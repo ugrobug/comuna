@@ -1916,8 +1916,6 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
 
         title = str(payload.get("title") or "").strip()
         content = str(payload.get("content") or "").strip()
-        author_source = str(payload.get("author_source") or "").strip().lower()
-        author_username = str(payload.get("author_username") or "").strip()
         template_payload, template_error = editor_service._normalize_post_template_payload(
             payload.get("template"),
             resolve_post_refs=True,
@@ -1959,38 +1957,9 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
         if template_access_error:
             return JsonResponse({"ok": False, "error": template_access_error}, status=400)
 
-        author_links = list(
-            AuthorAdmin.objects.filter(user=current_user, verified_at__isnull=False)
-            .select_related("author")
-            .order_by("author__username")
-        )
-        author_ids = [link.author_id for link in author_links]
-        personal_author = Author.objects.filter(
-            username__iexact=(current_user.username or "").strip(),
-            channel_url="",
-            channel_id__isnull=True,
-        ).first()
-        if personal_author and personal_author.id not in author_ids:
-            author_ids.append(personal_author.id)
-
-        author = None
-        personal_author_error = None
-        if author_source == "site":
-            author, personal_author_error = editor_service._get_or_create_personal_author(current_user)
-            if personal_author_error:
-                return JsonResponse({"ok": False, "error": personal_author_error}, status=400)
-        elif author_username:
-            author = (
-                Author.objects.filter(id__in=author_ids, username__iexact=author_username).first()
-            )
-            if not author:
-                return JsonResponse({"ok": False, "error": "author not found"}, status=404)
-        elif len(author_links) == 1:
-            author = author_links[0].author
-        else:
-            author, personal_author_error = editor_service._get_or_create_personal_author(current_user)
-            if personal_author_error:
-                return JsonResponse({"ok": False, "error": personal_author_error}, status=400)
+        author, personal_author_error = editor_service._get_or_create_personal_author(current_user)
+        if personal_author_error:
+            return JsonResponse({"ok": False, "error": personal_author_error}, status=400)
         if not author:
             return JsonResponse({"ok": False, "error": "author not found"}, status=400)
 

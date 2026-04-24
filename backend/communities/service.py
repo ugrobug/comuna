@@ -296,6 +296,20 @@ def _public_user_author_ids(user: User) -> tuple[list[int], list[AuthorAdmin]]:
     return author_ids, author_links
 
 
+def _personal_user_author(user: User | None) -> Author | None:
+    if not user:
+        return None
+    return (
+        Author.objects.filter(
+            username__iexact=(user.username or "").strip(),
+            channel_url="",
+            channel_id__isnull=True,
+        )
+        .order_by("id")
+        .first()
+    )
+
+
 def _normalize_comun_category_name(raw_name: object) -> str:
     return re.sub(r"\s+", " ", str(raw_name or "").strip())
 
@@ -661,14 +675,12 @@ def _comun_post_access_state(
         author_rating = author_rating_value(getattr(author, "rating_total", 0))
         return author_rating >= minimum_rating, minimum_rating, author_rating
 
-    author_ids, _author_links = _public_user_author_ids(user)
-    if not author_ids:
+    personal_author = _personal_user_author(user)
+    if not personal_author:
         return False, minimum_rating, 0.0
 
-    max_author_rating = 0.0
-    for total_rating in Author.objects.filter(id__in=author_ids).values_list("rating_total", flat=True):
-        max_author_rating = max(max_author_rating, author_rating_value(total_rating))
-    return max_author_rating >= minimum_rating, minimum_rating, max_author_rating
+    personal_author_rating = author_rating_value(getattr(personal_author, "rating_total", 0))
+    return personal_author_rating >= minimum_rating, minimum_rating, personal_author_rating
 
 
 def _comun_post_access_error_message(

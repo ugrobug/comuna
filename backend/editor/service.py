@@ -2044,38 +2044,12 @@ def _resolve_manual_post_author(
     author_username: str,
     allow_default: bool = False,
 ) -> tuple[Author | None, str | None]:
-    author = None
-    personal_author_error = None
-    if author_source == "site":
-        personal_author, personal_author_error = _get_or_create_personal_author(user)
-        if personal_author_error:
-            return None, personal_author_error
-        if personal_author:
-            author = personal_author
-    elif author_username:
-        author = Author.objects.filter(id__in=author_ids, username__iexact=author_username).first()
-        if not author:
-            return None, "author not found"
-    elif len(author_links) == 1:
-        author = author_links[0].author
-    elif not author_links:
-        personal_author, personal_author_error = _get_or_create_personal_author(user)
-        if personal_author_error:
-            return None, personal_author_error
-        if personal_author:
-            author = personal_author
-    elif allow_default:
-        if author_links:
-            author = author_links[0].author
-        else:
-            personal_author, personal_author_error = _get_or_create_personal_author(user)
-            if personal_author_error:
-                return None, personal_author_error
-            if personal_author:
-                author = personal_author
-    else:
-        return None, "author required"
-    return author, None
+    personal_author, personal_author_error = _get_or_create_personal_author(user)
+    if personal_author_error:
+        return None, personal_author_error
+    if personal_author:
+        return personal_author, None
+    return None, "author required"
 
 
 def _resolve_manual_post_rubric(
