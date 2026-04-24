@@ -749,6 +749,21 @@ def _comun_source_filter(comun: Comun) -> Q | None:
     return combined_filter if has_source else None
 
 
+def _comun_manual_posts_filter(comun: Comun) -> Q | None:
+    comun_slug = str(getattr(comun, "slug", "") or "").strip()
+    if not comun_slug:
+        return None
+    return Q(raw_data__source="manual_comun", raw_data__comun_slug=comun_slug)
+
+
+def _comun_post_membership_filter(comun: Comun) -> Q | None:
+    source_filter = _comun_source_filter(comun)
+    manual_filter = _comun_manual_posts_filter(comun)
+    if source_filter and manual_filter:
+        return source_filter | manual_filter
+    return source_filter or manual_filter
+
+
 def _is_internal_comuna_url(url_value: str) -> bool:
     raw_value = str(url_value or "").strip()
     if not raw_value:
@@ -864,12 +879,12 @@ def _recalculate_comun_rating(comun_id: int) -> tuple[int, int, int]:
 
 def _comun_posts_base_queryset(comun: Comun, now=None):
     now = now or timezone.now()
-    source_filter = _comun_source_filter(comun)
-    if not source_filter:
+    membership_filter = _comun_post_membership_filter(comun)
+    if not membership_filter:
         return Post.objects.none()
     base_query = (
         Post.objects.filter(
-            source_filter,
+            membership_filter,
             is_blocked=False,
             is_pending=False,
             author__is_blocked=False,
@@ -980,7 +995,9 @@ __all__ = [
     "_comun_glossary_queryset",
     "_comun_is_moderator",
     "_comun_logo_url",
+    "_comun_manual_posts_filter",
     "_comun_minimum_author_rating_value",
+    "_comun_post_membership_filter",
     "_comun_post_access_error_message",
     "_comun_post_access_state",
     "_comun_posts_base_queryset",

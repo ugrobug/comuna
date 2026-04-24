@@ -1908,14 +1908,6 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
     if request.method == "POST":
         if not current_user:
             return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
-        if _comun_source_filter(comun) is None:
-            return JsonResponse(
-                {
-                    "ok": False,
-                    "error": "comun source not set",
-                },
-                status=400,
-            )
 
         try:
             payload = json.loads(request.body.decode("utf-8") or "{}")
@@ -2114,29 +2106,6 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
     now = timezone.now()
     visible_categories = _comun_categories_list(comun)
     all_posts_query = _comun_posts_base_queryset(comun, now)
-    if _comun_source_filter(comun) is None:
-        return JsonResponse(
-            {
-                "ok": True,
-                "comun": _serialize_comun(
-                    request, comun, current_user=current_user, include_activity=True
-                ),
-                "posts": [],
-                "selected_category": (
-                    _serialize_comun_category(selected_category, comun) if selected_category else None
-                ),
-                "total_count": 0,
-                "category_counts": [
-                    {
-                        "category_id": category.id,
-                        "slug": category.slug,
-                        "count": 0,
-                    }
-                    for category in visible_categories
-                ],
-                "uncategorized_count": 0,
-            }
-        )
     if comun.welcome_post_id:
         all_posts_query = all_posts_query.exclude(id=comun.welcome_post_id)
 
@@ -2257,14 +2226,14 @@ def comun_post_category_update(request: HttpRequest, slug: str, post_id: int) ->
         if not category:
             return JsonResponse({"ok": False, "error": "category not found"}, status=400)
 
-    source_filter = _comun_source_filter(comun)
-    if not source_filter:
-        return JsonResponse({"ok": False, "error": "comun source not set"}, status=400)
+    membership_filter = _comun_post_membership_filter(comun)
+    if not membership_filter:
+        return JsonResponse({"ok": False, "error": "post not found in comun"}, status=404)
 
     post = (
         Post.objects.filter(id=post_id, is_blocked=False, is_pending=False, author__is_blocked=False)
         .filter(community_service._publish_ready_filter(timezone.now()))
-        .filter(source_filter)
+        .filter(membership_filter)
         .distinct()
         .first()
     )
@@ -2345,6 +2314,7 @@ _comun_logo_url = community_service._comun_logo_url
 _comun_product_tag_filter = community_service._comun_product_tag_filter
 _comun_source_tags_list = community_service._comun_source_tags_list
 _comun_source_filter = community_service._comun_source_filter
+_comun_post_membership_filter = community_service._comun_post_membership_filter
 _is_internal_comuna_url = community_service._is_internal_comuna_url
 _text_contains_external_links = community_service._text_contains_external_links
 _payload_contains_external_links = community_service._payload_contains_external_links
@@ -2368,6 +2338,7 @@ __all__ = [
     "_attach_pending_comuns_for_author",
     "_author_telegram_source_comun",
     "_comun_creation_access_state",
+    "_comun_post_membership_filter",
     "_comun_source_filter",
     "_post_comun_slug",
     "_serialize_comun_profile_card",
