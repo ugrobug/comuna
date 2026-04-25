@@ -10,7 +10,7 @@ from django.conf import settings
 from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils import timezone
-from feeds.models import Author, Post, Rubric
+from feeds.models import Author, Post
 from telegram_integration.models import BotSession
 from users.models import AuthorAdmin, AuthorVerificationCode
 
@@ -136,31 +136,9 @@ def _refresh_author_from_telegram(author: Author, chat_ref, token: str) -> None:
     )
 
 
-def _build_rubric_keyboard() -> list[list[dict]]:
-    rubrics = list(
-        Rubric.objects.filter(
-            is_active=True,
-            is_hidden=False,
-            allow_for_telegram_channel=True,
-        ).order_by("sort_order", "name")
-    )
-    keyboard: list[list[dict]] = []
-    row: list[dict] = []
-    for rubric in rubrics:
-        row.append({"text": rubric.name, "callback_data": f"rubric:{rubric.id}"})
-        if len(row) == 2:
-            keyboard.append(row)
-            row = []
-    if row:
-        keyboard.append(row)
-    return keyboard
-
-
 def _get_admin_authors(chat_id: int) -> list[Author]:
     return list(
-        Author.objects.filter(admin_chat_id=chat_id, is_blocked=False)
-        .select_related("rubric")
-        .order_by("username")
+        Author.objects.filter(admin_chat_id=chat_id, is_blocked=False).order_by("username")
     )
 
 
@@ -176,7 +154,7 @@ def _send_channel_picker(chat_id: int, prompt: str) -> bool:
         _send_bot_message(
             chat_id,
             "Сначала добавьте бота администратором в канал и дайте права "
-            "«Читать сообщения» и «Публиковать сообщения».",
+            "на чтение - их достаточно для работы бота.",
         )
         return False
     keyboard: list[list[dict]] = []
@@ -195,7 +173,6 @@ def _send_channel_picker(chat_id: int, prompt: str) -> bool:
 def _send_channel_settings_menu(chat_id: int, author: Author) -> None:
     mode_label = "Автопубликация" if author.auto_publish else "Согласование"
     delay_label = _format_delay_label(author.publish_delay_days)
-    rubric_label = author.rubric.name if author.rubric else "не выбрана"
     invite_label = "установлена" if author.invite_url else "не задана"
     comments_notify_label = "включены" if author.notify_comments else "выключены"
     _send_bot_message_with_keyboard(
@@ -203,14 +180,12 @@ def _send_channel_settings_menu(chat_id: int, author: Author) -> None:
         "Настройки для канала "
         f"@{author.username}:\n"
         f"Режим: {mode_label}\n"
-        f"Тематика: {rubric_label}\n"
         f"Задержка: {delay_label}\n"
         f"Ссылка: {invite_label}\n"
         f"Оповещения о комментариях: {comments_notify_label}",
         {
             "inline_keyboard": [
                 [{"text": "Режим публикации", "callback_data": "settings:mode"}],
-                [{"text": "Тематика канала", "callback_data": "settings:rubric"}],
                 [{"text": "Задержка публикации", "callback_data": "settings:delay"}],
                 [{"text": "Оповещать о комментариях", "callback_data": "settings:comments_notify"}],
                 [{"text": "Ссылка для подписки", "callback_data": "settings:invite"}],
@@ -237,13 +212,11 @@ def _send_setup_options(chat_id: int) -> None:
             ]
         },
     )
-    rubric_keyboard = _build_rubric_keyboard()
-    if rubric_keyboard:
-        _send_bot_message_with_keyboard(
-            chat_id,
-            "Выберите тематику канала",
-            {"inline_keyboard": rubric_keyboard},
-        )
+    _send_bot_message(
+        chat_id,
+        "Под ваш канал на сайте будет создано одноименное сообщество. "
+        "Чтобы управлять им, зарегистрируйтесь на сайте Comuna.",
+    )
     _send_bot_message_with_keyboard(
         chat_id,
         "Выберите задержку публикации:",
@@ -273,10 +246,12 @@ def _send_setup_instructions(chat_id: int, auto_publish: bool, delay_days: int) 
     _send_bot_message(
         chat_id,
         "Отлично! Теперь:\n"
-        "1) Добавьте бота в админы канала.\n"
-        "2) Дайте права: «Читать сообщения» и «Публиковать сообщения».\n"
-        "3) По желанию добавьте ссылку приглашения на канал.\n"
-        "4) Для старых постов — пересылайте их сюда, и они появятся на сайте.\n"
+        "1) Под ваш канал на сайте будет создано одноименное сообщество.\n"
+        "2) Чтобы управлять им, зарегистрируйтесь на сайте Comuna.\n"
+        "3) Добавьте бота в админы канала.\n"
+        "4) Дайте права на чтение - их достаточно для работы бота.\n"
+        "5) По желанию добавьте ссылку приглашения на канал.\n"
+        "6) Для старых постов — пересылайте их сюда, и они появятся на сайте.\n"
         f"{publish_line}\n"
         f"{delay_line}",
     )
@@ -286,7 +261,7 @@ def _maybe_send_setup_instructions(chat_id: int) -> None:
     session = BotSession.objects.filter(telegram_user_id=chat_id).first()
     if not session or session.instructions_sent:
         return
-    if session.mode_selected and session.rubric:
+    if session.mode_selected:
         _send_setup_instructions(chat_id, session.auto_publish, session.publish_delay_days)
         session.instructions_sent = True
         session.save(update_fields=["instructions_sent", "updated_at"])
@@ -324,14 +299,6 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
         if not _is_bot_admin(chat_id, token):
             return
         _refresh_author_from_telegram(author, chat_id, token)
-
-    if not author.rubric:
-        if author.admin_chat_id and token:
-            _send_bot_message(
-                author.admin_chat_id,
-                "Перед первой публикацией необходимо выбрать тематику канала.",
-            )
-        return
 
     raw_text = _fv()._extract_plain_text(message)
     explicit_tags = _fv()._extract_hashtags(raw_text)
@@ -545,7 +512,7 @@ def _handle_private_message(message: dict) -> None:
             "Привет! Это бот Comuna.ru он публикует твои посты на сайте, они "
             "собирают аудиторию из поисковых систем и ведут ее к тебе в канал. "
             "Чтобы запустить бота добавь его администратором к себе в канал и "
-            "выбери тематику канала и настройки публикации ниже",
+            "настрой режим публикации ниже",
             {"keyboard": [["Помощь", "Настройка"]], "resize_keyboard": True},
         )
         _send_setup_options(chat_id)
@@ -555,11 +522,13 @@ def _handle_private_message(message: dict) -> None:
         _send_bot_message(
             chat_id,
             "Как подключить канал:\n"
-            "1) Выберите рубрику и режим публикации в настройке.\n"
+            "1) Выберите режим публикации в настройке.\n"
             "2) Добавьте бота админом в канал.\n"
             "3) Дайте права на чтение - их достаточно для работы бота.\n"
-            "4) По желанию добавьте ссылку приглашения на канал.\n"
-            "5) Для старых постов — пересылайте их сюда.\n"
+            "4) Под ваш канал на сайте будет создано одноименное сообщество.\n"
+            "5) Чтобы управлять им, зарегистрируйтесь на сайте Comuna.\n"
+            "6) По желанию добавьте ссылку приглашения на канал.\n"
+            "7) Для старых постов — пересылайте их сюда.\n"
             "Сайт: https://comuna.ru/authors",
         )
         return
@@ -642,7 +611,7 @@ def _handle_private_message(message: dict) -> None:
         session = BotSession.objects.filter(telegram_user_id=chat_id).first()
         author = Author.objects.filter(username__iexact=forward_chat.get("username")).first()
 
-        if not author and session and session.rubric:
+        if not author:
             author, _ = Author.objects.get_or_create(
                 username=forward_chat.get("username"),
                 defaults={
@@ -652,20 +621,11 @@ def _handle_private_message(message: dict) -> None:
                 },
             )
 
-        if author and not author.rubric:
-            _send_bot_message(
-                chat_id,
-                "Перед первой публикацией необходимо выбрать тематику канала.",
-            )
-            return
-
         if session and author:
             apply_session = session.selected_author is None or session.selected_author_id == author.id
             if apply_session:
                 author.auto_publish = session.auto_publish
                 author.admin_chat_id = chat_id
-                if session.rubric:
-                    author.rubric = session.rubric
                 if session.invite_url:
                     author.invite_url = session.invite_url
                 if session.publish_delay_days:
@@ -674,14 +634,11 @@ def _handle_private_message(message: dict) -> None:
                     update_fields=[
                         "auto_publish",
                         "admin_chat_id",
-                        "rubric",
                         "invite_url",
                         "publish_delay_days",
                         "updated_at",
                     ]
                 )
-                if author.rubric:
-                    Post.objects.filter(author=author).update(rubric=author.rubric)
                 if session.selected_author is None:
                     session.delete()
 
@@ -767,9 +724,6 @@ def _handle_my_chat_member(update: dict) -> None:
     if session and session.selected_author is None:
         author.auto_publish = session.auto_publish
         update_fields.append("auto_publish")
-        if session.rubric:
-            author.rubric = session.rubric
-            update_fields.append("rubric")
         if session.invite_url:
             author.invite_url = session.invite_url
             update_fields.append("invite_url")
@@ -779,16 +733,14 @@ def _handle_my_chat_member(update: dict) -> None:
 
     author.save(update_fields=update_fields)
 
-    if session and author.rubric:
-        Post.objects.filter(author=author).update(rubric=author.rubric)
-
     token = settings.TELEGRAM_BOT_TOKEN
     if token:
         _refresh_author_from_telegram(author, f"@{username}", token)
 
     _send_bot_message(
         admin_chat_id,
-        f"Канал @{author.username} подключён. Настройки применены.",
+        f"Канал @{author.username} подключён. Для него на сайте будет создано одноименное "
+        "сообщество. Чтобы управлять им, зарегистрируйтесь на сайте Comuna.",
     )
 
 
@@ -802,7 +754,7 @@ def _handle_callback_query(callback_query: dict) -> None:
     if chat_id:
         session = (
             BotSession.objects.filter(telegram_user_id=chat_id)
-            .select_related("selected_author", "rubric")
+            .select_related("selected_author")
             .first()
         )
 
@@ -825,32 +777,7 @@ def _handle_callback_query(callback_query: dict) -> None:
         return
 
     if data.startswith("rubric:") and chat_id:
-        try:
-            rubric_id = int(data.split(":", 1)[1])
-        except ValueError:
-            _answer_callback_query(callback_id, "Некорректная рубрика")
-            return
-        rubric = Rubric.objects.filter(
-            id=rubric_id,
-            is_active=True,
-            is_hidden=False,
-            allow_for_telegram_channel=True,
-        ).first()
-        if not rubric:
-            _answer_callback_query(callback_id, "Рубрика не найдена")
-            return
-        if session and session.selected_author:
-            author = session.selected_author
-            author.rubric = rubric
-            author.save(update_fields=["rubric", "updated_at"])
-            Post.objects.filter(author=author).update(rubric=rubric)
-            _answer_callback_query(callback_id, "Рубрика сохранена")
-            _send_bot_message(chat_id, f"Тематика обновлена для @{author.username}.")
-            return
-        BotSession.objects.update_or_create(
-            telegram_user_id=chat_id, defaults={"rubric": rubric}
-        )
-        _answer_callback_query(callback_id, "Рубрика сохранена")
+        _answer_callback_query(callback_id, "Тематика больше не настраивается в боте")
         _maybe_send_setup_instructions(chat_id)
         return
 
@@ -946,16 +873,7 @@ def _handle_callback_query(callback_query: dict) -> None:
             )
             return
         if action == "rubric":
-            rubric_keyboard = _build_rubric_keyboard()
-            if rubric_keyboard:
-                _answer_callback_query(callback_id, "Выберите тематику")
-                _send_bot_message_with_keyboard(
-                    chat_id,
-                    "Выберите тематику канала",
-                    {"inline_keyboard": rubric_keyboard},
-                )
-            else:
-                _answer_callback_query(callback_id, "Нет доступных рубрик")
+            _answer_callback_query(callback_id, "Тематика больше не настраивается в боте")
             return
         if action == "delay":
             _answer_callback_query(callback_id, "Выберите задержку")
