@@ -5,6 +5,7 @@
   import Post from '$lib/components/lemmy/post/Post.svelte'
   import { feedKeyboardShortcuts } from '$lib/actions/feedKeyboardShortcuts'
   import {
+    backendPostCommunityPath,
     backendPostToPostView,
     buildBackendPostPath,
     buildPublicUserProfileUrl,
@@ -422,7 +423,7 @@
             showFullBody={false}
             linkOverride={buildBackendPostPath(backendPost)}
             userUrlOverride={backendPost.author?.username ? `/${backendPost.author.username}` : undefined}
-            communityUrlOverride={backendPost.rubric_slug ? `/rubrics/${backendPost.rubric_slug}/posts` : undefined}
+            communityUrlOverride={backendPostCommunityPath(backendPost)}
             subscribeUrl={backendPost.channel_url ?? backendPost.author?.channel_url}
             subscribeLabel="Подписаться"
           />

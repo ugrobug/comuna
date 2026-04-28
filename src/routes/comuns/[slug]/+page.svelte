@@ -8,6 +8,7 @@
   import ComunRoadmapModal from '$lib/components/comuns/ComunRoadmapModal.svelte'
   import { feedKeyboardShortcuts } from '$lib/actions/feedKeyboardShortcuts'
   import {
+    backendPostCommunityPath,
     backendPostToPostView,
     buildBackendPostPath,
     buildComunPostsUrl,
@@ -1274,7 +1275,7 @@
         showFullBody={false}
         linkOverride={buildBackendPostPath(comun.welcome_post)}
         userUrlOverride={comun.welcome_post.author?.username ? `/${comun.welcome_post.author.username}` : undefined}
-        communityUrlOverride={comun.welcome_post.rubric_slug ? `/rubrics/${comun.welcome_post.rubric_slug}/posts` : undefined}
+        communityUrlOverride={backendPostCommunityPath(comun.welcome_post)}
         subscribeUrl={comun.welcome_post.channel_url ?? comun.welcome_post.author?.channel_url}
         subscribeLabel="Подписаться"
       />
@@ -1294,7 +1295,7 @@
             showFullBody={false}
             linkOverride={buildBackendPostPath(backendPost)}
             userUrlOverride={backendPost.author?.username ? `/${backendPost.author.username}` : undefined}
-            communityUrlOverride={backendPost.rubric_slug ? `/rubrics/${backendPost.rubric_slug}/posts` : undefined}
+            communityUrlOverride={backendPostCommunityPath(backendPost)}
             subscribeUrl={backendPost.channel_url ?? backendPost.author?.channel_url}
             subscribeLabel="Подписаться"
           />

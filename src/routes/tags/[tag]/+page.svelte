@@ -7,7 +7,12 @@
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import Post from '$lib/components/lemmy/post/Post.svelte'
   import { feedKeyboardShortcuts } from '$lib/actions/feedKeyboardShortcuts'
-  import { backendPostToPostView, buildBackendPostPath, buildTagPostsUrl } from '$lib/api/backend'
+  import {
+    backendPostCommunityPath,
+    backendPostToPostView,
+    buildBackendPostPath,
+    buildTagPostsUrl,
+  } from '$lib/api/backend'
   import { userSettings } from '$lib/settings'
   import { normalizeTag } from '$lib/tags'
 
@@ -166,7 +171,7 @@
           showFullBody={false}
           linkOverride={buildBackendPostPath(backendPost)}
           userUrlOverride={backendPost.author?.username ? `/${backendPost.author.username}` : undefined}
-          communityUrlOverride={backendPost.rubric_slug ? `/rubrics/${backendPost.rubric_slug}/posts` : undefined}
+          communityUrlOverride={backendPostCommunityPath(backendPost)}
           subscribeUrl={backendPost.channel_url ?? backendPost.author?.channel_url}
           subscribeLabel="Подписаться"
         />

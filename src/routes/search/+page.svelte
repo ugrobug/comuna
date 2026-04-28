@@ -176,7 +176,7 @@
             post={item.post}
             linkOverride={item.linkOverride}
             userUrlOverride={item.authorUsername ? `/${item.authorUsername}` : undefined}
-            communityUrlOverride={item.rubricSlug ? `/rubrics/${item.rubricSlug}/posts` : undefined}
+            communityUrlOverride={item.communityUrl}
             subscribeUrl={item.channelUrl}
           />
         {/each}

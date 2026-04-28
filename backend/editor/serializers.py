@@ -209,6 +209,7 @@ def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None
                 "id": comun.id,
                 "name": comun.name,
                 "slug": comun.slug,
+                "logo_url": _fv().community_service._comun_logo_url(request, comun),
             }
             if comun
             else None

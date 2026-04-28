@@ -110,6 +110,7 @@ def _serialize_feed_post_card(
         "rubric": rubric.name if rubric else None,
         "rubric_slug": rubric.slug if rubric else None,
         "rubric_icon_url": _fv()._rubric_icon_url(request, rubric),
+        "comun": _fv().community_service._serialize_post_comun(request, post),
         "content": content,
         "poll": poll_payload,
         "source_url": post.source_url,

@@ -548,6 +548,13 @@ export type BackendComun = {
   }
 }
 
+export type BackendPostComun = {
+  id: number
+  name: string
+  slug: string
+  logo_url?: string | null
+}
+
 export type BackendPublicSiteUser = {
   id: number
   username: string
@@ -641,6 +648,8 @@ export type BackendPost = {
   rubric?: string | null
   rubric_slug?: string | null
   rubric_icon_url?: string | null
+  comun?: BackendPostComun | null
+  comun_slug?: string | null
   comments_count?: number
   likes_count?: number
   views_count?: number
@@ -652,6 +661,12 @@ export type BackendPost = {
   author?: BackendAuthor
 }
 
+export const backendPostCommunityPath = (post: BackendPost): string | undefined => {
+  const comunSlug = post.comun?.slug ?? post.comun_slug
+  if (comunSlug) return `/comuns/${encodeURIComponent(comunSlug)}`
+  return post.rubric_slug ? `/rubrics/${encodeURIComponent(post.rubric_slug)}/posts` : undefined
+}
+
 export const backendPostToPostView = (
   post: BackendPost,
   fallbackAuthor?: BackendAuthor
@@ -661,16 +676,21 @@ export const backendPostToPostView = (
   const authorTitle = author?.title ?? authorName
   const rubricName = post.rubric ?? undefined
   const rubricSlug = post.rubric_slug ?? undefined
+  const comunName = post.comun?.name ?? undefined
+  const comunSlug = post.comun?.slug ?? post.comun_slug ?? undefined
+  const comunLogoUrl = post.comun?.logo_url ?? undefined
   const sourceUrl = typeof post.source_url === 'string' ? post.source_url.trim() : ''
   const authorChannelUrl = typeof author?.channel_url === 'string' ? author.channel_url.trim() : ''
   const communityName =
-    rubricSlug ?? (rubricName ? rubricName.toLowerCase().replace(/\s+/g, '-') : 'no-rubric')
-  const communityTitle = rubricName ?? 'Без рубрики'
+    comunSlug ??
+    rubricSlug ??
+    (rubricName ? rubricName.toLowerCase().replace(/\s+/g, '-') : 'no-rubric')
+  const communityTitle = comunName ?? rubricName ?? 'Без рубрики'
 
   const titleWithTags = post.title
 
   const creatorId = stableId(authorName)
-  const communityId = rubricSlug ? stableId(rubricSlug) : stableId(`${authorName}-rubric`)
+  const communityId = communityName ? stableId(communityName) : stableId(`${authorName}-rubric`)
 
   return {
     post: {
@@ -720,8 +740,8 @@ export const backendPostToPostView = (
       id: communityId,
       name: communityName,
       title: communityTitle,
-      actor_id: `https://rubrics.local/${communityName}`,
-      icon: post.rubric_icon_url ?? undefined,
+      actor_id: comunSlug ? `https://comuns.local/${communityName}` : `https://rubrics.local/${communityName}`,
+      icon: comunLogoUrl ?? post.rubric_icon_url ?? undefined,
       local: true,
       deleted: false,
       hidden: false,

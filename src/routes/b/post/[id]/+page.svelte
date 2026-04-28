@@ -5,7 +5,13 @@
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import Post from '$lib/components/lemmy/post/Post.svelte'
   import PostComments from '$lib/components/site/PostComments.svelte'
-  import { backendPostToPostView, buildBackendPostPath, buildPostReadUrl, buildPostViewUrl } from '$lib/api/backend'
+  import {
+    backendPostCommunityPath,
+    backendPostToPostView,
+    buildBackendPostPath,
+    buildPostReadUrl,
+    buildPostViewUrl,
+  } from '$lib/api/backend'
   import { siteToken } from '$lib/siteAuth'
   import { parseSerializedEditorModel, looksLikeSerializedEditorModel } from '$lib/util'
 
@@ -264,7 +270,7 @@
       showFullBody={true}
       linkOverride={buildBackendPostPath(data.post)}
       userUrlOverride={data.post.author?.username ? `/${data.post.author.username}` : undefined}
-      communityUrlOverride={data.post.rubric_slug ? `/rubrics/${data.post.rubric_slug}/posts` : undefined}
+      communityUrlOverride={backendPostCommunityPath(data.post)}
       subscribeUrl={data.post.channel_url ?? data.post.author?.channel_url}
       subscribeLabel="Подписаться"
     />

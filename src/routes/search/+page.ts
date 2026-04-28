@@ -1,6 +1,11 @@
 import { env } from '$env/dynamic/public'
 import { profile } from '$lib/auth.js'
-import { buildBackendPostPath, buildSearchUrl, backendPostToPostView } from '$lib/api/backend'
+import {
+  backendPostCommunityPath,
+  buildBackendPostPath,
+  buildSearchUrl,
+  backendPostToPostView,
+} from '$lib/api/backend'
 import { client, getClient } from '$lib/lemmy.js'
 import { getItemPublished } from '$lib/lemmy/item.js'
 import type {
@@ -41,7 +46,7 @@ export async function load({ url, fetch }) {
       post: backendPostToPostView(backendPost, backendPost.author),
       linkOverride: buildBackendPostPath(backendPost),
       authorUsername: backendPost.author?.username,
-      rubricSlug: backendPost.rubric_slug ?? undefined,
+      communityUrl: backendPostCommunityPath(backendPost),
       channelUrl: backendPost.channel_url ?? backendPost.author?.channel_url,
     }))
 

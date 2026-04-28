@@ -618,6 +618,45 @@ def _post_comun_slug(post: Post) -> str:
     return str(raw_data.get("comun_slug") or "").strip()
 
 
+def _post_comun(post: Post) -> Comun | None:
+    comun_slug = _post_comun_slug(post)
+    if comun_slug:
+        comun = Comun.objects.filter(slug=comun_slug, is_active=True).first()
+        if comun:
+            return comun
+
+    assignment = (
+        ComunPostCategoryAssignment.objects.select_related("comun")
+        .filter(post=post, comun__is_active=True)
+        .order_by("comun__sort_order", "comun__name")
+        .first()
+    )
+    if assignment:
+        return assignment.comun
+
+    rubric_id = getattr(post, "rubric_id", None)
+    if rubric_id:
+        return (
+            Comun.objects.filter(source_rubric_id=rubric_id, is_active=True)
+            .order_by("sort_order", "name")
+            .first()
+        )
+
+    return None
+
+
+def _serialize_post_comun(request: HttpRequest | None, post: Post) -> dict | None:
+    comun = _post_comun(post)
+    if not comun:
+        return None
+    return {
+        "id": comun.id,
+        "name": comun.name,
+        "slug": comun.slug,
+        "logo_url": _comun_logo_url(request, comun),
+    }
+
+
 def _format_rating_value(value: float | int | None) -> str:
     return format_rating_value(value)
 
@@ -1041,12 +1080,14 @@ __all__ = [
     "_parse_post_reference_to_id",
     "_parse_tag_payload",
     "_payload_contains_external_links",
+    "_post_comun",
     "_post_comun_slug",
     "_public_user_author_ids",
     "_publish_ready_filter",
     "_recalculate_comun_rating",
     "_rubric_icon_url",
     "_serialize_backend_post_card",
+    "_serialize_post_comun",
     "_site_user_avatar_url",
     "_slugify_title",
     "_sync_comun_glossary_terms",
