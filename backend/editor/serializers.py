@@ -13,6 +13,7 @@ from editor.models import (
     normalize_template_editor_blocks_for_template,
 )
 from feeds.models import Post, PostFavorite
+from communities.models import Comun, ComunPostCategoryAssignment
 
 User = get_user_model()
 
@@ -164,6 +165,27 @@ def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None
     template_payload = _serialize_post_template(post)
     is_favorite = PostFavorite.objects.filter(post=post, user=user).exists() if user else False
     is_draft = editor_service._is_post_draft(post)
+    raw_data = post.raw_data if isinstance(post.raw_data, dict) else {}
+    comun = None
+    comun_slug = str(raw_data.get("comun_slug") or "").strip()
+    if comun_slug:
+        comun = Comun.objects.filter(slug=comun_slug).first()
+    assignment = None
+    if comun:
+        assignment = (
+            ComunPostCategoryAssignment.objects.select_related("category")
+            .filter(comun=comun, post=post)
+            .first()
+        )
+    else:
+        assignment = (
+            ComunPostCategoryAssignment.objects.select_related("category", "comun")
+            .filter(post=post)
+            .first()
+        )
+        if assignment:
+            comun = assignment.comun
+            comun_slug = comun.slug
     payload = {
         "id": post.id,
         "title": _fv()._post_display_title(post),
@@ -181,6 +203,26 @@ def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None
         "rubric": rubric.name if rubric else None,
         "rubric_slug": rubric.slug if rubric else None,
         "rubric_icon_url": _fv()._rubric_icon_url(request, rubric),
+        "comun_slug": comun_slug or None,
+        "comun": (
+            {
+                "id": comun.id,
+                "name": comun.name,
+                "slug": comun.slug,
+            }
+            if comun
+            else None
+        ),
+        "comun_category_id": assignment.category_id if assignment and assignment.category_id else raw_data.get("comun_category_id"),
+        "comun_category": (
+            {
+                "id": assignment.category.id,
+                "name": assignment.category.name,
+                "slug": assignment.category.slug,
+            }
+            if assignment and assignment.category_id
+            else None
+        ),
         "comments_count": post.comments_count,
         "likes_count": post.rating,
         "views_count": _fv()._post_total_views(post),

@@ -2019,7 +2019,7 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
             message_id=message_id,
             title=title,
             content=content,
-            rubric=comun.source_rubric if comun.source_rubric_id else (author.rubric if author and author.rubric_id else None),
+            rubric=None,
             channel_url=(author.invite_url or author.channel_url or ""),
             source_url=(author.invite_url or author.channel_url or ""),
             raw_data=raw_data,

@@ -6,7 +6,7 @@ import secrets
 from datetime import timedelta
 
 from communities import views as community_views
-from communities.models import Comun, ComunPostCategoryAssignment
+from communities.models import Comun, ComunCategory, ComunPostCategoryAssignment
 from django.conf import settings
 from django.core.files.storage import default_storage
 from django.http import HttpRequest, HttpResponse, JsonResponse
@@ -52,6 +52,146 @@ def _fv():
     from feeds import views as feed_views
 
     return feed_views
+
+
+def _payload_has_any(payload: dict, keys: tuple[str, ...]) -> bool:
+    return any(key in payload for key in keys)
+
+
+_COMUN_PAYLOAD_KEYS = ("comun_slug", "community_slug", "comun", "community", "comun_id", "community_id")
+_COMUN_CATEGORY_PAYLOAD_KEYS = ("comun_category_id", "category_id")
+
+
+def _payload_comun_slug(payload: dict) -> str:
+    for key in ("comun_slug", "community_slug", "comun", "community"):
+        value = str(payload.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _payload_comun_id(payload: dict) -> int | None:
+    for key in ("comun_id", "community_id"):
+        value = community_views._parse_post_reference_to_id(payload.get(key))
+        if value:
+            return value
+    return None
+
+
+def _payload_comun_category_id(payload: dict) -> int | None:
+    for key in _COMUN_CATEGORY_PAYLOAD_KEYS:
+        if key in payload:
+            return community_views._parse_post_reference_to_id(payload.get(key))
+    return None
+
+
+def _post_comun_assignment(post: Post, comun: Comun | None = None) -> ComunPostCategoryAssignment | None:
+    queryset = ComunPostCategoryAssignment.objects.select_related("category", "comun").filter(post=post)
+    if comun is not None:
+        queryset = queryset.filter(comun=comun)
+    return queryset.first()
+
+
+def _post_comun(post: Post) -> Comun | None:
+    comun_slug = community_views._post_comun_slug(post)
+    if comun_slug:
+        comun = Comun.objects.filter(slug=comun_slug).first()
+        if comun:
+            return comun
+    assignment = _post_comun_assignment(post)
+    return assignment.comun if assignment else None
+
+
+def _resolve_payload_comun(
+    user,
+    payload: dict,
+    *,
+    post: Post | None = None,
+    allow_empty: bool = False,
+) -> tuple[Comun | None, str | None]:
+    comun_id = _payload_comun_id(payload)
+    comun_slug = _payload_comun_slug(payload)
+    category_id = _payload_comun_category_id(payload)
+
+    comun = None
+    if comun_id:
+        comun = Comun.objects.filter(id=comun_id).first()
+    elif comun_slug:
+        comun = Comun.objects.filter(slug=comun_slug).first()
+    elif category_id:
+        category = ComunCategory.objects.select_related("comun").filter(id=category_id, is_active=True).first()
+        comun = category.comun if category else None
+    elif post is not None:
+        comun = _post_comun(post)
+
+    if not comun:
+        if allow_empty:
+            return None, None
+        return None, "community required"
+    if not comun.is_active and not community_views._comun_is_moderator(user, comun):
+        return None, "community not found"
+    return comun, None
+
+
+def _resolve_payload_comun_category(
+    payload: dict,
+    comun: Comun | None,
+    *,
+    post: Post | None = None,
+) -> tuple[ComunCategory | None, bool, str | None]:
+    category_in_payload = _payload_has_any(payload, _COMUN_CATEGORY_PAYLOAD_KEYS)
+    if not comun:
+        return None, category_in_payload, None
+
+    if category_in_payload:
+        category_id = _payload_comun_category_id(payload)
+        if not category_id:
+            return None, True, None
+        category = community_views._active_comun_category_queryset(comun).filter(id=category_id).first()
+        if not category:
+            return None, True, "category not found"
+        return category, True, None
+
+    if post is not None:
+        assignment = _post_comun_assignment(post, comun)
+        if assignment and assignment.category_id and getattr(assignment.category, "is_active", True):
+            return assignment.category, False, None
+    return None, False, None
+
+
+def _apply_comun_membership_to_raw_data(raw_data: dict, comun: Comun | None, category: ComunCategory | None) -> dict:
+    next_raw_data = dict(raw_data or {})
+    if comun:
+        next_raw_data["source"] = "manual_comun"
+        next_raw_data["comun_slug"] = comun.slug
+        next_raw_data["comun_category_id"] = category.id if category else None
+    else:
+        if next_raw_data.get("source") == "manual_comun":
+            next_raw_data["source"] = "manual"
+        next_raw_data.pop("comun_slug", None)
+        next_raw_data.pop("comun_category_id", None)
+    return next_raw_data
+
+
+def _sync_comun_category_assignment(
+    *,
+    post: Post,
+    comun: Comun | None,
+    category: ComunCategory | None,
+    actor,
+) -> None:
+    if not comun:
+        ComunPostCategoryAssignment.objects.filter(post=post).delete()
+        return
+    ComunPostCategoryAssignment.objects.filter(post=post).exclude(comun=comun).delete()
+    if category:
+        ComunPostCategoryAssignment.objects.update_or_create(
+            comun=comun,
+            post=post,
+            defaults={"category": category, "assigned_by": actor},
+        )
+    else:
+        ComunPostCategoryAssignment.objects.filter(comun=comun, post=post).delete()
 
 
 @csrf_exempt
@@ -171,6 +311,20 @@ def user_posts(request: HttpRequest) -> HttpResponse:
         author_username = (payload.get("author_username") or "").strip()
         rubric_slug = (payload.get("rubric_slug") or "").strip()
         is_draft = bool(payload.get("is_draft"))
+        comun, comun_error = _resolve_payload_comun(
+            user,
+            payload,
+            allow_empty=is_draft,
+        )
+        if comun_error:
+            status_code = 404 if comun_error == "community not found" else 400
+            return JsonResponse({"ok": False, "error": comun_error}, status=status_code)
+        comun_category, _category_in_payload, category_error = _resolve_payload_comun_category(
+            payload,
+            comun,
+        )
+        if category_error:
+            return JsonResponse({"ok": False, "error": category_error}, status=400)
         explicit_tags = _fv()._parse_tag_payload(payload.get("tags"))
         template_payload, template_error = _normalize_post_template_payload(
             payload.get("template"),
@@ -196,17 +350,27 @@ def user_posts(request: HttpRequest) -> HttpResponse:
             status_code = 404 if author_error == "author not found" else 400
             return JsonResponse({"ok": False, "error": author_error}, status=status_code)
 
-        rubric, rubric_error = _resolve_manual_post_rubric(
-            user,
-            author=author,
-            rubric_slug=rubric_slug,
-            allow_empty=is_draft,
-        )
-        if rubric_error:
-            status_code = 404 if rubric_error == "rubric not found" else 400
-            return JsonResponse({"ok": False, "error": rubric_error}, status=status_code)
+        rubric = None
+        if not comun and rubric_slug:
+            rubric, rubric_error = _resolve_manual_post_rubric(
+                user,
+                author=author,
+                rubric_slug=rubric_slug,
+                allow_empty=True,
+            )
+            if rubric_error:
+                status_code = 404 if rubric_error == "rubric not found" else 400
+                return JsonResponse({"ok": False, "error": rubric_error}, status=status_code)
         requested_template_type = _requested_template_type(template_payload)
-        if rubric:
+        if comun:
+            template_access_error = _template_not_allowed_error(
+                requested_template_type,
+                community_views._allowed_templates_for_comun_category(comun, comun_category),
+                scope="comun category" if comun_category else "comun",
+            )
+            if template_access_error:
+                return JsonResponse({"ok": False, "error": template_access_error}, status=400)
+        elif rubric:
             template_access_error = _template_not_allowed_error(
                 requested_template_type,
                 _allowed_templates_for_rubric(rubric),
@@ -214,12 +378,41 @@ def user_posts(request: HttpRequest) -> HttpResponse:
             )
             if template_access_error:
                 return JsonResponse({"ok": False, "error": template_access_error}, status=400)
-        if rubric and _fv()._is_comuna_rubric(rubric):
+        if comun or (rubric and _fv()._is_comuna_rubric(rubric)):
             personal_author, personal_author_error = _get_or_create_personal_author(user)
             if personal_author_error:
                 return JsonResponse({"ok": False, "error": personal_author_error}, status=400)
             if personal_author:
                 author = personal_author
+
+        if comun and not is_draft:
+            if bool(getattr(comun, "forbid_external_links", False)) and community_views._payload_contains_external_links(
+                title=title,
+                content=content,
+                template_payload=template_payload,
+            ):
+                return JsonResponse(
+                    {"ok": False, "error": community_views._COMUN_EXTERNAL_LINKS_FORBIDDEN_ERROR},
+                    status=400,
+                )
+            can_post, _minimum_rating, author_rating = community_views._comun_post_access_state(
+                user,
+                comun,
+                author=author,
+                category=comun_category,
+            )
+            if not can_post:
+                return JsonResponse(
+                    {
+                        "ok": False,
+                        "error": community_views._comun_post_access_error_message(
+                            comun,
+                            author_rating=author_rating,
+                            category=comun_category,
+                        ),
+                    },
+                    status=403,
+                )
 
         channel_url = author.invite_url or author.channel_url
         try:
@@ -233,6 +426,7 @@ def user_posts(request: HttpRequest) -> HttpResponse:
             "source": "manual",
             **({"template": template_payload} if template_payload else {}),
         }
+        raw_data = _apply_comun_membership_to_raw_data(raw_data, comun, comun_category)
         _sync_template_derived_raw_data(raw_data, template_payload, content)
         raw_data = _set_post_draft_state(raw_data, is_draft)
 
@@ -248,6 +442,12 @@ def user_posts(request: HttpRequest) -> HttpResponse:
             is_pending=is_draft,
             is_blocked=False,
             publish_at=publish_at,
+        )
+        _sync_comun_category_assignment(
+            post=post,
+            comun=comun,
+            category=comun_category,
+            actor=user,
         )
         _fv()._apply_post_tags(post, explicit_tags)
         if not is_draft:
@@ -380,11 +580,32 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
     tags_payload = payload.get("tags") if "tags" in payload else None
     author_in_payload = "author_username" in payload or "author_source" in payload
     rubric_in_payload = "rubric_slug" in payload
+    comun_in_payload = _payload_has_any(payload, _COMUN_PAYLOAD_KEYS)
+    comun_category_in_payload = _payload_has_any(payload, _COMUN_CATEGORY_PAYLOAD_KEYS)
     template_in_payload = "template" in payload
     draft_in_payload = "is_draft" in payload
 
     current_is_draft = _is_post_draft(post)
     target_is_draft = bool(payload.get("is_draft")) if draft_in_payload else current_is_draft
+
+    next_comun, comun_error = _resolve_payload_comun(
+        user,
+        payload,
+        post=post,
+        allow_empty=target_is_draft,
+    )
+    if comun_error:
+        status_code = 404 if comun_error == "community not found" else 400
+        return JsonResponse({"ok": False, "error": comun_error}, status=status_code)
+    next_comun_category, category_was_provided, category_error = _resolve_payload_comun_category(
+        payload,
+        next_comun,
+        post=post,
+    )
+    if category_error:
+        return JsonResponse({"ok": False, "error": category_error}, status=400)
+    if comun_in_payload and not comun_category_in_payload:
+        next_comun_category = None
 
     template_payload = None
     if template_in_payload:
@@ -411,20 +632,20 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
             status_code = 404 if author_error == "author not found" else 400
             return JsonResponse({"ok": False, "error": author_error}, status=status_code)
 
-    next_rubric = post.rubric
-    if rubric_in_payload or author_in_payload:
+    next_rubric = None if next_comun else post.rubric
+    if not next_comun and (rubric_in_payload or author_in_payload):
         rubric_slug = str(payload.get("rubric_slug") or "").strip() if rubric_in_payload else ""
         next_rubric, rubric_error = _resolve_manual_post_rubric(
             user,
             author=next_author,
             rubric_slug=rubric_slug,
-            allow_empty=target_is_draft,
+            allow_empty=True,
         )
         if rubric_error:
             status_code = 404 if rubric_error == "rubric not found" else 400
             return JsonResponse({"ok": False, "error": rubric_error}, status=status_code)
 
-    if next_rubric and _fv()._is_comuna_rubric(next_rubric):
+    if next_comun or (next_rubric and _fv()._is_comuna_rubric(next_rubric)):
         personal_author, personal_author_error = _get_or_create_personal_author(user)
         if personal_author_error:
             return JsonResponse({"ok": False, "error": personal_author_error}, status=400)
@@ -439,25 +660,13 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
 
     if template_in_payload:
         requested_template_type = _requested_template_type(template_payload)
-        comun_for_template = None
-        comun_category_for_template = None
-        comun_slug = community_views._post_comun_slug(post)
-        if comun_slug:
-            comun_for_template = Comun.objects.filter(slug=comun_slug).first()
-        if comun_for_template:
-            assignment = (
-                ComunPostCategoryAssignment.objects.select_related("category")
-                .filter(comun=comun_for_template, post=post)
-                .first()
-            )
-            if assignment and assignment.category_id:
-                comun_category_for_template = assignment.category
+        if next_comun:
             template_access_error = _template_not_allowed_error(
                 requested_template_type,
                 community_views._allowed_templates_for_comun_category(
-                    comun_for_template, comun_category_for_template
+                    next_comun, next_comun_category
                 ),
-                scope="comun category" if comun_category_for_template else "comun",
+                scope="comun category" if next_comun_category else "comun",
             )
         else:
             template_access_error = None
@@ -493,8 +702,38 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
             source_text = _fv()._strip_html(post.content)
             post.title = _fv()._build_title(source_text)
 
-    if not target_is_draft and not next_rubric:
-        return JsonResponse({"ok": False, "error": "rubric required"}, status=400)
+    if not target_is_draft and not next_comun:
+        return JsonResponse({"ok": False, "error": "community required"}, status=400)
+
+    if next_comun and not target_is_draft:
+        effective_template_payload = raw_data.get("template") if isinstance(raw_data.get("template"), dict) else None
+        if bool(getattr(next_comun, "forbid_external_links", False)) and community_views._payload_contains_external_links(
+            title=post.title,
+            content=post.content,
+            template_payload=effective_template_payload,
+        ):
+            return JsonResponse(
+                {"ok": False, "error": community_views._COMUN_EXTERNAL_LINKS_FORBIDDEN_ERROR},
+                status=400,
+            )
+        can_post, _minimum_rating, author_rating = community_views._comun_post_access_state(
+            user,
+            next_comun,
+            author=next_author,
+            category=next_comun_category,
+        )
+        if not can_post:
+            return JsonResponse(
+                {
+                    "ok": False,
+                    "error": community_views._comun_post_access_error_message(
+                        next_comun,
+                        author_rating=author_rating,
+                        category=next_comun_category,
+                    ),
+                },
+                status=403,
+            )
 
     if author_in_payload or next_author.id != post.author_id:
         post.author = next_author
@@ -502,8 +741,12 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
         post.channel_url = channel_url
         post.source_url = channel_url
 
-    if rubric_in_payload or author_in_payload:
+    if rubric_in_payload or author_in_payload or comun_in_payload or next_comun:
         post.rubric = next_rubric
+
+    if comun_in_payload or comun_category_in_payload or category_was_provided or next_comun:
+        raw_data = _apply_comun_membership_to_raw_data(raw_data, next_comun, next_comun_category)
+        raw_data_changed = True
 
     if target_is_draft:
         raw_data_changed = True
@@ -534,6 +777,12 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
             "raw_data",
             "updated_at",
         ]
+    )
+    _sync_comun_category_assignment(
+        post=post,
+        comun=next_comun,
+        category=next_comun_category,
+        actor=user,
     )
     if tags_payload is not None:
         explicit_tags = _fv()._parse_tag_payload(tags_payload)

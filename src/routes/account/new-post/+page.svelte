@@ -201,6 +201,8 @@
       title: createTitle.trim(),
       content: createContent.trim(),
       author_source: 'site' as const,
+      comun_slug: createComunSlug || undefined,
+      comun_category_id: createComunCategoryId ? Number(createComunCategoryId) : null,
       tags: tags.length ? tags : undefined,
       template: template ?? undefined,
     }

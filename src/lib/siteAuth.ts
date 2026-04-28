@@ -61,6 +61,18 @@ export type SiteUserPost = {
   rubric?: string | null
   rubric_slug?: string | null
   rubric_icon_url?: string | null
+  comun_slug?: string | null
+  comun?: {
+    id?: number
+    name?: string | null
+    slug?: string | null
+  } | null
+  comun_category_id?: number | null
+  comun_category?: {
+    id?: number
+    name?: string | null
+    slug?: string | null
+  } | null
   tags?: { name: string; lemma?: string | null }[]
   author: {
     username: string
@@ -451,6 +463,8 @@ export const updateUserPost = async (
     author_source?: 'site'
     author_username?: string
     rubric_slug?: string
+    comun_slug?: string
+    comun_category_id?: number | null
     is_draft?: boolean
     tags?: string[]
     template?: SitePostTemplate | null
@@ -509,6 +523,8 @@ export const createUserPost = async (payload: {
   author_source?: 'site'
   author_username?: string
   rubric_slug?: string
+  comun_slug?: string
+  comun_category_id?: number | null
   is_draft?: boolean
   tags?: string[]
   template?: SitePostTemplate | null

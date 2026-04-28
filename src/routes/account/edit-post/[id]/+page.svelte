@@ -230,7 +230,8 @@
       title: editTitle,
       content: editContent.trim(),
       author_source: useSiteAuthor ? ('site' as const) : undefined,
-      rubric_slug: selectedComun?.source_rubric?.slug || undefined,
+      comun_slug: editComunSlug || undefined,
+      comun_category_id: editComunCategoryId ? Number(editComunCategoryId) : null,
       tags,
       template: editTemplateType ? template : null,
     }
@@ -313,7 +314,10 @@
     editTitle = currentPost.title || ''
     editContent = currentPost.content || ''
     editComunSlug =
-      comuns.find((comun) => comun.source_rubric?.slug === currentPost.rubric_slug)?.slug || ''
+      currentPost.comun_slug ||
+      currentPost.comun?.slug ||
+      comuns.find((comun) => comun.source_rubric?.slug === currentPost.rubric_slug)?.slug ||
+      ''
     editComunCategoryId = currentPost.comun_category_id ? String(currentPost.comun_category_id) : ''
     editAuthor = resolveAuthorValue(currentPost)
     editMovieReviewData = createEmptyMovieReviewTemplateData()
@@ -547,6 +551,7 @@
 
   const selectComun = (slug: string) => {
     editComunSlug = slug
+    editComunCategoryId = ''
     rubricMenuOpen = false
     rubricSearchQuery = ''
   }
@@ -807,6 +812,27 @@
                     </div>
                   {/if}
                 </div>
+
+                {#if selectedComun?.categories?.length}
+                  <div class="mt-3">
+                    <label
+                      for="edit-post-comun-category"
+                      class="mb-1 block text-xs font-medium uppercase tracking-[0.1em] text-slate-500 dark:text-zinc-500"
+                    >
+                      Раздел сообщества
+                    </label>
+                    <select
+                      id="edit-post-comun-category"
+                      bind:value={editComunCategoryId}
+                      class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
+                    >
+                      <option value="">Без раздела</option>
+                      {#each selectedComun.categories as category}
+                        <option value={String(category.id)}>{category.name}</option>
+                      {/each}
+                    </select>
+                  </div>
+                {/if}
 
                 {#if hasTemplateTypeChoice}
                   <div class="relative mt-3" bind:this={templateMenuRef}>
