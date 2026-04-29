@@ -250,6 +250,27 @@ def my_feed(request: HttpRequest) -> HttpResponse:
     tag_values = [value.strip() for value in tags_raw.split(",") if value.strip()]
     comuns_raw = request.GET.get("comuns", "")
     comun_slugs = [slug.strip() for slug in comuns_raw.split(",") if slug.strip()]
+    comun_categories_raw = request.GET.get("comun_categories", "")
+    comun_category_selection: dict[str, list[str]] = {}
+    if comun_categories_raw:
+        try:
+            parsed_comun_categories = json.loads(comun_categories_raw)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            parsed_comun_categories = {}
+        if isinstance(parsed_comun_categories, dict):
+            for raw_comun_slug, raw_category_slugs in parsed_comun_categories.items():
+                comun_slug = str(raw_comun_slug or "").strip()
+                if not comun_slug or not isinstance(raw_category_slugs, list):
+                    continue
+                seen_category_slugs: set[str] = set()
+                category_slugs: list[str] = []
+                for raw_category_slug in raw_category_slugs:
+                    category_slug = str(raw_category_slug or "").strip()
+                    if not category_slug or category_slug in seen_category_slugs:
+                        continue
+                    seen_category_slugs.add(category_slug)
+                    category_slugs.append(category_slug)
+                comun_category_selection[comun_slug] = category_slugs
     if not rubric_slugs and not author_usernames and not tag_values and not comun_slugs:
         return JsonResponse({"ok": True, "posts": []})
 
@@ -301,9 +322,24 @@ def my_feed(request: HttpRequest) -> HttpResponse:
             )
         )
         for comun in comuns:
-            comun_filter = community_views._comun_source_filter(comun)
+            comun_filter = community_views._comun_post_membership_filter(comun)
             if comun_filter is None:
                 continue
+            if comun.slug in comun_category_selection:
+                selected_category_slugs = comun_category_selection.get(comun.slug) or []
+                if not selected_category_slugs:
+                    continue
+                selected_category_ids = list(
+                    community_views._active_comun_category_queryset(comun)
+                    .filter(slug__in=selected_category_slugs)
+                    .values_list("id", flat=True)
+                )
+                if not selected_category_ids:
+                    continue
+                comun_filter &= Q(
+                    comun_category_assignments__comun_id=comun.id,
+                    comun_category_assignments__category_id__in=selected_category_ids,
+                )
             comun_tag_selection_q |= comun_filter
             has_comun_selection = True
 

@@ -133,6 +133,7 @@
         selectedAuthors,
         selectedMyFeedTags,
         selectedMyFeedComuns,
+        selectedMyFeedComunCategories,
         hideNegativeMyFeed,
         effectiveHideRead,
         readOnly
@@ -265,6 +266,7 @@
   $: selectedAuthors = $userSettings.myFeedAuthors ?? []
   $: selectedMyFeedTags = $userSettings.myFeedTags ?? []
   $: selectedMyFeedComuns = $userSettings.myFeedComuns ?? []
+  $: selectedMyFeedComunCategories = $userSettings.myFeedComunCategories ?? {}
   $: myFeedHasBaseSettings =
     selectedRubrics.length > 0 ||
     selectedAuthors.length > 0 ||

@@ -219,8 +219,22 @@
   $: comunCategories = comun?.categories ?? []
   $: hasComunCategories = comunCategories.length > 0
   $: myFeedComunSlugs = ($userSettings.myFeedComuns ?? []).map((slug) => slug.trim()).filter(Boolean)
+  $: myFeedComunCategoryMap = $userSettings.myFeedComunCategories ?? {}
   $: currentComunSlug = (comun?.slug ?? '').trim()
   $: isSubscribedToComun = !!currentComunSlug && myFeedComunSlugs.includes(currentComunSlug)
+  $: comunCategorySlugs = comunCategories.map((category) => category.slug).filter(Boolean)
+  $: hasExplicitComunCategorySelection =
+    !!currentComunSlug && Object.prototype.hasOwnProperty.call(myFeedComunCategoryMap, currentComunSlug)
+  $: subscribedComunCategorySlugs = new Set<string>(
+    isSubscribedToComun
+      ? (
+          hasExplicitComunCategorySelection
+            ? myFeedComunCategoryMap[currentComunSlug] ?? []
+            : comunCategorySlugs
+        ).filter((slug) => comunCategorySlugs.includes(slug))
+      : []
+  )
+  let subscriptionCategoriesOpen = false
   $: title = `${comunName} — ${siteTitle}`
   $: description =
     comun?.product_description || `Посты и обсуждения продукта «${comunName}» на ${siteTitle}.`
@@ -633,6 +647,22 @@
       ? `${comun?.slug}:${roadmapStages.map((stage) => `${stage.key}:${stage.category.slug}`).join('|')}`
       : ''
 
+  const removeComunFromMyFeed = () => {
+    const slug = (comun?.slug ?? '').trim()
+    if (!slug) return
+    const next = new Set<string>(myFeedComunSlugs)
+    next.delete(slug)
+    const nextCategoryMap = { ...($userSettings.myFeedComunCategories ?? {}) }
+    delete nextCategoryMap[slug]
+    $userSettings = {
+      ...$userSettings,
+      myFeedComuns: Array.from(next),
+      myFeedComunCategories: nextCategoryMap,
+    }
+    subscriptionCategoriesOpen = false
+    toast({ content: 'Сообщество убрано из "Моей ленты"' })
+  }
+
   const toggleComunInMyFeed = async () => {
     const slug = (comun?.slug ?? '').trim()
     if (!slug) return
@@ -641,22 +671,50 @@
       goto(`/account?next=${next}`)
       return
     }
-    const next = new Set<string>(myFeedComunSlugs)
-    if (next.has(slug)) {
-      next.delete(slug)
-      $userSettings = {
-        ...$userSettings,
-        myFeedComuns: Array.from(next),
-      }
-      toast({ content: 'Сообщество убрано из "Моей ленты"' })
+    if (isSubscribedToComun) {
+      subscriptionCategoriesOpen = hasComunCategories ? !subscriptionCategoriesOpen : false
+      if (!hasComunCategories) removeComunFromMyFeed()
       return
     }
+    const next = new Set<string>(myFeedComunSlugs)
     next.add(slug)
+    const nextCategoryMap = { ...($userSettings.myFeedComunCategories ?? {}) }
+    if (comunCategorySlugs.length) {
+      nextCategoryMap[slug] = [...comunCategorySlugs]
+    }
     $userSettings = {
       ...$userSettings,
       myFeedComuns: Array.from(next),
+      myFeedComunCategories: nextCategoryMap,
     }
+    subscriptionCategoriesOpen = comunCategorySlugs.length > 0
     toast({ content: 'Посты этого сообщества будут попадать в "Мою ленту"' })
+  }
+
+  const toggleComunCategoryInMyFeed = (categorySlug: string) => {
+    const slug = (comun?.slug ?? '').trim()
+    if (!slug || !categorySlug) return
+    const selected = new Set<string>(
+      hasExplicitComunCategorySelection
+        ? myFeedComunCategoryMap[slug] ?? []
+        : comunCategorySlugs
+    )
+    if (selected.has(categorySlug)) selected.delete(categorySlug)
+    else selected.add(categorySlug)
+    if (!selected.size) {
+      removeComunFromMyFeed()
+      return
+    }
+    const nextComuns = new Set<string>(myFeedComunSlugs)
+    nextComuns.add(slug)
+    $userSettings = {
+      ...$userSettings,
+      myFeedComuns: Array.from(nextComuns),
+      myFeedComunCategories: {
+        ...($userSettings.myFeedComunCategories ?? {}),
+        [slug]: Array.from(selected),
+      },
+    }
   }
 
   const authHeaders = () => {
@@ -1113,7 +1171,7 @@
 </script>
 
 <div class="flex flex-col gap-6 max-w-4xl">
-  <section class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 overflow-hidden">
+  <section class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 overflow-visible">
     <div class="p-5 sm:p-6 flex flex-col gap-4">
       <div class="flex flex-wrap items-start justify-between gap-4">
         <div class="flex items-start gap-4 min-w-0">
@@ -1136,13 +1194,42 @@
           </div>
         </div>
         <div class="flex flex-wrap items-center gap-2">
-          <Button
-            color={isSubscribedToComun ? 'ghost' : undefined}
-            on:click={toggleComunInMyFeed}
-            title={isSubscribedToComun ? 'Убрать сообщество из Моей ленты' : 'Добавить сообщество в Мою ленту'}
-          >
-            {isSubscribedToComun ? 'Вы подписаны' : 'Подписаться'}
-          </Button>
+          <div class="relative">
+            <Button
+              color={isSubscribedToComun ? 'ghost' : undefined}
+              on:click={toggleComunInMyFeed}
+              title={isSubscribedToComun ? 'Настроить рубрики в Моей ленте' : 'Добавить сообщество в Мою ленту'}
+            >
+              {isSubscribedToComun ? 'Вы подписаны' : 'Подписаться'}
+            </Button>
+            {#if subscriptionCategoriesOpen && isSubscribedToComun && hasComunCategories}
+              <div class="absolute right-0 top-full z-30 mt-2 w-72 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl dark:border-zinc-800 dark:bg-zinc-950">
+                <div class="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-zinc-400">
+                  Рубрики в моей ленте
+                </div>
+                <div class="flex max-h-72 flex-col gap-2 overflow-y-auto pr-1">
+                  {#each comunCategories as category}
+                    <label class="flex cursor-pointer items-center gap-3 rounded-xl px-2 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:text-zinc-200 dark:hover:bg-zinc-900">
+                      <input
+                        type="checkbox"
+                        class="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-900"
+                        checked={subscribedComunCategorySlugs.has(category.slug)}
+                        on:change={() => toggleComunCategoryInMyFeed(category.slug)}
+                      />
+                      <span class="min-w-0 flex-1 truncate">{category.name}</span>
+                    </label>
+                  {/each}
+                </div>
+                <button
+                  type="button"
+                  class="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-900"
+                  on:click={removeComunFromMyFeed}
+                >
+                  Отписаться
+                </button>
+              </div>
+            {/if}
+          </div>
           {#if comun?.website_url}
             <a
               href={comun.website_url}

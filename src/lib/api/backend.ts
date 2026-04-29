@@ -235,6 +235,7 @@ export const buildMyFeedUrl = (
   authors?: string[],
   tags?: string[],
   comuns?: string[],
+  comunCategories?: Record<string, string[]>,
   hideNegative: boolean = true,
   hideRead: boolean = false,
   onlyRead: boolean = false
@@ -252,6 +253,9 @@ export const buildMyFeedUrl = (
   }
   if (comuns?.length) {
     params.set('comuns', comuns.join(','))
+  }
+  if (comunCategories && Object.keys(comunCategories).length) {
+    params.set('comun_categories', JSON.stringify(comunCategories))
   }
   if (!hideNegative) {
     params.set('hide_negative', '0')

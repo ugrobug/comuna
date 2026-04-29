@@ -6,6 +6,7 @@ type UserSettingsLike = {
   myFeedAuthors?: string[]
   myFeedTags?: string[]
   myFeedComuns?: string[]
+  myFeedComunCategories?: Record<string, string[]>
   hiddenAuthors?: string[]
   tagRules?: Record<string, 'hide' | 'blur'>
 }
@@ -15,6 +16,7 @@ export const hasMyFeedCustomizations = (settings: UserSettingsLike) => {
   const authors = settings.myFeedAuthors ?? []
   const tags = settings.myFeedTags ?? []
   const comuns = settings.myFeedComuns ?? []
+  const comunCategories = settings.myFeedComunCategories ?? {}
   const hiddenAuthors = settings.hiddenAuthors ?? []
   const tagRules = settings.tagRules ?? {}
   return (
@@ -22,6 +24,7 @@ export const hasMyFeedCustomizations = (settings: UserSettingsLike) => {
     authors.length > 0 ||
     tags.length > 0 ||
     comuns.length > 0 ||
+    Object.keys(comunCategories).length > 0 ||
     hiddenAuthors.length > 0 ||
     Object.keys(tagRules).length > 0
   )

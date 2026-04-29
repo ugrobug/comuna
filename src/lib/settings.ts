@@ -105,6 +105,7 @@ interface Settings {
   myFeedAuthors: string[]
   myFeedTags: string[]
   myFeedComuns: string[]
+  myFeedComunCategories: Record<string, string[]>
   hiddenAuthors: string[]
   myFeedHideNegative: boolean
   myFeedMood: 'funny' | 'serious' | 'sad' | null
@@ -195,6 +196,7 @@ export const defaultSettings: Settings = {
   myFeedAuthors: [],
   myFeedTags: [],
   myFeedComuns: [],
+  myFeedComunCategories: {},
   hiddenAuthors: [],
   myFeedHideNegative: true,
   myFeedMood: null,
@@ -277,6 +279,25 @@ const migrate = (settings: any): Settings => {
         seen.add(slug)
         return true
       })
+  }
+  if (!settings?.myFeedComunCategories || typeof settings.myFeedComunCategories !== 'object' || Array.isArray(settings.myFeedComunCategories)) {
+    settings.myFeedComunCategories = {}
+  } else {
+    const normalizedCategories: Record<string, string[]> = {}
+    for (const [rawSlug, rawCategories] of Object.entries(settings.myFeedComunCategories)) {
+      const slug = typeof rawSlug === 'string' ? rawSlug.trim() : ''
+      if (!slug || !Array.isArray(rawCategories)) continue
+      const seen = new Set<string>()
+      normalizedCategories[slug] = rawCategories
+        .map((category: unknown) => (typeof category === 'string' ? category.trim() : ''))
+        .filter((category: string) => !!category)
+        .filter((category: string) => {
+          if (seen.has(category)) return false
+          seen.add(category)
+          return true
+        })
+    }
+    settings.myFeedComunCategories = normalizedCategories
   }
   if (!Array.isArray(settings?.hiddenAuthors)) {
     settings.hiddenAuthors = []
