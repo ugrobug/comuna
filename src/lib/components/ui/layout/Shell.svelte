@@ -126,20 +126,20 @@
   >
     <slot
       name="sidebar"
-      class="hidden md:flex sticky top-0 left-0 h-max bg-slate-50 dark:bg-zinc-950
+      class="shell-sidebar hidden md:flex sticky top-0 left-0 h-max bg-slate-50 dark:bg-zinc-950
       z-40
       {sidePadding.class}"
       style="grid-area: sidebar; width: 100% !important;"
     />
     <slot
       name="main"
-      class="w-full bg-slate-50 dark:bg-zinc-950 justify-self-center z-0
+      class="shell-main w-full bg-slate-50 dark:bg-zinc-950 justify-self-center z-0
       {$contentPadding.class} main"
       style="grid-area: main"
     />
     <slot
       name="suffix"
-      class="max-xl:hidden w-full sticky top-0 left-0 max-h-screen bg-slate-50 dark:bg-zinc-950 z-40 {sidePadding.class}"
+      class="shell-suffix max-xl:hidden w-full sticky top-0 left-0 max-h-screen bg-slate-50 dark:bg-zinc-950 z-40 {sidePadding.class}"
       style="grid-area: suffix;"
     />
   </div>
@@ -211,13 +211,13 @@
       grid-template-columns: 1fr 3fr 1fr;
     }
 
-    :global(.content.limit-width:not(.full-bleed) > *:first-child) {
+    :global(.content.limit-width:not(.full-bleed) > .shell-sidebar) {
       max-width: 15rem;
       justify-self: end;
       width: 100%;
     }
 
-    :global(.content.limit-width:not(.full-bleed) > *:last-child) {
+    :global(.content.limit-width:not(.full-bleed) > .shell-suffix) {
       max-width: 20rem;
       justify-self: start;
       width: 100%;
