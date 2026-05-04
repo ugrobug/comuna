@@ -526,15 +526,12 @@
     </div>
   {:else if draft}
     <section class="flex w-full min-w-0 flex-col gap-4">
-        <div class="rounded-[28px] border border-slate-200 bg-white px-5 py-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/70">
-          <div class="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">Шаблон</div>
-          <input
-            value={draft.name ?? ''}
-            on:input={(event) => setDraft({ name: event.currentTarget?.value ?? '' })}
-            placeholder="Название шаблона"
-            class="mt-3 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900"
-          />
-        </div>
+        <input
+          value={draft.name ?? ''}
+          on:input={(event) => setDraft({ name: event.currentTarget?.value ?? '' })}
+          placeholder="Название шаблона"
+          class="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-base dark:border-zinc-700 dark:bg-zinc-900"
+        />
 
         <section
           role="group"
@@ -552,30 +549,30 @@
           </div>
 
           <div class="grid gap-3">
-            <div class="rounded-2xl border border-white/70 bg-white/80 px-4 py-4 dark:border-zinc-800/70 dark:bg-zinc-950/35">
-              <div class="mb-3 flex items-center justify-between gap-3">
-                <div class="text-sm font-medium text-slate-900 dark:text-zinc-100">Блоки Header</div>
-                <div class="lg:hidden flex flex-wrap gap-2">
-                  <select bind:value={headerBlockToAdd} class="min-w-[220px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900">
-                    <option value="">Добавить блок в Header</option>
-                    {#each headerBlockOptionsToAdd as option}
-                      <option value={option.value}>{option.label}</option>
-                    {/each}
-                  </select>
-                  <Button
-                    size="sm"
-                    on:click={() => {
-                      addBlock('header', headerBlockToAdd)
-                      headerBlockToAdd = ''
-                    }}
-                    disabled={!headerBlockToAdd}
-                  >
-                    Добавить
-                  </Button>
-                </div>
-              </div>
-              <div class="mt-3 flex flex-col gap-2">
-                {#if headerBlocks.length}
+            <div class="lg:hidden flex flex-wrap gap-2">
+              <select bind:value={headerBlockToAdd} class="min-w-[220px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900">
+                <option value="">Добавить блок в Header</option>
+                {#each headerBlockOptionsToAdd as option}
+                  <option value={option.value}>{option.label}</option>
+                {/each}
+              </select>
+              <Button
+                size="sm"
+                on:click={() => {
+                  addBlock('header', headerBlockToAdd)
+                  headerBlockToAdd = ''
+                }}
+                disabled={!headerBlockToAdd}
+              >
+                Добавить блок
+              </Button>
+              <Button size="sm" on:click={() => addField('header')}>Добавить поле</Button>
+            </div>
+
+            {#if headerBlocks.length}
+              <div class="rounded-2xl border border-white/70 bg-white/80 px-4 py-4 dark:border-zinc-800/70 dark:bg-zinc-950/35">
+                <div class="mb-3 text-sm font-medium text-slate-900 dark:text-zinc-100">Блоки Header</div>
+                <div class="mt-3 flex flex-col gap-2">
                   {#each headerBlocks as block}
                     <div class="grid gap-2 rounded-2xl border border-amber-200/70 bg-amber-50/70 px-3 py-3 md:grid-cols-[minmax(0,1fr)_160px_140px_auto] md:items-center dark:border-amber-900/40 dark:bg-amber-950/10">
                       <div class="font-medium text-slate-900 dark:text-zinc-100">
@@ -607,21 +604,14 @@
                       <Button color="ghost" size="sm" on:click={() => removeBlock(block.block_type)}>Убрать</Button>
                     </div>
                   {/each}
-                {:else}
-                  <div class="rounded-2xl border border-dashed border-amber-300/70 px-3 py-3 text-sm text-slate-600 dark:border-amber-900/40 dark:text-zinc-300">
-                    Header-блоков пока нет
-                  </div>
-                {/if}
+                </div>
               </div>
-            </div>
+            {/if}
 
-            <div class="rounded-2xl border border-white/70 bg-white/80 px-4 py-4 dark:border-zinc-800/70 dark:bg-zinc-950/35">
-              <div class="mb-3 flex items-center justify-between gap-3">
-                <div class="text-sm font-medium text-slate-900 dark:text-zinc-100">Поля Header</div>
-                <Button class="lg:hidden" size="sm" on:click={() => addField('header')}>Добавить поле</Button>
-              </div>
-              <div class="flex flex-col gap-3">
-                {#if headerFields.length}
+            {#if headerFields.length}
+              <div class="rounded-2xl border border-white/70 bg-white/80 px-4 py-4 dark:border-zinc-800/70 dark:bg-zinc-950/35">
+                <div class="mb-3 text-sm font-medium text-slate-900 dark:text-zinc-100">Поля Header</div>
+                <div class="flex flex-col gap-3">
                   {#each draft.fields ?? [] as field, fieldIndex}
                     {#if field.placement === 'header'}
                       <div class="rounded-2xl border border-amber-200/70 bg-amber-50/70 px-3 py-3 dark:border-amber-900/40 dark:bg-amber-950/10">
@@ -680,13 +670,9 @@
                       </div>
                     {/if}
                   {/each}
-                {:else}
-                  <div class="rounded-2xl border border-dashed border-amber-300/70 px-3 py-3 text-sm text-slate-600 dark:border-amber-900/40 dark:text-zinc-300">
-                    Header-полей пока нет
-                  </div>
-                {/if}
+                </div>
               </div>
-            </div>
+            {/if}
           </div>
         </section>
 
@@ -705,68 +691,64 @@
             </div>
           </div>
 
-          <div class="rounded-2xl border border-white/70 bg-white/80 px-4 py-4 dark:border-zinc-800/70 dark:bg-zinc-950/35">
-            <div class="mb-3 flex items-center justify-between gap-3">
-              <div class="text-sm font-medium text-slate-900 dark:text-zinc-100">Блоки текстового блока</div>
-              <div class="lg:hidden flex flex-wrap gap-2">
-                <select bind:value={textBlockToAdd} class="min-w-[220px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900">
-                  <option value="">Добавить блок в текст</option>
-                  {#each bodyBlockOptionsToAdd as option}
-                    <option value={option.value}>{option.label}</option>
-                  {/each}
-                </select>
-                <Button
-                  size="sm"
-                  on:click={() => {
-                    addBlock('available', textBlockToAdd)
-                    textBlockToAdd = ''
-                  }}
-                  disabled={!textBlockToAdd}
-                >
-                  Добавить
-                </Button>
-              </div>
+          <div class="grid gap-3">
+            <div class="lg:hidden flex flex-wrap gap-2">
+              <select bind:value={textBlockToAdd} class="min-w-[220px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900">
+                <option value="">Добавить блок в текст</option>
+                {#each bodyBlockOptionsToAdd as option}
+                  <option value={option.value}>{option.label}</option>
+                {/each}
+              </select>
+              <Button
+                size="sm"
+                on:click={() => {
+                  addBlock('available', textBlockToAdd)
+                  textBlockToAdd = ''
+                }}
+                disabled={!textBlockToAdd}
+              >
+                Добавить блок
+              </Button>
             </div>
 
-            <div class="flex flex-col gap-2">
-              {#if bodyBlocks.length}
-                {#each bodyBlocks as block}
-                  <div class="grid gap-2 rounded-2xl border border-sky-200/70 bg-sky-50/70 px-3 py-3 md:grid-cols-[minmax(0,1fr)_160px_140px_auto] md:items-center dark:border-sky-900/40 dark:bg-sky-950/10">
-                    <div class="font-medium text-slate-900 dark:text-zinc-100">
-                      {blockOptions().find((item) => item.value === block.block_type)?.label ?? block.block_type}
-                    </div>
-                    <select
-                      class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-                      value={block.placement}
-                      on:change={(event) =>
-                        updateBlockPlacementFromValue(
-                          block.block_type,
-                          event.currentTarget?.value ?? 'available',
-                          'available'
-                        )}
-                    >
-                      {#each blockPlacementOptions() as option}
-                        <option value={option.value}>{option.label}</option>
-                      {/each}
-                    </select>
-                    <label class="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={Boolean(block.is_required)}
+            {#if bodyBlocks.length}
+              <div class="rounded-2xl border border-white/70 bg-white/80 px-4 py-4 dark:border-zinc-800/70 dark:bg-zinc-950/35">
+                <div class="mb-3 text-sm font-medium text-slate-900 dark:text-zinc-100">Блоки текстового блока</div>
+                <div class="flex flex-col gap-2">
+                  {#each bodyBlocks as block}
+                    <div class="grid gap-2 rounded-2xl border border-sky-200/70 bg-sky-50/70 px-3 py-3 md:grid-cols-[minmax(0,1fr)_160px_140px_auto] md:items-center dark:border-sky-900/40 dark:bg-sky-950/10">
+                      <div class="font-medium text-slate-900 dark:text-zinc-100">
+                        {blockOptions().find((item) => item.value === block.block_type)?.label ?? block.block_type}
+                      </div>
+                      <select
+                        class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                        value={block.placement}
                         on:change={(event) =>
-                          updateBlock(block.block_type, { is_required: Boolean(event.currentTarget?.checked) })}
-                      />
-                      <span>Обязательный</span>
-                    </label>
-                    <Button color="ghost" size="sm" on:click={() => removeBlock(block.block_type)}>Убрать</Button>
-                  </div>
-                {/each}
-              {:else}
-                <div class="rounded-2xl border border-dashed border-sky-300/70 px-3 py-3 text-sm text-slate-600 dark:border-sky-900/40 dark:text-zinc-300">
-                  Текстовых блоков пока нет
+                          updateBlockPlacementFromValue(
+                            block.block_type,
+                            event.currentTarget?.value ?? 'available',
+                            'available'
+                          )}
+                      >
+                        {#each blockPlacementOptions() as option}
+                          <option value={option.value}>{option.label}</option>
+                        {/each}
+                      </select>
+                      <label class="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(block.is_required)}
+                          on:change={(event) =>
+                            updateBlock(block.block_type, { is_required: Boolean(event.currentTarget?.checked) })}
+                        />
+                        <span>Обязательный</span>
+                      </label>
+                      <Button color="ghost" size="sm" on:click={() => removeBlock(block.block_type)}>Убрать</Button>
+                    </div>
+                  {/each}
                 </div>
-              {/if}
-            </div>
+              </div>
+            {/if}
           </div>
         </section>
 
@@ -786,30 +768,30 @@
           </div>
 
           <div class="grid gap-3">
-            <div class="rounded-2xl border border-white/70 bg-white/80 px-4 py-4 dark:border-zinc-800/70 dark:bg-zinc-950/35">
-              <div class="mb-3 flex items-center justify-between gap-3">
-                <div class="text-sm font-medium text-slate-900 dark:text-zinc-100">Блоки Footer</div>
-                <div class="lg:hidden flex flex-wrap gap-2">
-                  <select bind:value={footerBlockToAdd} class="min-w-[220px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900">
-                    <option value="">Добавить блок в Footer</option>
-                    {#each footerBlockOptionsToAdd as option}
-                      <option value={option.value}>{option.label}</option>
-                    {/each}
-                  </select>
-                  <Button
-                    size="sm"
-                    on:click={() => {
-                      addBlock('footer', footerBlockToAdd)
-                      footerBlockToAdd = ''
-                    }}
-                    disabled={!footerBlockToAdd}
-                  >
-                    Добавить
-                  </Button>
-                </div>
-              </div>
-              <div class="flex flex-col gap-2">
-                {#if footerBlocks.length}
+            <div class="lg:hidden flex flex-wrap gap-2">
+              <select bind:value={footerBlockToAdd} class="min-w-[220px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900">
+                <option value="">Добавить блок в Footer</option>
+                {#each footerBlockOptionsToAdd as option}
+                  <option value={option.value}>{option.label}</option>
+                {/each}
+              </select>
+              <Button
+                size="sm"
+                on:click={() => {
+                  addBlock('footer', footerBlockToAdd)
+                  footerBlockToAdd = ''
+                }}
+                disabled={!footerBlockToAdd}
+              >
+                Добавить блок
+              </Button>
+              <Button size="sm" on:click={() => addField('footer')}>Добавить поле</Button>
+            </div>
+
+            {#if footerBlocks.length}
+              <div class="rounded-2xl border border-white/70 bg-white/80 px-4 py-4 dark:border-zinc-800/70 dark:bg-zinc-950/35">
+                <div class="mb-3 text-sm font-medium text-slate-900 dark:text-zinc-100">Блоки Footer</div>
+                <div class="flex flex-col gap-2">
                   {#each footerBlocks as block}
                     <div class="grid gap-2 rounded-2xl border border-emerald-200/70 bg-emerald-50/70 px-3 py-3 md:grid-cols-[minmax(0,1fr)_160px_140px_auto] md:items-center dark:border-emerald-900/40 dark:bg-emerald-950/10">
                       <div class="font-medium text-slate-900 dark:text-zinc-100">
@@ -841,21 +823,14 @@
                       <Button color="ghost" size="sm" on:click={() => removeBlock(block.block_type)}>Убрать</Button>
                     </div>
                   {/each}
-                {:else}
-                  <div class="rounded-2xl border border-dashed border-emerald-300/70 px-3 py-3 text-sm text-slate-600 dark:border-emerald-900/40 dark:text-zinc-300">
-                    Footer-блоков пока нет
-                  </div>
-                {/if}
+                </div>
               </div>
-            </div>
+            {/if}
 
-            <div class="rounded-2xl border border-white/70 bg-white/80 px-4 py-4 dark:border-zinc-800/70 dark:bg-zinc-950/35">
-              <div class="mb-3 flex items-center justify-between gap-3">
-                <div class="text-sm font-medium text-slate-900 dark:text-zinc-100">Поля Footer</div>
-                <Button class="lg:hidden" size="sm" on:click={() => addField('footer')}>Добавить поле</Button>
-              </div>
-              <div class="flex flex-col gap-3">
-                {#if footerFields.length}
+            {#if footerFields.length}
+              <div class="rounded-2xl border border-white/70 bg-white/80 px-4 py-4 dark:border-zinc-800/70 dark:bg-zinc-950/35">
+                <div class="mb-3 text-sm font-medium text-slate-900 dark:text-zinc-100">Поля Footer</div>
+                <div class="flex flex-col gap-3">
                   {#each draft.fields ?? [] as field, fieldIndex}
                     {#if field.placement === 'footer'}
                       <div class="rounded-2xl border border-emerald-200/70 bg-emerald-50/70 px-3 py-3 dark:border-emerald-900/40 dark:bg-emerald-950/10">
@@ -914,13 +889,9 @@
                       </div>
                     {/if}
                   {/each}
-                {:else}
-                  <div class="rounded-2xl border border-dashed border-emerald-300/70 px-3 py-3 text-sm text-slate-600 dark:border-emerald-900/40 dark:text-zinc-300">
-                    Footer-полей пока нет
-                  </div>
-                {/if}
+                </div>
               </div>
-            </div>
+            {/if}
           </div>
         </section>
         <section class="rounded-[28px] border border-slate-200 bg-white px-5 py-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/70">
