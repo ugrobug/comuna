@@ -1,17 +1,27 @@
 <script lang="ts">
-  import { templateEditorDraggedItem, type TemplateEditorDragPaletteItem } from '$lib/components/comuns/templateEditorDnd'
+  import { get } from 'svelte/store'
+  import {
+    templateEditorActiveDropZone,
+    templateEditorDraggedItem,
+    templateEditorDropRequest,
+    type TemplateEditorDragPaletteItem,
+  } from '$lib/components/comuns/templateEditorDnd'
 
   export let fieldOptions: Array<{ value: string; label: string }> = []
   export let blockOptions: Array<{ value: string; label: string }> = []
 
   const DRAG_TYPE = 'application/x-comuna-template-palette'
 
+  const createDragId = () =>
+    globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
+
   const writeDragPayload = (
     event: DragEvent,
     payload: TemplateEditorDragPaletteItem
   ) => {
-    const serialized = JSON.stringify(payload)
-    templateEditorDraggedItem.set(payload)
+    const dragPayload = { ...payload, dragId: createDragId() }
+    const serialized = JSON.stringify(dragPayload)
+    templateEditorDraggedItem.set(dragPayload)
     event.dataTransfer?.setData(DRAG_TYPE, serialized)
     event.dataTransfer?.setData('text/plain', serialized)
     if (event.dataTransfer) {
@@ -20,8 +30,14 @@
   }
 
   const clearDragPayload = () => {
+    const item = get(templateEditorDraggedItem)
+    const zone = get(templateEditorActiveDropZone)
+    if (item && zone) {
+      templateEditorDropRequest.set({ zone, item })
+    }
     window.setTimeout(() => {
       templateEditorDraggedItem.set(null)
+      templateEditorActiveDropZone.set(null)
     }, 0)
   }
 </script>
@@ -30,7 +46,7 @@
   <section class="rounded-[28px] border border-slate-200 bg-white px-5 py-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/70">
     <div class="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">Доступные поля</div>
     <div class="mt-2 text-sm text-slate-600 dark:text-zinc-300">
-      Перетаскивайте поля в `Header` или `Footer`.
+      Перетаскивайте поля в `Header`, `Текстовый блок` или `Footer`.
     </div>
     <div class="mt-4 flex flex-col gap-2">
       {#each fieldOptions as fieldOption}

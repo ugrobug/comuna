@@ -10,8 +10,11 @@
     type BackendComunCustomTemplate,
   } from '$lib/api/backend'
   import {
+    templateEditorActiveDropZone,
     templateEditorDraggedItem,
+    templateEditorDropRequest,
     type TemplateEditorDragPaletteItem,
+    type TemplateEditorDropZone,
   } from '$lib/components/comuns/templateEditorDnd'
   import { getTemplateEditorBlocks } from '$lib/postTemplates'
   import { siteToken } from '$lib/siteAuth'
@@ -20,7 +23,7 @@
 
   type BlockPlacement = 'available' | 'header' | 'footer'
   type FieldType = 'text' | 'file' | 'select' | 'checkbox'
-  type FieldPlacement = 'header' | 'footer'
+  type FieldPlacement = 'available' | 'header' | 'footer'
   type PaletteFieldType = 'text' | 'select' | 'checkbox'
   const slug = String(data?.slug ?? '')
   const templateRef = String(data?.template ?? 'new')
@@ -43,6 +46,7 @@
     { value: 'checkbox', label: 'Чекбокс' },
   ]
   const fallbackFieldPlacementOptions = [
+    { value: 'available', label: 'Текст' },
     { value: 'header', label: 'Header' },
     { value: 'footer', label: 'Footer' },
   ]
@@ -61,11 +65,13 @@
   let bodyBlocks: NonNullable<BackendComunCustomTemplate['blocks']> = []
   let footerBlocks: NonNullable<BackendComunCustomTemplate['blocks']> = []
   let headerFields: NonNullable<BackendComunCustomTemplate['fields']> = []
+  let bodyFields: NonNullable<BackendComunCustomTemplate['fields']> = []
   let footerFields: NonNullable<BackendComunCustomTemplate['fields']> = []
   let headerBlockOptionsToAdd: Array<{ value: string; label: string }> = []
   let bodyBlockOptionsToAdd: Array<{ value: string; label: string }> = []
   let footerBlockOptionsToAdd: Array<{ value: string; label: string }> = []
-  let activeDropZone: 'header' | 'available' | 'footer' | null = null
+  let activeDropZone: TemplateEditorDropZone | null = null
+  const handledDragIds = new Set<string>()
 
   const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value))
 
@@ -184,7 +190,17 @@
   }
 
   onMount(() => {
+    const unsubscribeDropRequest = templateEditorDropRequest.subscribe((request) => {
+      if (!request) return
+      applyPaletteItemToZone(request.zone, request.item)
+      activeDropZone = null
+      templateEditorActiveDropZone.set(null)
+      templateEditorDropRequest.set(null)
+    })
     void refreshEditor()
+    return () => {
+      unsubscribeDropRequest()
+    }
   })
 
   const setDraft = (patch: Partial<BackendComunCustomTemplate>) => {
@@ -212,6 +228,7 @@
   $: bodyBlocks = blocksByPlacement('available')
   $: footerBlocks = blocksByPlacement('footer')
   $: headerFields = fieldsByPlacement('header')
+  $: bodyFields = fieldsByPlacement('available')
   $: footerFields = fieldsByPlacement('footer')
   $: headerBlockOptionsToAdd = availableBlockOptionsForAdd('header').filter(
     (option) => !headerBlocks.some((block) => block.block_type === option.value)
@@ -386,10 +403,18 @@
     try {
       const payload = JSON.parse(raw)
       if (payload?.kind === 'block' && typeof payload?.blockType === 'string') {
-        return { kind: 'block', blockType: payload.blockType }
+        return {
+          kind: 'block',
+          blockType: payload.blockType,
+          dragId: typeof payload.dragId === 'string' ? payload.dragId : undefined,
+        }
       }
       if (payload?.kind === 'field' && typeof payload?.fieldType === 'string') {
-        return { kind: 'field', fieldType: payload.fieldType as PaletteFieldType }
+        return {
+          kind: 'field',
+          fieldType: payload.fieldType as PaletteFieldType,
+          dragId: typeof payload.dragId === 'string' ? payload.dragId : undefined,
+        }
       }
     } catch {
       return null
@@ -400,38 +425,61 @@
   const resolveDroppedPaletteItem = (event: DragEvent): TemplateEditorDragPaletteItem | null =>
     readPaletteItem(event) ?? $templateEditorDraggedItem
 
-  const handleDropZoneEnter = (zone: 'header' | 'available' | 'footer') => {
+  const setActiveDropZone = (zone: TemplateEditorDropZone | null) => {
     activeDropZone = zone
+    templateEditorActiveDropZone.set(zone)
+  }
+
+  const handleDropZoneEnter = (zone: TemplateEditorDropZone) => {
+    setActiveDropZone(zone)
   }
 
   const handleDropZoneOver = (
     event: DragEvent,
-    zone: 'header' | 'available' | 'footer'
+    zone: TemplateEditorDropZone
   ) => {
     event.preventDefault()
     if (event.dataTransfer) {
       event.dataTransfer.dropEffect = 'copy'
     }
-    activeDropZone = zone
+    setActiveDropZone(zone)
+  }
+
+  const handleDropZoneLeave = (event: DragEvent, zone: TemplateEditorDropZone) => {
+    const target = event.currentTarget
+    if (!(target instanceof HTMLElement)) return
+    const rect = target.getBoundingClientRect()
+    const outside =
+      event.clientX < rect.left ||
+      event.clientX > rect.right ||
+      event.clientY < rect.top ||
+      event.clientY > rect.bottom
+    if (outside && activeDropZone === zone) {
+      setActiveDropZone(null)
+    }
   }
 
   const applyPaletteItemToZone = (
-    zone: 'header' | 'available' | 'footer',
+    zone: TemplateEditorDropZone,
     item: TemplateEditorDragPaletteItem | null
   ) => {
     if (!item) return
+    if (item.dragId) {
+      if (handledDragIds.has(item.dragId)) return
+      handledDragIds.add(item.dragId)
+    }
     if (item.kind === 'block') {
       addBlock(zone as BlockPlacement, item.blockType)
       return
     }
-    if (zone === 'available') return
     addFieldOfType(zone as FieldPlacement, item.fieldType)
   }
 
-  const handlePaletteDrop = (event: DragEvent, zone: 'header' | 'available' | 'footer') => {
+  const handlePaletteDrop = (event: DragEvent, zone: TemplateEditorDropZone) => {
+    event.preventDefault()
     applyPaletteItemToZone(zone, resolveDroppedPaletteItem(event))
     templateEditorDraggedItem.set(null)
-    activeDropZone = null
+    setActiveDropZone(null)
   }
 
   const normalizedDraftForSave = () => {
@@ -624,7 +672,7 @@
           class={`px-5 py-5 transition-shadow ${headerSectionClass} ${activeDropZone === 'header' ? 'ring-2 ring-amber-400 ring-offset-2 dark:ring-offset-zinc-950' : ''}`}
           on:dragover={(event) => handleDropZoneOver(event, 'header')}
           on:dragenter={() => handleDropZoneEnter('header')}
-          on:dragleave={() => activeDropZone === 'header' && (activeDropZone = null)}
+          on:dragleave={(event) => handleDropZoneLeave(event, 'header')}
           on:drop|preventDefault={(event) => handlePaletteDrop(event, 'header')}
         >
           <div class="mb-4">
@@ -791,13 +839,13 @@
           class={`px-5 py-5 transition-shadow ${bodySectionClass} ${activeDropZone === 'available' ? 'ring-2 ring-sky-400 ring-offset-2 dark:ring-offset-zinc-950' : ''}`}
           on:dragover={(event) => handleDropZoneOver(event, 'available')}
           on:dragenter={() => handleDropZoneEnter('available')}
-          on:dragleave={() => activeDropZone === 'available' && (activeDropZone = null)}
+          on:dragleave={(event) => handleDropZoneLeave(event, 'available')}
           on:drop|preventDefault={(event) => handlePaletteDrop(event, 'available')}
         >
           <div class="mb-4">
             <div class="text-xs uppercase tracking-[0.2em] text-sky-700 dark:text-sky-200">Текстовый блок</div>
             <div class="mt-1 text-sm text-slate-700 dark:text-zinc-200">
-              Перетащите сюда блоки, которые автор сможет использовать внутри основного текста.
+              Перетащите сюда поля или блоки, которые автор сможет использовать внутри основного текста.
             </div>
           </div>
 
@@ -819,6 +867,7 @@
               >
                 Добавить блок
               </Button>
+              <Button size="sm" on:click={() => addField('available')}>Добавить поле</Button>
             </div>
 
             {#if bodyBlocks.length}
@@ -859,6 +908,96 @@
                 </div>
               </div>
             {/if}
+
+            {#if bodyFields.length}
+              <div class="rounded-2xl border border-white/70 bg-white/80 px-4 py-4 dark:border-zinc-800/70 dark:bg-zinc-950/35">
+                <div class="mb-3 text-sm font-medium text-slate-900 dark:text-zinc-100">Поля текстового блока</div>
+                <div class="flex flex-col gap-3">
+                  {#each draft.fields ?? [] as field, fieldIndex}
+                    {#if field.placement === 'available'}
+                      <div class="rounded-2xl border border-sky-200/70 bg-sky-50/70 px-3 py-3 dark:border-sky-900/40 dark:bg-sky-950/10">
+                        <div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_160px_160px_auto] md:items-center">
+                          <input
+                            value={field.label ?? ''}
+                            on:input={(event) => updateField(fieldIndex, { label: event.currentTarget?.value ?? '' })}
+                            placeholder="Название поля"
+                            class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                          />
+                          <select
+                            class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                            value={field.field_type ?? 'text'}
+                            on:change={(event) => updateFieldTypeFromValue(fieldIndex, event.currentTarget?.value ?? 'text')}
+                          >
+                            {#each fieldTypeOptions() as option}
+                              <option value={option.value}>{option.label}</option>
+                            {/each}
+                          </select>
+                          <select
+                            class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                            value={field.placement ?? 'available'}
+                            on:change={(event) => updateFieldPlacementFromValue(fieldIndex, event.currentTarget?.value ?? 'available', 'available')}
+                          >
+                            {#each fieldPlacementOptions() as option}
+                              <option value={option.value}>{option.label}</option>
+                            {/each}
+                          </select>
+                          <Button color="ghost" size="sm" on:click={() => removeField(fieldIndex)}>Убрать</Button>
+                        </div>
+                        <div class="mt-3">
+                          <label class="flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(field.is_required)}
+                              on:change={(event) => updateField(fieldIndex, { is_required: Boolean(event.currentTarget?.checked) })}
+                            />
+                            <span>Обязательное поле</span>
+                          </label>
+                        </div>
+                        {#if field.field_type === 'text'}
+                          <label class="mt-3 flex flex-col gap-1 text-sm text-slate-700 dark:text-zinc-300">
+                            <span>Ограничение по символам</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={field.settings?.max_length ?? ''}
+                              on:input={(event) => updateTextFieldMaxLength(fieldIndex, event.currentTarget?.value ?? '')}
+                              placeholder="Без ограничения"
+                              class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                            />
+                          </label>
+                        {/if}
+                        {#if field.field_type === 'select'}
+                          <textarea
+                            rows="4"
+                            class="mt-3 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                            placeholder="Каждый вариант с новой строки"
+                            value={fieldOptionsText(field)}
+                            on:input={(event) =>
+                              updateField(fieldIndex, {
+                                options: (event.currentTarget?.value ?? '')
+                                  .split('\n')
+                                  .map((item) => item.trim())
+                                  .filter(Boolean),
+                              })}
+                          ></textarea>
+                        {/if}
+                        {#if field.field_type === 'checkbox'}
+                          <label class="mt-3 flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(field.settings?.default_checked)}
+                              on:change={(event) => updateCheckboxDefaultChecked(fieldIndex, Boolean(event.currentTarget?.checked))}
+                            />
+                            <span>Чекбокс включен по умолчанию</span>
+                          </label>
+                        {/if}
+                      </div>
+                    {/if}
+                  {/each}
+                </div>
+              </div>
+            {/if}
           </div>
         </section>
 
@@ -867,7 +1006,7 @@
           class={`px-5 py-5 transition-shadow ${footerSectionClass} ${activeDropZone === 'footer' ? 'ring-2 ring-emerald-400 ring-offset-2 dark:ring-offset-zinc-950' : ''}`}
           on:dragover={(event) => handleDropZoneOver(event, 'footer')}
           on:dragenter={() => handleDropZoneEnter('footer')}
-          on:dragleave={() => activeDropZone === 'footer' && (activeDropZone = null)}
+          on:dragleave={(event) => handleDropZoneLeave(event, 'footer')}
           on:drop|preventDefault={(event) => handlePaletteDrop(event, 'footer')}
         >
           <div class="mb-4">

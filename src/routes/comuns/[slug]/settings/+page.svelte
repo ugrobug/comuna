@@ -66,7 +66,7 @@
   type CustomTemplateBlockOption = { value: string; label: string }
   type CustomTemplatePlacement = '' | 'available' | 'header' | 'footer'
   type CustomTemplateFieldType = 'text' | 'file' | 'select' | 'checkbox'
-  type CustomTemplateFieldPlacement = 'header' | 'footer'
+  type CustomTemplateFieldPlacement = 'available' | 'header' | 'footer'
   const fallbackTemplateTypeOptions: TemplateTypeOption[] = [
     { value: 'basic', label: 'Пост' },
     { value: 'movie_review', label: 'Кинообзор' },
@@ -85,6 +85,7 @@
     { value: 'checkbox', label: 'Чекбокс' },
   ]
   const fallbackCustomTemplateFieldPlacementOptions = [
+    { value: 'available', label: 'Текст' },
     { value: 'header', label: 'Хедер' },
     { value: 'footer', label: 'Футер' },
   ]
@@ -221,10 +222,9 @@
                 field_type: (String(field?.field_type ?? '').trim() || 'text') as
                   | 'text'
                   | 'file'
-                  | 'select',
-                placement: (String(field?.placement ?? '').trim() || 'header') as
-                  | 'header'
-                  | 'footer',
+                  | 'select'
+                  | 'checkbox',
+                placement: (String(field?.placement ?? '').trim() || 'header') as CustomTemplateFieldPlacement,
                 is_required: Boolean(field?.is_required),
                 options: Array.isArray(field?.options)
                   ? field.options

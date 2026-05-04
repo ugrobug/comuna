@@ -59,6 +59,7 @@
   let customTemplatePreviewBodyBlocks: NonNullable<BackendComunCustomTemplate['blocks']> = []
   let customTemplatePreviewFooterBlocks: NonNullable<BackendComunCustomTemplate['blocks']> = []
   let customTemplatePreviewHeaderFields: NonNullable<BackendComunCustomTemplate['fields']> = []
+  let customTemplatePreviewBodyFields: NonNullable<BackendComunCustomTemplate['fields']> = []
   let customTemplatePreviewFooterFields: NonNullable<BackendComunCustomTemplate['fields']> = []
 
   const customTemplatePreviewStorageKey = (slug: string) => `comuna:custom-template-preview:${slug}`
@@ -95,6 +96,7 @@
               | 'select'
               | 'checkbox',
             placement: (String(field?.placement ?? '').trim() || 'header') as
+              | 'available'
               | 'header'
               | 'footer',
             is_required: Boolean(field?.is_required),
@@ -287,6 +289,8 @@
     (customTemplatePreview?.blocks ?? []).filter((block) => block.placement === 'footer') ?? []
   $: customTemplatePreviewHeaderFields =
     (customTemplatePreview?.fields ?? []).filter((field) => field.placement === 'header') ?? []
+  $: customTemplatePreviewBodyFields =
+    (customTemplatePreview?.fields ?? []).filter((field) => field.placement === 'available') ?? []
   $: customTemplatePreviewFooterFields =
     (customTemplatePreview?.fields ?? []).filter((field) => field.placement === 'footer') ?? []
 
@@ -510,7 +514,22 @@
                         </div>
                       </div>
                     {/each}
-                  {:else}
+                  {/if}
+                  {#if customTemplatePreviewBodyFields.length}
+                    <div class="grid gap-3 md:grid-cols-2">
+                      {#each customTemplatePreviewBodyFields as field}
+                        <div class="rounded-2xl border border-sky-200 bg-white/85 px-3 py-3 dark:border-sky-900/40 dark:bg-zinc-950/40">
+                          <div class="text-sm font-medium text-slate-900 dark:text-zinc-100">
+                            {field.label?.trim() || 'Поле без названия'}
+                          </div>
+                          <div class="mt-1 text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-zinc-400">
+                            {resolveCustomTemplateFieldTypeLabel(field.field_type)}
+                          </div>
+                        </div>
+                      {/each}
+                    </div>
+                  {/if}
+                  {#if !customTemplatePreviewBodyBlocks.length && !customTemplatePreviewBodyFields.length}
                     <div class="rounded-2xl border border-dashed border-sky-300/70 px-3 py-4 text-sm text-slate-600 dark:border-sky-900/40 dark:text-zinc-300">
                       Текстовая часть шаблона пустая
                     </div>
