@@ -16,8 +16,12 @@
   export let data
 
   type BlockPlacement = 'available' | 'header' | 'footer'
-  type FieldType = 'text' | 'file' | 'select'
+  type FieldType = 'text' | 'file' | 'select' | 'checkbox'
   type FieldPlacement = 'header' | 'footer'
+  type PaletteFieldType = 'text' | 'select' | 'checkbox'
+  type DragPaletteItem =
+    | { kind: 'block'; blockType: string }
+    | { kind: 'field'; fieldType: PaletteFieldType }
 
   const slug = String(data?.slug ?? '')
   const templateRef = String(data?.template ?? 'new')
@@ -36,6 +40,7 @@
     { value: 'text', label: 'Текст' },
     { value: 'file', label: 'Файл' },
     { value: 'select', label: 'Выбор значений' },
+    { value: 'checkbox', label: 'Чекбокс' },
   ]
   const fallbackFieldPlacementOptions = [
     { value: 'header', label: 'Header' },
@@ -60,6 +65,14 @@
   let headerBlockOptionsToAdd: Array<{ value: string; label: string }> = []
   let bodyBlockOptionsToAdd: Array<{ value: string; label: string }> = []
   let footerBlockOptionsToAdd: Array<{ value: string; label: string }> = []
+  let activeDragItem: DragPaletteItem | null = null
+  let activeDropZone: 'header' | 'available' | 'footer' | null = null
+
+  const paletteFieldOptions: Array<{ value: PaletteFieldType; label: string }> = [
+    { value: 'text', label: 'Текстовое поле' },
+    { value: 'select', label: 'Выпадающий список' },
+    { value: 'checkbox', label: 'Чекбокс' },
+  ]
 
   const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value))
 
@@ -267,6 +280,30 @@
     })
   }
 
+  const addFieldOfType = (placement: FieldPlacement, fieldType: FieldType) => {
+    if (!draft) return
+    const nextIndex = (draft.fields ?? []).length + 1
+    const defaultLabels: Record<FieldType, string> = {
+      text: 'Текстовое поле',
+      file: 'Файл',
+      select: 'Выпадающий список',
+      checkbox: 'Чекбокс',
+    }
+    setDraft({
+      fields: [
+        ...(draft.fields ?? []),
+        {
+          label: defaultLabels[fieldType] || `Поле ${nextIndex}`,
+          field_type: fieldType,
+          placement,
+          is_required: false,
+          options: fieldType === 'select' ? ['Вариант 1', 'Вариант 2'] : [],
+          sort_order: nextIndex - 1,
+        },
+      ],
+    })
+  }
+
   const updateField = (
     fieldIndex: number,
     patch: Partial<NonNullable<BackendComunCustomTemplate['fields']>[number]>
@@ -301,26 +338,45 @@
   const fieldOptionsText = (field?: NonNullable<BackendComunCustomTemplate['fields']>[number]) =>
     (field?.options ?? []).join('\n')
 
-  const templatePreviewStorageKey = `comuna:custom-template-preview:${slug}`
-
-  const resolveBlockLabel = (blockType?: string | null) =>
-    blockOptions().find((item) => item.value === String(blockType ?? '').trim())?.label ??
-    (String(blockType ?? '').trim() || 'Блок')
-
-  const resolveFieldTypeLabel = (fieldType?: string | null) =>
-    fieldTypeOptions().find((item) => item.value === String(fieldType ?? '').trim())?.label ??
-    (String(fieldType ?? '').trim() || 'Поле')
-
   const openTemplatePreview = async () => {
     if (!browser || !slug || !draft) return
     localStorage.setItem(
-      templatePreviewStorageKey,
+      `comuna:custom-template-preview:${slug}`,
       JSON.stringify({
         saved_at: Date.now(),
         template: normalizeTemplate(draft),
       })
     )
     await goto(`/comuns/${encodeURIComponent(slug)}/new-post?template_preview=1`)
+  }
+
+  const handlePaletteDragStart = (item: DragPaletteItem) => {
+    activeDragItem = item
+  }
+
+  const handlePaletteDragEnd = () => {
+    activeDragItem = null
+    activeDropZone = null
+  }
+
+  const handleDropZoneEnter = (zone: 'header' | 'available' | 'footer') => {
+    activeDropZone = zone
+  }
+
+  const applyPaletteItemToZone = (zone: 'header' | 'available' | 'footer') => {
+    if (!activeDragItem) return
+    if (activeDragItem.kind === 'block') {
+      addBlock(zone as BlockPlacement, activeDragItem.blockType)
+      return
+    }
+    if (zone === 'available') return
+    addFieldOfType(zone as FieldPlacement, activeDragItem.fieldType)
+  }
+
+  const handlePaletteDrop = (zone: 'header' | 'available' | 'footer') => {
+    applyPaletteItemToZone(zone)
+    activeDragItem = null
+    activeDropZone = null
   }
 
   const normalizedDraftForSave = () => {
@@ -467,7 +523,7 @@
       {errorMessage}
     </div>
   {:else if draft}
-    <div class="flex flex-col gap-4">
+    <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
       <section class="flex flex-col gap-4">
         <div class="rounded-[28px] border border-slate-200 bg-white px-5 py-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/70">
           <div class="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">Шаблон</div>
@@ -479,34 +535,43 @@
           />
         </div>
 
-        <section class={`px-5 py-5 ${headerSectionClass}`}>
+        <section
+          role="group"
+          class={`px-5 py-5 transition-shadow ${headerSectionClass} ${activeDropZone === 'header' ? 'ring-2 ring-amber-400 ring-offset-2 dark:ring-offset-zinc-950' : ''}`}
+          on:dragover|preventDefault
+          on:dragenter={() => handleDropZoneEnter('header')}
+          on:dragleave={() => activeDropZone === 'header' && (activeDropZone = null)}
+          on:drop|preventDefault={() => handlePaletteDrop('header')}
+        >
           <div class="mb-4">
             <div class="text-xs uppercase tracking-[0.2em] text-amber-700 dark:text-amber-200">Header</div>
             <div class="mt-1 text-sm text-slate-700 dark:text-zinc-200">
-              Все, что закрепляется сверху карточки шаблона: обязательные блоки и собственные поля хедера.
+              Перетащите сюда поля или блоки, которые должны закрепляться над основным текстом.
             </div>
           </div>
 
           <div class="grid gap-3">
             <div class="rounded-2xl border border-white/70 bg-white/80 px-4 py-4 dark:border-zinc-800/70 dark:bg-zinc-950/35">
-              <div class="mb-3 text-sm font-medium text-slate-900 dark:text-zinc-100">Блоки Header</div>
-              <div class="flex flex-wrap gap-2">
-                <select bind:value={headerBlockToAdd} class="min-w-[220px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900">
-                  <option value="">Добавить блок в Header</option>
-                  {#each headerBlockOptionsToAdd as option}
-                    <option value={option.value}>{option.label}</option>
-                  {/each}
-                </select>
-                <Button
-                  size="sm"
-                  on:click={() => {
-                    addBlock('header', headerBlockToAdd)
-                    headerBlockToAdd = ''
-                  }}
-                  disabled={!headerBlockToAdd}
-                >
-                  Добавить
-                </Button>
+              <div class="mb-3 flex items-center justify-between gap-3">
+                <div class="text-sm font-medium text-slate-900 dark:text-zinc-100">Блоки Header</div>
+                <div class="lg:hidden flex flex-wrap gap-2">
+                  <select bind:value={headerBlockToAdd} class="min-w-[220px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900">
+                    <option value="">Добавить блок в Header</option>
+                    {#each headerBlockOptionsToAdd as option}
+                      <option value={option.value}>{option.label}</option>
+                    {/each}
+                  </select>
+                  <Button
+                    size="sm"
+                    on:click={() => {
+                      addBlock('header', headerBlockToAdd)
+                      headerBlockToAdd = ''
+                    }}
+                    disabled={!headerBlockToAdd}
+                  >
+                    Добавить
+                  </Button>
+                </div>
               </div>
               <div class="mt-3 flex flex-col gap-2">
                 {#if headerBlocks.length}
@@ -552,7 +617,7 @@
             <div class="rounded-2xl border border-white/70 bg-white/80 px-4 py-4 dark:border-zinc-800/70 dark:bg-zinc-950/35">
               <div class="mb-3 flex items-center justify-between gap-3">
                 <div class="text-sm font-medium text-slate-900 dark:text-zinc-100">Поля Header</div>
-                <Button size="sm" on:click={() => addField('header')}>Добавить поле</Button>
+                <Button class="lg:hidden" size="sm" on:click={() => addField('header')}>Добавить поле</Button>
               </div>
               <div class="flex flex-col gap-3">
                 {#if headerFields.length}
@@ -624,32 +689,42 @@
           </div>
         </section>
 
-        <section class={`px-5 py-5 ${bodySectionClass}`}>
+        <section
+          role="group"
+          class={`px-5 py-5 transition-shadow ${bodySectionClass} ${activeDropZone === 'available' ? 'ring-2 ring-sky-400 ring-offset-2 dark:ring-offset-zinc-950' : ''}`}
+          on:dragover|preventDefault
+          on:dragenter={() => handleDropZoneEnter('available')}
+          on:dragleave={() => activeDropZone === 'available' && (activeDropZone = null)}
+          on:drop|preventDefault={() => handlePaletteDrop('available')}
+        >
           <div class="mb-4">
             <div class="text-xs uppercase tracking-[0.2em] text-sky-700 dark:text-sky-200">Текст</div>
             <div class="mt-1 text-sm text-slate-700 dark:text-zinc-200">
-              Это тело статьи. Сюда попадают блоки, которые автор может вставлять внутри текста.
+              Перетащите сюда блоки, которые автор сможет использовать внутри основного текста.
             </div>
           </div>
 
           <div class="rounded-2xl border border-white/70 bg-white/80 px-4 py-4 dark:border-zinc-800/70 dark:bg-zinc-950/35">
-            <div class="mb-3 flex flex-wrap gap-2">
-              <select bind:value={textBlockToAdd} class="min-w-[220px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900">
-                <option value="">Добавить блок в текст</option>
-                {#each bodyBlockOptionsToAdd as option}
-                  <option value={option.value}>{option.label}</option>
-                {/each}
-              </select>
-              <Button
-                size="sm"
-                on:click={() => {
-                  addBlock('available', textBlockToAdd)
-                  textBlockToAdd = ''
-                }}
-                disabled={!textBlockToAdd}
-              >
-                Добавить
-              </Button>
+            <div class="mb-3 flex items-center justify-between gap-3">
+              <div class="text-sm font-medium text-slate-900 dark:text-zinc-100">Блоки текста</div>
+              <div class="lg:hidden flex flex-wrap gap-2">
+                <select bind:value={textBlockToAdd} class="min-w-[220px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900">
+                  <option value="">Добавить блок в текст</option>
+                  {#each bodyBlockOptionsToAdd as option}
+                    <option value={option.value}>{option.label}</option>
+                  {/each}
+                </select>
+                <Button
+                  size="sm"
+                  on:click={() => {
+                    addBlock('available', textBlockToAdd)
+                    textBlockToAdd = ''
+                  }}
+                  disabled={!textBlockToAdd}
+                >
+                  Добавить
+                </Button>
+              </div>
             </div>
 
             <div class="flex flex-col gap-2">
@@ -694,186 +769,43 @@
           </div>
         </section>
 
-        <section class="rounded-[28px] border border-slate-200 bg-white px-5 py-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/70">
-          <div class="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <div class="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">Живое превью</div>
-              <div class="mt-1 text-sm text-slate-600 dark:text-zinc-300">
-                Здесь сразу видно итоговую композицию шаблона. Новый блок появляется в нужной зоне сразу после добавления.
-              </div>
-            </div>
-            <div class="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600 dark:border-zinc-700 dark:bg-zinc-900/70 dark:text-zinc-300">
-              {draft.name?.trim() || 'Новый шаблон'}
-            </div>
-          </div>
-
-          <div class="mt-5 rounded-[32px] border border-slate-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.94))] p-4 shadow-[0_18px_45px_rgba(15,23,42,0.08)] dark:border-zinc-800 dark:bg-[linear-gradient(180deg,rgba(19,24,34,0.98),rgba(14,18,28,0.94))]">
-            <div class="text-[11px] uppercase tracking-[0.24em] text-slate-400 dark:text-zinc-500">
-              Карточка шаблона
-            </div>
-
-            <div class="mt-4 flex flex-col gap-4">
-              <div class={`rounded-[24px] px-4 py-4 ${headerSectionClass}`}>
-                <div class="text-xs uppercase tracking-[0.18em] text-amber-700 dark:text-amber-200">Header</div>
-                <div class="mt-3 flex flex-col gap-3">
-                  {#if headerBlocks.length}
-                    <div class="flex flex-wrap gap-2">
-                      {#each headerBlocks as block}
-                        <div class="rounded-2xl border border-amber-200/80 bg-white/85 px-3 py-2 text-sm font-medium text-slate-800 shadow-sm dark:border-amber-900/40 dark:bg-zinc-950/45 dark:text-zinc-100">
-                          {resolveBlockLabel(block.block_type)}
-                          {#if block.is_required}
-                            <span class="ml-2 text-xs uppercase tracking-[0.14em] text-amber-700 dark:text-amber-300">
-                              Обязательный
-                            </span>
-                          {/if}
-                        </div>
-                      {/each}
-                    </div>
-                  {/if}
-
-                  {#if headerFields.length}
-                    <div class="grid gap-3 md:grid-cols-2">
-                      {#each headerFields as field}
-                        <div class="rounded-2xl border border-amber-200/80 bg-white/80 px-3 py-3 dark:border-amber-900/40 dark:bg-zinc-950/40">
-                          <div class="text-sm font-medium text-slate-900 dark:text-zinc-100">
-                            {field.label?.trim() || 'Поле без названия'}
-                          </div>
-                          <div class="mt-1 text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-zinc-400">
-                            {resolveFieldTypeLabel(field.field_type)}
-                            {field.is_required ? ' · обязательное' : ' · необязательное'}
-                          </div>
-                          {#if field.field_type === 'select' && field.options?.length}
-                            <div class="mt-2 flex flex-wrap gap-2">
-                              {#each field.options as option}
-                                <span class="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200">
-                                  {option}
-                                </span>
-                              {/each}
-                            </div>
-                          {/if}
-                        </div>
-                      {/each}
-                    </div>
-                  {/if}
-
-                  {#if !headerBlocks.length && !headerFields.length}
-                    <div class="rounded-2xl border border-dashed border-amber-300/70 px-3 py-4 text-sm text-slate-600 dark:border-amber-900/40 dark:text-zinc-300">
-                      Header сейчас пустой
-                    </div>
-                  {/if}
-                </div>
-              </div>
-
-              <div class={`rounded-[24px] px-4 py-4 ${bodySectionClass}`}>
-                <div class="text-xs uppercase tracking-[0.18em] text-sky-700 dark:text-sky-200">Текст</div>
-                <div class="mt-3 flex flex-col gap-3">
-                  {#if bodyBlocks.length}
-                    {#each bodyBlocks as block}
-                      <div class="rounded-2xl border border-sky-200/80 bg-white/85 px-4 py-4 dark:border-sky-900/40 dark:bg-zinc-950/45">
-                        <div class="flex flex-wrap items-center gap-2">
-                          <div class="text-sm font-medium text-slate-900 dark:text-zinc-100">
-                            {resolveBlockLabel(block.block_type)}
-                          </div>
-                          {#if block.is_required}
-                            <span class="rounded-full border border-sky-200 bg-sky-50 px-2 py-1 text-[11px] uppercase tracking-[0.14em] text-sky-700 dark:border-sky-900/50 dark:bg-sky-950/20 dark:text-sky-200">
-                              Обязательный
-                            </span>
-                          {/if}
-                        </div>
-                        <div class="mt-2 text-sm text-slate-500 dark:text-zinc-400">
-                          Блок будет доступен автору внутри основного текста публикации.
-                        </div>
-                      </div>
-                    {/each}
-                  {:else}
-                    <div class="rounded-2xl border border-dashed border-sky-300/70 px-3 py-4 text-sm text-slate-600 dark:border-sky-900/40 dark:text-zinc-300">
-                      Текстовых блоков пока нет
-                    </div>
-                  {/if}
-                </div>
-              </div>
-
-              <div class={`rounded-[24px] px-4 py-4 ${footerSectionClass}`}>
-                <div class="text-xs uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-200">Footer</div>
-                <div class="mt-3 flex flex-col gap-3">
-                  {#if footerBlocks.length}
-                    <div class="flex flex-wrap gap-2">
-                      {#each footerBlocks as block}
-                        <div class="rounded-2xl border border-emerald-200/80 bg-white/85 px-3 py-2 text-sm font-medium text-slate-800 shadow-sm dark:border-emerald-900/40 dark:bg-zinc-950/45 dark:text-zinc-100">
-                          {resolveBlockLabel(block.block_type)}
-                          {#if block.is_required}
-                            <span class="ml-2 text-xs uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-300">
-                              Обязательный
-                            </span>
-                          {/if}
-                        </div>
-                      {/each}
-                    </div>
-                  {/if}
-
-                  {#if footerFields.length}
-                    <div class="grid gap-3 md:grid-cols-2">
-                      {#each footerFields as field}
-                        <div class="rounded-2xl border border-emerald-200/80 bg-white/80 px-3 py-3 dark:border-emerald-900/40 dark:bg-zinc-950/40">
-                          <div class="text-sm font-medium text-slate-900 dark:text-zinc-100">
-                            {field.label?.trim() || 'Поле без названия'}
-                          </div>
-                          <div class="mt-1 text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-zinc-400">
-                            {resolveFieldTypeLabel(field.field_type)}
-                            {field.is_required ? ' · обязательное' : ' · необязательное'}
-                          </div>
-                          {#if field.field_type === 'select' && field.options?.length}
-                            <div class="mt-2 flex flex-wrap gap-2">
-                              {#each field.options as option}
-                                <span class="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/20 dark:text-emerald-200">
-                                  {option}
-                                </span>
-                              {/each}
-                            </div>
-                          {/if}
-                        </div>
-                      {/each}
-                    </div>
-                  {/if}
-
-                  {#if !footerBlocks.length && !footerFields.length}
-                    <div class="rounded-2xl border border-dashed border-emerald-300/70 px-3 py-4 text-sm text-slate-600 dark:border-emerald-900/40 dark:text-zinc-300">
-                      Footer сейчас пустой
-                    </div>
-                  {/if}
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section class={`px-5 py-5 ${footerSectionClass}`}>
+        <section
+          role="group"
+          class={`px-5 py-5 transition-shadow ${footerSectionClass} ${activeDropZone === 'footer' ? 'ring-2 ring-emerald-400 ring-offset-2 dark:ring-offset-zinc-950' : ''}`}
+          on:dragover|preventDefault
+          on:dragenter={() => handleDropZoneEnter('footer')}
+          on:dragleave={() => activeDropZone === 'footer' && (activeDropZone = null)}
+          on:drop|preventDefault={() => handlePaletteDrop('footer')}
+        >
           <div class="mb-4">
             <div class="text-xs uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-200">Footer</div>
             <div class="mt-1 text-sm text-slate-700 dark:text-zinc-200">
-              Нижняя часть шаблона: закрепленные блоки и поля, которые должны идти после текста.
+              Перетащите сюда поля и блоки, которые должны идти после основного текста.
             </div>
           </div>
 
           <div class="grid gap-3">
             <div class="rounded-2xl border border-white/70 bg-white/80 px-4 py-4 dark:border-zinc-800/70 dark:bg-zinc-950/35">
-              <div class="mb-3 flex flex-wrap gap-2">
-                <select bind:value={footerBlockToAdd} class="min-w-[220px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900">
-                  <option value="">Добавить блок в Footer</option>
-                  {#each footerBlockOptionsToAdd as option}
-                    <option value={option.value}>{option.label}</option>
-                  {/each}
-                </select>
-                <Button
-                  size="sm"
-                  on:click={() => {
-                    addBlock('footer', footerBlockToAdd)
-                    footerBlockToAdd = ''
-                  }}
-                  disabled={!footerBlockToAdd}
-                >
-                  Добавить
-                </Button>
+              <div class="mb-3 flex items-center justify-between gap-3">
+                <div class="text-sm font-medium text-slate-900 dark:text-zinc-100">Блоки Footer</div>
+                <div class="lg:hidden flex flex-wrap gap-2">
+                  <select bind:value={footerBlockToAdd} class="min-w-[220px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900">
+                    <option value="">Добавить блок в Footer</option>
+                    {#each footerBlockOptionsToAdd as option}
+                      <option value={option.value}>{option.label}</option>
+                    {/each}
+                  </select>
+                  <Button
+                    size="sm"
+                    on:click={() => {
+                      addBlock('footer', footerBlockToAdd)
+                      footerBlockToAdd = ''
+                    }}
+                    disabled={!footerBlockToAdd}
+                  >
+                    Добавить
+                  </Button>
+                </div>
               </div>
               <div class="flex flex-col gap-2">
                 {#if footerBlocks.length}
@@ -919,7 +851,7 @@
             <div class="rounded-2xl border border-white/70 bg-white/80 px-4 py-4 dark:border-zinc-800/70 dark:bg-zinc-950/35">
               <div class="mb-3 flex items-center justify-between gap-3">
                 <div class="text-sm font-medium text-slate-900 dark:text-zinc-100">Поля Footer</div>
-                <Button size="sm" on:click={() => addField('footer')}>Добавить поле</Button>
+                <Button class="lg:hidden" size="sm" on:click={() => addField('footer')}>Добавить поле</Button>
               </div>
               <div class="flex flex-col gap-3">
                 {#if footerFields.length}
@@ -990,9 +922,54 @@
             </div>
           </div>
         </section>
+      </section>
+
+      <aside class="flex flex-col gap-4 lg:sticky lg:top-24">
+        <section class="rounded-[28px] border border-slate-200 bg-white px-5 py-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/70">
+          <div class="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">Доступные поля</div>
+          <div class="mt-2 text-sm text-slate-600 dark:text-zinc-300">
+            Перетаскивайте поля в `Header` или `Footer`.
+          </div>
+          <div class="mt-4 flex flex-col gap-2">
+            {#each paletteFieldOptions as fieldOption}
+              <button
+                type="button"
+                draggable="true"
+                class="flex w-full cursor-grab items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-medium text-slate-800 transition hover:border-slate-300 hover:bg-white active:cursor-grabbing dark:border-zinc-800 dark:bg-zinc-900/70 dark:text-zinc-100 dark:hover:border-zinc-700 dark:hover:bg-zinc-900"
+                on:dragstart={() => handlePaletteDragStart({ kind: 'field', fieldType: fieldOption.value })}
+                on:dragend={handlePaletteDragEnd}
+              >
+                <span>{fieldOption.label}</span>
+                <span class="text-xs uppercase tracking-[0.14em] text-slate-400 dark:text-zinc-500">drag</span>
+              </button>
+            {/each}
+          </div>
+        </section>
+
+        <section class="rounded-[28px] border border-slate-200 bg-white px-5 py-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/70">
+          <div class="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">Все блоки</div>
+          <div class="mt-2 text-sm text-slate-600 dark:text-zinc-300">
+            Перетаскивайте блоки в `Header`, `Текст` или `Footer`.
+          </div>
+          <div class="mt-4 flex flex-col gap-2">
+            {#each blockOptions() as option}
+              <button
+                type="button"
+                draggable="true"
+                class="flex w-full cursor-grab items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-medium text-slate-800 transition hover:border-slate-300 hover:bg-white active:cursor-grabbing dark:border-zinc-800 dark:bg-zinc-900/70 dark:text-zinc-100 dark:hover:border-zinc-700 dark:hover:bg-zinc-900"
+                on:dragstart={() => handlePaletteDragStart({ kind: 'block', blockType: option.value })}
+                on:dragend={handlePaletteDragEnd}
+              >
+                <span>{option.label}</span>
+                <span class="text-xs uppercase tracking-[0.14em] text-slate-400 dark:text-zinc-500">drag</span>
+              </button>
+            {/each}
+          </div>
+        </section>
+
         <section class="rounded-[28px] border border-slate-200 bg-white px-5 py-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/70">
           <div class="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">Структура</div>
-          <div class="mt-4 grid gap-3 md:grid-cols-3">
+          <div class="mt-4 grid gap-3">
             <div class="rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-3 dark:border-amber-900/40 dark:bg-amber-950/15">
               <div class="text-xs uppercase tracking-[0.18em] text-amber-700 dark:text-amber-200">Header</div>
               <div class="mt-2 text-sm text-slate-700 dark:text-zinc-300">Блоков: {headerBlocks.length}</div>
@@ -1017,7 +994,7 @@
               {errorMessage}
             </div>
           {/if}
-          <div class="mt-4 flex flex-wrap gap-3">
+          <div class="mt-4 flex flex-col gap-3">
             <Button on:click={saveTemplate} disabled={saving || deleting}>
               {saving ? 'Сохраняем...' : 'Сохранить шаблон'}
             </Button>
@@ -1034,7 +1011,7 @@
             </Button>
           </div>
         </section>
-      </section>
+      </aside>
     </div>
   {/if}
 </div>

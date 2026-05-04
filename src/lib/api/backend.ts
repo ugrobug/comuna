@@ -451,7 +451,7 @@ export type BackendComunCustomTemplateField = {
   id?: number
   key?: string
   label: string
-  field_type: 'text' | 'file' | 'select'
+  field_type: 'text' | 'file' | 'select' | 'checkbox'
   placement: 'header' | 'footer'
   is_required?: boolean
   options?: string[]

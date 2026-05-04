@@ -65,7 +65,7 @@
   type ComunSettingsTabKey = 'description' | 'availability' | 'moderation' | 'categories' | 'rules'
   type CustomTemplateBlockOption = { value: string; label: string }
   type CustomTemplatePlacement = '' | 'available' | 'header' | 'footer'
-  type CustomTemplateFieldType = 'text' | 'file' | 'select'
+  type CustomTemplateFieldType = 'text' | 'file' | 'select' | 'checkbox'
   type CustomTemplateFieldPlacement = 'header' | 'footer'
   const fallbackTemplateTypeOptions: TemplateTypeOption[] = [
     { value: 'basic', label: 'Пост' },
@@ -82,6 +82,7 @@
     { value: 'text', label: 'Текст' },
     { value: 'file', label: 'Файл' },
     { value: 'select', label: 'Выбор значений' },
+    { value: 'checkbox', label: 'Чекбокс' },
   ]
   const fallbackCustomTemplateFieldPlacementOptions = [
     { value: 'header', label: 'Хедер' },

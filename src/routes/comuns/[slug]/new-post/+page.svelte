@@ -92,7 +92,8 @@
             field_type: (String(field?.field_type ?? '').trim() || 'text') as
               | 'text'
               | 'file'
-              | 'select',
+              | 'select'
+              | 'checkbox',
             placement: (String(field?.placement ?? '').trim() || 'header') as
               | 'header'
               | 'footer',
@@ -140,6 +141,7 @@
   const resolveCustomTemplateFieldTypeLabel = (fieldType?: string | null) => {
     if (fieldType === 'file') return 'Файл'
     if (fieldType === 'select') return 'Выбор'
+    if (fieldType === 'checkbox') return 'Чекбокс'
     return 'Текст'
   }
 
