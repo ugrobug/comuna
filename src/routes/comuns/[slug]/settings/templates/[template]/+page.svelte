@@ -474,6 +474,27 @@
     }
   }
 
+  const handlePointerDropZoneMove = (zone: TemplateEditorDropZone) => {
+    if ($templateEditorDraggedItem) {
+      setActiveDropZone(zone)
+    }
+  }
+
+  const handlePointerDropZoneLeave = (event: PointerEvent, zone: TemplateEditorDropZone) => {
+    if (!$templateEditorDraggedItem || activeDropZone !== zone) return
+    const target = event.currentTarget
+    if (!(target instanceof HTMLElement)) return
+    const rect = target.getBoundingClientRect()
+    const outside =
+      event.clientX < rect.left ||
+      event.clientX > rect.right ||
+      event.clientY < rect.top ||
+      event.clientY > rect.bottom
+    if (outside) {
+      setActiveDropZone(null)
+    }
+  }
+
   const applyPaletteItemToZone = (
     zone: TemplateEditorDropZone,
     item: TemplateEditorDragPaletteItem | null
@@ -690,6 +711,9 @@
           on:dragenter={() => handleDropZoneEnter('header')}
           on:dragleave={(event) => handleDropZoneLeave(event, 'header')}
           on:drop|preventDefault={(event) => handlePaletteDrop(event, 'header')}
+          on:pointerenter={() => handlePointerDropZoneMove('header')}
+          on:pointermove={() => handlePointerDropZoneMove('header')}
+          on:pointerleave={(event) => handlePointerDropZoneLeave(event, 'header')}
         >
           <div class="mb-4">
             <div class="text-xs uppercase tracking-[0.2em] text-amber-700 dark:text-amber-200">Header</div>
@@ -858,6 +882,9 @@
           on:dragenter={() => handleDropZoneEnter('available')}
           on:dragleave={(event) => handleDropZoneLeave(event, 'available')}
           on:drop|preventDefault={(event) => handlePaletteDrop(event, 'available')}
+          on:pointerenter={() => handlePointerDropZoneMove('available')}
+          on:pointermove={() => handlePointerDropZoneMove('available')}
+          on:pointerleave={(event) => handlePointerDropZoneLeave(event, 'available')}
         >
           <div class="mb-4">
             <div class="text-xs uppercase tracking-[0.2em] text-sky-700 dark:text-sky-200">Текстовый блок</div>
@@ -1026,6 +1053,9 @@
           on:dragenter={() => handleDropZoneEnter('footer')}
           on:dragleave={(event) => handleDropZoneLeave(event, 'footer')}
           on:drop|preventDefault={(event) => handlePaletteDrop(event, 'footer')}
+          on:pointerenter={() => handlePointerDropZoneMove('footer')}
+          on:pointermove={() => handlePointerDropZoneMove('footer')}
+          on:pointerleave={(event) => handlePointerDropZoneLeave(event, 'footer')}
         >
           <div class="mb-4">
             <div class="text-xs uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-200">Footer</div>

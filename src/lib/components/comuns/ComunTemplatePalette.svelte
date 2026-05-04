@@ -1,8 +1,10 @@
 <script lang="ts">
+  import { get } from 'svelte/store'
   import {
     TEMPLATE_EDITOR_DROP_EVENT,
     templateEditorActiveDropZone,
     templateEditorDraggedItem,
+    templateEditorDropRequest,
     type TemplateEditorDragPaletteItem,
     type TemplateEditorDropZone,
   } from '$lib/components/comuns/templateEditorDnd'
@@ -21,11 +23,38 @@
   const createDragId = () =>
     globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
 
-  const readDropZoneFromPoint = (x: number, y: number): TemplateEditorDropZone | null => {
-    const element = document.elementFromPoint(x, y)
+  const normalizeDropZone = (zone?: string): TemplateEditorDropZone | null =>
+    zone === 'header' || zone === 'available' || zone === 'footer' ? zone : null
+
+  const readZoneFromElement = (element: Element | null | undefined): TemplateEditorDropZone | null => {
     const dropZoneElement = element?.closest?.(DROP_ZONE_SELECTOR) as HTMLElement | null
-    const zone = dropZoneElement?.dataset?.templateDropZone
-    return zone === 'header' || zone === 'available' || zone === 'footer' ? zone : null
+    return normalizeDropZone(dropZoneElement?.dataset?.templateDropZone)
+  }
+
+  const readDropZoneFromPoint = (x: number, y: number): TemplateEditorDropZone | null => {
+    for (const element of document.elementsFromPoint(x, y)) {
+      const zone = readZoneFromElement(element)
+      if (zone) return zone
+    }
+    for (const element of document.querySelectorAll<HTMLElement>(DROP_ZONE_SELECTOR)) {
+      const rect = element.getBoundingClientRect()
+      if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+        return normalizeDropZone(element.dataset.templateDropZone)
+      }
+    }
+    return null
+  }
+
+  const sendDropRequest = (
+    zone: TemplateEditorDropZone,
+    item: TemplateEditorDragPaletteItem
+  ) => {
+    templateEditorDropRequest.set({ zone, item })
+    window.dispatchEvent(
+      new CustomEvent(TEMPLATE_EDITOR_DROP_EVENT, {
+        detail: { zone, item },
+      })
+    )
   }
 
   const clearPointerDrag = () => {
@@ -47,13 +76,9 @@
 
   const handlePointerUp = (event: PointerEvent) => {
     const item = activeDragItem
-    const zone = readDropZoneFromPoint(event.clientX, event.clientY)
+    const zone = readDropZoneFromPoint(event.clientX, event.clientY) ?? get(templateEditorActiveDropZone)
     if (item && zone) {
-      window.dispatchEvent(
-        new CustomEvent(TEMPLATE_EDITOR_DROP_EVENT, {
-          detail: { zone, item },
-        })
-      )
+      sendDropRequest(zone, item)
     }
     clearPointerDrag()
   }
@@ -96,6 +121,11 @@
   }
 
   const clearDragPayload = () => {
+    const item = get(templateEditorDraggedItem)
+    const zone = get(templateEditorActiveDropZone)
+    if (item && zone) {
+      sendDropRequest(zone, item)
+    }
     window.setTimeout(() => {
       templateEditorDraggedItem.set(null)
       templateEditorActiveDropZone.set(null)
@@ -113,6 +143,7 @@
       {#each fieldOptions as fieldOption}
         <button
           type="button"
+          draggable="true"
           class="flex w-full touch-none select-none items-center rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-medium text-slate-800 transition hover:border-slate-300 hover:bg-white active:cursor-grabbing dark:border-zinc-800 dark:bg-zinc-900/70 dark:text-zinc-100 dark:hover:border-zinc-700 dark:hover:bg-zinc-900"
           class:cursor-grab={!activeDragItem}
           class:cursor-grabbing={Boolean(activeDragItem)}
@@ -136,6 +167,7 @@
       {#each blockOptions as option}
         <button
           type="button"
+          draggable="true"
           class="flex w-full touch-none select-none items-center rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-medium text-slate-800 transition hover:border-slate-300 hover:bg-white active:cursor-grabbing dark:border-zinc-800 dark:bg-zinc-900/70 dark:text-zinc-100 dark:hover:border-zinc-700 dark:hover:bg-zinc-900"
           class:cursor-grab={!activeDragItem}
           class:cursor-grabbing={Boolean(activeDragItem)}
