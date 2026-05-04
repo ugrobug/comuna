@@ -3,7 +3,6 @@
   import { goto } from '$app/navigation'
   import { onMount } from 'svelte'
   import { Button, toast } from 'mono-svelte'
-  import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import {
     buildComunCustomTemplateEditorPath,
     buildComunUrl,
@@ -510,8 +509,6 @@
 </script>
 
 <div class="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6">
-  <Header pageHeader>{isNewTemplate ? 'Новый шаблон' : draft?.name || 'Редактор шаблона'}</Header>
-
   <div class="flex flex-wrap items-center justify-between gap-3">
     <Button color="ghost" on:click={backToSettings}>Назад к настройкам</Button>
     <div class="text-sm text-slate-500 dark:text-zinc-400">
