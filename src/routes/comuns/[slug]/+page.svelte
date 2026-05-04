@@ -672,8 +672,7 @@
       return
     }
     if (isSubscribedToComun) {
-      subscriptionCategoriesOpen = hasComunCategories ? !subscriptionCategoriesOpen : false
-      if (!hasComunCategories) removeComunFromMyFeed()
+      removeComunFromMyFeed()
       return
     }
     const next = new Set<string>(myFeedComunSlugs)
@@ -1223,9 +1222,12 @@
                 <button
                   type="button"
                   class="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-900"
-                  on:click={removeComunFromMyFeed}
+                  on:click={() => {
+                    subscriptionCategoriesOpen = false
+                    toast({ content: 'Настройки подписки сохранены' })
+                  }}
                 >
-                  Отписаться
+                  Сохранить
                 </button>
               </div>
             {/if}

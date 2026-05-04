@@ -301,6 +301,28 @@
   const fieldOptionsText = (field?: NonNullable<BackendComunCustomTemplate['fields']>[number]) =>
     (field?.options ?? []).join('\n')
 
+  const templatePreviewStorageKey = `comuna:custom-template-preview:${slug}`
+
+  const resolveBlockLabel = (blockType?: string | null) =>
+    blockOptions().find((item) => item.value === String(blockType ?? '').trim())?.label ??
+    (String(blockType ?? '').trim() || 'Блок')
+
+  const resolveFieldTypeLabel = (fieldType?: string | null) =>
+    fieldTypeOptions().find((item) => item.value === String(fieldType ?? '').trim())?.label ??
+    (String(fieldType ?? '').trim() || 'Поле')
+
+  const openTemplatePreview = async () => {
+    if (!browser || !slug || !draft) return
+    localStorage.setItem(
+      templatePreviewStorageKey,
+      JSON.stringify({
+        saved_at: Date.now(),
+        template: normalizeTemplate(draft),
+      })
+    )
+    await goto(`/comuns/${encodeURIComponent(slug)}/new-post?template_preview=1`)
+  }
+
   const normalizedDraftForSave = () => {
     const currentDraft = normalizeTemplate(draft)
     return {
@@ -445,7 +467,7 @@
       {errorMessage}
     </div>
   {:else if draft}
-    <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+    <div class="flex flex-col gap-4">
       <section class="flex flex-col gap-4">
         <div class="rounded-[28px] border border-slate-200 bg-white px-5 py-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/70">
           <div class="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">Шаблон</div>
@@ -672,6 +694,159 @@
           </div>
         </section>
 
+        <section class="rounded-[28px] border border-slate-200 bg-white px-5 py-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/70">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div class="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">Живое превью</div>
+              <div class="mt-1 text-sm text-slate-600 dark:text-zinc-300">
+                Здесь сразу видно итоговую композицию шаблона. Новый блок появляется в нужной зоне сразу после добавления.
+              </div>
+            </div>
+            <div class="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600 dark:border-zinc-700 dark:bg-zinc-900/70 dark:text-zinc-300">
+              {draft.name?.trim() || 'Новый шаблон'}
+            </div>
+          </div>
+
+          <div class="mt-5 rounded-[32px] border border-slate-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.94))] p-4 shadow-[0_18px_45px_rgba(15,23,42,0.08)] dark:border-zinc-800 dark:bg-[linear-gradient(180deg,rgba(19,24,34,0.98),rgba(14,18,28,0.94))]">
+            <div class="text-[11px] uppercase tracking-[0.24em] text-slate-400 dark:text-zinc-500">
+              Карточка шаблона
+            </div>
+
+            <div class="mt-4 flex flex-col gap-4">
+              <div class={`rounded-[24px] px-4 py-4 ${headerSectionClass}`}>
+                <div class="text-xs uppercase tracking-[0.18em] text-amber-700 dark:text-amber-200">Header</div>
+                <div class="mt-3 flex flex-col gap-3">
+                  {#if headerBlocks.length}
+                    <div class="flex flex-wrap gap-2">
+                      {#each headerBlocks as block}
+                        <div class="rounded-2xl border border-amber-200/80 bg-white/85 px-3 py-2 text-sm font-medium text-slate-800 shadow-sm dark:border-amber-900/40 dark:bg-zinc-950/45 dark:text-zinc-100">
+                          {resolveBlockLabel(block.block_type)}
+                          {#if block.is_required}
+                            <span class="ml-2 text-xs uppercase tracking-[0.14em] text-amber-700 dark:text-amber-300">
+                              Обязательный
+                            </span>
+                          {/if}
+                        </div>
+                      {/each}
+                    </div>
+                  {/if}
+
+                  {#if headerFields.length}
+                    <div class="grid gap-3 md:grid-cols-2">
+                      {#each headerFields as field}
+                        <div class="rounded-2xl border border-amber-200/80 bg-white/80 px-3 py-3 dark:border-amber-900/40 dark:bg-zinc-950/40">
+                          <div class="text-sm font-medium text-slate-900 dark:text-zinc-100">
+                            {field.label?.trim() || 'Поле без названия'}
+                          </div>
+                          <div class="mt-1 text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-zinc-400">
+                            {resolveFieldTypeLabel(field.field_type)}
+                            {field.is_required ? ' · обязательное' : ' · необязательное'}
+                          </div>
+                          {#if field.field_type === 'select' && field.options?.length}
+                            <div class="mt-2 flex flex-wrap gap-2">
+                              {#each field.options as option}
+                                <span class="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200">
+                                  {option}
+                                </span>
+                              {/each}
+                            </div>
+                          {/if}
+                        </div>
+                      {/each}
+                    </div>
+                  {/if}
+
+                  {#if !headerBlocks.length && !headerFields.length}
+                    <div class="rounded-2xl border border-dashed border-amber-300/70 px-3 py-4 text-sm text-slate-600 dark:border-amber-900/40 dark:text-zinc-300">
+                      Header сейчас пустой
+                    </div>
+                  {/if}
+                </div>
+              </div>
+
+              <div class={`rounded-[24px] px-4 py-4 ${bodySectionClass}`}>
+                <div class="text-xs uppercase tracking-[0.18em] text-sky-700 dark:text-sky-200">Текст</div>
+                <div class="mt-3 flex flex-col gap-3">
+                  {#if bodyBlocks.length}
+                    {#each bodyBlocks as block}
+                      <div class="rounded-2xl border border-sky-200/80 bg-white/85 px-4 py-4 dark:border-sky-900/40 dark:bg-zinc-950/45">
+                        <div class="flex flex-wrap items-center gap-2">
+                          <div class="text-sm font-medium text-slate-900 dark:text-zinc-100">
+                            {resolveBlockLabel(block.block_type)}
+                          </div>
+                          {#if block.is_required}
+                            <span class="rounded-full border border-sky-200 bg-sky-50 px-2 py-1 text-[11px] uppercase tracking-[0.14em] text-sky-700 dark:border-sky-900/50 dark:bg-sky-950/20 dark:text-sky-200">
+                              Обязательный
+                            </span>
+                          {/if}
+                        </div>
+                        <div class="mt-2 text-sm text-slate-500 dark:text-zinc-400">
+                          Блок будет доступен автору внутри основного текста публикации.
+                        </div>
+                      </div>
+                    {/each}
+                  {:else}
+                    <div class="rounded-2xl border border-dashed border-sky-300/70 px-3 py-4 text-sm text-slate-600 dark:border-sky-900/40 dark:text-zinc-300">
+                      Текстовых блоков пока нет
+                    </div>
+                  {/if}
+                </div>
+              </div>
+
+              <div class={`rounded-[24px] px-4 py-4 ${footerSectionClass}`}>
+                <div class="text-xs uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-200">Footer</div>
+                <div class="mt-3 flex flex-col gap-3">
+                  {#if footerBlocks.length}
+                    <div class="flex flex-wrap gap-2">
+                      {#each footerBlocks as block}
+                        <div class="rounded-2xl border border-emerald-200/80 bg-white/85 px-3 py-2 text-sm font-medium text-slate-800 shadow-sm dark:border-emerald-900/40 dark:bg-zinc-950/45 dark:text-zinc-100">
+                          {resolveBlockLabel(block.block_type)}
+                          {#if block.is_required}
+                            <span class="ml-2 text-xs uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-300">
+                              Обязательный
+                            </span>
+                          {/if}
+                        </div>
+                      {/each}
+                    </div>
+                  {/if}
+
+                  {#if footerFields.length}
+                    <div class="grid gap-3 md:grid-cols-2">
+                      {#each footerFields as field}
+                        <div class="rounded-2xl border border-emerald-200/80 bg-white/80 px-3 py-3 dark:border-emerald-900/40 dark:bg-zinc-950/40">
+                          <div class="text-sm font-medium text-slate-900 dark:text-zinc-100">
+                            {field.label?.trim() || 'Поле без названия'}
+                          </div>
+                          <div class="mt-1 text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-zinc-400">
+                            {resolveFieldTypeLabel(field.field_type)}
+                            {field.is_required ? ' · обязательное' : ' · необязательное'}
+                          </div>
+                          {#if field.field_type === 'select' && field.options?.length}
+                            <div class="mt-2 flex flex-wrap gap-2">
+                              {#each field.options as option}
+                                <span class="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/20 dark:text-emerald-200">
+                                  {option}
+                                </span>
+                              {/each}
+                            </div>
+                          {/if}
+                        </div>
+                      {/each}
+                    </div>
+                  {/if}
+
+                  {#if !footerBlocks.length && !footerFields.length}
+                    <div class="rounded-2xl border border-dashed border-emerald-300/70 px-3 py-4 text-sm text-slate-600 dark:border-emerald-900/40 dark:text-zinc-300">
+                      Footer сейчас пустой
+                    </div>
+                  {/if}
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section class={`px-5 py-5 ${footerSectionClass}`}>
           <div class="mb-4">
             <div class="text-xs uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-200">Footer</div>
@@ -815,35 +990,22 @@
             </div>
           </div>
         </section>
-      </section>
-
-      <aside class="flex flex-col gap-4">
         <section class="rounded-[28px] border border-slate-200 bg-white px-5 py-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/70">
           <div class="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">Структура</div>
-          <div class="mt-4 grid gap-3">
+          <div class="mt-4 grid gap-3 md:grid-cols-3">
             <div class="rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-3 dark:border-amber-900/40 dark:bg-amber-950/15">
               <div class="text-xs uppercase tracking-[0.18em] text-amber-700 dark:text-amber-200">Header</div>
-              <div class="mt-2 text-sm text-slate-700 dark:text-zinc-300">
-                Блоков: {headerBlocks.length}
-              </div>
-              <div class="text-sm text-slate-700 dark:text-zinc-300">
-                Полей: {headerFields.length}
-              </div>
+              <div class="mt-2 text-sm text-slate-700 dark:text-zinc-300">Блоков: {headerBlocks.length}</div>
+              <div class="text-sm text-slate-700 dark:text-zinc-300">Полей: {headerFields.length}</div>
             </div>
             <div class="rounded-2xl border border-sky-200 bg-sky-50/80 px-4 py-3 dark:border-sky-900/40 dark:bg-sky-950/15">
               <div class="text-xs uppercase tracking-[0.18em] text-sky-700 dark:text-sky-200">Текст</div>
-              <div class="mt-2 text-sm text-slate-700 dark:text-zinc-300">
-                Блоков: {bodyBlocks.length}
-              </div>
+              <div class="mt-2 text-sm text-slate-700 dark:text-zinc-300">Блоков: {bodyBlocks.length}</div>
             </div>
             <div class="rounded-2xl border border-emerald-200 bg-emerald-50/80 px-4 py-3 dark:border-emerald-900/40 dark:bg-emerald-950/15">
               <div class="text-xs uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-200">Footer</div>
-              <div class="mt-2 text-sm text-slate-700 dark:text-zinc-300">
-                Блоков: {footerBlocks.length}
-              </div>
-              <div class="text-sm text-slate-700 dark:text-zinc-300">
-                Полей: {footerFields.length}
-              </div>
+              <div class="mt-2 text-sm text-slate-700 dark:text-zinc-300">Блоков: {footerBlocks.length}</div>
+              <div class="text-sm text-slate-700 dark:text-zinc-300">Полей: {footerFields.length}</div>
             </div>
           </div>
         </section>
@@ -855,9 +1017,12 @@
               {errorMessage}
             </div>
           {/if}
-          <div class="mt-4 flex flex-col gap-3">
+          <div class="mt-4 flex flex-wrap gap-3">
             <Button on:click={saveTemplate} disabled={saving || deleting}>
               {saving ? 'Сохраняем...' : 'Сохранить шаблон'}
+            </Button>
+            <Button color="ghost" on:click={openTemplatePreview} disabled={saving || deleting}>
+              Предпросмотр
             </Button>
             {#if !isNewTemplate}
               <Button color="ghost" on:click={deleteTemplate} disabled={saving || deleting}>
@@ -869,7 +1034,7 @@
             </Button>
           </div>
         </section>
-      </aside>
+      </section>
     </div>
   {/if}
 </div>

@@ -1,11 +1,16 @@
 <script lang="ts">
+  import { browser } from '$app/environment'
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import { Button, Spinner, TextInput, toast } from 'mono-svelte'
   import EditorJS from '$lib/components/editor/EditorJS.svelte'
   import { deserializeEditorModel, postPayloadContainsExternalLinks } from '$lib/util'
-  import { buildComunUrl, type BackendComun } from '$lib/api/backend'
+  import {
+    buildComunUrl,
+    type BackendComun,
+    type BackendComunCustomTemplate,
+  } from '$lib/api/backend'
   import { createComunPost, refreshSiteUser, siteToken, siteUser } from '$lib/siteAuth'
   import { onMount } from 'svelte'
   import PostTemplateFields from '$lib/components/site/post-templates/PostTemplateFields.svelte'
@@ -46,6 +51,97 @@
   let createMusicReleaseData: MusicReleaseTemplateData = createEmptyMusicReleaseTemplateData()
   let comunAllowedTemplateTypes: string[] = ['basic']
   let templateEditorBlockSettings: TemplateEditorBlockSettings = {}
+  let customTemplatePreview: BackendComunCustomTemplate | null = null
+  let editorEnabledTemplateBlockTypes: string[] = []
+  let editorTemplateBlocksKey = 'basic:'
+  let customTemplatePreviewBlockTypes: string[] = []
+  let customTemplatePreviewHeaderBlocks: NonNullable<BackendComunCustomTemplate['blocks']> = []
+  let customTemplatePreviewBodyBlocks: NonNullable<BackendComunCustomTemplate['blocks']> = []
+  let customTemplatePreviewFooterBlocks: NonNullable<BackendComunCustomTemplate['blocks']> = []
+  let customTemplatePreviewHeaderFields: NonNullable<BackendComunCustomTemplate['fields']> = []
+  let customTemplatePreviewFooterFields: NonNullable<BackendComunCustomTemplate['fields']> = []
+
+  const customTemplatePreviewStorageKey = (slug: string) => `comuna:custom-template-preview:${slug}`
+
+  const normalizeCustomTemplatePreview = (
+    template?: BackendComunCustomTemplate | null
+  ): BackendComunCustomTemplate | null => {
+    if (!template) return null
+    return {
+      id: Number(template.id) > 0 ? Number(template.id) : undefined,
+      name: String(template.name ?? '').trim(),
+      slug: String(template.slug ?? '').trim() || undefined,
+      sort_order: Number(template.sort_order ?? 0) || 0,
+      blocks: Array.isArray(template.blocks)
+        ? template.blocks.map((block, index) => ({
+            id: Number(block?.id) > 0 ? Number(block.id) : undefined,
+            block_type: String(block?.block_type ?? '').trim(),
+            placement: (String(block?.placement ?? '').trim() || 'available') as
+              | 'available'
+              | 'header'
+              | 'footer',
+            is_required: Boolean(block?.is_required),
+            sort_order: Number(block?.sort_order ?? index) || index,
+          }))
+        : [],
+      fields: Array.isArray(template.fields)
+        ? template.fields.map((field, index) => ({
+            id: Number(field?.id) > 0 ? Number(field.id) : undefined,
+            key: String(field?.key ?? '').trim() || undefined,
+            label: String(field?.label ?? '').trim(),
+            field_type: (String(field?.field_type ?? '').trim() || 'text') as
+              | 'text'
+              | 'file'
+              | 'select',
+            placement: (String(field?.placement ?? '').trim() || 'header') as
+              | 'header'
+              | 'footer',
+            is_required: Boolean(field?.is_required),
+            options: Array.isArray(field?.options)
+              ? field.options.map((option) => String(option ?? '').trim()).filter(Boolean)
+              : [],
+            sort_order: Number(field?.sort_order ?? index) || index,
+          }))
+        : [],
+    }
+  }
+
+  const loadCustomTemplatePreview = () => {
+    if (!browser) return
+    if (!comun?.slug) {
+      customTemplatePreview = null
+      return
+    }
+    if ($page.url.searchParams.get('template_preview') !== '1') {
+      customTemplatePreview = null
+      return
+    }
+    try {
+      const raw = localStorage.getItem(customTemplatePreviewStorageKey(comun.slug))
+      if (!raw) {
+        customTemplatePreview = null
+        return
+      }
+      const parsed = JSON.parse(raw)
+      customTemplatePreview = normalizeCustomTemplatePreview(parsed?.template ?? null)
+    } catch {
+      customTemplatePreview = null
+    }
+  }
+
+  const resolveCustomTemplateBlockLabel = (blockType?: string | null) =>
+    String(blockType ?? '')
+      .trim()
+      .split('_')
+      .filter(Boolean)
+      .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+      .join(' ') || 'Блок'
+
+  const resolveCustomTemplateFieldTypeLabel = (fieldType?: string | null) => {
+    if (fieldType === 'file') return 'Файл'
+    if (fieldType === 'select') return 'Выбор'
+    return 'Текст'
+  }
 
   const isEditorContentEmpty = (value: string) => {
     if (!value || value.trim() === '') return true
@@ -101,6 +197,7 @@
       .finally(() => {
         loadingUser = false
         void refreshComunAccess()
+        loadCustomTemplatePreview()
       })
   })
 
@@ -149,17 +246,40 @@
   $: templateEditorBlockSettings = normalizeTemplateEditorBlockSettings(
     comun?.options?.template_editor_blocks_by_template ?? comun?.template_editor_blocks_by_template
   )
+  $: if (comun?.slug) {
+    loadCustomTemplatePreview()
+  }
   $: if (
     createTemplateType &&
     !comunAllowedTemplateTypes.includes(createTemplateType)
   ) {
     createTemplateType = ''
   }
-  $: editorEnabledTemplateBlockTypes = resolveEnabledTemplateEditorBlockTypes(
-    createTemplateType,
-    templateEditorBlockSettings
+  $: customTemplatePreviewBlockTypes = Array.from(
+    new Set(
+      (customTemplatePreview?.blocks ?? [])
+        .filter((block) => block.placement === 'available')
+        .map((block) => String(block.block_type ?? '').trim())
+        .filter(Boolean)
+    )
+  )
+  $: editorEnabledTemplateBlockTypes = Array.from(
+    new Set([
+      ...resolveEnabledTemplateEditorBlockTypes(createTemplateType, templateEditorBlockSettings),
+      ...customTemplatePreviewBlockTypes,
+    ])
   )
   $: editorTemplateBlocksKey = `${createTemplateType || 'basic'}:${editorEnabledTemplateBlockTypes.join(',')}`
+  $: customTemplatePreviewHeaderBlocks =
+    (customTemplatePreview?.blocks ?? []).filter((block) => block.placement === 'header') ?? []
+  $: customTemplatePreviewBodyBlocks =
+    (customTemplatePreview?.blocks ?? []).filter((block) => block.placement === 'available') ?? []
+  $: customTemplatePreviewFooterBlocks =
+    (customTemplatePreview?.blocks ?? []).filter((block) => block.placement === 'footer') ?? []
+  $: customTemplatePreviewHeaderFields =
+    (customTemplatePreview?.fields ?? []).filter((field) => field.placement === 'header') ?? []
+  $: customTemplatePreviewFooterFields =
+    (customTemplatePreview?.fields ?? []).filter((field) => field.placement === 'footer') ?? []
 
   const createPost = async () => {
     if (!$siteUser || !comun?.slug) return
@@ -309,6 +429,119 @@
             </div>
             <div class="mt-2 whitespace-pre-line text-sm leading-relaxed text-slate-700 dark:text-zinc-300">
               {comun.rules_text}
+            </div>
+          </div>
+        {/if}
+
+        {#if customTemplatePreview}
+          <div class="rounded-[28px] border border-slate-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.94))] p-5 shadow-sm dark:border-zinc-800 dark:bg-[linear-gradient(180deg,rgba(19,24,34,0.98),rgba(14,18,28,0.94))]">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div class="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-zinc-400">
+                  Предпросмотр шаблона
+                </div>
+                <div class="mt-1 text-lg font-semibold text-slate-900 dark:text-zinc-100">
+                  {customTemplatePreview.name?.trim() || 'Шаблон без названия'}
+                </div>
+                <div class="mt-1 text-sm text-slate-600 dark:text-zinc-300">
+                  Редактор открыт в режиме предпросмотра структуры. Ниже видно, как собран header, тело и footer шаблона.
+                </div>
+              </div>
+              <Button color="ghost" size="sm" on:click={() => goto(`/comuns/${comun?.slug ?? ''}/settings`)}>
+                К настройкам
+              </Button>
+            </div>
+
+            <div class="mt-4 flex flex-col gap-4">
+              <div class="rounded-[24px] border border-amber-200 bg-amber-50/85 px-4 py-4 dark:border-amber-900/40 dark:bg-amber-950/15">
+                <div class="text-xs uppercase tracking-[0.18em] text-amber-700 dark:text-amber-200">Header</div>
+                <div class="mt-3 flex flex-col gap-3">
+                  {#if customTemplatePreviewHeaderBlocks.length}
+                    <div class="flex flex-wrap gap-2">
+                      {#each customTemplatePreviewHeaderBlocks as block}
+                        <span class="rounded-2xl border border-amber-200 bg-white/90 px-3 py-2 text-sm font-medium text-slate-800 dark:border-amber-900/40 dark:bg-zinc-950/45 dark:text-zinc-100">
+                          {resolveCustomTemplateBlockLabel(block.block_type)}
+                        </span>
+                      {/each}
+                    </div>
+                  {/if}
+                  {#if customTemplatePreviewHeaderFields.length}
+                    <div class="grid gap-3 md:grid-cols-2">
+                      {#each customTemplatePreviewHeaderFields as field}
+                        <div class="rounded-2xl border border-amber-200 bg-white/85 px-3 py-3 dark:border-amber-900/40 dark:bg-zinc-950/40">
+                          <div class="text-sm font-medium text-slate-900 dark:text-zinc-100">
+                            {field.label?.trim() || 'Поле без названия'}
+                          </div>
+                          <div class="mt-1 text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-zinc-400">
+                            {resolveCustomTemplateFieldTypeLabel(field.field_type)}
+                          </div>
+                        </div>
+                      {/each}
+                    </div>
+                  {/if}
+                  {#if !customTemplatePreviewHeaderBlocks.length && !customTemplatePreviewHeaderFields.length}
+                    <div class="rounded-2xl border border-dashed border-amber-300/70 px-3 py-4 text-sm text-slate-600 dark:border-amber-900/40 dark:text-zinc-300">
+                      Header пустой
+                    </div>
+                  {/if}
+                </div>
+              </div>
+
+              <div class="rounded-[24px] border border-sky-200 bg-sky-50/85 px-4 py-4 dark:border-sky-900/40 dark:bg-sky-950/15">
+                <div class="text-xs uppercase tracking-[0.18em] text-sky-700 dark:text-sky-200">Текст</div>
+                <div class="mt-3 flex flex-col gap-3">
+                  {#if customTemplatePreviewBodyBlocks.length}
+                    {#each customTemplatePreviewBodyBlocks as block}
+                      <div class="rounded-2xl border border-sky-200 bg-white/90 px-4 py-4 dark:border-sky-900/40 dark:bg-zinc-950/45">
+                        <div class="text-sm font-medium text-slate-900 dark:text-zinc-100">
+                          {resolveCustomTemplateBlockLabel(block.block_type)}
+                        </div>
+                        <div class="mt-1 text-sm text-slate-500 dark:text-zinc-400">
+                          Этот блок доступен внутри текста в редакторе ниже.
+                        </div>
+                      </div>
+                    {/each}
+                  {:else}
+                    <div class="rounded-2xl border border-dashed border-sky-300/70 px-3 py-4 text-sm text-slate-600 dark:border-sky-900/40 dark:text-zinc-300">
+                      Текстовая часть шаблона пустая
+                    </div>
+                  {/if}
+                </div>
+              </div>
+
+              <div class="rounded-[24px] border border-emerald-200 bg-emerald-50/85 px-4 py-4 dark:border-emerald-900/40 dark:bg-emerald-950/15">
+                <div class="text-xs uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-200">Footer</div>
+                <div class="mt-3 flex flex-col gap-3">
+                  {#if customTemplatePreviewFooterBlocks.length}
+                    <div class="flex flex-wrap gap-2">
+                      {#each customTemplatePreviewFooterBlocks as block}
+                        <span class="rounded-2xl border border-emerald-200 bg-white/90 px-3 py-2 text-sm font-medium text-slate-800 dark:border-emerald-900/40 dark:bg-zinc-950/45 dark:text-zinc-100">
+                          {resolveCustomTemplateBlockLabel(block.block_type)}
+                        </span>
+                      {/each}
+                    </div>
+                  {/if}
+                  {#if customTemplatePreviewFooterFields.length}
+                    <div class="grid gap-3 md:grid-cols-2">
+                      {#each customTemplatePreviewFooterFields as field}
+                        <div class="rounded-2xl border border-emerald-200 bg-white/85 px-3 py-3 dark:border-emerald-900/40 dark:bg-zinc-950/40">
+                          <div class="text-sm font-medium text-slate-900 dark:text-zinc-100">
+                            {field.label?.trim() || 'Поле без названия'}
+                          </div>
+                          <div class="mt-1 text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-zinc-400">
+                            {resolveCustomTemplateFieldTypeLabel(field.field_type)}
+                          </div>
+                        </div>
+                      {/each}
+                    </div>
+                  {/if}
+                  {#if !customTemplatePreviewFooterBlocks.length && !customTemplatePreviewFooterFields.length}
+                    <div class="rounded-2xl border border-dashed border-emerald-300/70 px-3 py-4 text-sm text-slate-600 dark:border-emerald-900/40 dark:text-zinc-300">
+                      Footer пустой
+                    </div>
+                  {/if}
+                </div>
+              </div>
             </div>
           </div>
         {/if}
