@@ -1414,6 +1414,17 @@ def _normalize_comun_custom_template_fields(
         if placement not in COMUN_CUSTOM_TEMPLATE_FIELD_PLACEMENT_VALUES:
             placement = COMUN_CUSTOM_TEMPLATE_FIELD_PLACEMENT_HEADER
         options = _normalize_comun_custom_template_field_options(item.get("options"))
+        raw_settings = item.get("settings") if isinstance(item.get("settings"), dict) else {}
+        settings: dict[str, object] = {}
+        if field_type == COMUN_CUSTOM_TEMPLATE_FIELD_TYPE_TEXT:
+            max_length_raw = raw_settings.get("max_length", item.get("max_length"))
+            max_length = int(max_length_raw) if str(max_length_raw or "").isdigit() else 0
+            if max_length > 0:
+                settings["max_length"] = min(max_length, 10000)
+        elif field_type == COMUN_CUSTOM_TEMPLATE_FIELD_TYPE_CHECKBOX:
+            settings["default_checked"] = bool(
+                raw_settings.get("default_checked", item.get("default_checked"))
+            )
         if field_type == COMUN_CUSTOM_TEMPLATE_FIELD_TYPE_SELECT and not options:
             return [], f"field '{label}' must have select options"
         key = _generate_comun_custom_template_field_key(
@@ -1429,6 +1440,7 @@ def _normalize_comun_custom_template_fields(
                 "placement": placement,
                 "is_required": bool(item.get("is_required")),
                 "options": options if field_type == COMUN_CUSTOM_TEMPLATE_FIELD_TYPE_SELECT else [],
+                "settings": settings,
                 "sort_order": index,
             }
         )
@@ -1499,6 +1511,7 @@ def _serialize_comun_custom_post_template(template: ComunCustomPostTemplate) -> 
                 "placement": field.placement,
                 "is_required": bool(field.is_required),
                 "options": list(field.options or []),
+                "settings": dict(field.settings or {}),
                 "sort_order": field.sort_order,
             }
             for field in template.fields.all().order_by("sort_order", "id")

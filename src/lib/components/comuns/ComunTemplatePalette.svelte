@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { templateEditorDraggedItem, type TemplateEditorDragPaletteItem } from '$lib/components/comuns/templateEditorDnd'
+
   export let fieldOptions: Array<{ value: string; label: string }> = []
   export let blockOptions: Array<{ value: string; label: string }> = []
 
@@ -6,14 +8,19 @@
 
   const writeDragPayload = (
     event: DragEvent,
-    payload: { kind: 'field'; fieldType: string } | { kind: 'block'; blockType: string }
+    payload: TemplateEditorDragPaletteItem
   ) => {
     const serialized = JSON.stringify(payload)
+    templateEditorDraggedItem.set(payload)
     event.dataTransfer?.setData(DRAG_TYPE, serialized)
     event.dataTransfer?.setData('text/plain', serialized)
     if (event.dataTransfer) {
       event.dataTransfer.effectAllowed = 'copy'
     }
+  }
+
+  const clearDragPayload = () => {
+    templateEditorDraggedItem.set(null)
   }
 </script>
 
@@ -30,6 +37,7 @@
           draggable="true"
           class="flex w-full cursor-grab items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-medium text-slate-800 transition hover:border-slate-300 hover:bg-white active:cursor-grabbing dark:border-zinc-800 dark:bg-zinc-900/70 dark:text-zinc-100 dark:hover:border-zinc-700 dark:hover:bg-zinc-900"
           on:dragstart={(event) => writeDragPayload(event, { kind: 'field', fieldType: fieldOption.value })}
+          on:dragend={clearDragPayload}
         >
           <span class="min-w-0 truncate">{fieldOption.label}</span>
           <span class="shrink-0 text-xs uppercase tracking-[0.14em] text-slate-400 dark:text-zinc-500">drag</span>
@@ -50,6 +58,7 @@
           draggable="true"
           class="flex w-full cursor-grab items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-medium text-slate-800 transition hover:border-slate-300 hover:bg-white active:cursor-grabbing dark:border-zinc-800 dark:bg-zinc-900/70 dark:text-zinc-100 dark:hover:border-zinc-700 dark:hover:bg-zinc-900"
           on:dragstart={(event) => writeDragPayload(event, { kind: 'block', blockType: option.value })}
+          on:dragend={clearDragPayload}
         >
           <span class="min-w-0 truncate">{option.label}</span>
           <span class="shrink-0 text-xs uppercase tracking-[0.14em] text-slate-400 dark:text-zinc-500">drag</span>

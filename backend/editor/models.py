@@ -366,6 +366,7 @@ class ComunCustomPostTemplateField(models.Model):
     )
     is_required = models.BooleanField(default=False, verbose_name="Обязательное")
     options = models.JSONField(default=list, blank=True, verbose_name="Опции выбора")
+    settings = models.JSONField(default=dict, blank=True, verbose_name="Настройки поля")
     sort_order = models.PositiveIntegerField(default=0, verbose_name="Порядок")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

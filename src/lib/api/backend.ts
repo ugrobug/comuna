@@ -455,6 +455,10 @@ export type BackendComunCustomTemplateField = {
   placement: 'header' | 'footer'
   is_required?: boolean
   options?: string[]
+  settings?: {
+    max_length?: number
+    default_checked?: boolean
+  }
   sort_order?: number
 }
 

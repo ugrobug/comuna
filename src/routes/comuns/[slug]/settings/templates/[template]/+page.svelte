@@ -9,6 +9,10 @@
     type BackendComun,
     type BackendComunCustomTemplate,
   } from '$lib/api/backend'
+  import {
+    templateEditorDraggedItem,
+    type TemplateEditorDragPaletteItem,
+  } from '$lib/components/comuns/templateEditorDnd'
   import { getTemplateEditorBlocks } from '$lib/postTemplates'
   import { siteToken } from '$lib/siteAuth'
 
@@ -18,10 +22,6 @@
   type FieldType = 'text' | 'file' | 'select' | 'checkbox'
   type FieldPlacement = 'header' | 'footer'
   type PaletteFieldType = 'text' | 'select' | 'checkbox'
-  type DragPaletteItem =
-    | { kind: 'block'; blockType: string }
-    | { kind: 'field'; fieldType: PaletteFieldType }
-
   const slug = String(data?.slug ?? '')
   const templateRef = String(data?.template ?? 'new')
   const isNewTemplate = templateRef === 'new'
@@ -94,6 +94,13 @@
           options: Array.isArray(field?.options)
             ? field.options.map((option) => String(option ?? '').trim()).filter(Boolean)
             : [],
+          settings:
+            field && typeof field.settings === 'object' && field.settings
+              ? {
+                  max_length: Number(field.settings.max_length) > 0 ? Number(field.settings.max_length) : undefined,
+                  default_checked: Boolean(field.settings.default_checked),
+                }
+              : {},
           sort_order: Number(field?.sort_order ?? index) || index,
         }))
       : [],
@@ -267,6 +274,7 @@
           placement,
           is_required: false,
           options: [],
+          settings: {},
           sort_order: (draft.fields ?? []).length,
         },
       ],
@@ -291,6 +299,12 @@
           placement,
           is_required: false,
           options: fieldType === 'select' ? ['Вариант 1', 'Вариант 2'] : [],
+          settings:
+            fieldType === 'checkbox'
+              ? { default_checked: false }
+              : fieldType === 'text'
+                ? { max_length: 280 }
+                : {},
           sort_order: nextIndex - 1,
         },
       ],
@@ -307,6 +321,28 @@
     nextFields[fieldIndex] = { ...nextFields[fieldIndex], ...patch }
     if (nextFields[fieldIndex].field_type !== 'select') {
       nextFields[fieldIndex] = { ...nextFields[fieldIndex], options: [] }
+    }
+    if (nextFields[fieldIndex].field_type === 'text') {
+      nextFields[fieldIndex] = {
+        ...nextFields[fieldIndex],
+        settings: {
+          ...(nextFields[fieldIndex].settings ?? {}),
+          default_checked: undefined,
+        },
+      }
+    } else if (nextFields[fieldIndex].field_type === 'checkbox') {
+      nextFields[fieldIndex] = {
+        ...nextFields[fieldIndex],
+        settings: {
+          ...(nextFields[fieldIndex].settings ?? {}),
+          max_length: undefined,
+        },
+      }
+    } else {
+      nextFields[fieldIndex] = {
+        ...nextFields[fieldIndex],
+        settings: {},
+      }
     }
     setDraft({ fields: nextFields })
   }
@@ -343,7 +379,7 @@
     await goto(`/comuns/${encodeURIComponent(slug)}/new-post?template_preview=1`)
   }
 
-  const readPaletteItem = (event: DragEvent): DragPaletteItem | null => {
+  const readPaletteItem = (event: DragEvent): TemplateEditorDragPaletteItem | null => {
     const raw =
       event.dataTransfer?.getData(DRAG_TYPE) || event.dataTransfer?.getData('text/plain') || ''
     if (!raw) return null
@@ -361,13 +397,16 @@
     return null
   }
 
+  const resolveDroppedPaletteItem = (event: DragEvent): TemplateEditorDragPaletteItem | null =>
+    readPaletteItem(event) ?? $templateEditorDraggedItem
+
   const handleDropZoneEnter = (zone: 'header' | 'available' | 'footer') => {
     activeDropZone = zone
   }
 
   const applyPaletteItemToZone = (
     zone: 'header' | 'available' | 'footer',
-    item: DragPaletteItem | null
+    item: TemplateEditorDragPaletteItem | null
   ) => {
     if (!item) return
     if (item.kind === 'block') {
@@ -379,7 +418,8 @@
   }
 
   const handlePaletteDrop = (event: DragEvent, zone: 'header' | 'available' | 'footer') => {
-    applyPaletteItemToZone(zone, readPaletteItem(event))
+    applyPaletteItemToZone(zone, resolveDroppedPaletteItem(event))
+    templateEditorDraggedItem.set(null)
     activeDropZone = null
   }
 
@@ -394,15 +434,23 @@
         is_required: Boolean(block.is_required),
         sort_order: index,
       })),
-      fields: (currentDraft.fields ?? []).map((field, index) => ({
-        key: String(field.key ?? '').trim(),
-        label: String(field.label ?? '').trim(),
-        field_type: field.field_type,
-        placement: field.placement,
-        is_required: Boolean(field.is_required),
-        options: (field.options ?? []).map((option) => String(option ?? '').trim()).filter(Boolean),
-        sort_order: index,
-      })),
+        fields: (currentDraft.fields ?? []).map((field, index) => ({
+          key: String(field.key ?? '').trim(),
+          label: String(field.label ?? '').trim(),
+          field_type: field.field_type,
+          placement: field.placement,
+          is_required: Boolean(field.is_required),
+          options: (field.options ?? []).map((option) => String(option ?? '').trim()).filter(Boolean),
+          settings: {
+            max_length:
+              field.field_type === 'text' && Number(field.settings?.max_length) > 0
+                ? Number(field.settings?.max_length)
+                : undefined,
+            default_checked:
+              field.field_type === 'checkbox' ? Boolean(field.settings?.default_checked) : undefined,
+          },
+          sort_order: index,
+        })),
     }
   }
 
@@ -460,16 +508,43 @@
       is_required: Boolean(block.is_required),
       sort_order: index,
     })),
-    fields: (template.fields ?? []).map((field, index) => ({
-      key: String(field.key ?? '').trim(),
-      label: String(field.label ?? '').trim(),
-      field_type: (field.field_type ?? 'text') as FieldType,
-      placement: (field.placement ?? 'header') as FieldPlacement,
-      is_required: Boolean(field.is_required),
-      options: (field.options ?? []).map((option) => String(option ?? '').trim()).filter(Boolean),
-      sort_order: index,
-    })),
+      fields: (template.fields ?? []).map((field, index) => ({
+        key: String(field.key ?? '').trim(),
+        label: String(field.label ?? '').trim(),
+        field_type: (field.field_type ?? 'text') as FieldType,
+        placement: (field.placement ?? 'header') as FieldPlacement,
+        is_required: Boolean(field.is_required),
+        options: (field.options ?? []).map((option) => String(option ?? '').trim()).filter(Boolean),
+        settings: {
+          max_length:
+            field.field_type === 'text' && Number(field.settings?.max_length) > 0
+              ? Number(field.settings?.max_length)
+              : undefined,
+          default_checked:
+            field.field_type === 'checkbox' ? Boolean(field.settings?.default_checked) : undefined,
+        },
+        sort_order: index,
+      })),
   })
+
+  const updateTextFieldMaxLength = (fieldIndex: number, value: string) => {
+    const normalized = Math.max(Number(value || 0) || 0, 0)
+    updateField(fieldIndex, {
+      settings: {
+        ...(draft?.fields?.[fieldIndex]?.settings ?? {}),
+        max_length: normalized > 0 ? normalized : undefined,
+      },
+    })
+  }
+
+  const updateCheckboxDefaultChecked = (fieldIndex: number, checked: boolean) => {
+    updateField(fieldIndex, {
+      settings: {
+        ...(draft?.fields?.[fieldIndex]?.settings ?? {}),
+        default_checked: checked,
+      },
+    })
+  }
 
   const deleteTemplate = async () => {
     if (isNewTemplate || !draft || !slug || !comun || !$siteToken) return
@@ -652,6 +727,20 @@
                             <span>Обязательное поле</span>
                           </label>
                         </div>
+                        {#if field.field_type === 'text'}
+                          <label class="mt-3 flex flex-col gap-1 text-sm text-slate-700 dark:text-zinc-300">
+                            <span>Ограничение по символам</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={field.settings?.max_length ?? ''}
+                              on:input={(event) => updateTextFieldMaxLength(fieldIndex, event.currentTarget?.value ?? '')}
+                              placeholder="Без ограничения"
+                              class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                            />
+                          </label>
+                        {/if}
                         {#if field.field_type === 'select'}
                           <textarea
                             rows="4"
@@ -666,6 +755,16 @@
                                   .filter(Boolean),
                               })}
                           ></textarea>
+                        {/if}
+                        {#if field.field_type === 'checkbox'}
+                          <label class="mt-3 flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(field.settings?.default_checked)}
+                              on:change={(event) => updateCheckboxDefaultChecked(fieldIndex, Boolean(event.currentTarget?.checked))}
+                            />
+                            <span>Чекбокс включен по умолчанию</span>
+                          </label>
                         {/if}
                       </div>
                     {/if}
@@ -871,6 +970,20 @@
                             <span>Обязательное поле</span>
                           </label>
                         </div>
+                        {#if field.field_type === 'text'}
+                          <label class="mt-3 flex flex-col gap-1 text-sm text-slate-700 dark:text-zinc-300">
+                            <span>Ограничение по символам</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={field.settings?.max_length ?? ''}
+                              on:input={(event) => updateTextFieldMaxLength(fieldIndex, event.currentTarget?.value ?? '')}
+                              placeholder="Без ограничения"
+                              class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                            />
+                          </label>
+                        {/if}
                         {#if field.field_type === 'select'}
                           <textarea
                             rows="4"
@@ -885,6 +998,16 @@
                                   .filter(Boolean),
                               })}
                           ></textarea>
+                        {/if}
+                        {#if field.field_type === 'checkbox'}
+                          <label class="mt-3 flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(field.settings?.default_checked)}
+                              on:change={(event) => updateCheckboxDefaultChecked(fieldIndex, Boolean(event.currentTarget?.checked))}
+                            />
+                            <span>Чекбокс включен по умолчанию</span>
+                          </label>
                         {/if}
                       </div>
                     {/if}

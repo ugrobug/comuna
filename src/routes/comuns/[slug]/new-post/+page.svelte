@@ -101,6 +101,13 @@
             options: Array.isArray(field?.options)
               ? field.options.map((option) => String(option ?? '').trim()).filter(Boolean)
               : [],
+            settings:
+              field && typeof field.settings === 'object' && field.settings
+                ? {
+                    max_length: Number(field.settings.max_length) > 0 ? Number(field.settings.max_length) : undefined,
+                    default_checked: Boolean(field.settings.default_checked),
+                  }
+                : {},
             sort_order: Number(field?.sort_order ?? index) || index,
           }))
         : [],
