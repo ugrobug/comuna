@@ -694,7 +694,7 @@
           <div class="mb-4">
             <div class="text-xs uppercase tracking-[0.2em] text-amber-700 dark:text-amber-200">Header</div>
             <div class="mt-1 text-sm text-slate-700 dark:text-zinc-200">
-              Перетащите сюда поля или блоки, которые должны закрепляться над основным текстом.
+              Добавьте поля и блоки, которые будут отображаться в верхней части поста между основным текстом и заголовком.
             </div>
           </div>
 
@@ -862,7 +862,7 @@
           <div class="mb-4">
             <div class="text-xs uppercase tracking-[0.2em] text-sky-700 dark:text-sky-200">Текстовый блок</div>
             <div class="mt-1 text-sm text-slate-700 dark:text-zinc-200">
-              Перетащите сюда поля или блоки, которые автор сможет использовать внутри основного текста.
+              Добавьте блоки, которые будут доступны для выбора автором поста.
             </div>
           </div>
 
@@ -1030,7 +1030,7 @@
           <div class="mb-4">
             <div class="text-xs uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-200">Footer</div>
             <div class="mt-1 text-sm text-slate-700 dark:text-zinc-200">
-              Перетащите сюда поля и блоки, которые должны идти после основного текста.
+              Добавьте блоки и поля, которые будут отображаться после основного текста, но до комментариев.
             </div>
           </div>
 
