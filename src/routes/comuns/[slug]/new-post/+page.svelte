@@ -7,6 +7,7 @@
   import EditorJS from '$lib/components/editor/EditorJS.svelte'
   import { deserializeEditorModel, postPayloadContainsExternalLinks } from '$lib/util'
   import {
+    buildComunCustomTemplateEditorPath,
     buildComunUrl,
     type BackendComun,
     type BackendComunCustomTemplate,
@@ -61,6 +62,7 @@
   let customTemplatePreviewHeaderFields: NonNullable<BackendComunCustomTemplate['fields']> = []
   let customTemplatePreviewBodyFields: NonNullable<BackendComunCustomTemplate['fields']> = []
   let customTemplatePreviewFooterFields: NonNullable<BackendComunCustomTemplate['fields']> = []
+  let customTemplatePreviewEditorPath = ''
 
   const customTemplatePreviewStorageKey = (slug: string) => `comuna:custom-template-preview:${slug}`
 
@@ -124,19 +126,35 @@
     }
     if ($page.url.searchParams.get('template_preview') !== '1') {
       customTemplatePreview = null
+      customTemplatePreviewEditorPath = ''
       return
     }
     try {
       const raw = localStorage.getItem(customTemplatePreviewStorageKey(comun.slug))
       if (!raw) {
         customTemplatePreview = null
+        customTemplatePreviewEditorPath = ''
         return
       }
       const parsed = JSON.parse(raw)
       customTemplatePreview = normalizeCustomTemplatePreview(parsed?.template ?? null)
+      customTemplatePreviewEditorPath =
+        typeof parsed?.editor_path === 'string' && parsed.editor_path.startsWith('/comuns/')
+          ? parsed.editor_path
+          : ''
     } catch {
       customTemplatePreview = null
+      customTemplatePreviewEditorPath = ''
     }
+  }
+
+  const resolveCustomTemplatePreviewEditorPath = () => {
+    if (customTemplatePreviewEditorPath) return customTemplatePreviewEditorPath
+    if (!comun?.slug) return ''
+    const templateRef =
+      customTemplatePreview?.slug?.trim() ||
+      (Number(customTemplatePreview?.id) > 0 ? String(customTemplatePreview?.id) : 'new')
+    return buildComunCustomTemplateEditorPath(comun.slug, templateRef)
   }
 
   const resolveCustomTemplateBlockLabel = (blockType?: string | null) =>
@@ -460,9 +478,19 @@
                   Редактор открыт в режиме предпросмотра структуры. Ниже видно, как собран header, тело и footer шаблона.
                 </div>
               </div>
-              <Button color="ghost" size="sm" on:click={() => goto(`/comuns/${comun?.slug ?? ''}/settings`)}>
-                К настройкам
-              </Button>
+              <div class="flex flex-wrap gap-2">
+                <Button
+                  color="primary"
+                  size="sm"
+                  on:click={() => goto(resolveCustomTemplatePreviewEditorPath())}
+                  disabled={!resolveCustomTemplatePreviewEditorPath()}
+                >
+                  Редактировать шаблон
+                </Button>
+                <Button color="ghost" size="sm" on:click={() => goto(`/comuns/${comun?.slug ?? ''}/settings`)}>
+                  К настройкам
+                </Button>
+              </div>
             </div>
 
             <div class="mt-4 flex flex-col gap-4">

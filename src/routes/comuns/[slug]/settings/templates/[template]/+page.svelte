@@ -229,29 +229,32 @@
   const fieldsByPlacement = (placement: FieldPlacement) =>
     (draft?.fields ?? []).filter((field) => field.placement === placement)
 
-  const usedBlockTypes = () => new Set((draft?.blocks ?? []).map((block) => block.block_type))
-
-  const availableBlockOptionsForAdd = (placement: BlockPlacement) => {
-    const used = usedBlockTypes()
+  const availableBlockOptionsForAdd = (
+    placement: BlockPlacement,
+    blocks: NonNullable<BackendComunCustomTemplate['blocks']>
+  ) => {
+    const used = new Set(blocks.map((block) => block.block_type))
     return blockOptions().filter((option) => {
       if (!used.has(option.value)) return true
-      return blocksByPlacement(placement).some((block) => block.block_type === option.value)
+      return blocks.some((block) => block.placement === placement && block.block_type === option.value)
     })
   }
 
-  $: headerBlocks = blocksByPlacement('header')
-  $: bodyBlocks = blocksByPlacement('available')
-  $: footerBlocks = blocksByPlacement('footer')
-  $: headerFields = fieldsByPlacement('header')
-  $: bodyFields = fieldsByPlacement('available')
-  $: footerFields = fieldsByPlacement('footer')
-  $: headerBlockOptionsToAdd = availableBlockOptionsForAdd('header').filter(
+  $: draftBlocks = draft?.blocks ?? []
+  $: draftFields = draft?.fields ?? []
+  $: headerBlocks = draftBlocks.filter((block) => block.placement === 'header')
+  $: bodyBlocks = draftBlocks.filter((block) => block.placement === 'available')
+  $: footerBlocks = draftBlocks.filter((block) => block.placement === 'footer')
+  $: headerFields = draftFields.filter((field) => field.placement === 'header')
+  $: bodyFields = draftFields.filter((field) => field.placement === 'available')
+  $: footerFields = draftFields.filter((field) => field.placement === 'footer')
+  $: headerBlockOptionsToAdd = availableBlockOptionsForAdd('header', draftBlocks).filter(
     (option) => !headerBlocks.some((block) => block.block_type === option.value)
   )
-  $: bodyBlockOptionsToAdd = availableBlockOptionsForAdd('available').filter(
+  $: bodyBlockOptionsToAdd = availableBlockOptionsForAdd('available', draftBlocks).filter(
     (option) => !bodyBlocks.some((block) => block.block_type === option.value)
   )
-  $: footerBlockOptionsToAdd = availableBlockOptionsForAdd('footer').filter(
+  $: footerBlockOptionsToAdd = availableBlockOptionsForAdd('footer', draftBlocks).filter(
     (option) => !footerBlocks.some((block) => block.block_type === option.value)
   )
 
@@ -401,10 +404,12 @@
 
   const openTemplatePreview = async () => {
     if (!browser || !slug || !draft) return
+    const editorPath = buildComunCustomTemplateEditorPath(slug, templateRef)
     localStorage.setItem(
       `comuna:custom-template-preview:${slug}`,
       JSON.stringify({
         saved_at: Date.now(),
+        editor_path: editorPath,
         template: normalizeTemplate(draft),
       })
     )
