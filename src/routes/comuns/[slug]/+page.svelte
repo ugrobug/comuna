@@ -634,7 +634,15 @@
       .map((row) => [Number(row?.category_id ?? 0), Math.max(0, Number(row?.count ?? 0) || 0)] as const)
       .filter(([categoryId]) => categoryId > 0)
   )
-  $: roadmapStages = buildRoadmapStages(comun?.categories ?? [], categoryCountById)
+  $: roadmapCategoryIdSet = new Set(
+    (Array.isArray(comun?.roadmap_category_ids) ? comun?.roadmap_category_ids ?? [] : [])
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value) && value > 0)
+  )
+  $: roadmapSourceCategories = (comun?.categories ?? []).filter((category) =>
+    roadmapCategoryIdSet.has(Number(category.id))
+  )
+  $: roadmapStages = buildRoadmapStages(roadmapSourceCategories, categoryCountById)
   $: roadmapStageSlugSet = new Set(roadmapStages.map((stage) => stage.category.slug))
   $: roadmapHasBacklog = roadmapStages.some((stage) => stage.key === 'backlog')
   $: roadmapCanOpenModal = roadmapEnabled && (roadmapHasBacklog || roadmapStages.length >= 2)

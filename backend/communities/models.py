@@ -197,6 +197,12 @@ class Comun(models.Model):
         verbose_name="Включить дорожную карту",
         help_text="Если включено, в сообществе будет доступна публичная дорожная карта.",
     )
+    roadmap_category_ids = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name="Категории дорожной карты",
+        help_text="ID внутренних категорий сообщества, публикации из которых попадают в дорожную карту.",
+    )
     minimum_author_rating_to_post = models.DecimalField(
         max_digits=8,
         decimal_places=2,

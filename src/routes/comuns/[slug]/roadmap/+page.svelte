@@ -6,6 +6,8 @@
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import {
     buildBackendPostPath,
+    buildComunPostsUrl,
+    buildComunUrl,
     type BackendComun,
     type BackendComunCategory,
     type BackendPost,
@@ -109,8 +111,21 @@
   let categoryPreviews: CategoryPreviewRow[] = Array.isArray(data?.categoryPreviews)
     ? data.categoryPreviews
     : []
-  let totalCount = Math.max(Number(data?.totalCount ?? 0) || 0, 0)
-  let uncategorizedCount = Math.max(Number(data?.uncategorizedCount ?? 0) || 0, 0)
+  let roadmapSettingsSaving = false
+  let roadmapSettingsDraftIds = normalizeRoadmapCategoryIds(
+    data?.roadmapCategoryIds ?? comun?.roadmap_category_ids
+  )
+
+  function normalizeRoadmapCategoryIds(value: unknown) {
+    const values = Array.isArray(value) ? value : []
+    return Array.from(
+      new Set(
+        values
+          .map((item) => Number(item))
+          .filter((item) => Number.isFinite(item) && item > 0)
+      )
+    )
+  }
 
   const normalizeToken = (value?: string | null) =>
     (value ?? '')
@@ -241,7 +256,106 @@
     }
   }
 
-  $: categories = Array.isArray(comun?.categories) ? (comun?.categories ?? []) : []
+  const authHeaders = () => {
+    if (!$siteToken) throw new Error('Нужна авторизация')
+    return {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${$siteToken}`,
+    }
+  }
+
+  const fetchRoadmapCategoryPreview = async (category: BackendComunCategory) => {
+    const categorySlug = String(category?.slug ?? '').trim()
+    if (!comun?.slug || !categorySlug) return null
+    try {
+      const previewUrl = new URL(
+        buildComunPostsUrl(comun.slug, { categorySlug }),
+        $page.url.origin
+      )
+      previewUrl.searchParams.set('limit', String(ROADMAP_PREVIEW_LIMIT))
+      previewUrl.searchParams.set('offset', '0')
+      const response = await fetch(previewUrl.toString())
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        return {
+          category_slug: categorySlug,
+          posts: [],
+          total_count: null,
+          error: String(payload?.error || 'Не удалось загрузить превью'),
+        }
+      }
+      return {
+        category_slug: categorySlug,
+        posts: payload?.posts ?? [],
+        total_count:
+          typeof payload?.total_count === 'number' ? Number(payload.total_count) : null,
+        error: null,
+      }
+    } catch (error) {
+      return {
+        category_slug: categorySlug,
+        posts: [],
+        total_count: null,
+        error: error instanceof Error ? error.message : 'Ошибка загрузки',
+      }
+    }
+  }
+
+  const refreshRoadmapPreviews = async (nextComun: BackendComun | null) => {
+    const selectedIds = new Set(normalizeRoadmapCategoryIds(nextComun?.roadmap_category_ids))
+    const nextCategories = (nextComun?.categories ?? []).filter((category) =>
+      selectedIds.has(Number(category.id))
+    )
+    categoryPreviews = (await Promise.all(nextCategories.map(fetchRoadmapCategoryPreview))).filter(
+      Boolean
+    ) as CategoryPreviewRow[]
+  }
+
+  const toggleRoadmapSettingsCategory = (categoryId: number) => {
+    const next = new Set(roadmapSettingsDraftIds)
+    if (next.has(categoryId)) {
+      next.delete(categoryId)
+    } else {
+      next.add(categoryId)
+    }
+    roadmapSettingsDraftIds = Array.from(next)
+  }
+
+  const saveRoadmapSettings = async () => {
+    if (!comun?.slug || roadmapSettingsSaving) return
+    roadmapSettingsSaving = true
+    try {
+      const response = await fetch(buildComunUrl(comun.slug), {
+        method: 'PATCH',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          roadmap_category_ids: roadmapSettingsDraftIds,
+        }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Не удалось сохранить настройки дорожной карты')
+      }
+      comun = payload.comun ?? comun
+      roadmapSettingsDraftIds = normalizeRoadmapCategoryIds(comun?.roadmap_category_ids)
+      await refreshRoadmapPreviews(comun)
+      toast({ content: 'Настройки дорожной карты сохранены', type: 'success' })
+    } catch (error) {
+      toast({
+        content: error instanceof Error ? error.message : 'Ошибка сохранения',
+        type: 'error',
+      })
+    } finally {
+      roadmapSettingsSaving = false
+    }
+  }
+
+  $: allCategories = Array.isArray(comun?.categories) ? (comun?.categories ?? []) : []
+  $: savedRoadmapCategoryIds = new Set(normalizeRoadmapCategoryIds(comun?.roadmap_category_ids))
+  $: categories = allCategories.filter((category) => savedRoadmapCategoryIds.has(Number(category.id)))
+  $: roadmapSettingsHasChanges =
+    JSON.stringify([...roadmapSettingsDraftIds].sort((a, b) => a - b)) !==
+    JSON.stringify([...savedRoadmapCategoryIds].sort((a, b) => a - b))
   $: countByCategoryId = new Map<number, number>(
     categoryCounts
       .map((row) => [Number(row?.category_id ?? 0), Math.max(Number(row?.count ?? 0) || 0, 0)] as const)
@@ -312,6 +426,7 @@
 
   $: roadmapLanes = [...knownStageLanes, ...extraLanes]
   $: trackedCount = roadmapLanes.reduce((sum, lane) => sum + Math.max(lane.count, 0), 0)
+  $: releasedCount = roadmapLanes.find((lane) => lane.key === 'released')?.count ?? 0
   $: selectedCategorySlug = String($page.url.searchParams.get('category') || '').trim()
   $: highlightedLane = roadmapLanes.find((lane) => lane.category.slug === selectedCategorySlug) ?? null
   $: comunName = comun?.name || 'Сообщество'
@@ -384,20 +499,20 @@
           <div class="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-zinc-400">Сводка</div>
           <div class="mt-3 grid grid-cols-2 gap-2">
             <div class="stat-box rounded-xl p-3">
-              <div class="stat-label">Всего карточек</div>
-              <div class="stat-value">{countFormat(totalCount)}</div>
-            </div>
-            <div class="stat-box rounded-xl p-3">
-              <div class="stat-label">В этапах roadmap</div>
+              <div class="stat-label">В дорожной карте всего</div>
               <div class="stat-value">{countFormat(trackedCount)}</div>
             </div>
             <div class="stat-box rounded-xl p-3">
-              <div class="stat-label">Колонок</div>
+              <div class="stat-label">Готово</div>
+              <div class="stat-value">{countFormat(releasedCount)}</div>
+            </div>
+            <div class="stat-box rounded-xl p-3">
+              <div class="stat-label">Рубрик выбрано</div>
               <div class="stat-value">{countFormat(roadmapLanes.length)}</div>
             </div>
             <div class="stat-box rounded-xl p-3">
-              <div class="stat-label">Без категории</div>
-              <div class="stat-value">{countFormat(uncategorizedCount)}</div>
+              <div class="stat-label">Всего рубрик</div>
+              <div class="stat-value">{countFormat(allCategories.length)}</div>
             </div>
           </div>
 
@@ -419,6 +534,60 @@
           </div>
         </div>
       </div>
+
+      {#if $siteToken && comun?.can_moderate}
+        <section class="roadmap-settings-card rounded-2xl p-4 sm:p-5">
+          <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div class="max-w-3xl">
+              <div class="text-sm font-semibold text-slate-900 dark:text-zinc-100">
+                Настройки дорожной карты
+              </div>
+              <p class="mt-1 text-sm text-slate-600 dark:text-zinc-400">
+                Выберите рубрики сообщества, из которых посты будут отображаться в публичной дорожной карте.
+                Лучше всего сделать рубрику «Предложения пользователей» для идей и рубрику «Беклог»,
+                где админы публикуют то, что взяли в работу.
+              </p>
+            </div>
+            <Button
+              on:click={saveRoadmapSettings}
+              disabled={roadmapSettingsSaving || !roadmapSettingsHasChanges}
+            >
+              {roadmapSettingsSaving ? 'Сохраняем...' : 'Сохранить настройки'}
+            </Button>
+          </div>
+
+          {#if allCategories.length}
+            <div class="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              {#each allCategories as category}
+                {@const categoryId = Number(category.id)}
+                <label class="roadmap-category-option rounded-2xl p-3">
+                  <input
+                    type="checkbox"
+                    class="mt-1"
+                    checked={roadmapSettingsDraftIds.includes(categoryId)}
+                    on:change={() => toggleRoadmapSettingsCategory(categoryId)}
+                    disabled={roadmapSettingsSaving}
+                  />
+                  <span class="min-w-0">
+                    <span class="block font-semibold text-slate-900 dark:text-zinc-100">
+                      {category.name}
+                    </span>
+                    {#if category.description}
+                      <span class="mt-1 block text-xs text-slate-500 dark:text-zinc-400">
+                        {category.description}
+                      </span>
+                    {/if}
+                  </span>
+                </label>
+              {/each}
+            </div>
+          {:else}
+            <div class="mt-4 rounded-2xl border border-dashed border-slate-300 bg-white/60 p-4 text-sm text-slate-600 dark:border-zinc-700 dark:bg-zinc-900/35 dark:text-zinc-400">
+              В сообществе пока нет рубрик. Создайте рубрики в настройках сообщества, затем выберите их здесь для дорожной карты.
+            </div>
+          {/if}
+        </section>
+      {/if}
 
       {#if roadmapLanes.length}
         <div class="roadmap-grid">
@@ -487,9 +656,11 @@
             Публичная дорожная карта пока не настроена
           </div>
           <div class="mt-2 text-sm text-slate-600 dark:text-zinc-400">
-            Добавьте в сообщество категории вроде <span class="font-semibold">backlog</span>,
-            <span class="font-semibold"> suggestions</span>, <span class="font-semibold">planned</span>,
-            <span class="font-semibold"> in-progress</span> и публикуйте карточки по тегу продукта.
+            {#if $siteToken && comun?.can_moderate}
+              Выберите рубрики выше, чтобы публикации из них появились в публичной дорожной карте.
+            {:else}
+              Администратор сообщества еще не выбрал рубрики для публичной дорожной карты.
+            {/if}
           </div>
           <div class="mt-4 flex flex-wrap gap-2">
             {#if comun?.slug}
@@ -560,6 +731,7 @@
 
   .roadmap-hero-card,
   .roadmap-side-card,
+  .roadmap-settings-card,
   .empty-roadmap {
     border: 1px solid rgba(148, 163, 184, 0.22);
     background: rgba(255, 255, 255, 0.78);
@@ -568,9 +740,38 @@
 
   :global(.dark) .roadmap-hero-card,
   :global(.dark) .roadmap-side-card,
+  :global(.dark) .roadmap-settings-card,
   :global(.dark) .empty-roadmap {
     border-color: rgba(63, 63, 70, 0.85);
     background: rgba(24, 24, 27, 0.72);
+  }
+
+  .roadmap-category-option {
+    display: flex;
+    gap: 0.75rem;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    background: rgba(255, 255, 255, 0.72);
+    cursor: pointer;
+    transition:
+      border-color 0.16s ease,
+      background-color 0.16s ease,
+      transform 0.16s ease;
+  }
+
+  .roadmap-category-option:hover {
+    border-color: rgba(59, 130, 246, 0.38);
+    background: rgba(239, 246, 255, 0.78);
+    transform: translateY(-1px);
+  }
+
+  :global(.dark) .roadmap-category-option {
+    border-color: rgba(63, 63, 70, 0.85);
+    background: rgba(39, 39, 42, 0.58);
+  }
+
+  :global(.dark) .roadmap-category-option:hover {
+    border-color: rgba(96, 165, 250, 0.42);
+    background: rgba(30, 41, 59, 0.52);
   }
 
   .hero-badge {

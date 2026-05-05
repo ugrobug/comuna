@@ -685,6 +685,12 @@ def _serialize_comun(
     include_activity: bool = False,
 ) -> dict:
     categories = _comun_categories_list(comun)
+    roadmap_category_ids = set(
+        community_service._parse_int_list(getattr(comun, "roadmap_category_ids", []))
+    )
+    roadmap_categories = [
+        category for category in categories if int(category.id) in roadmap_category_ids
+    ]
     moderators = list(comun.moderators.select_related("site_profile").order_by("username"))
     excluded_authors = list(comun.excluded_authors.filter(is_blocked=False).order_by("username"))
     source_tags = _comun_source_tags_list(comun)
@@ -718,6 +724,10 @@ def _serialize_comun(
         "target_audience": comun.target_audience,
         "glossary_enabled": bool(getattr(comun, "glossary_enabled", False)),
         "roadmap_enabled": bool(getattr(comun, "roadmap_enabled", True)),
+        "roadmap_category_ids": [category.id for category in roadmap_categories],
+        "roadmap_categories": [
+            _serialize_comun_category(category, comun) for category in roadmap_categories
+        ],
         "glossary_terms": [_serialize_comun_glossary_term(term) for term in glossary_terms],
         "glossary_terms_count": len(glossary_terms),
         "minimum_author_rating_to_post": _comun_minimum_author_rating_value(comun),
@@ -838,6 +848,7 @@ def _serialize_comun(
         payload["activity"] = _serialize_comun_activity(request, comun)
     if include_manage_fields:
         payload["category_ids"] = [category.id for category in categories]
+        payload["roadmap_category_ids"] = [category.id for category in roadmap_categories]
         payload["moderator_ids"] = [moderator.id for moderator in moderators]
         payload["tag_ids"] = [tag.id for tag in tags]
         payload["source_tag_ids"] = [tag.id for tag in source_tags]
@@ -1546,6 +1557,22 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
         comun.glossary_enabled = bool(body.get("glossary_enabled"))
     if "roadmap_enabled" in body:
         comun.roadmap_enabled = bool(body.get("roadmap_enabled"))
+    if "roadmap_category_ids" in body:
+        requested_roadmap_category_ids = community_service._parse_int_list(
+            body.get("roadmap_category_ids")
+        )
+        active_category_ids = set(
+            ComunCategory.objects.filter(
+                comun=comun,
+                is_active=True,
+                id__in=requested_roadmap_category_ids,
+            ).values_list("id", flat=True)
+        )
+        comun.roadmap_category_ids = [
+            category_id
+            for category_id in requested_roadmap_category_ids
+            if category_id in active_category_ids
+        ]
     if "minimum_author_rating_to_post" in body:
         minimum_author_rating_to_post, minimum_author_rating_error = _normalize_comun_minimum_author_rating(
             body.get("minimum_author_rating_to_post")

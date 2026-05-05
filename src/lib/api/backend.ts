@@ -482,6 +482,8 @@ export type BackendComun = {
   target_audience?: string | null
   glossary_enabled?: boolean
   roadmap_enabled?: boolean
+  roadmap_category_ids?: number[]
+  roadmap_categories?: BackendComunCategory[]
   glossary_terms?: BackendComunGlossaryTerm[]
   glossary_terms_count?: number
   tags?: BackendTag[]

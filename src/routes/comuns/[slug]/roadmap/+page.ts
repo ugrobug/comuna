@@ -22,7 +22,15 @@ export const load = async ({ fetch, params, url, parent }) => {
   }
   const statsPayload = await statsResponse.json()
 
-  const categories = Array.isArray(comun?.categories) ? comun.categories : []
+  const allCategories = Array.isArray(comun?.categories) ? comun.categories : []
+  const roadmapCategoryIds = new Set(
+    (Array.isArray(comun?.roadmap_category_ids) ? comun.roadmap_category_ids : [])
+      .map((value: unknown) => Number(value))
+      .filter((value: number) => Number.isFinite(value) && value > 0)
+  )
+  const categories = allCategories.filter((category: any) =>
+    roadmapCategoryIds.has(Number(category?.id ?? 0))
+  )
   const previewResults = await Promise.all(
     categories.map(async (category: any) => {
       const categorySlug = String(category?.slug ?? '').trim()
@@ -63,16 +71,21 @@ export const load = async ({ fetch, params, url, parent }) => {
       }
     })
   )
+  const selectedCategoryIdSet = new Set(categories.map((category: any) => Number(category?.id ?? 0)))
+  const selectedTotalCount = (Array.isArray(statsPayload?.category_counts)
+    ? statsPayload.category_counts
+    : []
+  ).reduce((sum: number, row: any) => {
+    const categoryId = Number(row?.category_id ?? 0)
+    if (!selectedCategoryIdSet.has(categoryId)) return sum
+    return sum + Math.max(Number(row?.count ?? 0) || 0, 0)
+  }, 0)
 
   return {
     comun,
     categoryCounts: statsPayload?.category_counts ?? [],
-    totalCount:
-      typeof statsPayload?.total_count === 'number' ? Number(statsPayload.total_count) : 0,
-    uncategorizedCount:
-      typeof statsPayload?.uncategorized_count === 'number'
-        ? Number(statsPayload.uncategorized_count)
-        : 0,
+    totalCount: selectedTotalCount,
+    roadmapCategoryIds: Array.from(roadmapCategoryIds),
     categoryPreviews: previewResults.filter(Boolean),
     previewLimit: PREVIEW_LIMIT,
   }
