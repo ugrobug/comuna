@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { browser } from '$app/environment'
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
   import { Button, toast } from 'mono-svelte'
@@ -246,16 +245,6 @@
     goto('/create/post')
   }
 
-  const copyRoadmapLink = async () => {
-    if (!browser) return
-    try {
-      await navigator.clipboard.writeText(shareUrl)
-      toast({ content: 'Ссылка на публичную дорожную карту скопирована', type: 'success' })
-    } catch {
-      toast({ content: 'Не удалось скопировать ссылку', type: 'error' })
-    }
-  }
-
   const authHeaders = () => {
     if (!$siteToken) throw new Error('Нужна авторизация')
     return {
@@ -422,11 +411,9 @@
         totalCount: typeof preview?.total_count === 'number' ? Number(preview.total_count) : null,
         isKnownStage: false,
       } satisfies RoadmapLane
-    })
+  })
 
   $: roadmapLanes = [...knownStageLanes, ...extraLanes]
-  $: trackedCount = roadmapLanes.reduce((sum, lane) => sum + Math.max(lane.count, 0), 0)
-  $: releasedCount = roadmapLanes.find((lane) => lane.key === 'released')?.count ?? 0
   $: selectedCategorySlug = String($page.url.searchParams.get('category') || '').trim()
   $: highlightedLane = roadmapLanes.find((lane) => lane.category.slug === selectedCategorySlug) ?? null
   $: comunName = comun?.name || 'Сообщество'
@@ -438,25 +425,16 @@
     $page.url.pathname + ($page.url.search || ''),
     (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '') + '/'
   ).toString()
-  $: shareUrl = canonicalUrl
-
-  $: founderPrompt =
-    comun?.product_tag?.name
-      ? `Попросите пользователей публиковать идеи с тегом #${comun.product_tag.name}, затем переносите лучшие карточки по этапам.`
-      : comun?.source_rubric?.name
-      ? `Новые публикации из рубрики «${comun.source_rubric.name}» будут автоматически попадать в дорожную карту сообщества.`
-      : 'Настройте источник публикаций сообщества, чтобы новые карточки автоматически попадали в дорожную карту.'
 </script>
 
 <div class="mx-auto flex w-full max-w-7xl flex-col gap-6">
   <section class="roadmap-page-shell overflow-hidden rounded-3xl">
     <div class="roadmap-page-glow"></div>
     <div class="roadmap-page-content relative z-10 flex flex-col gap-5 p-4 sm:p-5 lg:p-6">
-      <div class="grid gap-4 lg:grid-cols-[1.25fr_minmax(280px,0.75fr)]">
+      <div>
         <div class="roadmap-hero-card rounded-2xl p-4 sm:p-5">
           <div class="mb-3 flex flex-wrap items-center gap-2">
             <span class="hero-badge">Публичная дорожная карта</span>
-            <span class="hero-badge hero-badge--muted">Отдельная ссылка для пользователей</span>
             {#if highlightedLane}
               <span class="hero-badge hero-badge--lane" style={stageStyleVars(highlightedLane.key)}>
                 Фильтр: {highlightedLane.shortLabel}
@@ -466,71 +444,6 @@
 
           <div class="space-y-2">
             <Header noMargin>{comunName}</Header>
-            <p class="hero-text">
-              Здесь основатель может публично показать, что команда планирует делать дальше, а пользователи
-              могут перейти в карточки, проголосовать и обсудить изменения.
-            </p>
-          </div>
-
-          <div class="mt-4 flex flex-wrap gap-2">
-            <a href={`/comuns/${comun?.slug ?? ''}`} class="ghost-link">Сообщество</a>
-            {#if comun?.slug}
-              <a href={`/comuns/${comun.slug}?category=backlog`} class="ghost-link">Беклог</a>
-            {/if}
-            {#if comun?.website_url}
-              <a href={comun.website_url} target="_blank" rel="nofollow noopener" class="ghost-link">
-                Сайт продукта
-              </a>
-            {/if}
-          </div>
-
-          <div class="mt-4 rounded-2xl border border-slate-200/80 bg-white/70 p-3 dark:border-zinc-800 dark:bg-zinc-900/45">
-            <div class="mb-2 text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-zinc-400">
-              Ссылка для отправки пользователям
-            </div>
-            <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <code class="share-url flex-1 rounded-xl px-3 py-2 text-xs sm:text-sm">{shareUrl}</code>
-              <Button on:click={copyRoadmapLink}>Скопировать</Button>
-            </div>
-          </div>
-        </div>
-
-        <div class="roadmap-side-card rounded-2xl p-4 sm:p-5">
-          <div class="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-zinc-400">Сводка</div>
-          <div class="mt-3 grid grid-cols-2 gap-2">
-            <div class="stat-box rounded-xl p-3">
-              <div class="stat-label">В дорожной карте всего</div>
-              <div class="stat-value">{countFormat(trackedCount)}</div>
-            </div>
-            <div class="stat-box rounded-xl p-3">
-              <div class="stat-label">Готово</div>
-              <div class="stat-value">{countFormat(releasedCount)}</div>
-            </div>
-            <div class="stat-box rounded-xl p-3">
-              <div class="stat-label">Рубрик выбрано</div>
-              <div class="stat-value">{countFormat(roadmapLanes.length)}</div>
-            </div>
-            <div class="stat-box rounded-xl p-3">
-              <div class="stat-label">Всего рубрик</div>
-              <div class="stat-value">{countFormat(allCategories.length)}</div>
-            </div>
-          </div>
-
-          <div class="mt-4 rounded-xl border border-slate-200/80 bg-slate-50/70 p-3 text-sm text-slate-700 dark:border-zinc-800 dark:bg-zinc-900/40 dark:text-zinc-300">
-            <div class="font-semibold text-slate-900 dark:text-zinc-100">Как привлекать фидбек</div>
-            <div class="mt-1">
-              {founderPrompt}
-            </div>
-            <div class="mt-2 flex flex-wrap gap-2">
-              <Button size="sm" on:click={openSubmitFlow}>
-                {$siteToken ? 'Добавить карточку' : 'Предложить идею'}
-              </Button>
-              {#if comun?.slug}
-                <a href={`/comuns/${comun.slug}`} class="ghost-link ghost-link--small">
-                  Открыть ленту сообщества
-                </a>
-              {/if}
-            </div>
           </div>
         </div>
       </div>
@@ -730,7 +643,6 @@
   }
 
   .roadmap-hero-card,
-  .roadmap-side-card,
   .roadmap-settings-card,
   .empty-roadmap {
     border: 1px solid rgba(148, 163, 184, 0.22);
@@ -739,7 +651,6 @@
   }
 
   :global(.dark) .roadmap-hero-card,
-  :global(.dark) .roadmap-side-card,
   :global(.dark) .roadmap-settings-card,
   :global(.dark) .empty-roadmap {
     border-color: rgba(63, 63, 70, 0.85);
@@ -787,12 +698,6 @@
     letter-spacing: 0.02em;
   }
 
-  .hero-badge--muted {
-    border-color: rgba(148, 163, 184, 0.26);
-    background: rgba(248, 250, 252, 0.85);
-    color: rgb(51 65 85);
-  }
-
   .hero-badge--lane {
     border-color: hsla(var(--lane-h), 70%, 45%, 0.28);
     background: hsla(var(--lane-h), 92%, 95%, 0.9);
@@ -805,39 +710,10 @@
     color: rgb(147 197 253);
   }
 
-  :global(.dark) .hero-badge--muted {
-    border-color: rgba(82, 82, 91, 0.9);
-    background: rgba(39, 39, 42, 0.7);
-    color: rgb(212 212 216);
-  }
-
   :global(.dark) .hero-badge--lane {
     border-color: hsla(var(--lane-h), 55%, 58%, 0.3);
     background: hsla(var(--lane-h), 44%, 18%, 0.55);
     color: hsl(var(--lane-h) 88% 82%);
-  }
-
-  .hero-text {
-    color: rgb(71 85 105);
-    line-height: 1.55;
-    font-size: 0.95rem;
-  }
-
-  :global(.dark) .hero-text {
-    color: rgb(161 161 170);
-  }
-
-  .share-url {
-    background: rgba(248, 250, 252, 0.86);
-    border: 1px solid rgba(148, 163, 184, 0.24);
-    color: rgb(51 65 85);
-    word-break: break-all;
-  }
-
-  :global(.dark) .share-url {
-    background: rgba(9, 9, 11, 0.46);
-    border-color: rgba(63, 63, 70, 0.85);
-    color: rgb(212 212 216);
   }
 
   .ghost-link {
@@ -858,11 +734,6 @@
     background: rgba(248, 250, 252, 0.9);
   }
 
-  .ghost-link--small {
-    font-size: 0.8rem;
-    padding: 0.42rem 0.7rem;
-  }
-
   :global(.dark) .ghost-link {
     border-color: rgba(63, 63, 70, 0.85);
     color: rgb(212 212 216);
@@ -872,39 +743,6 @@
   :global(.dark) .ghost-link:hover {
     border-color: rgba(82, 82, 91, 0.95);
     background: rgba(39, 39, 42, 0.7);
-  }
-
-  .stat-box {
-    border: 1px solid rgba(148, 163, 184, 0.2);
-    background: rgba(248, 250, 252, 0.82);
-  }
-
-  :global(.dark) .stat-box {
-    border-color: rgba(63, 63, 70, 0.85);
-    background: rgba(9, 9, 11, 0.38);
-  }
-
-  .stat-label {
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: rgb(100 116 139);
-  }
-
-  .stat-value {
-    margin-top: 0.25rem;
-    font-size: 1.05rem;
-    line-height: 1.15;
-    font-weight: 700;
-    color: rgb(15 23 42);
-  }
-
-  :global(.dark) .stat-label {
-    color: rgb(161 161 170);
-  }
-
-  :global(.dark) .stat-value {
-    color: rgb(244 244 245);
   }
 
   .roadmap-grid {
