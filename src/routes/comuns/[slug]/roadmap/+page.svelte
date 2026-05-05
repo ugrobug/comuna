@@ -10,7 +10,7 @@
     type BackendComunCategory,
     type BackendPost,
   } from '$lib/api/backend'
-  import { siteToken } from '$lib/siteAuth'
+  import { siteToken, siteUser } from '$lib/siteAuth'
   import { env } from '$env/dynamic/public'
 
   export let data
@@ -401,6 +401,16 @@
   $: roadmapLanes = [...knownStageLanes, ...extraLanes]
   $: selectedCategorySlug = String($page.url.searchParams.get('category') || '').trim()
   $: highlightedLane = roadmapLanes.find((lane) => lane.category.slug === selectedCategorySlug) ?? null
+  $: currentUserId = Number($siteUser?.id ?? 0)
+  $: canManageRoadmap = Boolean(
+    $siteToken &&
+      currentUserId > 0 &&
+      (Number(comun?.creator?.id ?? 0) === currentUserId ||
+        (comun?.moderators ?? []).some(
+          (moderator) => Number(moderator?.id ?? 0) === currentUserId
+        ) ||
+        comun?.can_moderate)
+  )
   $: comunName = comun?.name || 'Сообщество'
   $: pageTitle = `Публичная дорожная карта — ${comunName}`
   $: pageDescription =
@@ -428,7 +438,13 @@
       {/if}
     </div>
     <div class="flex flex-wrap items-center gap-2">
-      {#if $siteToken && comun?.can_moderate}
+      <a
+        href={comun?.slug ? `/comuns/${encodeURIComponent(comun.slug)}` : '/comuns'}
+        class="inline-flex items-center rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-900 transition hover:bg-slate-50 dark:border-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-800/60"
+      >
+        Назад к сообществу
+      </a>
+      {#if canManageRoadmap}
         <a
           href="#roadmap-settings"
           class="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-900 transition hover:bg-slate-50 dark:border-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-800/60"
@@ -450,19 +466,13 @@
           </svg>
         </a>
       {/if}
-      <a
-        href={comun?.slug ? `/comuns/${encodeURIComponent(comun.slug)}` : '/comuns'}
-        class="inline-flex items-center rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-900 transition hover:bg-slate-50 dark:border-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-800/60"
-      >
-        Назад к сообществу
-      </a>
     </div>
   </div>
 
   <section class="roadmap-page-shell overflow-hidden rounded-3xl">
     <div class="roadmap-page-glow"></div>
     <div class="roadmap-page-content relative z-10 flex flex-col gap-5 p-4 sm:p-5 lg:p-6">
-      {#if $siteToken && comun?.can_moderate}
+      {#if canManageRoadmap}
         <section id="roadmap-settings" class="roadmap-settings-card rounded-2xl p-4 sm:p-5">
           <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div class="max-w-3xl">
@@ -583,7 +593,7 @@
             Публичная дорожная карта пока не настроена
           </div>
           <div class="mt-2 text-sm text-slate-600 dark:text-zinc-400">
-            {#if $siteToken && comun?.can_moderate}
+            {#if canManageRoadmap}
               Выберите рубрики выше, чтобы публикации из них появились в публичной дорожной карте.
             {:else}
               Администратор сообщества еще не выбрал рубрики для публичной дорожной карты.
