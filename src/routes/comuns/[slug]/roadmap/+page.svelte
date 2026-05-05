@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { goto } from '$app/navigation'
   import { page } from '$app/stores'
   import { Button, toast } from 'mono-svelte'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
@@ -231,20 +230,6 @@
     }
   }
 
-  const openSubmitFlow = () => {
-    if (!comun?.slug) return
-    if ($siteToken) {
-      goto(`/comuns/${comun.slug}/new-post`)
-      return
-    }
-    if (!$siteToken) {
-      const next = encodeURIComponent(`${$page.url.pathname}${$page.url.search}`)
-      goto(`/account?next=${next}`)
-      return
-    }
-    goto('/create/post')
-  }
-
   const authHeaders = () => {
     if (!$siteToken) throw new Error('Нужна авторизация')
     return {
@@ -428,28 +413,57 @@
 </script>
 
 <div class="mx-auto flex w-full max-w-7xl flex-col gap-6">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div class="min-w-0">
+      <Header noMargin>Публичная дорожная карта</Header>
+      {#if comun?.name}
+        <div class="truncate text-sm text-slate-600 dark:text-zinc-400">{comun.name}</div>
+      {/if}
+      {#if highlightedLane}
+        <div class="mt-2">
+          <span class="filter-pill" style={stageStyleVars(highlightedLane.key)}>
+            Фильтр: {highlightedLane.shortLabel}
+          </span>
+        </div>
+      {/if}
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      {#if $siteToken && comun?.can_moderate}
+        <a
+          href="#roadmap-settings"
+          class="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-900 transition hover:bg-slate-50 dark:border-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-800/60"
+          aria-label="Настройки дорожной карты"
+          title="Настройки дорожной карты"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+            class="h-5 w-5"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
+            <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.04.04a2.05 2.05 0 0 1-2.9 2.9l-.04-.04A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21a2.05 2.05 0 0 1-4.1 0v-.06A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.04.04a2.05 2.05 0 0 1-2.9-2.9l.04-.04A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3a2.05 2.05 0 0 1 0-4.1h.06A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.04-.04a2.05 2.05 0 0 1 2.9-2.9l.04.04A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3a2.05 2.05 0 0 1 4.1 0v.06A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.04-.04a2.05 2.05 0 0 1 2.9 2.9l-.04.04A1.7 1.7 0 0 0 19.4 9c.4.2.75.4 1 .6.3.3.4.7.4 1.1V11a2.05 2.05 0 0 1 0 4.1h-.06a1.7 1.7 0 0 0-1.34.9Z" />
+          </svg>
+        </a>
+      {/if}
+      <a
+        href={comun?.slug ? `/comuns/${encodeURIComponent(comun.slug)}` : '/comuns'}
+        class="inline-flex items-center rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-900 transition hover:bg-slate-50 dark:border-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-800/60"
+      >
+        Назад к сообществу
+      </a>
+    </div>
+  </div>
+
   <section class="roadmap-page-shell overflow-hidden rounded-3xl">
     <div class="roadmap-page-glow"></div>
     <div class="roadmap-page-content relative z-10 flex flex-col gap-5 p-4 sm:p-5 lg:p-6">
-      <div>
-        <div class="roadmap-hero-card rounded-2xl p-4 sm:p-5">
-          <div class="mb-3 flex flex-wrap items-center gap-2">
-            <span class="hero-badge">Публичная дорожная карта</span>
-            {#if highlightedLane}
-              <span class="hero-badge hero-badge--lane" style={stageStyleVars(highlightedLane.key)}>
-                Фильтр: {highlightedLane.shortLabel}
-              </span>
-            {/if}
-          </div>
-
-          <div class="space-y-2">
-            <Header noMargin>{comunName}</Header>
-          </div>
-        </div>
-      </div>
-
       {#if $siteToken && comun?.can_moderate}
-        <section class="roadmap-settings-card rounded-2xl p-4 sm:p-5">
+        <section id="roadmap-settings" class="roadmap-settings-card rounded-2xl p-4 sm:p-5">
           <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div class="max-w-3xl">
               <div class="text-sm font-semibold text-slate-900 dark:text-zinc-100">
@@ -575,17 +589,6 @@
               Администратор сообщества еще не выбрал рубрики для публичной дорожной карты.
             {/if}
           </div>
-          <div class="mt-4 flex flex-wrap gap-2">
-            {#if comun?.slug}
-              <a href={`/comuns/${comun.slug}`} class="ghost-link">Открыть сообщество</a>
-              {#if $siteToken}
-                <a href={`/comuns/${comun.slug}/settings`} class="ghost-link">Настройки сообщества</a>
-              {/if}
-            {/if}
-            <Button on:click={openSubmitFlow}>
-              {$siteToken ? 'Добавить карточку' : 'Предложить идею'}
-            </Button>
-          </div>
         </section>
       {/if}
     </div>
@@ -642,7 +645,6 @@
     opacity: 0.4;
   }
 
-  .roadmap-hero-card,
   .roadmap-settings-card,
   .empty-roadmap {
     border: 1px solid rgba(148, 163, 184, 0.22);
@@ -650,7 +652,6 @@
     backdrop-filter: blur(8px);
   }
 
-  :global(.dark) .roadmap-hero-card,
   :global(.dark) .roadmap-settings-card,
   :global(.dark) .empty-roadmap {
     border-color: rgba(63, 63, 70, 0.85);
@@ -685,64 +686,23 @@
     background: rgba(30, 41, 59, 0.52);
   }
 
-  .hero-badge {
+  .filter-pill {
     display: inline-flex;
     align-items: center;
     border-radius: 9999px;
     padding: 0.35rem 0.7rem;
-    border: 1px solid rgba(59, 130, 246, 0.25);
-    background: rgba(239, 246, 255, 0.85);
-    color: rgb(30 64 175);
+    border: 1px solid hsla(var(--lane-h), 70%, 45%, 0.28);
+    background: hsla(var(--lane-h), 92%, 95%, 0.9);
+    color: hsl(var(--lane-h) 62% 28%);
     font-size: 0.74rem;
     font-weight: 700;
     letter-spacing: 0.02em;
   }
 
-  .hero-badge--lane {
-    border-color: hsla(var(--lane-h), 70%, 45%, 0.28);
-    background: hsla(var(--lane-h), 92%, 95%, 0.9);
-    color: hsl(var(--lane-h) 62% 28%);
-  }
-
-  :global(.dark) .hero-badge {
-    border-color: rgba(59, 130, 246, 0.35);
-    background: rgba(30, 41, 59, 0.72);
-    color: rgb(147 197 253);
-  }
-
-  :global(.dark) .hero-badge--lane {
+  :global(.dark) .filter-pill {
     border-color: hsla(var(--lane-h), 55%, 58%, 0.3);
     background: hsla(var(--lane-h), 44%, 18%, 0.55);
     color: hsl(var(--lane-h) 88% 82%);
-  }
-
-  .ghost-link {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 0.8rem;
-    border: 1px solid rgba(148, 163, 184, 0.26);
-    padding: 0.55rem 0.8rem;
-    font-size: 0.88rem;
-    color: rgb(51 65 85);
-    background: rgba(255, 255, 255, 0.64);
-    transition: background-color 0.15s ease, border-color 0.15s ease;
-  }
-
-  .ghost-link:hover {
-    border-color: rgba(100, 116, 139, 0.38);
-    background: rgba(248, 250, 252, 0.9);
-  }
-
-  :global(.dark) .ghost-link {
-    border-color: rgba(63, 63, 70, 0.85);
-    color: rgb(212 212 216);
-    background: rgba(24, 24, 27, 0.5);
-  }
-
-  :global(.dark) .ghost-link:hover {
-    border-color: rgba(82, 82, 91, 0.95);
-    background: rgba(39, 39, 42, 0.7);
   }
 
   .roadmap-grid {
