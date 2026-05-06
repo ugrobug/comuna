@@ -109,8 +109,6 @@ export interface Settings {
   myFeedComunCategories: Record<string, string[]>
   hiddenAuthors: string[]
   myFeedHideNegative: boolean
-  myFeedMood: 'funny' | 'serious' | 'sad' | null
-  myFeedMoodExpiresAt: number | null
   useRtl: boolean
   translator: string | undefined
   parseTags: boolean
@@ -200,8 +198,6 @@ export const defaultSettings: Settings = {
   myFeedComunCategories: {},
   hiddenAuthors: [],
   myFeedHideNegative: true,
-  myFeedMood: null,
-  myFeedMoodExpiresAt: null,
   useRtl: false,
   translator: undefined,
   parseTags: true,
@@ -214,6 +210,9 @@ export const defaultSettings: Settings = {
 }
 
 export const userSettings = writable(defaultSettings)
+export type FeedSettingsHydrationState = 'idle' | 'loading' | 'ready' | 'error'
+export const feedSettingsHydrationState = writable<FeedSettingsHydrationState>('idle')
+export const feedSettingsHydrated = writable(false)
 
 type BackendFeedSettings = {
   home_feed?: string
@@ -321,33 +320,51 @@ const scheduleBackendFeedSettingsSave = (settings: Settings) => {
 }
 
 export const loadBackendFeedSettings = async (token: string | null) => {
-  if (!browser || !token) return null
+  if (!browser || !token) {
+    feedSettingsHydrationState.set('idle')
+    feedSettingsHydrated.set(false)
+    return null
+  }
   backendFeedSettingsToken = token
+  backendFeedSettingsHydrated = false
+  feedSettingsHydrationState.set('loading')
+  feedSettingsHydrated.set(false)
   const localSettings = get(userSettings)
-  const response = await fetch(buildAuthFeedSettingsUrl(), {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  })
-  const payload = await response.json().catch(() => ({}))
-  if (!response.ok || !payload?.settings) {
-    throw new Error(payload?.error || 'Не удалось загрузить настройки ленты')
-  }
-
-  applyingBackendFeedSettings = true
   try {
-    userSettings.set(settingsFromBackendPayload(localSettings, payload.settings))
-    lastBackendFeedSettingsSnapshot = feedSettingsSnapshot(get(userSettings))
-    backendFeedSettingsHydrated = true
-  } finally {
-    applyingBackendFeedSettings = false
+    const response = await fetch(buildAuthFeedSettingsUrl(), {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok || !payload?.settings) {
+      throw new Error(payload?.error || 'Не удалось загрузить настройки ленты')
+    }
+
+    applyingBackendFeedSettings = true
+    try {
+      userSettings.set(settingsFromBackendPayload(localSettings, payload.settings))
+      lastBackendFeedSettingsSnapshot = feedSettingsSnapshot(get(userSettings))
+      backendFeedSettingsHydrated = true
+      feedSettingsHydrationState.set('ready')
+      feedSettingsHydrated.set(true)
+    } finally {
+      applyingBackendFeedSettings = false
+    }
+    return payload.settings as BackendFeedSettings
+  } catch (error) {
+    backendFeedSettingsHydrated = false
+    feedSettingsHydrationState.set('error')
+    feedSettingsHydrated.set(false)
+    throw error
   }
-  return payload.settings as BackendFeedSettings
 }
 
 export const resetBackendFeedSettingsSync = () => {
   backendFeedSettingsToken = null
   backendFeedSettingsHydrated = false
+  feedSettingsHydrationState.set('idle')
+  feedSettingsHydrated.set(false)
   applyingBackendFeedSettings = false
   lastBackendFeedSettingsSnapshot = ''
   if (backendFeedSettingsSaveTimer) {
@@ -469,21 +486,6 @@ const migrate = (settings: any): Settings => {
   }
   if (typeof settings?.hideReadPosts !== 'boolean') {
     settings.hideReadPosts = defaultSettings.hideReadPosts
-  }
-  const validMoods = new Set(['funny', 'serious', 'sad'])
-  if (!validMoods.has(settings?.myFeedMood)) {
-    settings.myFeedMood = defaultSettings.myFeedMood
-  }
-  if (typeof settings?.myFeedMoodExpiresAt !== 'number') {
-    settings.myFeedMoodExpiresAt = defaultSettings.myFeedMoodExpiresAt
-  }
-  if (
-    settings.myFeedMood &&
-    settings.myFeedMoodExpiresAt &&
-    Date.now() > settings.myFeedMoodExpiresAt
-  ) {
-    settings.myFeedMood = defaultSettings.myFeedMood
-    settings.myFeedMoodExpiresAt = defaultSettings.myFeedMoodExpiresAt
   }
   settings.language = 'ru'
   settings.dock = { ...defaultSettings.dock, pins: [] }

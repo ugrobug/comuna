@@ -17,7 +17,7 @@
   } from '$lib/feeds/myFeed'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import { siteToken, siteUser } from '$lib/siteAuth'
-  import { userSettings } from '$lib/settings'
+  import { feedSettingsHydrated, userSettings } from '$lib/settings'
   import { t } from '$lib/translations.js'
   import { onDestroy, onMount } from 'svelte'
   import { Cog6Tooth, Icon } from 'svelte-hero-icons'
@@ -280,7 +280,8 @@
   $: hiddenAuthorKeys = new Set(
     ($userSettings.hiddenAuthors ?? []).map((value) => value.toLowerCase())
   )
-  $: canLoadMyFeed = feedType === 'mine' && $siteUser && myFeedHasBaseSettings
+  $: canLoadMyFeed =
+    feedType === 'mine' && $siteUser && $feedSettingsHydrated && myFeedHasBaseSettings
   $: hideNegativeMyFeed = $userSettings.myFeedHideNegative ?? true
   $: hideReadPosts = ($userSettings.hideReadPosts ?? false) && !!$siteUser
   $: effectiveHideRead = hideReadPosts && !readOnly
@@ -377,7 +378,8 @@
 
   $: if (feedType === 'mine') {
     const authKey = $siteUser ? 'auth' : 'anon'
-    const key = `${authKey}:${selectedRubrics.join(',')}:${selectedAuthors.join(',')}:${selectedMyFeedTags.join(',')}:${selectedMyFeedComuns.join(',')}:${JSON.stringify(selectedMyFeedComunCategories)}:${hideNegativeMyFeed ? 'no-negative' : 'all'}:${readOnly ? 'only-read' : effectiveHideRead ? 'hide-read' : 'all-read'}`
+    const hydrationKey = $siteUser ? ($feedSettingsHydrated ? 'settings-ready' : 'settings-loading') : 'no-settings'
+    const key = `${authKey}:${hydrationKey}:${selectedRubrics.join(',')}:${selectedAuthors.join(',')}:${selectedMyFeedTags.join(',')}:${selectedMyFeedComuns.join(',')}:${JSON.stringify(selectedMyFeedComunCategories)}:${hideNegativeMyFeed ? 'no-negative' : 'all'}:${readOnly ? 'only-read' : effectiveHideRead ? 'hide-read' : 'all-read'}`
     if (key !== lastMyFeedKey) {
       lastMyFeedKey = key
       posts = []

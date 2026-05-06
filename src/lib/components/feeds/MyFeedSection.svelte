@@ -3,10 +3,11 @@
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
   import {
-    buildTagsListUrl,
     buildThematicFeedsListUrl,
+    buildTopComunsUrl,
     type BackendPost,
     type BackendThematicFeed,
+    type BackendTopComun,
   } from '$lib/api/backend'
   import FeedPostsList from '$lib/components/feeds/FeedPostsList.svelte'
   import {
@@ -14,39 +15,31 @@
     hasMyFeedCustomizations,
   } from '$lib/feeds/myFeed'
   import { siteUser } from '$lib/siteAuth'
-  import { userSettings } from '$lib/settings'
-  import { normalizeTag } from '$lib/tags'
+  import {
+    feedSettingsHydrated,
+    feedSettingsHydrationState,
+    subscribeToComunBySlug,
+    userSettings,
+  } from '$lib/settings'
   import { Button } from 'mono-svelte'
 
   export let posts: BackendPost[] = []
   export let loadingMore = false
 
-  const moodDurationMs = 3 * 60 * 60 * 1000
-  const moodOptions: Array<{ label: string; value: 'funny' | 'serious' | 'sad' }> = [
-    { label: 'Веселое', value: 'funny' },
-    { label: 'Серьезное', value: 'serious' },
-    { label: 'Грустное', value: 'sad' },
-  ]
-
-  let myFeedSettingsOpen = false
   let myFeedSuggestedFolders: BackendThematicFeed[] = []
   let myFeedSuggestedFoldersLoading = false
   let myFeedSuggestedFoldersLoaded = false
   let myFeedSuggestedFoldersError = ''
-  let tagMoodMap = new Map<string, string>()
-  let tagLemmaMap = new Map<string, string>()
-  let tagMoodLoading = false
-  let moodExpiryTimer: ReturnType<typeof setTimeout> | null = null
-  let moodTagSet = new Set<string>()
+  let topComuns: BackendTopComun[] = []
+  let recommendedComuns: BackendTopComun[] = []
+  let recommendedComunsLoading = false
+  let recommendedComunsLoaded = false
+  let recommendedComunsError = ''
   let filteredPosts: BackendPost[] = []
+  let hiddenAuthorKeys = new Set<string>()
 
-  const openMyFeedSettings = () => {
-    myFeedSettingsOpen = true
-  }
-
-  const toggleMyFeedSettings = () => {
-    myFeedSettingsOpen = !myFeedSettingsOpen
-  }
+  const normalizeSlug = (value: string | null | undefined) =>
+    String(value ?? '').trim().toLowerCase()
 
   const loadMyFeedSuggestedFolders = async () => {
     if (!browser || myFeedSuggestedFoldersLoading) return
@@ -69,77 +62,25 @@
     }
   }
 
-  const loadTagMoods = async () => {
-    if (!browser || tagMoodLoading || tagMoodMap.size) return
-    tagMoodLoading = true
+  const loadRecommendedComuns = async () => {
+    if (!browser || recommendedComunsLoading || recommendedComunsLoaded) return
+    recommendedComunsLoading = true
+    recommendedComunsError = ''
     try {
-      const response = await fetch(buildTagsListUrl())
-      if (response.ok) {
-        const payload = await response.json()
-        const entries =
-          payload.tags?.map((tag: { name: string; lemma?: string; mood: string }) => [
-            normalizeTag(tag.lemma ?? tag.name),
-            tag.mood,
-          ]) ?? []
-        const lemmaEntries =
-          payload.tags?.map((tag: { name: string; lemma?: string }) => [
-            normalizeTag(tag.name),
-            normalizeTag(tag.lemma ?? tag.name),
-          ]) ?? []
-        tagMoodMap = new Map(entries)
-        tagLemmaMap = new Map(lemmaEntries)
+      const response = await fetch(buildTopComunsUrl({ limit: 'all' }))
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Не удалось загрузить рекомендации')
       }
+      topComuns = payload.comuns ?? []
+      recommendedComunsLoaded = true
     } catch (error) {
-      console.error('Failed to load tag moods:', error)
+      recommendedComunsError =
+        error instanceof Error ? error.message : 'Ошибка загрузки рекомендаций'
+      recommendedComunsLoaded = true
     } finally {
-      tagMoodLoading = false
+      recommendedComunsLoading = false
     }
-  }
-
-  const selectMood = (value: 'funny' | 'serious' | 'sad') => {
-    if (moodActive && myFeedMood === value) {
-      clearMood()
-      return
-    }
-    const expiresAt = Date.now() + moodDurationMs
-    $userSettings = {
-      ...$userSettings,
-      myFeedMood: value,
-      myFeedMoodExpiresAt: expiresAt,
-    }
-  }
-
-  const clearMood = () => {
-    $userSettings = {
-      ...$userSettings,
-      myFeedMood: null,
-      myFeedMoodExpiresAt: null,
-    }
-  }
-
-  const scheduleMoodClear = (expiresAt: number | null) => {
-    if (!browser) return
-    if (moodExpiryTimer) {
-      window.clearTimeout(moodExpiryTimer)
-      moodExpiryTimer = null
-    }
-    if (!expiresAt) return
-    const delay = expiresAt - Date.now()
-    if (delay <= 0) {
-      userSettings.update((settings) => ({
-        ...settings,
-        myFeedMood: null,
-        myFeedMoodExpiresAt: null,
-      }))
-      return
-    }
-    moodExpiryTimer = window.setTimeout(() => {
-      userSettings.update((settings) => ({
-        ...settings,
-        myFeedMood: null,
-        myFeedMoodExpiresAt: null,
-      }))
-    }, delay)
   }
 
   const applyFolderPresetToMyFeed = async (folderPreset: BackendThematicFeed | null) => {
@@ -159,12 +100,14 @@
     goto('/?feed=mine')
   }
 
+  const subscribeToComun = (comun: BackendTopComun) => {
+    const slug = normalizeSlug(comun.slug)
+    if (!slug) return
+    subscribeToComunBySlug(comun.slug)
+  }
+
   const authorKey = (backendPost: { author?: { username?: string } }) =>
     (backendPost.author?.username ?? '').trim().toLowerCase()
-
-  const hiddenAuthorKeys = new Set(
-    ($userSettings.hiddenAuthors ?? []).map((value) => value.toLowerCase())
-  )
 
   const isAuthorVisible = (backendPost: { author?: { username?: string } }) => {
     const key = authorKey(backendPost)
@@ -176,51 +119,38 @@
   $: selectedAuthors = $userSettings.myFeedAuthors ?? []
   $: selectedMyFeedTags = $userSettings.myFeedTags ?? []
   $: selectedMyFeedComuns = $userSettings.myFeedComuns ?? []
+  $: selectedComunSlugSet = new Set(selectedMyFeedComuns.map(normalizeSlug))
   $: myFeedHasBaseSettings =
     selectedRubrics.length > 0 ||
     selectedAuthors.length > 0 ||
     selectedMyFeedTags.length > 0 ||
     selectedMyFeedComuns.length > 0
-  $: myFeedMood = $userSettings.myFeedMood ?? null
-  $: myFeedMoodExpiresAt = $userSettings.myFeedMoodExpiresAt ?? null
-  $: moodActive =
-    !!myFeedMood &&
-    !!myFeedMoodExpiresAt &&
-    Date.now() < myFeedMoodExpiresAt
-  $: effectiveMood = moodActive ? myFeedMood : null
-  $: moodTagSet =
-    effectiveMood && tagMoodMap.size
-      ? new Set(
-          Array.from(tagMoodMap.entries())
-            .filter(([, mood]) => mood === effectiveMood)
-            .map(([name]) => name)
-        )
-      : new Set<string>()
-  $: filteredPosts =
-    effectiveMood && tagMoodMap.size
-      ? posts
-          .filter((post) =>
-            (post.tags ?? []).some((tag) => {
-              const rawName = typeof tag === 'string' ? tag : tag.name
-              const normalized = normalizeTag(rawName)
-              const lemma =
-                typeof tag === 'string'
-                  ? tagLemmaMap.get(normalized) ?? normalized
-                  : normalizeTag(tag.lemma ?? tag.name)
-              return moodTagSet.has(lemma)
-            })
-          )
-          .filter(isAuthorVisible)
-      : effectiveMood
-        ? []
-        : posts.filter(isAuthorVisible)
+  $: hiddenAuthorKeys = new Set(
+    ($userSettings.hiddenAuthors ?? []).map((value) => value.toLowerCase())
+  )
+  $: filteredPosts = posts.filter(isAuthorVisible)
+  $: recommendedComuns = topComuns
+    .filter((comun) => !selectedComunSlugSet.has(normalizeSlug(comun.slug)))
+    .slice(0, 3)
+  $: shouldShowEmptyRecommendations =
+    !!$siteUser &&
+    $feedSettingsHydrated &&
+    myFeedHasBaseSettings &&
+    !loadingMore &&
+    filteredPosts.length === 0
 
-  $: if (effectiveMood) {
-    void loadTagMoods()
+  $: if (
+    browser &&
+    !!$siteUser &&
+    $feedSettingsHydrated &&
+    !myFeedHasBaseSettings &&
+    !myFeedSuggestedFoldersLoaded
+  ) {
+    void loadMyFeedSuggestedFolders()
   }
 
-  $: if (browser && !!$siteUser && !myFeedHasBaseSettings && !myFeedSuggestedFoldersLoaded) {
-    void loadMyFeedSuggestedFolders()
+  $: if (shouldShowEmptyRecommendations && !recommendedComunsLoaded) {
+    void loadRecommendedComuns()
   }
 
   $: if (!$siteUser) {
@@ -228,9 +158,11 @@
     myFeedSuggestedFoldersLoaded = false
     myFeedSuggestedFoldersLoading = false
     myFeedSuggestedFoldersError = ''
+    topComuns = []
+    recommendedComunsLoaded = false
+    recommendedComunsLoading = false
+    recommendedComunsError = ''
   }
-
-  $: scheduleMoodClear(myFeedMoodExpiresAt)
 </script>
 
 <div class="flex flex-col gap-4">
@@ -238,46 +170,18 @@
     <h1 class="text-2xl font-semibold text-slate-900 dark:text-zinc-100">
       Моя лента
     </h1>
-    {#if $siteUser}
-      <button
-        type="button"
-        class="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-slate-700 dark:text-zinc-400 dark:hover:text-zinc-200"
-        on:click={toggleMyFeedSettings}
-        aria-expanded={myFeedSettingsOpen}
-      >
-        Настроить
-      </button>
-    {/if}
   </div>
 
   {#if !$siteUser}
     <div class="text-base text-slate-500">
-      После регистрации вы получите доступ к персонализируемой ленте, которую сможете настроить и видеть только интересные вам посты.
+      После регистрации вы получите доступ к персонализируемой ленте и сможете видеть только интересные вам посты.
     </div>
   {:else}
-    {#if myFeedSettingsOpen}
-      <div class="rounded-2xl border border-slate-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-        <div class="flex flex-col gap-4">
-          <div class="flex flex-wrap gap-2">
-            {#each moodOptions as mood}
-              <Button
-                color={effectiveMood === mood.value ? 'primary' : 'ghost'}
-                on:click={() => selectMood(mood.value)}
-              >
-                {mood.label}
-              </Button>
-            {/each}
-          </div>
-          <div class="text-xs text-slate-500 dark:text-zinc-400">
-            Можно быстро настроить ленту под настроение на 3 часа.
-          </div>
-          <div class="text-sm text-slate-600 dark:text-zinc-300">
-            Выбор сообществ и составление черного списка доступны в настройках сайта.
-          </div>
-          <a href="/settings" class="text-sm text-blue-600 hover:underline dark:text-blue-400">
-            Перейти в настройки
-          </a>
-        </div>
+    {#if !$feedSettingsHydrated && $feedSettingsHydrationState !== 'error'}
+      <div class="text-base text-slate-500 dark:text-zinc-400">Загружаем мою ленту...</div>
+    {:else if $feedSettingsHydrationState === 'error'}
+      <div class="text-base text-rose-600 dark:text-rose-300">
+        Не удалось загрузить настройки ленты. Обновите страницу или попробуйте позже.
       </div>
     {:else if !myFeedHasBaseSettings}
       <div class="rounded-2xl border border-slate-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
@@ -287,20 +191,15 @@
               Ваша лента пока не настроена.
             </div>
             <div class="text-sm text-slate-500 dark:text-zinc-400">
-              Вы можете настроить ее вручную или выбрать готовую папку, которая станет вашей лентой.
+              Выберите готовую папку или добавьте сообщества в настройках сайта.
             </div>
           </div>
-          <div class="flex flex-wrap gap-2">
-            <Button color="ghost" on:click={openMyFeedSettings}>
-              Настроить мою ленту
-            </Button>
-            <a href="/settings" class="inline-flex items-center text-sm text-blue-600 hover:underline dark:text-blue-400">
-              Открыть настройки сайта
-            </a>
-          </div>
+          <a href="/settings" class="inline-flex items-center text-sm text-blue-600 hover:underline dark:text-blue-400">
+            Открыть настройки сайта
+          </a>
           <div class="flex flex-col gap-3">
             <div class="text-sm font-medium text-slate-800 dark:text-zinc-200">
-              Или выберите готовую папку
+              Готовые папки
             </div>
             {#if myFeedSuggestedFoldersLoading}
               <div class="text-sm text-slate-500 dark:text-zinc-400">Загружаем папки...</div>
@@ -341,7 +240,7 @@
               </div>
             {:else}
               <div class="text-sm text-slate-500 dark:text-zinc-400">
-                Пока нет готовых папок. Можно настроить ленту вручную.
+                Пока нет готовых папок. Можно выбрать сообщества в настройках сайта.
               </div>
             {/if}
           </div>
@@ -349,16 +248,57 @@
       </div>
     {/if}
 
-    {#if effectiveMood && tagMoodLoading}
-      <div class="text-sm text-slate-500">Загружаем теги настроения...</div>
-    {/if}
-
-    {#if filteredPosts.length}
-      <FeedPostsList posts={filteredPosts} {loadingMore} />
-    {:else if !myFeedHasBaseSettings}
-      <div class="text-base text-slate-500">Выберите настройки или папку, чтобы запустить “Мою ленту”.</div>
-    {:else}
-      <div class="text-base text-slate-500">Пока нет публикаций.</div>
+    {#if $feedSettingsHydrated && $feedSettingsHydrationState !== 'error' && myFeedHasBaseSettings}
+      {#if filteredPosts.length}
+        <FeedPostsList posts={filteredPosts} {loadingMore} />
+      {:else if loadingMore}
+        <div class="text-base text-slate-500 dark:text-zinc-400">Загружаем публикации...</div>
+      {:else if shouldShowEmptyRecommendations}
+        <div class="rounded-2xl border border-slate-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+          <div class="flex flex-col gap-4">
+            <div class="flex flex-col gap-2">
+              <div class="text-base text-slate-700 dark:text-zinc-200">
+                Пока нет постов в выбранных сообществах.
+              </div>
+              <div class="text-sm text-slate-500 dark:text-zinc-400">
+                Подпишитесь на новые сообщества, чтобы видеть больше постов.
+              </div>
+            </div>
+            {#if recommendedComunsLoading}
+              <div class="text-sm text-slate-500 dark:text-zinc-400">Загружаем сообщества...</div>
+            {:else if recommendedComunsError}
+              <div class="text-sm text-rose-600 dark:text-rose-300">{recommendedComunsError}</div>
+            {:else if recommendedComuns.length}
+              <div class="grid gap-2 md:grid-cols-3">
+                {#each recommendedComuns as comun}
+                  <div class="flex min-w-0 flex-col gap-3 rounded-xl border border-slate-200 p-3 dark:border-zinc-800">
+                    <div class="min-w-0">
+                      <a
+                        href={`/comuns/${encodeURIComponent(comun.slug)}`}
+                        class="block truncate text-sm font-medium text-slate-900 hover:text-blue-600 dark:text-zinc-100 dark:hover:text-blue-400"
+                      >
+                        {comun.name}
+                      </a>
+                      <div class="mt-1 text-xs text-slate-500 dark:text-zinc-400">
+                        Рейтинг {comun.rating ?? comun.score ?? 0} · {comun.posts_count ?? 0} постов
+                      </div>
+                    </div>
+                    <Button color="ghost" on:click={() => subscribeToComun(comun)}>
+                      Подписаться
+                    </Button>
+                  </div>
+                {/each}
+              </div>
+            {:else}
+              <a href="/comuns" class="inline-flex text-sm text-blue-600 hover:underline dark:text-blue-400">
+                Смотреть все сообщества
+              </a>
+            {/if}
+          </div>
+        </div>
+      {:else}
+        <div class="text-base text-slate-500">Пока нет публикаций.</div>
+      {/if}
     {/if}
   {/if}
 </div>
