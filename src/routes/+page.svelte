@@ -128,16 +128,27 @@
         onlyRead: readOnly,
       })
     } else if (feedType === 'mine') {
-      baseUrl = buildMyFeedUrl(
-        selectedRubrics,
-        selectedAuthors,
-        selectedMyFeedTags,
-        selectedMyFeedComuns,
-        selectedMyFeedComunCategories,
-        hideNegativeMyFeed,
-        effectiveHideRead,
-        readOnly
-      )
+      baseUrl = $siteUser
+        ? buildMyFeedUrl(
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            effectiveHideRead,
+            readOnly
+          )
+        : buildMyFeedUrl(
+            selectedRubrics,
+            selectedAuthors,
+            selectedMyFeedTags,
+            selectedMyFeedComuns,
+            selectedMyFeedComunCategories,
+            hideNegativeMyFeed,
+            effectiveHideRead,
+            readOnly
+          )
     }
     const url = new URL(baseUrl)
     url.searchParams.set('limit', String(pageSize))
@@ -372,7 +383,7 @@
 
   $: if (feedType === 'mine') {
     const authKey = $siteUser ? 'auth' : 'anon'
-    const key = `${authKey}:${selectedRubrics.join(',')}:${selectedAuthors.join(',')}:${selectedMyFeedTags.join(',')}:${selectedMyFeedComuns.join(',')}:${hideNegativeMyFeed ? 'no-negative' : 'all'}:${readOnly ? 'only-read' : effectiveHideRead ? 'hide-read' : 'all-read'}`
+    const key = `${authKey}:${selectedRubrics.join(',')}:${selectedAuthors.join(',')}:${selectedMyFeedTags.join(',')}:${selectedMyFeedComuns.join(',')}:${JSON.stringify(selectedMyFeedComunCategories)}:${hideNegativeMyFeed ? 'no-negative' : 'all'}:${readOnly ? 'only-read' : effectiveHideRead ? 'hide-read' : 'all-read'}`
     if (key !== lastMyFeedKey) {
       lastMyFeedKey = key
       posts = []

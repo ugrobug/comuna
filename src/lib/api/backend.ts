@@ -180,6 +180,10 @@ export const buildThematicFeedsManageUrl = (slug?: string): string => {
   return `${base}${encodeURIComponent(slug)}/`
 }
 
+export const buildAuthFeedSettingsUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/auth/feed-settings/`
+}
+
 export const buildBackendPostPath = (post: { id: number; title: string }): string => {
   const slug = slugifyTitle(post.title)
   return slug ? `/b/post/${post.id}-${slug}` : `/b/post/${post.id}`
@@ -236,7 +240,7 @@ export const buildMyFeedUrl = (
   tags?: string[],
   comuns?: string[],
   comunCategories?: Record<string, string[]>,
-  hideNegative: boolean = true,
+  hideNegative?: boolean,
   hideRead: boolean = false,
   onlyRead: boolean = false
 ): string => {
@@ -257,7 +261,7 @@ export const buildMyFeedUrl = (
   if (comunCategories && Object.keys(comunCategories).length) {
     params.set('comun_categories', JSON.stringify(comunCategories))
   }
-  if (!hideNegative) {
+  if (typeof hideNegative === 'boolean' && !hideNegative) {
     params.set('hide_negative', '0')
   }
   if (onlyRead) {

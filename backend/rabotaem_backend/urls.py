@@ -48,6 +48,7 @@ from feeds.views import (
     tag_posts,
 )
 from my_feed.views import (
+    auth_feed_settings,
     my_feed,
     thematic_feed_manage_detail,
     thematic_feed_posts,
@@ -130,6 +131,7 @@ urlpatterns = [
     path("api/auth/telegram/", telegram_auth, name="auth-telegram"),
     path("api/auth/vk/", vk_auth, name="auth-vk"),
     path("api/auth/me/", auth_me, name="auth-me"),
+    path("api/auth/feed-settings/", auth_feed_settings, name="auth-feed-settings"),
     path(
         "api/auth/post-templates/movie-review/autofill/",
         auth_movie_review_autofill,

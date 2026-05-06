@@ -30,6 +30,34 @@ _thematic_feed_is_moderator = my_feed_service._thematic_feed_is_moderator
 _parse_int_list = my_feed_service._parse_int_list
 _normalize_thematic_feed_slug = my_feed_service._normalize_thematic_feed_slug
 _can_access_thematic_folders_page = my_feed_service._can_access_thematic_folders_page
+_apply_user_feed_settings_payload = my_feed_service._apply_user_feed_settings_payload
+_feed_settings_have_customizations = my_feed_service._feed_settings_have_customizations
+_get_or_create_user_feed_settings = my_feed_service._get_or_create_user_feed_settings
+_serialize_user_feed_settings = my_feed_service._serialize_user_feed_settings
+
+
+def _parse_string_csv(value: str, *, strip_prefix: str = "") -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for raw_value in str(value or "").split(","):
+        item = raw_value.strip()
+        if strip_prefix:
+            item = item.lstrip(strip_prefix)
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        result.append(item)
+    return result
+
+
+def _parse_comun_category_query(value: str) -> dict[str, list[str]]:
+    if not value:
+        return {}
+    try:
+        parsed_comun_categories = json.loads(value)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        parsed_comun_categories = {}
+    return my_feed_service._normalize_comun_category_selection(parsed_comun_categories)
 
 
 def thematic_feeds_list(request: HttpRequest) -> HttpResponse:
@@ -40,6 +68,42 @@ def thematic_feeds_list(request: HttpRequest) -> HttpResponse:
     )
     serialized = [_serialize_thematic_feed(feed) for feed in feeds]
     return JsonResponse({"ok": True, "feeds": serialized, "folders": serialized})
+
+
+@csrf_exempt
+def auth_feed_settings(request: HttpRequest) -> HttpResponse:
+    user = _fv()._get_user_from_request(request)
+    if not user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    settings = _get_or_create_user_feed_settings(user)
+
+    if request.method == "GET":
+        return JsonResponse(
+            {
+                "ok": True,
+                "settings": _serialize_user_feed_settings(settings),
+                "has_customizations": _feed_settings_have_customizations(settings),
+            }
+        )
+
+    if request.method not in ("PATCH", "POST", "PUT"):
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+    if not isinstance(payload, dict):
+        return JsonResponse({"ok": False, "error": "invalid payload"}, status=400)
+
+    settings = _apply_user_feed_settings_payload(settings, payload)
+    return JsonResponse(
+        {
+            "ok": True,
+            "settings": _serialize_user_feed_settings(settings),
+            "has_customizations": _feed_settings_have_customizations(settings),
+        }
+    )
 
 
 @csrf_exempt
@@ -238,44 +302,39 @@ def my_feed(request: HttpRequest) -> HttpResponse:
     except ValueError:
         offset = 0
 
-    rubrics_raw = request.GET.get("rubrics", "")
-    rubric_slugs = [slug.strip() for slug in rubrics_raw.split(",") if slug.strip()]
-    authors_raw = request.GET.get("authors", "")
-    author_usernames = [
-        username.strip().lstrip("@")
-        for username in authors_raw.split(",")
-        if username.strip().lstrip("@")
-    ]
-    tags_raw = request.GET.get("tags", "")
-    tag_values = [value.strip() for value in tags_raw.split(",") if value.strip()]
-    comuns_raw = request.GET.get("comuns", "")
-    comun_slugs = [slug.strip() for slug in comuns_raw.split(",") if slug.strip()]
-    comun_categories_raw = request.GET.get("comun_categories", "")
-    comun_category_selection: dict[str, list[str]] = {}
-    if comun_categories_raw:
-        try:
-            parsed_comun_categories = json.loads(comun_categories_raw)
-        except (TypeError, ValueError, json.JSONDecodeError):
-            parsed_comun_categories = {}
-        if isinstance(parsed_comun_categories, dict):
-            for raw_comun_slug, raw_category_slugs in parsed_comun_categories.items():
-                comun_slug = str(raw_comun_slug or "").strip()
-                if not comun_slug or not isinstance(raw_category_slugs, list):
-                    continue
-                seen_category_slugs: set[str] = set()
-                category_slugs: list[str] = []
-                for raw_category_slug in raw_category_slugs:
-                    category_slug = str(raw_category_slug or "").strip()
-                    if not category_slug or category_slug in seen_category_slugs:
-                        continue
-                    seen_category_slugs.add(category_slug)
-                    category_slugs.append(category_slug)
-                comun_category_selection[comun_slug] = category_slugs
+    current_user = _fv()._get_user_from_request(request)
+    uses_query_selection = any(
+        param in request.GET
+        for param in ("rubrics", "authors", "tags", "comuns", "comun_categories")
+    )
+    saved_feed_settings = None
+    if current_user and not uses_query_selection:
+        saved_feed_settings = _serialize_user_feed_settings(
+            _get_or_create_user_feed_settings(current_user)
+        )
+
+    if saved_feed_settings:
+        rubric_slugs = saved_feed_settings["my_feed_rubrics"]
+        author_usernames = saved_feed_settings["my_feed_authors"]
+        tag_values = saved_feed_settings["my_feed_tags"]
+        comun_slugs = saved_feed_settings["my_feed_comuns"]
+        comun_category_selection = saved_feed_settings["my_feed_comun_categories"]
+    else:
+        rubric_slugs = _parse_string_csv(request.GET.get("rubrics", ""))
+        author_usernames = _parse_string_csv(request.GET.get("authors", ""), strip_prefix="@")
+        tag_values = _parse_string_csv(request.GET.get("tags", ""))
+        comun_slugs = _parse_string_csv(request.GET.get("comuns", ""))
+        comun_category_selection = _parse_comun_category_query(
+            request.GET.get("comun_categories", "")
+        )
     if not rubric_slugs and not author_usernames and not tag_values and not comun_slugs:
         return JsonResponse({"ok": True, "posts": []})
 
-    hide_negative_raw = request.GET.get("hide_negative", "1").lower()
-    hide_negative = hide_negative_raw not in ("0", "false", "no", "off")
+    if saved_feed_settings and "hide_negative" not in request.GET:
+        hide_negative = bool(saved_feed_settings["my_feed_hide_negative"])
+    else:
+        hide_negative_raw = request.GET.get("hide_negative", "1").lower()
+        hide_negative = hide_negative_raw not in ("0", "false", "no", "off")
 
     rubric_ids: list[int] = []
     if rubric_slugs:
@@ -349,8 +408,7 @@ def my_feed(request: HttpRequest) -> HttpResponse:
     now = timezone.now()
     hide_read = request.GET.get("hide_read") in ("1", "true", "yes")
     only_read = request.GET.get("only_read") in ("1", "true", "yes")
-    read_user = _fv()._get_user_from_request(request) if (hide_read or only_read) else None
-    current_user = read_user or _fv()._get_user_from_request(request)
+    read_user = current_user if (hide_read or only_read) else None
     if only_read and not read_user:
         return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
     selection_filter = Q()
@@ -377,6 +435,29 @@ def my_feed(request: HttpRequest) -> HttpResponse:
         base_query = base_query.filter(rating__gte=0)
     if has_tag_selection or has_comun_selection:
         base_query = base_query.distinct()
+    if saved_feed_settings:
+        hidden_author_usernames = saved_feed_settings.get("hidden_authors") or []
+        if hidden_author_usernames:
+            hidden_author_filter = Q()
+            for username in hidden_author_usernames[:200]:
+                hidden_author_filter |= Q(author__username__iexact=username)
+            if hidden_author_filter:
+                base_query = base_query.exclude(hidden_author_filter)
+        hidden_tag_values = [
+            tag
+            for tag, rule in (saved_feed_settings.get("tag_rules") or {}).items()
+            if rule == "hide"
+        ]
+        if hidden_tag_values:
+            hidden_tag_filter = Q()
+            for raw_tag in hidden_tag_values[:200]:
+                normalized = _fv()._normalize_tag_value(raw_tag)
+                if not normalized:
+                    continue
+                lemma = _fv()._lemmatize_tag(normalized) or normalized
+                hidden_tag_filter |= Q(tags__name__iexact=normalized) | Q(tags__lemma__iexact=lemma)
+            if hidden_tag_filter:
+                base_query = base_query.exclude(hidden_tag_filter).distinct()
 
     hidden_read_count = 0
     if hide_read and read_user:
@@ -547,6 +628,7 @@ def thematic_feed_posts(request: HttpRequest, slug: str) -> HttpResponse:
 
 
 __all__ = [
+    "auth_feed_settings",
     "my_feed",
     "thematic_feed_manage_detail",
     "thematic_feed_posts",

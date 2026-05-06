@@ -5,6 +5,7 @@ from django.test import SimpleTestCase, TestCase
 from django.urls import resolve, reverse
 
 from my_feed.views import (
+    auth_feed_settings,
     my_feed,
     thematic_feed_manage_detail,
     thematic_feed_posts,
@@ -13,6 +14,8 @@ from my_feed.views import (
 )
 from communities.models import Comun, ComunCategory, ComunPostCategoryAssignment
 from feeds.models import Author, Post
+from my_feed.models import UserFeedSettings
+from users.service import _issue_token
 
 User = get_user_model()
 
@@ -20,6 +23,7 @@ User = get_user_model()
 class MyFeedViewsApiTests(SimpleTestCase):
     def test_my_feed_urls_resolve_to_my_feed_app_views(self):
         self.assertIs(resolve("/api/home/my/").func, my_feed)
+        self.assertIs(resolve("/api/auth/feed-settings/").func, auth_feed_settings)
         self.assertIs(resolve("/api/thematic-feeds/").func, thematic_feeds_list)
         self.assertIs(resolve("/api/thematic-feeds/manage/").func, thematic_feeds_manage)
         self.assertIs(
@@ -102,3 +106,55 @@ class MyFeedComunCategoryTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content.decode())
         posts = response.json()["posts"]
         self.assertEqual([post["id"] for post in posts], [self.record_post.id])
+
+
+class UserFeedSettingsApiTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="feed-user", password="secret")
+        self.author = Author.objects.create(username="chosen-author", title="Chosen Author")
+        self.post = Post.objects.create(
+            author=self.author,
+            message_id=301,
+            title="Chosen post",
+            content="{}",
+            is_pending=False,
+            is_blocked=False,
+        )
+        self.auth_headers = {"HTTP_AUTHORIZATION": f"Bearer {_issue_token(self.user)}"}
+
+    def test_auth_feed_settings_roundtrip(self):
+        response = self.client.patch(
+            reverse("auth-feed-settings"),
+            data=json.dumps(
+                {
+                    "home_feed": "mine",
+                    "my_feed_authors": ["chosen-author", "chosen-author"],
+                    "my_feed_hide_negative": False,
+                    "tag_rules": {"noise": "hide", "nsfw": "blur", "bad": "drop"},
+                }
+            ),
+            content_type="application/json",
+            **self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        payload = response.json()
+        self.assertEqual(payload["settings"]["home_feed"], "mine")
+        self.assertEqual(payload["settings"]["my_feed_authors"], ["chosen-author"])
+        self.assertFalse(payload["settings"]["my_feed_hide_negative"])
+        self.assertEqual(payload["settings"]["tag_rules"], {"noise": "hide", "nsfw": "blur"})
+
+        response = self.client.get(reverse("auth-feed-settings"), **self.auth_headers)
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        self.assertTrue(response.json()["has_customizations"])
+
+    def test_my_feed_uses_saved_settings_without_query_filters(self):
+        UserFeedSettings.objects.create(
+            user=self.user,
+            home_feed="mine",
+            my_feed_authors=["chosen-author"],
+        )
+        response = self.client.get(reverse("my-feed"), {"limit": "10"}, **self.auth_headers)
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        self.assertEqual([post["id"] for post in response.json()["posts"]], [self.post.id])

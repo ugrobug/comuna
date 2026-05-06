@@ -1,9 +1,10 @@
 import type { CommentSortType, SortType } from 'lemmy-js-client'
-import { writable } from 'svelte/store'
+import { get, writable } from 'svelte/store'
 import { env } from '$env/dynamic/public'
 import { locale } from './translations'
 import { browser } from '$app/environment'
 import type { Link } from './components/ui/navbar/link'
+import { buildAuthFeedSettingsUrl } from './api/backend'
 
 console.log('Using the following default settings from the environment:')
 console.log(env)
@@ -27,7 +28,7 @@ interface Preset {
   content: string
 }
 
-interface Settings {
+export interface Settings {
   settingsVer: number
   expandableImages: boolean
   // should have been named "fade" read posts
@@ -214,6 +215,165 @@ export const defaultSettings: Settings = {
 
 export const userSettings = writable(defaultSettings)
 
+type BackendFeedSettings = {
+  home_feed?: string
+  hide_read_posts?: boolean
+  my_feed_rubrics?: string[]
+  my_feed_authors?: string[]
+  my_feed_tags?: string[]
+  my_feed_comuns?: string[]
+  my_feed_comun_categories?: Record<string, string[]>
+  hidden_authors?: string[]
+  my_feed_hide_negative?: boolean
+  tag_rules?: Record<string, 'hide' | 'blur'>
+}
+
+const feedSettingsDefaults = () => ({
+  homeFeed: defaultSettings.homeFeed,
+  hideReadPosts: defaultSettings.hideReadPosts,
+  myFeedRubrics: [...defaultSettings.myFeedRubrics],
+  myFeedAuthors: [...defaultSettings.myFeedAuthors],
+  myFeedTags: [...defaultSettings.myFeedTags],
+  myFeedComuns: [...defaultSettings.myFeedComuns],
+  myFeedComunCategories: { ...defaultSettings.myFeedComunCategories },
+  hiddenAuthors: [...defaultSettings.hiddenAuthors],
+  myFeedHideNegative: defaultSettings.myFeedHideNegative,
+  tagRules: { ...defaultSettings.tagRules },
+})
+
+const feedSettingsSnapshot = (settings: Settings) =>
+  JSON.stringify({
+    homeFeed: settings.homeFeed,
+    hideReadPosts: settings.hideReadPosts,
+    myFeedRubrics: settings.myFeedRubrics ?? [],
+    myFeedAuthors: settings.myFeedAuthors ?? [],
+    myFeedTags: settings.myFeedTags ?? [],
+    myFeedComuns: settings.myFeedComuns ?? [],
+    myFeedComunCategories: settings.myFeedComunCategories ?? {},
+    hiddenAuthors: settings.hiddenAuthors ?? [],
+    myFeedHideNegative: settings.myFeedHideNegative,
+    tagRules: settings.tagRules ?? {},
+  })
+
+const hasLocalFeedCustomizations = (settings: Settings) =>
+  feedSettingsSnapshot(settings) !==
+  feedSettingsSnapshot({ ...settings, ...feedSettingsDefaults() })
+
+const backendPayloadFromSettings = (settings: Settings) => ({
+  home_feed: settings.homeFeed,
+  hide_read_posts: settings.hideReadPosts,
+  my_feed_rubrics: settings.myFeedRubrics ?? [],
+  my_feed_authors: settings.myFeedAuthors ?? [],
+  my_feed_tags: settings.myFeedTags ?? [],
+  my_feed_comuns: settings.myFeedComuns ?? [],
+  my_feed_comun_categories: settings.myFeedComunCategories ?? {},
+  hidden_authors: settings.hiddenAuthors ?? [],
+  my_feed_hide_negative: settings.myFeedHideNegative,
+  tag_rules: settings.tagRules ?? {},
+})
+
+const settingsFromBackendPayload = (settings: Settings, payload: BackendFeedSettings): Settings =>
+  migrate({
+    ...settings,
+    homeFeed: payload.home_feed ?? settings.homeFeed,
+    hideReadPosts: payload.hide_read_posts ?? settings.hideReadPosts,
+    myFeedRubrics: payload.my_feed_rubrics ?? settings.myFeedRubrics,
+    myFeedAuthors: payload.my_feed_authors ?? settings.myFeedAuthors,
+    myFeedTags: payload.my_feed_tags ?? settings.myFeedTags,
+    myFeedComuns: payload.my_feed_comuns ?? settings.myFeedComuns,
+    myFeedComunCategories: payload.my_feed_comun_categories ?? settings.myFeedComunCategories,
+    hiddenAuthors: payload.hidden_authors ?? settings.hiddenAuthors,
+    myFeedHideNegative: payload.my_feed_hide_negative ?? settings.myFeedHideNegative,
+    tagRules: payload.tag_rules ?? settings.tagRules,
+  })
+
+let backendFeedSettingsToken: string | null = null
+let backendFeedSettingsHydrated = false
+let applyingBackendFeedSettings = false
+let backendFeedSettingsSaveTimer: ReturnType<typeof setTimeout> | null = null
+let lastBackendFeedSettingsSnapshot = ''
+
+const saveBackendFeedSettings = async (settings: Settings) => {
+  if (!browser || !backendFeedSettingsToken || !backendFeedSettingsHydrated) return
+  const snapshot = feedSettingsSnapshot(settings)
+  if (snapshot === lastBackendFeedSettingsSnapshot) return
+  const response = await fetch(buildAuthFeedSettingsUrl(), {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${backendFeedSettingsToken}`,
+    },
+    body: JSON.stringify(backendPayloadFromSettings(settings)),
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(payload?.error || 'Не удалось сохранить настройки ленты')
+  }
+  lastBackendFeedSettingsSnapshot = snapshot
+}
+
+const scheduleBackendFeedSettingsSave = (settings: Settings) => {
+  if (!browser || applyingBackendFeedSettings || !backendFeedSettingsHydrated) return
+  if (!backendFeedSettingsToken) return
+  if (backendFeedSettingsSaveTimer) clearTimeout(backendFeedSettingsSaveTimer)
+  backendFeedSettingsSaveTimer = setTimeout(() => {
+    backendFeedSettingsSaveTimer = null
+    saveBackendFeedSettings(get(userSettings)).catch((error) => {
+      console.error('Failed to save feed settings:', error)
+    })
+  }, 500)
+}
+
+export const loadBackendFeedSettings = async (token: string | null) => {
+  if (!browser || !token) return null
+  backendFeedSettingsToken = token
+  const localSettings = get(userSettings)
+  const response = await fetch(buildAuthFeedSettingsUrl(), {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok || !payload?.settings) {
+    throw new Error(payload?.error || 'Не удалось загрузить настройки ленты')
+  }
+  const shouldMigrateLocalSettings =
+    !payload.has_customizations && hasLocalFeedCustomizations(localSettings)
+
+  applyingBackendFeedSettings = true
+  try {
+    if (shouldMigrateLocalSettings) {
+      backendFeedSettingsHydrated = true
+      lastBackendFeedSettingsSnapshot = ''
+      await saveBackendFeedSettings(localSettings)
+    } else {
+      userSettings.set(settingsFromBackendPayload(localSettings, payload.settings))
+      lastBackendFeedSettingsSnapshot = feedSettingsSnapshot(get(userSettings))
+      backendFeedSettingsHydrated = true
+    }
+  } finally {
+    applyingBackendFeedSettings = false
+  }
+  return payload.settings as BackendFeedSettings
+}
+
+export const resetBackendFeedSettingsSync = () => {
+  backendFeedSettingsToken = null
+  backendFeedSettingsHydrated = false
+  applyingBackendFeedSettings = false
+  lastBackendFeedSettingsSnapshot = ''
+  if (backendFeedSettingsSaveTimer) {
+    clearTimeout(backendFeedSettingsSaveTimer)
+    backendFeedSettingsSaveTimer = null
+  }
+  if (browser) {
+    userSettings.update((settings) => ({
+      ...settings,
+      ...feedSettingsDefaults(),
+    }))
+  }
+}
+
 export const subscribeToComunBySlug = (slug?: string | null) => {
   const normalizedSlug = String(slug ?? '').trim()
   if (!normalizedSlug) return
@@ -383,7 +543,14 @@ if (typeof window != 'undefined') {
 
 userSettings.subscribe((settings) => {
   if (typeof window != 'undefined') {
-    localStorage.setItem('settings', JSON.stringify(settings))
+    localStorage.setItem(
+      'settings',
+      JSON.stringify({
+        ...settings,
+        ...feedSettingsDefaults(),
+      })
+    )
+    scheduleBackendFeedSettingsSave(settings)
   }
   if (settings.language) {
     locale.set(settings.language)
