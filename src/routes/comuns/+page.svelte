@@ -53,7 +53,12 @@
     ($userSettings.myFeedComuns ?? []).map((slug) => slug.trim()).filter(Boolean)
   )
 
-  const isSubscribedToComun = (slug?: string | null) => {
+  let isSubscribedToComun = (slug?: string | null) => {
+    const normalizedSlug = String(slug ?? '').trim()
+    return Boolean(normalizedSlug && myFeedComunSlugSet.has(normalizedSlug))
+  }
+
+  $: isSubscribedToComun = (slug?: string | null) => {
     const normalizedSlug = String(slug ?? '').trim()
     return Boolean(normalizedSlug && myFeedComunSlugSet.has(normalizedSlug))
   }
