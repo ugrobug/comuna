@@ -286,9 +286,9 @@
     </div>
   </section>
 
-  <section class="flex flex-col gap-3">
-    <div class="text-lg font-semibold text-slate-900 dark:text-zinc-100">Каналы</div>
-    {#if authors.length}
+  {#if authors.length}
+    <section class="flex flex-col gap-3">
+      <div class="text-lg font-semibold text-slate-900 dark:text-zinc-100">Каналы</div>
       <div class="grid gap-3 sm:grid-cols-2">
         {#each authors as author}
           <a
@@ -327,12 +327,8 @@
           </a>
         {/each}
       </div>
-    {:else}
-      <div class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-4 text-sm text-slate-500 dark:text-zinc-400">
-        Пока нет привязанных каналов.
-      </div>
-    {/if}
-  </section>
+    </section>
+  {/if}
 
   <section class="flex flex-col gap-3">
     <div class="text-lg font-semibold text-slate-900 dark:text-zinc-100">Сообщества</div>
@@ -358,7 +354,7 @@
                   <div class="font-semibold text-slate-900 dark:text-zinc-100 truncate">{comun.name}</div>
                   {#if comun.role}
                     <span class="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300">
-                      {comun.role === 'creator' ? 'создатель' : 'модератор'}
+                      {comun.role === 'creator' ? 'создатель' : comun.role === 'subscriber' ? 'подписан' : 'модератор'}
                     </span>
                   {/if}
                 </div>
