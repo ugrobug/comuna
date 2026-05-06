@@ -98,9 +98,7 @@ def _ensure_comun_category_by_name(
     if not normalized_name:
         return None, False
     category = (
-        ComunCategory.objects.filter(comun=comun, name__iexact=normalized_name)
-        .order_by("sort_order", "name")
-        .first()
+        ComunCategory.objects.filter(comun=comun, name__iexact=normalized_name).order_by("sort_order", "name").first()
     )
     if category:
         if not category.is_active:
@@ -189,9 +187,7 @@ def _sync_comun_glossary_terms(comun: Comun, raw_terms: object) -> None:
     if not isinstance(raw_terms, list):
         return
 
-    existing_terms = {
-        term.id: term for term in _comun_glossary_queryset(comun)
-    }
+    existing_terms = {term.id: term for term in _comun_glossary_queryset(comun)}
     kept_ids: set[int] = set()
 
     for index, item in enumerate(raw_terms):
@@ -199,9 +195,7 @@ def _sync_comun_glossary_terms(comun: Comun, raw_terms: object) -> None:
             continue
 
         term_name = _normalize_comun_glossary_term(item.get("term") or item.get("name"))
-        definition = _normalize_comun_glossary_definition(
-            item.get("definition") or item.get("description")
-        )
+        definition = _normalize_comun_glossary_definition(item.get("definition") or item.get("description"))
         if not term_name or not definition:
             continue
 
@@ -524,9 +518,7 @@ def _comun_post_access_error_message(
     if bool(getattr(comun, "only_moderators_can_post", False)):
         return "Публикация в этом сообществе доступна только создателю и модераторам."
     if category is not None and bool(getattr(category, "only_moderators_can_post", False)):
-        return (
-            f'Публикация в категории "{category.name}" доступна только создателю и модераторам.'
-        )
+        return f'Публикация в категории "{category.name}" доступна только создателю и модераторам.'
     minimum_text = _format_rating_value(_comun_minimum_author_rating_value(comun))
     if author_rating is None:
         return f"Для публикации в этой комуне нужен рейтинг автора не ниже {minimum_text}."
@@ -658,9 +650,7 @@ def _serialize_comun_rating(
 ) -> dict:
     if user_vote is None and current_user:
         user_vote = int(
-            ComunVote.objects.filter(comun_id=comun.id, user_id=current_user.id)
-            .values_list("value", flat=True)
-            .first()
+            ComunVote.objects.filter(comun_id=comun.id, user_id=current_user.id).values_list("value", flat=True).first()
             or 0
         )
     return {
@@ -681,12 +671,8 @@ def _serialize_comun(
     include_activity: bool = False,
 ) -> dict:
     categories = _comun_categories_list(comun)
-    roadmap_category_ids = set(
-        community_service._parse_int_list(getattr(comun, "roadmap_category_ids", []))
-    )
-    roadmap_categories = [
-        category for category in categories if int(category.id) in roadmap_category_ids
-    ]
+    roadmap_category_ids = set(community_service._parse_int_list(getattr(comun, "roadmap_category_ids", [])))
+    roadmap_categories = [category for category in categories if int(category.id) in roadmap_category_ids]
     moderators = list(comun.moderators.select_related("site_profile").order_by("username"))
     excluded_authors = list(comun.excluded_authors.filter(is_blocked=False).order_by("username"))
     source_tags = _comun_source_tags_list(comun)
@@ -705,9 +691,7 @@ def _serialize_comun(
             .first()
         )
         if welcome_post:
-            welcome_post_payload = editor_service._serialize_post_for_user(
-                request, welcome_post, current_user
-            )
+            welcome_post_payload = editor_service._serialize_post_for_user(request, welcome_post, current_user)
 
     payload = {
         "id": comun.id,
@@ -721,9 +705,7 @@ def _serialize_comun(
         "glossary_enabled": bool(getattr(comun, "glossary_enabled", False)),
         "roadmap_enabled": bool(getattr(comun, "roadmap_enabled", True)),
         "roadmap_category_ids": [category.id for category in roadmap_categories],
-        "roadmap_categories": [
-            _serialize_comun_category(category, comun) for category in roadmap_categories
-        ],
+        "roadmap_categories": [_serialize_comun_category(category, comun) for category in roadmap_categories],
         "glossary_terms": [_serialize_comun_glossary_term(term) for term in glossary_terms],
         "glossary_terms_count": len(glossary_terms),
         "minimum_author_rating_to_post": _comun_minimum_author_rating_value(comun),
@@ -758,8 +740,7 @@ def _serialize_comun(
                 "id": moderator.id,
                 "username": moderator.username,
                 "display_name": (
-                    (getattr(getattr(moderator, "site_profile", None), "display_name", "") or "").strip()
-                    or None
+                    (getattr(getattr(moderator, "site_profile", None), "display_name", "") or "").strip() or None
                 ),
             }
             for moderator in moderators
@@ -876,8 +857,7 @@ def _serialize_comun(
                 for author in Author.objects.filter(is_blocked=False).order_by("username")
             ],
             "telegram_channels": [
-                _serialize_author_source_summary(request, author)
-                for author in verified_telegram_authors
+                _serialize_author_source_summary(request, author) for author in verified_telegram_authors
             ],
             "template_types": editor_service._serialize_post_template_type_options(),
             "template_editor_block_options_by_template": (
@@ -892,13 +872,10 @@ def _serialize_comun(
                     "id": user.id,
                     "username": user.username,
                     "display_name": (
-                        (getattr(getattr(user, "site_profile", None), "display_name", "") or "").strip()
-                        or None
+                        (getattr(getattr(user, "site_profile", None), "display_name", "") or "").strip() or None
                     ),
                 }
-                for user in User.objects.filter(is_active=True)
-                .select_related("site_profile")
-                .order_by("username")
+                for user in User.objects.filter(is_active=True).select_related("site_profile").order_by("username")
             ]
     return payload
 
@@ -1042,9 +1019,7 @@ def _comun_posts_base_queryset(comun: Comun, now=None):
         .filter(Q(rubric__isnull=True) | Q(rubric__is_hidden=False))
         .distinct()
     )
-    excluded_author_ids = list(
-        comun.excluded_authors.filter(is_blocked=False).values_list("id", flat=True)
-    )
+    excluded_author_ids = list(comun.excluded_authors.filter(is_blocked=False).values_list("id", flat=True))
     if excluded_author_ids:
         base_query = base_query.exclude(author_id__in=excluded_author_ids)
 
@@ -1105,45 +1080,25 @@ def _serialize_comun_activity(
         stats_by_user[user_id][key] = stats_by_user[user_id].get(key, 0) + count
 
     for row in (
-        PostComment.objects.filter(post__in=base_posts, is_deleted=False)
-        .values("user_id")
-        .annotate(count=Count("id"))
+        PostComment.objects.filter(post__in=base_posts, is_deleted=False).values("user_id").annotate(count=Count("id"))
     ):
         _add_points(row.get("user_id"), "comment", int(row.get("count") or 0))
 
-    for row in (
-        PostLike.objects.filter(post__in=base_posts)
-        .values("user_id")
-        .annotate(count=Count("id"))
-    ):
+    for row in PostLike.objects.filter(post__in=base_posts).values("user_id").annotate(count=Count("id")):
         _add_points(row.get("user_id"), "post_vote", int(row.get("count") or 0))
 
     for row in (
-        PostCommentLike.objects.filter(comment__post__in=base_posts)
-        .values("user_id")
-        .annotate(count=Count("id"))
+        PostCommentLike.objects.filter(comment__post__in=base_posts).values("user_id").annotate(count=Count("id"))
     ):
         _add_points(row.get("user_id"), "comment_like", int(row.get("count") or 0))
 
-    for row in (
-        PostPollVote.objects.filter(post__in=base_posts)
-        .values("user_id")
-        .annotate(count=Count("id"))
-    ):
+    for row in PostPollVote.objects.filter(post__in=base_posts).values("user_id").annotate(count=Count("id")):
         _add_points(row.get("user_id"), "poll_vote", int(row.get("count") or 0))
 
-    for row in (
-        PostFavorite.objects.filter(post__in=base_posts)
-        .values("user_id")
-        .annotate(count=Count("id"))
-    ):
+    for row in PostFavorite.objects.filter(post__in=base_posts).values("user_id").annotate(count=Count("id")):
         _add_points(row.get("user_id"), "favorite", int(row.get("count") or 0))
 
-    for row in (
-        PostRead.objects.filter(post__in=base_posts)
-        .values("user_id")
-        .annotate(count=Count("id"))
-    ):
+    for row in PostRead.objects.filter(post__in=base_posts).values("user_id").annotate(count=Count("id")):
         _add_points(row.get("user_id"), "read", int(row.get("count") or 0))
 
     for row in (
@@ -1164,9 +1119,7 @@ def _serialize_comun_activity(
     top_user_ids = user_ids_sorted[: max(int(top_limit or 0), 1)]
 
     users = list(
-        User.objects.filter(id__in=top_user_ids)
-        .select_related("telegram_account", "vk_account")
-        .order_by("id")
+        User.objects.filter(id__in=top_user_ids).select_related("telegram_account", "vk_account").order_by("id")
     )
     users_by_id = {user.id: user for user in users}
 
@@ -1197,9 +1150,7 @@ def _serialize_comun_activity(
             {
                 "user_id": user.id,
                 "username": user.username,
-                "avatar_url": _site_user_avatar_url(
-                    request, user, fallback_author_avatars=fallback_author_avatars
-                ),
+                "avatar_url": _site_user_avatar_url(request, user, fallback_author_avatars=fallback_author_avatars),
                 "points": points,
                 "rank": rank,
                 "stats": stats_by_user.get(user_id, {}),
@@ -1257,11 +1208,14 @@ def comun_create_from_telegram_channel(request: HttpRequest) -> HttpResponse:
     if not author:
         return JsonResponse({"ok": False, "error": "author not found"}, status=404)
 
-    if not current_user.is_staff and not AuthorAdmin.objects.filter(
-        user=current_user,
-        author=author,
-        verified_at__isnull=False,
-    ).exists():
+    if (
+        not current_user.is_staff
+        and not AuthorAdmin.objects.filter(
+            user=current_user,
+            author=author,
+            verified_at__isnull=False,
+        ).exists()
+    ):
         return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
 
     existing_comun = _author_telegram_source_comun(author)
@@ -1338,10 +1292,7 @@ def comuns_list_create(request: HttpRequest) -> HttpResponse:
             .prefetch_related("moderators", "excluded_authors", "categories", "tags", "source_tags", "blocked_tags")
             .order_by("sort_order", "name")
         )
-        payload = [
-            _serialize_comun(request, comun, current_user=current_user)
-            for comun in comuns
-        ]
+        payload = [_serialize_comun(request, comun, current_user=current_user) for comun in comuns]
         return JsonResponse(
             {
                 "ok": True,
@@ -1394,9 +1345,7 @@ def comuns_list_create(request: HttpRequest) -> HttpResponse:
     raw_tag_names = body.get("tag_names") if isinstance(body.get("tag_names"), list) else []
     category_ids = community_service._parse_int_list(body.get("category_ids"))
     source_tag_ids = community_service._parse_int_list(body.get("source_tag_ids"))[:5]
-    raw_source_tag_names = (
-        body.get("source_tag_names") if isinstance(body.get("source_tag_names"), list) else []
-    )
+    raw_source_tag_names = body.get("source_tag_names") if isinstance(body.get("source_tag_names"), list) else []
     product_tag_id = _parse_post_reference_to_id(body.get("product_tag_id"))
     product_tag_name = str(body.get("product_tag_name") or "").strip()
     welcome_post_id = _parse_post_reference_to_id(body.get("welcome_post_id") or body.get("welcome_post_ref"))
@@ -1452,9 +1401,7 @@ def comuns_list_create(request: HttpRequest) -> HttpResponse:
     )
     comun.moderators.add(current_user)
     if category_ids:
-        comun.categories.set(
-            ComunCategory.objects.filter(id__in=category_ids, is_active=True, comun=comun)
-        )
+        comun.categories.set(ComunCategory.objects.filter(id__in=category_ids, is_active=True, comun=comun))
     if selected_tag_ids:
         comun.tags.set(Tag.objects.filter(id__in=selected_tag_ids, is_active=True))
     if selected_source_tag_ids:
@@ -1473,7 +1420,9 @@ def comuns_list_create(request: HttpRequest) -> HttpResponse:
         .prefetch_related("moderators", "excluded_authors", "categories", "tags", "source_tags", "blocked_tags")
         .get()
     )
-    return JsonResponse({"ok": True, "comun": _serialize_comun(request, comun, current_user=current_user, include_manage_fields=True)})
+    return JsonResponse(
+        {"ok": True, "comun": _serialize_comun(request, comun, current_user=current_user, include_manage_fields=True)}
+    )
 
 
 @csrf_exempt
@@ -1554,9 +1503,7 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
     if "roadmap_enabled" in body:
         comun.roadmap_enabled = bool(body.get("roadmap_enabled"))
     if "roadmap_category_ids" in body:
-        requested_roadmap_category_ids = community_service._parse_int_list(
-            body.get("roadmap_category_ids")
-        )
+        requested_roadmap_category_ids = community_service._parse_int_list(body.get("roadmap_category_ids"))
         active_category_ids = set(
             ComunCategory.objects.filter(
                 comun=comun,
@@ -1565,9 +1512,7 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
             ).values_list("id", flat=True)
         )
         comun.roadmap_category_ids = [
-            category_id
-            for category_id in requested_roadmap_category_ids
-            if category_id in active_category_ids
+            category_id for category_id in requested_roadmap_category_ids if category_id in active_category_ids
         ]
     if "minimum_author_rating_to_post" in body:
         minimum_author_rating_to_post, minimum_author_rating_error = _normalize_comun_minimum_author_rating(
@@ -1581,9 +1526,7 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
     if "forbid_external_links" in body:
         comun.forbid_external_links = bool(body.get("forbid_external_links"))
     if "allowed_template_types" in body:
-        comun.allowed_post_templates = normalize_allowed_post_templates(
-            body.get("allowed_template_types")
-        )
+        comun.allowed_post_templates = normalize_allowed_post_templates(body.get("allowed_template_types"))
     if "hide_from_home" in body or "hide_from_fresh" in body:
         if not _comun_can_manage_moderators(current_user, comun):
             return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
@@ -1615,16 +1558,9 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
             )
         )
 
-    if (
-        "source_tag_ids" in body
-        or "source_tag_names" in body
-        or "product_tag_id" in body
-        or "product_tag_name" in body
-    ):
+    if "source_tag_ids" in body or "source_tag_names" in body or "product_tag_id" in body or "product_tag_name" in body:
         source_tag_ids = community_service._parse_int_list(body.get("source_tag_ids"))[:5]
-        raw_source_tag_names = (
-            body.get("source_tag_names") if isinstance(body.get("source_tag_names"), list) else []
-        )
+        raw_source_tag_names = body.get("source_tag_names") if isinstance(body.get("source_tag_names"), list) else []
         if "product_tag_id" in body:
             product_tag_id = _parse_post_reference_to_id(body.get("product_tag_id"))
             if product_tag_id and product_tag_id not in source_tag_ids:
@@ -1656,19 +1592,14 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
 
     if "telegram_source_author_id" in body or "telegram_channel_username" in body:
         telegram_source_author_id = _parse_post_reference_to_id(body.get("telegram_source_author_id"))
-        requested_channel_username = _normalize_telegram_channel_username(
-            body.get("telegram_channel_username")
-        )
+        requested_channel_username = _normalize_telegram_channel_username(body.get("telegram_channel_username"))
         next_telegram_author = None
 
         if telegram_source_author_id:
-            next_telegram_author = (
-                Author.objects.filter(
-                    id=telegram_source_author_id,
-                    is_blocked=False,
-                )
-                .first()
-            )
+            next_telegram_author = Author.objects.filter(
+                id=telegram_source_author_id,
+                is_blocked=False,
+            ).first()
             if not next_telegram_author:
                 return JsonResponse({"ok": False, "error": "telegram channel not found"}, status=400)
             linked_comun = _author_telegram_source_comun(next_telegram_author)
@@ -1685,9 +1616,7 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
                     {"ok": False, "error": "telegram channel is not managed by comun team"},
                     status=403,
                 )
-            requested_channel_username = _normalize_telegram_channel_username(
-                next_telegram_author.username
-            )
+            requested_channel_username = _normalize_telegram_channel_username(next_telegram_author.username)
         elif requested_channel_username:
             candidate_author = Author.objects.filter(
                 username__iexact=requested_channel_username,
@@ -1700,13 +1629,10 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
                     status=400,
                 )
             if candidate_author and (
-                (current_user and current_user.is_staff)
-                or _author_is_managed_by_comun_team(candidate_author, comun)
+                (current_user and current_user.is_staff) or _author_is_managed_by_comun_team(candidate_author, comun)
             ):
                 next_telegram_author = candidate_author
-                requested_channel_username = _normalize_telegram_channel_username(
-                    candidate_author.username
-                )
+                requested_channel_username = _normalize_telegram_channel_username(candidate_author.username)
 
         comun.telegram_source_author = next_telegram_author
         comun.telegram_channel_username = requested_channel_username
@@ -1738,13 +1664,9 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
                 )
             }
         else:
-            selected_categories = {
-                category.id: category for category in _active_comun_category_queryset(comun)
-            }
+            selected_categories = {category.id: category for category in _active_comun_category_queryset(comun)}
 
-        raw_category_names = (
-            body.get("category_names") if isinstance(body.get("category_names"), list) else []
-        )
+        raw_category_names = body.get("category_names") if isinstance(body.get("category_names"), list) else []
         for raw_category_name in raw_category_names:
             category, _created = _ensure_comun_category_by_name(comun, raw_category_name)
             if not category:
@@ -1756,16 +1678,14 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
 
         selected_category_ids = list(selected_categories.keys())
         if "category_ids" in body:
-            _comun_category_queryset(comun).exclude(id__in=selected_category_ids).filter(
-                is_active=True
-            ).update(is_active=False)
-            if selected_category_ids:
-                _comun_category_queryset(comun).filter(id__in=selected_category_ids).exclude(
-                    is_active=True
-                ).update(is_active=True)
-            comun.categories.set(
-                _active_comun_category_queryset(comun).filter(id__in=selected_category_ids)
+            _comun_category_queryset(comun).exclude(id__in=selected_category_ids).filter(is_active=True).update(
+                is_active=False
             )
+            if selected_category_ids:
+                _comun_category_queryset(comun).filter(id__in=selected_category_ids).exclude(is_active=True).update(
+                    is_active=True
+                )
+            comun.categories.set(_active_comun_category_queryset(comun).filter(id__in=selected_category_ids))
         elif selected_category_ids:
             comun.categories.add(*selected_category_ids)
 
@@ -1781,9 +1701,7 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
             category_id = _parse_post_reference_to_id(raw_category_id)
             if not category_id:
                 continue
-            category_updates[category_id] = normalize_allowed_post_templates_override(
-                raw_template_types
-            )
+            category_updates[category_id] = normalize_allowed_post_templates_override(raw_template_types)
         for category in ComunCategory.objects.filter(
             comun=comun,
             is_active=True,
@@ -1811,9 +1729,7 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
 
     if "blocked_tag_ids" in body or "excluded_tag_ids" in body:
         blocked_tag_ids = community_service._parse_int_list(
-            body.get("blocked_tag_ids")
-            if "blocked_tag_ids" in body
-            else body.get("excluded_tag_ids")
+            body.get("blocked_tag_ids") if "blocked_tag_ids" in body else body.get("excluded_tag_ids")
         )
         comun.blocked_tags.set(Tag.objects.filter(id__in=blocked_tag_ids, is_active=True))
 
@@ -1861,11 +1777,7 @@ def comun_vote(request: HttpRequest, slug: str) -> HttpResponse:
         return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
 
     try:
-        comun = (
-            Comun.objects.filter(slug=slug)
-            .select_related("creator")
-            .get()
-        )
+        comun = Comun.objects.filter(slug=slug).select_related("creator").get()
     except Comun.DoesNotExist:
         return JsonResponse({"ok": False, "error": "comun not found"}, status=404)
 
@@ -1889,11 +1801,7 @@ def comun_vote(request: HttpRequest, slug: str) -> HttpResponse:
 
     new_vote = 0
     with transaction.atomic():
-        existing = (
-            ComunVote.objects.select_for_update()
-            .filter(comun_id=comun.id, user_id=current_user.id)
-            .first()
-        )
+        existing = ComunVote.objects.select_for_update().filter(comun_id=comun.id, user_id=current_user.id).first()
         if existing:
             if vote_value == 0 or existing.value == vote_value:
                 existing.delete()
@@ -1967,9 +1875,7 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
                 status=400,
             )
 
-        category_id = _parse_post_reference_to_id(
-            payload.get("comun_category_id") or payload.get("category_id")
-        )
+        category_id = _parse_post_reference_to_id(payload.get("comun_category_id") or payload.get("category_id"))
         category = None
         if category_id:
             category = _active_comun_category_queryset(comun).filter(id=category_id).first()
@@ -2075,9 +1981,7 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
         community_service._maybe_notify_new_author(author, post)
         serialized_post = editor_service._serialize_post_for_user(request, post, current_user)
         serialized_post["comun_category_id"] = category.id if category else None
-        serialized_post["comun_category"] = (
-            _serialize_comun_category(category, comun) if category else None
-        )
+        serialized_post["comun_category"] = _serialize_comun_category(category, comun) if category else None
         return JsonResponse({"ok": True, "post": serialized_post})
 
     if request.method != "GET":
@@ -2097,9 +2001,7 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
     selected_category_slug = str(request.GET.get("category") or "").strip()
     selected_category = None
     if selected_category_slug:
-        selected_category = (
-            _active_comun_category_queryset(comun).filter(slug=selected_category_slug).first()
-        )
+        selected_category = _active_comun_category_queryset(comun).filter(slug=selected_category_slug).first()
         if not selected_category:
             return JsonResponse({"ok": False, "error": "category not found"}, status=404)
 
@@ -2120,9 +2022,7 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
         .annotate(count=Count("post_id", distinct=True))
     )
     category_counts_map = {
-        int(row["category_id"]): int(row["count"] or 0)
-        for row in category_count_rows
-        if row.get("category_id")
+        int(row["category_id"]): int(row["count"] or 0) for row in category_count_rows if row.get("category_id")
     }
     category_counts_payload = [
         {
@@ -2156,8 +2056,9 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
     favorite_post_ids = community_service._favorite_post_ids_for_user(posts, current_user)
     assignments = {
         assignment.post_id: assignment
-        for assignment in ComunPostCategoryAssignment.objects.select_related("category")
-        .filter(comun_id=comun.id, post_id__in=[post.id for post in posts])
+        for assignment in ComunPostCategoryAssignment.objects.select_related("category").filter(
+            comun_id=comun.id, post_id__in=[post.id for post in posts]
+        )
     }
 
     serialized_posts = []
@@ -2181,13 +2082,9 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
     return JsonResponse(
         {
             "ok": True,
-            "comun": _serialize_comun(
-                request, comun, current_user=current_user, include_activity=True
-            ),
+            "comun": _serialize_comun(request, comun, current_user=current_user, include_activity=True),
             "posts": serialized_posts,
-            "selected_category": (
-                _serialize_comun_category(selected_category, comun) if selected_category else None
-            ),
+            "selected_category": (_serialize_comun_category(selected_category, comun) if selected_category else None),
             "total_count": total_count,
             "category_counts": category_counts_payload,
             "uncategorized_count": uncategorized_count,
@@ -2241,9 +2138,7 @@ def comun_post_category_update(request: HttpRequest, slug: str, post_id: int) ->
         return JsonResponse({"ok": False, "error": "post not found in comun"}, status=404)
 
     previous_assignment = (
-        ComunPostCategoryAssignment.objects.select_related("category")
-        .filter(comun=comun, post=post)
-        .first()
+        ComunPostCategoryAssignment.objects.select_related("category").filter(comun=comun, post=post).first()
     )
     previous_category = previous_assignment.category if previous_assignment else None
 
@@ -2299,9 +2194,7 @@ _author_is_managed_by_comun_team = community_service._author_is_managed_by_comun
 _author_telegram_source_comun = community_service._author_telegram_source_comun
 _attach_pending_comuns_for_author = community_service._attach_pending_comuns_for_author
 _allowed_templates_for_comun = community_service._allowed_templates_for_comun
-_allowed_template_overrides_for_comun_category = (
-    community_service._allowed_template_overrides_for_comun_category
-)
+_allowed_template_overrides_for_comun_category = community_service._allowed_template_overrides_for_comun_category
 _allowed_templates_for_comun_category = community_service._allowed_templates_for_comun_category
 _post_comun_slug = community_service._post_comun_slug
 _format_rating_value = community_service._format_rating_value

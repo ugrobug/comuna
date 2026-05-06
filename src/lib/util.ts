@@ -215,7 +215,18 @@ export function canParseUrl(url: string): boolean {
 }
 
 const EXTERNAL_URL_REGEX = /https?:\/\/[^\s<>"')\]]+|www\.[^\s<>"')\]]+/gi
-const INTERNAL_COMUNA_HOSTS = new Set(['comuna.ru', 'www.comuna.ru', 'localhost', '127.0.0.1'])
+const INTERNAL_COMUNA_HOSTS = new Set([
+  'comuna.ru',
+  'www.comuna.ru',
+  'comuna.ru',
+  'www.comuna.ru',
+  'tambur.pub',
+  'www.tambur.pub',
+  'tambur.pub',
+  'www.tambur.pub',
+  'localhost',
+  '127.0.0.1',
+])
 
 const isInternalComunaUrl = (value: string) => {
   const raw = String(value || '').trim()

@@ -56,7 +56,20 @@ _COMUN_ACTIVITY_POINTS = {
     "read": 1,
 }
 _EXTERNAL_URL_RE = re.compile(r"""https?://[^\s<>"')\]]+|www\.[^\s<>"')\]]+""", re.IGNORECASE)
-_INTERNAL_COMUNA_HOSTS = {"comuna.ru", "www.comuna.ru", "localhost", "127.0.0.1"}
+_INTERNAL_COMUNA_HOSTS = frozenset(
+    {
+        "comuna.ru",
+        "www.comuna.ru",
+        "comuna.ru",
+        "www.comuna.ru",
+        "tambur.pub",
+        "www.tambur.pub",
+        "tambur.pub",
+        "www.tambur.pub",
+        "localhost",
+        "127.0.0.1",
+    }
+)
 _COMUN_EXTERNAL_LINKS_FORBIDDEN_ERROR = (
     "В этом сообществе запрещены внешние ссылки. Удалите ссылки из текста и шаблона публикации."
 )
@@ -200,11 +213,7 @@ def _ensure_tag_by_name(raw_name: str) -> tuple[Tag | None, bool]:
     if not normalized:
         return None, False
     lemma = _lemmatize_tag(normalized) or normalized
-    tag = (
-        Tag.objects.filter(Q(name__iexact=normalized) | Q(lemma__iexact=lemma))
-        .order_by("name")
-        .first()
-    )
+    tag = Tag.objects.filter(Q(name__iexact=normalized) | Q(lemma__iexact=lemma)).order_by("name").first()
     if tag:
         if not tag.is_active:
             tag.is_active = True
@@ -339,9 +348,7 @@ def _ensure_comun_category_by_name(
     if not normalized_name:
         return None, False
     category = (
-        ComunCategory.objects.filter(comun=comun, name__iexact=normalized_name)
-        .order_by("sort_order", "name")
-        .first()
+        ComunCategory.objects.filter(comun=comun, name__iexact=normalized_name).order_by("sort_order", "name").first()
     )
     if category:
         if not category.is_active:
@@ -411,9 +418,7 @@ def _sync_comun_glossary_terms(comun: Comun, raw_terms: object) -> None:
             continue
 
         term_name = _normalize_comun_glossary_term(item.get("term") or item.get("name"))
-        definition = _normalize_comun_glossary_definition(
-            item.get("definition") or item.get("description")
-        )
+        definition = _normalize_comun_glossary_definition(item.get("definition") or item.get("description"))
         if not term_name or not definition:
             continue
 
@@ -603,9 +608,7 @@ def _attach_pending_comuns_for_author(author: Author | None) -> None:
 
 
 _allowed_templates_for_comun = editor_service._allowed_templates_for_comun
-_allowed_template_overrides_for_comun_category = (
-    editor_service._allowed_template_overrides_for_comun_category
-)
+_allowed_template_overrides_for_comun_category = editor_service._allowed_template_overrides_for_comun_category
 _allowed_templates_for_comun_category = editor_service._allowed_templates_for_comun_category
 
 
@@ -632,11 +635,7 @@ def _post_comun(post: Post) -> Comun | None:
 
     rubric_id = getattr(post, "rubric_id", None)
     if rubric_id:
-        return (
-            Comun.objects.filter(source_rubric_id=rubric_id, is_active=True)
-            .order_by("sort_order", "name")
-            .first()
-        )
+        return Comun.objects.filter(source_rubric_id=rubric_id, is_active=True).order_by("sort_order", "name").first()
 
     return None
 
@@ -727,9 +726,7 @@ def _comun_post_access_error_message(
     if bool(getattr(comun, "only_moderators_can_post", False)):
         return "Публикация в этом сообществе доступна только создателю и модераторам."
     if category is not None and bool(getattr(category, "only_moderators_can_post", False)):
-        return (
-            f'Публикация в категории "{category.name}" доступна только создателю и модераторам.'
-        )
+        return f'Публикация в категории "{category.name}" доступна только создателю и модераторам.'
     minimum_text = _format_rating_value(_comun_minimum_author_rating_value(comun))
     if author_rating is None:
         return f"Для публикации в этой комуне нужен рейтинг автора не ниже {minimum_text}."
