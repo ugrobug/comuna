@@ -46,10 +46,6 @@ from feeds.views import (
 from my_feed.views import (
     auth_feed_settings,
     my_feed,
-    thematic_feed_manage_detail,
-    thematic_feed_posts,
-    thematic_feeds_list,
-    thematic_feeds_manage,
 )
 from notifications.views import (
     auth_notification_read,
@@ -105,18 +101,6 @@ urlpatterns = [
         "api/comuns/<slug:slug>/posts/<int:post_id>/category/",
         comun_post_category_update,
         name="comun-post-category-update",
-    ),
-    path("api/thematic-feeds/", thematic_feeds_list, name="thematic-feeds-list"),
-    path("api/thematic-feeds/manage/", thematic_feeds_manage, name="thematic-feeds-manage"),
-    path(
-        "api/thematic-feeds/manage/<slug:slug>/",
-        thematic_feed_manage_detail,
-        name="thematic-feed-manage-detail",
-    ),
-    path(
-        "api/thematic-feeds/<slug:slug>/posts/",
-        thematic_feed_posts,
-        name="thematic-feed-posts",
     ),
     path("api/search/", search_content, name="search-content"),
     path("api/authors/top/", top_authors, name="top-authors"),

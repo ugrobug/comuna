@@ -43,21 +43,12 @@
   import { onMount } from 'svelte';
   import { siteUser, logout as siteLogout } from '$lib/siteAuth'
   
-  import { buildComunsUrl, type BackendComun, buildThematicFeedsListUrl } from '$lib/api/backend';
+  import { buildComunsUrl, type BackendComun } from '$lib/api/backend';
   import { getRandomTaglineFromSite, hasTaglines } from '$lib/taglineUtils.js';
   import Markdown from '$lib/components/markdown/Markdown.svelte';
 
   let comuns: BackendComun[] = [];
   let sidebarComuns: BackendComun[] = [];
-  let thematicFeeds: Array<{
-    name: string
-    slug: string
-    description?: string | null
-    authors_count?: number
-    tags_count?: number
-    blocked_tags_count?: number
-  }> = [];
-  let thematicFeedsOpen = false;
 
   const PUBLIC_TELEGRAM_URL = env.PUBLIC_TELEGRAM_URL;
 
@@ -66,7 +57,6 @@
     env.PUBLIC_PROJECT_ADVRTISEMENT || '/advertisement';
   const PUBLIC_PROJECT_AUTHORS = env.PUBLIC_PROJECT_AUTHORS || '/authors';
   const PUBLIC_PROJECT_RULES = env.PUBLIC_PROJECT_RULES || '/rules';
-  const SHOW_FOLDERS = false;
   
   // Переменная для случайного слогана
   let randomTagline = '';
@@ -82,20 +72,8 @@
     }
   }
 
-  async function loadThematicFeeds() {
-    try {
-      const response = await fetch(buildThematicFeedsListUrl());
-      if (!response.ok) return;
-      const data = await response.json();
-      thematicFeeds = data.folders ?? data.feeds ?? [];
-    } catch (e) {
-      thematicFeeds = [];
-    }
-  }
-
   onMount(() => {
     loadComuns();
-    loadThematicFeeds();
     
     // Добавляем обработчик клавиши Escape
     document.addEventListener('keydown', handleKeydown);
@@ -152,11 +130,7 @@
   }
 
   $: currentFeed = $page.url.searchParams.get('feed') ?? ($userSettings.homeFeed ?? 'hot')
-  $: currentThematicSlug = $page.url.searchParams.get('theme') ?? ''
   $: sidebarComuns = comuns.slice(0, 10)
-  $: if (currentFeed === 'thematic') {
-    thematicFeedsOpen = true
-  }
 
   // Принудительное обновление при монтировании компонента
   onMount(() => {
@@ -394,73 +368,6 @@
         >
           <span slot="label">Избранное</span>
         </SidebarButton>
-        {#if SHOW_FOLDERS}
-          <SidebarButton
-            icon={ClipboardDocumentList}
-            href="javascript:void(0)"
-            active={currentFeed === 'thematic'}
-            on:click={(e) => {
-              e.preventDefault();
-              thematicFeedsOpen = !thematicFeedsOpen;
-            }}
-          >
-            <div slot="label" class="flex items-center gap-2 w-full">
-              <span class="truncate">Папки</span>
-              <span
-                class="ml-auto transition-transform duration-150"
-                class:rotate-180={thematicFeedsOpen}
-                aria-hidden="true"
-              >
-                <Icon src={ChevronDown} size="16" mini />
-              </span>
-            </div>
-          </SidebarButton>
-          {#if thematicFeedsOpen && (thematicFeeds.length || $siteUser)}
-            <div class="ml-6 flex flex-col gap-1">
-              {#if $siteUser?.is_staff}
-                <SidebarButton
-                  href="/folders?create=1"
-                  isExpandable={true}
-                  class="h-auto py-2"
-                  on:click={() => { sidebarOpen = false; }}
-                >
-                  <div slot="label" class="flex flex-col min-w-0 leading-tight">
-                    <span class="truncate text-sm">Создать папку</span>
-                  </div>
-                </SidebarButton>
-              {/if}
-              {#if $siteUser}
-                <SidebarButton
-                  href="/folders"
-                  isExpandable={true}
-                  class="h-auto py-2"
-                  on:click={() => { sidebarOpen = false; }}
-                >
-                  <div slot="label" class="flex flex-col min-w-0 leading-tight">
-                    <span class="truncate text-sm">Управление папками</span>
-                  </div>
-                </SidebarButton>
-              {/if}
-              {#each thematicFeeds as feed}
-                <SidebarButton
-                  href={`/?feed=thematic&theme=${encodeURIComponent(feed.slug)}`}
-                  active={currentFeed === 'thematic' && currentThematicSlug === feed.slug}
-                  isExpandable={true}
-                  class="h-auto py-2"
-                  title={feed.description || feed.name}
-                  on:click={() => { sidebarOpen = false; }}
-                >
-                  <div slot="label" class="flex flex-col min-w-0 leading-tight">
-                    <span class="truncate text-sm">{feed.name}</span>
-                    <span class="truncate text-xs text-slate-500 dark:text-zinc-400">
-                      {feed.authors_count ?? 0} авторов · {feed.tags_count ?? 0} тегов
-                    </span>
-                  </div>
-                </SidebarButton>
-              {/each}
-            </div>
-          {/if}
-        {/if}
       </div>
 
       {#if $profile?.jwt}

@@ -25,7 +25,7 @@
   import LoginModal from '$lib/components/auth/LoginModal.svelte'
   import { env } from '$env/dynamic/public'
   import { createEventDispatcher } from 'svelte'
-  import { buildComunsUrl, type BackendComun, buildThematicFeedsListUrl } from '$lib/api/backend'
+  import { buildComunsUrl, type BackendComun } from '$lib/api/backend'
   import { siteUser, logout as siteLogout } from '$lib/siteAuth'
   import { userSettings } from '$lib/settings'
 
@@ -36,20 +36,10 @@
     env.PUBLIC_PROJECT_ADVRTISEMENT || '/advertisement';
   const PUBLIC_PROJECT_AUTHORS = env.PUBLIC_PROJECT_AUTHORS || '/authors';
   const PUBLIC_PROJECT_RULES = env.PUBLIC_PROJECT_RULES || '/rules';
-  const SHOW_FOLDERS = false;
 
   let loginModalOpen = false;
   let comuns: BackendComun[] = [];
   let sidebarComuns: BackendComun[] = [];
-  let thematicFeeds: Array<{
-    name: string
-    slug: string
-    description?: string | null
-    authors_count?: number
-    tags_count?: number
-    blocked_tags_count?: number
-  }> = [];
-  let thematicFeedsOpen = false;
 
   function handleAuthRequired(e: MouseEvent) {
     if (!$profile?.jwt) {
@@ -73,31 +63,15 @@
     }
   }
 
-  async function loadThematicFeeds() {
-    try {
-      const response = await fetch(buildThematicFeedsListUrl());
-      if (!response.ok) return;
-      const data = await response.json();
-      thematicFeeds = data.folders ?? data.feeds ?? [];
-    } catch (e) {
-      thematicFeeds = [];
-    }
-  }
-
   onMount(async () => {
     loadComuns();
-    loadThematicFeeds();
   });
 
   $: searchParams = new URLSearchParams($page.url.search);
   $: isPostFormRoute = $page.url.pathname.includes('/create/post') || 
                        $page.url.pathname.includes('/edit/post')
   $: currentFeed = $page.url.searchParams.get('feed') ?? ($userSettings.homeFeed ?? 'hot')
-  $: currentThematicSlug = $page.url.searchParams.get('theme') ?? ''
   $: sidebarComuns = comuns.slice(0, 10)
-  $: if (currentFeed === 'thematic') {
-    thematicFeedsOpen = true
-  }
 </script>
 
 <nav class="flex flex-col p-4 overflow-auto gap-2 h-auto min-h-0">
@@ -154,59 +128,6 @@
     >
       <span slot="label">Избранное</span>
     </SidebarButton>
-    {#if SHOW_FOLDERS}
-      <SidebarButton
-        icon={ClipboardDocumentList}
-        href="javascript:void(0)"
-        active={currentFeed === 'thematic'}
-        on:click={(e) => {
-          e.preventDefault();
-          thematicFeedsOpen = !thematicFeedsOpen;
-        }}
-      >
-        <div slot="label" class="flex items-center gap-2 w-full">
-          <span class="truncate">Папки</span>
-          <span class="ml-auto transition-transform duration-150" class:rotate-180={thematicFeedsOpen}>
-            <Icon src={ChevronDown} size="16" mini />
-          </span>
-        </div>
-      </SidebarButton>
-      {#if thematicFeedsOpen && (thematicFeeds.length || $siteUser)}
-        <div class="ml-6 flex flex-col gap-1">
-          {#if $siteUser?.is_staff}
-            <SidebarButton href="/folders?create=1" isExpandable={true} class="h-auto py-2" on:click={handleNavigation}>
-              <div slot="label" class="flex flex-col min-w-0 leading-tight">
-                <span class="truncate text-sm">Создать папку</span>
-              </div>
-            </SidebarButton>
-          {/if}
-          {#if $siteUser}
-            <SidebarButton href="/folders" isExpandable={true} class="h-auto py-2" on:click={handleNavigation}>
-              <div slot="label" class="flex flex-col min-w-0 leading-tight">
-                <span class="truncate text-sm">Управление папками</span>
-              </div>
-            </SidebarButton>
-          {/if}
-          {#each thematicFeeds as feed}
-            <SidebarButton
-              href={`/?feed=thematic&theme=${encodeURIComponent(feed.slug)}`}
-              active={currentFeed === 'thematic' && currentThematicSlug === feed.slug}
-              isExpandable={true}
-              class="h-auto py-2"
-              on:click={handleNavigation}
-              title={feed.description || feed.name}
-            >
-              <div slot="label" class="flex flex-col min-w-0 leading-tight">
-                <span class="truncate text-sm">{feed.name}</span>
-                <span class="truncate text-xs text-slate-500 dark:text-zinc-400">
-                  {feed.authors_count ?? 0} авторов · {feed.tags_count ?? 0} тегов
-                </span>
-              </div>
-            </SidebarButton>
-          {/each}
-        </div>
-      {/if}
-    {/if}
   </div>
 
   {#if $profile?.jwt}

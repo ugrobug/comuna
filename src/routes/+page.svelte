@@ -4,11 +4,9 @@
   import { page } from '$app/stores'
   import { env } from '$env/dynamic/public'
   import {
-    type BackendThematicFeed,
     buildFavoritesFeedUrl,
     buildHomeFeedUrl,
     buildMyFeedUrl,
-    buildThematicFeedPostsUrl,
   } from '$lib/api/backend'
   import FeedPostsList from '$lib/components/feeds/FeedPostsList.svelte'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
@@ -16,7 +14,6 @@
   import { feedSettingsHydrated, userSettings } from '$lib/settings'
   import { t } from '$lib/translations.js'
   import { onDestroy, onMount } from 'svelte'
-  import { Cog6Tooth, Icon } from 'svelte-hero-icons'
   import type { ComponentType } from 'svelte'
   import type { BackendPost } from '$lib/api/backend'
 
@@ -33,8 +30,6 @@
   let hasMore = posts.length === pageSize
   let loadingMore = false
   let hiddenReadCount = 0
-  let thematicFeedSlug = data.thematicSlug ?? ''
-  let thematicFeedMeta: BackendThematicFeed | null = data.thematicFeed ?? null
   let feedParam: string | null = null
   let readParam: string | null = null
   let readOnly = false
@@ -43,50 +38,7 @@
   let lastFeedKey: string | null = null
   let lastMyFeedKey = ''
   let scrollRaf: number | null = null
-  let folderSettingsOpen = false
-  let folderSettingsModalModulePromise: Promise<LazyModule> | null = null
   let myFeedSectionModulePromise: Promise<LazyModule> | null = null
-
-  const canManageCurrentFolder = () => {
-    if (!$siteUser || !thematicFeedMeta) return false
-    if ($siteUser.is_staff) return true
-    const currentUsername = ($siteUser.username ?? '').trim().toLowerCase()
-    if (!currentUsername) return false
-    return (thematicFeedMeta.moderators ?? []).some(
-      (moderator) => (moderator?.username ?? '').trim().toLowerCase() === currentUsername
-    )
-  }
-
-  const openCurrentFolderSettings = async () => {
-    if (!thematicFeedSlug) return
-    if (!$siteUser) {
-      const next = encodeURIComponent(`${$page.url.pathname}${$page.url.search}`)
-      goto(`/account?next=${next}`)
-      return
-    }
-    folderSettingsModalModulePromise ??= import(
-      '$lib/components/feeds/ThematicFolderSettingsModal.svelte'
-    )
-    folderSettingsOpen = true
-  }
-
-  const closeCurrentFolderSettings = () => {
-    folderSettingsOpen = false
-  }
-
-  const refreshCurrentFolderFeedAfterSettingsSave = async () => {
-    if (!browser) return
-    posts = []
-    offset = 0
-    hasMore = true
-    loadingMore = false
-    hiddenReadCount = 0
-    await loadMore()
-  }
-
-  const onThematicFeedUpdated = (folder: BackendThematicFeed) => {
-    thematicFeedMeta = folder
-  }
 
   const buildPageUrl = (currentOffset: number) => {
     let baseUrl = buildHomeFeedUrl({
@@ -95,11 +47,6 @@
     })
     if (feedType === 'favorites') {
       baseUrl = buildFavoritesFeedUrl()
-    } else if (feedType === 'thematic') {
-      baseUrl = buildThematicFeedPostsUrl(thematicFeedSlug, {
-        hideRead: effectiveHideRead,
-        onlyRead: readOnly,
-      })
     } else if (feedType === 'mine') {
       baseUrl = $siteUser
         ? buildMyFeedUrl(
@@ -139,7 +86,6 @@
     if (!browser || loadingMore || !hasMore) return
     if (feedType === 'mine' && !canLoadMyFeed) return
     if (feedType === 'favorites' && !$siteUser) return
-    if (feedType === 'thematic' && !thematicFeedSlug) return
     if (readOnly && !$siteUser) return
     loadingMore = true
     try {
@@ -153,9 +99,6 @@
         return
       }
       const payload = await response.json()
-      if (payload?.thematic_feed && feedType === 'thematic') {
-        thematicFeedMeta = payload.thematic_feed
-      }
       if (typeof payload.hidden_read_count === 'number') {
         hiddenReadCount = payload.hidden_read_count
       }
@@ -229,9 +172,6 @@
     ) {
       lastPostsRef = data.posts
       posts = data.posts ?? []
-      if (data.feedType === 'thematic') {
-        thematicFeedMeta = data.thematicFeed ?? null
-      }
       offset = posts.length
       hasMore = posts.length === pageSize
       loadingMore = false
@@ -239,7 +179,6 @@
   }
 
   $: feedParam = $page.url.searchParams.get('feed')
-  $: thematicFeedSlug = ($page.url.searchParams.get('theme') ?? '').trim()
   $: readParam = $page.url.searchParams.get('read')
   $: readOnly = readParam === '1' || readParam === 'true' || readParam === 'yes'
 
@@ -264,25 +203,19 @@
   $: if (data?.feedType && data.feedType !== lastFeedType && feedParam) {
     lastFeedType = data.feedType
     feedType = data.feedType ?? 'hot'
-    thematicFeedMeta = feedType === 'thematic' ? null : thematicFeedMeta
     if (feedType === 'mine' || feedType === 'favorites') {
       posts = []
       offset = 0
       hasMore = false
       loadingMore = false
       hiddenReadCount = 0
-      thematicFeedMeta = null
       lastMyFeedKey = ''
     } else {
       posts = data.posts ?? []
-      thematicFeedMeta = feedType === 'thematic' ? (data.thematicFeed ?? null) : thematicFeedMeta
       offset = posts.length
       hasMore = posts.length === pageSize
       loadingMore = false
       hiddenReadCount = 0
-      if (feedType !== 'thematic') {
-        thematicFeedMeta = null
-      }
     }
   }
 
@@ -291,14 +224,12 @@
     if (preferredFeed !== feedType) {
       feedType = preferredFeed
       lastFeedType = preferredFeed
-      thematicFeedMeta = feedType === 'thematic' ? null : thematicFeedMeta
       if (feedType === 'mine' || feedType === 'favorites') {
         posts = []
         offset = 0
         hasMore = false
         loadingMore = false
         hiddenReadCount = 0
-        thematicFeedMeta = null
         lastMyFeedKey = ''
       } else {
         posts = []
@@ -306,9 +237,6 @@
         hasMore = true
         loadingMore = false
         hiddenReadCount = 0
-        if (feedType !== 'thematic') {
-          thematicFeedMeta = null
-        }
         if (browser) {
           void loadMore()
         }
@@ -319,7 +247,6 @@
   $: if (feedType !== 'mine' && feedType !== 'favorites') {
     const feedKey = [
       feedType,
-      feedType === 'thematic' ? thematicFeedSlug || '(none)' : '',
       readOnly ? 'only-read' : effectiveHideRead ? 'hide-read' : 'all',
       hideNegativeMyFeed ? 'hide-neg' : 'show-neg',
     ].join('|')
@@ -386,34 +313,7 @@
 
 <div class="flex max-w-full min-w-0 w-full flex-col gap-2">
   <header class="relative flex flex-col gap-2">
-    {#if feedType === 'thematic'}
-      <div class="flex flex-col gap-2">
-        <h1 class="text-2xl font-semibold text-slate-900 dark:text-zinc-100">
-          {#if thematicFeedMeta?.name}
-            Папка: {thematicFeedMeta.name}
-          {:else}
-            Папка
-          {/if}
-        </h1>
-        {#if thematicFeedMeta?.description}
-          <div class="text-sm text-slate-600 dark:text-zinc-300">
-            {thematicFeedMeta.description}
-          </div>
-        {/if}
-        {#if thematicFeedMeta && canManageCurrentFolder()}
-          <div class="flex flex-wrap gap-2 pt-1">
-            <button
-              type="button"
-              class="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
-              on:click={openCurrentFolderSettings}
-            >
-              <Icon src={Cog6Tooth} size="16" mini />
-              <span>Настройки</span>
-            </button>
-          </div>
-        {/if}
-      </div>
-    {:else if feedType === 'favorites'}
+    {#if feedType === 'favorites'}
       <h1 class="text-2xl font-semibold text-slate-900 dark:text-zinc-100">
         Избранное
       </h1>
@@ -423,19 +323,6 @@
       </Header>
     {/if}
   </header>
-
-  {#if folderSettingsModalModulePromise}
-    {#await folderSettingsModalModulePromise then module}
-      <svelte:component
-        this={module.default}
-        open={folderSettingsOpen}
-        {thematicFeedSlug}
-        onClose={closeCurrentFolderSettings}
-        onUpdatedFolder={onThematicFeedUpdated}
-        onRefreshFeed={refreshCurrentFolderFeedAfterSettingsSave}
-      />
-    {/await}
-  {/if}
 
   {#if $siteUser && readOnly && feedType !== 'favorites'}
     <div class="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900">
@@ -474,10 +361,6 @@
   {:else if feedType === 'favorites' && !$siteUser}
     <div class="text-base text-slate-500">
       После регистрации вы сможете добавлять посты в избранное и видеть их в отдельной ленте.
-    </div>
-  {:else if feedType === 'thematic' && !thematicFeedSlug}
-    <div class="text-base text-slate-500">
-      Выберите папку в левом меню, чтобы посмотреть готовую подборку авторов и фильтров по тегам.
     </div>
   {:else if visiblePosts.length}
     <FeedPostsList posts={visiblePosts} {loadingMore} />

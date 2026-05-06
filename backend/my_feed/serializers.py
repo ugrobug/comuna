@@ -3,76 +3,12 @@ from __future__ import annotations
 from django.http import HttpRequest
 
 from feeds.models import Post
-from my_feed.models import ThematicFeed
 
 
 def _fv():
     from feeds import views as feeds_views
 
     return feeds_views
-
-
-def _serialize_thematic_feed(
-    feed: ThematicFeed,
-    *,
-    include_manage_fields: bool = False,
-) -> dict:
-    moderators = list(feed.moderators.order_by("username"))
-    authors = list(feed.authors.filter(is_blocked=False).order_by("username"))
-    excluded_authors = list(feed.excluded_authors.filter(is_blocked=False).order_by("username"))
-    tags = list(feed.tags.filter(is_active=True).order_by("name"))
-    blocked_tags = list(feed.blocked_tags.filter(is_active=True).order_by("name"))
-
-    payload = {
-        "id": feed.id,
-        "name": feed.name,
-        "slug": feed.slug,
-        "description": feed.description,
-        "is_active": feed.is_active,
-        "sort_order": feed.sort_order,
-        "moderators_count": len(moderators),
-        "authors_count": len(authors),
-        "excluded_authors_count": len(excluded_authors),
-        "tags_count": len(tags),
-        "blocked_tags_count": len(blocked_tags),
-        "moderators": [{"id": moderator.id, "username": moderator.username} for moderator in moderators],
-        "authors": [{"id": author.id, "username": author.username, "title": author.title} for author in authors],
-        "excluded_authors": [
-            {"id": author.id, "username": author.username, "title": author.title}
-            for author in excluded_authors
-        ],
-        "tags": [
-            {
-                "id": tag.id,
-                "name": tag.name,
-                "lemma": tag.lemma or _fv()._lemmatize_tag(tag.name) or tag.name,
-            }
-            for tag in tags
-        ],
-        "blocked_tags": [
-            {
-                "id": tag.id,
-                "name": tag.name,
-                "lemma": tag.lemma or _fv()._lemmatize_tag(tag.name) or tag.name,
-            }
-            for tag in blocked_tags
-        ],
-        "excluded_tags": [
-            {
-                "id": tag.id,
-                "name": tag.name,
-                "lemma": tag.lemma or _fv()._lemmatize_tag(tag.name) or tag.name,
-            }
-            for tag in blocked_tags
-        ],
-    }
-    if include_manage_fields:
-        payload["moderator_ids"] = [moderator.id for moderator in moderators]
-        payload["author_ids"] = [author.id for author in authors]
-        payload["excluded_author_ids"] = [author.id for author in excluded_authors]
-        payload["tag_ids"] = [tag.id for tag in tags]
-        payload["excluded_tag_ids"] = [tag.id for tag in blocked_tags]
-    return payload
 
 
 def _serialize_feed_post_card(
@@ -118,5 +54,4 @@ def _serialize_feed_post_card(
 
 __all__ = [
     "_serialize_feed_post_card",
-    "_serialize_thematic_feed",
 ]
