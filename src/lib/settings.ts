@@ -255,10 +255,6 @@ const feedSettingsSnapshot = (settings: Settings) =>
     tagRules: settings.tagRules ?? {},
   })
 
-const hasLocalFeedCustomizations = (settings: Settings) =>
-  feedSettingsSnapshot(settings) !==
-  feedSettingsSnapshot({ ...settings, ...feedSettingsDefaults() })
-
 const backendPayloadFromSettings = (settings: Settings) => ({
   home_feed: settings.homeFeed,
   hide_read_posts: settings.hideReadPosts,
@@ -337,20 +333,12 @@ export const loadBackendFeedSettings = async (token: string | null) => {
   if (!response.ok || !payload?.settings) {
     throw new Error(payload?.error || 'Не удалось загрузить настройки ленты')
   }
-  const shouldMigrateLocalSettings =
-    !payload.has_customizations && hasLocalFeedCustomizations(localSettings)
 
   applyingBackendFeedSettings = true
   try {
-    if (shouldMigrateLocalSettings) {
-      backendFeedSettingsHydrated = true
-      lastBackendFeedSettingsSnapshot = ''
-      await saveBackendFeedSettings(localSettings)
-    } else {
-      userSettings.set(settingsFromBackendPayload(localSettings, payload.settings))
-      lastBackendFeedSettingsSnapshot = feedSettingsSnapshot(get(userSettings))
-      backendFeedSettingsHydrated = true
-    }
+    userSettings.set(settingsFromBackendPayload(localSettings, payload.settings))
+    lastBackendFeedSettingsSnapshot = feedSettingsSnapshot(get(userSettings))
+    backendFeedSettingsHydrated = true
   } finally {
     applyingBackendFeedSettings = false
   }
@@ -537,6 +525,7 @@ if (typeof window != 'undefined') {
   userSettings.set({
     ...defaultSettings,
     ...oldUserSettings,
+    ...feedSettingsDefaults(),
     settingsVer: defaultSettings.settingsVer,
   })
 }
