@@ -11,11 +11,9 @@
   export let data
 
   const COMMUNITY_CREATION_MIN_AUTHOR_RATING = 0
-  const COMMUNITIES_FAQ_HREF = '/faq'
   const COMMUNITIES_LANDING_HREF = '/lp/communities'
 
   let comuns: BackendComun[] = data.comuns ?? []
-  let visibleComuns: BackendComun[] = []
   let filteredComuns: BackendComun[] = []
   let searchQuery = ''
   let createOpen = false
@@ -51,11 +49,10 @@
     return Number.isInteger(numeric) ? String(numeric) : numeric.toFixed(2).replace(/\.?0+$/, '')
   }
 
-  $: visibleComuns = comuns.filter((comun) => comun.slug !== 'faq')
   $: filteredComuns = (() => {
     const query = searchQuery.trim().toLowerCase()
-    if (!query) return visibleComuns
-    return visibleComuns.filter((comun) => {
+    if (!query) return comuns
+    return comuns.filter((comun) => {
       const name = (comun.name || '').toLowerCase()
       const description = (comun.product_description || '').toLowerCase()
       const tags = (comun.tags ?? []).map((tag) => (tag.name || '').toLowerCase()).join(' ')
@@ -330,7 +327,7 @@
     </div>
   {:else}
     <div class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-6 text-slate-600 dark:text-zinc-400">
-      {#if visibleComuns.length}
+      {#if comuns.length}
         Ничего не найдено по вашему запросу.
       {:else}
         Пока нет созданных сообществ.
@@ -457,13 +454,7 @@
       <span class="font-semibold text-slate-900 dark:text-zinc-100">{formatRatingValue(currentUserMaxAuthorRating())}</span>.
       Для создания нужен неотрицательный рейтинг автора.
     </div>
-    <div class="grid gap-3 sm:grid-cols-2">
-      <a
-        href={COMMUNITIES_FAQ_HREF}
-        class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900 px-4 py-4 text-sm font-medium text-slate-900 dark:text-zinc-100 hover:border-slate-300 dark:hover:border-zinc-700 transition-colors"
-      >
-        Открыть FAQ
-      </a>
+    <div class="grid gap-3">
       <a
         href={COMMUNITIES_LANDING_HREF}
         class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900 px-4 py-4 text-sm font-medium text-slate-900 dark:text-zinc-100 hover:border-slate-300 dark:hover:border-zinc-700 transition-colors"

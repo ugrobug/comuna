@@ -1332,7 +1332,7 @@ def comuns_list_create(request: HttpRequest) -> HttpResponse:
 
     if request.method == "GET":
         comuns = list(
-            Comun.objects.filter(is_active=True)
+            Comun.objects.filter(is_active=True).exclude(slug__iexact="faq")
             .select_related("creator", "product_tag", "source_rubric", "telegram_source_author")
             .prefetch_related("moderators", "excluded_authors", "categories", "tags", "source_tags", "blocked_tags")
             .order_by("sort_order", "name")

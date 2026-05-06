@@ -22,7 +22,6 @@
     ArrowPath,
     DocumentText,
     InformationCircle,
-    QuestionMarkCircle,
     Megaphone,
     ClipboardDocumentList,
     ChevronDown,
@@ -49,7 +48,6 @@
   import Markdown from '$lib/components/markdown/Markdown.svelte';
 
   let comuns: BackendComun[] = [];
-  let visibleComuns: BackendComun[] = [];
   let sidebarComuns: BackendComun[] = [];
   let thematicFeeds: Array<{
     name: string
@@ -68,7 +66,6 @@
     env.PUBLIC_PROJECT_ADVRTISEMENT || '/advertisement';
   const PUBLIC_PROJECT_AUTHORS = env.PUBLIC_PROJECT_AUTHORS || '/authors';
   const PUBLIC_PROJECT_RULES = env.PUBLIC_PROJECT_RULES || '/rules';
-  const PUBLIC_PROJECT_FAQ = env.PUBLIC_PROJECT_FAQ || '/faq';
   const SHOW_FOLDERS = false;
   
   // Переменная для случайного слогана
@@ -156,8 +153,7 @@
 
   $: currentFeed = $page.url.searchParams.get('feed') ?? ($userSettings.homeFeed ?? 'hot')
   $: currentThematicSlug = $page.url.searchParams.get('theme') ?? ''
-  $: visibleComuns = comuns.filter((comun) => comun.slug !== 'faq')
-  $: sidebarComuns = visibleComuns.slice(0, 10)
+  $: sidebarComuns = comuns.slice(0, 10)
   $: if (currentFeed === 'thematic') {
     thematicFeedsOpen = true
   }
@@ -510,7 +506,7 @@
               <span slot="label">{comun.name}</span>
             </SidebarButton>
           {/each}
-          {#if visibleComuns.length > 10}
+          {#if comuns.length > 10}
             <SidebarButton href="/comuns" icon={ChevronDown} on:click={() => { sidebarOpen = false; }}>
               <span slot="label">Все сообщества</span>
             </SidebarButton>
@@ -540,9 +536,6 @@
         <div class="flex flex-col gap-1">
           <SidebarButton href={PUBLIC_PROJECT_ABOUT} icon={InformationCircle} on:click={() => { sidebarOpen = false; }}>
             <span slot="label">О Проекте</span>
-          </SidebarButton>
-          <SidebarButton href={PUBLIC_PROJECT_FAQ} icon={QuestionMarkCircle} on:click={() => { sidebarOpen = false; }}>
-            <span slot="label">FAQ</span>
           </SidebarButton>
           <SidebarButton href={PUBLIC_PROJECT_ADVRTISEMENT} icon={Megaphone} on:click={() => { sidebarOpen = false; }}>
             <span slot="label">Реклама</span>

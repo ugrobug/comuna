@@ -130,7 +130,6 @@ export const routes = {
   '/saved': 'Saved',
   '/about': 'About',
   '/privacy': 'Privacy Policy',
-  '/faq': 'FAQ',
   '/profile/user': 'Profile',
   '/profile/settings': 'Profile Settings',
   '/profile/blocks': 'Blocks',

@@ -9,7 +9,6 @@
     Megaphone,
     DocumentText,
     InformationCircle,
-    QuestionMarkCircle,
     PencilSquare,
     ClipboardDocumentList,
     Bookmark,
@@ -37,12 +36,10 @@
     env.PUBLIC_PROJECT_ADVRTISEMENT || '/advertisement';
   const PUBLIC_PROJECT_AUTHORS = env.PUBLIC_PROJECT_AUTHORS || '/authors';
   const PUBLIC_PROJECT_RULES = env.PUBLIC_PROJECT_RULES || '/rules';
-  const PUBLIC_PROJECT_FAQ = env.PUBLIC_PROJECT_FAQ || '/faq';
   const SHOW_FOLDERS = false;
 
   let loginModalOpen = false;
   let comuns: BackendComun[] = [];
-  let visibleComuns: BackendComun[] = [];
   let sidebarComuns: BackendComun[] = [];
   let thematicFeeds: Array<{
     name: string
@@ -97,8 +94,7 @@
                        $page.url.pathname.includes('/edit/post')
   $: currentFeed = $page.url.searchParams.get('feed') ?? ($userSettings.homeFeed ?? 'hot')
   $: currentThematicSlug = $page.url.searchParams.get('theme') ?? ''
-  $: visibleComuns = comuns.filter((comun) => comun.slug !== 'faq')
-  $: sidebarComuns = visibleComuns.slice(0, 10)
+  $: sidebarComuns = comuns.slice(0, 10)
   $: if (currentFeed === 'thematic') {
     thematicFeedsOpen = true
   }
@@ -262,7 +258,7 @@
           <span slot="label">{comun.name}</span>
         </SidebarButton>
       {/each}
-      {#if visibleComuns.length > 10}
+      {#if comuns.length > 10}
         <SidebarButton href="/comuns" on:click={handleNavigation} icon={ChevronDown}>
           <span slot="label">Все сообщества</span>
         </SidebarButton>
@@ -296,13 +292,6 @@
         on:click={handleNavigation}
       >
         <span slot="label">О Проекте</span>
-      </SidebarButton>
-      <SidebarButton
-        href={PUBLIC_PROJECT_FAQ}
-        icon={QuestionMarkCircle}
-        on:click={handleNavigation}
-      >
-        <span slot="label">FAQ</span>
       </SidebarButton>
       <SidebarButton 
         href={PUBLIC_PROJECT_ADVRTISEMENT} 
