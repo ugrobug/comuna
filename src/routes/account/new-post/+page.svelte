@@ -93,7 +93,7 @@
   const DRAFT_NOTICE_DELAY_MS = 10_000
   const DRAFT_NOTICE_VISIBLE_MS = 5_000
   $: requestedComunSlug = String($page.url.searchParams.get('comun') || '').trim()
-  $: requestedFresh = $page.url.searchParams.get('fresh') === '1'
+  $: requestedNewPost = $page.url.searchParams.get('new') === '1'
 
   type PublishIdentityOption = {
     value: string
@@ -502,10 +502,10 @@
           await tick()
           initialFormSnapshot = JSON.stringify(buildLocalDraftState())
           lastSavedFormSnapshot = initialFormSnapshot
-          if (requestedFresh) {
+          if (requestedNewPost) {
             clearLocalDraftBuffer()
           }
-          const restored = requestedFresh ? false : restoreLocalDraftBuffer()
+          const restored = requestedNewPost ? false : restoreLocalDraftBuffer()
           if (requestedComunSlug) {
             const requestedComun = comuns.find(
               (comun) => comun.slug === requestedComunSlug && Boolean(comun.can_post)

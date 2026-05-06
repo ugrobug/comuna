@@ -17,7 +17,6 @@
     Newspaper,
     Bars3,
     Fire,
-    Clock,
     Inbox,
     UserGroup,
     ArrowPath,
@@ -300,7 +299,7 @@
             <Button
               color="none"
               class="!rounded-full bg-orange-600 hover:bg-orange-700 text-white font-normal py-2 px-4 !text-base md:py-2 md:px-4"
-              href="/account/new-post?fresh=1"
+              href="/account/new-post?new=1"
             >
               Написать
             </Button>
@@ -382,14 +381,6 @@
           on:click={() => { sidebarOpen = false; }}
         >
           <span slot="label">Горячее</span>
-        </SidebarButton>
-        <SidebarButton
-          icon={Clock}
-          href="/?feed=fresh"
-          active={currentFeed === 'fresh'}
-          on:click={() => { sidebarOpen = false; }}
-        >
-          <span slot="label">Свежее</span>
         </SidebarButton>
         <SidebarButton
           icon={UserGroup}

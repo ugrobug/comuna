@@ -340,7 +340,6 @@ def _serialize_comun(
         "forbid_external_links": bool(getattr(comun, "forbid_external_links", False)),
         "rating": _serialize_comun_rating(comun, current_user=current_user),
         "hide_from_home": bool(comun.hide_from_home),
-        "hide_from_fresh": bool(comun.hide_from_fresh),
         "is_active": comun.is_active,
         "sort_order": comun.sort_order,
         "allowed_template_types": community_service._allowed_templates_for_comun(comun),

@@ -731,7 +731,6 @@ def _serialize_comun(
         "forbid_external_links": bool(getattr(comun, "forbid_external_links", False)),
         "rating": _serialize_comun_rating(comun, current_user=current_user),
         "hide_from_home": bool(comun.hide_from_home),
-        "hide_from_fresh": bool(comun.hide_from_fresh),
         "is_active": comun.is_active,
         "sort_order": comun.sort_order,
         "allowed_template_types": _allowed_templates_for_comun(comun),
@@ -1584,13 +1583,10 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
         comun.allowed_post_templates = normalize_allowed_post_templates(
             body.get("allowed_template_types")
         )
-    if "hide_from_home" in body or "hide_from_fresh" in body:
+    if "hide_from_home" in body:
         if not _comun_can_manage_moderators(current_user, comun):
             return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
-        if "hide_from_home" in body:
-            comun.hide_from_home = bool(body.get("hide_from_home"))
-        if "hide_from_fresh" in body:
-            comun.hide_from_fresh = bool(body.get("hide_from_fresh"))
+        comun.hide_from_home = bool(body.get("hide_from_home"))
     if "is_active" in body and (current_user and current_user.is_staff):
         comun.is_active = bool(body.get("is_active"))
     if "sort_order" in body and (current_user and current_user.is_staff):

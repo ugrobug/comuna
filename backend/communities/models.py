@@ -228,11 +228,6 @@ class Comun(models.Model):
         verbose_name="Не показывать на главной",
         help_text="Посты, созданные внутри этой комуны, не будут попадать в Горячее.",
     )
-    hide_from_fresh = models.BooleanField(
-        default=False,
-        verbose_name="Не показывать в свежем",
-        help_text="Посты, созданные внутри этой комуны, не будут попадать в ленту Свежее.",
-    )
     allowed_post_templates = models.JSONField(
         default=default_allowed_post_templates,
         blank=True,

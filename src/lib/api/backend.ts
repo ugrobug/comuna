@@ -204,21 +204,6 @@ export const buildHomeFeedUrl = (options?: {
   return query ? `${base}?${query}` : base
 }
 
-export const buildFreshFeedUrl = (options?: {
-  hideRead?: boolean
-  onlyRead?: boolean
-}): string => {
-  const base = `${getBackendBaseUrl()}/api/home/fresh/`
-  const params = new URLSearchParams()
-  if (options?.onlyRead) {
-    params.set('only_read', '1')
-  } else if (options?.hideRead) {
-    params.set('hide_read', '1')
-  }
-  const query = params.toString()
-  return query ? `${base}?${query}` : base
-}
-
 export const buildFavoritesFeedUrl = (options?: {
   hideRead?: boolean
   onlyRead?: boolean
@@ -497,7 +482,6 @@ export type BackendComun = {
   forbid_external_links?: boolean
   rating?: BackendComunRating
   hide_from_home?: boolean
-  hide_from_fresh?: boolean
   allowed_template_types?: string[]
   allowed_post_templates?: string[]
   template_type_options?: Array<{ value: string; label: string }>

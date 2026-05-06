@@ -6,7 +6,6 @@
   import {
     type BackendThematicFeed,
     buildFavoritesFeedUrl,
-    buildFreshFeedUrl,
     buildHomeFeedUrl,
     buildMyFeedUrl,
     buildThematicFeedPostsUrl,
@@ -115,12 +114,7 @@
       hideRead: effectiveHideRead,
       onlyRead: readOnly,
     })
-    if (feedType === 'fresh') {
-      baseUrl = buildFreshFeedUrl({
-        hideRead: effectiveHideRead,
-        onlyRead: readOnly,
-      })
-    } else if (feedType === 'favorites') {
+    if (feedType === 'favorites') {
       baseUrl = buildFavoritesFeedUrl()
     } else if (feedType === 'thematic') {
       baseUrl = buildThematicFeedPostsUrl(thematicFeedSlug, {

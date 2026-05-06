@@ -512,7 +512,6 @@ class Command(BaseCommand):
                 votes_up=0,
                 votes_down=0,
                 hide_from_home=False,
-                hide_from_fresh=False,
                 allowed_post_templates=["basic"],
                 is_active=True,
                 sort_order=index + 1,

@@ -321,7 +321,6 @@
       ),
       only_moderators_can_post: Boolean(value?.only_moderators_can_post),
       hide_from_home: Boolean(value?.hide_from_home),
-      hide_from_fresh: Boolean(value?.hide_from_fresh),
       product_tag_id: value?.product_tag_id ?? value?.product_tag?.id ?? null,
       category_ids: comunCategoryIds(value),
       moderator_ids: comunModeratorIds(value),
@@ -1027,7 +1026,6 @@
           ),
           only_moderators_can_post: Boolean(settingsDraft.only_moderators_can_post),
           hide_from_home: canManageComunModerators() ? Boolean(settingsDraft.hide_from_home) : undefined,
-          hide_from_fresh: canManageComunModerators() ? Boolean(settingsDraft.hide_from_fresh) : undefined,
           moderator_ids: canManageComunModerators() ? comunModeratorIds(settingsDraft) : undefined,
           product_tag_id: settingsDraft.product_tag_id ?? null,
           category_ids: settingsDraft.category_ids ?? (settingsDraft.categories ?? []).map((category) => category.id),
@@ -1579,24 +1577,6 @@
                 <span class="block text-sm text-slate-900 dark:text-zinc-100">Показывать в Горячем</span>
                 <span class="block text-xs text-slate-500 dark:text-zinc-400">
                   Если выключить, посты, созданные в этом сообществе, не попадут на главную.
-                </span>
-              </span>
-            </label>
-            <label class="flex items-start gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={!settingsDraft.hide_from_fresh}
-                on:change={() =>
-                  (settingsDraft = {
-                    ...settingsDraft,
-                    hide_from_fresh: !Boolean(settingsDraft.hide_from_fresh),
-                  })}
-                class="mt-0.5"
-              />
-              <span class="min-w-0">
-                <span class="block text-sm text-slate-900 dark:text-zinc-100">Показывать в Свежее</span>
-                <span class="block text-xs text-slate-500 dark:text-zinc-400">
-                  Если выключить, посты, созданные в этом сообществе, останутся только в ленте сообщества и персональных лентах.
                 </span>
               </span>
             </label>

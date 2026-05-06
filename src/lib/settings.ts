@@ -100,7 +100,7 @@ export interface Settings {
     reverseActions: boolean
   }
   infiniteScroll: boolean
-  homeFeed: 'hot' | 'fresh' | 'mine'
+  homeFeed: 'hot' | 'mine'
   language: string | null
   myFeedRubrics: string[]
   myFeedAuthors: string[]
@@ -460,7 +460,7 @@ const migrate = (settings: any): Settings => {
         return true
       })
   }
-  const validHomeFeeds = new Set(['hot', 'fresh', 'mine'])
+  const validHomeFeeds = new Set(['hot', 'mine'])
   if (!validHomeFeeds.has(settings?.homeFeed)) {
     settings.homeFeed = defaultSettings.homeFeed
   }

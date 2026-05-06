@@ -7,7 +7,7 @@ from my_feed.models import ThematicFeed, UserFeedSettings, default_feed_tag_rule
 
 User = get_user_model()
 
-VALID_HOME_FEEDS = {"hot", "fresh", "mine"}
+VALID_HOME_FEEDS = {"hot", "mine"}
 VALID_TAG_RULES = {"hide", "blur"}
 
 

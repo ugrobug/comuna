@@ -4,7 +4,6 @@
     Inbox,
     UserGroup,
     Fire,
-    Clock,
     Megaphone,
     DocumentText,
     InformationCircle,
@@ -232,9 +231,6 @@
   <div class="flex flex-col gap-1">
     <SidebarButton icon={Fire} href="/?feed=hot" active={currentFeed === 'hot'}>
       <span slot="label">Горячее</span>
-    </SidebarButton>
-    <SidebarButton icon={Clock} href="/?feed=fresh" active={currentFeed === 'fresh'}>
-      <span slot="label">Свежее</span>
     </SidebarButton>
     <SidebarButton icon={UserGroup} href="/?feed=mine" active={currentFeed === 'mine'}>
       <span slot="label">Моя лента</span>

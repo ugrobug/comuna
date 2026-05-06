@@ -447,14 +447,13 @@
       <span slot="description">Выберите, какая лента будет открываться при входе на сайт.</span>
       <Select bind:value={$userSettings.homeFeed}>
         <option value="hot">Горячее</option>
-        <option value="fresh">Свежее</option>
         <option value="mine">Моя лента</option>
       </Select>
     </Setting>
     <ToggleSetting
       bind:checked={$userSettings.hideReadPosts}
       title="Скрывать прочитанные"
-      description="Если вы уже открывали пост, он больше не будет показываться в «Горячем», «Свежем» и «Моей ленте»."
+      description="Если вы уже открывали пост, он больше не будет показываться в «Горячем» и «Моей ленте»."
     />
   </Section>
 

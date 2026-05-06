@@ -6,7 +6,6 @@
     UserGroup,
     Cog6Tooth,
     Fire,
-    Clock,
     Megaphone,
     DocumentText,
     InformationCircle,
@@ -142,14 +141,6 @@
       on:click={handleNavigation}
     >
       <span slot="label">Горячее</span>
-    </SidebarButton>
-    <SidebarButton
-      icon={Clock}
-      href="/?feed=fresh"
-      active={currentFeed === 'fresh'}
-      on:click={handleNavigation}
-    >
-      <span slot="label">Свежее</span>
     </SidebarButton>
     <SidebarButton
       icon={UserGroup}
