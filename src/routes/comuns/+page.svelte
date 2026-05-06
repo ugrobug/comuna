@@ -234,20 +234,18 @@
 </script>
 
 <div class="flex flex-col gap-6 max-w-4xl">
-  <section class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-5 sm:p-6">
-    <div class="flex flex-wrap items-center justify-between gap-3">
-      <div class="min-w-0">
-        <Header noMargin>Сообщества</Header>
-      </div>
-      <Button on:click={() => void openCreate()}>
-        {#if $siteUser}
-          Создать сообщество
-        {:else}
-          Войти и создать
-        {/if}
-      </Button>
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div class="min-w-0">
+      <Header noMargin>Сообщества</Header>
     </div>
-  </section>
+    <Button on:click={() => void openCreate()}>
+      {#if $siteUser}
+        Создать сообщество
+      {:else}
+        Войти и создать
+      {/if}
+    </Button>
+  </div>
 
   <section class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-4 sm:p-5">
     <label class="flex flex-col gap-2">

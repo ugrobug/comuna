@@ -630,21 +630,13 @@
       .map((value) => normalizeTagInput(value).toLowerCase())
       .some((value) => value === needle)
   })
-  $: normalizedCategorySearch = settingsCategorySearch.trim().toLowerCase()
   $: normalizedCategoryCreateValue = normalizeCategoryInput(settingsCategorySearch)
   $: hasExactCategoryMatch = (settingsCategoryOptions ?? []).some((category) => {
     const needle = normalizedCategoryCreateValue.toLowerCase()
     if (!needle) return false
     return normalizeCategoryInput(category.name).toLowerCase() === needle
   })
-  $: filteredCategoryOptions = (settingsCategoryOptions ?? [])
-    .filter((category) => {
-      if (!normalizedCategorySearch) return true
-      return [category.name, category.description ?? ''].some((value) =>
-        value.toLowerCase().includes(normalizedCategorySearch)
-      )
-    })
-    .slice(0, 40)
+  $: visibleCategoryOptions = settingsCategoryOptions ?? []
   $: filteredTagOptions = (settingsTagOptions ?? [])
     .filter((tag) => {
       if (!normalizedTagSearch) return false
@@ -1531,44 +1523,28 @@
           </div>
 
           <div class="flex flex-col gap-2">
-            <div class="text-sm text-slate-700 dark:text-zinc-300">Доступные шаблоны публикаций</div>
-            <TemplateTypeDropdown
-              options={settingsTemplateTypeOptions}
-              selectedValues={comunAllowedTemplateTypes(settingsDraft)}
-              disabled={settingsSaving}
-              actionLabel={canManageComunModerators() ? 'Создать шаблон' : ''}
-              customItems={canManageComunModerators() ? customTemplateManagementItems(settingsDraft) : []}
-              customItemsTitle="Пользовательские шаблоны"
-              on:change={(event) => setDraftAllowedTemplateTypes(event.detail)}
-              on:action={openCreateCustomTemplateEditor}
-              on:customitemclick={(event) => openEditCustomTemplateEditor(Number(event.detail))}
-            />
-          </div>
-
-          <div class="flex flex-col gap-2">
             <div class="text-sm text-slate-700 dark:text-zinc-300">Внутренние категории</div>
-            <div class="flex gap-2">
-              <input
-                bind:value={settingsCategorySearch}
-                placeholder="Например: Релизы, Баги, Исследования"
-                class="flex-1 rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"
-              />
-              <Button
-                size="sm"
-                on:click={createCategoryAndSelectDraft}
-                disabled={settingsCategoryCreating || !normalizedCategoryCreateValue}
-              >
-                {settingsCategoryCreating ? '...' : 'Добавить'}
-              </Button>
-            </div>
-            {#if normalizedCategoryCreateValue && !hasExactCategoryMatch}
-              <div class="rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900/60 px-3 py-2 text-sm text-slate-700 dark:text-zinc-300">
-                Новой категории пока нет. Нажмите `Добавить`, чтобы создать ее только для этого сообщества и сразу подключить.
+            <div class="flex flex-col gap-2">
+              <div class="rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-3 flex flex-col gap-3">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <div class="block text-sm font-medium text-slate-900 dark:text-zinc-100">Без категории</div>
+                  </div>
+                </div>
+                <TemplateTypeDropdown
+                  options={settingsTemplateTypeOptions}
+                  selectedValues={comunAllowedTemplateTypes(settingsDraft)}
+                  disabled={settingsSaving}
+                  actionLabel={canManageComunModerators() ? 'Создать шаблон' : ''}
+                  customItems={canManageComunModerators() ? customTemplateManagementItems(settingsDraft) : []}
+                  customItemsTitle="Пользовательские шаблоны"
+                  on:change={(event) => setDraftAllowedTemplateTypes(event.detail)}
+                  on:action={openCreateCustomTemplateEditor}
+                  on:customitemclick={(event) => openEditCustomTemplateEditor(Number(event.detail))}
+                />
               </div>
-            {/if}
-            <div class="grid gap-2 sm:grid-cols-2">
-              {#if filteredCategoryOptions.length}
-                {#each filteredCategoryOptions as category}
+              {#if visibleCategoryOptions.length}
+                {#each visibleCategoryOptions as category}
                   <div class="rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-3 flex flex-col gap-3">
                     <div class="flex items-start justify-between gap-3">
                       <div class="min-w-0">
@@ -1590,23 +1566,42 @@
                         </svg>
                       </button>
                     </div>
-                    <div class="flex flex-col gap-2">
-                      <TemplateTypeDropdown
-                        options={settingsTemplateTypeOptions}
-                        selectedValues={comunCategoryTemplateTypes(category)}
-                        disabled={settingsSaving}
-                        allowEmpty={true}
-                        placeholder="Шаблоны категории"
-                        on:change={(event) => setDraftCategoryTemplateTypes(category.id, event.detail)}
-                      />
-                    </div>
+                    <TemplateTypeDropdown
+                      options={settingsTemplateTypeOptions}
+                      selectedValues={comunCategoryTemplateTypes(category)}
+                      disabled={settingsSaving}
+                      allowEmpty={true}
+                      placeholder="Шаблоны категории"
+                      on:change={(event) => setDraftCategoryTemplateTypes(category.id, event.detail)}
+                    />
                   </div>
                 {/each}
               {:else}
-                <div class="rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-2 text-sm text-slate-500 dark:text-zinc-400 sm:col-span-2">
-                  {normalizedCategorySearch ? 'Категории не найдены' : 'Категории пока не добавлены'}
+                <div class="rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-2 text-sm text-slate-500 dark:text-zinc-400">
+                  Категории пока не добавлены
                 </div>
               {/if}
+            </div>
+            <div class="flex flex-col gap-2 pt-2">
+              <input
+                bind:value={settingsCategorySearch}
+                placeholder="Название новой категории"
+                class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"
+              />
+              {#if normalizedCategoryCreateValue && !hasExactCategoryMatch}
+                <div class="rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900/60 px-3 py-2 text-sm text-slate-700 dark:text-zinc-300">
+                  Новой категории пока нет. Нажмите `Добавить категорию`, чтобы создать ее только для этого сообщества и сразу подключить.
+                </div>
+              {/if}
+              <div>
+                <Button
+                  size="sm"
+                  on:click={createCategoryAndSelectDraft}
+                  disabled={settingsCategoryCreating || !normalizedCategoryCreateValue || hasExactCategoryMatch}
+                >
+                  {settingsCategoryCreating ? '...' : 'Добавить категорию'}
+                </Button>
+              </div>
             </div>
           </div>
         {:else}
