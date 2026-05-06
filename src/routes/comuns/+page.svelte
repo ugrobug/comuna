@@ -238,9 +238,6 @@
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div class="min-w-0">
         <Header noMargin>Сообщества</Header>
-        <div class="text-sm text-slate-600 dark:text-zinc-400">
-          Пространства вокруг продукта: отдельная страница, обсуждения, категории постов, беклог и дорожная карта.
-        </div>
       </div>
       <Button on:click={() => void openCreate()}>
         {#if $siteUser}

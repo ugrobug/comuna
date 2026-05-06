@@ -298,6 +298,19 @@ export type BackendTopAuthor = {
   all_time_posts?: number
 }
 
+export type BackendTopComun = {
+  id: number
+  slug: string
+  name: string
+  title?: string | null
+  logo_url?: string | null
+  avatar_url?: string | null
+  rating: number
+  score?: number
+  posts_count: number
+  comments_count: number
+}
+
 export const buildTopAuthorsUrl = (options?: {
   period?: BackendTopAuthorPeriod
   limit?: number | 'all'
@@ -313,6 +326,14 @@ export const buildTopAuthorsUrl = (options?: {
 export const buildTopAuthorsMonthUrl = (limit = 5): string => {
   const params = new URLSearchParams({ limit: String(limit) })
   return `${getBackendBaseUrl()}/api/authors/top-month/?${params.toString()}`
+}
+
+export const buildTopComunsUrl = (options?: { limit?: number | 'all' }): string => {
+  const params = new URLSearchParams()
+  if (options?.limit !== undefined) {
+    params.set('limit', String(options.limit))
+  }
+  return `${getBackendBaseUrl()}/api/comuns/top/?${params.toString()}`
 }
 
 export const buildStaticPageContentUrl = (slug: string): string => {

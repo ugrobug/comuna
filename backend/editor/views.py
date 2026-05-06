@@ -6,6 +6,7 @@ import secrets
 from datetime import timedelta
 
 from communities import views as community_views
+from communities import service as community_service
 from communities.models import Comun, ComunCategory, ComunPostCategoryAssignment
 from django.conf import settings
 from django.core.files.storage import default_storage
@@ -452,6 +453,7 @@ def user_posts(request: HttpRequest) -> HttpResponse:
         _fv()._apply_post_tags(post, explicit_tags)
         if not is_draft:
             _fv()._maybe_notify_new_author(author, post)
+            community_service._recalculate_comun_ratings_for_post(post)
         return JsonResponse({"ok": True, "post": _serialize_post_for_user(request, post, user)})
 
     if request.method != "GET":
@@ -543,6 +545,8 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
     except Post.DoesNotExist:
         return JsonResponse({"ok": False, "error": "post not found"}, status=404)
 
+    previous_comun_ids = community_service._candidate_comun_ids_for_post(post)
+
     author_links, author_ids, personal_author = _resolve_site_post_author_context(user)
     is_linked = AuthorAdmin.objects.filter(
         user=user, author=post.author, verified_at__isnull=False
@@ -568,6 +572,8 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
         post.is_blocked = True
         post.raw_data = raw_data
         post.save(update_fields=["is_blocked", "raw_data", "updated_at"])
+        for comun_id in previous_comun_ids:
+            community_service._recalculate_comun_rating(comun_id)
         return JsonResponse({"ok": True, "deleted": True, "post_id": post.id})
 
     try:
@@ -791,6 +797,16 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
     _fv()._apply_post_tags(post, explicit_tags)
     if current_is_draft and not target_is_draft:
         _fv()._maybe_notify_new_author(post.author, post)
+    if (
+        current_is_draft != target_is_draft
+        or next_comun
+        or comun_in_payload
+        or comun_category_in_payload
+        or tags_payload is not None
+    ):
+        for comun_id in previous_comun_ids:
+            community_service._recalculate_comun_rating(comun_id)
+        community_service._recalculate_comun_ratings_for_post(post)
     return JsonResponse({"ok": True, "post": _serialize_post_for_user(request, post, user)})
 
 

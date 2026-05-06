@@ -7,6 +7,7 @@ import re
 import secrets
 import urllib.parse
 from collections import defaultdict
+from decimal import Decimal, ROUND_HALF_UP
 
 try:
     import pymorphy2
@@ -15,7 +16,7 @@ except ImportError:  # optional dependency for lemmatization
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Sum
 from django.http import HttpRequest
 from django.utils import timezone
 from django.utils.text import slugify
@@ -60,6 +61,7 @@ _INTERNAL_COMUNA_HOSTS = {"comuna.ru", "www.comuna.ru", "localhost", "127.0.0.1"
 _COMUN_EXTERNAL_LINKS_FORBIDDEN_ERROR = (
     "В этом сообществе запрещены внешние ссылки. Удалите ссылки из текста и шаблона публикации."
 )
+_COMUN_COMMENT_RATING_WEIGHT = Decimal("0.1")
 _MORPH_ANALYZER = None
 
 
@@ -933,6 +935,15 @@ def _comun_manual_posts_filter(comun: Comun) -> Q | None:
     return Q(raw_data__source="manual_comun", raw_data__comun_slug=comun_slug)
 
 
+def _telegram_channel_author_filter() -> Q:
+    return (
+        Q(author__channel_id__isnull=False)
+        | Q(author__channel_url__gt="")
+        | Q(author__invite_url__gt="")
+        | Q(author__telegram_source_comun__isnull=False)
+    )
+
+
 def _comun_post_membership_filter(comun: Comun) -> Q | None:
     source_filter = _comun_source_filter(comun)
     manual_filter = _comun_manual_posts_filter(comun)
@@ -1038,20 +1049,89 @@ def _comun_categories_count(comun: Comun) -> int:
     return len(_comun_categories_list(comun))
 
 
-def _recalculate_comun_rating(comun_id: int) -> tuple[int, int, int]:
+def _comun_rating_value(post_rating_total: int | None, comments_total: int | None) -> Decimal:
+    rating = Decimal(int(post_rating_total or 0)) + (
+        Decimal(int(comments_total or 0)) * _COMUN_COMMENT_RATING_WEIGHT
+    )
+    return rating.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def _recalculate_comun_rating(comun_id: int) -> tuple[int, int, Decimal]:
+    comun = (
+        Comun.objects.filter(id=comun_id)
+        .select_related("product_tag", "source_rubric", "telegram_source_author")
+        .prefetch_related("source_tags", "excluded_authors", "blocked_tags")
+        .first()
+    )
+    if not comun:
+        return 0, 0, Decimal("0.00")
     counts = ComunVote.objects.filter(comun_id=comun_id).aggregate(
         up=Count("id", filter=Q(value=1)),
         down=Count("id", filter=Q(value=-1)),
     )
     votes_up = int(counts.get("up") or 0)
     votes_down = int(counts.get("down") or 0)
-    rating_score = votes_up - votes_down
+    post_totals = _comun_posts_base_queryset(comun).aggregate(
+        post_rating_total=Sum("rating"),
+        comments_total=Sum("comments_count"),
+    )
+    rating_score = _comun_rating_value(
+        post_totals.get("post_rating_total"),
+        post_totals.get("comments_total"),
+    )
     Comun.objects.filter(id=comun_id).update(
         votes_up=votes_up,
         votes_down=votes_down,
         rating_score=rating_score,
     )
     return votes_up, votes_down, rating_score
+
+
+def _candidate_comun_ids_for_post(post: Post | None) -> list[int]:
+    if not post:
+        return []
+
+    combined_filter = Q()
+    has_filter = False
+    raw_data = post.raw_data if isinstance(getattr(post, "raw_data", None), dict) else {}
+    comun_slug = str(raw_data.get("comun_slug") or "").strip()
+    if comun_slug:
+        combined_filter |= Q(slug=comun_slug)
+        has_filter = True
+    if getattr(post, "rubric_id", None):
+        combined_filter |= Q(source_rubric_id=post.rubric_id)
+        has_filter = True
+    if getattr(post, "author_id", None):
+        combined_filter |= Q(telegram_source_author_id=post.author_id)
+        has_filter = True
+
+    tag_ids = list(post.tags.values_list("id", flat=True))
+    if tag_ids:
+        combined_filter |= Q(product_tag_id__in=tag_ids) | Q(source_tags__id__in=tag_ids)
+        has_filter = True
+
+    if not has_filter:
+        return []
+
+    return list(
+        Comun.objects.filter(combined_filter, is_active=True)
+        .exclude(slug__iexact="faq")
+        .values_list("id", flat=True)
+        .distinct()
+    )
+
+
+def _recalculate_comun_ratings_for_post(post_or_id: Post | int | None) -> None:
+    if not post_or_id:
+        return
+    if isinstance(post_or_id, Post):
+        post = post_or_id
+    else:
+        post = Post.objects.filter(id=post_or_id).prefetch_related("tags").first()
+    if not post:
+        return
+    for comun_id in _candidate_comun_ids_for_post(post):
+        _recalculate_comun_rating(comun_id)
 
 
 def _comun_posts_base_queryset(comun: Comun, now=None):
@@ -1069,6 +1149,12 @@ def _comun_posts_base_queryset(comun: Comun, now=None):
         .filter(_publish_ready_filter(now))
         .distinct()
     )
+    telegram_source_author_id = getattr(comun, "telegram_source_author_id", None)
+    channel_author_filter = _telegram_channel_author_filter()
+    if telegram_source_author_id:
+        base_query = base_query.exclude(channel_author_filter & ~Q(author_id=telegram_source_author_id))
+    else:
+        base_query = base_query.exclude(channel_author_filter)
     excluded_author_ids = list(comun.excluded_authors.values_list("id", flat=True))
     if excluded_author_ids:
         base_query = base_query.exclude(author_id__in=excluded_author_ids)
@@ -1155,6 +1241,7 @@ def _maybe_notify_new_author(author: Author, post: Post) -> None:
 __all__ = [
     "_COMUN_ACTIVITY_POINTS",
     "_COMUN_EXTERNAL_LINKS_FORBIDDEN_ERROR",
+    "_COMUN_COMMENT_RATING_WEIGHT",
     "_active_comun_category_queryset",
     "_active_comun_glossary_queryset",
     "_allowed_template_overrides_for_comun_category",
@@ -1165,6 +1252,7 @@ __all__ = [
     "_author_avatar_logo_url",
     "_author_avatar_url",
     "_author_telegram_source_comun",
+    "_candidate_comun_ids_for_post",
     "_comun_can_manage_moderators",
     "_comun_categories_count",
     "_comun_categories_list",
@@ -1213,6 +1301,7 @@ __all__ = [
     "_public_user_author_ids",
     "_publish_ready_filter",
     "_recalculate_comun_rating",
+    "_recalculate_comun_ratings_for_post",
     "_rubric_icon_url",
     "_serialize_backend_post_card",
     "_serialize_post_comun",

@@ -222,7 +222,12 @@ class Comun(models.Model):
         verbose_name="Запретить внешние ссылки",
         help_text="Если включено, посты с внешними ссылками не будут попадать в сообщество, а новые публикации с такими ссылками будут отклоняться.",
     )
-    rating_score = models.IntegerField(default=0, verbose_name="Рейтинг")
+    rating_score = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0,
+        verbose_name="Рейтинг",
+    )
     votes_up = models.PositiveIntegerField(default=0, verbose_name="Буду использовать")
     votes_down = models.PositiveIntegerField(default=0, verbose_name="Не нравится")
     hide_from_home = models.BooleanField(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.db.models import Count
@@ -139,8 +140,14 @@ def _serialize_comun_rating(
             .first()
             or 0
         )
+    try:
+        score = round(float(getattr(comun, "rating_score", 0) or 0), 2)
+    except (TypeError, ValueError):
+        score = 0.0
+    if isinstance(getattr(comun, "rating_score", None), Decimal):
+        score = float(getattr(comun, "rating_score", 0) or 0)
     return {
-        "score": int(getattr(comun, "rating_score", 0) or 0),
+        "score": score,
         "upvotes": int(getattr(comun, "votes_up", 0) or 0),
         "downvotes": int(getattr(comun, "votes_down", 0) or 0),
         "user_vote": int(user_vote or 0),

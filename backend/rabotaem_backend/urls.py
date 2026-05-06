@@ -61,7 +61,7 @@ from notifications.views import (
     auth_notifications,
     auth_notifications_read_all,
 )
-from ratings.views import top_authors, top_authors_month
+from ratings.views import top_authors, top_authors_month, top_comuns, top_comuns_month
 from telegram_integration.views import telegram_auth, telegram_webhook
 from users.views import (
     auth_me,
@@ -101,6 +101,8 @@ urlpatterns = [
         comun_create_from_telegram_channel,
         name="comun-create-from-telegram-channel",
     ),
+    path("api/comuns/top/", top_comuns, name="top-comuns"),
+    path("api/comuns/top-month/", top_comuns_month, name="top-comuns-month"),
     path("api/comuns/<slug:slug>/", comun_detail_manage, name="comun-detail-manage"),
     path("api/comuns/<slug:slug>/vote/", comun_vote, name="comun-vote"),
     path("api/comuns/<slug:slug>/posts/", comun_posts, name="comun-posts"),

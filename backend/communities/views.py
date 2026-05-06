@@ -1362,7 +1362,7 @@ def comuns_list_create(request: HttpRequest) -> HttpResponse:
             Comun.objects.filter(is_active=True).exclude(slug__iexact="faq")
             .select_related("creator", "product_tag", "source_rubric", "telegram_source_author")
             .prefetch_related("moderators", "excluded_authors", "categories", "tags", "source_tags", "blocked_tags")
-            .order_by("sort_order", "name")
+            .order_by("-rating_score", "sort_order", "name")
         )
         payload = [
             _serialize_comun(request, comun, current_user=current_user)
@@ -1853,6 +1853,8 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
         if custom_templates_error:
             return JsonResponse({"ok": False, "error": custom_templates_error}, status=400)
 
+    _recalculate_comun_rating(comun.id)
+
     comun = (
         Comun.objects.filter(id=comun.id)
         .select_related("creator", "product_tag", "source_rubric", "welcome_post", "telegram_source_author")
@@ -2096,6 +2098,7 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
                 previous_category=None,
             )
         community_service._maybe_notify_new_author(author, post)
+        _recalculate_comun_rating(comun.id)
         serialized_post = editor_service._serialize_post_for_user(request, post, current_user)
         serialized_post["comun_category_id"] = category.id if category else None
         serialized_post["comun_category"] = (

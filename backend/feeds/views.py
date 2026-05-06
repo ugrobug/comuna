@@ -2118,6 +2118,7 @@ def post_comments(request: HttpRequest, post_id: int) -> HttpResponse:
     )
     Post.objects.filter(id=post.id).update(comments_count=F("comments_count") + 1)
     post.refresh_from_db(fields=["comments_count"])
+    community_service._recalculate_comun_ratings_for_post(post)
     _maybe_notify_post_comment(post, comment)
     _maybe_notify_comment_reply(post, parent, comment)
     _maybe_notify_author_comment(post, comment)
@@ -2190,6 +2191,7 @@ def comment_detail(request: HttpRequest, comment_id: int) -> HttpResponse:
     Post.objects.filter(id=comment.post_id, comments_count__gt=0).update(
         comments_count=F("comments_count") - 1
     )
+    community_service._recalculate_comun_ratings_for_post(comment.post_id)
 
     return JsonResponse({"ok": True, "comment_id": comment.id})
 
@@ -2306,6 +2308,7 @@ def post_like(request: HttpRequest, post_id: int) -> HttpResponse:
             actor_id=user.id,
             post_id=post.id,
         )
+        community_service._recalculate_comun_ratings_for_post(post.id)
 
     liked = new_vote == 1
 

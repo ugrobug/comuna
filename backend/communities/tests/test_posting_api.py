@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from communities import service as community_service
 from communities.models import Comun, ComunCategory, ComunPostCategoryAssignment
-from feeds.models import Author, Post
+from feeds.models import Author, Post, Rubric
 from users.models import AuthorAdmin
 
 
@@ -273,6 +273,53 @@ class ComunPostingApiTests(TestCase):
         self.assertIsNone(comun.creator_id)
         self.assertEqual(comun.logo_url, "https://example.com/orphan-channel.jpg")
         self.assertEqual(comun.telegram_source_author_id, telegram_author.id)
+
+    def test_rubric_comun_excludes_channel_posts_not_linked_as_source(self):
+        rubric = Rubric.objects.create(name="Путешествия", slug="travel", sort_order=1)
+        rubric_comun = Comun.objects.create(
+            name="Путешествия",
+            slug="travel-comun",
+            creator=self.user,
+            source_rubric=rubric,
+        )
+        channel_author = Author.objects.create(
+            username="travel-channel",
+            title="Travel Channel",
+            channel_id=780,
+            channel_url="https://t.me/travel-channel",
+            rubric=rubric,
+        )
+        channel_comun = Comun.objects.create(
+            name="Travel Channel",
+            slug="travel-channel-comun",
+            creator=self.user,
+            telegram_source_author=channel_author,
+            telegram_channel_username="travel-channel",
+        )
+        regular_author = Author.objects.create(username="regular-author", title="Regular Author")
+        channel_post = Post.objects.create(
+            author=channel_author,
+            message_id=1,
+            title="Пост канала",
+            rubric=rubric,
+        )
+        regular_post = Post.objects.create(
+            author=regular_author,
+            message_id=1,
+            title="Обычный пост",
+            rubric=rubric,
+        )
+
+        rubric_post_ids = set(
+            community_service._comun_posts_base_queryset(rubric_comun).values_list("id", flat=True)
+        )
+        channel_post_ids = set(
+            community_service._comun_posts_base_queryset(channel_comun).values_list("id", flat=True)
+        )
+
+        self.assertNotIn(channel_post.id, rubric_post_ids)
+        self.assertIn(regular_post.id, rubric_post_ids)
+        self.assertIn(channel_post.id, channel_post_ids)
 
     def test_comun_access_uses_personal_site_author_rating(self):
         personal_author_id = editor_personal_author_id(self.user)

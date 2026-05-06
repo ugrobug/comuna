@@ -46,6 +46,7 @@ class ComunAdmin(admin.ModelAdmin):
     form = ComunAdminForm
     list_display = (
         "name",
+        "rating_score",
         "slug",
         "creator",
         "product_tag",
@@ -60,6 +61,8 @@ class ComunAdmin(admin.ModelAdmin):
     prepopulated_fields = {"slug": ("name",)}
     filter_horizontal = ("moderators", "categories")
     raw_id_fields = ("creator", "product_tag", "welcome_post")
+    readonly_fields = ("rating_score",)
+    ordering = ("-rating_score", "sort_order", "name")
     fields = (
         "name",
         "slug",
@@ -73,6 +76,7 @@ class ComunAdmin(admin.ModelAdmin):
         "target_audience",
         "categories",
         "allowed_post_templates",
+        "rating_score",
         "sort_order",
         "is_active",
     )
