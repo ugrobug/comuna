@@ -746,6 +746,18 @@ def _post_comun_slug(post: Post) -> str:
     return str(raw_data.get("comun_slug") or "").strip()
 
 
+def _is_telegram_channel_author(author: Author | None) -> bool:
+    if not author:
+        return False
+    if getattr(author, "channel_id", None) is not None:
+        return True
+    if str(getattr(author, "channel_url", "") or "").strip():
+        return True
+    if str(getattr(author, "invite_url", "") or "").strip():
+        return True
+    return _author_telegram_source_comun(author) is not None
+
+
 def _post_comun(post: Post) -> Comun | None:
     comun_slug = _post_comun_slug(post)
     if comun_slug:
@@ -761,6 +773,14 @@ def _post_comun(post: Post) -> Comun | None:
     )
     if assignment:
         return assignment.comun
+
+    author = getattr(post, "author", None)
+    author_comun = _author_telegram_source_comun(author)
+    if author_comun and author_comun.is_active:
+        return author_comun
+
+    if _is_telegram_channel_author(author):
+        return None
 
     rubric_id = getattr(post, "rubric_id", None)
     if rubric_id:

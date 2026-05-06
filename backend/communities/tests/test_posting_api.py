@@ -320,6 +320,14 @@ class ComunPostingApiTests(TestCase):
         self.assertNotIn(channel_post.id, rubric_post_ids)
         self.assertIn(regular_post.id, rubric_post_ids)
         self.assertIn(channel_post.id, channel_post_ids)
+        self.assertEqual(
+            community_service._serialize_post_comun(None, channel_post)["slug"],
+            channel_comun.slug,
+        )
+        self.assertEqual(
+            community_service._serialize_post_comun(None, regular_post)["slug"],
+            rubric_comun.slug,
+        )
 
     def test_comun_access_uses_personal_site_author_rating(self):
         personal_author_id = editor_personal_author_id(self.user)
