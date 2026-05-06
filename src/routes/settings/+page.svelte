@@ -24,7 +24,6 @@
   import { profile } from '$lib/auth'
   import {
     buildComunFromTelegramChannelUrl,
-    buildRubricsUrl,
     buildTagsListUrl,
   } from '$lib/api/backend'
   import { normalizeTag } from '$lib/tags'
@@ -40,8 +39,6 @@
   import { colorScheme, inDarkColorScheme } from '$lib/ui/colors'
   let importing = false
   let importText = ''
-  let myFeedRubrics: Array<{ name: string; slug: string }> = []
-  let myFeedRubricsLoading = false
   let manualBlacklistTag = ''
   let tagLemmaMap = new Map<string, string>()
   let siteProfileDisplayName = ''
@@ -80,21 +77,6 @@
     $userSettings = { ...$userSettings, tagRules: {} }
   }
 
-  const loadMyFeedRubrics = async () => {
-    if (myFeedRubricsLoading) return
-    myFeedRubricsLoading = true
-    try {
-      const response = await fetch(buildRubricsUrl())
-      if (!response.ok) return
-      const data = await response.json()
-      myFeedRubrics = data.rubrics ?? []
-    } catch (error) {
-      myFeedRubrics = []
-    } finally {
-      myFeedRubricsLoading = false
-    }
-  }
-
   const loadTagLemmas = async () => {
     try {
       const response = await fetch(buildTagsListUrl())
@@ -130,16 +112,6 @@
     if (changed) {
       $userSettings = { ...$userSettings, tagRules: nextRules }
     }
-  }
-
-  const toggleMyFeedRubric = (slug: string) => {
-    const current = new Set($userSettings.myFeedRubrics ?? [])
-    if (current.has(slug)) {
-      current.delete(slug)
-    } else {
-      current.add(slug)
-    }
-    $userSettings = { ...$userSettings, myFeedRubrics: Array.from(current) }
   }
 
   const removeMyFeedAuthor = (username: string) => {
@@ -273,7 +245,6 @@
   }
 
   onMount(() => {
-    loadMyFeedRubrics()
     loadTagLemmas()
     if ($siteToken) {
       refreshSiteUser().catch(() => {})
@@ -458,34 +429,6 @@
   </Section>
 
   <Section id="my-feed" title="Моя лента">
-    <Setting itemsClass="!flex-col !items-start">
-      <span slot="title">Сообщества моей ленты</span>
-      <span slot="description">
-        Выберите интересные сообщества — они будут отображаться в разделе «Моя лента».
-      </span>
-      {#if myFeedRubricsLoading}
-        <span class="text-sm text-slate-500">Загружаем сообщества...</span>
-      {:else if myFeedRubrics.length}
-        <div class="grid gap-3 sm:grid-cols-2 w-full">
-          {#each myFeedRubrics as rubric}
-            <label class="flex items-center gap-3 text-sm text-slate-700 dark:text-zinc-200">
-              <input
-                class="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-900"
-                type="checkbox"
-                checked={$userSettings.myFeedRubrics?.includes(rubric.slug)}
-                on:change={() => toggleMyFeedRubric(rubric.slug)}
-              />
-              <span>{rubric.name}</span>
-            </label>
-          {/each}
-        </div>
-        <a href="/?feed=mine" class="text-sm text-blue-600 dark:text-blue-400 hover:underline">
-          Открыть мою ленту
-        </a>
-      {:else}
-        <span class="text-sm text-slate-500">Сообщества пока недоступны.</span>
-      {/if}
-    </Setting>
     <Setting itemsClass="!flex-col !items-start">
       <span slot="title">Авторы моей ленты</span>
       <span slot="description">

@@ -6,7 +6,7 @@
   import { buildComunsUrl, buildTagsEnsureUrl, type BackendComun } from '$lib/api/backend'
   import { refreshSiteUser, siteToken, siteUser, uploadSiteImage } from '$lib/siteAuth'
   import { goto } from '$app/navigation'
-  import { subscribeToComunBySlug } from '$lib/settings'
+  import { subscribeToComunBySlug, userSettings } from '$lib/settings'
 
   export let data
 
@@ -47,6 +47,61 @@
   const formatRatingValue = (value?: number | null) => {
     const numeric = Math.max(Number(value ?? 0) || 0, 0)
     return Number.isInteger(numeric) ? String(numeric) : numeric.toFixed(2).replace(/\.?0+$/, '')
+  }
+
+  $: myFeedComunSlugSet = new Set(
+    ($userSettings.myFeedComuns ?? []).map((slug) => slug.trim()).filter(Boolean)
+  )
+
+  const isSubscribedToComun = (slug?: string | null) => {
+    const normalizedSlug = String(slug ?? '').trim()
+    return Boolean(normalizedSlug && myFeedComunSlugSet.has(normalizedSlug))
+  }
+
+  const comunCategorySlugs = (comun: BackendComun) =>
+    (comun.categories ?? [])
+      .map((category) => String(category?.slug ?? '').trim())
+      .filter(Boolean)
+
+  const toggleComunSubscription = (event: MouseEvent, comun: BackendComun) => {
+    event.preventDefault()
+    event.stopPropagation()
+
+    const slug = String(comun.slug ?? '').trim()
+    if (!slug) return
+    if (!$siteToken) {
+      const next = encodeURIComponent(`${$page.url.pathname}${$page.url.search}`)
+      goto(`/account?next=${next}`)
+      return
+    }
+
+    const nextComuns = new Set(
+      ($userSettings.myFeedComuns ?? []).map((value) => value.trim()).filter(Boolean)
+    )
+    const nextCategoryMap = { ...($userSettings.myFeedComunCategories ?? {}) }
+    if (nextComuns.has(slug)) {
+      nextComuns.delete(slug)
+      delete nextCategoryMap[slug]
+      $userSettings = {
+        ...$userSettings,
+        myFeedComuns: Array.from(nextComuns),
+        myFeedComunCategories: nextCategoryMap,
+      }
+      toast({ content: 'Сообщество убрано из "Моей ленты"' })
+      return
+    }
+
+    nextComuns.add(slug)
+    const categorySlugs = comunCategorySlugs(comun)
+    if (categorySlugs.length) {
+      nextCategoryMap[slug] = categorySlugs
+    }
+    $userSettings = {
+      ...$userSettings,
+      myFeedComuns: Array.from(nextComuns),
+      myFeedComunCategories: nextCategoryMap,
+    }
+    toast({ content: 'Посты этого сообщества будут попадать в "Мою ленту"' })
   }
 
   $: filteredComuns = (() => {
@@ -262,24 +317,51 @@
   {#if filteredComuns.length}
     <div class="grid gap-4 sm:grid-cols-2">
       {#each filteredComuns as comun}
-        <a
-          href={`/comuns/${comun.slug}`}
+        <div
           class="group rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-4 sm:p-5 hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-sm transition-all min-w-0"
         >
           <div class="flex items-start gap-4 min-w-0">
-            <div class="h-14 w-14 rounded-xl overflow-hidden border border-slate-200 dark:border-zinc-800 bg-slate-100 dark:bg-zinc-800 shrink-0">
-              {#if comun.logo_url}
-                <img src={comun.logo_url} alt={comun.name} class="h-full w-full object-cover" />
-              {:else}
-                <div
-                  class="comun-logo-fallback h-full w-full grid place-items-center text-xl font-bold"
-                  style={comunPlaceholderStyle(comun.name)}
-                >
-                  {comunInitial(comun.name)}
-                </div>
-              {/if}
+            <div class="flex shrink-0 flex-col items-center gap-2">
+              <a
+                href={`/comuns/${comun.slug}`}
+                class="h-14 w-14 rounded-xl overflow-hidden border border-slate-200 dark:border-zinc-800 bg-slate-100 dark:bg-zinc-800"
+                aria-label={`Открыть сообщество ${comun.name}`}
+              >
+                {#if comun.logo_url}
+                  <img src={comun.logo_url} alt={comun.name} class="h-full w-full object-cover" />
+                {:else}
+                  <div
+                    class="comun-logo-fallback h-full w-full grid place-items-center text-xl font-bold"
+                    style={comunPlaceholderStyle(comun.name)}
+                  >
+                    {comunInitial(comun.name)}
+                  </div>
+                {/if}
+              </a>
+              <button
+                type="button"
+                class={`grid h-9 w-9 place-items-center rounded-full border transition ${
+                  isSubscribedToComun(comun.slug)
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-900/70 dark:bg-emerald-950/40 dark:text-emerald-300'
+                    : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-900/70 dark:bg-blue-950/40 dark:text-blue-300'
+                }`}
+                title={isSubscribedToComun(comun.slug) ? 'Вы подписаны' : 'Подписаться'}
+                aria-label={isSubscribedToComun(comun.slug) ? `Отписаться от ${comun.name}` : `Подписаться на ${comun.name}`}
+                aria-pressed={isSubscribedToComun(comun.slug)}
+                on:click={(event) => toggleComunSubscription(event, comun)}
+              >
+                {#if isSubscribedToComun(comun.slug)}
+                  <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                    <path d="M4.5 10.4 8.1 14 15.7 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                {:else}
+                  <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                    <path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+                  </svg>
+                {/if}
+              </button>
             </div>
-            <div class="min-w-0 flex-1">
+            <a href={`/comuns/${comun.slug}`} class="min-w-0 flex-1">
               <div class="flex items-center gap-2 min-w-0">
                 <div class="text-base font-semibold text-slate-900 dark:text-zinc-100 truncate">
                   {comun.name}
@@ -315,9 +397,9 @@
                   {/if}
                 </div>
               {/if}
-            </div>
+            </a>
           </div>
-        </a>
+        </div>
       {/each}
     </div>
   {:else}
