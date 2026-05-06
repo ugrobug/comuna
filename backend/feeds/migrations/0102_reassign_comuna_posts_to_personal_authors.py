@@ -61,7 +61,7 @@ def reassign_comuna_posts_to_personal_authors(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("feeds", "0100_userfeedsettings"),
+        ("feeds", "0101_remove_comun_hide_from_fresh"),
     ]
 
     operations = [
