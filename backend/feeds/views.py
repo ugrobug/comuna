@@ -241,8 +241,6 @@ def _author_display_fields(
 ) -> tuple[str | None, str]:
     channel_url = author.invite_url or author.channel_url
     title = author.title or author.username
-    if _is_comuna_rubric(rubric):
-        return "", "Admin"
     if not channel_url:
         channel_url = post_channel_url
     site_user = _site_user_for_personal_author(request, author)
@@ -258,8 +256,6 @@ def _author_avatar_for_rubric(
     author: Author,
     rubric: Rubric | None,
 ) -> str | None:
-    if _is_comuna_rubric(rubric):
-        return None
     site_user = _site_user_for_personal_author(request, author)
     if site_user:
         site_avatar = _site_user_avatar_url(request, site_user)
@@ -273,7 +269,7 @@ def _author_admin_fields_for_user(
     author: Author,
     rubric: Rubric | None = None,
 ) -> dict[str, bool]:
-    if not user or not user.is_staff or _is_comuna_rubric(rubric):
+    if not user or not user.is_staff:
         return {}
     return {"notify_comments_enabled": bool(author.notify_comments)}
 
