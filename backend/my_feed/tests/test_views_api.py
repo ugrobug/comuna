@@ -111,12 +111,32 @@ class MyFeedComunCategoryTests(TestCase):
 class UserFeedSettingsApiTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="feed-user", password="secret")
+        self.comun = Comun.objects.create(name="Subscribed Comun", slug="subscribed", creator=self.user)
+        self.other_comun = Comun.objects.create(name="Other Comun", slug="other", creator=self.user)
         self.author = Author.objects.create(username="chosen-author", title="Chosen Author")
         self.post = Post.objects.create(
             author=self.author,
             message_id=301,
             title="Chosen post",
             content="{}",
+            is_pending=False,
+            is_blocked=False,
+        )
+        self.comun_post = Post.objects.create(
+            author=self.author,
+            message_id=302,
+            title="Subscribed comun post",
+            content="{}",
+            raw_data={"source": "manual_comun", "comun_slug": self.comun.slug},
+            is_pending=False,
+            is_blocked=False,
+        )
+        self.other_comun_post = Post.objects.create(
+            author=self.author,
+            message_id=303,
+            title="Other comun post",
+            content="{}",
+            raw_data={"source": "manual_comun", "comun_slug": self.other_comun.slug},
             is_pending=False,
             is_blocked=False,
         )
@@ -148,7 +168,19 @@ class UserFeedSettingsApiTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content.decode())
         self.assertTrue(response.json()["has_customizations"])
 
-    def test_my_feed_uses_saved_settings_without_query_filters(self):
+    def test_my_feed_uses_saved_comun_subscriptions_without_query_filters(self):
+        UserFeedSettings.objects.create(
+            user=self.user,
+            home_feed="mine",
+            my_feed_authors=["chosen-author"],
+            my_feed_comuns=[self.comun.slug],
+        )
+        response = self.client.get(reverse("my-feed"), {"limit": "10"}, **self.auth_headers)
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        self.assertEqual([post["id"] for post in response.json()["posts"]], [self.comun_post.id])
+
+    def test_my_feed_ignores_saved_author_selection_without_comun_subscription(self):
         UserFeedSettings.objects.create(
             user=self.user,
             home_feed="mine",
@@ -157,4 +189,4 @@ class UserFeedSettingsApiTests(TestCase):
         response = self.client.get(reverse("my-feed"), {"limit": "10"}, **self.auth_headers)
 
         self.assertEqual(response.status_code, 200, response.content.decode())
-        self.assertEqual([post["id"] for post in response.json()["posts"]], [self.post.id])
+        self.assertEqual(response.json()["posts"], [])

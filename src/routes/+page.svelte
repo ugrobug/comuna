@@ -11,10 +11,6 @@
     buildThematicFeedPostsUrl,
   } from '$lib/api/backend'
   import FeedPostsList from '$lib/components/feeds/FeedPostsList.svelte'
-  import {
-    buildMyFeedSettingsFromFolderPreset,
-    hasMyFeedCustomizations,
-  } from '$lib/feeds/myFeed'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import { siteToken, siteUser } from '$lib/siteAuth'
   import { feedSettingsHydrated, userSettings } from '$lib/settings'
@@ -88,23 +84,6 @@
     await loadMore()
   }
 
-  const applyThematicFeedToMyFeed = async () => {
-    if (!thematicFeedMeta) return
-    if (!$siteUser) {
-      const next = encodeURIComponent(`${$page.url.pathname}${$page.url.search}`)
-      goto(`/account?next=${next}`)
-      return
-    }
-    if (browser && hasMyFeedCustomizations($userSettings)) {
-      const confirmed = window.confirm(
-        'У вас уже настроена "Моя лента". Нажатие на кнопку заменит текущие настройки настройками папки. После этого вы сможете дополнительно настроить свою ленту. Продолжить?'
-      )
-      if (!confirmed) return
-    }
-    $userSettings = buildMyFeedSettingsFromFolderPreset($userSettings, thematicFeedMeta)
-    goto('/?feed=mine')
-  }
-
   const onThematicFeedUpdated = (folder: BackendThematicFeed) => {
     thematicFeedMeta = folder
   }
@@ -134,9 +113,9 @@
             readOnly
           )
         : buildMyFeedUrl(
-            selectedRubrics,
-            selectedAuthors,
-            selectedMyFeedTags,
+            [],
+            [],
+            [],
             selectedMyFeedComuns,
             selectedMyFeedComunCategories,
             hideNegativeMyFeed,
@@ -267,16 +246,9 @@
   $: readParam = $page.url.searchParams.get('read')
   $: readOnly = readParam === '1' || readParam === 'true' || readParam === 'yes'
 
-  $: selectedRubrics = $userSettings.myFeedRubrics ?? []
-  $: selectedAuthors = $userSettings.myFeedAuthors ?? []
-  $: selectedMyFeedTags = $userSettings.myFeedTags ?? []
   $: selectedMyFeedComuns = $userSettings.myFeedComuns ?? []
   $: selectedMyFeedComunCategories = $userSettings.myFeedComunCategories ?? {}
-  $: myFeedHasBaseSettings =
-    selectedRubrics.length > 0 ||
-    selectedAuthors.length > 0 ||
-    selectedMyFeedTags.length > 0 ||
-    selectedMyFeedComuns.length > 0
+  $: myFeedHasBaseSettings = selectedMyFeedComuns.length > 0
   $: hiddenAuthorKeys = new Set(
     ($userSettings.hiddenAuthors ?? []).map((value) => value.toLowerCase())
   )
@@ -379,7 +351,7 @@
   $: if (feedType === 'mine') {
     const authKey = $siteUser ? 'auth' : 'anon'
     const hydrationKey = $siteUser ? ($feedSettingsHydrated ? 'settings-ready' : 'settings-loading') : 'no-settings'
-    const key = `${authKey}:${hydrationKey}:${selectedRubrics.join(',')}:${selectedAuthors.join(',')}:${selectedMyFeedTags.join(',')}:${selectedMyFeedComuns.join(',')}:${JSON.stringify(selectedMyFeedComunCategories)}:${hideNegativeMyFeed ? 'no-negative' : 'all'}:${readOnly ? 'only-read' : effectiveHideRead ? 'hide-read' : 'all-read'}`
+    const key = `${authKey}:${hydrationKey}:${selectedMyFeedComuns.join(',')}:${JSON.stringify(selectedMyFeedComunCategories)}:${hideNegativeMyFeed ? 'no-negative' : 'all'}:${readOnly ? 'only-read' : effectiveHideRead ? 'hide-read' : 'all-read'}`
     if (key !== lastMyFeedKey) {
       lastMyFeedKey = key
       posts = []
@@ -430,25 +402,16 @@
             {thematicFeedMeta.description}
           </div>
         {/if}
-        {#if thematicFeedMeta}
+        {#if thematicFeedMeta && canManageCurrentFolder()}
           <div class="flex flex-wrap gap-2 pt-1">
             <button
               type="button"
-              class="inline-flex items-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-200"
-              on:click={applyThematicFeedToMyFeed}
+              class="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              on:click={openCurrentFolderSettings}
             >
-              Сделать моей лентой
+              <Icon src={Cog6Tooth} size="16" mini />
+              <span>Настройки</span>
             </button>
-            {#if canManageCurrentFolder()}
-              <button
-                type="button"
-                class="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
-                on:click={openCurrentFolderSettings}
-              >
-                <Icon src={Cog6Tooth} size="16" mini />
-                <span>Настройки</span>
-              </button>
-            {/if}
           </div>
         {/if}
       </div>

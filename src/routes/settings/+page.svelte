@@ -50,7 +50,6 @@
   let channelVerificationCodeLoading = false
   let channelVerificationCodeError = ''
   let creatingComunByAuthorId: number | null = null
-  $: myFeedAuthors = $userSettings.myFeedAuthors ?? []
   $: hiddenAuthors = $userSettings.hiddenAuthors ?? []
   $: blacklistedTags = Object.entries($userSettings.tagRules ?? {})
     .filter(([, rule]) => rule === 'hide')
@@ -111,15 +110,6 @@
     }
     if (changed) {
       $userSettings = { ...$userSettings, tagRules: nextRules }
-    }
-  }
-
-  const removeMyFeedAuthor = (username: string) => {
-    $userSettings = {
-      ...$userSettings,
-      myFeedAuthors: ($userSettings.myFeedAuthors ?? []).filter(
-        (value) => value !== username
-      ),
     }
   }
 
@@ -429,31 +419,6 @@
   </Section>
 
   <Section id="my-feed" title="Моя лента">
-    <Setting itemsClass="!flex-col !items-start">
-      <span slot="title">Авторы моей ленты</span>
-      <span slot="description">
-        Добавляйте авторов на их страницах кнопкой «Добавить в мою ленту».
-      </span>
-      {#if myFeedAuthors.length}
-        <div class="flex flex-wrap gap-2">
-          {#each myFeedAuthors as username}
-            <span class="inline-flex items-center gap-2 rounded-full bg-slate-100 dark:bg-zinc-800 px-3 py-1 text-xs font-medium text-slate-700 dark:text-zinc-200">
-              @{username}
-              <button
-                type="button"
-                class="text-slate-500 hover:text-slate-700 dark:text-zinc-400 dark:hover:text-zinc-200"
-                aria-label={`Удалить автора ${username} из моей ленты`}
-                on:click={() => removeMyFeedAuthor(username)}
-              >
-                ×
-              </button>
-            </span>
-          {/each}
-        </div>
-      {:else}
-        <span class="text-sm text-slate-500 dark:text-zinc-400">Пока нет выбранных авторов.</span>
-      {/if}
-    </Setting>
     <Setting itemsClass="!flex-col !items-start">
       <span slot="title">Скрытые авторы</span>
       <span slot="description">

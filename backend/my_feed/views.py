@@ -305,7 +305,7 @@ def my_feed(request: HttpRequest) -> HttpResponse:
     current_user = _fv()._get_user_from_request(request)
     uses_query_selection = any(
         param in request.GET
-        for param in ("rubrics", "authors", "tags", "comuns", "comun_categories")
+        for param in ("comuns", "comun_categories")
     )
     saved_feed_settings = None
     if current_user and not uses_query_selection:
@@ -314,15 +314,15 @@ def my_feed(request: HttpRequest) -> HttpResponse:
         )
 
     if saved_feed_settings:
-        rubric_slugs = saved_feed_settings["my_feed_rubrics"]
-        author_usernames = saved_feed_settings["my_feed_authors"]
-        tag_values = saved_feed_settings["my_feed_tags"]
+        rubric_slugs = []
+        author_usernames = []
+        tag_values = []
         comun_slugs = saved_feed_settings["my_feed_comuns"]
         comun_category_selection = saved_feed_settings["my_feed_comun_categories"]
     else:
-        rubric_slugs = _parse_string_csv(request.GET.get("rubrics", ""))
-        author_usernames = _parse_string_csv(request.GET.get("authors", ""), strip_prefix="@")
-        tag_values = _parse_string_csv(request.GET.get("tags", ""))
+        rubric_slugs = []
+        author_usernames = []
+        tag_values = []
         comun_slugs = _parse_string_csv(request.GET.get("comuns", ""))
         comun_category_selection = _parse_comun_category_query(
             request.GET.get("comun_categories", "")
