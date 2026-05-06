@@ -66,8 +66,9 @@
   }
 
   $: selectedMyFeedComuns = $userSettings.myFeedComuns ?? []
+  $: selectedMyFeedAuthors = $userSettings.myFeedAuthors ?? []
   $: selectedComunSlugSet = new Set(selectedMyFeedComuns.map(normalizeSlug))
-  $: myFeedHasBaseSettings = selectedMyFeedComuns.length > 0
+  $: myFeedHasBaseSettings = selectedMyFeedComuns.length > 0 || selectedMyFeedAuthors.length > 0
   $: hiddenAuthorKeys = new Set(
     ($userSettings.hiddenAuthors ?? []).map((value) => value.toLowerCase())
   )
@@ -119,7 +120,7 @@
               Ваша лента пока не настроена.
             </div>
             <div class="text-sm text-slate-500 dark:text-zinc-400">
-              Подпишитесь на сообщества, чтобы видеть их публикации здесь.
+              Подпишитесь на сообщества или авторов, чтобы видеть их публикации здесь.
             </div>
           </div>
           {#if recommendedComunsLoading}
@@ -127,25 +128,30 @@
           {:else if recommendedComunsError}
             <div class="text-sm text-rose-600 dark:text-rose-300">{recommendedComunsError}</div>
           {:else if recommendedComuns.length}
-            <div class="grid gap-2 md:grid-cols-3">
-              {#each recommendedComuns as comun}
-                <div class="flex min-w-0 flex-col gap-3 rounded-xl border border-slate-200 p-3 dark:border-zinc-800">
-                  <div class="min-w-0">
-                    <a
-                      href={`/comuns/${encodeURIComponent(comun.slug)}`}
-                      class="block truncate text-sm font-medium text-slate-900 hover:text-blue-600 dark:text-zinc-100 dark:hover:text-blue-400"
-                    >
-                      {comun.name}
-                    </a>
-                    <div class="mt-1 text-xs text-slate-500 dark:text-zinc-400">
-                      Рейтинг {comun.rating ?? comun.score ?? 0} · {comun.posts_count ?? 0} постов
+            <div class="flex flex-col gap-2">
+              <div class="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-zinc-500">
+                Рекомендуемые сообщества
+              </div>
+              <div class="grid gap-2 md:grid-cols-3">
+                {#each recommendedComuns as comun}
+                  <div class="flex min-w-0 flex-col gap-3 rounded-xl border border-slate-200 p-3 dark:border-zinc-800">
+                    <div class="min-w-0">
+                      <a
+                        href={`/comuns/${encodeURIComponent(comun.slug)}`}
+                        class="block truncate text-sm font-medium text-slate-900 hover:text-blue-600 dark:text-zinc-100 dark:hover:text-blue-400"
+                      >
+                        {comun.name}
+                      </a>
+                      <div class="mt-1 text-xs text-slate-500 dark:text-zinc-400">
+                        Рейтинг {comun.rating ?? comun.score ?? 0} · {comun.posts_count ?? 0} постов
+                      </div>
                     </div>
+                    <Button color="ghost" on:click={() => subscribeToComun(comun)}>
+                      Подписаться
+                    </Button>
                   </div>
-                  <Button color="ghost" on:click={() => subscribeToComun(comun)}>
-                    Подписаться
-                  </Button>
-                </div>
-              {/each}
+                {/each}
+              </div>
             </div>
           {:else}
             <a href="/comuns" class="inline-flex text-sm text-blue-600 hover:underline dark:text-blue-400">
@@ -166,7 +172,7 @@
           <div class="flex flex-col gap-4">
             <div class="flex flex-col gap-2">
               <div class="text-base text-slate-700 dark:text-zinc-200">
-                Пока нет постов в выбранных сообществах.
+                Пока нет постов в выбранных подписках.
               </div>
               <div class="text-sm text-slate-500 dark:text-zinc-400">
                 Подпишитесь на новые сообщества, чтобы видеть больше постов.
@@ -177,25 +183,30 @@
             {:else if recommendedComunsError}
               <div class="text-sm text-rose-600 dark:text-rose-300">{recommendedComunsError}</div>
             {:else if recommendedComuns.length}
-              <div class="grid gap-2 md:grid-cols-3">
-                {#each recommendedComuns as comun}
-                  <div class="flex min-w-0 flex-col gap-3 rounded-xl border border-slate-200 p-3 dark:border-zinc-800">
-                    <div class="min-w-0">
-                      <a
-                        href={`/comuns/${encodeURIComponent(comun.slug)}`}
-                        class="block truncate text-sm font-medium text-slate-900 hover:text-blue-600 dark:text-zinc-100 dark:hover:text-blue-400"
-                      >
-                        {comun.name}
-                      </a>
-                      <div class="mt-1 text-xs text-slate-500 dark:text-zinc-400">
-                        Рейтинг {comun.rating ?? comun.score ?? 0} · {comun.posts_count ?? 0} постов
+              <div class="flex flex-col gap-2">
+                <div class="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-zinc-500">
+                  Рекомендуемые сообщества
+                </div>
+                <div class="grid gap-2 md:grid-cols-3">
+                  {#each recommendedComuns as comun}
+                    <div class="flex min-w-0 flex-col gap-3 rounded-xl border border-slate-200 p-3 dark:border-zinc-800">
+                      <div class="min-w-0">
+                        <a
+                          href={`/comuns/${encodeURIComponent(comun.slug)}`}
+                          class="block truncate text-sm font-medium text-slate-900 hover:text-blue-600 dark:text-zinc-100 dark:hover:text-blue-400"
+                        >
+                          {comun.name}
+                        </a>
+                        <div class="mt-1 text-xs text-slate-500 dark:text-zinc-400">
+                          Рейтинг {comun.rating ?? comun.score ?? 0} · {comun.posts_count ?? 0} постов
+                        </div>
                       </div>
+                      <Button color="ghost" on:click={() => subscribeToComun(comun)}>
+                        Подписаться
+                      </Button>
                     </div>
-                    <Button color="ghost" on:click={() => subscribeToComun(comun)}>
-                      Подписаться
-                    </Button>
-                  </div>
-                {/each}
+                  {/each}
+                </div>
               </div>
             {:else}
               <a href="/comuns" class="inline-flex text-sm text-blue-600 hover:underline dark:text-blue-400">

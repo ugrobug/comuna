@@ -13,7 +13,7 @@ from my_feed.views import (
     thematic_feeds_manage,
 )
 from communities.models import Comun, ComunCategory, ComunPostCategoryAssignment
-from feeds.models import Author, Post
+from feeds.models import Author, Post, Rubric
 from my_feed.models import UserFeedSettings
 from users.service import _issue_token
 
@@ -172,7 +172,6 @@ class UserFeedSettingsApiTests(TestCase):
         UserFeedSettings.objects.create(
             user=self.user,
             home_feed="mine",
-            my_feed_authors=["chosen-author"],
             my_feed_comuns=[self.comun.slug],
         )
         response = self.client.get(reverse("my-feed"), {"limit": "10"}, **self.auth_headers)
@@ -195,7 +194,7 @@ class UserFeedSettingsApiTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content.decode())
         self.assertEqual([post["id"] for post in response.json()["posts"]], [self.comun_post.id])
 
-    def test_my_feed_ignores_saved_author_selection_without_comun_subscription(self):
+    def test_my_feed_includes_saved_author_subscription(self):
         UserFeedSettings.objects.create(
             user=self.user,
             home_feed="mine",
@@ -204,4 +203,56 @@ class UserFeedSettingsApiTests(TestCase):
         response = self.client.get(reverse("my-feed"), {"limit": "10"}, **self.auth_headers)
 
         self.assertEqual(response.status_code, 200, response.content.decode())
-        self.assertEqual(response.json()["posts"], [])
+        post_ids = {post["id"] for post in response.json()["posts"]}
+        self.assertEqual(post_ids, {self.post.id, self.comun_post.id, self.other_comun_post.id})
+
+    def test_my_feed_source_rubric_does_not_include_other_telegram_comun_posts(self):
+        rubric = Rubric.objects.create(name="Tech", slug="tech")
+        source_comun = Comun.objects.create(
+            name="Subscribed Tech",
+            slug="subscribed-tech",
+            creator=self.user,
+            source_rubric=rubric,
+        )
+        plain_author = Author.objects.create(username="plain-tech", title="Plain Tech")
+        telegram_author = Author.objects.create(
+            username="anrera_tech",
+            title="Anrera Tech",
+            channel_id=123456,
+        )
+        Comun.objects.create(
+            name="Anrera Tech",
+            slug="anrera_tech",
+            creator=self.user,
+            telegram_source_author=telegram_author,
+        )
+        source_rubric_post = Post.objects.create(
+            author=plain_author,
+            rubric=rubric,
+            message_id=401,
+            title="Source rubric post",
+            content="{}",
+            is_pending=False,
+            is_blocked=False,
+        )
+        other_comun_post = Post.objects.create(
+            author=telegram_author,
+            rubric=rubric,
+            message_id=402,
+            title="Other telegram comun post",
+            content="{}",
+            is_pending=False,
+            is_blocked=False,
+        )
+        UserFeedSettings.objects.create(
+            user=self.user,
+            home_feed="mine",
+            my_feed_comuns=[source_comun.slug],
+        )
+
+        response = self.client.get(reverse("my-feed"), {"limit": "10"}, **self.auth_headers)
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        post_ids = {post["id"] for post in response.json()["posts"]}
+        self.assertIn(source_rubric_post.id, post_ids)
+        self.assertNotIn(other_comun_post.id, post_ids)

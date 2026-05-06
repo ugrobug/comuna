@@ -114,7 +114,7 @@
           )
         : buildMyFeedUrl(
             [],
-            [],
+            selectedMyFeedAuthors,
             [],
             selectedMyFeedComuns,
             selectedMyFeedComunCategories,
@@ -247,8 +247,9 @@
   $: readOnly = readParam === '1' || readParam === 'true' || readParam === 'yes'
 
   $: selectedMyFeedComuns = $userSettings.myFeedComuns ?? []
+  $: selectedMyFeedAuthors = $userSettings.myFeedAuthors ?? []
   $: selectedMyFeedComunCategories = $userSettings.myFeedComunCategories ?? {}
-  $: myFeedHasBaseSettings = selectedMyFeedComuns.length > 0
+  $: myFeedHasBaseSettings = selectedMyFeedComuns.length > 0 || selectedMyFeedAuthors.length > 0
   $: hiddenAuthorKeys = new Set(
     ($userSettings.hiddenAuthors ?? []).map((value) => value.toLowerCase())
   )
@@ -351,7 +352,7 @@
   $: if (feedType === 'mine') {
     const authKey = $siteUser ? 'auth' : 'anon'
     const hydrationKey = $siteUser ? ($feedSettingsHydrated ? 'settings-ready' : 'settings-loading') : 'no-settings'
-    const key = `${authKey}:${hydrationKey}:${selectedMyFeedComuns.join(',')}:${JSON.stringify(selectedMyFeedComunCategories)}:${hideNegativeMyFeed ? 'no-negative' : 'all'}:${readOnly ? 'only-read' : effectiveHideRead ? 'hide-read' : 'all-read'}`
+    const key = `${authKey}:${hydrationKey}:${selectedMyFeedComuns.join(',')}:${selectedMyFeedAuthors.join(',')}:${JSON.stringify(selectedMyFeedComunCategories)}:${hideNegativeMyFeed ? 'no-negative' : 'all'}:${readOnly ? 'only-read' : effectiveHideRead ? 'hide-read' : 'all-read'}`
     if (key !== lastMyFeedKey) {
       lastMyFeedKey = key
       posts = []

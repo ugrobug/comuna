@@ -60,6 +60,48 @@ def _parse_comun_category_query(value: str) -> dict[str, list[str]]:
     return my_feed_service._normalize_comun_category_selection(parsed_comun_categories)
 
 
+def _my_feed_comun_post_membership_filter(
+    comun,
+    *,
+    selected_category_ids: list[int] | None = None,
+) -> Q | None:
+    if selected_category_ids is not None:
+        if not selected_category_ids:
+            return None
+        return Q(
+            comun_category_assignments__comun_id=comun.id,
+            comun_category_assignments__category_id__in=selected_category_ids,
+        )
+
+    comun_slug = str(getattr(comun, "slug", "") or "").strip()
+    combined_filter = Q()
+    has_source = False
+    if comun_slug:
+        combined_filter |= Q(raw_data__source="manual_comun", raw_data__comun_slug=comun_slug)
+        has_source = True
+
+    combined_filter |= Q(comun_category_assignments__comun_id=comun.id)
+    has_source = True
+
+    telegram_source_author_id = getattr(comun, "telegram_source_author_id", None)
+    if telegram_source_author_id:
+        combined_filter |= Q(author_id=telegram_source_author_id)
+        has_source = True
+
+    source_rubric_id = getattr(comun, "source_rubric_id", None)
+    if source_rubric_id:
+        rubric_fallback = (
+            Q(rubric_id=source_rubric_id)
+            & Q(author__telegram_source_comun__isnull=True)
+            & Q(comun_category_assignments__isnull=True)
+            & ~Q(raw_data__source="manual_comun")
+        )
+        combined_filter |= rubric_fallback
+        has_source = True
+
+    return combined_filter if has_source else None
+
+
 def thematic_feeds_list(request: HttpRequest) -> HttpResponse:
     feeds = (
         ThematicFeed.objects.filter(is_active=True)
@@ -311,13 +353,13 @@ def my_feed(request: HttpRequest) -> HttpResponse:
 
     if saved_feed_settings:
         rubric_slugs = []
-        author_usernames = []
+        author_usernames = saved_feed_settings["my_feed_authors"]
         tag_values = []
         comun_slugs = saved_feed_settings["my_feed_comuns"]
         comun_category_selection = saved_feed_settings["my_feed_comun_categories"]
     else:
         rubric_slugs = []
-        author_usernames = []
+        author_usernames = _parse_string_csv(request.GET.get("authors", ""), strip_prefix="@")
         tag_values = []
         comun_slugs = _parse_string_csv(request.GET.get("comuns", ""))
         comun_category_selection = _parse_comun_category_query(
@@ -365,17 +407,14 @@ def my_feed(request: HttpRequest) -> HttpResponse:
     if comun_slugs:
         comuns = list(
             community_views.Comun.objects.filter(is_active=True, slug__in=comun_slugs)
-            .select_related("source_rubric")
             .only(
                 "id",
                 "slug",
                 "source_rubric_id",
+                "telegram_source_author_id",
             )
         )
         for comun in comuns:
-            comun_filter = community_views._comun_post_membership_filter(comun)
-            if comun_filter is None:
-                continue
             if comun.slug in comun_category_selection:
                 selected_category_slugs = comun_category_selection.get(comun.slug) or []
                 if not selected_category_slugs:
@@ -387,10 +426,14 @@ def my_feed(request: HttpRequest) -> HttpResponse:
                 )
                 if not selected_category_ids:
                     continue
-                comun_filter &= Q(
-                    comun_category_assignments__comun_id=comun.id,
-                    comun_category_assignments__category_id__in=selected_category_ids,
+                comun_filter = _my_feed_comun_post_membership_filter(
+                    comun,
+                    selected_category_ids=selected_category_ids,
                 )
+            else:
+                comun_filter = _my_feed_comun_post_membership_filter(comun)
+            if comun_filter is None:
+                continue
             comun_tag_selection_q |= comun_filter
             has_comun_selection = True
 
