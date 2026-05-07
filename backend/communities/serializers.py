@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.db.models import Count
@@ -53,8 +54,6 @@ def _serialize_comun_profile_card(
     current_user: User | None = None,
     role: str = "moderator",
 ) -> dict:
-    product_tag = comun.product_tag
-    source_rubric = getattr(comun, "source_rubric", None)
     tags = list(comun.tags.filter(is_active=True).order_by("name"))
     return {
         "id": comun.id,
@@ -81,24 +80,6 @@ def _serialize_comun_profile_card(
                 or None
             ),
         },
-        "product_tag": (
-            {
-                "id": product_tag.id,
-                "name": product_tag.name,
-                "lemma": product_tag.lemma or community_service._lemmatize_tag(product_tag.name) or product_tag.name,
-            }
-            if product_tag
-            else None
-        ),
-        "source_rubric": (
-            {
-                "id": source_rubric.id,
-                "name": source_rubric.name,
-                "slug": source_rubric.slug,
-            }
-            if source_rubric
-            else None
-        ),
         "tags": [
             {
                 "id": tag.id,
@@ -120,6 +101,7 @@ def _serialize_comun_category(category: ComunCategory, comun: Comun | None = Non
         "description": category.description,
         "sort_order": category.sort_order,
         "only_moderators_can_post": bool(getattr(category, "only_moderators_can_post", False)),
+        "hide_from_home": bool(getattr(category, "hide_from_home", False)),
         "category_allowed_template_types": category_allowed_template_types,
         "allowed_template_types": community_service._allowed_templates_for_comun_category(comun, category),
         "inherits_comun_template_types": not bool(category_allowed_template_types),
@@ -139,8 +121,14 @@ def _serialize_comun_rating(
             .first()
             or 0
         )
+    try:
+        score = round(float(getattr(comun, "rating_score", 0) or 0), 2)
+    except (TypeError, ValueError):
+        score = 0.0
+    if isinstance(getattr(comun, "rating_score", None), Decimal):
+        score = float(getattr(comun, "rating_score", 0) or 0)
     return {
-        "score": int(getattr(comun, "rating_score", 0) or 0),
+        "score": score,
         "upvotes": int(getattr(comun, "votes_up", 0) or 0),
         "downvotes": int(getattr(comun, "votes_down", 0) or 0),
         "user_vote": int(user_vote or 0),
@@ -300,9 +288,6 @@ def _serialize_comun(
     ]
     moderators = list(comun.moderators.select_related("site_profile").order_by("username"))
     excluded_authors = list(comun.excluded_authors.filter(is_blocked=False).order_by("username"))
-    source_tags = community_service._comun_source_tags_list(comun)
-    product_tag = source_tags[0] if source_tags else comun.product_tag
-    source_rubric = getattr(comun, "source_rubric", None)
     telegram_source_author = getattr(comun, "telegram_source_author", None)
     tags = list(comun.tags.filter(is_active=True).order_by("name"))
     blocked_tags = list(comun.blocked_tags.filter(is_active=True).order_by("name"))
@@ -310,7 +295,7 @@ def _serialize_comun(
     welcome_post_payload = None
     if comun.welcome_post_id:
         welcome_post = (
-            Post.objects.select_related("author", "rubric")
+            Post.objects.select_related("author")
             .prefetch_related("tags")
             .filter(id=comun.welcome_post_id, is_blocked=False, author__is_blocked=False)
             .first()
@@ -328,7 +313,7 @@ def _serialize_comun(
         "rules_text": comun.rules_text,
         "target_audience": comun.target_audience,
         "glossary_enabled": bool(getattr(comun, "glossary_enabled", False)),
-        "roadmap_enabled": bool(getattr(comun, "roadmap_enabled", True)),
+        "roadmap_enabled": bool(getattr(comun, "roadmap_enabled", False)),
         "roadmap_category_ids": [category.id for category in roadmap_categories],
         "roadmap_categories": [
             _serialize_comun_category(category, comun) for category in roadmap_categories
@@ -340,7 +325,6 @@ def _serialize_comun(
         "forbid_external_links": bool(getattr(comun, "forbid_external_links", False)),
         "rating": _serialize_comun_rating(comun, current_user=current_user),
         "hide_from_home": bool(comun.hide_from_home),
-        "hide_from_fresh": bool(comun.hide_from_fresh),
         "is_active": comun.is_active,
         "sort_order": comun.sort_order,
         "allowed_template_types": community_service._allowed_templates_for_comun(comun),
@@ -376,32 +360,6 @@ def _serialize_comun(
         "excluded_authors_count": len(excluded_authors),
         "categories": [_serialize_comun_category(category, comun) for category in categories],
         "categories_count": len(categories),
-        "source_tags": [
-            {
-                "id": tag.id,
-                "name": tag.name,
-                "lemma": tag.lemma or community_service._lemmatize_tag(tag.name) or tag.name,
-            }
-            for tag in source_tags
-        ],
-        "product_tag": (
-            {
-                "id": product_tag.id,
-                "name": product_tag.name,
-                "lemma": product_tag.lemma or community_service._lemmatize_tag(product_tag.name) or product_tag.name,
-            }
-            if product_tag
-            else None
-        ),
-        "source_rubric": (
-            {
-                "id": source_rubric.id,
-                "name": source_rubric.name,
-                "slug": source_rubric.slug,
-            }
-            if source_rubric
-            else None
-        ),
         "telegram_source_author": _serialize_author_source_summary(request, telegram_source_author),
         "telegram_channel_username": (
             community_service._normalize_telegram_channel_username(
@@ -455,11 +413,9 @@ def _serialize_comun(
         payload["roadmap_category_ids"] = [category.id for category in roadmap_categories]
         payload["moderator_ids"] = [moderator.id for moderator in moderators]
         payload["tag_ids"] = [tag.id for tag in tags]
-        payload["source_tag_ids"] = [tag.id for tag in source_tags]
         payload["excluded_author_ids"] = [author.id for author in excluded_authors]
         payload["blocked_tag_ids"] = [tag.id for tag in blocked_tags]
         payload["excluded_tag_ids"] = [tag.id for tag in blocked_tags]
-        payload["product_tag_id"] = comun.product_tag_id
         payload["telegram_source_author_id"] = comun.telegram_source_author_id
         payload["welcome_post_ref"] = str(comun.welcome_post_id or "")
     if include_options:

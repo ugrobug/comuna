@@ -54,7 +54,6 @@ class ComunPostingApiTests(TestCase):
 
         assignment = ComunPostCategoryAssignment.objects.get(comun=self.comun, post=post)
         self.assertEqual(assignment.category_id, self.category.id)
-        self.assertIsNone(post.rubric_id)
 
     def test_auth_posts_require_comun_for_published_post(self):
         response = self.client.post(
@@ -72,7 +71,7 @@ class ComunPostingApiTests(TestCase):
         self.assertEqual(response.status_code, 400, response.content.decode())
         self.assertEqual(response.json().get("error"), "community required")
 
-    def test_auth_posts_can_publish_to_comun_category_without_rubric(self):
+    def test_auth_posts_can_publish_to_comun_category(self):
         response = self.client.post(
             reverse("auth-posts"),
             data=json.dumps(
@@ -92,7 +91,6 @@ class ComunPostingApiTests(TestCase):
         self.assertTrue(payload.get("ok"))
 
         post = Post.objects.get(id=payload["post"]["id"])
-        self.assertIsNone(post.rubric_id)
         self.assertEqual(post.raw_data.get("source"), "manual_comun")
         self.assertEqual(post.raw_data.get("comun_slug"), self.comun.slug)
         self.assertEqual(payload["post"].get("comun_slug"), self.comun.slug)
@@ -140,7 +138,6 @@ class ComunPostingApiTests(TestCase):
 
         post = Post.objects.get(id=draft_id)
         self.assertFalse(post.is_pending)
-        self.assertIsNone(post.rubric_id)
         self.assertEqual(post.raw_data.get("source"), "manual_comun")
         self.assertEqual(post.raw_data.get("comun_slug"), self.comun.slug)
 
@@ -201,6 +198,78 @@ class ComunPostingApiTests(TestCase):
         self.assertTrue(payload.get("ok"))
         self.assertEqual(payload.get("total_count"), 1)
         self.assertEqual(payload["posts"][0]["id"], post.id)
+
+    def test_verified_channel_owner_claims_unowned_linked_comun(self):
+        telegram_author = Author.objects.create(
+            username="unit-channel",
+            title="Unit Channel",
+            channel_id=777,
+            channel_url="https://t.me/unit-channel",
+            avatar_image="authors/avatars/unit-channel.jpg",
+        )
+        comun = Comun.objects.create(
+            name="Unit Channel",
+            slug="unit-channel-comun",
+            creator=None,
+            telegram_source_author=telegram_author,
+            telegram_channel_username="unit-channel",
+        )
+        AuthorAdmin.objects.create(
+            user=self.user,
+            author=telegram_author,
+            verified_at=timezone.now(),
+        )
+
+        community_service._attach_pending_comuns_for_author(telegram_author)
+
+        comun.refresh_from_db()
+        self.assertEqual(comun.creator_id, self.user.id)
+        self.assertEqual(comun.logo_url, "/media/authors/avatars/unit-channel.jpg")
+        self.assertTrue(comun.moderators.filter(id=self.user.id).exists())
+
+    def test_verified_channel_owner_claims_pending_channel_comun(self):
+        telegram_author = Author.objects.create(
+            username="pending-channel",
+            title="Pending Channel",
+            channel_id=778,
+            channel_url="https://t.me/pending-channel",
+            avatar_url="https://example.com/pending-channel.jpg",
+        )
+        comun = Comun.objects.create(
+            name="Pending Channel",
+            slug="pending-channel-comun",
+            creator=None,
+            telegram_channel_username="pending-channel",
+        )
+        AuthorAdmin.objects.create(
+            user=self.user,
+            author=telegram_author,
+            verified_at=timezone.now(),
+        )
+
+        community_service._attach_pending_comuns_for_author(telegram_author)
+
+        comun.refresh_from_db()
+        self.assertEqual(comun.creator_id, self.user.id)
+        self.assertEqual(comun.telegram_source_author_id, telegram_author.id)
+        self.assertEqual(comun.logo_url, "https://example.com/pending-channel.jpg")
+        self.assertTrue(comun.moderators.filter(id=self.user.id).exists())
+
+    def test_telegram_author_without_owner_gets_unowned_comun(self):
+        telegram_author = Author.objects.create(
+            username="orphan-channel",
+            title="Orphan Channel",
+            channel_id=779,
+            channel_url="https://t.me/orphan-channel",
+            avatar_url="https://example.com/orphan-channel.jpg",
+        )
+
+        comun = community_service._ensure_telegram_channel_comun_for_author(telegram_author)
+
+        self.assertIsNotNone(comun)
+        self.assertIsNone(comun.creator_id)
+        self.assertEqual(comun.logo_url, "https://example.com/orphan-channel.jpg")
+        self.assertEqual(comun.telegram_source_author_id, telegram_author.id)
 
     def test_comun_access_uses_personal_site_author_rating(self):
         personal_author_id = editor_personal_author_id(self.user)

@@ -16,19 +16,6 @@ export const buildAuthorPostsUrl = (username: string): string => {
   return `${getBackendBaseUrl()}/api/authors/${encodeURIComponent(username)}/posts/`
 }
 
-export const buildRubricsUrl = (options?: { includeHidden?: boolean }): string => {
-  const base = `${getBackendBaseUrl()}/api/rubrics/`
-  if (!options?.includeHidden) {
-    return base
-  }
-  const params = new URLSearchParams({ include_hidden: '1' })
-  return `${base}?${params.toString()}`
-}
-
-export const buildRubricPostsUrl = (slug: string): string => {
-  return `${getBackendBaseUrl()}/api/rubrics/${encodeURIComponent(slug)}/posts/`
-}
-
 export const buildTagPostsUrl = (tag: string): string => {
   return `${getBackendBaseUrl()}/api/tags/${encodeURIComponent(tag)}/posts/`
 }
@@ -84,10 +71,6 @@ export const buildTagsListUrl = (): string => {
 
 export const buildTagsEnsureUrl = (): string => {
   return `${getBackendBaseUrl()}/api/tags/ensure/`
-}
-
-export const buildThematicFeedsListUrl = (): string => {
-  return `${getBackendBaseUrl()}/api/thematic-feeds/`
 }
 
 export const buildComunsUrl = (): string => {
@@ -156,28 +139,8 @@ export const buildPublicUserProfileUrl = (
   return query ? `${base}?${query}` : base
 }
 
-export const buildThematicFeedPostsUrl = (
-  slug: string,
-  options?: {
-    hideRead?: boolean
-    onlyRead?: boolean
-  }
-): string => {
-  const base = `${getBackendBaseUrl()}/api/thematic-feeds/${encodeURIComponent(slug)}/posts/`
-  const params = new URLSearchParams()
-  if (options?.onlyRead) {
-    params.set('only_read', '1')
-  } else if (options?.hideRead) {
-    params.set('hide_read', '1')
-  }
-  const query = params.toString()
-  return query ? `${base}?${query}` : base
-}
-
-export const buildThematicFeedsManageUrl = (slug?: string): string => {
-  const base = `${getBackendBaseUrl()}/api/thematic-feeds/manage/`
-  if (!slug) return base
-  return `${base}${encodeURIComponent(slug)}/`
+export const buildAuthFeedSettingsUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/auth/feed-settings/`
 }
 
 export const buildBackendPostPath = (post: { id: number; title: string }): string => {
@@ -190,21 +153,6 @@ export const buildHomeFeedUrl = (options?: {
   onlyRead?: boolean
 }): string => {
   const base = `${getBackendBaseUrl()}/api/home/`
-  const params = new URLSearchParams()
-  if (options?.onlyRead) {
-    params.set('only_read', '1')
-  } else if (options?.hideRead) {
-    params.set('hide_read', '1')
-  }
-  const query = params.toString()
-  return query ? `${base}?${query}` : base
-}
-
-export const buildFreshFeedUrl = (options?: {
-  hideRead?: boolean
-  onlyRead?: boolean
-}): string => {
-  const base = `${getBackendBaseUrl()}/api/home/fresh/`
   const params = new URLSearchParams()
   if (options?.onlyRead) {
     params.set('only_read', '1')
@@ -231,20 +179,16 @@ export const buildFavoritesFeedUrl = (options?: {
 }
 
 export const buildMyFeedUrl = (
-  rubrics?: string[],
   authors?: string[],
   tags?: string[],
   comuns?: string[],
   comunCategories?: Record<string, string[]>,
-  hideNegative: boolean = true,
+  hideNegative?: boolean,
   hideRead: boolean = false,
   onlyRead: boolean = false
 ): string => {
   const base = `${getBackendBaseUrl()}/api/home/my/`
   const params = new URLSearchParams()
-  if (rubrics?.length) {
-    params.set('rubrics', rubrics.join(','))
-  }
   if (authors?.length) {
     params.set('authors', authors.join(','))
   }
@@ -257,7 +201,7 @@ export const buildMyFeedUrl = (
   if (comunCategories && Object.keys(comunCategories).length) {
     params.set('comun_categories', JSON.stringify(comunCategories))
   }
-  if (!hideNegative) {
+  if (typeof hideNegative === 'boolean' && !hideNegative) {
     params.set('hide_negative', '0')
   }
   if (onlyRead) {
@@ -309,6 +253,19 @@ export type BackendTopAuthor = {
   all_time_posts?: number
 }
 
+export type BackendTopComun = {
+  id: number
+  slug: string
+  name: string
+  title?: string | null
+  logo_url?: string | null
+  avatar_url?: string | null
+  rating: number
+  score?: number
+  posts_count: number
+  comments_count: number
+}
+
 export const buildTopAuthorsUrl = (options?: {
   period?: BackendTopAuthorPeriod
   limit?: number | 'all'
@@ -324,6 +281,14 @@ export const buildTopAuthorsUrl = (options?: {
 export const buildTopAuthorsMonthUrl = (limit = 5): string => {
   const params = new URLSearchParams({ limit: String(limit) })
   return `${getBackendBaseUrl()}/api/authors/top-month/?${params.toString()}`
+}
+
+export const buildTopComunsUrl = (options?: { limit?: number | 'all' }): string => {
+  const params = new URLSearchParams()
+  if (options?.limit !== undefined) {
+    params.set('limit', String(options.limit))
+  }
+  return `${getBackendBaseUrl()}/api/comuns/top/?${params.toString()}`
 }
 
 export const buildStaticPageContentUrl = (slug: string): string => {
@@ -351,50 +316,10 @@ export type BackendAuthor = {
 }
 
 export type BackendTag = {
+  id: number
   name: string
   lemma?: string | null
   mood?: string
-}
-
-export type BackendThematicFeedAuthor = {
-  id?: number
-  username: string
-  title?: string | null
-}
-
-export type BackendThematicFeedRubric = {
-  id?: number
-  name: string
-  slug?: string | null
-  description?: string | null
-}
-
-export type BackendThematicFeed = {
-  id?: number
-  name: string
-  slug: string
-  description?: string | null
-  is_active?: boolean
-  sort_order?: number
-  moderators_count?: number
-  authors_count?: number
-  excluded_authors_count?: number
-  rubrics_count?: number
-  tags_count?: number
-  blocked_tags_count?: number
-  moderators?: Array<{ id: number; username: string }>
-  authors?: BackendThematicFeedAuthor[]
-  excluded_authors?: BackendThematicFeedAuthor[]
-  rubrics?: BackendThematicFeedRubric[]
-  tags?: BackendTag[]
-  blocked_tags?: BackendTag[]
-  excluded_tags?: BackendTag[]
-  moderator_ids?: number[]
-  author_ids?: number[]
-  excluded_author_ids?: number[]
-  rubric_ids?: number[]
-  tag_ids?: number[]
-  excluded_tag_ids?: number[]
 }
 
 export type BackendComunCategory = {
@@ -404,6 +329,7 @@ export type BackendComunCategory = {
   description?: string | null
   sort_order?: number
   only_moderators_can_post?: boolean
+  hide_from_home?: boolean
   allowed_template_types?: string[]
   category_allowed_template_types?: string[]
   inherits_comun_template_types?: boolean
@@ -493,10 +419,9 @@ export type BackendComun = {
   forbid_external_links?: boolean
   rating?: BackendComunRating
   hide_from_home?: boolean
-  hide_from_fresh?: boolean
   allowed_template_types?: string[]
   allowed_post_templates?: string[]
-  template_type_options?: Array<{ value: string; label: string }>
+  template_type_options?: Array<{ value: string; label: string; description?: string }>
   template_editor_blocks_by_template?: Record<string, string[]>
   custom_templates?: BackendComunCustomTemplate[]
   is_active?: boolean
@@ -513,9 +438,6 @@ export type BackendComun = {
   categories?: BackendComunCategory[]
   categories_count?: number
   category_ids?: number[]
-  source_tags?: BackendTag[]
-  source_tag_ids?: number[]
-  product_tag?: { id: number; name: string; lemma?: string | null } | null
   blocked_tags?: BackendTag[]
   excluded_tags?: BackendTag[]
   blocked_tag_ids?: number[]
@@ -529,8 +451,6 @@ export type BackendComun = {
   } | null
   telegram_source_author_id?: number | null
   telegram_channel_username?: string | null
-  source_rubric?: { id: number; name: string; slug: string } | null
-  product_tag_id?: number | null
   welcome_post_id?: number | null
   welcome_post_ref?: string
   welcome_post?: BackendPost | null
@@ -547,7 +467,7 @@ export type BackendComun = {
       channel_url?: string | null
       avatar_url?: string | null
     }>
-    template_types?: Array<{ value: string; label: string }>
+    template_types?: Array<{ value: string; label: string; description?: string }>
     template_editor_block_options_by_template?: Record<string, Array<{ value: string; label: string }>>
     template_editor_blocks_by_template?: Record<string, string[]>
     custom_template_editor?: {
@@ -592,7 +512,6 @@ export type BackendPublicSiteUserComun = {
   role?: 'creator' | 'moderator' | string
   can_moderate?: boolean
   categories_count?: number
-  product_tag?: { id: number; name: string; lemma?: string | null } | null
 }
 
 export type BackendPublicSiteUserAuthor = {
@@ -602,8 +521,6 @@ export type BackendPublicSiteUserAuthor = {
   channel_url?: string | null
   avatar_url?: string | null
   description?: string | null
-  rubric?: string | null
-  rubric_slug?: string | null
 }
 
 export type BackendPollOption = {
@@ -656,9 +573,6 @@ export type BackendPost = {
   created_at: string
   source_url?: string | null
   channel_url?: string | null
-  rubric?: string | null
-  rubric_slug?: string | null
-  rubric_icon_url?: string | null
   comun?: BackendPostComun | null
   comun_slug?: string | null
   comments_count?: number
@@ -675,7 +589,7 @@ export type BackendPost = {
 export const backendPostCommunityPath = (post: BackendPost): string | undefined => {
   const comunSlug = post.comun?.slug ?? post.comun_slug
   if (comunSlug) return `/comuns/${encodeURIComponent(comunSlug)}`
-  return post.rubric_slug ? `/rubrics/${encodeURIComponent(post.rubric_slug)}/posts` : undefined
+  return undefined
 }
 
 export const backendPostToPostView = (
@@ -685,23 +599,18 @@ export const backendPostToPostView = (
   const author = post.author ?? fallbackAuthor
   const authorName = author?.username ?? 'author'
   const authorTitle = author?.title ?? authorName
-  const rubricName = post.rubric ?? undefined
-  const rubricSlug = post.rubric_slug ?? undefined
   const comunName = post.comun?.name ?? undefined
   const comunSlug = post.comun?.slug ?? post.comun_slug ?? undefined
   const comunLogoUrl = post.comun?.logo_url ?? undefined
   const sourceUrl = typeof post.source_url === 'string' ? post.source_url.trim() : ''
   const authorChannelUrl = typeof author?.channel_url === 'string' ? author.channel_url.trim() : ''
-  const communityName =
-    comunSlug ??
-    rubricSlug ??
-    (rubricName ? rubricName.toLowerCase().replace(/\s+/g, '-') : 'no-rubric')
-  const communityTitle = comunName ?? rubricName ?? 'Без рубрики'
+  const communityName = comunSlug ?? `author-${authorName}`
+  const communityTitle = comunName ?? authorTitle
 
   const titleWithTags = post.title
 
   const creatorId = stableId(authorName)
-  const communityId = communityName ? stableId(communityName) : stableId(`${authorName}-rubric`)
+  const communityId = stableId(communityName)
 
   return {
     post: {
@@ -751,8 +660,8 @@ export const backendPostToPostView = (
       id: communityId,
       name: communityName,
       title: communityTitle,
-      actor_id: comunSlug ? `https://comuns.local/${communityName}` : `https://rubrics.local/${communityName}`,
-      icon: comunLogoUrl ?? post.rubric_icon_url ?? undefined,
+      actor_id: comunSlug ? `https://comuns.local/${communityName}` : `https://authors.local/${authorName}`,
+      icon: comunLogoUrl ?? undefined,
       local: true,
       deleted: false,
       hidden: false,

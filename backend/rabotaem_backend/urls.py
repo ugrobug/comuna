@@ -25,7 +25,6 @@ from feeds.views import (
     comment_detail,
     comment_like,
     content_page_manage,
-    fresh_feed,
     favorites_feed,
     home_feed,
     post_detail,
@@ -35,12 +34,9 @@ from feeds.views import (
     post_read,
     post_view,
     recent_comments,
-    rubric_posts,
-    rubrics_list,
     search_content,
     sitemap_authors_xml,
     sitemap_posts_xml,
-    sitemap_rubrics_xml,
     sitemap_static_xml,
     sitemap_xml,
     tags_ensure,
@@ -48,11 +44,8 @@ from feeds.views import (
     tag_posts,
 )
 from my_feed.views import (
+    auth_feed_settings,
     my_feed,
-    thematic_feed_manage_detail,
-    thematic_feed_posts,
-    thematic_feeds_list,
-    thematic_feeds_manage,
 )
 from notifications.views import (
     auth_notification_read,
@@ -61,7 +54,7 @@ from notifications.views import (
     auth_notifications,
     auth_notifications_read_all,
 )
-from ratings.views import top_authors, top_authors_month
+from ratings.views import top_authors, top_authors_month, top_comuns, top_comuns_month
 from telegram_integration.views import telegram_auth, telegram_webhook
 from users.views import (
     auth_me,
@@ -75,8 +68,6 @@ from users.views import (
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/authors/<str:username>/posts/", author_posts, name="author-posts"),
-    path("api/rubrics/", rubrics_list, name="rubrics-list"),
-    path("api/rubrics/<str:slug>/posts/", rubric_posts, name="rubric-posts"),
     path("api/tags/", tags_list, name="tag-list"),
     path("api/tags/ensure/", tags_ensure, name="tag-ensure"),
     path("api/tags/<str:tag>/posts/", tag_posts, name="tag-posts"),
@@ -93,7 +84,6 @@ urlpatterns = [
     path("api/comments/recent/", recent_comments, name="recent-comments"),
     path("api/content-pages/<slug:slug>/", content_page_manage, name="content-page-manage"),
     path("api/home/", home_feed, name="home-feed"),
-    path("api/home/fresh/", fresh_feed, name="fresh-feed"),
     path("api/home/favorites/", favorites_feed, name="favorites-feed"),
     path("api/home/my/", my_feed, name="my-feed"),
     path("api/comuns/", comuns_list_create, name="comuns-list-create"),
@@ -102,6 +92,8 @@ urlpatterns = [
         comun_create_from_telegram_channel,
         name="comun-create-from-telegram-channel",
     ),
+    path("api/comuns/top/", top_comuns, name="top-comuns"),
+    path("api/comuns/top-month/", top_comuns_month, name="top-comuns-month"),
     path("api/comuns/<slug:slug>/", comun_detail_manage, name="comun-detail-manage"),
     path("api/comuns/<slug:slug>/vote/", comun_vote, name="comun-vote"),
     path("api/comuns/<slug:slug>/posts/", comun_posts, name="comun-posts"),
@@ -109,18 +101,6 @@ urlpatterns = [
         "api/comuns/<slug:slug>/posts/<int:post_id>/category/",
         comun_post_category_update,
         name="comun-post-category-update",
-    ),
-    path("api/thematic-feeds/", thematic_feeds_list, name="thematic-feeds-list"),
-    path("api/thematic-feeds/manage/", thematic_feeds_manage, name="thematic-feeds-manage"),
-    path(
-        "api/thematic-feeds/manage/<slug:slug>/",
-        thematic_feed_manage_detail,
-        name="thematic-feed-manage-detail",
-    ),
-    path(
-        "api/thematic-feeds/<slug:slug>/posts/",
-        thematic_feed_posts,
-        name="thematic-feed-posts",
     ),
     path("api/search/", search_content, name="search-content"),
     path("api/authors/top/", top_authors, name="top-authors"),
@@ -130,6 +110,7 @@ urlpatterns = [
     path("api/auth/telegram/", telegram_auth, name="auth-telegram"),
     path("api/auth/vk/", vk_auth, name="auth-vk"),
     path("api/auth/me/", auth_me, name="auth-me"),
+    path("api/auth/feed-settings/", auth_feed_settings, name="auth-feed-settings"),
     path(
         "api/auth/post-templates/movie-review/autofill/",
         auth_movie_review_autofill,
@@ -168,7 +149,6 @@ urlpatterns = [
     path("api/auth/uploads/", user_upload, name="auth-uploads"),
     path("sitemap.xml", sitemap_xml, name="sitemap-xml"),
     path("sitemap-static.xml", sitemap_static_xml, name="sitemap-static-xml"),
-    path("sitemap-rubrics.xml", sitemap_rubrics_xml, name="sitemap-rubrics-xml"),
     path("sitemap-authors.xml", sitemap_authors_xml, name="sitemap-authors-xml"),
     path("sitemap-posts-<int:page>.xml", sitemap_posts_xml, name="sitemap-posts-xml"),
     path("tg/webhook/<str:token>/", telegram_webhook, name="telegram-webhook"),

@@ -161,9 +161,8 @@ def _serialize_enabled_template_editor_blocks(
 
 
 def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None = None) -> dict:
-    rubric = post.rubric
     author_channel_url, author_title = _fv()._author_display_fields(
-        request, post.author, rubric, post.channel_url
+        request, post.author, post.channel_url
     )
     content, poll_payload = _content_with_live_poll(post, user)
     template_payload = _serialize_post_template(post)
@@ -204,9 +203,6 @@ def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None
         "is_pending": post.is_pending,
         "is_draft": is_draft,
         "publish_at": post.publish_at.isoformat() if post.publish_at else None,
-        "rubric": rubric.name if rubric else None,
-        "rubric_slug": rubric.slug if rubric else None,
-        "rubric_icon_url": _fv()._rubric_icon_url(request, rubric),
         "comun_slug": comun_slug or None,
         "comun": (
             {
@@ -238,8 +234,8 @@ def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None
             "username": post.author.username,
             "title": author_title,
             "channel_url": author_channel_url,
-            "avatar_url": _fv()._author_avatar_for_rubric(request, post.author, rubric),
-            **_fv()._author_admin_fields_for_user(user, post.author, rubric),
+            "avatar_url": _fv()._author_avatar_for_display(request, post.author),
+            **_fv()._author_admin_fields_for_user(user, post.author),
         },
     }
     if is_draft and editor_service._user_can_manage_site_post(user, post):

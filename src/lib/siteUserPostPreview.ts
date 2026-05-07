@@ -10,9 +10,6 @@ export const siteUserPostToBackendPost = (post: SiteUserPost): BackendPost => ({
   post_ratings: post.post_ratings ?? {},
   post_rating: post.post_rating ?? null,
   created_at: post.created_at,
-  rubric: post.rubric ?? null,
-  rubric_slug: post.rubric_slug ?? null,
-  rubric_icon_url: post.rubric_icon_url ?? null,
   tags: (post.tags ?? []).map((tag) =>
     typeof tag === 'string' ? { name: tag } : { name: tag.name, lemma: tag.lemma ?? null }
   ),

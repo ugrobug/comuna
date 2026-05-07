@@ -57,15 +57,23 @@ class PostTemplateConfigAdmin(admin.ModelAdmin):
     list_display = (
         "template_type",
         "label",
+        "description_short",
         "custom_template",
         "enabled_editor_blocks_display",
         "updated_at",
     )
     list_filter = ("custom_template__comun",)
-    search_fields = ("template_type", "label", "custom_template__name", "custom_template__comun__name")
+    search_fields = (
+        "template_type",
+        "label",
+        "description",
+        "custom_template__name",
+        "custom_template__comun__name",
+    )
     fields = (
         "template_type",
         "label",
+        "description",
         "custom_template",
         "enabled_editor_blocks",
     )
@@ -90,3 +98,11 @@ class PostTemplateConfigAdmin(admin.ModelAdmin):
         return ", ".join(labels) if labels else "Без дополнительных блоков"
 
     enabled_editor_blocks_display.short_description = "Блоки редактора"
+
+    def description_short(self, obj):
+        description = str(getattr(obj, "description", "") or "").strip()
+        if not description:
+            return "—"
+        return description if len(description) <= 120 else f"{description[:117]}..."
+
+    description_short.short_description = "Описание"

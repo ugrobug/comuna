@@ -86,7 +86,6 @@
     '/',
     '/about',
     '/[username]',
-    '/rubrics/[slug]/posts',
     '/tags/[tag]',
     '/c/[name]',
     '/post/[slug]',

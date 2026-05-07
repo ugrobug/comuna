@@ -299,6 +299,7 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
         if not _is_bot_admin(chat_id, token):
             return
         _refresh_author_from_telegram(author, chat_id, token)
+    community_service._ensure_telegram_channel_comun_for_author(author)
 
     raw_text = _fv()._extract_plain_text(message)
     explicit_tags = _fv()._extract_hashtags(raw_text)
@@ -415,7 +416,6 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
             "channel_url": channel_url,
             "raw_data": raw_data,
             "is_pending": requires_approval,
-            "rubric": author.rubric,
             "media_group_id": media_group_id,
             "publish_at": publish_at,
         },
@@ -736,6 +736,7 @@ def _handle_my_chat_member(update: dict) -> None:
     token = settings.TELEGRAM_BOT_TOKEN
     if token:
         _refresh_author_from_telegram(author, f"@{username}", token)
+    community_service._ensure_telegram_channel_comun_for_author(author)
 
     _send_bot_message(
         admin_chat_id,
@@ -773,11 +774,6 @@ def _handle_callback_query(callback_query: dict) -> None:
             defaults={"auto_publish": auto_publish, "mode_selected": True},
         )
         _answer_callback_query(callback_id, "Настройка сохранена")
-        _maybe_send_setup_instructions(chat_id)
-        return
-
-    if data.startswith("rubric:") and chat_id:
-        _answer_callback_query(callback_id, "Тематика больше не настраивается в боте")
         _maybe_send_setup_instructions(chat_id)
         return
 
@@ -871,9 +867,6 @@ def _handle_callback_query(callback_query: dict) -> None:
                     ]
                 },
             )
-            return
-        if action == "rubric":
-            _answer_callback_query(callback_id, "Тематика больше не настраивается в боте")
             return
         if action == "delay":
             _answer_callback_query(callback_id, "Выберите задержку")

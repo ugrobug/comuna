@@ -15,12 +15,11 @@ class BotSessionAdmin(admin.ModelAdmin):
     list_display = (
         "telegram_user_id",
         "selected_author",
-        "rubric",
         "auto_publish",
         "publish_delay_days",
         "instructions_sent",
         "updated_at",
     )
     list_filter = ("auto_publish", "instructions_sent", "mode_selected", "invite_waiting")
-    search_fields = ("telegram_user_id", "selected_author__username", "rubric__name")
-    raw_id_fields = ("selected_author", "rubric")
+    search_fields = ("telegram_user_id", "selected_author__username")
+    raw_id_fields = ("selected_author",)

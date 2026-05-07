@@ -9,9 +9,6 @@ export type PostLinkSnapshot = {
   title: string
   author_title: string
   author_username: string
-  rubric?: string
-  rubric_slug?: string
-  rubric_icon_url?: string
   preview_text?: string
   preview_image_url?: string
 }
@@ -267,13 +264,6 @@ export const buildPostLinkSnapshot = (post: PostLinkSnapshotSource): PostLinkSna
     author_username: authorUsername,
   }
 
-  const rubric = trimOrEmpty(post.rubric)
-  const rubricSlug = trimOrEmpty(post.rubric_slug)
-  const rubricIconUrl = trimOrEmpty(post.rubric_icon_url)
-
-  if (rubric) snapshot.rubric = rubric
-  if (rubricSlug) snapshot.rubric_slug = rubricSlug
-  if (rubricIconUrl) snapshot.rubric_icon_url = rubricIconUrl
   if (previewText) snapshot.preview_text = previewText
   if (previewImageUrl) snapshot.preview_image_url = previewImageUrl
 
@@ -301,9 +291,6 @@ export const normalizePostLinkBlockData = (value: unknown): PostLinkBlockData =>
           title: trimOrEmpty(snapshotRaw.title),
           author_title: trimOrEmpty(snapshotRaw.author_title),
           author_username: trimOrEmpty(snapshotRaw.author_username),
-          rubric: trimOrEmpty(snapshotRaw.rubric) || undefined,
-          rubric_slug: trimOrEmpty(snapshotRaw.rubric_slug) || undefined,
-          rubric_icon_url: trimOrEmpty(snapshotRaw.rubric_icon_url) || undefined,
           preview_text: trimOrEmpty(snapshotRaw.preview_text) || undefined,
           preview_image_url: trimOrEmpty(snapshotRaw.preview_image_url) || undefined,
         }

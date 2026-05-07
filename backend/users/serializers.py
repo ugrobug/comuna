@@ -24,7 +24,7 @@ def _serialize_user(user: User) -> dict:
         site_profile = None
 
     author_links = (
-        AuthorAdmin.objects.select_related("author", "author__rubric")
+        AuthorAdmin.objects.select_related("author")
         .filter(user=user, verified_at__isnull=False)
         .order_by("author__username")
     )
@@ -42,8 +42,6 @@ def _serialize_user(user: User) -> dict:
                 "title": author.title,
                 "channel_url": author.invite_url or author.channel_url,
                 "avatar_url": _fv()._author_avatar_url(None, author),
-                "rubric": author.rubric.name if author.rubric else None,
-                "rubric_slug": author.rubric.slug if author.rubric else None,
                 "auto_publish": author.auto_publish,
                 "publish_delay_days": author.publish_delay_days,
                 "notify_comments": author.notify_comments,
@@ -106,7 +104,6 @@ def _serialize_public_site_user_profile(
 
 def _serialize_public_site_user_author_card(request: HttpRequest, link: AuthorAdmin) -> dict:
     author = link.author
-    rubric = author.rubric
     return {
         "id": author.id,
         "username": author.username,
@@ -114,8 +111,6 @@ def _serialize_public_site_user_author_card(request: HttpRequest, link: AuthorAd
         "channel_url": (author.invite_url or author.channel_url or "").strip() or None,
         "avatar_url": _fv()._author_avatar_url(request, author),
         "description": (author.description or "").strip() or None,
-        "rubric": rubric.name if rubric else None,
-        "rubric_slug": rubric.slug if rubric else None,
     }
 
 

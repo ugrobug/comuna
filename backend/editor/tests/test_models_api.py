@@ -54,11 +54,19 @@ class DynamicPostTemplateConfigTests(TestCase):
         PostTemplateConfig.objects.create(
             template_type="custom_123",
             label="Отзыв",
+            description="Шаблон для отзывов о продукте",
             enabled_editor_blocks=["header", "table"],
         )
 
         self.assertEqual(normalize_allowed_post_templates(["custom_123"]), ["custom_123"])
         options = editor_service._serialize_post_template_type_options()
-        self.assertIn({"value": "custom_123", "label": "Отзыв"}, options)
+        self.assertIn(
+            {
+                "value": "custom_123",
+                "label": "Отзыв",
+                "description": "Шаблон для отзывов о продукте",
+            },
+            options,
+        )
         blocks_by_template = editor_service._template_editor_blocks_by_template()
         self.assertEqual(blocks_by_template["custom_123"], ["header", "table"])

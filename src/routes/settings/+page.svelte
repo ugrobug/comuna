@@ -24,7 +24,6 @@
   import { profile } from '$lib/auth'
   import {
     buildComunFromTelegramChannelUrl,
-    buildRubricsUrl,
     buildTagsListUrl,
   } from '$lib/api/backend'
   import { normalizeTag } from '$lib/tags'
@@ -40,8 +39,6 @@
   import { colorScheme, inDarkColorScheme } from '$lib/ui/colors'
   let importing = false
   let importText = ''
-  let myFeedRubrics: Array<{ name: string; slug: string }> = []
-  let myFeedRubricsLoading = false
   let manualBlacklistTag = ''
   let tagLemmaMap = new Map<string, string>()
   let siteProfileDisplayName = ''
@@ -53,7 +50,6 @@
   let channelVerificationCodeLoading = false
   let channelVerificationCodeError = ''
   let creatingComunByAuthorId: number | null = null
-  $: myFeedAuthors = $userSettings.myFeedAuthors ?? []
   $: hiddenAuthors = $userSettings.hiddenAuthors ?? []
   $: blacklistedTags = Object.entries($userSettings.tagRules ?? {})
     .filter(([, rule]) => rule === 'hide')
@@ -78,21 +74,6 @@
 
   const clearBlacklistedTags = () => {
     $userSettings = { ...$userSettings, tagRules: {} }
-  }
-
-  const loadMyFeedRubrics = async () => {
-    if (myFeedRubricsLoading) return
-    myFeedRubricsLoading = true
-    try {
-      const response = await fetch(buildRubricsUrl())
-      if (!response.ok) return
-      const data = await response.json()
-      myFeedRubrics = data.rubrics ?? []
-    } catch (error) {
-      myFeedRubrics = []
-    } finally {
-      myFeedRubricsLoading = false
-    }
   }
 
   const loadTagLemmas = async () => {
@@ -129,25 +110,6 @@
     }
     if (changed) {
       $userSettings = { ...$userSettings, tagRules: nextRules }
-    }
-  }
-
-  const toggleMyFeedRubric = (slug: string) => {
-    const current = new Set($userSettings.myFeedRubrics ?? [])
-    if (current.has(slug)) {
-      current.delete(slug)
-    } else {
-      current.add(slug)
-    }
-    $userSettings = { ...$userSettings, myFeedRubrics: Array.from(current) }
-  }
-
-  const removeMyFeedAuthor = (username: string) => {
-    $userSettings = {
-      ...$userSettings,
-      myFeedAuthors: ($userSettings.myFeedAuthors ?? []).filter(
-        (value) => value !== username
-      ),
     }
   }
 
@@ -273,7 +235,6 @@
   }
 
   onMount(() => {
-    loadMyFeedRubrics()
     loadTagLemmas()
     if ($siteToken) {
       refreshSiteUser().catch(() => {})
@@ -447,71 +408,17 @@
       <span slot="description">Выберите, какая лента будет открываться при входе на сайт.</span>
       <Select bind:value={$userSettings.homeFeed}>
         <option value="hot">Горячее</option>
-        <option value="fresh">Свежее</option>
         <option value="mine">Моя лента</option>
       </Select>
     </Setting>
     <ToggleSetting
       bind:checked={$userSettings.hideReadPosts}
       title="Скрывать прочитанные"
-      description="Если вы уже открывали пост, он больше не будет показываться в «Горячем», «Свежем» и «Моей ленте»."
+      description="Если вы уже открывали пост, он больше не будет показываться в «Горячем» и «Моей ленте»."
     />
   </Section>
 
   <Section id="my-feed" title="Моя лента">
-    <Setting itemsClass="!flex-col !items-start">
-      <span slot="title">Сообщества моей ленты</span>
-      <span slot="description">
-        Выберите интересные сообщества — они будут отображаться в разделе «Моя лента».
-      </span>
-      {#if myFeedRubricsLoading}
-        <span class="text-sm text-slate-500">Загружаем сообщества...</span>
-      {:else if myFeedRubrics.length}
-        <div class="grid gap-3 sm:grid-cols-2 w-full">
-          {#each myFeedRubrics as rubric}
-            <label class="flex items-center gap-3 text-sm text-slate-700 dark:text-zinc-200">
-              <input
-                class="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-900"
-                type="checkbox"
-                checked={$userSettings.myFeedRubrics?.includes(rubric.slug)}
-                on:change={() => toggleMyFeedRubric(rubric.slug)}
-              />
-              <span>{rubric.name}</span>
-            </label>
-          {/each}
-        </div>
-        <a href="/?feed=mine" class="text-sm text-blue-600 dark:text-blue-400 hover:underline">
-          Открыть мою ленту
-        </a>
-      {:else}
-        <span class="text-sm text-slate-500">Сообщества пока недоступны.</span>
-      {/if}
-    </Setting>
-    <Setting itemsClass="!flex-col !items-start">
-      <span slot="title">Авторы моей ленты</span>
-      <span slot="description">
-        Добавляйте авторов на их страницах кнопкой «Добавить в мою ленту».
-      </span>
-      {#if myFeedAuthors.length}
-        <div class="flex flex-wrap gap-2">
-          {#each myFeedAuthors as username}
-            <span class="inline-flex items-center gap-2 rounded-full bg-slate-100 dark:bg-zinc-800 px-3 py-1 text-xs font-medium text-slate-700 dark:text-zinc-200">
-              @{username}
-              <button
-                type="button"
-                class="text-slate-500 hover:text-slate-700 dark:text-zinc-400 dark:hover:text-zinc-200"
-                aria-label={`Удалить автора ${username} из моей ленты`}
-                on:click={() => removeMyFeedAuthor(username)}
-              >
-                ×
-              </button>
-            </span>
-          {/each}
-        </div>
-      {:else}
-        <span class="text-sm text-slate-500 dark:text-zinc-400">Пока нет выбранных авторов.</span>
-      {/if}
-    </Setting>
     <Setting itemsClass="!flex-col !items-start">
       <span slot="title">Скрытые авторы</span>
       <span slot="description">

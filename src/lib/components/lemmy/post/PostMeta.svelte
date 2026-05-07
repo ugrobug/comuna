@@ -70,15 +70,10 @@
   let showLoginModal = false
   $: authorUsername = (user?.name ?? '').trim()
   $: authorKey = authorUsername.toLowerCase()
-  $: myFeedAuthorKeys = new Set(
-    ($userSettings.myFeedAuthors ?? []).map((value) => value.toLowerCase())
-  )
   $: hiddenAuthorKeys = new Set(
     ($userSettings.hiddenAuthors ?? []).map((value) => value.toLowerCase())
   )
-  $: authorInMyFeed = Boolean(authorKey && myFeedAuthorKeys.has(authorKey))
   $: authorHidden = Boolean(authorKey && hiddenAuthorKeys.has(authorKey))
-  $: myFeedActionLabel = authorInMyFeed ? 'Убрать автора из моей ленты' : 'Добавить автора в мою ленту'
   $: hiddenActionLabel = authorHidden ? 'Показывать автора' : 'Скрыть автора'
   $: showAdminNotifyCommentsIcon = Boolean(
     $siteUser?.is_staff && authorUsername && typeof authorNotifyCommentsEnabled === 'boolean'
@@ -199,36 +194,6 @@
     });
   }
 
-  const toggleAuthorMyFeed = () => {
-    if (!$siteUser) {
-      toast({
-        content: 'Необходимо зарегистрироваться',
-        type: 'warning',
-      })
-      return
-    }
-    if (!authorUsername) return
-
-    const nextAuthors = new Set($userSettings.myFeedAuthors ?? [])
-    const existing = Array.from(nextAuthors).find(
-      (value) => value.toLowerCase() === authorKey
-    )
-    if (existing) {
-      nextAuthors.delete(existing)
-      toast({
-        content: 'Автор убран из "Моей ленты"',
-        type: 'success',
-      })
-    } else {
-      nextAuthors.add(authorUsername)
-      toast({
-        content: 'Посты автора будут выводиться в "Моей ленте"',
-        type: 'success',
-      })
-    }
-    $userSettings = { ...$userSettings, myFeedAuthors: Array.from(nextAuthors) }
-  }
-
   const toggleHiddenAuthor = () => {
     if (!$siteUser) {
       toast({
@@ -312,8 +277,6 @@
           />
         </a>
       {/if}
-      
-      <!-- rubric icon removed -->
     </div>
 
     <!-- Информация -->
@@ -502,20 +465,6 @@
             <span class="sr-only">{notifyCommentsLabel}</span>
           </div>
         {/if}
-        <button
-          type="button"
-          use:portalTooltip={{ text: myFeedActionLabel }}
-          class="inline-flex items-center justify-center h-8 w-8 rounded-full border transition-colors action-tooltip
-          {authorInMyFeed
-            ? 'border-blue-300 bg-blue-50 text-blue-600 dark:border-blue-700 dark:bg-blue-950 dark:text-blue-300'
-            : 'border-slate-300 bg-white text-slate-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300'}"
-          aria-label={myFeedActionLabel}
-          data-tooltip={myFeedActionLabel}
-          on:click={toggleAuthorMyFeed}
-        >
-          <Icon src={authorInMyFeed ? Check : Plus} size="16" mini />
-          <span class="sr-only">{myFeedActionLabel}</span>
-        </button>
         <button
           type="button"
           use:portalTooltip={{ text: hiddenActionLabel }}

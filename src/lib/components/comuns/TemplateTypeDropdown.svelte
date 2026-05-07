@@ -5,6 +5,7 @@
   export type TemplateTypeOption = {
     value: PostTemplateCode
     label: string
+    description?: string
   }
 
   export let options: TemplateTypeOption[] = []
@@ -33,7 +34,9 @@
   $: normalizedQuery = normalizeValue(query)
   $: filteredOptions = options.filter((option) => {
     if (!normalizedQuery) return true
-    return [option.label, option.value].some((value) => normalizeValue(value).includes(normalizedQuery))
+    return [option.label, option.value, option.description ?? ''].some((value) =>
+      normalizeValue(value).includes(normalizedQuery)
+    )
   })
   $: selectedOptions = options.filter((option) => selectedSet.has(option.value))
   $: summaryLabel = selectedOptions.length
@@ -98,7 +101,14 @@
                 }
                 on:change={() => toggleValue(option.value)}
               />
-              <span>{option.label}</span>
+              <span class="template-type-dropdown__option-copy">
+                <span class="template-type-dropdown__option-label">{option.label}</span>
+                {#if option.description}
+                  <span class="template-type-dropdown__option-description">
+                    {option.description}
+                  </span>
+                {/if}
+              </span>
             </label>
           {/each}
         {:else}
@@ -256,7 +266,7 @@
 
   .template-type-dropdown__option {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 0.75rem;
     padding: 0.75rem 0.85rem;
     border: 1px solid rgb(226 232 240);
@@ -264,6 +274,32 @@
     background: rgb(248 250 252 / 0.9);
     color: rgb(15 23 42);
     cursor: pointer;
+  }
+
+  .template-type-dropdown__option input {
+    margin-top: 0.15rem;
+    flex: none;
+  }
+
+  .template-type-dropdown__option-copy {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .template-type-dropdown__option-label {
+    font-weight: 600;
+  }
+
+  .template-type-dropdown__option-description {
+    color: rgb(100 116 139);
+    font-size: 0.82rem;
+    line-height: 1.3;
+  }
+
+  :global(.dark) .template-type-dropdown__option-description {
+    color: rgb(161 161 170);
   }
 
   :global(.dark) .template-type-dropdown__option {

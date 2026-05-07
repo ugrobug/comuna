@@ -60,8 +60,6 @@
             <div class="text-xs text-slate-500 dark:text-zinc-400">
               Режим: {author.auto_publish === false ? 'Согласование' : 'Автопубликация'}
               <span class="mx-1">•</span>
-              Тематика: {author.rubric ?? 'не выбрана'}
-              <span class="mx-1">•</span>
               Задержка: {author.publish_delay_days ? `${author.publish_delay_days} дн.` : 'без задержки'}
               <span class="mx-1">•</span>
               Комментарии: {author.notify_comments ? 'оповещать' : 'не оповещать'}

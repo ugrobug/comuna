@@ -11,6 +11,7 @@ import type {
   PostVotePollTemplateItem,
   SitePostTemplate,
 } from '$lib/postTemplates'
+import { loadBackendFeedSettings, resetBackendFeedSettingsSync } from '$lib/settings'
 import { writable, get } from 'svelte/store'
 
 export type SiteAuthorLink = {
@@ -19,8 +20,6 @@ export type SiteAuthorLink = {
   title?: string | null
   channel_url?: string | null
   avatar_url?: string | null
-  rubric?: string | null
-  rubric_slug?: string | null
   auto_publish?: boolean
   publish_delay_days?: number
   notify_comments?: boolean
@@ -58,9 +57,6 @@ export type SiteUserPost = {
   is_draft?: boolean
   draft_share_token?: string | null
   publish_at?: string | null
-  rubric?: string | null
-  rubric_slug?: string | null
-  rubric_icon_url?: string | null
   comun_slug?: string | null
   comun?: {
     id?: number
@@ -210,6 +206,7 @@ export const refreshSiteUser = async () => {
 
   if (!response.ok) {
     saveToken(null)
+    resetBackendFeedSettingsSync()
     siteToken.set(null)
     siteUser.set(null)
     return null
@@ -218,6 +215,9 @@ export const refreshSiteUser = async () => {
   const data = await parseApiResponse(response)
   if (data?.user) {
     siteUser.set(data.user)
+    loadBackendFeedSettings(token).catch((error) => {
+      console.error('Failed to load feed settings:', error)
+    })
     return data.user as SiteUser
   }
   return null
@@ -301,6 +301,9 @@ export const login = async (username: string, password: string) => {
   saveToken(data.token)
   siteToken.set(data.token)
   siteUser.set(data.user)
+  loadBackendFeedSettings(data.token).catch((error) => {
+    console.error('Failed to load feed settings:', error)
+  })
   return data.user as SiteUser
 }
 
@@ -324,6 +327,9 @@ export const register = async (payload: {
   saveToken(data.token)
   siteToken.set(data.token)
   siteUser.set(data.user)
+  loadBackendFeedSettings(data.token).catch((error) => {
+    console.error('Failed to load feed settings:', error)
+  })
   return data.user as SiteUser
 }
 
@@ -353,6 +359,9 @@ export const loginTelegram = async (payload: TelegramAuthPayload) => {
   saveToken(data.token)
   siteToken.set(data.token)
   siteUser.set(data.user)
+  loadBackendFeedSettings(data.token).catch((error) => {
+    console.error('Failed to load feed settings:', error)
+  })
   return data.user as SiteUser
 }
 
@@ -379,11 +388,15 @@ export const loginVK = async (payload: VkAuthPayload) => {
   saveToken(data.token)
   siteToken.set(data.token)
   siteUser.set(data.user)
+  loadBackendFeedSettings(data.token).catch((error) => {
+    console.error('Failed to load feed settings:', error)
+  })
   return data.user as SiteUser
 }
 
 export const logout = () => {
   saveToken(null)
+  resetBackendFeedSettingsSync()
   siteToken.set(null)
   siteUser.set(null)
 }
@@ -465,7 +478,6 @@ export const updateUserPost = async (
     content?: string
     author_source?: 'site'
     author_username?: string
-    rubric_slug?: string
     comun_slug?: string
     comun_category_id?: number | null
     is_draft?: boolean
@@ -525,7 +537,6 @@ export const createUserPost = async (payload: {
   content?: string
   author_source?: 'site'
   author_username?: string
-  rubric_slug?: string
   comun_slug?: string
   comun_category_id?: number | null
   is_draft?: boolean

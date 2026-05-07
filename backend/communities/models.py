@@ -32,6 +32,11 @@ class ComunCategory(models.Model):
         verbose_name="Публикация только для создателя и модераторов",
         help_text="Если включено, писать в эту категорию смогут только создатель сообщества, модераторы и администраторы сайта.",
     )
+    hide_from_home = models.BooleanField(
+        default=False,
+        verbose_name="Не показывать в горячем",
+        help_text="Посты этой категории не будут попадать в Горячее.",
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -96,18 +101,11 @@ class Comun(models.Model):
     slug = models.SlugField(max_length=160, unique=True)
     creator = models.ForeignKey(
         User,
-        on_delete=models.CASCADE,
-        related_name="created_comuns",
-        verbose_name="Создатель",
-    )
-    source_rubric = models.OneToOneField(
-        "feeds.Rubric",
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name="source_comun",
-        verbose_name="Исходная рубрика",
-        help_text="Если указана, посты этой рубрики отображаются в сообществе.",
+        related_name="created_comuns",
+        verbose_name="Создатель",
     )
     telegram_source_author = models.OneToOneField(
         "feeds.Author",
@@ -137,22 +135,6 @@ class Comun(models.Model):
         related_name="excluded_from_comuns",
         verbose_name="Исключенные авторы",
         help_text="Авторы, чьи посты не будут попадать в это сообщество.",
-    )
-    product_tag = models.ForeignKey(
-        "feeds.Tag",
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="comuns",
-        verbose_name="Тег продукта",
-        help_text="Все посты с этим тегом попадут в коммуну.",
-    )
-    source_tags = models.ManyToManyField(
-        "feeds.Tag",
-        blank=True,
-        related_name="comuns_source",
-        verbose_name="Теги сообщества",
-        help_text="Посты с этими тегами будут попадать в сообщество.",
     )
     welcome_post = models.ForeignKey(
         "feeds.Post",
@@ -193,7 +175,7 @@ class Comun(models.Model):
         help_text="Если включено, в сообществе будет доступна публичная страница глоссария и вставка терминов в публикации.",
     )
     roadmap_enabled = models.BooleanField(
-        default=True,
+        default=False,
         verbose_name="Включить дорожную карту",
         help_text="Если включено, в сообществе будет доступна публичная дорожная карта.",
     )
@@ -220,18 +202,18 @@ class Comun(models.Model):
         verbose_name="Запретить внешние ссылки",
         help_text="Если включено, посты с внешними ссылками не будут попадать в сообщество, а новые публикации с такими ссылками будут отклоняться.",
     )
-    rating_score = models.IntegerField(default=0, verbose_name="Рейтинг")
+    rating_score = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0,
+        verbose_name="Рейтинг",
+    )
     votes_up = models.PositiveIntegerField(default=0, verbose_name="Буду использовать")
     votes_down = models.PositiveIntegerField(default=0, verbose_name="Не нравится")
     hide_from_home = models.BooleanField(
         default=False,
         verbose_name="Не показывать на главной",
         help_text="Посты, созданные внутри этой комуны, не будут попадать в Горячее.",
-    )
-    hide_from_fresh = models.BooleanField(
-        default=False,
-        verbose_name="Не показывать в свежем",
-        help_text="Посты, созданные внутри этой комуны, не будут попадать в ленту Свежее.",
     )
     allowed_post_templates = models.JSONField(
         default=default_allowed_post_templates,

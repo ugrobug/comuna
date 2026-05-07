@@ -150,7 +150,6 @@
           datePublished: data.post.created_at,
           dateModified: data.post.created_at,
           inLanguage: 'ru-RU',
-          articleSection: data.post.rubric || undefined,
           author: {
             '@type': 'Person',
             name: authorName,
@@ -239,9 +238,6 @@
   {/if}
   {#if data.post?.created_at}
     <meta property="article:published_time" content={data.post.created_at} />
-  {/if}
-  {#if data.post?.rubric}
-    <meta property="article:section" content={data.post.rubric} />
   {/if}
 
   <meta name="twitter:card" content={ogImage ? 'summary_large_image' : 'summary'} />

@@ -46,7 +46,6 @@
   let creating = false
   let createError = ''
   let comunCategories: NonNullable<BackendComun['categories']> = []
-  let canCreateInComun = false
   let createCategoryAutofilledFromQuery = false
   let createTemplateType: '' | PostTemplateType = ''
   let createMovieReviewData: MovieReviewTemplateData = createEmptyMovieReviewTemplateData()
@@ -256,11 +255,19 @@
   }
   $: minimumAuthorRatingToPost = Math.max(Number(comun?.minimum_author_rating_to_post ?? 0) || 0, 0)
   $: onlyModeratorsCanPost = Boolean(comun?.only_moderators_can_post)
-  $: canCreateInComun = Boolean($siteToken && comun?.can_post)
   $: selectedComunCategory =
     comunCategories.find((category) => String(category.id) === createCategoryId) ?? null
   $: selectedCategoryOnlyModeratorsCanPost = Boolean(
     selectedComunCategory?.only_moderators_can_post
+  )
+  $: noCategoryOnlyModeratorsCanPost = Boolean(
+    !createCategoryId && onlyModeratorsCanPost
+  )
+  $: selectedPlaceRestrictedForCurrentUser = Boolean(
+    (noCategoryOnlyModeratorsCanPost || selectedCategoryOnlyModeratorsCanPost) && !comun?.can_moderate
+  )
+  $: canOpenComunEditor = Boolean(
+    $siteToken && (comun?.can_post || comunCategories.length > 0)
   )
   $: selectedCategoryRestrictedForCurrentUser = Boolean(
     selectedCategoryOnlyModeratorsCanPost && !comun?.can_moderate
@@ -322,17 +329,19 @@
     if (!$siteUser || !comun?.slug) return
     createError = ''
 
-    if (!canCreateInComun) {
+    if (!canOpenComunEditor) {
       createError =
-        onlyModeratorsCanPost
-          ? 'Публикация в этом сообществе доступна только создателю и модераторам.'
+        noCategoryOnlyModeratorsCanPost
+          ? 'Публикация без категории доступна только создателю и модераторам.'
           : minimumAuthorRatingToPost > 0
           ? `Публикация в этом сообществе доступна авторам с рейтингом от ${formatRatingValue(minimumAuthorRatingToPost)}.`
           : 'Сейчас вы не можете публиковать записи в это сообщество.'
       return
     }
-    if (selectedCategoryRestrictedForCurrentUser) {
-      createError = `Публикация в категории "${selectedComunCategory?.name ?? ''}" доступна только создателю и модераторам.`
+    if (selectedPlaceRestrictedForCurrentUser) {
+      createError = createCategoryId
+        ? `Публикация в категории "${selectedComunCategory?.name ?? ''}" доступна только создателю и модераторам.`
+        : 'Публикация без категории доступна только создателю и модераторам.'
       return
     }
     if (!createTitle.trim()) {
@@ -426,10 +435,10 @@
           <Button on:click={goToLogin}>Войти</Button>
         </div>
       </div>
-    {:else if authCheckDone && !canCreateInComun}
+    {:else if authCheckDone && !canOpenComunEditor}
       <p class="text-sm text-slate-500 dark:text-zinc-400">
-        {#if onlyModeratorsCanPost}
-          Публикация в этом сообществе доступна только создателю и модераторам.
+        {#if noCategoryOnlyModeratorsCanPost}
+          Публикация без категории доступна только создателю и модераторам.
         {:else if minimumAuthorRatingToPost > 0}
           Публикация в этом сообществе доступна авторам с рейтингом от
           {formatRatingValue(minimumAuthorRatingToPost)}.
@@ -446,17 +455,7 @@
         {/if}
 
         <div class="rounded-lg border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/40 px-3 py-2 text-sm text-slate-700 dark:text-zinc-300">
-          {#if comun?.source_rubric}
-            Пост будет опубликован в рубрике <span class="font-semibold">{comun.source_rubric.name}</span>.
-          {:else if comun?.source_tags?.length}
-            Теги сообщества будут добавлены автоматически:
-            <span class="font-semibold">{comun.source_tags.map((tag) => `#${tag.name}`).join(', ')}</span>.
-          {:else if comun?.product_tag?.name}
-            Теги сообщества будут добавлены автоматически:
-            <span class="font-semibold">#{comun.product_tag.name}</span>.
-          {:else}
-            Запись будет автоматически привязана к этому сообществу.
-          {/if}
+          Запись будет автоматически привязана к этому сообществу.
         </div>
 
         {#if comun?.rules_text}
@@ -623,9 +622,13 @@
           </label>
         {/if}
 
-        {#if selectedCategoryRestrictedForCurrentUser}
+        {#if selectedPlaceRestrictedForCurrentUser}
           <div class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-200">
-            В категории "{selectedComunCategory?.name}" писать могут только администраторы и модераторы сообщества.
+            {#if selectedCategoryRestrictedForCurrentUser}
+              В категории "{selectedComunCategory?.name}" писать могут только администраторы и модераторы сообщества.
+            {:else}
+              Без категории писать могут только администраторы и модераторы сообщества.
+            {/if}
           </div>
         {/if}
 

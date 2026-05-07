@@ -105,6 +105,7 @@ export type SitePostTemplate =
 export type PostTemplateTypeOption = {
   value: '' | PostTemplateType
   label: string
+  description?: string
 }
 
 export const POST_TEMPLATE_TYPE_OPTIONS: PostTemplateTypeOption[] = [
@@ -192,12 +193,14 @@ export const normalizePostTemplateTypeOptions = (value: unknown): PostTemplateTy
   for (const item of source) {
     const rawCode = normalizeTemplateCode((item as any)?.value)
     const label = typeof (item as any)?.label === 'string' ? (item as any).label.trim() : ''
+    const description =
+      typeof (item as any)?.description === 'string' ? (item as any).description.trim() : ''
     if (!rawCode || !label) continue
     const optionValue = rawCode === 'basic' ? '' : rawCode
     const key = templateOptionKey(optionValue)
     if (seen.has(key)) continue
     seen.add(key)
-    normalized.push({ value: optionValue, label })
+    normalized.push({ value: optionValue, label, ...(description ? { description } : {}) })
   }
   return normalized.length ? normalized : POST_TEMPLATE_TYPE_OPTIONS
 }

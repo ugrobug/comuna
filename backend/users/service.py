@@ -170,6 +170,7 @@ def _build_public_user_profile_payload(
     offset: int = 0,
 ) -> dict:
     from users import serializers as user_serializers
+    from my_feed import service as my_feed_service
 
     now = timezone.now()
     author_ids, author_links = _public_user_author_ids(profile_user)
@@ -194,7 +195,7 @@ def _build_public_user_profile_payload(
             )
             .filter(_fv()._publish_ready_filter(now))
             .filter(Q(author__shadow_banned=False) | Q(author__force_home=True))
-            .select_related("author", "rubric")
+            .select_related("author")
             .prefetch_related("tags")
             .order_by("-created_at")
         )
@@ -202,18 +203,19 @@ def _build_public_user_profile_payload(
     posts = list(public_posts_qs[offset : offset + limit]) if author_ids else []
     favorite_post_ids = _fv()._favorite_post_ids_for_user(posts, current_user)
 
-    comuns = list(
+    managed_comuns = list(
         Comun.objects.filter(Q(creator_id=profile_user.id) | Q(moderators__id=profile_user.id), is_active=True)
-        .select_related("creator", "product_tag", "source_rubric", "telegram_source_author")
+        .select_related("creator", "telegram_source_author")
         .prefetch_related("moderators", "categories")
         .distinct()
         .order_by("sort_order", "name")
     )
-    total_comuns = len(comuns)
+    comun_cards: list[dict] = []
+    seen_comun_ids: set[int] = set()
 
-    comun_cards = []
-    for comun in comuns:
+    for comun in managed_comuns:
         role = "creator" if comun.creator_id == profile_user.id else "moderator"
+        seen_comun_ids.add(comun.id)
         comun_cards.append(
             community_serializers._serialize_comun_profile_card(
                 request,
@@ -222,6 +224,35 @@ def _build_public_user_profile_payload(
                 role=role,
             )
         )
+
+    subscribed_comun_slugs: list[str] = []
+    feed_settings = getattr(profile_user, "feed_settings", None)
+    if feed_settings is not None:
+        subscribed_comun_slugs = (
+            my_feed_service._serialize_user_feed_settings(feed_settings).get("my_feed_comuns", []) or []
+        )
+
+    if subscribed_comun_slugs:
+        subscribed_comuns = list(
+            Comun.objects.filter(slug__in=subscribed_comun_slugs, is_active=True)
+            .select_related("creator", "telegram_source_author")
+            .prefetch_related("moderators", "categories")
+            .order_by("sort_order", "name")
+        )
+        for comun in subscribed_comuns:
+            if comun.id in seen_comun_ids:
+                continue
+            seen_comun_ids.add(comun.id)
+            comun_cards.append(
+                community_serializers._serialize_comun_profile_card(
+                    request,
+                    comun,
+                    current_user=current_user,
+                    role="subscriber",
+                )
+            )
+
+    total_comuns = len(comun_cards)
 
     author_cards = [
         user_serializers._serialize_public_site_user_author_card(request, link)

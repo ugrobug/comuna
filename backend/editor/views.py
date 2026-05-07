@@ -6,6 +6,7 @@ import secrets
 from datetime import timedelta
 
 from communities import views as community_views
+from communities import service as community_service
 from communities.models import Comun, ComunCategory, ComunPostCategoryAssignment
 from django.conf import settings
 from django.core.files.storage import default_storage
@@ -26,7 +27,6 @@ from editor.serializers import (
     _serialize_post_ratings,
 )
 from editor.service import (
-    _allowed_templates_for_rubric,
     _canonical_imdb_url,
     _extract_imdb_id,
     _extract_inline_post_rating_blocks,
@@ -37,7 +37,6 @@ from editor.service import (
     _normalize_post_template_payload,
     _requested_template_type,
     _resolve_manual_post_author,
-    _resolve_manual_post_rubric,
     _resolve_site_post_author_context,
     _set_post_draft_state,
     _sync_template_derived_raw_data,
@@ -280,7 +279,7 @@ def shared_draft_detail(request: HttpRequest, share_token: str) -> HttpResponse:
 
     try:
         post = (
-            Post.objects.select_related("author", "rubric")
+            Post.objects.select_related("author")
             .prefetch_related("tags")
             .filter(is_blocked=False, is_pending=True, author__is_blocked=False)
             .get(raw_data__draft=True, raw_data__draft_share_token=token)
@@ -309,7 +308,6 @@ def user_posts(request: HttpRequest) -> HttpResponse:
         content = (payload.get("content") or "").strip()
         author_source = (payload.get("author_source") or "").strip().lower()
         author_username = (payload.get("author_username") or "").strip()
-        rubric_slug = (payload.get("rubric_slug") or "").strip()
         is_draft = bool(payload.get("is_draft"))
         comun, comun_error = _resolve_payload_comun(
             user,
@@ -350,17 +348,6 @@ def user_posts(request: HttpRequest) -> HttpResponse:
             status_code = 404 if author_error == "author not found" else 400
             return JsonResponse({"ok": False, "error": author_error}, status=status_code)
 
-        rubric = None
-        if not comun and rubric_slug:
-            rubric, rubric_error = _resolve_manual_post_rubric(
-                user,
-                author=author,
-                rubric_slug=rubric_slug,
-                allow_empty=True,
-            )
-            if rubric_error:
-                status_code = 404 if rubric_error == "rubric not found" else 400
-                return JsonResponse({"ok": False, "error": rubric_error}, status=status_code)
         requested_template_type = _requested_template_type(template_payload)
         if comun:
             template_access_error = _template_not_allowed_error(
@@ -370,15 +357,7 @@ def user_posts(request: HttpRequest) -> HttpResponse:
             )
             if template_access_error:
                 return JsonResponse({"ok": False, "error": template_access_error}, status=400)
-        elif rubric:
-            template_access_error = _template_not_allowed_error(
-                requested_template_type,
-                _allowed_templates_for_rubric(rubric),
-                scope="rubric",
-            )
-            if template_access_error:
-                return JsonResponse({"ok": False, "error": template_access_error}, status=400)
-        if comun or (rubric and _fv()._is_comuna_rubric(rubric)):
+        if comun:
             personal_author, personal_author_error = _get_or_create_personal_author(user)
             if personal_author_error:
                 return JsonResponse({"ok": False, "error": personal_author_error}, status=400)
@@ -435,7 +414,6 @@ def user_posts(request: HttpRequest) -> HttpResponse:
             message_id=message_id,
             title=title,
             content=content,
-            rubric=rubric,
             channel_url=channel_url,
             source_url=channel_url,
             raw_data=raw_data,
@@ -452,6 +430,7 @@ def user_posts(request: HttpRequest) -> HttpResponse:
         _fv()._apply_post_tags(post, explicit_tags)
         if not is_draft:
             _fv()._maybe_notify_new_author(author, post)
+            community_service._recalculate_comun_ratings_for_post(post)
         return JsonResponse({"ok": True, "post": _serialize_post_for_user(request, post, user)})
 
     if request.method != "GET":
@@ -473,7 +452,7 @@ def user_posts(request: HttpRequest) -> HttpResponse:
 
     posts_qs = (
         Post.objects.filter(author_id__in=author_ids, is_blocked=False, author__is_blocked=False)
-        .select_related("author", "rubric")
+        .select_related("author")
         .prefetch_related("tags")
         .order_by("-created_at")
     )
@@ -537,11 +516,13 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
 
     try:
-        post = Post.objects.select_related("author", "rubric").get(
+        post = Post.objects.select_related("author").get(
             id=post_id, is_blocked=False, author__is_blocked=False
         )
     except Post.DoesNotExist:
         return JsonResponse({"ok": False, "error": "post not found"}, status=404)
+
+    previous_comun_ids = community_service._candidate_comun_ids_for_post(post)
 
     author_links, author_ids, personal_author = _resolve_site_post_author_context(user)
     is_linked = AuthorAdmin.objects.filter(
@@ -568,6 +549,8 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
         post.is_blocked = True
         post.raw_data = raw_data
         post.save(update_fields=["is_blocked", "raw_data", "updated_at"])
+        for comun_id in previous_comun_ids:
+            community_service._recalculate_comun_rating(comun_id)
         return JsonResponse({"ok": True, "deleted": True, "post_id": post.id})
 
     try:
@@ -579,7 +562,6 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
     content = payload.get("content") if "content" in payload else None
     tags_payload = payload.get("tags") if "tags" in payload else None
     author_in_payload = "author_username" in payload or "author_source" in payload
-    rubric_in_payload = "rubric_slug" in payload
     comun_in_payload = _payload_has_any(payload, _COMUN_PAYLOAD_KEYS)
     comun_category_in_payload = _payload_has_any(payload, _COMUN_CATEGORY_PAYLOAD_KEYS)
     template_in_payload = "template" in payload
@@ -632,20 +614,7 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
             status_code = 404 if author_error == "author not found" else 400
             return JsonResponse({"ok": False, "error": author_error}, status=status_code)
 
-    next_rubric = None if next_comun else post.rubric
-    if not next_comun and (rubric_in_payload or author_in_payload):
-        rubric_slug = str(payload.get("rubric_slug") or "").strip() if rubric_in_payload else ""
-        next_rubric, rubric_error = _resolve_manual_post_rubric(
-            user,
-            author=next_author,
-            rubric_slug=rubric_slug,
-            allow_empty=True,
-        )
-        if rubric_error:
-            status_code = 404 if rubric_error == "rubric not found" else 400
-            return JsonResponse({"ok": False, "error": rubric_error}, status=status_code)
-
-    if next_comun or (next_rubric and _fv()._is_comuna_rubric(next_rubric)):
+    if next_comun:
         personal_author, personal_author_error = _get_or_create_personal_author(user)
         if personal_author_error:
             return JsonResponse({"ok": False, "error": personal_author_error}, status=400)
@@ -670,12 +639,6 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
             )
         else:
             template_access_error = None
-            if next_rubric:
-                template_access_error = _template_not_allowed_error(
-                    requested_template_type,
-                    _allowed_templates_for_rubric(next_rubric),
-                    scope="rubric",
-                )
         if template_access_error:
             return JsonResponse({"ok": False, "error": template_access_error}, status=400)
         if template_payload:
@@ -741,9 +704,6 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
         post.channel_url = channel_url
         post.source_url = channel_url
 
-    if rubric_in_payload or author_in_payload or comun_in_payload or next_comun:
-        post.rubric = next_rubric
-
     if comun_in_payload or comun_category_in_payload or category_was_provided or next_comun:
         raw_data = _apply_comun_membership_to_raw_data(raw_data, next_comun, next_comun_category)
         raw_data_changed = True
@@ -768,7 +728,6 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
         update_fields=[
             "author",
             "title",
-            "rubric",
             "content",
             "channel_url",
             "source_url",
@@ -791,6 +750,16 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
     _fv()._apply_post_tags(post, explicit_tags)
     if current_is_draft and not target_is_draft:
         _fv()._maybe_notify_new_author(post.author, post)
+    if (
+        current_is_draft != target_is_draft
+        or next_comun
+        or comun_in_payload
+        or comun_category_in_payload
+        or tags_payload is not None
+    ):
+        for comun_id in previous_comun_ids:
+            community_service._recalculate_comun_rating(comun_id)
+        community_service._recalculate_comun_ratings_for_post(post)
     return JsonResponse({"ok": True, "post": _serialize_post_for_user(request, post, user)})
 
 

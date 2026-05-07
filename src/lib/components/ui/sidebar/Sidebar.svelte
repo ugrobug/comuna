@@ -4,11 +4,9 @@
     Inbox,
     UserGroup,
     Fire,
-    Clock,
     Megaphone,
     DocumentText,
     InformationCircle,
-    QuestionMarkCircle,
     ChevronDown,
     Plus,
     PencilSquare,
@@ -28,17 +26,14 @@
   import LoginModal from '$lib/components/auth/LoginModal.svelte'
   import { env } from '$env/dynamic/public'
   import { HAS_LEMMY_INSTANCE } from '$lib/instance'
-  import { buildComunsUrl, type BackendComun, buildThematicFeedsListUrl } from '$lib/api/backend'
+  import { buildComunsUrl, type BackendComun } from '$lib/api/backend'
   import { userSettings } from '$lib/settings'
-  import { siteUser } from '$lib/siteAuth'
 
   const PUBLIC_PROJECT_ABOUT = env.PUBLIC_PROJECT_ABOUT || '/about';
   const PUBLIC_PROJECT_ADVRTISEMENT =
     env.PUBLIC_PROJECT_ADVRTISEMENT || '/advertisement';
   const PUBLIC_PROJECT_AUTHORS = env.PUBLIC_PROJECT_AUTHORS || '/authors';
   const PUBLIC_PROJECT_RULES = env.PUBLIC_PROJECT_RULES || '/rules';
-  const PUBLIC_PROJECT_FAQ = env.PUBLIC_PROJECT_FAQ || '/faq';
-  const SHOW_FOLDERS = false;
 
   let topCommunities: Array<{
     name: string;
@@ -67,17 +62,7 @@
 
   let loginModalOpen = false;
   let comuns: BackendComun[] = [];
-  let visibleComuns: BackendComun[] = [];
   let sidebarComuns: BackendComun[] = [];
-  let thematicFeeds: Array<{
-    name: string
-    slug: string
-    description?: string | null
-    authors_count?: number
-    tags_count?: number
-    blocked_tags_count?: number
-  }> = [];
-  let thematicFeedsOpen = false;
 
   function handleAuthRequired(e: MouseEvent) {
     if (!$profile?.jwt) {
@@ -142,21 +127,6 @@
     }
   }
 
-  async function loadThematicFeeds() {
-    try {
-      const response = await fetch(buildThematicFeedsListUrl());
-      if (!response.ok) return;
-      const data = await response.json();
-      thematicFeeds = data.folders ?? data.feeds ?? [];
-    } catch (e) {
-      thematicFeeds = [];
-    }
-  }
-
-  function toggleThematicFeeds() {
-    thematicFeedsOpen = !thematicFeedsOpen;
-  }
-  
   function updateDisplayedCommunities() {
     if (showFederated) {
       // Показываем все локальные + часть федерация
@@ -186,17 +156,11 @@
       console.log('hasMoreCommunities =', hasMoreCommunities);
     }
     loadComuns();
-    loadThematicFeeds();
   });
 
   $: searchParams = new URLSearchParams($page.url.search);
   $: currentFeed = searchParams.get('feed') ?? ($userSettings.homeFeed ?? 'hot');
-  $: currentThematicSlug = searchParams.get('theme') ?? '';
-  $: visibleComuns = comuns.filter((comun) => comun.slug !== 'faq');
-  $: sidebarComuns = visibleComuns.slice(0, 10);
-  $: if (currentFeed === 'thematic') {
-    thematicFeedsOpen = true;
-  }
+  $: sidebarComuns = comuns.slice(0, 10);
 
 </script>
 
@@ -233,71 +197,12 @@
     <SidebarButton icon={Fire} href="/?feed=hot" active={currentFeed === 'hot'}>
       <span slot="label">Горячее</span>
     </SidebarButton>
-    <SidebarButton icon={Clock} href="/?feed=fresh" active={currentFeed === 'fresh'}>
-      <span slot="label">Свежее</span>
-    </SidebarButton>
     <SidebarButton icon={UserGroup} href="/?feed=mine" active={currentFeed === 'mine'}>
       <span slot="label">Моя лента</span>
     </SidebarButton>
     <SidebarButton icon={Bookmark} href="/?feed=favorites" active={currentFeed === 'favorites'}>
       <span slot="label">Избранное</span>
     </SidebarButton>
-    {#if SHOW_FOLDERS}
-      <SidebarButton
-        icon={ClipboardDocumentList}
-        href="javascript:void(0)"
-        active={currentFeed === 'thematic'}
-        on:click={(e) => {
-          e.preventDefault();
-          toggleThematicFeeds();
-        }}
-      >
-        <div slot="label" class="flex items-center gap-2 w-full">
-          <span class="truncate">Папки</span>
-          <span
-            class="ml-auto transition-transform duration-150"
-            class:rotate-180={thematicFeedsOpen}
-            aria-hidden="true"
-          >
-            <Icon src={ChevronDown} size="16" mini />
-          </span>
-        </div>
-      </SidebarButton>
-      {#if thematicFeedsOpen && (thematicFeeds.length || $siteUser)}
-        <div class="ml-6 flex flex-col gap-1">
-          {#if $siteUser?.is_staff}
-            <SidebarButton href="/folders?create=1" isExpandable={true} class="h-auto py-2">
-              <div slot="label" class="flex flex-col min-w-0 leading-tight">
-                <span class="truncate text-sm">Создать папку</span>
-              </div>
-            </SidebarButton>
-          {/if}
-          {#if $siteUser}
-            <SidebarButton href="/folders" isExpandable={true} class="h-auto py-2">
-              <div slot="label" class="flex flex-col min-w-0 leading-tight">
-                <span class="truncate text-sm">Управление папками</span>
-              </div>
-            </SidebarButton>
-          {/if}
-          {#each thematicFeeds as feed}
-            <SidebarButton
-              href={`/?feed=thematic&theme=${encodeURIComponent(feed.slug)}`}
-              active={currentFeed === 'thematic' && currentThematicSlug === feed.slug}
-              isExpandable={true}
-              class="h-auto py-2"
-              title={feed.description || feed.name}
-            >
-              <div slot="label" class="flex flex-col min-w-0 leading-tight">
-                <span class="truncate text-sm">{feed.name}</span>
-                <span class="truncate text-xs text-slate-500 dark:text-zinc-400">
-                  {feed.authors_count ?? 0} авторов · {feed.tags_count ?? 0} тегов
-                </span>
-              </div>
-            </SidebarButton>
-          {/each}
-        </div>
-      {/if}
-    {/if}
   </div>
 
   {#if $profile?.jwt}
@@ -339,10 +244,10 @@
           <span slot="label">{comun.name}</span>
         </SidebarButton>
       {/each}
-      {#if visibleComuns.length > 10}
-        <SidebarButton href="/comuns" icon={ChevronDown}>
-          <span slot="label">Все сообщества</span>
-        </SidebarButton>
+          {#if comuns.length > 10}
+            <SidebarButton href="/comuns" icon={ChevronDown}>
+              <span slot="label">Все сообщества</span>
+            </SidebarButton>
       {/if}
   </div>
 
@@ -403,9 +308,6 @@
     <div class="flex flex-col gap-1">
       <SidebarButton href={PUBLIC_PROJECT_ABOUT} icon={InformationCircle}>
         <span slot="label">О Проекте</span>
-      </SidebarButton>
-      <SidebarButton href={PUBLIC_PROJECT_FAQ} icon={QuestionMarkCircle}>
-        <span slot="label">FAQ</span>
       </SidebarButton>
       <SidebarButton href={PUBLIC_PROJECT_ADVRTISEMENT} icon={Megaphone}>
         <span slot="label">Реклама</span>

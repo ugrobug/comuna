@@ -64,9 +64,9 @@
   let post: SiteUserPost | null = null
   let comunsLoading = false
   let comuns: BackendComun[] = []
-  let rubricMenuOpen = false
-  let rubricSearchQuery = ''
-  let rubricMenuRef: HTMLDivElement | null = null
+  let comunMenuOpen = false
+  let comunSearchQuery = ''
+  let comunMenuRef: HTMLDivElement | null = null
   let filteredComuns: BackendComun[] = []
   let identityMenuOpen = false
   let identityMenuRef: HTMLDivElement | null = null
@@ -113,7 +113,7 @@
   $: selectedComunCategory =
     selectedComun?.categories?.find((category) => String(category.id) === editComunCategoryId) ?? null
   $: filteredComuns = (() => {
-    const query = rubricSearchQuery.trim().toLowerCase()
+    const query = comunSearchQuery.trim().toLowerCase()
     if (!query) return comuns
     return comuns.filter((comun) => {
       const name = (comun.name || '').toLowerCase()
@@ -320,7 +320,6 @@
     editComunSlug =
       currentPost.comun_slug ||
       currentPost.comun?.slug ||
-      comuns.find((comun) => comun.source_rubric?.slug === currentPost.rubric_slug)?.slug ||
       ''
     editComunCategoryId = currentPost.comun_category_id ? String(currentPost.comun_category_id) : ''
     editAuthor = resolveAuthorValue(currentPost)
@@ -559,8 +558,8 @@
   const selectComun = (slug: string) => {
     editComunSlug = slug
     editComunCategoryId = ''
-    rubricMenuOpen = false
-    rubricSearchQuery = ''
+    comunMenuOpen = false
+    comunSearchQuery = ''
   }
 
   const selectIdentity = (value: string) => {
@@ -588,9 +587,9 @@
 
     const closeOnOutsideClick = (event: MouseEvent) => {
       const target = event.target as Node | null
-      if (rubricMenuOpen && rubricMenuRef && target && !rubricMenuRef.contains(target)) {
-        rubricMenuOpen = false
-        rubricSearchQuery = ''
+      if (comunMenuOpen && comunMenuRef && target && !comunMenuRef.contains(target)) {
+        comunMenuOpen = false
+        comunSearchQuery = ''
       }
       if (identityMenuOpen && identityMenuRef && target && !identityMenuRef.contains(target)) {
         identityMenuOpen = false
@@ -737,16 +736,16 @@
                   Загрузка сообществ...
                 </div>
               {:else}
-                <div class="relative mt-3" bind:this={rubricMenuRef}>
+                <div class="relative mt-3" bind:this={comunMenuRef}>
                   <button
                     type="button"
                     class="flex max-w-full items-center gap-2 text-left text-sm font-medium leading-tight text-slate-800 dark:text-zinc-200"
                     aria-haspopup="listbox"
-                    aria-expanded={rubricMenuOpen}
+                    aria-expanded={comunMenuOpen}
                     on:click={() => {
-                      const nextState = !rubricMenuOpen
-                      rubricMenuOpen = nextState
-                      if (!nextState) rubricSearchQuery = ''
+                      const nextState = !comunMenuOpen
+                      comunMenuOpen = nextState
+                      if (!nextState) comunSearchQuery = ''
                     }}
                   >
                     <span class="truncate">{selectedComun?.name || 'Выберите сообщество'}</span>
@@ -764,7 +763,7 @@
                     </svg>
                   </button>
 
-                  {#if rubricMenuOpen}
+                  {#if comunMenuOpen}
                     <div
                       class="absolute z-20 mt-3 w-full min-w-[18rem] max-w-xl overflow-auto rounded-2xl border border-slate-200 bg-white p-1 shadow-lg dark:border-zinc-800 dark:bg-zinc-900"
                       role="listbox"
@@ -772,7 +771,7 @@
                       <div class="sticky top-0 z-10 border-b border-slate-200 bg-white px-2 py-2 dark:border-zinc-800 dark:bg-zinc-900">
                         <input
                           type="text"
-                          bind:value={rubricSearchQuery}
+                          bind:value={comunSearchQuery}
                           placeholder="Поиск сообщества"
                           class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
                         />
@@ -879,9 +878,14 @@
                             on:click={() => selectTemplateType(templateOption.value)}
                           >
                             <div class="min-w-0 flex-1">
-                              <div class="truncate text-sm font-medium text-slate-900 dark:text-zinc-100">
+                              <div class="text-sm font-medium text-slate-900 dark:text-zinc-100">
                                 {templateOption.label}
                               </div>
+                              {#if templateOption.description}
+                                <div class="mt-1 text-xs leading-snug text-slate-500 dark:text-zinc-400">
+                                  {templateOption.description}
+                                </div>
+                              {/if}
                             </div>
                           </button>
                         {/each}

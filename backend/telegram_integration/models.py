@@ -27,9 +27,6 @@ class BotSession(models.Model):
     telegram_user_id = models.BigIntegerField(unique=True)
     auto_publish = models.BooleanField(default=True)
     publish_delay_days = models.PositiveSmallIntegerField(default=0)
-    rubric = models.ForeignKey(
-        "feeds.Rubric", on_delete=models.SET_NULL, null=True, blank=True, related_name="bot_sessions"
-    )
     selected_author = models.ForeignKey(
         "feeds.Author", on_delete=models.SET_NULL, null=True, blank=True, related_name="bot_sessions"
     )
@@ -50,4 +47,3 @@ class BotSession(models.Model):
 
 
 __all__ = ["BotSession", "TelegramAccount"]
-

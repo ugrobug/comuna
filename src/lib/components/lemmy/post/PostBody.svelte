@@ -1256,10 +1256,8 @@
         snapshot?.title || (resolvedPostId ? `Материал #${resolvedPostId}` : 'Материал Comuna')
       )
       const authorText = escapeHtml(snapshot?.author_title || snapshot?.author_username || '')
-      const rubricText = escapeHtml(snapshot?.rubric || '')
       const previewText = escapeHtml(snapshot?.preview_text || '')
       const previewImage = escapeHtml(snapshot?.preview_image_url || '')
-      const rubricIcon = escapeHtml(snapshot?.rubric_icon_url || '')
       const needsHydration = !snapshot?.title || !snapshot?.preview_text || !snapshot?.preview_image_url
 
       if (!resolvedPostId) return ''
@@ -1274,18 +1272,12 @@
             <img src="${previewImage}" alt="${titleText}" loading="lazy" />
           </div>`
         : ''
-      const rubricIconHtml = rubricIcon
-        ? `<img class="post-linked-material__rubric-icon" src="${rubricIcon}" alt="" loading="lazy" />`
-        : ''
-      const rubricHtml = rubricText
-        ? `<span class="post-linked-material__rubric">${rubricIconHtml}${rubricText}</span>`
-        : ''
       const authorHtml = authorText
         ? `<span class="post-linked-material__author">${authorText}</span>`
         : ''
       const metaHtml =
-        rubricHtml || authorHtml
-          ? `<div class="post-linked-material__meta">${rubricHtml}${authorHtml}</div>`
+        authorHtml
+          ? `<div class="post-linked-material__meta">${authorHtml}</div>`
           : ''
       const previewTextHtml = previewText
         ? `<p class="post-linked-material__text" data-post-link-text>${previewText}</p>`
@@ -3863,7 +3855,6 @@
     align-items: center;
   }
 
-  :global(.post-content .post-linked-material__rubric),
   :global(.post-content .post-linked-material__author) {
     display: inline-flex;
     align-items: center;
@@ -3875,22 +3866,9 @@
     background: rgba(15, 23, 42, 0.42);
   }
 
-  :global(.post-content .post-linked-material__rubric) {
-    color: #fde68a;
-    font-weight: 700;
-    border: 1px solid rgba(251, 191, 36, 0.38);
-  }
-
   :global(.post-content .post-linked-material__author) {
     color: #cbd5e1;
     border: 1px solid rgba(255, 255, 255, 0.14);
-  }
-
-  :global(.post-content .post-linked-material__rubric-icon) {
-    width: 0.98rem;
-    height: 0.98rem;
-    border-radius: 9999px;
-    object-fit: cover;
   }
 
   :global(.post-content .post-linked-material__title) {

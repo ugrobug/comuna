@@ -1,65 +1,131 @@
 from __future__ import annotations
 
 from django.contrib.auth import get_user_model
-from django.utils.text import slugify
 
-from my_feed.models import ThematicFeed
+from my_feed.models import UserFeedSettings, default_feed_tag_rules
 
 User = get_user_model()
 
-
-def _fv():
-    from feeds import views as feeds_views
-
-    return feeds_views
+VALID_HOME_FEEDS = {"hot", "mine"}
+VALID_TAG_RULES = {"hide", "blur"}
 
 
-def _thematic_feed_is_moderator(user: User | None, feed: ThematicFeed) -> bool:
-    if not user:
-        return False
-    if user.is_staff:
-        return True
-    return feed.moderators.filter(id=user.id).exists()
-
-
-def _parse_int_list(value: object) -> list[int]:
+def _normalize_unique_string_list(value: object, *, lowercase: bool = False, limit: int = 200) -> list[str]:
     if not isinstance(value, list):
         return []
-    result: list[int] = []
-    seen: set[int] = set()
-    for item in value:
-        try:
-            parsed = int(item)
-        except (TypeError, ValueError):
+    result: list[str] = []
+    seen: set[str] = set()
+    for item in value[:limit]:
+        text = str(item or "").strip()
+        if lowercase:
+            text = text.lower()
+        if not text or text in seen:
             continue
-        if parsed <= 0 or parsed in seen:
-            continue
-        seen.add(parsed)
-        result.append(parsed)
+        seen.add(text)
+        result.append(text)
     return result
 
 
-def _normalize_thematic_feed_slug(value: str) -> str:
-    normalized_value = str(value or "").strip()
-    if not normalized_value:
-        return ""
-    base_slug = slugify(normalized_value)[:120]
-    if not base_slug:
-        base_slug = _fv()._slugify_title(normalized_value)[:120]
-    return str(base_slug or "").strip("-")
+def _normalize_comun_category_selection(value: object) -> dict[str, list[str]]:
+    if not isinstance(value, dict):
+        return {}
+    result: dict[str, list[str]] = {}
+    for raw_comun_slug, raw_category_slugs in value.items():
+        comun_slug = str(raw_comun_slug or "").strip()
+        if not comun_slug:
+            continue
+        category_slugs = _normalize_unique_string_list(raw_category_slugs)
+        if category_slugs:
+            result[comun_slug] = category_slugs
+    return result
 
 
-def _can_access_thematic_folders_page(user: User | None) -> bool:
-    if not user:
-        return False
-    if user.is_staff:
-        return True
-    return ThematicFeed.objects.filter(moderators=user).exists()
+def _normalize_tag_rules(value: object) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return default_feed_tag_rules()
+    result: dict[str, str] = {}
+    for raw_tag, raw_rule in value.items():
+        tag = str(raw_tag or "").strip().lower()
+        rule = str(raw_rule or "").strip().lower()
+        if not tag or rule not in VALID_TAG_RULES:
+            continue
+        result[tag] = rule
+    return result
+
+
+def _get_or_create_user_feed_settings(user: User) -> UserFeedSettings:
+    settings, _created = UserFeedSettings.objects.get_or_create(user=user)
+    return settings
+
+
+def _feed_settings_have_customizations(settings: UserFeedSettings) -> bool:
+    default_rules = default_feed_tag_rules()
+    return any(
+        [
+            settings.home_feed != "hot",
+            bool(settings.hide_read_posts),
+            bool(settings.my_feed_authors),
+            bool(settings.my_feed_tags),
+            bool(settings.my_feed_comuns),
+            bool(settings.my_feed_comun_categories),
+            bool(settings.hidden_authors),
+            not bool(settings.my_feed_hide_negative),
+            dict(settings.tag_rules or {}) != default_rules,
+        ]
+    )
+
+
+def _serialize_user_feed_settings(settings: UserFeedSettings) -> dict:
+    return {
+        "home_feed": settings.home_feed if settings.home_feed in VALID_HOME_FEEDS else "hot",
+        "hide_read_posts": bool(settings.hide_read_posts),
+        "my_feed_authors": _normalize_unique_string_list(settings.my_feed_authors),
+        "my_feed_tags": _normalize_unique_string_list(settings.my_feed_tags, lowercase=True),
+        "my_feed_comuns": _normalize_unique_string_list(settings.my_feed_comuns),
+        "my_feed_comun_categories": _normalize_comun_category_selection(
+            settings.my_feed_comun_categories
+        ),
+        "hidden_authors": _normalize_unique_string_list(settings.hidden_authors),
+        "my_feed_hide_negative": bool(settings.my_feed_hide_negative),
+        "tag_rules": _normalize_tag_rules(settings.tag_rules),
+        "updated_at": settings.updated_at.isoformat() if settings.updated_at else None,
+    }
+
+
+def _apply_user_feed_settings_payload(settings: UserFeedSettings, payload: dict) -> UserFeedSettings:
+    if "home_feed" in payload:
+        home_feed = str(payload.get("home_feed") or "").strip()
+        if home_feed in VALID_HOME_FEEDS:
+            settings.home_feed = home_feed
+    if "hide_read_posts" in payload:
+        settings.hide_read_posts = bool(payload.get("hide_read_posts"))
+    if "my_feed_authors" in payload:
+        settings.my_feed_authors = _normalize_unique_string_list(payload.get("my_feed_authors"))
+    if "my_feed_tags" in payload:
+        settings.my_feed_tags = _normalize_unique_string_list(
+            payload.get("my_feed_tags"), lowercase=True
+        )
+    if "my_feed_comuns" in payload:
+        settings.my_feed_comuns = _normalize_unique_string_list(payload.get("my_feed_comuns"))
+    if "my_feed_comun_categories" in payload:
+        settings.my_feed_comun_categories = _normalize_comun_category_selection(
+            payload.get("my_feed_comun_categories")
+        )
+    if "hidden_authors" in payload:
+        settings.hidden_authors = _normalize_unique_string_list(payload.get("hidden_authors"))
+    if "my_feed_hide_negative" in payload:
+        settings.my_feed_hide_negative = bool(payload.get("my_feed_hide_negative"))
+    if "tag_rules" in payload:
+        settings.tag_rules = _normalize_tag_rules(payload.get("tag_rules"))
+    settings.save()
+    return settings
 
 
 __all__ = [
-    "_can_access_thematic_folders_page",
-    "_normalize_thematic_feed_slug",
-    "_parse_int_list",
-    "_thematic_feed_is_moderator",
+    "VALID_HOME_FEEDS",
+    "VALID_TAG_RULES",
+    "_apply_user_feed_settings_payload",
+    "_feed_settings_have_customizations",
+    "_get_or_create_user_feed_settings",
+    "_serialize_user_feed_settings",
 ]

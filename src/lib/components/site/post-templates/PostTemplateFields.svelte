@@ -409,8 +409,15 @@
                 }`}
                 on:click={() => selectTemplateType(option.value)}
               >
-                <span class="flex-1 whitespace-normal text-slate-700 dark:text-zinc-200">
-                  {option.label}
+                <span class="flex-1 whitespace-normal">
+                  <span class="block text-sm font-medium text-slate-800 dark:text-zinc-100">
+                    {option.label}
+                  </span>
+                  {#if option.description}
+                    <span class="mt-1 block text-xs leading-snug text-slate-500 dark:text-zinc-400">
+                      {option.description}
+                    </span>
+                  {/if}
                 </span>
               </button>
             {/each}

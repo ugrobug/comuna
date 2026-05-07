@@ -302,7 +302,6 @@
     }
 
     private renderPreviewCard(snapshot: PostLinkSnapshot, announcement: string): string {
-      const rubricLabel = snapshot.rubric || ''
       const authorLabel = snapshot.author_title || snapshot.author_username || ''
       const previewText = snapshot.preview_text || ''
       const previewImage = snapshot.preview_image_url || ''
@@ -316,18 +315,12 @@
             <img src="${this.escapeHtml(previewImage)}" alt="${this.escapeHtml(snapshot.title || 'Превью поста')}" loading="lazy">
           </div>`
         : ''
-      const rubricIconHtml = snapshot.rubric_icon_url
-        ? `<img class="post-link-tool-preview__rubric-icon" src="${this.escapeHtml(snapshot.rubric_icon_url)}" alt="" loading="lazy">`
-        : ''
-      const rubricHtml = rubricLabel
-        ? `<span class="post-link-tool-preview__rubric">${rubricIconHtml}${this.escapeHtml(rubricLabel)}</span>`
-        : ''
       const authorHtml = authorLabel
         ? `<span class="post-link-tool-preview__author">${this.escapeHtml(authorLabel)}</span>`
         : ''
       const metaHtml =
-        rubricHtml || authorHtml
-          ? `<div class="post-link-tool-preview__meta">${rubricHtml}${authorHtml}</div>`
+        authorHtml
+          ? `<div class="post-link-tool-preview__meta">${authorHtml}</div>`
           : ''
 
       return `${announcementHtml}<div class="post-link-tool-preview__card${previewImage ? '' : ' post-link-tool-preview__card--no-image'}">
@@ -409,7 +402,6 @@
         button.innerHTML = `
           <div class="post-link-tool-results__item-title">${this.escapeHtml(item.title || 'Пост')}</div>
           <div class="post-link-tool-results__item-meta">
-            <span>${this.escapeHtml(item.rubric || 'Без рубрики')}</span>
             <span>${this.escapeHtml(item.author_title || item.author_username || 'Автор')}</span>
           </div>
           ${
@@ -6261,7 +6253,6 @@
     align-items: center;
   }
 
-  :global(.post-link-tool-preview__rubric),
   :global(.post-link-tool-preview__author) {
     display: inline-flex;
     align-items: center;
@@ -6273,22 +6264,9 @@
     background: rgba(15, 23, 42, 0.42);
   }
 
-  :global(.post-link-tool-preview__rubric) {
-    color: #fde68a;
-    font-weight: 700;
-    border: 1px solid rgba(251, 191, 36, 0.38);
-  }
-
   :global(.post-link-tool-preview__author) {
     color: #cbd5e1;
     border: 1px solid rgba(255, 255, 255, 0.14);
-  }
-
-  :global(.post-link-tool-preview__rubric-icon) {
-    width: 0.95rem;
-    height: 0.95rem;
-    border-radius: 9999px;
-    object-fit: cover;
   }
 
   :global(.post-link-tool-preview__title) {

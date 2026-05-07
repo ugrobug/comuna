@@ -320,6 +320,11 @@ class PostTemplateConfig(models.Model):
         verbose_name="Название шаблона",
         help_text="Название, которое пользователи видят в выборе типа публикации.",
     )
+    description = models.TextField(
+        blank=True,
+        verbose_name="Описание шаблона",
+        help_text="Короткая подсказка для пользователей в списке выбора типа публикации.",
+    )
     custom_template = models.OneToOneField(
         "feeds.ComunCustomPostTemplate",
         null=True,
@@ -389,6 +394,7 @@ class PostTemplateConfig(models.Model):
                 str(getattr(custom_template, "name", "") or "").strip()
                 or POST_TEMPLATE_TYPE_LABELS.get(template_type, template_type)
             )[:120]
+        self.description = re.sub(r"\s+", " ", str(self.description or "").strip())[:500]
         self.enabled_editor_blocks = normalize_template_editor_blocks_for_template(
             template_type, self.enabled_editor_blocks
         )

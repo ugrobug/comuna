@@ -5,14 +5,13 @@ from django.test import SimpleTestCase, TestCase
 from django.urls import resolve, reverse
 
 from my_feed.views import (
+    auth_feed_settings,
     my_feed,
-    thematic_feed_manage_detail,
-    thematic_feed_posts,
-    thematic_feeds_list,
-    thematic_feeds_manage,
 )
 from communities.models import Comun, ComunCategory, ComunPostCategoryAssignment
 from feeds.models import Author, Post
+from my_feed.models import UserFeedSettings
+from users.service import _issue_token
 
 User = get_user_model()
 
@@ -20,16 +19,7 @@ User = get_user_model()
 class MyFeedViewsApiTests(SimpleTestCase):
     def test_my_feed_urls_resolve_to_my_feed_app_views(self):
         self.assertIs(resolve("/api/home/my/").func, my_feed)
-        self.assertIs(resolve("/api/thematic-feeds/").func, thematic_feeds_list)
-        self.assertIs(resolve("/api/thematic-feeds/manage/").func, thematic_feeds_manage)
-        self.assertIs(
-            resolve("/api/thematic-feeds/manage/demo/").func,
-            thematic_feed_manage_detail,
-        )
-        self.assertIs(
-            resolve("/api/thematic-feeds/demo/posts/").func,
-            thematic_feed_posts,
-        )
+        self.assertIs(resolve("/api/auth/feed-settings/").func, auth_feed_settings)
 
 
 class MyFeedComunCategoryTests(TestCase):
@@ -102,3 +92,155 @@ class MyFeedComunCategoryTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content.decode())
         posts = response.json()["posts"]
         self.assertEqual([post["id"] for post in posts], [self.record_post.id])
+
+
+class UserFeedSettingsApiTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="feed-user", password="secret")
+        self.comun = Comun.objects.create(name="Subscribed Comun", slug="subscribed", creator=self.user)
+        self.other_comun = Comun.objects.create(name="Other Comun", slug="other", creator=self.user)
+        self.author = Author.objects.create(username="chosen-author", title="Chosen Author")
+        self.post = Post.objects.create(
+            author=self.author,
+            message_id=301,
+            title="Chosen post",
+            content="{}",
+            is_pending=False,
+            is_blocked=False,
+        )
+        self.comun_post = Post.objects.create(
+            author=self.author,
+            message_id=302,
+            title="Subscribed comun post",
+            content="{}",
+            raw_data={"source": "manual_comun", "comun_slug": self.comun.slug},
+            is_pending=False,
+            is_blocked=False,
+        )
+        self.other_comun_post = Post.objects.create(
+            author=self.author,
+            message_id=303,
+            title="Other comun post",
+            content="{}",
+            raw_data={"source": "manual_comun", "comun_slug": self.other_comun.slug},
+            is_pending=False,
+            is_blocked=False,
+        )
+        self.auth_headers = {"HTTP_AUTHORIZATION": f"Bearer {_issue_token(self.user)}"}
+
+    def test_auth_feed_settings_roundtrip(self):
+        response = self.client.patch(
+            reverse("auth-feed-settings"),
+            data=json.dumps(
+                {
+                    "home_feed": "mine",
+                    "my_feed_authors": ["chosen-author", "chosen-author"],
+                    "my_feed_hide_negative": False,
+                    "tag_rules": {"noise": "hide", "nsfw": "blur", "bad": "drop"},
+                }
+            ),
+            content_type="application/json",
+            **self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        payload = response.json()
+        self.assertEqual(payload["settings"]["home_feed"], "mine")
+        self.assertEqual(payload["settings"]["my_feed_authors"], ["chosen-author"])
+        self.assertFalse(payload["settings"]["my_feed_hide_negative"])
+        self.assertEqual(payload["settings"]["tag_rules"], {"noise": "hide", "nsfw": "blur"})
+
+        response = self.client.get(reverse("auth-feed-settings"), **self.auth_headers)
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        self.assertTrue(response.json()["has_customizations"])
+
+    def test_my_feed_uses_saved_comun_subscriptions_without_query_filters(self):
+        UserFeedSettings.objects.create(
+            user=self.user,
+            home_feed="mine",
+            my_feed_comuns=[self.comun.slug],
+        )
+        response = self.client.get(reverse("my-feed"), {"limit": "10"}, **self.auth_headers)
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        self.assertEqual([post["id"] for post in response.json()["posts"]], [self.comun_post.id])
+
+    def test_my_feed_ignores_query_comun_override_for_authenticated_user(self):
+        UserFeedSettings.objects.create(
+            user=self.user,
+            home_feed="mine",
+            my_feed_comuns=[self.comun.slug],
+        )
+        response = self.client.get(
+            reverse("my-feed"),
+            {"comuns": self.other_comun.slug, "limit": "10"},
+            **self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        self.assertEqual([post["id"] for post in response.json()["posts"]], [self.comun_post.id])
+
+    def test_my_feed_includes_saved_author_subscription(self):
+        UserFeedSettings.objects.create(
+            user=self.user,
+            home_feed="mine",
+            my_feed_authors=["chosen-author"],
+        )
+        response = self.client.get(reverse("my-feed"), {"limit": "10"}, **self.auth_headers)
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        post_ids = {post["id"] for post in response.json()["posts"]}
+        self.assertEqual(post_ids, {self.post.id, self.comun_post.id, self.other_comun_post.id})
+
+    def test_my_feed_subscribed_comun_does_not_include_other_channel_posts(self):
+        source_comun = Comun.objects.create(
+            name="Subscribed Tech",
+            slug="subscribed-tech",
+            creator=self.user,
+        )
+        plain_author = Author.objects.create(username="plain-tech", title="Plain Tech")
+        telegram_author = Author.objects.create(
+            username="anrera_tech",
+            title="Anrera Tech",
+            channel_id=123456,
+        )
+        Comun.objects.create(
+            name="Anrera Tech",
+            slug="anrera_tech",
+            creator=self.user,
+            telegram_source_author=telegram_author,
+        )
+        source_comun_post = Post.objects.create(
+            author=plain_author,
+            message_id=401,
+            title="Source comun post",
+            content="{}",
+            raw_data={"source": "manual_comun", "comun_slug": source_comun.slug},
+            is_pending=False,
+            is_blocked=False,
+        )
+        ComunPostCategoryAssignment.objects.create(
+            comun=source_comun,
+            post=source_comun_post,
+            assigned_by=self.user,
+        )
+        other_comun_post = Post.objects.create(
+            author=telegram_author,
+            message_id=402,
+            title="Other telegram comun post",
+            content="{}",
+            is_pending=False,
+            is_blocked=False,
+        )
+        UserFeedSettings.objects.create(
+            user=self.user,
+            home_feed="mine",
+            my_feed_comuns=[source_comun.slug],
+        )
+
+        response = self.client.get(reverse("my-feed"), {"limit": "10"}, **self.auth_headers)
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        post_ids = {post["id"] for post in response.json()["posts"]}
+        self.assertIn(source_comun_post.id, post_ids)
+        self.assertNotIn(other_comun_post.id, post_ids)
