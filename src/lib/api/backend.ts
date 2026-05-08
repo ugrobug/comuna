@@ -167,6 +167,15 @@ export const buildSpecialLandnameShareUrl = (): string => {
   return `${getBackendBaseUrl()}/api/special-projects/landname/share/`
 }
 
+export const buildSpecialLandnamePreviewImageUrl = (text: string = ''): string => {
+  const params = new URLSearchParams()
+  if (text) {
+    params.set('text', text)
+  }
+  const query = params.toString()
+  return `${getBackendBaseUrl()}/api/special-projects/landname/preview.png${query ? `?${query}` : ''}`
+}
+
 export const buildSpecialLandnameAdminLettersUrl = (): string => {
   return `${getBackendBaseUrl()}/api/special-projects/landname/admin/letters/`
 }

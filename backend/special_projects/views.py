@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import secrets
+from io import BytesIO
 
 from django.conf import settings
 from django.core.files.storage import default_storage
@@ -11,7 +12,7 @@ from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils import timezone
 from django.utils.text import get_valid_filename
 from django.views.decorators.csrf import csrf_exempt
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageDraw, ImageFont, UnidentifiedImageError
 
 from special_projects.models import (
     SpecialProjectGeneratedPhrase,
@@ -53,6 +54,68 @@ def landname_alphabet(request: HttpRequest) -> HttpResponse:
     if request.method != "GET":
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
     return JsonResponse(alphabet_payload(request))
+
+
+def _preview_font(size: int, bold: bool = True):
+    filename = "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
+    candidates = [
+        f"/usr/share/fonts/truetype/dejavu/{filename}",
+        f"/usr/local/share/fonts/{filename}",
+        "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+        "/System/Library/Fonts/Supplemental/Arial.ttf",
+        "/Library/Fonts/Arial Unicode.ttf",
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            return ImageFont.truetype(path, size=size)
+    return ImageFont.load_default()
+
+
+def landname_preview_image(request: HttpRequest) -> HttpResponse:
+    if request.method != "GET":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    text = normalize_landname_text(request.GET.get("text", "")) or "КОМУНА"
+    image = Image.new("RGB", (1200, 630), "#f8fafc")
+    draw = ImageDraw.Draw(image)
+
+    # Restrained Comuna-like card: quiet background, orange accent, strong phrase signal.
+    draw.rounded_rectangle((72, 62, 1128, 568), radius=28, fill="#ffffff", outline="#e2e8f0", width=2)
+    draw.rectangle((72, 62, 1128, 178), fill="#fff7ed")
+    draw.rounded_rectangle((96, 92, 228, 132), radius=20, fill="#ea580c")
+    draw.text((162, 111), "T", anchor="mm", font=_preview_font(26), fill="#ffffff")
+    draw.text((252, 102), "Имя на карте", font=_preview_font(34), fill="#0f172a")
+    draw.text(
+        (252, 142),
+        "Спутниковая фраза Tambur",
+        font=_preview_font(24, bold=False),
+        fill="#64748b",
+    )
+
+    font_size = 122
+    font = _preview_font(font_size)
+    max_width = 960
+    while font_size > 52 and draw.textbbox((0, 0), text, font=font)[2] > max_width:
+        font_size -= 6
+        font = _preview_font(font_size)
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_width = bbox[2] - bbox[0]
+    text_height = bbox[3] - bbox[1]
+    x = 600 - text_width / 2
+    y = 320 - text_height / 2
+    draw.text((x + 4, y + 5), text, font=font, fill="#fed7aa")
+    draw.text((x, y), text, font=font, fill="#0f172a")
+
+    subtitle = "Введите слово на русском, а мы соберём его из спутниковых снимков"
+    subtitle_font = _preview_font(28, bold=False)
+    subtitle_bbox = draw.textbbox((0, 0), subtitle, font=subtitle_font)
+    draw.text((600 - (subtitle_bbox[2] - subtitle_bbox[0]) / 2, 466), subtitle, font=subtitle_font, fill="#475569")
+
+    buffer = BytesIO()
+    image.save(buffer, format="PNG", optimize=True)
+    response = HttpResponse(buffer.getvalue(), content_type="image/png")
+    response["Cache-Control"] = "public, max-age=86400"
+    return response
 
 
 @csrf_exempt

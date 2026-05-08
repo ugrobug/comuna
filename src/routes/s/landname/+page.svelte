@@ -2,6 +2,7 @@
   import { browser } from '$app/environment'
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
+  import { env } from '$env/dynamic/public'
   import {
     buildSpecialLandnameAdminGenerationsUrl,
     buildSpecialLandnameAdminLetterUrl,
@@ -109,6 +110,15 @@
       .replace(/\s+/g, ' ')
       .slice(0, 32)
 
+  const encodeQueryText = (value: string) => encodeURIComponent(value).replace(/%20/g, '+')
+  const normalizePublicSiteBaseUrl = (value: string): string => {
+    const cleanValue = value.replace(/\/+$/, '')
+    if (cleanValue === 'http://tambur.pub' || cleanValue === 'http://www.tambur.pub') {
+      return cleanValue.replace('http://', 'https://')
+    }
+    return cleanValue
+  }
+
   let inputText = 'КОМУНА'
   let rendered: RenderedLandname | null = null
   let loading = false
@@ -164,6 +174,13 @@
 
   $: pendingAdminCount = adminLetters.filter((item) => item.item_type === 'suggestion').length
   $: adminGenerationUnsharedTotal = Math.max(adminGenerationTotal - adminGenerationSharedTotal, 0)
+  $: publicSiteBaseUrl = normalizePublicSiteBaseUrl(env.PUBLIC_SITE_URL || $page.url.origin)
+  $: previewText = normalizeInput($page.url.searchParams.get('text') || rendered?.text || inputText || '').trim()
+  $: previewTitleText = previewText || 'КОМУНА'
+  $: landnamePageTitle = `${previewTitleText} — Имя на карте`
+  $: landnameDescription = `Фраза «${previewTitleText}», собранная из спутниковых снимков.`
+  $: landnameCanonicalUrl = `${publicSiteBaseUrl}/s/landname?text=${encodeQueryText(previewTitleText)}`
+  $: landnamePreviewImageUrl = `${publicSiteBaseUrl}/api/special-projects/landname/preview.png?text=${encodeQueryText(previewTitleText)}`
 
   $: shareUrl =
     browser && rendered?.text
@@ -569,11 +586,23 @@
 </script>
 
 <svelte:head>
-  <title>Имя на карте - Comuna</title>
-  <meta
-    name="description"
-    content="Спецпроект Comuna: соберите слово из спутниковых букв и поделитесь результатом."
-  />
+  <title>{landnamePageTitle}</title>
+  <meta name="description" content={landnameDescription} />
+  <link rel="canonical" href={landnameCanonicalUrl} />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Tambur" />
+  <meta property="og:title" content={landnamePageTitle} />
+  <meta property="og:description" content={landnameDescription} />
+  <meta property="og:url" content={landnameCanonicalUrl} />
+  <meta property="og:image" content={landnamePreviewImageUrl} />
+  <meta property="og:image:secure_url" content={landnamePreviewImageUrl} />
+  <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content={landnamePageTitle} />
+  <meta name="twitter:description" content={landnameDescription} />
+  <meta name="twitter:image" content={landnamePreviewImageUrl} />
 </svelte:head>
 
 <section class="landname-page">

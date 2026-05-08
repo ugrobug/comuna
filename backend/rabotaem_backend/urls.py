@@ -62,6 +62,7 @@ from special_projects.views import (
     landname_admin_suggestion_approve,
     landname_admin_suggestion_detail,
     landname_alphabet,
+    landname_preview_image,
     landname_render,
     landname_share_event,
     landname_suggestions,
@@ -164,6 +165,11 @@ urlpatterns = [
         "api/special-projects/landname/share/",
         landname_share_event,
         name="special-landname-share-event",
+    ),
+    path(
+        "api/special-projects/landname/preview.png",
+        landname_preview_image,
+        name="special-landname-preview-image",
     ),
     path(
         "api/special-projects/landname/alphabet/",
