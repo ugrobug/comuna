@@ -16,16 +16,14 @@
   let loading = false
   let scriptLoaded = false
   let lastActive = active
+  let lastDisabled = disabled
+  let lastPrivacyAccepted = privacyAccepted
   const botName = (env.PUBLIC_TELEGRAM_LOGIN_BOT || '').replace(/^@/, '')
   let authUrl = ''
 
   const mountWidget = () => {
     if (!browser || !container || !botName || disabled) return
     scriptLoaded = false
-    if (!authUrl) {
-      const origin = env.PUBLIC_SITE_URL || window.location.origin
-      const next = `${window.location.pathname}${window.location.search}`
-    }
     authUrl = `${(env.PUBLIC_SITE_URL || window.location.origin).replace(/\/$/, '')}/api/auth/telegram/?next=${encodeURIComponent(`${window.location.pathname}${window.location.search}`)}${privacyAccepted ? '&privacy_accepted=1' : ''}`
     container.innerHTML = ''
 
@@ -39,6 +37,9 @@
     script.setAttribute('data-request-access', 'write')
     script.onload = () => {
       scriptLoaded = true
+    }
+    script.onerror = () => {
+      scriptLoaded = false
     }
     container.appendChild(script)
   }
@@ -82,6 +83,14 @@
 
   $: if (browser && active !== lastActive) {
     lastActive = active
+    if (active) {
+      remountWhenVisible()
+    }
+  }
+
+  $: if (browser && (disabled !== lastDisabled || privacyAccepted !== lastPrivacyAccepted)) {
+    lastDisabled = disabled
+    lastPrivacyAccepted = privacyAccepted
     if (active) {
       remountWhenVisible()
     }
