@@ -67,6 +67,8 @@
 
   $: isLandingRoute =
     $page.url.pathname === '/lp' || $page.url.pathname.startsWith('/lp/')
+  $: isSpecialProjectRoute = $page.url.pathname.startsWith('/s/')
+  $: isFullBleedRoute = isLandingRoute || isSpecialProjectRoute
   // Получаем текущий URL для канонической ссылки
   $: siteBaseUrl = (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '')
   $: canonicalUrl = (() => {
@@ -198,7 +200,7 @@
   dir={$locale == 'he' && $userSettings.useRtl ? 'rtl' : 'ltr'}
   class="min-h-screen "
   route={$page.route}
-  fullBleed={isLandingRoute}
+  fullBleed={isFullBleedRoute}
 >
   <Moderation />
   <ToastContainer />
@@ -206,7 +208,7 @@
   <ModalContainer />
 
   <svelte:fragment slot="sidebar" let:style={s} let:class={c}>
-    {#if !isLandingRoute}
+    {#if !isFullBleedRoute}
       {#await import('$lib/components/ui/sidebar/Sidebar.svelte') then { default: Sidebar }}
         <Sidebar
           route={$page.route.id ?? ''}
@@ -220,7 +222,7 @@
     slot="main"
     let:style={s}
     let:class={c}
-    class="{isLandingRoute
+    class="{isFullBleedRoute
       ? 'min-w-0 w-full flex flex-col h-full relative xl:pt-0 pt-20'
       : 'p-4 sm:p-6 min-w-0 w-full flex flex-col h-full relative xl:pt-0 pt-20'} {c}"
     style={s}
@@ -231,7 +233,7 @@
   <Navbar slot="navbar" let:style={s} let:class={c} class={c} style={s} />
   
   <svelte:fragment slot="suffix" let:class={c} let:style={s}>
-    {#if !isLandingRoute && !$page.data.hideSidebar}
+    {#if !isFullBleedRoute && !$page.data.hideSidebar}
       <div 
         class={c}
         style={s}

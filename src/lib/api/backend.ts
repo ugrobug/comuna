@@ -143,6 +143,39 @@ export const buildAuthFeedSettingsUrl = (): string => {
   return `${getBackendBaseUrl()}/api/auth/feed-settings/`
 }
 
+export const buildSpecialLandnameUrl = (text: string = ''): string => {
+  const params = new URLSearchParams()
+  if (text) {
+    params.set('text', text)
+  }
+  const query = params.toString()
+  return `${getBackendBaseUrl()}/api/special-projects/landname/${query ? `?${query}` : ''}`
+}
+
+export const buildSpecialLandnameAlphabetUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/landname/alphabet/`
+}
+
+export const buildSpecialLandnameSuggestionUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/landname/suggestions/`
+}
+
+export const buildSpecialLandnameAdminLettersUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/landname/admin/letters/`
+}
+
+export const buildSpecialLandnameAdminLetterUrl = (id: number | string): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/landname/admin/letters/${encodeURIComponent(id)}/`
+}
+
+export const buildSpecialLandnameAdminSuggestionUrl = (id: number | string): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/landname/admin/suggestions/${encodeURIComponent(id)}/`
+}
+
+export const buildSpecialLandnameAdminSuggestionApproveUrl = (id: number | string): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/landname/admin/suggestions/${encodeURIComponent(id)}/approve/`
+}
+
 export const buildBackendPostPath = (post: { id: number; title: string }): string => {
   const slug = slugifyTitle(post.title)
   return slug ? `/b/post/${post.id}-${slug}` : `/b/post/${post.id}`

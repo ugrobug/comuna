@@ -18,6 +18,7 @@ scripts/*
 __pycache__/
 *.py[cod]
 .venv/
+backend/media/
 
 
 .deploy/.env.*

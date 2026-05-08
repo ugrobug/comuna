@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     "ratings.apps.RatingsConfig",
     "editor.apps.EditorConfig",
     "telegram_integration.apps.TelegramIntegrationConfig",
+    "special_projects.apps.SpecialProjectsConfig",
 ]
 
 MIDDLEWARE = [

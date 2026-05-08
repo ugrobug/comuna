@@ -55,6 +55,16 @@ from notifications.views import (
     auth_notifications_read_all,
 )
 from ratings.views import top_authors, top_authors_month, top_comuns, top_comuns_month
+from special_projects.views import (
+    landname_admin_letter_detail,
+    landname_admin_letters,
+    landname_admin_suggestion_approve,
+    landname_admin_suggestion_detail,
+    landname_alphabet,
+    landname_render,
+    landname_suggestions,
+    landname_tile,
+)
 from telegram_integration.views import telegram_auth, telegram_webhook
 from users.views import (
     auth_me,
@@ -147,6 +157,42 @@ urlpatterns = [
         name="auth-shared-draft-detail",
     ),
     path("api/auth/uploads/", user_upload, name="auth-uploads"),
+    path("api/special-projects/landname/", landname_render, name="special-landname-render"),
+    path(
+        "api/special-projects/landname/alphabet/",
+        landname_alphabet,
+        name="special-landname-alphabet",
+    ),
+    path(
+        "api/special-projects/landname/suggestions/",
+        landname_suggestions,
+        name="special-landname-suggestions",
+    ),
+    path(
+        "api/special-projects/landname/admin/letters/",
+        landname_admin_letters,
+        name="special-landname-admin-letters",
+    ),
+    path(
+        "api/special-projects/landname/admin/letters/<int:image_id>/",
+        landname_admin_letter_detail,
+        name="special-landname-admin-letter-detail",
+    ),
+    path(
+        "api/special-projects/landname/admin/suggestions/<int:suggestion_id>/",
+        landname_admin_suggestion_detail,
+        name="special-landname-admin-suggestion-detail",
+    ),
+    path(
+        "api/special-projects/landname/admin/suggestions/<int:suggestion_id>/approve/",
+        landname_admin_suggestion_approve,
+        name="special-landname-admin-suggestion-approve",
+    ),
+    path(
+        "api/special-projects/landname/tiles/<str:key>.svg",
+        landname_tile,
+        name="special-landname-tile",
+    ),
     path("sitemap.xml", sitemap_xml, name="sitemap-xml"),
     path("sitemap-static.xml", sitemap_static_xml, name="sitemap-static-xml"),
     path("sitemap-authors.xml", sitemap_authors_xml, name="sitemap-authors-xml"),
