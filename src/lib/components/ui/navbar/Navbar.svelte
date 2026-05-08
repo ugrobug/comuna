@@ -171,7 +171,7 @@
           on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && goToHome()}
         >
           <span class="text-xl font-medium tracking-tight font-roboto text-slate-900 dark:text-white">
-            Comuna
+            Тамбур
           </span>
         </div>
       </div>

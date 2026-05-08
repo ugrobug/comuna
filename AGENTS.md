@@ -74,13 +74,13 @@ ssh <prod> 'cd /opt/comuna/app && docker compose -f /opt/comuna/app/deploy/docke
 Главная:
 
 ```bash
-ssh <prod> "curl -sS -I -H 'Host: comuna.ru' http://127.0.0.1/ | head -n 10"
+ssh <prod> "curl -sS -I -H 'Host: tambur.pub' http://127.0.0.1/ | head -n 10"
 ```
 
 Страница существующего поста:
 
 ```bash
-ssh <prod> "curl -sS -I -H 'Host: comuna.ru' http://127.0.0.1/b/post/4492-bred-ili-geniy-retsenziya-na-film-druzhba-2024 | head -n 10"
+ssh <prod> "curl -sS -I -H 'Host: tambur.pub' http://127.0.0.1/b/post/4492-bred-ili-geniy-retsenziya-na-film-druzhba-2024 | head -n 10"
 ```
 
 Ожидаемый результат:
