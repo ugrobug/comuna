@@ -19,12 +19,10 @@
   let lastDisabled = disabled
   let lastPrivacyAccepted = privacyAccepted
   const botName = (env.PUBLIC_TELEGRAM_LOGIN_BOT || '').replace(/^@/, '')
-  let authUrl = ''
 
   const mountWidget = () => {
     if (!browser || !container || !botName || disabled) return
     scriptLoaded = false
-    authUrl = `${(env.PUBLIC_SITE_URL || window.location.origin).replace(/\/$/, '')}/api/auth/telegram/?next=${encodeURIComponent(`${window.location.pathname}${window.location.search}`)}${privacyAccepted ? '&privacy_accepted=1' : ''}`
     container.innerHTML = ''
 
     const script = document.createElement('script')
@@ -33,10 +31,14 @@
     script.setAttribute('data-telegram-login', botName)
     script.setAttribute('data-size', 'large')
     script.setAttribute('data-radius', '8')
-    script.setAttribute('data-auth-url', authUrl)
+    script.setAttribute('data-onauth', 'onTelegramAuth(user)')
     script.setAttribute('data-request-access', 'write')
     script.onload = () => {
-      scriptLoaded = true
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          scriptLoaded = Boolean(container?.querySelector('iframe, a, button'))
+        })
+      })
     }
     script.onerror = () => {
       scriptLoaded = false
@@ -59,7 +61,7 @@
     ;(window as any).onTelegramAuth = async (user: TelegramAuthPayload) => {
       loading = true
       try {
-        await loginTelegram(user)
+        await loginTelegram({ ...user, privacy_accepted: privacyAccepted })
         toast({ content: 'Вы успешно вошли через Telegram', type: 'success' })
         onSuccess?.()
       } catch (error) {
@@ -153,7 +155,9 @@
         Сначала примите политику обработки персональных данных.
       </p>
     {:else if !scriptLoaded}
-      <p class="text-xs text-slate-500 dark:text-zinc-400">Загрузка Telegram-входа…</p>
+      <p class="text-xs text-slate-500 dark:text-zinc-400">
+        Загрузка Telegram-входа… Если кнопка не появилась, обновите страницу.
+      </p>
     {/if}
   </div>
 {/if}
