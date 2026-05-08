@@ -6,7 +6,7 @@ import secrets
 
 from django.conf import settings
 from django.core.files.storage import default_storage
-from django.db.models import Max
+from django.db.models import F, Max
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils import timezone
 from django.utils.text import get_valid_filename
@@ -14,6 +14,7 @@ from django.views.decorators.csrf import csrf_exempt
 from PIL import Image, UnidentifiedImageError
 
 from special_projects.models import (
+    SpecialProjectGeneratedPhrase,
     SpecialProjectLetterImage,
     SpecialProjectLetterSuggestion,
 )
@@ -22,6 +23,7 @@ from special_projects.service import (
     alphabet_payload,
     map_url_for_coordinates,
     normalize_letter,
+    normalize_landname_text,
     parse_coordinates,
     render_landname,
     serialize_letter_image,
@@ -33,13 +35,80 @@ from users.service import _get_user_from_request
 def landname_render(request: HttpRequest) -> HttpResponse:
     if request.method != "GET":
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
-    return JsonResponse(render_landname(request, request.GET.get("text", "")))
+    payload = render_landname(request, request.GET.get("text", ""))
+    if request.GET.get("track") == "1" and payload.get("text"):
+        generation = SpecialProjectGeneratedPhrase.objects.create(
+            project_slug=LANDNAME_PROJECT_SLUG,
+            text=payload["text"],
+            share_query=payload.get("share_query", payload["text"]),
+            generated_by=_get_user_from_request(request),
+        )
+        payload["generation_id"] = generation.id
+    else:
+        payload["generation_id"] = None
+    return JsonResponse(payload)
 
 
 def landname_alphabet(request: HttpRequest) -> HttpResponse:
     if request.method != "GET":
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
     return JsonResponse(alphabet_payload(request))
+
+
+@csrf_exempt
+def landname_share_event(request: HttpRequest) -> HttpResponse:
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+
+    generation = None
+    raw_generation_id = payload.get("generation_id")
+    if raw_generation_id not in (None, ""):
+        try:
+            generation_id = int(raw_generation_id)
+        except (TypeError, ValueError):
+            generation_id = None
+        if generation_id is not None:
+            generation = SpecialProjectGeneratedPhrase.objects.filter(
+                id=generation_id,
+                project_slug=LANDNAME_PROJECT_SLUG,
+            ).first()
+
+    if generation is None:
+        text = normalize_landname_text(str(payload.get("text", "")))
+        if not text:
+            return JsonResponse({"ok": False, "error": "empty text"}, status=400)
+        generation = SpecialProjectGeneratedPhrase.objects.create(
+            project_slug=LANDNAME_PROJECT_SLUG,
+            text=text,
+            share_query=text,
+            generated_by=_get_user_from_request(request),
+        )
+
+    now = timezone.now()
+    SpecialProjectGeneratedPhrase.objects.filter(id=generation.id).update(
+        was_shared=True,
+        share_clicks=F("share_clicks") + 1,
+        shared_at=now,
+        updated_at=now,
+    )
+    generation.refresh_from_db(fields=("was_shared", "share_clicks", "shared_at", "updated_at"))
+    return JsonResponse(
+        {
+            "ok": True,
+            "generation": {
+                "id": generation.id,
+                "text": generation.text,
+                "was_shared": generation.was_shared,
+                "share_clicks": generation.share_clicks,
+                "shared_at": generation.shared_at.isoformat() if generation.shared_at else None,
+            },
+        }
+    )
 
 
 @csrf_exempt
@@ -174,6 +243,58 @@ def _serialize_admin_suggestion(suggestion: SpecialProjectLetterSuggestion) -> d
         "created_at": suggestion.created_at.isoformat(),
         "updated_at": suggestion.updated_at.isoformat(),
     }
+
+
+def _serialize_admin_generation(generation: SpecialProjectGeneratedPhrase) -> dict:
+    return {
+        "id": generation.id,
+        "text": generation.text,
+        "share_query": generation.share_query,
+        "was_shared": generation.was_shared,
+        "share_clicks": generation.share_clicks,
+        "shared_at": generation.shared_at.isoformat() if generation.shared_at else None,
+        "generated_by": (
+            {
+                "id": generation.generated_by_id,
+                "username": getattr(generation.generated_by, "username", ""),
+            }
+            if generation.generated_by_id
+            else None
+        ),
+        "created_at": generation.created_at.isoformat(),
+        "updated_at": generation.updated_at.isoformat(),
+    }
+
+
+def landname_admin_generations(request: HttpRequest) -> HttpResponse:
+    _, error_response = _require_staff(request)
+    if error_response is not None:
+        return error_response
+    if request.method != "GET":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    try:
+        limit = int(request.GET.get("limit", "200"))
+    except (TypeError, ValueError):
+        limit = 200
+    limit = max(1, min(limit, 500))
+
+    queryset = SpecialProjectGeneratedPhrase.objects.select_related("generated_by").filter(
+        project_slug=LANDNAME_PROJECT_SLUG,
+    )
+    total = queryset.count()
+    shared_total = queryset.filter(was_shared=True).count()
+    generations = queryset.order_by("-created_at", "-id")[:limit]
+    return JsonResponse(
+        {
+            "ok": True,
+            "total": total,
+            "shared_total": shared_total,
+            "unshared_total": total - shared_total,
+            "limit": limit,
+            "generations": [_serialize_admin_generation(generation) for generation in generations],
+        }
+    )
 
 
 @csrf_exempt

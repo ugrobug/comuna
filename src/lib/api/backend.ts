@@ -143,10 +143,13 @@ export const buildAuthFeedSettingsUrl = (): string => {
   return `${getBackendBaseUrl()}/api/auth/feed-settings/`
 }
 
-export const buildSpecialLandnameUrl = (text: string = ''): string => {
+export const buildSpecialLandnameUrl = (text: string = '', options?: { track?: boolean }): string => {
   const params = new URLSearchParams()
   if (text) {
     params.set('text', text)
+  }
+  if (options?.track) {
+    params.set('track', '1')
   }
   const query = params.toString()
   return `${getBackendBaseUrl()}/api/special-projects/landname/${query ? `?${query}` : ''}`
@@ -160,8 +163,16 @@ export const buildSpecialLandnameSuggestionUrl = (): string => {
   return `${getBackendBaseUrl()}/api/special-projects/landname/suggestions/`
 }
 
+export const buildSpecialLandnameShareUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/landname/share/`
+}
+
 export const buildSpecialLandnameAdminLettersUrl = (): string => {
   return `${getBackendBaseUrl()}/api/special-projects/landname/admin/letters/`
+}
+
+export const buildSpecialLandnameAdminGenerationsUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/landname/admin/generations/`
 }
 
 export const buildSpecialLandnameAdminLetterUrl = (id: number | string): string => {

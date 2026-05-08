@@ -87,3 +87,34 @@ class SpecialProjectLetterSuggestion(models.Model):
 
     def __str__(self) -> str:
         return f"{self.project_slug}:{self.letter}:{self.status}:{self.submitted_by_id}"
+
+
+class SpecialProjectGeneratedPhrase(models.Model):
+    project_slug = models.SlugField(max_length=80, default="landname")
+    text = models.CharField(max_length=64)
+    share_query = models.CharField(max_length=64)
+    generated_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="special_project_generated_phrases",
+    )
+    was_shared = models.BooleanField(default=False)
+    share_clicks = models.PositiveIntegerField(default=0)
+    shared_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Сгенерированная фраза спецпроекта"
+        verbose_name_plural = "Сгенерированные фразы спецпроекта"
+        ordering = ("-created_at", "-id")
+        indexes = [
+            models.Index(fields=("project_slug", "created_at")),
+            models.Index(fields=("project_slug", "was_shared", "created_at")),
+            models.Index(fields=("project_slug", "text")),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.project_slug}:{self.text}:{self.created_at:%Y-%m-%d %H:%M}"

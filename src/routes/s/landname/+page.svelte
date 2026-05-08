@@ -3,10 +3,12 @@
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
   import {
+    buildSpecialLandnameAdminGenerationsUrl,
     buildSpecialLandnameAdminLetterUrl,
     buildSpecialLandnameAdminLettersUrl,
     buildSpecialLandnameAdminSuggestionUrl,
     buildSpecialLandnameAdminSuggestionApproveUrl,
+    buildSpecialLandnameShareUrl,
     buildSpecialLandnameSuggestionUrl,
     buildSpecialLandnameUrl,
   } from '$lib/api/backend'
@@ -82,6 +84,22 @@
     text: string
     letters: RenderedLetter[]
     share_query: string
+    generation_id?: number | null
+  }
+
+  type AdminGeneratedPhrase = {
+    id: number
+    text: string
+    share_query: string
+    was_shared: boolean
+    share_clicks: number
+    shared_at: string | null
+    generated_by?: {
+      id: number
+      username: string
+    } | null
+    created_at: string
+    updated_at: string
   }
 
   const normalizeInput = (value: string) =>
@@ -122,6 +140,10 @@
   let suggestionDone = false
   let adminLoadedForToken = ''
   let adminLetters: AdminLandnameItem[] = []
+  let adminGenerations: AdminGeneratedPhrase[] = []
+  let adminGenerationTotal = 0
+  let adminGenerationSharedTotal = 0
+  let adminPhrasesOpen = false
   let adminLoading = false
   let adminError = ''
   let adminDone = ''
@@ -141,6 +163,7 @@
   let approvalImageFile: File | null = null
 
   $: pendingAdminCount = adminLetters.filter((item) => item.item_type === 'suggestion').length
+  $: adminGenerationUnsharedTotal = Math.max(adminGenerationTotal - adminGenerationSharedTotal, 0)
 
   $: shareUrl =
     browser && rendered?.text
@@ -148,10 +171,25 @@
       : ''
   $: if (browser && $siteUser?.is_staff && $siteToken && adminLoadedForToken !== $siteToken) {
     adminLoadedForToken = $siteToken
-    loadAdminLetters()
+    loadAdminData()
   }
 
-  const loadLandname = async (options: { updateUrl?: boolean } = {}) => {
+  const formatAdminDate = (value?: string | null) => {
+    if (!value) return '—'
+    try {
+      return new Intl.DateTimeFormat('ru-RU', {
+        day: '2-digit',
+        month: '2-digit',
+        year: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      }).format(new Date(value))
+    } catch {
+      return value
+    }
+  }
+
+  const loadLandname = async (options: { updateUrl?: boolean; track?: boolean } = {}) => {
     const text = normalizeInput(inputText)
     inputText = text
     error = ''
@@ -163,7 +201,10 @@
 
     loading = true
     try {
-      const response = await fetch(buildSpecialLandnameUrl(text), { cache: 'no-store' })
+      const response = await fetch(buildSpecialLandnameUrl(text, { track: options.track }), {
+        cache: 'no-store',
+        headers: $siteToken ? { Authorization: `Bearer ${$siteToken}` } : {},
+      })
       const data = await response.json()
       if (!response.ok || !data?.ok) {
         throw new Error(data?.error || 'Не удалось собрать слово')
@@ -176,6 +217,9 @@
           replaceState: false,
         })
       }
+      if (options.track && $siteUser?.is_staff) {
+        loadAdminGenerations()
+      }
     } catch (err) {
       error = err instanceof Error ? err.message : 'Не удалось собрать слово'
     } finally {
@@ -187,6 +231,32 @@
     if (!shareUrl) return
     try {
       await navigator.clipboard.writeText(shareUrl)
+      fetch(buildSpecialLandnameShareUrl(), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...( $siteToken ? { Authorization: `Bearer ${$siteToken}` } : {}),
+        },
+        body: JSON.stringify({
+          generation_id: rendered?.generation_id || null,
+          text: rendered?.text || inputText,
+        }),
+      }).catch(() => undefined)
+      if (rendered?.generation_id) {
+        adminGenerations = adminGenerations.map((phrase) =>
+          phrase.id === rendered?.generation_id
+            ? {
+                ...phrase,
+                was_shared: true,
+                share_clicks: phrase.share_clicks + 1,
+                shared_at: new Date().toISOString(),
+              }
+            : phrase
+        )
+      }
+      if ($siteUser?.is_staff) {
+        loadAdminGenerations()
+      }
       copied = true
     } catch {
       copied = false
@@ -276,6 +346,34 @@
       }
     } catch (err) {
       adminError = err instanceof Error ? err.message : 'Не удалось загрузить буквы'
+    } finally {
+      adminLoading = false
+    }
+  }
+
+  const loadAdminGenerations = async () => {
+    if (!$siteToken) return
+    adminError = ''
+    try {
+      const response = await fetch(buildSpecialLandnameAdminGenerationsUrl(), {
+        headers: { Authorization: `Bearer ${$siteToken}` },
+      })
+      const data = await response.json()
+      if (!response.ok || !data?.ok) {
+        throw new Error(data?.error || 'Не удалось загрузить статистику')
+      }
+      adminGenerations = data.generations || []
+      adminGenerationTotal = data.total || 0
+      adminGenerationSharedTotal = data.shared_total || 0
+    } catch (err) {
+      adminError = err instanceof Error ? err.message : 'Не удалось загрузить статистику'
+    }
+  }
+
+  const loadAdminData = async () => {
+    adminLoading = true
+    try {
+      await Promise.all([loadAdminLetters(), loadAdminGenerations()])
     } finally {
       adminLoading = false
     }
@@ -519,7 +617,7 @@
     </div>
   {/if}
 
-  <form class="composer" on:submit|preventDefault={() => loadLandname({ updateUrl: true })}>
+  <form class="composer" on:submit|preventDefault={() => loadLandname({ updateUrl: true, track: true })}>
     <label for="landname-input">Слово кириллицей</label>
     <div class="input-row">
       <input
@@ -558,7 +656,7 @@
           <p class="eyebrow">Админка</p>
           <h2>Буквы на карте</h2>
         </div>
-        <button class="ghost-button compact" type="button" on:click={loadAdminLetters} disabled={adminLoading}>
+        <button class="ghost-button compact" type="button" on:click={loadAdminData} disabled={adminLoading}>
           <Icon src={ListBullet} mini size="17" />
           Обновить
         </button>
@@ -727,6 +825,47 @@
           </div>
         </form>
       {/if}
+
+      <section class="generation-panel">
+        <div class="admin-list-header">
+          <div>
+            <h3>Сгенерированные фразы</h3>
+            <p>{adminGenerationTotal} всего, {adminGenerationSharedTotal} поделились, {adminGenerationUnsharedTotal} без share</p>
+          </div>
+          <button class="ghost-button compact-button" type="button" on:click={() => (adminPhrasesOpen = !adminPhrasesOpen)}>
+            <Icon src={ListBullet} mini size="16" />
+            {adminPhrasesOpen ? 'Скрыть список' : 'Открыть список'}
+          </button>
+        </div>
+        {#if adminPhrasesOpen}
+          {#if adminGenerations.length}
+            <div class="generation-list">
+              {#each adminGenerations as phrase}
+                <article class="generation-row">
+                  <div class="generation-main">
+                    <strong>{phrase.text}</strong>
+                    <span>
+                      {formatAdminDate(phrase.created_at)}
+                      {#if phrase.generated_by?.username}
+                        · @{phrase.generated_by.username}
+                      {/if}
+                    </span>
+                  </div>
+                  <div class="generation-share-status" class:generation-share-status--shared={phrase.was_shared}>
+                    {phrase.was_shared ? 'Поделились' : 'Не делились'}
+                    {#if phrase.share_clicks > 1}
+                      · {phrase.share_clicks}
+                    {/if}
+                  </div>
+                  <span class="generation-shared-at">{phrase.was_shared ? formatAdminDate(phrase.shared_at) : '—'}</span>
+                </article>
+              {/each}
+            </div>
+          {:else}
+            <div class="empty-state">Пока нет сгенерированных фраз.</div>
+          {/if}
+        {/if}
+      </section>
     </section>
   {/if}
 
@@ -1291,6 +1430,17 @@
     font-size: 1rem;
   }
 
+  .admin-list-header p {
+    margin: 0.25rem 0 0;
+    color: #64748b;
+    font-size: 0.84rem;
+    font-weight: 700;
+  }
+
+  :global(.dark) .admin-list-header p {
+    color: #a1a1aa;
+  }
+
   .admin-counters {
     display: flex;
     align-items: center;
@@ -1491,6 +1641,90 @@
     align-items: center;
   }
 
+  .generation-panel {
+    margin-top: 1rem;
+  }
+
+  .generation-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.8rem;
+  }
+
+  .generation-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(8rem, auto);
+    gap: 0.75rem;
+    align-items: center;
+    padding: 0.75rem;
+    border: 1px solid rgba(148, 163, 184, 0.26);
+    border-radius: 8px;
+    background: rgba(248, 250, 252, 0.72);
+  }
+
+  :global(.dark) .generation-row {
+    border-color: rgba(63, 63, 70, 0.68);
+    background: rgba(9, 9, 11, 0.45);
+  }
+
+  .generation-main {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.18rem;
+  }
+
+  .generation-main strong {
+    min-width: 0;
+    overflow: hidden;
+    color: #0f172a;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  :global(.dark) .generation-main strong {
+    color: #f8fafc;
+  }
+
+  .generation-main span,
+  .generation-shared-at {
+    color: #64748b;
+    font-size: 0.82rem;
+    font-weight: 700;
+  }
+
+  :global(.dark) .generation-main span,
+  :global(.dark) .generation-shared-at {
+    color: #a1a1aa;
+  }
+
+  .generation-share-status {
+    justify-self: end;
+    border-radius: 999px;
+    padding: 0.22rem 0.55rem;
+    color: #475569;
+    background: rgba(226, 232, 240, 0.84);
+    font-size: 0.78rem;
+    font-weight: 900;
+    white-space: nowrap;
+  }
+
+  .generation-share-status--shared {
+    color: #166534;
+    background: #dcfce7;
+  }
+
+  :global(.dark) .generation-share-status {
+    color: #d4d4d8;
+    background: rgba(63, 63, 70, 0.72);
+  }
+
+  :global(.dark) .generation-share-status--shared {
+    color: #bbf7d0;
+    background: rgba(20, 83, 45, 0.58);
+  }
+
   .suggestion-details {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto auto;
@@ -1581,8 +1815,14 @@
     }
 
     .admin-form-grid,
-    .admin-letter-row {
+    .admin-letter-row,
+    .generation-row {
       grid-template-columns: 1fr;
+    }
+
+    .generation-share-status,
+    .generation-shared-at {
+      justify-self: start;
     }
 
     .admin-letter-row img {

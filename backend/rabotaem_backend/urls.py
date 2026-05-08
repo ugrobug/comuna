@@ -56,12 +56,14 @@ from notifications.views import (
 )
 from ratings.views import top_authors, top_authors_month, top_comuns, top_comuns_month
 from special_projects.views import (
+    landname_admin_generations,
     landname_admin_letter_detail,
     landname_admin_letters,
     landname_admin_suggestion_approve,
     landname_admin_suggestion_detail,
     landname_alphabet,
     landname_render,
+    landname_share_event,
     landname_suggestions,
     landname_tile,
 )
@@ -159,6 +161,11 @@ urlpatterns = [
     path("api/auth/uploads/", user_upload, name="auth-uploads"),
     path("api/special-projects/landname/", landname_render, name="special-landname-render"),
     path(
+        "api/special-projects/landname/share/",
+        landname_share_event,
+        name="special-landname-share-event",
+    ),
+    path(
         "api/special-projects/landname/alphabet/",
         landname_alphabet,
         name="special-landname-alphabet",
@@ -172,6 +179,11 @@ urlpatterns = [
         "api/special-projects/landname/admin/letters/",
         landname_admin_letters,
         name="special-landname-admin-letters",
+    ),
+    path(
+        "api/special-projects/landname/admin/generations/",
+        landname_admin_generations,
+        name="special-landname-admin-generations",
     ),
     path(
         "api/special-projects/landname/admin/letters/<int:image_id>/",
