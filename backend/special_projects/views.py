@@ -72,7 +72,7 @@ def _preview_font(size: int, bold: bool = True):
 
 
 def landname_preview_image(request: HttpRequest) -> HttpResponse:
-    if request.method != "GET":
+    if request.method not in {"GET", "HEAD"}:
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
 
     text = normalize_landname_text(request.GET.get("text", "")) or "КОМУНА"
