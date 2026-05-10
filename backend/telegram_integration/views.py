@@ -16,11 +16,12 @@ from telegram_integration.bot import (
 )
 from telegram_integration.service import (
     build_telegram_login_redirect_html,
+    telegram_login_will_create_new_user,
+    telegram_payload_from_oidc_claims,
     upsert_telegram_account,
     validate_telegram_login,
+    validate_telegram_oidc_token,
 )
-from telegram_integration.models import TelegramAccount
-
 User = get_user_model()
 _PRIVACY_CONSENT_ERROR = "Для регистрации нужно согласиться с политикой обработки персональных данных."
 
@@ -55,10 +56,18 @@ def telegram_auth(request: HttpRequest) -> HttpResponse:
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
 
     try:
-        validate_telegram_login(payload)
-        telegram_id = payload.get("id")
-        account_exists = TelegramAccount.objects.filter(telegram_id=telegram_id).exists()
-        if not account_exists and not _is_privacy_accepted(payload.get("privacy_accepted")):
+        if payload.get("id_token"):
+            claims = validate_telegram_oidc_token(payload.get("id_token"))
+            payload = {
+                **telegram_payload_from_oidc_claims(claims),
+                "privacy_accepted": payload.get("privacy_accepted"),
+            }
+        else:
+            validate_telegram_login(payload)
+        if (
+            telegram_login_will_create_new_user(payload)
+            and not _is_privacy_accepted(payload.get("privacy_accepted"))
+        ):
             return JsonResponse({"ok": False, "error": _PRIVACY_CONSENT_ERROR}, status=400)
         user = upsert_telegram_account(payload)
     except ValueError as exc:

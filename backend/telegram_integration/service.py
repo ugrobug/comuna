@@ -8,14 +8,18 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+import jwt
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.utils import timezone
+from jwt import PyJWKClient
+from jwt import PyJWTError
 
 from notifications.models import SiteNotification
 from telegram_integration.models import TelegramAccount
 
 User = get_user_model()
+_oidc_jwks_client: PyJWKClient | None = None
 
 _TELEGRAM_LOGIN_FIELDS = {
     "id",
@@ -59,6 +63,107 @@ def verify_telegram_login(payload: dict) -> tuple[bool, str | None]:
     return True, None
 
 
+def _normalize_phone(value: object) -> str:
+    phone = re.sub(r"\D+", "", str(value or ""))
+    if len(phone) < 7:
+        return ""
+    return f"+{phone}"
+
+
+def _split_full_name(value: object) -> tuple[str, str]:
+    full_name = str(value or "").strip()
+    if not full_name:
+        return "", ""
+    parts = full_name.split(" ", 1)
+    return parts[0], parts[1] if len(parts) > 1 else ""
+
+
+def _find_user_by_phone(phone: str) -> User | None:
+    phone = _normalize_phone(phone)
+    if not phone:
+        return None
+    from users.models import SiteUserProfile
+
+    profile = (
+        SiteUserProfile.objects.select_related("user")
+        .filter(phone=phone)
+        .order_by("id")
+        .first()
+    )
+    return profile.user if profile else None
+
+
+def _remember_user_phone(user: User, phone: str) -> None:
+    phone = _normalize_phone(phone)
+    if not phone:
+        return
+    from users.models import SiteUserProfile
+
+    profile, _ = SiteUserProfile.objects.get_or_create(user=user)
+    if not profile.phone:
+        profile.phone = phone
+        profile.save(update_fields=["phone", "updated_at"])
+
+
+def _telegram_oidc_client_id() -> str:
+    return str(getattr(settings, "TELEGRAM_OIDC_CLIENT_ID", "") or "").strip()
+
+
+def _telegram_oidc_jwks_client() -> PyJWKClient:
+    global _oidc_jwks_client
+    jwks_url = str(
+        getattr(settings, "TELEGRAM_OIDC_JWKS_URL", "")
+        or "https://oauth.telegram.org/.well-known/jwks.json"
+    )
+    if _oidc_jwks_client is None or _oidc_jwks_client.uri != jwks_url:
+        _oidc_jwks_client = PyJWKClient(jwks_url)
+    return _oidc_jwks_client
+
+
+def validate_telegram_oidc_token(id_token: str) -> dict:
+    token = str(id_token or "").strip()
+    if not token:
+        raise ValueError("missing Telegram id_token")
+    client_id = _telegram_oidc_client_id()
+    if not client_id:
+        raise ValueError("telegram OIDC auth disabled")
+
+    try:
+        signing_key = _telegram_oidc_jwks_client().get_signing_key_from_jwt(token)
+        claims = jwt.decode(
+            token,
+            signing_key.key,
+            audience=client_id,
+            issuer=getattr(settings, "TELEGRAM_OIDC_ISSUER", "https://oauth.telegram.org"),
+            algorithms=["RS256"],
+            options={"require": ["exp", "iat", "iss", "aud", "sub"]},
+        )
+    except PyJWTError as exc:
+        raise ValueError("invalid Telegram id_token") from exc
+
+    telegram_id = claims.get("id") or claims.get("sub")
+    try:
+        claims["id"] = int(telegram_id)
+    except (TypeError, ValueError):
+        raise ValueError("invalid Telegram id_token") from None
+    return claims
+
+
+def telegram_payload_from_oidc_claims(claims: dict) -> dict:
+    first_name = (claims.get("given_name") or "").strip()
+    last_name = (claims.get("family_name") or "").strip()
+    if not first_name:
+        first_name, last_name = _split_full_name(claims.get("name"))
+    return {
+        "id": claims.get("id"),
+        "first_name": first_name,
+        "last_name": last_name,
+        "username": (claims.get("preferred_username") or "").strip(),
+        "photo_url": (claims.get("picture") or "").strip(),
+        "phone": _normalize_phone(claims.get("phone_number")),
+    }
+
+
 def generate_unique_username(base: str, suffix: str) -> str:
     base = re.sub(r"[^a-zA-Z0-9_]", "_", base).strip("_")
     if not base:
@@ -87,20 +192,33 @@ def upsert_telegram_account(payload: dict):
     first_name = (payload.get("first_name") or "").strip()
     last_name = (payload.get("last_name") or "").strip()
     avatar_url = (payload.get("photo_url") or "").strip()
+    phone = _normalize_phone(payload.get("phone") or payload.get("phone_number"))
 
     account = TelegramAccount.objects.select_related("user").filter(telegram_id=telegram_id).first()
     if account:
         user = account.user
     else:
-        base_username = username or (first_name or "tg")
-        candidate = generate_unique_username(base_username, str(telegram_id))
-        user = User.objects.create_user(username=candidate)
-        user.set_unusable_password()
-        if first_name:
-            user.first_name = first_name
-        if last_name:
-            user.last_name = last_name
-        user.save(update_fields=["password", "first_name", "last_name"])
+        user = _find_user_by_phone(phone)
+        if user:
+            updates: list[str] = []
+            if first_name and not user.first_name:
+                user.first_name = first_name
+                updates.append("first_name")
+            if last_name and not user.last_name:
+                user.last_name = last_name
+                updates.append("last_name")
+            if updates:
+                user.save(update_fields=updates)
+        else:
+            base_username = username or (first_name or "tg")
+            candidate = generate_unique_username(base_username, str(telegram_id))
+            user = User.objects.create_user(username=candidate)
+            user.set_unusable_password()
+            if first_name:
+                user.first_name = first_name
+            if last_name:
+                user.last_name = last_name
+            user.save(update_fields=["password", "first_name", "last_name"])
         account = TelegramAccount.objects.create(
             user=user,
             telegram_id=telegram_id,
@@ -110,12 +228,24 @@ def upsert_telegram_account(payload: dict):
             avatar_url=avatar_url,
         )
 
+    _remember_user_phone(user, phone)
     account.username = username
     account.first_name = first_name
     account.last_name = last_name
     account.avatar_url = avatar_url
     account.save(update_fields=["username", "first_name", "last_name", "avatar_url", "updated_at"])
     return user
+
+
+def telegram_login_will_create_new_user(payload: dict) -> bool:
+    try:
+        telegram_id = int(payload.get("id"))
+    except (TypeError, ValueError):
+        return True
+    if TelegramAccount.objects.filter(telegram_id=telegram_id).exists():
+        return False
+    phone = _normalize_phone(payload.get("phone") or payload.get("phone_number"))
+    return _find_user_by_phone(phone) is None
 
 
 def build_telegram_login_redirect_html(token: str, next_url: str) -> str:
@@ -196,7 +326,10 @@ __all__ = [
     "generate_unique_username",
     "notification_link_absolute",
     "send_site_notification_to_telegram",
+    "telegram_login_will_create_new_user",
+    "telegram_payload_from_oidc_claims",
     "upsert_telegram_account",
     "validate_telegram_login",
+    "validate_telegram_oidc_token",
     "verify_telegram_login",
 ]

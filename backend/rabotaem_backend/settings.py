@@ -125,6 +125,14 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
 TELEGRAM_USE_POLLING = os.environ.get("TELEGRAM_USE_POLLING", "0") == "1"
 TELEGRAM_ADMIN_CHAT_ID = os.environ.get("TELEGRAM_ADMIN_CHAT_ID", "")
+TELEGRAM_OIDC_CLIENT_ID = os.environ.get("TELEGRAM_OIDC_CLIENT_ID", "")
+if not TELEGRAM_OIDC_CLIENT_ID and TELEGRAM_BOT_TOKEN.split(":", 1)[0].isdigit():
+    TELEGRAM_OIDC_CLIENT_ID = TELEGRAM_BOT_TOKEN.split(":", 1)[0]
+TELEGRAM_OIDC_ISSUER = os.environ.get("TELEGRAM_OIDC_ISSUER", "https://oauth.telegram.org")
+TELEGRAM_OIDC_JWKS_URL = os.environ.get(
+    "TELEGRAM_OIDC_JWKS_URL",
+    "https://oauth.telegram.org/.well-known/jwks.json",
+)
 PUSH_FCM_PROJECT_ID = os.environ.get("PUSH_FCM_PROJECT_ID", "")
 PUSH_FCM_SERVICE_ACCOUNT_JSON = os.environ.get("PUSH_FCM_SERVICE_ACCOUNT_JSON", "")
 PUSH_FCM_SERVICE_ACCOUNT_FILE = os.environ.get("PUSH_FCM_SERVICE_ACCOUNT_FILE", "")

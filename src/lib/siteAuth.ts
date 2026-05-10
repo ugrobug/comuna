@@ -383,13 +383,16 @@ export const confirmPasswordReset = async (payload: {
 }
 
 export type TelegramAuthPayload = {
-  id: number
+  id_token?: string
+  id?: number
   first_name?: string
   last_name?: string
   username?: string
   photo_url?: string
-  auth_date: number
-  hash: string
+  auth_date?: number
+  hash?: string
+  phone?: string
+  phone_number?: string
   privacy_accepted?: boolean
 }
 
