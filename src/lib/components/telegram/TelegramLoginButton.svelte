@@ -16,12 +16,19 @@
   let loading = false
   let scriptLoaded = false
   let scriptFailed = false
+  let oidcLoading = false
+  let oidcReady = false
+  let oidcLoadError = ''
   let lastActive = active
   let lastDisabled = disabled
   let lastPrivacyAccepted = privacyAccepted
   const botName = (env.PUBLIC_TELEGRAM_LOGIN_BOT || '').replace(/^@/, '')
   const oidcClientId = env.PUBLIC_TELEGRAM_OIDC_CLIENT_ID || env.PUBLIC_TELEGRAM_LOGIN_CLIENT_ID || ''
   const useOidc = Boolean(oidcClientId)
+  const oidcScriptSources = [
+    'https://telegram.org/js/telegram-login.js?3',
+    'https://oauth.telegram.org/js/telegram-login.js?3',
+  ]
 
   type TelegramOidcResult = {
     id_token?: string
@@ -43,36 +50,97 @@
 
   let oidcScriptPromise: Promise<TelegramLoginGlobal> | null = null
 
-  const loadOidcScript = () => {
+  const currentTelegramLogin = () =>
+    ((window as any).Telegram as TelegramLoginGlobal | undefined)?.Login?.auth
+      ? ((window as any).Telegram as TelegramLoginGlobal)
+      : null
+
+  const loadOidcScriptSource = (src: string) =>
+    new Promise<TelegramLoginGlobal>((resolve, reject) => {
+      const current = currentTelegramLogin()
+      if (current) {
+        resolve(current)
+        return
+      }
+
+      const script = document.createElement('script')
+      const timeout = window.setTimeout(() => {
+        script.onload = null
+        script.onerror = null
+        script.remove()
+        reject(new Error('Telegram Login не загрузился'))
+      }, 10000)
+
+      script.async = true
+      script.src = src
+      script.dataset.telegramOidcLogin = 'true'
+      script.onload = () => {
+        window.clearTimeout(timeout)
+        const loaded = currentTelegramLogin()
+        loaded ? resolve(loaded) : reject(new Error('Telegram Login не загрузился'))
+      }
+      script.onerror = () => {
+        window.clearTimeout(timeout)
+        script.remove()
+        reject(new Error('Telegram Login не загрузился'))
+      }
+      document.head.appendChild(script)
+    })
+
+  const loadOidcScript = async () => {
     if (!browser) {
       return Promise.reject(new Error('Telegram Login недоступен'))
     }
-    const current = (window as any).Telegram as TelegramLoginGlobal | undefined
-    if (current?.Login?.auth) {
+    const current = currentTelegramLogin()
+    if (current) {
       return Promise.resolve(current)
     }
-    oidcScriptPromise ??= new Promise<TelegramLoginGlobal>((resolve, reject) => {
-      const existing = document.querySelector<HTMLScriptElement>('script[data-telegram-oidc-login]')
-      if (existing) {
-        existing.addEventListener('load', () => {
-          const loaded = (window as any).Telegram as TelegramLoginGlobal | undefined
-          loaded?.Login?.auth ? resolve(loaded) : reject(new Error('Telegram Login не загрузился'))
-        }, { once: true })
-        existing.addEventListener('error', () => reject(new Error('Telegram Login не загрузился')), { once: true })
-        return
+
+    oidcScriptPromise ??= (async () => {
+      let lastError: unknown = null
+      document.querySelectorAll<HTMLScriptElement>('script[data-telegram-oidc-login]').forEach((script) => {
+        if (!script.dataset.telegramOidcLoaded) {
+          script.remove()
+        }
+      })
+      for (const source of oidcScriptSources) {
+        try {
+          const loaded = await loadOidcScriptSource(source)
+          document
+            .querySelectorAll<HTMLScriptElement>('script[data-telegram-oidc-login]')
+            .forEach((script) => {
+              if (script.src === source) {
+                script.dataset.telegramOidcLoaded = 'true'
+              }
+            })
+          return loaded
+        } catch (error) {
+          lastError = error
+        }
       }
-      const script = document.createElement('script')
-      script.async = true
-      script.src = 'https://oauth.telegram.org/js/telegram-login.js?3'
-      script.dataset.telegramOidcLogin = 'true'
-      script.onload = () => {
-        const loaded = (window as any).Telegram as TelegramLoginGlobal | undefined
-        loaded?.Login?.auth ? resolve(loaded) : reject(new Error('Telegram Login не загрузился'))
-      }
-      script.onerror = () => reject(new Error('Telegram Login не загрузился'))
-      document.head.appendChild(script)
-    })
+      throw lastError instanceof Error ? lastError : new Error('Telegram Login не загрузился')
+    })()
     return oidcScriptPromise
+  }
+
+  const prepareOidcLogin = async () => {
+    if (!useOidc || !browser || oidcLoading || oidcReady) return
+    oidcLoading = true
+    oidcLoadError = ''
+    scriptFailed = false
+    try {
+      await loadOidcScript()
+      oidcReady = true
+      scriptLoaded = true
+    } catch (error) {
+      oidcScriptPromise = null
+      oidcReady = false
+      scriptLoaded = false
+      scriptFailed = true
+      oidcLoadError = (error as Error)?.message || 'Telegram Login не загрузился'
+    } finally {
+      oidcLoading = false
+    }
   }
 
   const mountWidget = () => {
@@ -127,7 +195,9 @@
       }
     }
 
-    if (!useOidc) {
+    if (useOidc) {
+      prepareOidcLogin()
+    } else {
       remountWhenVisible()
     }
 
@@ -160,11 +230,21 @@
       toast({ content: 'Telegram Login настроен неверно', type: 'error' })
       return
     }
+    const telegram = currentTelegramLogin()
+    if (!telegram?.Login?.auth) {
+      if (!oidcLoading) {
+        prepareOidcLogin()
+      }
+      toast({
+        content: oidcLoadError || 'Telegram Login загружается, попробуйте еще раз через пару секунд',
+        type: oidcLoadError ? 'error' : 'info',
+      })
+      return
+    }
     loading = true
     try {
-      const telegram = await loadOidcScript()
       const result = await new Promise<TelegramOidcResult>((resolve) => {
-        telegram.Login!.auth!(
+        telegram.Login.auth!(
           {
             client_id: clientId,
             request_access: ['write', 'phone'],
@@ -214,7 +294,7 @@
   <div class="flex flex-col gap-2">
     <button
       type="button"
-      disabled={disabled || loading}
+      disabled={disabled || loading || (oidcLoading && !oidcReady)}
       class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900"
       class:hover:border-slate-300={!disabled && !loading}
       class:hover:bg-slate-50={!disabled && !loading}
@@ -238,6 +318,10 @@
 
     {#if loading}
       <p class="text-xs text-slate-500 dark:text-zinc-400">Вход через Telegram…</p>
+    {:else if oidcLoading && !oidcReady}
+      <p class="text-xs text-slate-500 dark:text-zinc-400">Загружаем Telegram Login…</p>
+    {:else if oidcLoadError}
+      <p class="text-xs text-red-600 dark:text-red-400">{oidcLoadError}</p>
     {:else if disabled}
       <p class="text-xs text-slate-500 dark:text-zinc-400">
         Сначала примите политику обработки персональных данных.

@@ -141,7 +141,7 @@ def validate_telegram_oidc_token(id_token: str) -> dict:
     except PyJWTError as exc:
         raise ValueError("invalid Telegram id_token") from exc
 
-    telegram_id = claims.get("id") or claims.get("sub")
+    telegram_id = claims.get("id")
     try:
         claims["id"] = int(telegram_id)
     except (TypeError, ValueError):

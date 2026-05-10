@@ -69,3 +69,30 @@ class TelegramOidcAuthTests(TestCase):
         self.assertEqual(payload["user"]["id"], user.id)
         self.assertEqual(TelegramAccount.objects.get(telegram_id=987654321).user_id, user.id)
         self.assertEqual(User.objects.count(), 1)
+
+    def test_oidc_login_keeps_existing_telegram_account_user(self):
+        user = User.objects.create_user(username="channel_owner")
+        TelegramAccount.objects.create(
+            user=user,
+            telegram_id=987654321,
+            username="old_owner",
+            first_name="Old",
+        )
+
+        with patch(
+            "telegram_integration.views.validate_telegram_oidc_token",
+            return_value={
+                "id": 987654321,
+                "name": "New Owner",
+                "preferred_username": "new_owner",
+            },
+        ):
+            response = self.post_json({"id_token": "token"})
+
+        payload = response.json()
+        account = TelegramAccount.objects.get(telegram_id=987654321)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(payload["user"]["id"], user.id)
+        self.assertEqual(account.user_id, user.id)
+        self.assertEqual(account.username, "new_owner")
+        self.assertEqual(User.objects.count(), 1)
