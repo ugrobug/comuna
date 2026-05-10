@@ -106,28 +106,26 @@
       </button>
     </div>
 
-    <div class="mt-4 flex flex-col gap-3">
-      {#if telegramButtonModulePromise}
-        {#await telegramButtonModulePromise then module}
-          <svelte:component
-            this={module.default}
-            onSuccess={handleSuccessfulAuth}
-            active={open}
-            disabled={authMode === 'signup' && !signupPrivacyAccepted}
-            privacyAccepted={signupPrivacyAccepted}
-            label={authMode === 'signup' ? 'Зарегистрироваться через Telegram' : 'Войти через Telegram'}
-          />
-        {/await}
-      {/if}
-      <VkLoginButton
-        onSuccess={handleSuccessfulAuth}
-        disabled={authMode === 'signup' && !signupPrivacyAccepted}
-        privacyAccepted={signupPrivacyAccepted}
-        label={authMode === 'signup' ? 'Зарегистрироваться через VK' : 'Войти через VK'}
-      />
-    </div>
-
     {#if authMode === 'login'}
+      <div class="mt-4 flex flex-col gap-3">
+        {#if telegramButtonModulePromise}
+          {#await telegramButtonModulePromise then module}
+            <svelte:component
+              this={module.default}
+              onSuccess={handleSuccessfulAuth}
+              active={open}
+              privacyAccepted={false}
+              label="Войти через Telegram"
+            />
+          {/await}
+        {/if}
+        <VkLoginButton
+          onSuccess={handleSuccessfulAuth}
+          privacyAccepted={false}
+          label="Войти через VK"
+        />
+      </div>
+
       <div class="flex items-center gap-3 text-xs text-slate-400 dark:text-zinc-500 mt-4">
         <span class="h-px flex-1 bg-slate-200 dark:bg-zinc-800" />
         или по почте
@@ -178,17 +176,17 @@
         <ResetPasswordForm onBack={() => (authMode = 'login')} />
       </div>
     {:else}
-      <div class="flex items-center gap-3 text-xs text-slate-400 dark:text-zinc-500 mt-4">
-        <span class="h-px flex-1 bg-slate-200 dark:bg-zinc-800" />
-        или по почте
-        <span class="h-px flex-1 bg-slate-200 dark:bg-zinc-800" />
-      </div>
-
-      <div class="mt-3">
+      <div class="mt-4">
         <SignupForm onSuccess={handleSuccessfulAuth} />
       </div>
 
-      <div class="mt-4 flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300">
+      <div class="flex items-center gap-3 text-xs text-slate-400 dark:text-zinc-500 mt-4">
+        <span class="h-px flex-1 bg-slate-200 dark:bg-zinc-800" />
+        или через Telegram / VK
+        <span class="h-px flex-1 bg-slate-200 dark:bg-zinc-800" />
+      </div>
+
+      <div class="mt-3 flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300">
         <label class="flex items-start gap-3">
           <input
             bind:checked={signupPrivacyAccepted}
@@ -207,6 +205,27 @@
             </a>
           </span>
         </label>
+      </div>
+
+      <div class="mt-3 flex flex-col gap-3">
+        {#if telegramButtonModulePromise}
+          {#await telegramButtonModulePromise then module}
+            <svelte:component
+              this={module.default}
+              onSuccess={handleSuccessfulAuth}
+              active={open}
+              disabled={!signupPrivacyAccepted}
+              privacyAccepted={signupPrivacyAccepted}
+              label="Зарегистрироваться через Telegram"
+            />
+          {/await}
+        {/if}
+        <VkLoginButton
+          onSuccess={handleSuccessfulAuth}
+          disabled={!signupPrivacyAccepted}
+          privacyAccepted={signupPrivacyAccepted}
+          label="Зарегистрироваться через VK"
+        />
       </div>
     {/if}
   </div>
