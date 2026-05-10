@@ -15,6 +15,7 @@
   let container: HTMLDivElement | null = null
   let loading = false
   let scriptLoaded = false
+  let scriptFailed = false
   let lastActive = active
   let lastDisabled = disabled
   let lastPrivacyAccepted = privacyAccepted
@@ -23,6 +24,7 @@
   const mountWidget = () => {
     if (!browser || !container || !botName || disabled) return
     scriptLoaded = false
+    scriptFailed = false
     container.innerHTML = ''
 
     const script = document.createElement('script')
@@ -34,14 +36,11 @@
     script.setAttribute('data-onauth', 'onTelegramAuth(user)')
     script.setAttribute('data-request-access', 'write')
     script.onload = () => {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          scriptLoaded = Boolean(container?.querySelector('iframe, a, button'))
-        })
-      })
+      scriptLoaded = true
     }
     script.onerror = () => {
       scriptLoaded = false
+      scriptFailed = true
     }
     container.appendChild(script)
   }
@@ -117,14 +116,14 @@
   <div class="flex flex-col gap-2">
     <div class="relative">
       <div
-      class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-left transition dark:border-zinc-700 dark:bg-zinc-900"
-      class:opacity-60={disabled}
-      class:hover:border-slate-300={!disabled}
-      class:hover:bg-slate-50={!disabled}
-      class:dark:hover:border-zinc-600={!disabled}
-      class:dark:hover:bg-zinc-800={!disabled}
-      title={label}
-      aria-hidden="true"
+        class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-left transition dark:border-zinc-700 dark:bg-zinc-900"
+        class:opacity-60={disabled}
+        class:hover:border-slate-300={!disabled}
+        class:hover:bg-slate-50={!disabled}
+        class:dark:hover:border-zinc-600={!disabled}
+        class:dark:hover:bg-zinc-800={!disabled}
+        title={label}
+        aria-hidden="true"
       >
         <span class="flex items-center gap-3">
           <span class="flex h-9 w-9 items-center justify-center rounded-full bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">
@@ -142,7 +141,7 @@
       <div
         bind:this={container}
         class="telegram-widget-host"
-        class:is-loading={!scriptLoaded || loading}
+        class:is-loading={loading}
         class:is-disabled={disabled}
         aria-label={label}
       />
@@ -153,6 +152,10 @@
     {:else if disabled}
       <p class="text-xs text-slate-500 dark:text-zinc-400">
         Сначала примите политику обработки персональных данных.
+      </p>
+    {:else if scriptFailed}
+      <p class="text-xs text-slate-500 dark:text-zinc-400">
+        Не удалось загрузить Telegram-вход. Проверьте блокировщики в браузере.
       </p>
     {:else if !scriptLoaded}
       <p class="text-xs text-slate-500 dark:text-zinc-400">
@@ -171,6 +174,7 @@
     align-items: center;
     justify-content: center;
     overflow: hidden;
+    pointer-events: none;
   }
 
   .telegram-widget-host.is-loading {
@@ -187,6 +191,7 @@
     height: 100% !important;
     border-radius: 0.75rem;
     cursor: pointer;
+    pointer-events: auto;
   }
 
   .telegram-widget-host :global(button),
@@ -196,5 +201,6 @@
     height: 100%;
     display: block;
     cursor: pointer;
+    pointer-events: auto;
   }
 </style>
