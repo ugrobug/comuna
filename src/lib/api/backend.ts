@@ -1,15 +1,22 @@
 import { browser } from '$app/environment'
-import { env } from '$env/dynamic/public'
+import { env as publicEnv } from '$env/dynamic/public'
 import type { SitePostTemplate } from '$lib/postTemplates'
 import { slugifyTitle } from '$lib/util/slug'
 
 export const getBackendBaseUrl = (): string => {
   if (!browser) {
-    const base = env.PUBLIC_INTERNAL_BACKEND_URL || ''
+    const base =
+      process.env.INTERNAL_BACKEND_URL ||
+      publicEnv.PUBLIC_INTERNAL_BACKEND_URL ||
+      publicEnv.PUBLIC_BACKEND_URL ||
+      ''
     return base.replace(/\/$/, '')
   }
-  const base = env.PUBLIC_BACKEND_URL || 'http://localhost:8000'
-  return base.replace(/\/$/, '')
+  const base = (publicEnv.PUBLIC_BACKEND_URL || '').replace(/\/$/, '')
+  if (!base || base === window.location.origin) {
+    return ''
+  }
+  return base
 }
 
 export const buildAuthorPostsUrl = (username: string): string => {
