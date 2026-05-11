@@ -160,7 +160,6 @@ def _set_auth_cookie(response: HttpResponse, token: str) -> None:
         _AUTH_COOKIE_NAME,
         token,
         max_age=_TOKEN_MAX_AGE,
-        expires=timezone.now() + timedelta(seconds=_TOKEN_MAX_AGE),
         path="/",
         domain=_auth_cookie_domain(),
         secure=_auth_cookie_secure(),
