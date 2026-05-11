@@ -58,6 +58,9 @@ def _serialize_user(user: User) -> dict:
         "id": user.id,
         "username": user.username,
         "email": user.email,
+        "email_verified": bool(
+            getattr(site_profile, "email_verified_at", None) if site_profile else None
+        ),
         "display_name": (site_profile.display_name if site_profile else "") or None,
         "avatar_url": (site_profile.avatar_url if site_profile else "") or avatar_url,
         "is_staff": user.is_staff,

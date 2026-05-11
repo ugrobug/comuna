@@ -34,6 +34,7 @@ export type SiteUser = {
   username: string
   display_name?: string | null
   email?: string | null
+  email_verified?: boolean
   avatar_url?: string | null
   is_staff?: boolean
   is_author: boolean
@@ -356,6 +357,23 @@ export const requestPasswordReset = async (email: string) => {
   }
 
   return true
+}
+
+export const verifyEmail = async (token: string, fetcher: typeof fetch = fetch) => {
+  const response = await fetcher(`${buildUrl('/api/auth/verify-email/')}?token=${encodeURIComponent(token)}`, {
+    method: 'GET',
+    credentials: 'include',
+  })
+
+  const data = await parseApiResponse(response)
+  if (!response.ok || !data?.ok) {
+    throw new Error(normalizeSiteAuthError(data?.error, 'Не удалось подтвердить почту'))
+  }
+
+  if (data.user) {
+    siteUser.set(data.user)
+  }
+  return data.user as SiteUser | undefined
 }
 
 export const confirmPasswordReset = async (payload: {

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import logging
 import os
@@ -196,22 +197,15 @@ def _register_password_user(username: str, password: str, email: str = "") -> Us
     if existing_by_email:
         if existing_by_email.has_usable_password():
             raise ValueError("email already exists")
-        if (
-            existing_by_email.username
-            and existing_by_email.username.lower() != username.lower()
-            and User.objects.filter(username__iexact=username).exclude(id=existing_by_email.id).exists()
-        ):
-            raise ValueError("username already exists")
-        if existing_by_email.username.lower() != username.lower():
-            existing_by_email.username = username
-        existing_by_email.email = email
-        existing_by_email.set_password(password)
-        existing_by_email.save(update_fields=["username", "email", "password"])
-        return existing_by_email
+        raise ValueError(
+            "Аккаунт с таким email уже существует. Восстановите пароль через подтверждение почты."
+        )
 
     if User.objects.filter(username__iexact=username).exists():
         raise ValueError("username already exists")
-    return User.objects.create_user(username=username, email=email, password=password)
+    user = User.objects.create_user(username=username, email=email, password=password)
+    _mark_email_unverified(user)
+    return user
 
 
 def _site_url(path: str) -> str:
@@ -223,25 +217,48 @@ def _site_url(path: str) -> str:
     return f"{base_url}{path}"
 
 
+def _mark_email_unverified(user: User) -> SiteUserProfile:
+    profile, _ = SiteUserProfile.objects.get_or_create(user=user)
+    if profile.email_verified_at is not None:
+        profile.email_verified_at = None
+        profile.save(update_fields=["email_verified_at", "updated_at"])
+    return profile
+
+
+def _email_verification_secret(user: User) -> str:
+    uid = urlsafe_base64_encode(force_bytes(user.pk))
+    token = default_token_generator.make_token(user)
+    return f"{uid}:{token}"
+
+
+def _email_verification_url(user: User) -> str:
+    return _site_url(f"/verify_email/{_email_verification_secret(user)}")
+
+
 def _send_registration_email(user: User) -> bool:
     email = (getattr(user, "email", "") or "").strip()
     if not email:
         return False
     username = (getattr(user, "username", "") or "").strip() or "пользователь"
+    verification_url = _email_verification_url(user)
+    escaped_username = html.escape(username)
+    escaped_url = html.escape(verification_url, quote=True)
     try:
         send_email(
-            subject="Добро пожаловать в Tambur",
+            subject="Подтвердите почту в Tambur",
             to=email,
             text=(
                 f"Здравствуйте, {username}!\n\n"
-                "Вы зарегистрировались на Tambur.\n"
-                f"Перейти на сайт: {_site_url('/')}\n\n"
+                "Чтобы завершить подтверждение почты, откройте секретную ссылку:\n"
+                f"{verification_url}\n\n"
+                "Ссылка секретная и привязана к вашему аккаунту.\n"
                 "Если это были не вы, просто проигнорируйте это письмо."
             ),
             html=(
-                f"<p>Здравствуйте, {username}!</p>"
-                "<p>Вы зарегистрировались на Tambur.</p>"
-                f"<p><a href=\"{_site_url('/')}\">Перейти на сайт</a></p>"
+                f"<p>Здравствуйте, {escaped_username}!</p>"
+                "<p>Чтобы завершить подтверждение почты, откройте секретную ссылку:</p>"
+                f"<p><a href=\"{escaped_url}\">Подтвердить почту</a></p>"
+                "<p>Ссылка секретная и привязана к вашему аккаунту.</p>"
                 "<p>Если это были не вы, просто проигнорируйте это письмо.</p>"
             ),
         )
@@ -249,6 +266,29 @@ def _send_registration_email(user: User) -> bool:
     except Exception:
         logger.exception("Failed to send registration email to user %s", user.id)
         return False
+
+
+def _verify_email_by_secret(secret: str) -> User:
+    value = str(secret or "").strip()
+    if ":" not in value:
+        raise ValueError("Ссылка подтверждения недействительна или устарела.")
+    uid, token = value.split(":", 1)
+    try:
+        user_id = force_str(urlsafe_base64_decode(uid))
+        user = User.objects.get(pk=user_id, is_active=True)
+    except Exception as exc:
+        raise ValueError("Ссылка подтверждения недействительна или устарела.") from exc
+
+    if not default_token_generator.check_token(user, token):
+        raise ValueError("Ссылка подтверждения недействительна или устарела.")
+    if not (getattr(user, "email", "") or "").strip():
+        raise ValueError("У аккаунта не указан email.")
+
+    profile, _ = SiteUserProfile.objects.get_or_create(user=user)
+    if profile.email_verified_at is None:
+        profile.email_verified_at = timezone.now()
+        profile.save(update_fields=["email_verified_at", "updated_at"])
+    return user
 
 
 def _send_password_reset_email(user: User) -> bool:
@@ -290,11 +330,10 @@ def _request_password_reset(email: str) -> bool:
 
     user = (
         User.objects.filter(email__iexact=email, is_active=True)
-        .exclude(password="")
         .order_by("id")
         .first()
     )
-    if not user or not user.has_usable_password():
+    if not user:
         return False
     return _send_password_reset_email(user)
 
@@ -795,6 +834,7 @@ __all__ = [
     "_reset_password_by_token",
     "_send_password_reset_email",
     "_send_registration_email",
+    "_verify_email_by_secret",
     "_set_auth_cookie",
     "_update_site_profile",
     "_upsert_telegram_account",

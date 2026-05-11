@@ -111,6 +111,27 @@ def password_reset_request(request: HttpRequest) -> HttpResponse:
 
 
 @csrf_exempt
+def verify_email(request: HttpRequest) -> HttpResponse:
+    if request.method == "GET":
+        secret = request.GET.get("token", "")
+    elif request.method == "POST":
+        try:
+            payload = json.loads(request.body.decode("utf-8"))
+        except json.JSONDecodeError:
+            return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+        secret = str(payload.get("token") or "")
+    else:
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    try:
+        user = user_service._verify_email_by_secret(secret)
+    except ValueError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+
+    return JsonResponse({"ok": True, "user": _serialize_user(user)})
+
+
+@csrf_exempt
 def password_reset_confirm(request: HttpRequest) -> HttpResponse:
     if request.method != "POST":
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
@@ -257,5 +278,6 @@ __all__ = [
     "public_user_profile",
     "register_user",
     "telegram_auth",
+    "verify_email",
     "vk_auth",
 ]

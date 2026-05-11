@@ -65,6 +65,7 @@ class SiteUserProfile(models.Model):
     display_name = models.CharField(max_length=120, blank=True)
     phone = models.CharField(max_length=32, blank=True)
     avatar_url = models.URLField(max_length=500, blank=True)
+    email_verified_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

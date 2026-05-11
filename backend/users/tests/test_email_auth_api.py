@@ -8,7 +8,7 @@ from django.test import Client, TestCase, override_settings
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 
-from users.models import VkAccount
+from users.models import SiteUserProfile, VkAccount
 
 
 User = get_user_model()
@@ -45,7 +45,7 @@ class EmailAuthApiTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("email", response.json()["error"])
 
-    def test_register_sends_welcome_email(self):
+    def test_register_sends_email_verification_link(self):
         response = self.post_json(
             "/api/auth/register/",
             {
@@ -59,9 +59,43 @@ class EmailAuthApiTests(TestCase):
         payload = response.json()
         self.assertEqual(response.status_code, 200)
         self.assertTrue(payload["email_sent"])
+        self.assertFalse(payload["user"]["email_verified"])
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(mail.outbox[0].to, ["reader@example.test"])
-        self.assertIn("Добро пожаловать", mail.outbox[0].subject)
+        self.assertIn("Подтвердите почту", mail.outbox[0].subject)
+        self.assertIn("/verify_email/", mail.outbox[0].body)
+
+    def test_verify_email_marks_profile_verified(self):
+        response = self.post_json(
+            "/api/auth/register/",
+            {
+                "username": "reader",
+                "email": "reader@example.test",
+                "password": "StrongPass123!",
+                "privacy_accepted": True,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        secret = mail.outbox[0].body.split("/verify_email/", 1)[1].split()[0]
+
+        verify_response = self.client.get(
+            "/api/auth/verify-email/",
+            {"token": secret},
+        )
+
+        self.assertEqual(verify_response.status_code, 200)
+        self.assertTrue(verify_response.json()["user"]["email_verified"])
+        user = User.objects.get(username="reader")
+        self.assertIsNotNone(SiteUserProfile.objects.get(user=user).email_verified_at)
+
+    def test_verify_email_rejects_bad_secret(self):
+        response = self.client.get(
+            "/api/auth/verify-email/",
+            {"token": "bad-token"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json()["ok"])
 
     def test_password_reset_request_sends_reset_link(self):
         user = User.objects.create_user(
@@ -135,13 +169,14 @@ class EmailAuthApiTests(TestCase):
         self.assertEqual(account.email, "reader@example.test")
         self.assertEqual(User.objects.count(), 1)
 
-    def test_register_email_claims_existing_vk_only_user(self):
+    def test_register_email_does_not_claim_existing_vk_only_user(self):
         user = User.objects.create_user(
             username="reader_vk",
             email="reader@example.test",
         )
         user.set_unusable_password()
         user.save(update_fields=["password"])
+        original_username = user.username
         VkAccount.objects.create(
             user=user,
             vk_id=12345,
@@ -160,10 +195,10 @@ class EmailAuthApiTests(TestCase):
         )
 
         payload = response.json()
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(payload["user"]["id"], user.id)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("уже существует", payload["error"])
         user.refresh_from_db()
-        self.assertEqual(user.username, "reader")
-        self.assertTrue(user.check_password("StrongPass123!"))
+        self.assertEqual(user.username, original_username)
+        self.assertFalse(user.has_usable_password())
         self.assertEqual(User.objects.count(), 1)
         self.assertEqual(VkAccount.objects.get(vk_id=12345).user_id, user.id)

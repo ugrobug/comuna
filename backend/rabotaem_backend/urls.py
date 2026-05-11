@@ -78,6 +78,7 @@ from users.views import (
     password_reset_request,
     public_user_profile,
     register_user,
+    verify_email,
     vk_auth,
 )
 
@@ -125,6 +126,7 @@ urlpatterns = [
     path("api/auth/login/", login_user, name="auth-login"),
     path("api/auth/logout/", logout_user, name="auth-logout"),
     path("api/auth/password-reset/", password_reset_request, name="auth-password-reset"),
+    path("api/auth/verify-email/", verify_email, name="auth-verify-email"),
     path(
         "api/auth/password-reset/confirm/",
         password_reset_confirm,
