@@ -2196,7 +2196,7 @@
   function buildPreviewParagraphFromText(rawText: string): string {
     const { text } = trimPreviewText(rawText);
     if (!text) return '';
-    return `<p>${escapeHtml(text)}</p>`;
+    return `<p>${escapeHtml(text).replace(/\r\n|\r|\n/g, '<br>')}</p>`;
   }
 
   function buildPreviewParagraphFromHtml(paragraphHtml: string, paragraphText: string): string {
@@ -2591,9 +2591,10 @@
     if (browser) {
       const temp = document.createElement('div');
       temp.innerHTML = value;
+      temp.querySelectorAll('br').forEach((br) => br.replaceWith('\n'));
       return temp.textContent || '';
     }
-    return value.replace(/<[^>]*>/g, '');
+    return value.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>/g, '');
   }
 
   function slugifyHeadingText(value: string): string {

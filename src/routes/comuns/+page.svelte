@@ -97,10 +97,6 @@
     }
 
     nextComuns.add(slug)
-    const categorySlugs = comunCategorySlugs(comun)
-    if (categorySlugs.length) {
-      nextCategoryMap[slug] = categorySlugs
-    }
     $userSettings = {
       ...$userSettings,
       myFeedComuns: Array.from(nextComuns),

@@ -192,17 +192,27 @@ def my_feed(request: HttpRequest) -> HttpResponse:
                 selected_category_slugs = comun_category_selection.get(comun.slug) or []
                 if not selected_category_slugs:
                     continue
-                selected_category_ids = list(
-                    community_views._active_comun_category_queryset(comun)
-                    .filter(slug__in=selected_category_slugs)
-                    .values_list("id", flat=True)
+                active_categories = list(
+                    community_views._active_comun_category_queryset(comun).values_list(
+                        "slug",
+                        "id",
+                    )
                 )
+                active_category_ids = {category_id for _slug, category_id in active_categories}
+                selected_category_ids = [
+                    category_id
+                    for slug, category_id in active_categories
+                    if slug in selected_category_slugs
+                ]
                 if not selected_category_ids:
                     continue
-                comun_filter = _my_feed_comun_post_membership_filter(
-                    comun,
-                    selected_category_ids=selected_category_ids,
-                )
+                if active_category_ids and set(selected_category_ids) == active_category_ids:
+                    comun_filter = _my_feed_comun_post_membership_filter(comun)
+                else:
+                    comun_filter = _my_feed_comun_post_membership_filter(
+                        comun,
+                        selected_category_ids=selected_category_ids,
+                    )
             else:
                 comun_filter = _my_feed_comun_post_membership_filter(comun)
             if comun_filter is None:

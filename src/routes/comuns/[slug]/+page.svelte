@@ -683,9 +683,6 @@
     const next = new Set<string>(myFeedComunSlugs)
     next.add(slug)
     const nextCategoryMap = { ...($userSettings.myFeedComunCategories ?? {}) }
-    if (comunCategorySlugs.length) {
-      nextCategoryMap[slug] = [...comunCategorySlugs]
-    }
     $userSettings = {
       ...$userSettings,
       myFeedComuns: Array.from(next),

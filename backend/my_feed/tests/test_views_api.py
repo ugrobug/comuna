@@ -93,6 +93,50 @@ class MyFeedComunCategoryTests(TestCase):
         posts = response.json()["posts"]
         self.assertEqual([post["id"] for post in posts], [self.record_post.id])
 
+    def test_my_feed_all_category_selection_behaves_like_full_comun_subscription(self):
+        telegram_author = Author.objects.create(
+            username="unit-game-channel",
+            title="Unit Game Channel",
+            channel_id=987654,
+        )
+        self.comun.telegram_source_author = telegram_author
+        self.comun.save(update_fields=["telegram_source_author"])
+        uncategorized_post = Post.objects.create(
+            author=self.author,
+            message_id=103,
+            title="Общее обновление",
+            content="{}",
+            raw_data={"source": "manual_comun", "comun_slug": self.comun.slug},
+            is_pending=False,
+            is_blocked=False,
+        )
+        telegram_post = Post.objects.create(
+            author=telegram_author,
+            message_id=104,
+            title="Пост из канала",
+            content="{}",
+            is_pending=False,
+            is_blocked=False,
+        )
+
+        response = self.client.get(
+            reverse("my-feed"),
+            {
+                "comuns": self.comun.slug,
+                "comun_categories": json.dumps(
+                    {self.comun.slug: [self.records.slug, self.news.slug]}
+                ),
+                "limit": "10",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        post_ids = {post["id"] for post in response.json()["posts"]}
+        self.assertEqual(
+            post_ids,
+            {self.record_post.id, self.news_post.id, uncategorized_post.id, telegram_post.id},
+        )
+
 
 class UserFeedSettingsApiTests(TestCase):
     def setUp(self):
