@@ -63,7 +63,7 @@
 
   const buildPageUrl = (offset: number) => {
     if (!tagName) return ''
-    const url = new URL(buildTagPostsUrl(tagLemma || tagName))
+    const url = new URL(buildTagPostsUrl(tagLemma || tagName), $page.url.origin)
     url.searchParams.set('limit', String(pageSize))
     url.searchParams.set('offset', String(offset))
     return url.toString()

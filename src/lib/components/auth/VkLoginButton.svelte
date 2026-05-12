@@ -14,11 +14,12 @@
   let container: HTMLDivElement | null = null
   let loading = false
   let scriptLoaded = false
+  let vkidSdk: typeof import('@vkid/sdk') | null = null
   const appId = env.PUBLIC_VK_APP_ID
 
   const renderWidget = () => {
     if (!browser || !container || !appId || disabled) return
-    const VKID = (window as any).VKIDSDK
+    const VKID = vkidSdk
     if (!VKID) return
 
     VKID.Config.init({
@@ -74,23 +75,16 @@
   onMount(() => {
     if (!browser || !container || !appId || disabled) return
 
-    if ((window as any).VKIDSDK) {
-      scriptLoaded = true
-      renderWidget()
-      return
-    }
-
-    const script = document.createElement('script')
-    script.async = true
-    script.src = 'https://unpkg.com/@vkid/sdk@<3.0.0/dist-sdk/umd/index.js'
-    script.onload = () => {
-      scriptLoaded = true
-      renderWidget()
-    }
-    script.onerror = () => {
-      toast({ content: 'Не удалось загрузить VK виджет', type: 'error' })
-    }
-    document.head.appendChild(script)
+    import('@vkid/sdk')
+      .then((module) => {
+        vkidSdk = module
+        scriptLoaded = true
+        renderWidget()
+      })
+      .catch((error) => {
+        console.error('Failed to load VKID SDK', error)
+        toast({ content: 'Не удалось загрузить VK виджет', type: 'error' })
+      })
   })
 
 </script>

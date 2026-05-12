@@ -68,7 +68,7 @@
             readOnly
           )
     }
-    const url = new URL(baseUrl)
+    const url = new URL(baseUrl, $page.url.origin)
     url.searchParams.set('limit', String(pageSize))
     url.searchParams.set('offset', String(currentOffset))
     return url.toString()

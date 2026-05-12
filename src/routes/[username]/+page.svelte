@@ -58,7 +58,7 @@
   const buildPageUrl = (offset: number) => {
     const username = data.author?.username
     if (!username) return ''
-    const url = new URL(buildAuthorPostsUrl(username))
+    const url = new URL(buildAuthorPostsUrl(username), $page.url.origin)
     url.searchParams.set('limit', String(pageSize))
     url.searchParams.set('offset', String(offset))
     return url.toString()

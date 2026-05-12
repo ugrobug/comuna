@@ -18,7 +18,7 @@ const securityHeaders = {
     "style-src 'self' 'unsafe-inline' https:",
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://telegram.org https://oauth.telegram.org https://vk.com https://*.vk.com https://mc.yandex.ru https://www.googletagmanager.com https://www.google-analytics.com",
     "connect-src 'self' https: wss:",
-    "frame-src 'self' https://telegram.org https://oauth.telegram.org https://vk.com https://*.vk.com https://www.youtube.com https://www.youtube-nocookie.com https://youtube.com https://player.vimeo.com https://open.spotify.com",
+    "frame-src 'self' https://telegram.org https://oauth.telegram.org https://vk.com https://*.vk.com https://vk.ru https://*.vk.ru https://www.youtube.com https://www.youtube-nocookie.com https://youtube.com https://player.vimeo.com https://open.spotify.com",
     "worker-src 'self' blob:",
   ].join('; '),
   'Referrer-Policy': 'strict-origin-when-cross-origin',
