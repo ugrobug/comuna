@@ -20,6 +20,7 @@ def _serialize_feed_post_card(
     is_favorite: bool = False,
 ) -> dict:
     content, poll_payload = _fv()._content_with_live_poll(post, current_user)
+    template_payload = _fv()._serialize_post_template(post)
     author_channel_url, author_title = _fv()._author_display_fields(
         request,
         post.author,
@@ -28,10 +29,11 @@ def _serialize_feed_post_card(
     return {
         "id": post.id,
         "title": _fv()._post_display_title(post),
-        "template": _fv()._serialize_post_template(post),
+        "template": template_payload,
         "comun": _fv().community_service._serialize_post_comun(request, post),
         "content": content,
         "poll": poll_payload,
+        **_fv()._serialize_post_preview_image_fields(request, post, template_payload),
         "source_url": post.source_url,
         "channel_url": author_channel_url,
         "created_at": post.created_at.isoformat(),

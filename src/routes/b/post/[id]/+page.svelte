@@ -17,7 +17,7 @@
 
   export let data
 
-  let postView: any = backendPostToPostView(data.post)
+  let postView: any = backendPostToPostView(data.post, undefined, { includePreviewMedia: false })
   let lastVisitedPostId: number | null = null
 
   const stripHtml = (value: string) =>
@@ -117,7 +117,7 @@
   $: siteBaseUrl = (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '')
   $: canonicalPath = data.canonicalId ? `/b/post/${data.canonicalId}` : $page.url.pathname
   $: canonicalUrl = `${siteBaseUrl}${canonicalPath}`
-  $: postView = backendPostToPostView(data.post)
+  $: postView = backendPostToPostView(data.post, undefined, { includePreviewMedia: false })
   $: authorName = data.post?.author?.title || data.post?.author?.username || 'Автор'
   $: authorUrl = data.post?.author?.username
     ? `${siteBaseUrl}/${data.post.author.username}`

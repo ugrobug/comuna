@@ -4,10 +4,11 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.contrib.auth.tokens import default_token_generator
 from django.core import mail
-from django.test import Client, TestCase, override_settings
+from django.test import Client, SimpleTestCase, TestCase, override_settings
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 
+from users import service as user_service
 from users.models import SiteUserProfile, VkAccount
 
 
@@ -202,3 +203,78 @@ class EmailAuthApiTests(TestCase):
         self.assertFalse(user.has_usable_password())
         self.assertEqual(User.objects.count(), 1)
         self.assertEqual(VkAccount.objects.get(vk_id=12345).user_id, user.id)
+
+
+@override_settings(VK_APP_ID="54434029", VK_OIDC_JWKS_URL="")
+class VkIdAuthPayloadTests(SimpleTestCase):
+    def test_vk_id_user_info_access_token_is_accepted(self):
+        with patch(
+            "users.service._fetch_vk_id_json",
+            return_value={
+                "user": {
+                    "user_id": "12345",
+                    "screen_name": "reader_vk",
+                    "email": "reader@example.test",
+                    "phone": "+79991234567",
+                    "first_name": "Reader",
+                    "last_name": "One",
+                    "avatar": "https://example.test/avatar.jpg",
+                }
+            },
+        ):
+            vk_user = user_service._authenticate_vk_payload({"access_token": "access-token"})
+
+        self.assertEqual(vk_user["vk_id"], 12345)
+        self.assertEqual(vk_user["screen_name"], "reader_vk")
+        self.assertEqual(vk_user["email"], "reader@example.test")
+        self.assertEqual(vk_user["phone"], "+79991234567")
+        self.assertEqual(vk_user["avatar_url"], "https://example.test/avatar.jpg")
+
+    def test_vk_id_user_info_rejects_verified_id_token_mismatch(self):
+        with override_settings(VK_OIDC_JWKS_URL="https://vk.example.test/jwks"), patch(
+            "users.service._parse_vk_id_token",
+            return_value={
+                "vk_id": 11111,
+                "screen_name": "",
+                "email": "",
+                "phone": "",
+                "first_name": "",
+                "last_name": "",
+                "avatar_url": "",
+            },
+        ), patch(
+            "users.service._fetch_vk_id_json",
+            return_value={
+                "user": {
+                    "user_id": "22222",
+                    "first_name": "Reader",
+                }
+            },
+        ):
+            with self.assertRaisesMessage(ValueError, "vk auth mismatch"):
+                user_service._authenticate_vk_payload(
+                    {
+                        "access_token": "access-token",
+                        "id_token": "id-token",
+                    }
+                )
+
+    def test_vk_id_public_info_fallback_accepts_id_token_without_local_jwks(self):
+        with (
+            patch("users.service._parse_vk_id_token", return_value=None),
+            patch(
+                "users.service._fetch_vk_id_json",
+                return_value={
+                    "user": {
+                        "user_id": "12345",
+                        "first_name": "Reader",
+                        "last_name": "One",
+                    }
+                },
+            ),
+        ):
+            vk_user = user_service._authenticate_vk_payload({"id_token": "id-token"})
+
+        self.assertEqual(vk_user["vk_id"], 12345)
+        self.assertEqual(vk_user["first_name"], "Reader")
+        self.assertEqual(vk_user["last_name"], "One")

@@ -198,6 +198,7 @@ def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None
         "poll": poll_payload,
         "post_ratings": _serialize_post_ratings(post, user),
         "post_rating": _serialize_post_rating(post, user, template_payload=template_payload),
+        **_fv()._serialize_post_preview_image_fields(request, post, template_payload),
         "created_at": post.created_at.isoformat(),
         "updated_at": post.updated_at.isoformat(),
         "is_pending": post.is_pending,

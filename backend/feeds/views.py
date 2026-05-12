@@ -136,6 +136,11 @@ from users.models import (
 User = get_user_model()
 
 _FAKE_VIEWS_RAMP_SECONDS = 48 * 60 * 60
+_IMAGE_VARIANT_WIDTHS = (320, 640, 960, 1280, 1920)
+_POST_PREVIEW_IMAGE_WIDTH = 1280
+_POST_THUMBNAIL_IMAGE_WIDTH = 640
+_LOCAL_WEBP_VARIANT_RE = re.compile(r"-(320|640|960|1280|1920)\.webp$", re.IGNORECASE)
+_IMAGE_URL_PATH_RE = re.compile(r"\.(?:jpe?g|png|webp|gif|avif)$", re.IGNORECASE)
 _COMUN_CREATION_MIN_AUTHOR_RATING = 0.0
 _COMUN_ACTIVITY_POINTS = {
     "post": 10,
@@ -733,6 +738,246 @@ def _media_url(request: HttpRequest | None, field) -> str | None:
         return request.build_absolute_uri(field.url)
     except Exception:
         return None
+
+
+def _site_absolute_url(request: HttpRequest | None, path: str) -> str | None:
+    path = str(path or "").strip()
+    if not path:
+        return None
+    site_base = getattr(settings, "SITE_BASE_URL", "").rstrip("/")
+    if site_base:
+        return f"{site_base}/{path.lstrip('/')}"
+    if request is None:
+        return None
+    try:
+        return request.build_absolute_uri(path if path.startswith("/") else f"/{path}")
+    except Exception:
+        return None
+
+
+def _media_storage_path_from_url(url: str) -> str | None:
+    parsed = urllib.parse.urlparse(url)
+    media_url = str(getattr(settings, "MEDIA_URL", "/media/") or "/media/")
+    if not media_url.startswith("/"):
+        media_url = f"/{media_url}"
+    if not media_url.endswith("/"):
+        media_url = f"{media_url}/"
+    if not parsed.path.startswith(media_url):
+        return None
+    return urllib.parse.unquote(parsed.path[len(media_url) :]).lstrip("/")
+
+
+def _closest_existing_or_declared_variant_width(current_width: int | None, target_width: int) -> int:
+    widths = [width for width in _IMAGE_VARIANT_WIDTHS if not current_width or width <= current_width]
+    if not widths:
+        widths = [min(_IMAGE_VARIANT_WIDTHS)]
+    target_width = max(int(target_width or 0), min(_IMAGE_VARIANT_WIDTHS))
+    return min(widths, key=lambda width: (abs(width - target_width), width))
+
+
+def _local_webp_variant_url(
+    request: HttpRequest | None,
+    url: str,
+    *,
+    target_width: int,
+) -> str:
+    value = str(url or "").strip()
+    if not value:
+        return ""
+
+    parsed = urllib.parse.urlparse(value)
+    if parsed.scheme and parsed.scheme not in {"http", "https"}:
+        return ""
+    if not parsed.path:
+        return value
+
+    match = _LOCAL_WEBP_VARIANT_RE.search(parsed.path)
+    if match:
+        current_width = int(match.group(1))
+        width = _closest_existing_or_declared_variant_width(current_width, target_width)
+        next_path = _LOCAL_WEBP_VARIANT_RE.sub(f"-{width}.webp", parsed.path)
+        return urllib.parse.urlunparse(parsed._replace(path=next_path, query="", fragment=""))
+
+    storage_path = _media_storage_path_from_url(value)
+    if not storage_path:
+        return value
+
+    root, ext = os.path.splitext(storage_path)
+    if ext.lower() == ".gif":
+        return value
+
+    candidate_widths = sorted(
+        _IMAGE_VARIANT_WIDTHS,
+        key=lambda width: (abs(width - target_width), -width),
+    )
+    media_url = str(getattr(settings, "MEDIA_URL", "/media/") or "/media/")
+    if not media_url.endswith("/"):
+        media_url = f"{media_url}/"
+    for width in candidate_widths:
+        candidate_path = f"{root}-{width}.webp"
+        try:
+            if not default_storage.exists(candidate_path):
+                continue
+        except Exception:
+            continue
+        absolute = _site_absolute_url(request, f"{media_url.lstrip('/')}{candidate_path}")
+        return absolute or value
+
+    return value
+
+
+def _normalize_public_image_url(request: HttpRequest | None, url: object) -> str | None:
+    value = unescape(str(url or "").strip())
+    if not value:
+        return None
+    safe_value = safe_public_url(value)
+    if not safe_value:
+        return None
+    value = safe_value.strip()
+    if value.startswith("//"):
+        value = f"https:{value}"
+    elif value.startswith("/"):
+        value = _site_absolute_url(request, value) or ""
+    if not value:
+        return None
+
+    parsed = urllib.parse.urlparse(value)
+    if parsed.scheme not in {"http", "https"}:
+        return None
+    if not _IMAGE_URL_PATH_RE.search(parsed.path):
+        return None
+    return urllib.parse.urlunparse(parsed._replace(fragment=""))
+
+
+def _editor_block_image_candidates(payload: dict | None) -> list[object]:
+    if not isinstance(payload, dict):
+        return []
+
+    candidates: list[object] = []
+    additional = payload.get("additional")
+    if isinstance(additional, dict):
+        candidates.extend(
+            [
+                additional.get("previewImage"),
+                additional.get("preview_image_url"),
+                additional.get("cover_image_url"),
+            ]
+        )
+
+    blocks = payload.get("blocks")
+    if not isinstance(blocks, list):
+        return candidates
+
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        block_type = str(block.get("type") or "").strip().lower()
+        data = block.get("data")
+        if not isinstance(data, dict):
+            continue
+        if block_type == "image":
+            file_payload = data.get("file")
+            if isinstance(file_payload, dict):
+                candidates.append(file_payload.get("url"))
+            candidates.append(data.get("url"))
+        elif block_type == "gallery":
+            images = data.get("images")
+            if isinstance(images, list) and images:
+                first_image = images[0]
+                if isinstance(first_image, dict):
+                    candidates.append(first_image.get("url"))
+                    file_payload = first_image.get("file")
+                    if isinstance(file_payload, dict):
+                        candidates.append(file_payload.get("url"))
+        elif block_type in {"imagecompare", "compare"}:
+            for key in ("before", "after"):
+                value = data.get(key)
+                if isinstance(value, dict):
+                    candidates.append(value.get("url"))
+    return candidates
+
+
+def _template_image_candidates(template_payload: dict | None) -> list[object]:
+    if not isinstance(template_payload, dict):
+        return []
+    data = template_payload.get("data")
+    if not isinstance(data, dict):
+        return []
+    template_type = str(template_payload.get("type") or "").strip()
+    if template_type == "movie_review":
+        return [data.get("poster_url"), data.get("cover_image_url")]
+    if template_type == "music_release":
+        return [data.get("cover_image_url"), data.get("poster_url")]
+    return [data.get("cover_image_url"), data.get("preview_image_url")]
+
+
+def _content_image_candidates(content: str) -> list[object]:
+    raw = str(content or "").strip()
+    if not raw:
+        return []
+
+    candidates = _editor_block_image_candidates(_decode_editor_payload(raw))
+    candidates.extend(
+        match.group(1)
+        for match in re.finditer(r"<img\b[^>]*\bsrc=[\"']([^\"']+)[\"']", raw, re.IGNORECASE)
+    )
+    return candidates
+
+
+def _raw_data_image_candidates(raw_data: object) -> list[object]:
+    if not isinstance(raw_data, dict):
+        return []
+    candidates: list[object] = []
+    gallery_urls = raw_data.get("gallery_urls")
+    if isinstance(gallery_urls, list):
+        candidates.extend(gallery_urls)
+    for key in ("image_url", "photo_url", "preview_image_url"):
+        candidates.append(raw_data.get(key))
+    return candidates
+
+
+def _extract_post_preview_image_urls(
+    request: HttpRequest | None,
+    post: Post,
+    template_payload: dict | None = None,
+) -> tuple[str | None, str | None]:
+    candidates: list[object] = []
+    candidates.extend(_template_image_candidates(template_payload))
+    candidates.extend(_content_image_candidates(post.content or ""))
+    candidates.extend(_raw_data_image_candidates(post.raw_data))
+
+    for candidate in candidates:
+        image_url = _normalize_public_image_url(request, candidate)
+        if not image_url:
+            continue
+        preview_url = _local_webp_variant_url(
+            request,
+            image_url,
+            target_width=_POST_PREVIEW_IMAGE_WIDTH,
+        )
+        thumbnail_url = _local_webp_variant_url(
+            request,
+            image_url,
+            target_width=_POST_THUMBNAIL_IMAGE_WIDTH,
+        )
+        return preview_url or image_url, thumbnail_url or preview_url or image_url
+    return None, None
+
+
+def _serialize_post_preview_image_fields(
+    request: HttpRequest | None,
+    post: Post,
+    template_payload: dict | None = None,
+) -> dict[str, str | None]:
+    preview_image_url, thumbnail_url = _extract_post_preview_image_urls(
+        request,
+        post,
+        template_payload=template_payload,
+    )
+    return {
+        "preview_image_url": preview_image_url,
+        "thumbnail_url": thumbnail_url,
+    }
 
 
 def _author_avatar_url(request: HttpRequest | None, author: Author) -> str | None:
@@ -2450,6 +2695,7 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
     serialized = []
     for post in posts:
         content, poll_payload = _content_with_live_poll(post, current_user)
+        template_payload = _serialize_post_template(post)
         author_channel_url, author_title = _author_display_fields(
             request, author, post.channel_url
         )
@@ -2457,10 +2703,11 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
             {
                 "id": post.id,
                 "title": _post_display_title(post),
-                "template": _serialize_post_template(post),
+                "template": template_payload,
                 "comun": community_service._serialize_post_comun(request, post),
                 "content": content,
                 "poll": poll_payload,
+                **_serialize_post_preview_image_fields(request, post, template_payload),
                 "source_url": post.source_url,
                 "channel_url": author_channel_url,
                 "created_at": post.created_at.isoformat(),
@@ -2614,6 +2861,7 @@ def tag_posts(request: HttpRequest, tag: str) -> HttpResponse:
     serialized = []
     for post in posts:
         content, poll_payload = _content_with_live_poll(post, current_user)
+        template_payload = _serialize_post_template(post)
         author_channel_url, author_title = _author_display_fields(
             request, post.author, post.channel_url
         )
@@ -2621,10 +2869,11 @@ def tag_posts(request: HttpRequest, tag: str) -> HttpResponse:
             {
                 "id": post.id,
                 "title": _post_display_title(post),
-                "template": _serialize_post_template(post),
+                "template": template_payload,
                 "comun": community_service._serialize_post_comun(request, post),
                 "content": content,
                 "poll": poll_payload,
+                **_serialize_post_preview_image_fields(request, post, template_payload),
                 "source_url": post.source_url,
                 "channel_url": author_channel_url,
                 "created_at": post.created_at.isoformat(),
@@ -2670,6 +2919,7 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
         return JsonResponse({"ok": False, "error": "post not found"}, status=404)
     current_user = _get_user_from_request(request)
     content, poll_payload = _content_with_live_poll(post, current_user)
+    template_payload = _serialize_post_template(post)
     author_channel_url, author_title = _author_display_fields(
         request, post.author, post.channel_url
     )
@@ -2679,11 +2929,12 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
             "post": {
                 "id": post.id,
                 "title": _post_display_title(post),
-                "template": _serialize_post_template(post),
+                "template": template_payload,
                 "vote_poll_participations": _serialize_post_vote_poll_participations(post),
                 "comun": community_service._serialize_post_comun(request, post),
                 "content": content,
                 "poll": poll_payload,
+                **_serialize_post_preview_image_fields(request, post, template_payload),
                 "source_url": post.source_url,
                 "channel_url": author_channel_url,
                 "created_at": post.created_at.isoformat(),
@@ -2981,6 +3232,7 @@ def favorites_feed(request: HttpRequest) -> HttpResponse:
     serialized = []
     for post in posts:
         content, poll_payload = _content_with_live_poll(post, user)
+        template_payload = _serialize_post_template(post)
         author_channel_url, author_title = _author_display_fields(
             request, post.author, post.channel_url
         )
@@ -2988,10 +3240,11 @@ def favorites_feed(request: HttpRequest) -> HttpResponse:
             {
                 "id": post.id,
                 "title": _post_display_title(post),
-                "template": _serialize_post_template(post),
+                "template": template_payload,
                 "comun": community_service._serialize_post_comun(request, post),
                 "content": content,
                 "poll": poll_payload,
+                **_serialize_post_preview_image_fields(request, post, template_payload),
                 "source_url": post.source_url,
                 "channel_url": author_channel_url,
                 "created_at": post.created_at.isoformat(),
@@ -3042,6 +3295,7 @@ def _serialize_backend_post_card(
         "poll": poll_payload,
         "post_ratings": _serialize_post_ratings(post, current_user),
         "post_rating": _serialize_post_rating(post, current_user, template_payload=template_payload),
+        **_serialize_post_preview_image_fields(request, post, template_payload),
         "source_url": post.source_url,
         "channel_url": author_channel_url,
         "created_at": post.created_at.isoformat(),
@@ -3109,6 +3363,7 @@ def _serialize_lightweight_post_card(
     score_override: int | None = None,
 ) -> dict:
     now = now or timezone.now()
+    template_payload = _serialize_post_template(post)
     author_channel_url, author_title = _author_display_fields(
         request, post.author, post.channel_url
     )
@@ -3122,6 +3377,7 @@ def _serialize_lightweight_post_card(
         "poll": None,
         "post_ratings": {},
         "post_rating": None,
+        **_serialize_post_preview_image_fields(request, post, template_payload),
         "source_url": post.source_url,
         "channel_url": author_channel_url,
         "created_at": post.created_at.isoformat(),
@@ -3291,6 +3547,7 @@ def search_content(request: HttpRequest) -> HttpResponse:
         favorite_post_ids = _favorite_post_ids_for_user(posts_page, current_user)
         for post in posts_page:
             content, poll_payload = _content_with_live_poll(post, current_user)
+            template_payload = _serialize_post_template(post)
             author_channel_url, author_title = _author_display_fields(
                 request, post.author, post.channel_url
             )
@@ -3298,16 +3555,17 @@ def search_content(request: HttpRequest) -> HttpResponse:
                 {
                     "id": post.id,
                     "title": _post_display_title(post),
-                    "template": _serialize_post_template(post),
+                    "template": template_payload,
                     "comun": community_service._serialize_post_comun(request, post),
                     "content": content,
                     "poll": poll_payload,
+                    **_serialize_post_preview_image_fields(request, post, template_payload),
                     "source_url": post.source_url,
                     "channel_url": author_channel_url,
                     "created_at": post.created_at.isoformat(),
                     "comments_count": post.comments_count,
                     "likes_count": post.rating,
-                "views_count": _post_total_views(post, now),
+                    "views_count": _post_total_views(post, now),
                     "tags": _serialize_tags(post.tags.all()),
                     "is_favorite": post.id in favorite_post_ids,
                     "author": {

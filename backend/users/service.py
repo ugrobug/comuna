@@ -589,9 +589,26 @@ def _authenticate_vk_payload(payload: dict) -> dict:
     id_token = (payload.get("id_token") or "").strip()
     user_id_hint = payload.get("user_id")
     vk_user = None
-    verified_id_token_user = _parse_vk_id_token(id_token, user_id_hint=user_id_hint) if id_token else None
+    has_local_vk_jwks = bool(str(getattr(settings, "VK_OIDC_JWKS_URL", "") or "").strip())
+    verified_id_token_user = (
+        _parse_vk_id_token(id_token, user_id_hint=user_id_hint) if id_token and has_local_vk_jwks else None
+    )
 
     if access_token:
+        vk_user = _vk_user_from_vk_id_response(
+            _fetch_vk_id_json(
+                "user_info",
+                {
+                    "access_token": access_token,
+                },
+            )
+        )
+        if vk_user and verified_id_token_user:
+            if str(verified_id_token_user.get("vk_id")) != str(vk_user.get("vk_id")):
+                raise ValueError("vk auth mismatch")
+            vk_user = _merge_vk_user_data(vk_user, verified_id_token_user)
+
+    if not vk_user and access_token:
         response = _fetch_vk_json(
             "users.get",
             {
@@ -621,6 +638,16 @@ def _authenticate_vk_payload(payload: dict) -> dict:
                         }
                     )
 
+    if not vk_user and id_token and not verified_id_token_user:
+        vk_user = _vk_user_from_vk_id_response(
+            _fetch_vk_id_json(
+                "public_info",
+                {
+                    "id_token": id_token,
+                },
+            )
+        )
+
     if not vk_user and verified_id_token_user:
         vk_user = verified_id_token_user
 
@@ -643,6 +670,40 @@ def _normalize_phone(value: object) -> str:
     if len(phone) < 7:
         return ""
     return f"+{phone}" if not str(value or "").strip().startswith("+") else f"+{phone}"
+
+
+def _merge_vk_user_data(primary: dict, fallback: dict) -> dict:
+    merged = dict(primary)
+    for key in ("screen_name", "email", "phone", "first_name", "last_name", "avatar_url"):
+        if not (merged.get(key) or "") and fallback.get(key):
+            merged[key] = fallback[key]
+    return merged
+
+
+def _vk_user_from_vk_id_response(response: dict | None) -> dict | None:
+    if not isinstance(response, dict):
+        return None
+    raw_user = response.get("user")
+    if not isinstance(raw_user, dict):
+        raw_user = response.get("response") if isinstance(response.get("response"), dict) else response
+    if not isinstance(raw_user, dict):
+        return None
+
+    raw_vk_id = raw_user.get("user_id") or raw_user.get("id") or raw_user.get("uid") or raw_user.get("sub")
+    try:
+        vk_id = int(raw_vk_id)
+    except (TypeError, ValueError):
+        return None
+
+    return {
+        "vk_id": vk_id,
+        "screen_name": (raw_user.get("screen_name") or raw_user.get("preferred_username") or "").strip(),
+        "email": _normalize_email(raw_user.get("email")),
+        "phone": _normalize_phone(raw_user.get("phone") or raw_user.get("phone_number")),
+        "first_name": (raw_user.get("first_name") or raw_user.get("given_name") or "").strip(),
+        "last_name": (raw_user.get("last_name") or raw_user.get("family_name") or "").strip(),
+        "avatar_url": (raw_user.get("avatar") or raw_user.get("picture") or raw_user.get("photo_200") or "").strip(),
+    }
 
 
 def _find_user_by_verified_contact(*, email: str = "", phone: str = "") -> User | None:
@@ -754,6 +815,34 @@ def _fetch_vk_json(method: str, payload: dict) -> dict | None:
         return None
 
 
+def _fetch_vk_id_json(endpoint: str, payload: dict) -> dict | None:
+    vk_app_id = str(getattr(settings, "VK_APP_ID", "") or os.environ.get("VK_APP_ID", "")).strip()
+    if not vk_app_id:
+        logger.warning("VK ID request skipped: VK_APP_ID is not configured")
+        return None
+
+    endpoint = endpoint.strip().lstrip("/")
+    if endpoint not in {"user_info", "public_info"}:
+        return None
+
+    query = urllib.parse.urlencode({"client_id": vk_app_id})
+    data = urllib.parse.urlencode(payload).encode("utf-8")
+    request = urllib.request.Request(
+        f"https://id.vk.ru/oauth2/{endpoint}?{query}",
+        data=data,
+        method="POST",
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            parsed = json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, json.JSONDecodeError):
+        return None
+    if isinstance(parsed, dict) and "error" in parsed:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
 def _parse_vk_id_token(id_token: str, user_id_hint: int | None = None) -> dict | None:
     vk_app_id = str(getattr(settings, "VK_APP_ID", "") or os.environ.get("VK_APP_ID", "")).strip()
     jwks_url = str(getattr(settings, "VK_OIDC_JWKS_URL", "") or "").strip()
@@ -819,6 +908,7 @@ __all__ = [
     "_build_telegram_login_redirect_html",
     "_clear_auth_cookie",
     "_fetch_vk_json",
+    "_fetch_vk_id_json",
     "_generate_verification_code",
     "_generate_unique_username",
     "_get_auth_token_from_request",

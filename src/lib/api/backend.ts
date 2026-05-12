@@ -634,6 +634,8 @@ export type BackendPost = {
   poll?: BackendPoll | null
   post_ratings?: Record<string, BackendPostRating>
   post_rating?: BackendPostRating | null
+  preview_image_url?: string | null
+  thumbnail_url?: string | null
   created_at: string
   source_url?: string | null
   channel_url?: string | null
@@ -658,7 +660,8 @@ export const backendPostCommunityPath = (post: BackendPost): string | undefined 
 
 export const backendPostToPostView = (
   post: BackendPost,
-  fallbackAuthor?: BackendAuthor
+  fallbackAuthor?: BackendAuthor,
+  options: { includePreviewMedia?: boolean } = { includePreviewMedia: true }
 ): PostView => {
   const author = post.author ?? fallbackAuthor
   const authorName = author?.username ?? 'author'
@@ -667,6 +670,10 @@ export const backendPostToPostView = (
   const comunSlug = post.comun?.slug ?? post.comun_slug ?? undefined
   const comunLogoUrl = post.comun?.logo_url ?? undefined
   const sourceUrl = typeof post.source_url === 'string' ? post.source_url.trim() : ''
+  const previewImageUrl =
+    typeof post.preview_image_url === 'string' ? post.preview_image_url.trim() : ''
+  const thumbnailUrl =
+    typeof post.thumbnail_url === 'string' ? post.thumbnail_url.trim() : previewImageUrl
   const authorChannelUrl = typeof author?.channel_url === 'string' ? author.channel_url.trim() : ''
   const communityName = comunSlug ?? `author-${authorName}`
   const communityTitle = comunName ?? authorTitle
@@ -687,7 +694,7 @@ export const backendPostToPostView = (
       poll: post.poll ?? null,
       post_ratings: post.post_ratings ?? {},
       post_rating: post.post_rating ?? null,
-      url: '',
+      url: options.includePreviewMedia === false ? '' : previewImageUrl,
       tags: post.tags ?? [],
       published: post.created_at,
       updated: post.created_at,
@@ -702,7 +709,7 @@ export const backendPostToPostView = (
       community_id: communityId,
       ap_id: sourceUrl || `https://post.local/${post.id}`,
       embed_description: '',
-      thumbnail_url: undefined,
+      thumbnail_url: thumbnailUrl || undefined,
       language_id: 0,
     },
     creator: {

@@ -24,8 +24,7 @@
   let lastPrivacyAccepted = privacyAccepted
   const botName = (env.PUBLIC_TELEGRAM_LOGIN_BOT || '').replace(/^@/, '')
   const oidcClientId = env.PUBLIC_TELEGRAM_OIDC_CLIENT_ID || env.PUBLIC_TELEGRAM_LOGIN_CLIENT_ID || ''
-  const forceOidc = ['1', 'true', 'force'].includes((env.PUBLIC_TELEGRAM_OIDC_FORCE || '').toLowerCase())
-  const useOidc = Boolean(oidcClientId) && (!botName || forceOidc)
+  const useOidc = Boolean(oidcClientId)
   const oidcScriptSources = [
     'https://telegram.org/js/telegram-login.js?3',
     'https://oauth.telegram.org/js/telegram-login.js?3',
@@ -319,7 +318,7 @@
   <div class="flex flex-col gap-2">
     <button
       type="button"
-      disabled={disabled || loading || (oidcLoading && !oidcReady)}
+      disabled={disabled || loading}
       class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900"
       class:hover:border-slate-300={!disabled && !loading}
       class:hover:bg-slate-50={!disabled && !loading}

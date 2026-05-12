@@ -64,7 +64,7 @@
           })
           .catch((error: any) => {
             console.error('VKID exchange error', error)
-            toast({ content: 'Не удалось войти через VK', type: 'error' })
+            toast({ content: error?.message || 'Не удалось войти через VK', type: 'error' })
           })
           .finally(() => {
             loading = false
