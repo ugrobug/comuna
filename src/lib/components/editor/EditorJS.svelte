@@ -1945,6 +1945,15 @@
     }
   }
 
+  class TweetMediaTool extends GalleryTool {
+    static get toolbox() {
+      return {
+        title: 'Медиа',
+        icon: `<img src="${icons.image}" width="16" height="16" />`
+      }
+    }
+  }
+
   // Кастомный плагин для изображений
   class CustomImageTool {
     private api: any;
@@ -4301,7 +4310,7 @@
               table: TableTool,
             }
           : {}),
-        ...(enabledTemplateBlockTypes.has('image')
+        ...(enabledTemplateBlockTypes.has('image') && postTemplateType !== 'tweet'
           ? {
               image: CustomImageTool,
             }
@@ -4367,7 +4376,7 @@
           : {}),
         ...(enabledTemplateBlockTypes.has('gallery')
           ? {
-              gallery: GalleryTool,
+              gallery: postTemplateType === 'tweet' ? TweetMediaTool : GalleryTool,
             }
           : {}),
         ...(enabledTemplateBlockTypes.has('map')

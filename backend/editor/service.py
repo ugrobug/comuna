@@ -36,6 +36,7 @@ from editor.models import (
     POST_TEMPLATE_TYPE_MOVIE_REVIEW,
     POST_TEMPLATE_TYPE_MUSIC_RELEASE,
     POST_TEMPLATE_TYPE_POST_VOTE_POLL,
+    POST_TEMPLATE_TYPE_TWEET,
     ComunCustomPostTemplate,
     ComunCustomPostTemplateBlock,
     ComunCustomPostTemplateField,
@@ -286,6 +287,8 @@ _POST_TEMPLATE_MUSIC_STYLE_ALIASES = {
 _IMDB_ID_RE = re.compile(r"(tt\d{5,12})", flags=re.IGNORECASE)
 _TEMPLATE_POLL_SOURCE_POST_VOTE = "template_post_vote_poll"
 _CONTENT_POLL_SOURCE_INLINE = "content_inline_poll"
+_TWEET_TEMPLATE_MAX_LENGTH = 280
+_TWEET_ALLOWED_EDITOR_BLOCK_TYPES = {"paragraph", "image", "gallery"}
 _JUSTWATCH_PROVIDER_CACHE: dict[str, tuple[float, dict[int, str]]] = {}
 
 
@@ -357,6 +360,60 @@ def _extract_editor_payload_title(raw_content: str) -> str:
             if title:
                 return title
     return ""
+
+
+def _tweet_template_text_from_block(raw_block: object) -> str:
+    if not isinstance(raw_block, dict):
+        return ""
+    block_type = str(raw_block.get("type") or "").strip().lower()
+    if block_type != "paragraph":
+        return ""
+    block_data = raw_block.get("data")
+    if not isinstance(block_data, dict):
+        return ""
+    return _fv()._strip_html(str(block_data.get("text") or "")).strip()
+
+
+def _tweet_template_character_count(raw_content: str) -> int:
+    payload = _decode_editor_payload(raw_content)
+    if not payload:
+        normalized = re.sub(r"\s+", " ", _fv()._strip_html(str(raw_content or ""))).strip()
+        return len(normalized)
+
+    normalized_parts = [
+        part
+        for part in (_tweet_template_text_from_block(block) for block in payload.get("blocks") or [])
+        if part
+    ]
+    return len("\n".join(normalized_parts).strip())
+
+
+def _validate_template_content_constraints(
+    template_payload: dict | None,
+    raw_content: str,
+) -> str | None:
+    if _template_type_from_payload(template_payload) != POST_TEMPLATE_TYPE_TWEET:
+        return None
+
+    payload = _decode_editor_payload(raw_content)
+    media_blocks_count = 0
+    if payload:
+        for raw_block in payload.get("blocks") or []:
+            if not isinstance(raw_block, dict):
+                continue
+            block_type = str(raw_block.get("type") or "").strip().lower()
+            if not block_type:
+                continue
+            if block_type not in _TWEET_ALLOWED_EDITOR_BLOCK_TYPES:
+                return "Шаблон «Твит» поддерживает только текст и изображения."
+            if block_type in {"image", "gallery"}:
+                media_blocks_count += 1
+    if media_blocks_count > 1:
+        return "В шаблоне «Твит» можно использовать только один медиаблок."
+
+    if _tweet_template_character_count(raw_content) > _TWEET_TEMPLATE_MAX_LENGTH:
+        return f"Твит не может быть длиннее {_TWEET_TEMPLATE_MAX_LENGTH} символов."
+    return None
 
 
 def _http_json_request(
@@ -1271,7 +1328,9 @@ def _sync_template_derived_raw_data(
 
 
 def _serialize_post_template_type_options() -> list[dict]:
-    descriptions_by_type: dict[str, str] = {}
+    descriptions_by_type: dict[str, str] = {
+        POST_TEMPLATE_TYPE_TWEET: "До 280 символов и один медиаблок с изображениями.",
+    }
     try:
         for template_type, description in PostTemplateConfig.objects.values_list(
             "template_type", "description"
@@ -2235,5 +2294,6 @@ __all__ = [
     "_template_editor_blocks_by_template",
     "_template_not_allowed_error",
     "_template_type_from_payload",
+    "_validate_template_content_constraints",
     "_user_can_manage_site_post",
 ]

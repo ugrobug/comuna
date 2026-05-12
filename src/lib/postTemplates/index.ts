@@ -1,4 +1,10 @@
-export type BuiltinPostTemplateType = 'movie_review' | 'post_vote_poll' | 'music_release'
+import { deserializeEditorModel } from '$lib/util'
+
+export type BuiltinPostTemplateType =
+  | 'movie_review'
+  | 'post_vote_poll'
+  | 'music_release'
+  | 'tweet'
 export type PostTemplateType = BuiltinPostTemplateType | string
 export type PostTemplateCode = 'basic' | PostTemplateType
 
@@ -90,6 +96,12 @@ export type MusicReleaseTemplate = {
   data: MusicReleaseTemplateData
 }
 
+export type TweetTemplate = {
+  type: 'tweet'
+  version: 1
+  data: Record<string, never>
+}
+
 export type CustomPostTemplate = {
   type: string
   version: 1
@@ -100,6 +112,7 @@ export type SitePostTemplate =
   | MovieReviewTemplate
   | PostVotePollTemplate
   | MusicReleaseTemplate
+  | TweetTemplate
   | CustomPostTemplate
 
 export type PostTemplateTypeOption = {
@@ -113,6 +126,7 @@ export const POST_TEMPLATE_TYPE_OPTIONS: PostTemplateTypeOption[] = [
   { value: 'movie_review', label: 'Кинообзор' },
   { value: 'post_vote_poll', label: 'Голосование за посты' },
   { value: 'music_release', label: 'Музыкальный релиз' },
+  { value: 'tweet', label: 'Твит', description: 'До 280 символов и один медиаблок с изображениями.' },
 ]
 
 const POST_TEMPLATE_CODE_RE = /^[a-z0-9][a-z0-9_-]{0,159}$/
@@ -176,7 +190,10 @@ const TEMPLATE_EDITOR_BLOCKS_BY_TEMPLATE: Record<string, TemplateEditorBlockOpti
   movie_review: ALL_TEMPLATE_EDITOR_BLOCK_OPTIONS,
   post_vote_poll: BLOCKS_WITHOUT_MOVIE_CARD,
   music_release: BLOCKS_WITHOUT_MOVIE_CARD,
+  tweet: ALL_TEMPLATE_EDITOR_BLOCK_OPTIONS.filter((option) => option.type === 'gallery'),
 }
+
+export const TWEET_TEMPLATE_MAX_LENGTH = 280
 
 const normalizeTemplateCode = (value: unknown): PostTemplateCode | '' => {
   const code = typeof value === 'string' ? value.trim().toLowerCase() : ''
@@ -232,6 +249,15 @@ export const normalizeAllowedPostTemplateTypeOverrides = (value: unknown): PostT
   }
   return normalized
 }
+
+export const isRecognizedPostTemplateType = (value: unknown): value is PostTemplateType => {
+  const code = normalizeTemplateCode(value)
+  return Boolean(code && code !== 'basic')
+}
+
+export const isTweetTemplateType = (
+  value: '' | PostTemplateType | null | undefined
+): value is 'tweet' => normalizeTemplateCode(value) === 'tweet'
 
 export const resolveTemplateCode = (
   templateType: '' | PostTemplateType | null | undefined
@@ -783,6 +809,14 @@ export const buildPostTemplatePayload = (
     }
   }
 
+  if (templateType === 'tweet') {
+    return {
+      type: 'tweet',
+      version: 1,
+      data: {},
+    }
+  }
+
   const customTemplateType = normalizeTemplateCode(templateType)
   if (customTemplateType && customTemplateType !== 'basic') {
     return {
@@ -811,6 +845,64 @@ export const isMusicReleaseTemplate = (
   template: SitePostTemplate | null | undefined
 ): template is MusicReleaseTemplate => {
   return template?.type === 'music_release' && typeof template.data === 'object'
+}
+
+export const isTweetTemplate = (
+  template: SitePostTemplate | null | undefined
+): template is TweetTemplate => {
+  return template?.type === 'tweet' && typeof template.data === 'object'
+}
+
+const stripHtmlTags = (value: string): string =>
+  value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+
+const tweetTextFromBlock = (block: any): string => {
+  const blockType = typeof block?.type === 'string' ? block.type.trim().toLowerCase() : ''
+  if (blockType !== 'paragraph') return ''
+  return stripHtmlTags(String(block?.data?.text || ''))
+}
+
+const tweetEditorBlocks = (content: string): any[] => {
+  const raw = typeof content === 'string' ? content.trim() : ''
+  if (!raw) return []
+  try {
+    const parsed = deserializeEditorModel(raw)
+    return Array.isArray(parsed?.blocks) ? parsed.blocks : []
+  } catch {
+    return []
+  }
+}
+
+export const tweetTemplateCharacterCount = (content: string): number => {
+  const blocks = tweetEditorBlocks(content)
+  if (!blocks.length) {
+    return stripHtmlTags(content || '').length
+  }
+  const text = blocks
+    .map((block) => tweetTextFromBlock(block))
+    .filter(Boolean)
+    .join('\n')
+    .trim()
+  return text.length
+}
+
+export const tweetTemplateMediaBlockCount = (content: string): number => {
+  return tweetEditorBlocks(content).filter((block) => {
+    const blockType = typeof block?.type === 'string' ? block.type.trim().toLowerCase() : ''
+    return blockType === 'image' || blockType === 'gallery'
+  }).length
+}
+
+export const validateTweetTemplateContent = (content: string): string => {
+  const characters = tweetTemplateCharacterCount(content)
+  if (characters > TWEET_TEMPLATE_MAX_LENGTH) {
+    return `Твит не может быть длиннее ${TWEET_TEMPLATE_MAX_LENGTH} символов.`
+  }
+  const mediaBlocks = tweetTemplateMediaBlockCount(content)
+  if (mediaBlocks > 1) {
+    return 'В шаблоне «Твит» можно использовать только один медиаблок.'
+  }
+  return ''
 }
 
 export const movieReviewKindLabel = (kind: string | null | undefined): string => {

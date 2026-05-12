@@ -395,6 +395,7 @@
             clickThrough={false}
             {showFullBody}
             collapsible={true}
+            externalPreviewImageUrl={post.post.url}
             class="relative text-slate-600 dark:text-zinc-400"
             on:expand={markBackendPostRead}
           />
@@ -418,6 +419,7 @@
             {view}
             clickThrough={false}
             {showFullBody}
+            externalPreviewImageUrl={post.post.url}
             class="relative text-slate-600 dark:text-zinc-400"
           />
         </a>

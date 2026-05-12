@@ -1770,6 +1770,12 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
         )
         if template_error:
             return JsonResponse({"ok": False, "error": template_error}, status=400)
+        template_content_error = editor_service._validate_template_content_constraints(
+            template_payload,
+            content,
+        )
+        if template_content_error:
+            return JsonResponse({"ok": False, "error": template_content_error}, status=400)
         if not title:
             return JsonResponse({"ok": False, "error": "title is required"}, status=400)
         if not content:

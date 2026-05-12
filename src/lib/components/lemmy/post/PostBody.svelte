@@ -104,6 +104,7 @@
   export let clickThrough = false
   export let showFullBody = false
   export let collapsible = false
+  export let externalPreviewImageUrl: string | null | undefined = null
   $: void view
   $: void clickThrough
   
@@ -430,6 +431,62 @@
     }
 
     return html
+  }
+
+  const normalizePreviewImageUrl = (url: string | null | undefined): string => {
+    const raw = (url || '').trim()
+    if (!raw) return ''
+    try {
+      const parsed = new URL(raw, browser ? window.location.origin : 'https://tambur.local')
+      return decodeURIComponent(parsed.pathname)
+        .replace(/-\d+\.webp$/i, '')
+        .replace(/\.[a-z0-9]+$/i, '')
+        .toLowerCase()
+    } catch {
+      return raw
+        .split(/[?#]/, 1)[0]
+        .replace(/-\d+\.webp$/i, '')
+        .replace(/\.[a-z0-9]+$/i, '')
+        .toLowerCase()
+    }
+  }
+
+  const isSamePreviewImage = (left: string | null | undefined, right: string | null | undefined) => {
+    const leftKey = normalizePreviewImageUrl(left)
+    const rightKey = normalizePreviewImageUrl(right)
+    return Boolean(leftKey && rightKey && leftKey === rightKey)
+  }
+
+  const removeDuplicateLeadingPreviewImage = (html: string): string => {
+    if (!externalPreviewImageUrl || showFullBody) return html
+
+    if (browser) {
+      const wrapper = document.createElement('div')
+      wrapper.innerHTML = html
+      const firstImage = wrapper.querySelector('img')
+      const imageUrl = firstImage?.getAttribute('data-expandable-src') || firstImage?.getAttribute('src')
+      if (!firstImage || !isSamePreviewImage(imageUrl, externalPreviewImageUrl)) return html
+
+      const parent = firstImage.parentElement
+      const nextElement = firstImage.nextElementSibling
+      firstImage.remove()
+      if (nextElement?.classList.contains('image-alt-text')) {
+        nextElement.remove()
+      }
+      if (parent?.tagName.toLowerCase() === 'figure' && !parent.textContent?.trim()) {
+        parent.remove()
+      }
+      return wrapper.innerHTML
+    }
+
+    const firstImageMatch = html.match(/<img\b[^>]*>/i)
+    if (!firstImageMatch) return html
+    const tag = firstImageMatch[0]
+    const srcMatch = tag.match(/\s(?:data-expandable-src|src)=["']([^"']+)["']/i)
+    if (!isSamePreviewImage(srcMatch?.[1], externalPreviewImageUrl)) return html
+    return html
+      .replace(tag, '')
+      .replace(/^\s*<div\b[^>]*class=["'][^"']*\bimage-alt-text\b[^"']*["'][^>]*>[\s\S]*?<\/div>/i, '')
   }
 
   const setupGalleries = () => {
@@ -1931,6 +1988,20 @@
       case 'image':
         return processImage(block.data.file.url, '', block.data.file.alt || '', block.data.file.title || '', block.data.file.caption || '');
       case 'gallery':
+        if (
+          template?.type === 'tweet' &&
+          Array.isArray(block.data?.images) &&
+          block.data.images.length === 1
+        ) {
+          const firstImage = block.data.images[0]
+          return processImage(
+            firstImage?.url || '',
+            '',
+            firstImage?.alt || '',
+            firstImage?.title || '',
+            ''
+          )
+        }
         return `<div class="post-gallery">
           ${block.data.images.map((img: any) => 
             `<img src="${img.url}" alt="${img.alt || ''}" title="${img.title || ''}">`
@@ -2330,10 +2401,12 @@
 
   function extractPreviewContent(html: string) {
     if (showFullBody || collapsible) {
-      if (isJsonContent(html)) {
-        return stripLeadingTitleFromHtml(convertJsonToHtml(html));
+      const fullHtml = isJsonContent(html) ? convertJsonToHtml(html) : html
+      const contentHtml = stripLeadingTitleFromHtml(fullHtml)
+      if (!showFullBody && collapsible) {
+        return removeDuplicateLeadingPreviewImage(contentHtml)
       }
-      return stripLeadingTitleFromHtml(html);
+      return contentHtml
     }
     // Проверяем, является ли контент JSON или base64
     if (isJsonContent(html)) {
@@ -2750,6 +2823,7 @@
     firstImageSrcset = null;
     hasPreview = false;
     processedBody = extractPreviewContent(body);
+    void externalPreviewImageUrl
     void pollRenderState
     void postRatingsRenderState
   }
@@ -2763,6 +2837,7 @@
     void body
     void showFullBody
     void collapsible
+    void externalPreviewImageUrl
     if (!showFullBody && collapsible) {
       expanded = false
       hasOverflow = false

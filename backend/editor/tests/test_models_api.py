@@ -1,4 +1,5 @@
 from django.apps import apps
+import json
 from django.test import SimpleTestCase, TestCase
 
 from editor import service as editor_service
@@ -70,3 +71,38 @@ class DynamicPostTemplateConfigTests(TestCase):
         )
         blocks_by_template = editor_service._template_editor_blocks_by_template()
         self.assertEqual(blocks_by_template["custom_123"], ["header", "table"])
+
+
+class TweetTemplateTests(SimpleTestCase):
+    def test_builtin_tweet_template_type_is_exposed(self):
+        options = editor_service._serialize_post_template_type_options()
+        self.assertIn(
+            {
+                "value": "tweet",
+                "label": "Твит",
+                "description": "До 280 символов и один медиаблок с изображениями.",
+            },
+            options,
+        )
+
+    def test_tweet_template_rejects_too_long_text(self):
+        content = json.dumps(
+            {"blocks": [{"type": "paragraph", "data": {"text": "a" * 281}}]},
+            ensure_ascii=False,
+        )
+        error = editor_service._validate_template_content_constraints(
+            {"type": "tweet", "version": 1, "data": {}},
+            content,
+        )
+        self.assertEqual(error, "Твит не может быть длиннее 280 символов.")
+
+    def test_tweet_template_rejects_unsupported_blocks(self):
+        content = json.dumps(
+            {"blocks": [{"type": "quote", "data": {"text": "text"}}]},
+            ensure_ascii=False,
+        )
+        error = editor_service._validate_template_content_constraints(
+            {"type": "tweet", "version": 1, "data": {}},
+            content,
+        )
+        self.assertEqual(error, "Шаблон «Твит» поддерживает только текст и изображения.")

@@ -341,6 +341,12 @@ def user_posts(request: HttpRequest) -> HttpResponse:
         )
         if template_error:
             return JsonResponse({"ok": False, "error": template_error}, status=400)
+        template_content_error = editor_service._validate_template_content_constraints(
+            template_payload,
+            content,
+        )
+        if template_content_error:
+            return JsonResponse({"ok": False, "error": template_content_error}, status=400)
 
         if not is_draft and not title:
             return JsonResponse({"ok": False, "error": "title is required"}, status=400)
@@ -618,6 +624,21 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
         if template_error:
             return JsonResponse({"ok": False, "error": template_error}, status=400)
 
+    next_content = str(content).strip() if content is not None else str(post.content or "").strip()
+    effective_template_payload_for_validation = (
+        template_payload
+        if template_in_payload
+        else post.raw_data.get("template")
+        if isinstance(post.raw_data, dict) and isinstance(post.raw_data.get("template"), dict)
+        else None
+    )
+    template_content_error = editor_service._validate_template_content_constraints(
+        effective_template_payload_for_validation,
+        next_content,
+    )
+    if template_content_error:
+        return JsonResponse({"ok": False, "error": template_content_error}, status=400)
+
     next_author = post.author
     if author_in_payload:
         author_source = str(payload.get("author_source") or "").strip().lower()
@@ -645,7 +666,7 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
     raw_data_changed = False
 
     if content is not None:
-        post.content = str(content).strip()
+        post.content = next_content
 
     if template_in_payload:
         requested_template_type = _requested_template_type(template_payload)

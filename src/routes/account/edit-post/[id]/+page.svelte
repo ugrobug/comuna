@@ -19,13 +19,16 @@
   } from '$lib/siteAuth'
   import {
     POST_TEMPLATE_TYPE_OPTIONS,
+    TWEET_TEMPLATE_MAX_LENGTH,
     buildPostTemplatePayload,
     createEmptyMusicReleaseTemplateData,
     createEmptyMovieReviewTemplateData,
     createEmptyPostVotePollTemplateData,
+    isRecognizedPostTemplateType,
     isMovieReviewTemplate,
     isMusicReleaseTemplate,
     isPostVotePollTemplate,
+    isTweetTemplateType,
     normalizeAllowedPostTemplateTypeOverrides,
     normalizeAllowedPostTemplateTypes,
     normalizePostTemplateTypeOptions,
@@ -34,6 +37,8 @@
     normalizePostVotePollTemplateData,
     normalizeTemplateEditorBlockSettings,
     resolveEnabledTemplateEditorBlockTypes,
+    tweetTemplateCharacterCount,
+    validateTweetTemplateContent,
     type MusicReleaseTemplateData,
     type MovieReviewTemplateData,
     type PostTemplateType,
@@ -108,6 +113,7 @@
   let draftSavedNoticeHideTimer: ReturnType<typeof setTimeout> | null = null
   let firstDraftChangeAt: number | null = null
   let firstDraftAutosaveCompleted = false
+  let tweetCharacterCountValue = 0
 
   $: selectedComun = comuns.find((comun) => comun.slug === editComunSlug)
   $: selectedComunCategory =
@@ -142,6 +148,9 @@
     templateEditorBlockSettings
   )
   $: editorTemplateBlocksKey = `${editTemplateType || 'basic'}:${editorEnabledTemplateBlockTypes.join(',')}`
+  $: tweetCharacterCountValue = isTweetTemplateType(editTemplateType)
+    ? tweetTemplateCharacterCount(editContent)
+    : 0
   $: allowedTemplateTypes = (() => {
     const values = new Set<string>(['basic'])
     for (const item of normalizeAllowedPostTemplateTypes(
@@ -326,12 +335,9 @@
     editMovieReviewData = createEmptyMovieReviewTemplateData()
     editPostVotePollData = createEmptyPostVotePollTemplateData()
     editMusicReleaseData = createEmptyMusicReleaseTemplateData()
-    editTemplateType =
-      currentPost.template?.type === 'movie_review' ||
-      currentPost.template?.type === 'post_vote_poll' ||
-      currentPost.template?.type === 'music_release'
-        ? currentPost.template.type
-        : ''
+    editTemplateType = isRecognizedPostTemplateType(currentPost.template?.type)
+      ? currentPost.template.type
+      : ''
     if (isMovieReviewTemplate(currentPost.template)) {
       editMovieReviewData = normalizeMovieReviewTemplateData(currentPost.template.data)
     } else if (isPostVotePollTemplate(currentPost.template)) {
@@ -491,6 +497,13 @@
     if (!editComunSlug) {
       saveError = 'Выберите сообщество'
       return false
+    }
+    if (isTweetTemplateType(editTemplateType)) {
+      const tweetValidationError = validateTweetTemplateContent(editContent)
+      if (tweetValidationError) {
+        saveError = tweetValidationError
+        return false
+      }
     }
     return true
   }
@@ -925,6 +938,18 @@
                 showPostSettings={false}
               />
             {/key}
+            {#if isTweetTemplateType(editTemplateType)}
+              <div class={`rounded-xl border px-3 py-2 text-sm ${
+                tweetCharacterCountValue > TWEET_TEMPLATE_MAX_LENGTH
+                  ? 'border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-900/40 dark:bg-rose-950/20 dark:text-rose-300'
+                  : 'border-slate-200 bg-slate-50 text-slate-600 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-300'
+              }`}>
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <span>Текст твита: {tweetCharacterCountValue} / {TWEET_TEMPLATE_MAX_LENGTH}</span>
+                  <span>Разрешен один медиаблок с изображениями</span>
+                </div>
+              </div>
+            {/if}
           {:else}
             <TipTapEditor
               bind:value={editContent}

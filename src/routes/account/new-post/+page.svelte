@@ -24,15 +24,20 @@
   import PostTemplateFields from '$lib/components/site/post-templates/PostTemplateFields.svelte'
   import {
     POST_TEMPLATE_TYPE_OPTIONS,
+    TWEET_TEMPLATE_MAX_LENGTH,
     buildPostTemplatePayload,
     createEmptyMusicReleaseTemplateData,
     createEmptyMovieReviewTemplateData,
     createEmptyPostVotePollTemplateData,
+    isRecognizedPostTemplateType,
+    isTweetTemplateType,
     normalizeAllowedPostTemplateTypeOverrides,
     normalizeAllowedPostTemplateTypes,
     normalizePostTemplateTypeOptions,
     normalizeTemplateEditorBlockSettings,
     resolveEnabledTemplateEditorBlockTypes,
+    tweetTemplateCharacterCount,
+    validateTweetTemplateContent,
     type MusicReleaseTemplateData,
     type MovieReviewTemplateData,
     type PostVotePollTemplateData,
@@ -89,6 +94,7 @@
   let draftSavedNoticeTimer: ReturnType<typeof setTimeout> | null = null
   let draftSavedNoticeHideTimer: ReturnType<typeof setTimeout> | null = null
   let comuns: BackendComun[] = []
+  let tweetCharacterCountValue = 0
 
   const DRAFT_NOTICE_DELAY_MS = 10_000
   const DRAFT_NOTICE_VISIBLE_MS = 5_000
@@ -173,6 +179,9 @@
     templateEditorBlockSettings
   )
   $: editorTemplateBlocksKey = `${createTemplateType || 'basic'}:${editorEnabledTemplateBlockTypes.join(',')}`
+  $: tweetCharacterCountValue = isTweetTemplateType(createTemplateType)
+    ? tweetTemplateCharacterCount(createContent)
+    : 0
 
   const isEditorContentEmpty = (value: string) => {
     if (!value || value.trim() === '') return true
@@ -273,12 +282,7 @@
       createAuthor = authorExists ? nextAuthor : createAuthor
       createComunSlug = comunExists ? nextComunSlug : ''
       createComunCategoryId = comunExists ? nextComunCategoryId : ''
-      createTemplateType =
-        nextTemplateType === 'movie_review' ||
-        nextTemplateType === 'post_vote_poll' ||
-        nextTemplateType === 'music_release'
-          ? nextTemplateType
-          : ''
+      createTemplateType = isRecognizedPostTemplateType(nextTemplateType) ? nextTemplateType : ''
       createMovieReviewData = parsed?.movieReviewData ?? createEmptyMovieReviewTemplateData()
       createPostVotePollData =
         parsed?.postVotePollData ?? createEmptyPostVotePollTemplateData()
@@ -616,6 +620,13 @@
     if (isEditorContentEmpty(createContent)) {
       createError = 'Текст поста не может быть пустым.'
       return
+    }
+    if (isTweetTemplateType(createTemplateType)) {
+      const tweetValidationError = validateTweetTemplateContent(createContent)
+      if (tweetValidationError) {
+        createError = tweetValidationError
+        return
+      }
     }
     if (!createComunSlug) {
       createError = 'Выберите сообщество для публикации.'
@@ -1012,6 +1023,18 @@
             showPostSettings={false}
           />
         {/key}
+        {#if isTweetTemplateType(createTemplateType)}
+          <div class={`rounded-xl border px-3 py-2 text-sm ${
+            tweetCharacterCountValue > TWEET_TEMPLATE_MAX_LENGTH
+              ? 'border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-900/40 dark:bg-rose-950/20 dark:text-rose-300'
+              : 'border-slate-200 bg-slate-50 text-slate-600 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-300'
+          }`}>
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <span>Текст твита: {tweetCharacterCountValue} / {TWEET_TEMPLATE_MAX_LENGTH}</span>
+              <span>Разрешен один медиаблок с изображениями</span>
+            </div>
+          </div>
+        {/if}
         <TextInput label="Теги (через запятую)" bind:value={createTags} />
         {#if createError}
           <p class="text-sm text-red-600">{createError}</p>

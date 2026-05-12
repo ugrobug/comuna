@@ -24,7 +24,8 @@
   let lastPrivacyAccepted = privacyAccepted
   const botName = (env.PUBLIC_TELEGRAM_LOGIN_BOT || '').replace(/^@/, '')
   const oidcClientId = env.PUBLIC_TELEGRAM_OIDC_CLIENT_ID || env.PUBLIC_TELEGRAM_LOGIN_CLIENT_ID || ''
-  const useOidc = Boolean(oidcClientId)
+  const forceOidc = ['1', 'true', 'force'].includes((env.PUBLIC_TELEGRAM_OIDC_FORCE || '').toLowerCase())
+  const useOidc = Boolean(oidcClientId) && (!botName || forceOidc)
   const oidcScriptSources = [
     'https://telegram.org/js/telegram-login.js?3',
     'https://oauth.telegram.org/js/telegram-login.js?3',
@@ -177,6 +178,32 @@
     })
   }
 
+  const withTelegramPopupOrigin = (openAuth: () => void) => {
+    const originalOpen = window.open.bind(window)
+    window.open = ((url?: string | URL, target?: string, features?: string) => {
+      let nextUrl = url
+      const rawUrl = typeof url === 'string' ? url : url?.toString()
+      if (rawUrl?.startsWith('https://oauth.telegram.org/auth')) {
+        try {
+          const authUrl = new URL(rawUrl)
+          if (!authUrl.searchParams.get('origin')) {
+            authUrl.searchParams.set('origin', window.location.origin)
+          }
+          nextUrl = authUrl.toString()
+        } catch {
+          nextUrl = url
+        }
+      }
+      return originalOpen(nextUrl as string | URL | undefined, target, features)
+    }) as typeof window.open
+
+    try {
+      openAuth()
+    } finally {
+      window.open = originalOpen as typeof window.open
+    }
+  }
+
   onMount(() => {
     if (!browser) return
     ;(window as any).onTelegramAuth = async (user: TelegramAuthPayload) => {
@@ -245,17 +272,23 @@
     loading = true
     try {
       const result = await new Promise<TelegramOidcResult>((resolve) => {
-        telegramAuth(
-          {
-            client_id: clientId,
-            request_access: ['write', 'phone'],
-            lang: 'ru',
-          },
-          resolve,
-        )
+        withTelegramPopupOrigin(() => {
+          telegramAuth(
+            {
+              client_id: clientId,
+              request_access: ['write', 'phone'],
+              lang: 'ru',
+            },
+            resolve,
+          )
+        })
       })
       if (result.error) {
-        throw new Error(result.error)
+        throw new Error(
+          result.error === 'missing id_token'
+            ? 'Telegram не вернул id_token. Проверьте настройки Telegram Login для tambur.pub.'
+            : result.error,
+        )
       }
       if (!result.id_token) {
         throw new Error('Telegram не вернул id_token')

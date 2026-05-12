@@ -849,6 +849,13 @@
         </p>
       </div>
     </div>
+    {:else if templateType === 'tweet'}
+    <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-300">
+      <div class="font-medium text-slate-900 dark:text-zinc-100">Шаблон «Твит»</div>
+      <div class="mt-1">
+        Дополнительных полей у этого шаблона нет. В самом тексте доступно до 280 символов и один медиаблок с изображениями.
+      </div>
+    </div>
     {/if}
   </div>
 {/if}
