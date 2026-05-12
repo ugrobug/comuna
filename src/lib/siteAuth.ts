@@ -228,6 +228,26 @@ export const refreshSiteUser = async () => {
   return null
 }
 
+let refreshSiteUserScheduled = false
+
+export const scheduleRefreshSiteUser = () => {
+  if (!browser || refreshSiteUserScheduled) return
+  refreshSiteUserScheduled = true
+
+  const run = () => {
+    refreshSiteUser().catch((error) => {
+      console.error('Failed to refresh site user:', error)
+    })
+  }
+
+  if ('requestIdleCallback' in window) {
+    window.requestIdleCallback(run, { timeout: 3000 })
+    return
+  }
+
+  globalThis.setTimeout(run, 1500)
+}
+
 export const updateSiteProfile = async (payload: {
   display_name?: string
   avatar_url?: string | null
@@ -1067,5 +1087,5 @@ export const updateSiteNotificationSettings = async (
 
 if (browser) {
   saveToken(null)
-  refreshSiteUser()
+  scheduleRefreshSiteUser()
 }

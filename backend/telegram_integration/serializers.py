@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from telegram_integration.media import safe_public_url
 from telegram_integration.models import TelegramAccount
 
 
@@ -17,7 +18,7 @@ def _serialize_telegram_account(account: TelegramAccount | None) -> dict | None:
         "username": account.username,
         "first_name": account.first_name,
         "last_name": account.last_name,
-        "avatar_url": account.avatar_url,
+        "avatar_url": safe_public_url(account.avatar_url),
     }
 
 

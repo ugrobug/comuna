@@ -44,6 +44,7 @@
   import { siteUser, logout as siteLogout } from '$lib/siteAuth'
   
   import { buildComunsUrl, type BackendComun } from '$lib/api/backend';
+  import { cachedJson } from '$lib/api/publicCache'
   import { getRandomTaglineFromSite, hasTaglines } from '$lib/taglineUtils.js';
   import Markdown from '$lib/components/markdown/Markdown.svelte';
 
@@ -63,9 +64,11 @@
 
   async function loadComuns() {
     try {
-      const response = await fetch(buildComunsUrl());
-      if (!response.ok) return;
-      const data = await response.json();
+      const data = await cachedJson<{ comuns?: BackendComun[] }>(
+        'public:comuns',
+        buildComunsUrl(),
+        { ttlMs: 120_000 }
+      );
       comuns = data.comuns ?? [];
     } catch (e) {
       comuns = [];
@@ -88,7 +91,6 @@
   let sidebarOpen = false;
   function toggleSidebar() {
     sidebarOpen = !sidebarOpen;
-    console.log('sidebarOpen:', sidebarOpen);
   }
 
 
@@ -186,7 +188,7 @@
             isSelectedFilter={(path) => path.startsWith('/admin')}
           >
             {#if ($notifications.applications ?? 0) > 0}
-              <div class="rounded-full w-2 h-2 bg-red-500 absolute -top-1 -left-1"/>
+              <div class="rounded-full w-2 h-2 bg-red-500 absolute -top-1 -left-1"></div>
             {/if}
           </NavButton>
         {/if}
@@ -197,7 +199,7 @@
             class="relative"
           >
             {#if ($notifications.reports ?? 0) > 0}
-              <div class="rounded-full w-2 h-2 bg-red-500 absolute -top-1 -left-1"/>
+              <div class="rounded-full w-2 h-2 bg-red-500 absolute -top-1 -left-1"></div>
             {/if}
             <ShieldIcon
               let:size
@@ -334,6 +336,7 @@
     on:click={toggleSidebar}
     aria-label="Закрыть меню"
   >
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
     <aside
       class="absolute left-0 top-0 bottom-0 w-3/4 h-full bg-white dark:bg-zinc-900 shadow-lg flex flex-col items-start justify-start overflow-y-auto p-4 gap-2 transform transition-transform duration-300"
       class:translate-x-0={sidebarOpen}
@@ -456,7 +459,8 @@
         </div>
       </div>
 
-      </aside>
+	      </div>
+	      </aside>
     </button>
 {/if}
 

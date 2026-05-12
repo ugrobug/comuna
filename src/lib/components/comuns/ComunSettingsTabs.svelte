@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte'
 
-  export type ComunSettingsTab = {
+  type ComunSettingsTab = {
     value: string
     label: string
   }

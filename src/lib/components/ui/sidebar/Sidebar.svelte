@@ -27,6 +27,7 @@
   import { env } from '$env/dynamic/public'
   import { HAS_LEMMY_INSTANCE } from '$lib/instance'
   import { buildComunsUrl, type BackendComun } from '$lib/api/backend'
+  import { cachedJson } from '$lib/api/publicCache'
   import { userSettings } from '$lib/settings'
 
   const PUBLIC_PROJECT_ABOUT = env.PUBLIC_PROJECT_ABOUT || '/about';
@@ -72,8 +73,6 @@
   }
   
   function loadMoreCommunities() {
-    console.log('Загружаем еще сообществ. Было:', displayedCommunitiesCount);
-    
     if (!showFederated) {
       // Если еще не показываем федерация, сначала показываем все локальные
       if (displayedCommunitiesCount < allLocalCommunities.length) {
@@ -81,7 +80,6 @@
         topCommunities = allLocalCommunities;
         displayedCommunitiesCount = allLocalCommunities.length;
         hasMoreCommunities = true; // Еще есть федерация
-        console.log('Показаны все локальные сообщества:', displayedCommunitiesCount);
       } else {
         // Показываем федерация сообщества
         showFederated = true;
@@ -98,29 +96,26 @@
       displayedCommunitiesCount = allLocalCommunities.length + newFederatedCount;
       
       hasMoreCommunities = newFederatedCount < federatedCommunities.length;
-      console.log('Добавлено федерация. Показано:', topCommunities.length, 'Есть еще:', hasMoreCommunities);
     }
   }
   
   async function loadFederatedCommunities() {
-    console.log('Загружаем федерация сообщества...');
     federatedCommunities = await getFederatedCommunities();
-    console.log('Загружено федерация сообществ:', federatedCommunities.length);
     
     // Показываем все локальные + первые 10 федерация
     const federatedToShow = federatedCommunities.slice(0, 10);
     topCommunities = [...allLocalCommunities, ...federatedToShow];
     displayedCommunitiesCount = allLocalCommunities.length + 10;
     hasMoreCommunities = 10 < federatedCommunities.length;
-    
-    console.log('Показаны все локальные + первые федерация. Всего:', topCommunities.length, 'Есть еще:', hasMoreCommunities);
   }
 
   async function loadComuns() {
     try {
-      const response = await fetch(buildComunsUrl());
-      if (!response.ok) return;
-      const data = await response.json();
+      const data = await cachedJson<{ comuns?: BackendComun[] }>(
+        'public:comuns',
+        buildComunsUrl(),
+        { ttlMs: 120_000 }
+      );
       comuns = data.comuns ?? [];
     } catch (e) {
       comuns = [];
@@ -138,22 +133,17 @@
       topCommunities = allLocalCommunities.slice(0, displayedCommunitiesCount);
       hasMoreCommunities = displayedCommunitiesCount < allLocalCommunities.length || allLocalCommunities.length > 0;
     }
-    console.log('Обновлено отображение. Показано:', topCommunities.length, 'Есть еще:', hasMoreCommunities);
   }
 
   onMount(async () => {
     if (HAS_LEMMY_INSTANCE) {
       // Загружаем сообщества только если настроен инстанс Lemmy
       allLocalCommunities = await getTopCommunities();
-      console.log('Загружено локальных сообществ:', allLocalCommunities.length);
       
       // Показываем первые 20 локальных сообществ
       topCommunities = allLocalCommunities.slice(0, displayedCommunitiesCount);
       // Кнопка показывается, если есть больше локальных ИЛИ есть федерация сообщества
       hasMoreCommunities = allLocalCommunities.length > displayedCommunitiesCount || allLocalCommunities.length > 0;
-      
-      console.log('Отображается сообществ:', topCommunities.length, 'Есть еще:', hasMoreCommunities);
-      console.log('hasMoreCommunities =', hasMoreCommunities);
     }
     loadComuns();
   });

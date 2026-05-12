@@ -12,6 +12,7 @@ from django.db import transaction
 from django.utils import timezone
 from feeds.models import Author, Post
 from telegram_integration.models import BotSession
+from telegram_integration.media import is_private_telegram_file_url
 from users.models import AuthorAdmin, AuthorVerificationCode
 
 _BOT_ID: int | None = None
@@ -105,10 +106,12 @@ def _refresh_author_from_telegram(author: Author, chat_ref, token: str) -> None:
         if file_info and file_info.get("ok") and file_info.get("result"):
             file_path = file_info["result"].get("file_path")
             if file_path:
-                author.avatar_url = f"https://api.telegram.org/file/bot{token}/{file_path}"
+                telegram_file_url = f"https://api.telegram.org/file/bot{token}/{file_path}"
+                if is_private_telegram_file_url(author.avatar_url):
+                    author.avatar_url = ""
                 if file_id != author.avatar_file_id:
                     try:
-                        with urllib.request.urlopen(author.avatar_url, timeout=10) as response:
+                        with urllib.request.urlopen(telegram_file_url, timeout=10) as response:
                             data = response.read()
                         filename = os.path.basename(file_path) or f"{author.username}.jpg"
                         author.avatar_image.save(filename, ContentFile(data), save=False)

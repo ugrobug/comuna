@@ -46,6 +46,9 @@ from communities.models import (
     ComunPostCategoryAssignment,
     ComunVote,
 )
+from rabotaem_backend.cache import anonymous_cache, has_auth_context
+from rabotaem_backend.rate_limit import is_rate_limited
+from telegram_integration.media import safe_public_url
 from editor.models import (
     POST_TEMPLATE_TYPE_BASIC as MODEL_POST_TEMPLATE_TYPE_BASIC,
     POST_TEMPLATE_TYPE_CHOICES as MODEL_POST_TEMPLATE_TYPE_CHOICES,
@@ -112,6 +115,7 @@ from .models import (
     PostFavorite,
     PostLike,
     PostRead,
+    PublicFeedItem,
     StaticPageContent,
     Tag,
 )
@@ -452,7 +456,11 @@ def _ensure_comment_persona_user(persona: dict | None) -> User | None:
 def _serialize_comment_user(comment: PostComment) -> dict:
     persona = _comment_persona_by_username(getattr(comment, "persona_username", ""))
     if persona:
-        persona_user = _ensure_comment_persona_user(persona)
+        persona_user = (
+            User.objects.filter(username=str(persona.get("username") or "").strip())
+            .select_related("site_profile")
+            .first()
+        )
         persona_user_id = getattr(persona_user, "id", None)
         return {
             "id": persona_user_id,
@@ -728,7 +736,7 @@ def _media_url(request: HttpRequest | None, field) -> str | None:
 
 
 def _author_avatar_url(request: HttpRequest | None, author: Author) -> str | None:
-    return _media_url(request, author.avatar_image) or author.avatar_url
+    return _media_url(request, author.avatar_image) or safe_public_url(author.avatar_url)
 
 
 def _stable_unit_float(*parts: object) -> float:
@@ -2011,6 +2019,7 @@ def _favorite_post_ids_for_user(posts: list[Post], user: User | None) -> set[int
 
 
 @csrf_exempt
+@anonymous_cache(prefix="post-comments", seconds=60)
 def post_comments(request: HttpRequest, post_id: int) -> HttpResponse:
     try:
         now = timezone.now()
@@ -2027,7 +2036,7 @@ def post_comments(request: HttpRequest, post_id: int) -> HttpResponse:
         user = _get_user_from_request(request)
         comments = (
             PostComment.objects.filter(post=post)
-            .select_related("user")
+            .select_related("user", "user__site_profile")
             .annotate(likes_count=Count("likes", distinct=True))
             .order_by("created_at")
         )
@@ -2363,6 +2372,7 @@ def post_favorite(request: HttpRequest, post_id: int) -> HttpResponse:
     )
 
 
+@anonymous_cache(prefix="recent-comments", seconds=30)
 def recent_comments(request: HttpRequest) -> HttpResponse:
     limit_raw = request.GET.get("limit", "5")
     try:
@@ -2379,7 +2389,7 @@ def recent_comments(request: HttpRequest) -> HttpResponse:
             post__author__is_blocked=False,
         )
         .filter(Q(post__publish_at__isnull=True) | Q(post__publish_at__lte=now))
-        .select_related("user", "post")
+        .select_related("user", "user__site_profile", "post", "post__author")
         .order_by("-created_at")[:limit]
     )
 
@@ -2397,6 +2407,7 @@ def recent_comments(request: HttpRequest) -> HttpResponse:
     return JsonResponse({"ok": True, "comments": serialized})
 
 
+@anonymous_cache(prefix="author-posts", seconds=45)
 def author_posts(request: HttpRequest, username: str) -> HttpResponse:
     try:
         author = Author.objects.get(username__iexact=username)
@@ -2554,6 +2565,7 @@ def tags_ensure(request: HttpRequest) -> HttpResponse:
     )
 
 
+@anonymous_cache(prefix="tag-posts", seconds=45)
 def tag_posts(request: HttpRequest, tag: str) -> HttpResponse:
     if not tag:
         return JsonResponse({"ok": False, "error": "tag not found"}, status=404)
@@ -2643,6 +2655,7 @@ def tag_posts(request: HttpRequest, tag: str) -> HttpResponse:
     )
 
 
+@anonymous_cache(prefix="post-detail", seconds=120)
 def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
     try:
         now = timezone.now()
@@ -2724,11 +2737,26 @@ def post_view(request: HttpRequest, post_id: int) -> HttpResponse:
     except Post.DoesNotExist:
         return JsonResponse({"ok": False, "error": "post not found"}, status=404)
 
+    if is_rate_limited(
+        request,
+        scope="post_view_global",
+        limit=120,
+        window_seconds=60,
+    ) or is_rate_limited(
+        request,
+        scope="post_view",
+        limit=3,
+        window_seconds=60,
+        identifiers=(post.id,),
+    ):
+        return JsonResponse({"ok": True, "views_count": _post_total_views(post, now)})
+
     Post.objects.filter(id=post.id).update(real_views_count=F("real_views_count") + 1)
     post.real_views_count = (post.real_views_count or 0) + 1
     return JsonResponse({"ok": True, "views_count": _post_total_views(post, now)})
 
 
+@anonymous_cache(prefix="home-feed", seconds=45)
 def home_feed(request: HttpRequest) -> HttpResponse:
     limit_raw = request.GET.get("limit", "10")
     try:
@@ -2743,7 +2771,18 @@ def home_feed(request: HttpRequest) -> HttpResponse:
 
     hide_read = request.GET.get("hide_read") in {"1", "true", "True"}
     only_read = request.GET.get("only_read") in {"1", "true", "True"}
+    card_mode = request.GET.get("card") in {"1", "true", "True"}
     now = timezone.now()
+    if card_mode and not hide_read and not only_read and not has_auth_context(request):
+        materialized_response = _materialized_home_feed_response(
+            request,
+            limit=limit,
+            offset=offset,
+            now=now,
+        )
+        if materialized_response is not None:
+            return materialized_response
+
     read_user = (
         _get_user_from_request(request) if (hide_read or only_read) else None
     )
@@ -2802,36 +2841,27 @@ def home_feed(request: HttpRequest) -> HttpResponse:
         serialized = []
         for post in posts_page:
             author_rating = _author_rating_value(post.author.rating_total)
-            content, poll_payload = _content_with_live_poll(post, current_user)
-            author_channel_url, author_title = _author_display_fields(
-                request, post.author, post.channel_url
-            )
+            if card_mode:
+                serialized.append(
+                    _serialize_lightweight_post_card(
+                        request,
+                        post,
+                        current_user,
+                        now=now,
+                        is_favorite=post.id in favorite_post_ids,
+                        author_rating=author_rating,
+                    )
+                )
+                continue
             serialized.append(
-                {
-                    "id": post.id,
-                    "title": _post_display_title(post),
-                    "template": _serialize_post_template(post),
-                    "comun": community_service._serialize_post_comun(request, post),
-                    "content": content,
-                    "poll": poll_payload,
-                    "source_url": post.source_url,
-                    "channel_url": author_channel_url,
-                    "created_at": post.created_at.isoformat(),
-                    "author": {
-                        "username": post.author.username,
-                        "title": author_title,
-                        "channel_url": author_channel_url,
-                        "avatar_url": _author_avatar_for_display(request, post.author),
-                        **_author_admin_fields_for_user(current_user, post.author),
-                    },
-                    "tags": _serialize_tags(post.tags.all()),
-                    "is_favorite": post.id in favorite_post_ids,
-                    "score": post.rating + post.comments_count * 5 + author_rating,
-                    "rating": post.rating,
-                    "comments_count": post.comments_count,
-                    "likes_count": post.rating,
-                "views_count": _post_total_views(post, now),
-                }
+                _serialize_backend_post_card(
+                    request,
+                    post,
+                    current_user,
+                    now=now,
+                    is_favorite=post.id in favorite_post_ids,
+                    author_rating=author_rating,
+                )
             )
         return JsonResponse(
             {"ok": True, "posts": serialized, "hidden_read_count": hidden_read_count}
@@ -2870,40 +2900,31 @@ def home_feed(request: HttpRequest) -> HttpResponse:
             next_index = 0
         post = remaining.pop(next_index)
         author_rating = author_rating_map.get(post.author_id, 0)
-        content, poll_payload = _content_with_live_poll(post, current_user)
         combined_rating = post.rating + author_rating
         if combined_rating < 0:
             continue
-        author_channel_url, author_title = _author_display_fields(
-            request, post.author, post.channel_url
-        )
-        serialized_posts.append(
-            {
-                "id": post.id,
-                "title": _post_display_title(post),
-                "template": _serialize_post_template(post),
-                "comun": community_service._serialize_post_comun(request, post),
-                "content": content,
-                "poll": poll_payload,
-                "source_url": post.source_url,
-                "channel_url": author_channel_url,
-                "created_at": post.created_at.isoformat(),
-                "author": {
-                    "username": post.author.username,
-                    "title": author_title,
-                    "channel_url": author_channel_url,
-                    "avatar_url": _author_avatar_for_display(request, post.author),
-                    **_author_admin_fields_for_user(current_user, post.author),
-                },
-                "tags": _serialize_tags(post.tags.all()),
-                "is_favorite": post.id in favorite_post_ids,
-                "score": post.rating + post.comments_count * 5 + author_rating,
-                "rating": post.rating,
-                "comments_count": post.comments_count,
-                "likes_count": post.rating,
-                "views_count": _post_total_views(post, now),
-            }
-        )
+        if card_mode:
+            serialized_posts.append(
+                _serialize_lightweight_post_card(
+                    request,
+                    post,
+                    current_user,
+                    now=now,
+                    is_favorite=post.id in favorite_post_ids,
+                    author_rating=author_rating,
+                )
+            )
+        else:
+            serialized_posts.append(
+                _serialize_backend_post_card(
+                    request,
+                    post,
+                    current_user,
+                    now=now,
+                    is_favorite=post.id in favorite_post_ids,
+                    author_rating=author_rating,
+                )
+            )
         last_author_id = post.author_id
 
     return JsonResponse(
@@ -3003,6 +3024,7 @@ def _serialize_backend_post_card(
     *,
     now=None,
     is_favorite: bool = False,
+    author_rating: int | float = 0,
 ) -> dict:
     now = now or timezone.now()
     content, poll_payload = _content_with_live_poll(post, current_user)
@@ -3032,12 +3054,127 @@ def _serialize_backend_post_card(
         },
         "tags": _serialize_tags(post.tags.all()),
         "is_favorite": is_favorite,
-        "score": post.rating + post.comments_count * 5,
+        "score": post.rating + post.comments_count * 5 + author_rating,
         "rating": post.rating,
         "comments_count": post.comments_count,
         "likes_count": post.rating,
         "views_count": _post_total_views(post, now),
     }
+
+
+def _post_card_excerpt(content: str, *, max_length: int = 520) -> str:
+    raw = (content or "").strip()
+    if not raw:
+        return ""
+    text = raw
+    if raw.startswith("{"):
+        try:
+            payload = json.loads(raw)
+            blocks = payload.get("blocks") if isinstance(payload, dict) else None
+            parts: list[str] = []
+            if isinstance(blocks, list):
+                for block in blocks:
+                    if not isinstance(block, dict):
+                        continue
+                    data = block.get("data")
+                    if not isinstance(data, dict):
+                        continue
+                    for key in ("text", "caption", "title", "description"):
+                        value = data.get(key)
+                        if isinstance(value, str) and value.strip():
+                            parts.append(value)
+                            break
+                    if len(" ".join(parts)) >= max_length:
+                        break
+            if parts:
+                text = " ".join(parts)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            text = raw
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = unescape(text)
+    text = re.sub(r"\s+", " ", text).strip()
+    if len(text) <= max_length:
+        return text
+    return text[:max_length].rsplit(" ", 1)[0].strip() + "..."
+
+
+def _serialize_lightweight_post_card(
+    request: HttpRequest,
+    post: Post,
+    current_user: User | None,
+    *,
+    now=None,
+    is_favorite: bool = False,
+    author_rating: int | float = 0,
+    score_override: int | None = None,
+) -> dict:
+    now = now or timezone.now()
+    author_channel_url, author_title = _author_display_fields(
+        request, post.author, post.channel_url
+    )
+    return {
+        "id": post.id,
+        "title": _post_display_title(post),
+        "template": None,
+        "enabled_template_editor_blocks": [],
+        "comun": community_service._serialize_post_comun(request, post),
+        "content": _post_card_excerpt(post.content),
+        "poll": None,
+        "post_ratings": {},
+        "post_rating": None,
+        "source_url": post.source_url,
+        "channel_url": author_channel_url,
+        "created_at": post.created_at.isoformat(),
+        "author": {
+            "username": post.author.username,
+            "title": author_title,
+            "channel_url": author_channel_url,
+            "avatar_url": _author_avatar_for_display(request, post.author),
+            **_author_admin_fields_for_user(current_user, post.author),
+        },
+        "tags": _serialize_tags(post.tags.all()),
+        "is_favorite": is_favorite,
+        "score": score_override if score_override is not None else post.rating + post.comments_count * 5 + author_rating,
+        "rating": post.rating,
+        "comments_count": post.comments_count,
+        "likes_count": post.rating,
+        "views_count": _post_total_views(post, now),
+    }
+
+
+def _materialized_home_feed_response(
+    request: HttpRequest,
+    *,
+    limit: int,
+    offset: int,
+    now=None,
+) -> HttpResponse | None:
+    items = list(
+        PublicFeedItem.objects.filter(feed=PublicFeedItem.FEED_HOME)
+        .select_related("post", "post__author")
+        .prefetch_related("post__tags")
+        .order_by("rank")[offset : offset + limit]
+    )
+    if not items:
+        return None
+    serialized = [
+        _serialize_lightweight_post_card(
+            request,
+            item.post,
+            None,
+            now=now,
+            score_override=item.score,
+        )
+        for item in items
+    ]
+    return JsonResponse(
+        {
+            "ok": True,
+            "posts": serialized,
+            "hidden_read_count": 0,
+            "materialized": True,
+        }
+    )
 
 
 def _serialize_search_author_result(
@@ -3092,6 +3229,7 @@ def _search_author_result_rank(item: dict, query: str) -> tuple[int, str]:
     return (6, username)
 
 
+@anonymous_cache(prefix="search", seconds=30)
 def search_content(request: HttpRequest) -> HttpResponse:
     query = (request.GET.get("q") or "").strip()
     if not query:

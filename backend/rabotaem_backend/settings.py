@@ -48,6 +48,7 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "rabotaem_backend.security.UnsafeOriginProtectionMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
@@ -85,6 +86,21 @@ DATABASES = {
         "PORT": os.environ.get("POSTGRES_PORT", "5432"),
     }
 }
+
+CACHES = {
+    "default": {
+        "BACKEND": os.environ.get(
+            "DJANGO_CACHE_BACKEND",
+            "django.core.cache.backends.locmem.LocMemCache",
+        ),
+        "LOCATION": os.environ.get("DJANGO_CACHE_LOCATION", "rabotaem-default"),
+    }
+}
+
+PUBLIC_API_CACHE_SECONDS = int(os.environ.get("PUBLIC_API_CACHE_SECONDS", "60"))
+PUBLIC_API_STALE_SECONDS = int(os.environ.get("PUBLIC_API_STALE_SECONDS", "300"))
+SNAPSHOT_FRONTEND_URL = os.environ.get("SNAPSHOT_FRONTEND_URL", "http://frontend:3000")
+PUBLIC_HTML_SNAPSHOT_ROOT = os.environ.get("PUBLIC_HTML_SNAPSHOT_ROOT", "")
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -148,6 +164,19 @@ SITE_AUTH_COOKIE_SECURE = os.environ.get(
     "SITE_AUTH_COOKIE_SECURE",
     "0" if DEBUG else "1",
 ) == "1"
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+SECURE_SSL_REDIRECT = os.environ.get("SECURE_SSL_REDIRECT", "0") == "1"
+SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "0" if DEBUG else "1") == "1"
+CSRF_COOKIE_SECURE = os.environ.get("CSRF_COOKIE_SECURE", "0" if DEBUG else "1") == "1"
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = os.environ.get("SESSION_COOKIE_SAMESITE", "Lax")
+CSRF_COOKIE_SAMESITE = os.environ.get("CSRF_COOKIE_SAMESITE", "Lax")
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = os.environ.get("X_FRAME_OPTIONS", "SAMEORIGIN")
+SECURE_REFERRER_POLICY = os.environ.get("SECURE_REFERRER_POLICY", "strict-origin-when-cross-origin")
+SECURE_HSTS_SECONDS = int(os.environ.get("SECURE_HSTS_SECONDS", "0" if DEBUG else "31536000"))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = os.environ.get("SECURE_HSTS_INCLUDE_SUBDOMAINS", "0") == "1"
+SECURE_HSTS_PRELOAD = os.environ.get("SECURE_HSTS_PRELOAD", "0") == "1"
 VK_APP_ID = os.environ.get("VK_APP_ID", os.environ.get("PUBLIC_VK_APP_ID", ""))
 VK_OIDC_ISSUER = os.environ.get("VK_OIDC_ISSUER", "")
 VK_OIDC_JWKS_URL = os.environ.get("VK_OIDC_JWKS_URL", "")

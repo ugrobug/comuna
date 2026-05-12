@@ -40,6 +40,7 @@ from feeds.models import (
     PostRead,
     Tag,
 )
+from rabotaem_backend.cache import anonymous_cache
 from ratings.service import author_rating_value, format_rating_value, user_max_author_rating
 from users.models import AuthorAdmin
 from users import views as user_views
@@ -1231,6 +1232,7 @@ def comun_create_from_telegram_channel(request: HttpRequest) -> HttpResponse:
 
 
 @csrf_exempt
+@anonymous_cache(prefix="comuns-list", seconds=120)
 def comuns_list_create(request: HttpRequest) -> HttpResponse:
     current_user = user_views._get_user_from_request(request)
 
@@ -1735,6 +1737,7 @@ def comun_vote(request: HttpRequest, slug: str) -> HttpResponse:
 
 
 @csrf_exempt
+@anonymous_cache(prefix="comun-posts", seconds=45)
 def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
     current_user = user_views._get_user_from_request(request)
     try:

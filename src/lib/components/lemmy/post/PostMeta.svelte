@@ -45,6 +45,7 @@
   export let read: boolean = false
   export let edited: string | undefined = undefined
   export let view: View = 'cozy'
+  $: void edited
   export let subscribed: SubscribedType | undefined = undefined
   export let userUrlOverride: string | undefined = undefined
   export let communityUrlOverride: string | undefined = undefined

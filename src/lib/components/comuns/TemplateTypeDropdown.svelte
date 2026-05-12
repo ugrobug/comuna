@@ -2,7 +2,7 @@
   import { createEventDispatcher } from 'svelte'
   import type { PostTemplateCode } from '$lib/postTemplates'
 
-  export type TemplateTypeOption = {
+  type TemplateTypeOption = {
     value: PostTemplateCode
     label: string
     description?: string

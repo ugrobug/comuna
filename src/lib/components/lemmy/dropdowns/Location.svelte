@@ -19,6 +19,7 @@
   export let changeDefault: boolean = false
   export let showLabel: boolean = false
   export let hideOnHome: boolean = true
+  $: void showLabel
 
   let feed: string = selected
   $: feed = selected

@@ -5,6 +5,7 @@ from django.http import HttpRequest
 
 from communities import service as community_service
 from ratings.service import author_rating_value
+from telegram_integration.media import safe_public_url
 from users.models import AuthorAdmin
 
 User = get_user_model()
@@ -62,7 +63,7 @@ def _serialize_user(user: User) -> dict:
             getattr(site_profile, "email_verified_at", None) if site_profile else None
         ),
         "display_name": (site_profile.display_name if site_profile else "") or None,
-        "avatar_url": (site_profile.avatar_url if site_profile else "") or avatar_url,
+        "avatar_url": safe_public_url(site_profile.avatar_url if site_profile else "") or avatar_url,
         "is_staff": user.is_staff,
         "is_author": bool(authors),
         "authors": authors,

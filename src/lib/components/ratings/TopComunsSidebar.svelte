@@ -4,6 +4,7 @@
   import { Button } from 'mono-svelte'
   import { Trophy, ChatBubbleLeftRight, Icon } from 'svelte-hero-icons'
   import { buildTopComunsUrl, type BackendTopComun } from '$lib/api/backend'
+  import { cachedJson } from '$lib/api/publicCache'
   import { formatTopAuthorNumber } from '$lib/ratings/topAuthors'
 
   let comuns: BackendTopComun[] = []
@@ -12,11 +13,11 @@
 
   async function fetchTopComuns() {
     try {
-      const response = await fetch(buildTopComunsUrl({ limit: 5 }))
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
-      }
-      const data = await response.json()
+      const data = await cachedJson<{ comuns?: BackendTopComun[] }>(
+        'public:top-comuns:5',
+        buildTopComunsUrl({ limit: 5 }),
+        { ttlMs: 120_000 }
+      )
       comuns = data.comuns ?? []
     } catch (e: unknown) {
       error = e instanceof Error ? e.message : 'Неизвестная ошибка'

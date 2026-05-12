@@ -211,7 +211,7 @@
                 </span>
               </div>
             </div>
-            <div class="ml-auto" />
+            <div class="ml-auto"></div>
             <Menu placement="bottom-end">
               <Button size="square-md" slot="target">
                 <Icon src={EllipsisHorizontal} mini size="16" slot="prefix" />

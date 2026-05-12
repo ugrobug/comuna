@@ -132,8 +132,9 @@
   }
   
   // Определяем, является ли текущий URL каноническим (со слагом)
-  $: postId = $page.params.slug.split('-')[0];
-  $: hasSlug = $page.params.slug.includes('-');
+  $: routeSlug = $page.params.slug ?? ''
+  $: postId = routeSlug.split('-')[0];
+  $: hasSlug = routeSlug.includes('-');
   $: canonicalUrl = hasSlug 
     ? $page.url.toString() 
     : new URL(`/post/${data.post.post_view.post.id}-${createSlug(data.post.post_view.post.name)}`, $page.url.origin).toString();
@@ -1633,7 +1634,9 @@
         ? `/comment/${$page.params.instance}/${data.thread.showContext}`
         : undefined}
       class="hover:bg-white/50 dark:hover:bg-zinc-800/30"
-      on:click={data.thread.singleThread ? reloadComments : undefined}
+      on:click={() => {
+        if (data.thread.singleThread) void reloadComments()
+      }}
     >
       {data.thread.showContext
         ? $t('routes.post.thread.context')
@@ -1655,9 +1658,9 @@
     <div class="space-y-4">
       {#each new Array(10) as empty}
         <div class="animate-pulse flex flex-col gap-2 skeleton w-full">
-          <div class="w-96 h-4" />
-          <div class="w-full h-12" />
-          <div class="w-48 h-4" />
+          <div class="w-96 h-4"></div>
+          <div class="w-full h-12"></div>
+          <div class="w-48 h-4"></div>
         </div>
       {/each}
     </div>
@@ -1757,9 +1760,9 @@
     <div class="space-y-4">
       {#each Array(3) as _}
         <div class="animate-pulse flex flex-col gap-2 skeleton w-full bg-white dark:bg-zinc-900 rounded-xl border border-slate-200 dark:border-zinc-800 border-b-slate-300 dark:border-t-zinc-700 p-4 sm:p-6">
-          <div class="w-96 h-4" />
-          <div class="w-full h-12" />
-          <div class="w-48 h-4" />
+          <div class="w-96 h-4"></div>
+          <div class="w-full h-12"></div>
+          <div class="w-48 h-4"></div>
         </div>
       {/each}
     </div>

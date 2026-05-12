@@ -114,7 +114,7 @@
           </div>
           <p>{application.registration_application.deny_reason}</p>
         </div>
-        <div class="md:ml-auto" />
+        <div class="md:ml-auto"></div>
       {:else}
         <div class="flex items-center gap-1 text-sm">
           <UserLink avatar user={application.admin} />
@@ -124,7 +124,7 @@
               : $t('routes.admin.applications.denied')}
           </SectionTitle>
         </div>
-        <div class="md:ml-auto" />
+        <div class="md:ml-auto"></div>
       {/if}
     {/if}
     <div class="ml-auto self-end">

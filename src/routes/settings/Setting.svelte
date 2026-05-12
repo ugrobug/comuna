@@ -9,6 +9,7 @@
   } from 'svelte-hero-icons'
 
   export let vertical: boolean = false
+  $: void vertical
 
   export let supportedPlatforms = {
     desktop: true,

@@ -72,7 +72,7 @@
   // Получаем текущий URL для канонической ссылки
   $: siteBaseUrl = (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '')
   $: canonicalUrl = (() => {
-    if ($page.url.pathname === '/' || $page.url.pathname === '') {
+    if ($page.url.pathname === '/') {
       return siteBaseUrl
     }
     const path = $page.url.pathname
@@ -144,10 +144,6 @@
       }
       document.body.querySelector('.loader')?.classList.add('hidden')
       document.body.setAttribute('style', themeVars)
-      userSettings.subscribe((settings) => {
-        console.log('Current font settings:', settings.font);
-        console.log('Adding font class:', settings.font === 'roboto' ? 'font-roboto' : 'font-sans');
-      })
     }
   })
 </script>
@@ -179,7 +175,7 @@
   
   <!-- Добавляем специальные мета-теги для HTTP версии -->
   {#if !$page.url.protocol.includes('https')}
-    <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
+    <meta http-equiv="content-security-policy" content="upgrade-insecure-requests">
   {/if}
   
   <!-- Добавляем alternate для языковых версий, если они есть -->

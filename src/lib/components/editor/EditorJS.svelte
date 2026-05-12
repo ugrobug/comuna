@@ -412,8 +412,8 @@
         `
         button.addEventListener('click', () => {
           this.applySnapshot(item)
-          if (this.searchInput) {
-            this.searchInput.value = item.title || ''
+          if (this.referenceInput) {
+            this.referenceInput.value = item.title || ''
           }
           this.results && (this.results.innerHTML = '')
         })
@@ -4265,7 +4265,7 @@
     editor = new EditorJS({
       holder: element,
       placeholder: placeholder,
-      tools: {
+      tools: ({
         ...(enabledTemplateBlockTypes.has('header')
           ? {
               header: {
@@ -4591,8 +4591,8 @@
         },
       }
       : {}),
-      },
-      tunes: ["anchorInput"],
+	      } as any),
+	      tunes: ["anchorInput"],
       inlineToolbar: inlineTextToolbar,
       i18n: {
         messages: {
@@ -4822,7 +4822,7 @@
   <div
     class="min-h-[400px] p-3 rounded-lg focus-within:ring-2 focus-within:ring-blue-500 transition-all duration-200 editor-content bg-white dark:bg-slate-800 border dark:border-slate-700"
     bind:this={element}
-  />
+  ></div>
 
   {#if showPostSettings}
     <!-- Информационный блок об обложке поста -->

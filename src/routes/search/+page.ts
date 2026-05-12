@@ -1,6 +1,7 @@
 import { env } from '$env/dynamic/public'
 import { profile } from '$lib/auth.js'
 import {
+  type BackendPost,
   backendPostCommunityPath,
   buildBackendPostPath,
   buildSearchUrl,
@@ -19,7 +20,7 @@ import type {
 } from 'lemmy-js-client'
 import { get } from 'svelte/store'
 
-export async function load({ url, fetch }) {
+export async function load({ url, fetch }): Promise<any> {
   const query = url.searchParams.get('q')
   const page = Number(url.searchParams.get('page')) || 1
   const community = Number(url.searchParams.get('community')) || undefined
@@ -40,9 +41,15 @@ export async function load({ url, fetch }) {
         results: { posts: [], authors: [] },
       }
     }
-    const payload = await response.json()
+    const payload: {
+      posts?: BackendPost[]
+      authors?: unknown[]
+      total_posts?: number
+      total_authors?: number
+      limit?: number
+    } = await response.json()
 
-    const posts = (payload.posts ?? []).map((backendPost) => ({
+    const posts = (payload.posts ?? []).map((backendPost: BackendPost) => ({
       post: backendPostToPostView(backendPost, backendPost.author),
       linkOverride: buildBackendPostPath(backendPost),
       authorUsername: backendPost.author?.username,

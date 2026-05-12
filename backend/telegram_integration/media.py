@@ -9,10 +9,10 @@ import urllib.request
 from urllib.error import URLError
 
 from django.conf import settings
-from django.core.files.base import ContentFile
-from django.core.files.storage import default_storage
 
-_TELEGRAM_FILE_RE = re.compile(r"https?://api\.telegram\.org/file/bot[^/]+/(.+)")
+from rabotaem_backend.images import save_image_with_variants
+
+_TELEGRAM_FILE_RE = re.compile(r"https?://api\.telegram\.org/file/bot[^/\s<>'\"]+/(.+)")
 
 
 def build_public_media_url(path: str) -> str:
@@ -23,11 +23,36 @@ def build_public_media_url(path: str) -> str:
     return f"{base}{media_url}{path.lstrip('/')}"
 
 
+def build_public_storage_url(url_or_path: str) -> str:
+    value = str(url_or_path or "").strip()
+    if not value:
+        return ""
+    if value.startswith(("http://", "https://")):
+        return value
+    base = settings.SITE_BASE_URL.rstrip("/")
+    if value.startswith("/"):
+        return f"{base}{value}"
+    return build_public_media_url(value)
+
+
 def extract_telegram_file_path(url: str) -> str | None:
-    match = _TELEGRAM_FILE_RE.match(url)
+    match = _TELEGRAM_FILE_RE.match(str(url or "").strip())
     if not match:
         return None
     return match.group(1)
+
+
+def is_private_telegram_file_url(url: str | None) -> bool:
+    return bool(_TELEGRAM_FILE_RE.match(str(url or "").strip()))
+
+
+def safe_public_url(url: str | None) -> str | None:
+    value = str(url or "").strip()
+    if not value:
+        return None
+    if is_private_telegram_file_url(value):
+        return None
+    return value
 
 
 def download_telegram_file_by_path(file_path: str, token: str) -> str | None:
@@ -43,8 +68,8 @@ def download_telegram_file_by_path(file_path: str, token: str) -> str | None:
     if not ext or len(ext) > 8:
         ext = ".jpg"
     filename = f"posts/telegram/{secrets.token_hex(12)}{ext}"
-    saved_path = default_storage.save(filename, ContentFile(data))
-    return build_public_media_url(saved_path)
+    image_set = save_image_with_variants(data=data, original_path=filename)
+    return build_public_storage_url(image_set.default_url)
 
 
 def download_telegram_file_by_url(url: str) -> str | None:
@@ -59,8 +84,8 @@ def download_telegram_file_by_url(url: str) -> str | None:
     if not ext or len(ext) > 8:
         ext = ".jpg"
     filename = f"posts/telegram/{secrets.token_hex(12)}{ext}"
-    saved_path = default_storage.save(filename, ContentFile(data))
-    return build_public_media_url(saved_path)
+    image_set = save_image_with_variants(data=data, original_path=filename)
+    return build_public_storage_url(image_set.default_url)
 
 
 def download_telegram_file_by_id(file_id: str, token: str) -> str | None:
@@ -87,9 +112,11 @@ def _fetch_telegram_json(method: str, token: str, payload: dict) -> dict | None:
 
 __all__ = [
     "build_public_media_url",
+    "build_public_storage_url",
     "download_telegram_file_by_id",
     "download_telegram_file_by_path",
     "download_telegram_file_by_url",
     "extract_telegram_file_path",
+    "is_private_telegram_file_url",
+    "safe_public_url",
 ]
-

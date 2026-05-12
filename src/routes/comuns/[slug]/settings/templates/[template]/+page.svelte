@@ -16,6 +16,7 @@
     templateEditorDropRequest,
     type TemplateEditorDragPaletteItem,
     type TemplateEditorDropZone,
+    type TemplateEditorFieldType,
   } from '$lib/components/comuns/templateEditorDnd'
   import { getTemplateEditorBlocks } from '$lib/postTemplates'
   import { siteToken } from '$lib/siteAuth'
@@ -23,7 +24,7 @@
   export let data
 
   type BlockPlacement = 'available' | 'header' | 'footer'
-  type FieldType = 'text' | 'file' | 'select' | 'checkbox'
+  type FieldType = TemplateEditorFieldType
   type FieldPlacement = 'available' | 'header' | 'footer'
   type PaletteFieldType = 'text' | 'select' | 'checkbox'
   const slug = String(data?.slug ?? '')
@@ -563,12 +564,13 @@
     saving = true
     errorMessage = ''
     try {
+      const currentDraft = draft
       const templates = customTemplates(comun)
       const nextTemplate = normalizedDraftForSave()
       const nextTemplates = isNewTemplate
         ? [...templates, nextTemplate]
         : templates.map((template) =>
-            template.id === draft.id || template.slug === draft.slug ? nextTemplate : normalizedDraftForSaveFromTemplate(template)
+            template.id === currentDraft.id || template.slug === currentDraft.slug ? nextTemplate : normalizedDraftForSaveFromTemplate(template)
           )
       const response = await fetch(buildComunUrl(slug), {
         method: 'PATCH',
@@ -585,7 +587,7 @@
       comun = payload.comun ?? comun
       const refreshedTemplate = isNewTemplate
         ? customTemplates(comun).at(-1) ?? null
-        : customTemplates(comun).find((template) => template.id === draft.id || template.slug === draft.slug) ?? null
+        : customTemplates(comun).find((template) => template.id === currentDraft.id || template.slug === currentDraft.slug) ?? null
       toast({ content: 'Шаблон сохранен', type: 'success' })
       if (refreshedTemplate?.slug) {
         await goto(buildComunCustomTemplateEditorPath(slug, refreshedTemplate.slug))
@@ -651,8 +653,9 @@
     deleting = true
     errorMessage = ''
     try {
+      const currentDraft = draft
       const nextTemplates = customTemplates(comun)
-        .filter((template) => template.id !== draft.id && template.slug !== draft.slug)
+        .filter((template) => template.id !== currentDraft.id && template.slug !== currentDraft.slug)
         .map((template) => normalizedDraftForSaveFromTemplate(template))
       const response = await fetch(buildComunUrl(slug), {
         method: 'PATCH',

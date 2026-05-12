@@ -263,11 +263,12 @@
       })
       return
     }
+    const telegramAuth = telegram.Login.auth
     loading = true
     try {
       const result = await new Promise<TelegramOidcResult>((resolve) => {
         withTelegramPopupOrigin(() => {
-          telegram.Login.auth!(
+          telegramAuth(
             {
               client_id: clientId,
               request_access: ['write', 'phone'],
@@ -384,7 +385,7 @@
         class:is-loading={loading}
         class:is-disabled={disabled}
         aria-label={label}
-      />
+      ></div>
     </div>
 
     {#if loading}

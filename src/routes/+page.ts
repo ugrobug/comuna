@@ -14,7 +14,7 @@ export async function load({ fetch, url }) {
   let posts: any[] = []
   if (feedType === 'hot') {
     try {
-      const feedUrl = buildHomeFeedUrl()
+      const feedUrl = buildHomeFeedUrl({ card: true })
       const requestUrl = new URL(feedUrl, url.origin)
       requestUrl.searchParams.set('limit', String(PAGE_SIZE))
       const response = await fetch(requestUrl.toString())

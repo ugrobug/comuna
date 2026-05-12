@@ -130,6 +130,12 @@ class Author(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        indexes = [
+            models.Index(fields=["is_blocked", "shadow_banned", "force_home"], name="author_home_flags_idx"),
+            models.Index(fields=["-rating_total"], name="author_rating_idx"),
+        ]
+
     def __str__(self) -> str:
         return self.username
 
@@ -197,6 +203,9 @@ class Tag(models.Model):
 
     class Meta:
         ordering = ["name"]
+        indexes = [
+            models.Index(fields=["hide_from_home"], name="tag_hide_home_idx"),
+        ]
 
     def __str__(self) -> str:
         return self.name
@@ -311,6 +320,12 @@ class Post(models.Model):
     class Meta:
         unique_together = ("author", "message_id")
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["is_blocked", "is_pending", "-created_at"], name="post_public_created_idx"),
+            models.Index(fields=["author", "is_blocked", "is_pending", "-created_at"], name="post_author_created_idx"),
+            models.Index(fields=["publish_at", "-created_at"], name="post_publish_created_idx"),
+            models.Index(fields=["-rating", "-created_at"], name="post_rating_created_idx"),
+        ]
 
     def __str__(self) -> str:
         return f"{self.author.username}:{self.message_id}"
@@ -337,6 +352,12 @@ class PostComment(models.Model):
     is_deleted = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["post", "is_deleted", "created_at"], name="comment_post_created_idx"),
+            models.Index(fields=["is_deleted", "-created_at"], name="comment_recent_idx"),
+        ]
 
     def __str__(self) -> str:
         return f"{self.post_id}:{self.user_id}"
@@ -374,6 +395,9 @@ class PostRead(models.Model):
 
     class Meta:
         unique_together = ("post", "user")
+        indexes = [
+            models.Index(fields=["user", "-read_at"], name="postread_user_recent_idx"),
+        ]
 
     def __str__(self) -> str:
         return f"{self.post_id}:{self.user_id}"
@@ -386,9 +410,43 @@ class PostFavorite(models.Model):
 
     class Meta:
         unique_together = ("post", "user")
+        indexes = [
+            models.Index(fields=["user", "-created_at"], name="favorite_user_recent_idx"),
+        ]
 
     def __str__(self) -> str:
         return f"{self.post_id}:{self.user_id}"
+
+
+class PublicFeedItem(models.Model):
+    FEED_HOME = "home"
+    FEED_CHOICES = (
+        (FEED_HOME, "Главная"),
+    )
+
+    feed = models.CharField(max_length=32, choices=FEED_CHOICES, default=FEED_HOME)
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="public_feed_items")
+    rank = models.PositiveIntegerField()
+    score = models.IntegerField(default=0)
+    post_created_at = models.DateTimeField()
+    author_id_snapshot = models.BigIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["feed", "rank"]
+        constraints = [
+            models.UniqueConstraint(fields=["feed", "post"], name="feeds_public_feed_unique_post"),
+            models.UniqueConstraint(fields=["feed", "rank"], name="feeds_public_feed_unique_rank"),
+        ]
+        indexes = [
+            models.Index(fields=["feed", "rank"], name="pubfeed_feed_rank_idx"),
+            models.Index(fields=["feed", "-post_created_at"], name="pubfeed_feed_created_idx"),
+            models.Index(fields=["feed", "-score"], name="pubfeed_feed_score_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.feed}:{self.rank}:{self.post_id}"
 
 
 from users.models import (

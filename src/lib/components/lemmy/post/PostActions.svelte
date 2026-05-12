@@ -470,7 +470,7 @@
       </span>
     </div>
   {/if}
-  <div class="flex-1" />
+  <div class="flex-1"></div>
 
   {#if isBackendPost}
     <div
@@ -626,7 +626,7 @@
     <MenuButton on:click={sharePost} class="flex-1 !py-0">
       <Icon src={Share} size="16" micro slot="prefix" />
       {$t('post.actions.more.share')}
-      <div class="flex-1" />
+      <div class="flex-1"></div>
       {#if !post.post.local && !backendPostUrl}
         <div class="flex">
           <Button

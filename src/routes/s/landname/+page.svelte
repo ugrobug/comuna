@@ -900,7 +900,7 @@
 
   {#if suggestionOpen}
     <div class="modal-layer">
-    <section class="suggestion-panel modal-panel" role="dialog" aria-modal="true" aria-labelledby="suggestion-modal-title">
+    <div class="suggestion-panel modal-panel" role="dialog" aria-modal="true" aria-labelledby="suggestion-modal-title">
       <div class="panel-heading">
         <div>
           <p class="eyebrow">База букв</p>
@@ -989,7 +989,7 @@
           {/if}
         </form>
       {/if}
-    </section>
+    </div>
     </div>
   {/if}
 </section>

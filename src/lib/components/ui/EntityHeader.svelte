@@ -39,7 +39,7 @@
         <div 
           class="w-full h-48" 
           style="background-image: url('/img/communityBackground1.webp'); background-size: cover; background-position: center;"
-        />
+        ></div>
       {/if}
     </div>
     
@@ -72,6 +72,11 @@
           <slot name="nameDetail" />
         </span>
       </div>
+      {#if $$slots.actions}
+        <div class="ml-auto flex flex-shrink-0 items-center gap-2">
+          <slot name="actions" />
+        </div>
+      {/if}
     </div>
 
     <!-- Описание сообщества -->

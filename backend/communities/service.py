@@ -41,6 +41,7 @@ from feeds.models import (
     Tag,
 )
 from ratings.service import author_rating_value, format_rating_value, user_max_author_rating
+from telegram_integration.media import safe_public_url
 from users.models import AuthorAdmin
 
 User = get_user_model()
@@ -101,7 +102,7 @@ def _media_url(request: HttpRequest | None, field) -> str | None:
 
 
 def _author_avatar_url(request: HttpRequest | None, author: Author) -> str | None:
-    return _media_url(request, author.avatar_image) or author.avatar_url
+    return _media_url(request, author.avatar_image) or safe_public_url(author.avatar_url)
 
 
 def _author_avatar_logo_url(author: Author | None) -> str:
@@ -118,7 +119,7 @@ def _author_avatar_logo_url(author: Author | None) -> str:
             if site_base and image_url.startswith("/"):
                 image_url = f"{site_base}{image_url}"
             return image_url[:500]
-    return str(getattr(author, "avatar_url", "") or "").strip()[:500]
+    return str(safe_public_url(getattr(author, "avatar_url", "")) or "")[:500]
 
 
 def _sync_comun_logo_from_author(comun: Comun | None, author: Author | None) -> bool:
@@ -132,7 +133,7 @@ def _sync_comun_logo_from_author(comun: Comun | None, author: Author | None) -> 
         generated_avatar_logo = (
             "api.telegram.org/file/" in current_logo_url
             or "/media/authors/avatars/" in current_logo_url
-            or current_logo_url == str(getattr(author, "avatar_url", "") or "").strip()
+            or current_logo_url == str(safe_public_url(getattr(author, "avatar_url", "")) or "")
         )
         if not generated_avatar_logo:
             return False
@@ -885,7 +886,7 @@ def _comun_logo_url(request: HttpRequest | None, comun: Comun | None) -> str | N
         return None
     explicit_logo = str(getattr(comun, "logo_url", "") or "").strip()
     if explicit_logo:
-        return explicit_logo
+        return safe_public_url(explicit_logo)
     return None
 
 
@@ -980,19 +981,19 @@ def _site_user_avatar_url(
     try:
         site_profile = user.site_profile
         if site_profile and site_profile.avatar_url:
-            return site_profile.avatar_url
+            return safe_public_url(site_profile.avatar_url)
     except Exception:
         pass
     try:
         tg = user.telegram_account
         if tg and tg.avatar_url:
-            return tg.avatar_url
+            return safe_public_url(tg.avatar_url)
     except Exception:
         pass
     try:
         vk = user.vk_account
         if vk and vk.avatar_url:
-            return vk.avatar_url
+            return safe_public_url(vk.avatar_url)
     except Exception:
         pass
     if fallback_author_avatars and user.id in fallback_author_avatars:

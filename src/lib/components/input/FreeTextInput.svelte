@@ -35,5 +35,5 @@
     {...$$restProps}
     rows={1}
     class="font-semibold text-2xl focus:outline-none w-full bg-transparent resize-none {$$props.class}"
-  />
+  ></textarea>
 </label>

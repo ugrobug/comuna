@@ -1,8 +1,6 @@
 <script lang="ts">
   import { optimizeImageURL } from '$lib/components/lemmy/post/helpers'
   import { findClosestNumber } from '$lib/util.js'
-  import { browser } from '$app/environment'
-  import { onMount } from 'svelte'
 
   const sizes = [16, 24, 32, 48, 64, 96, 128, 256, 512]
 
@@ -13,10 +11,13 @@
   export let width: number = 28
   export let res: number | undefined = undefined
   export let class_: string = ''
+  let className = ''
+  export { className as class }
+  export let slot: string | undefined = undefined
+  $: void slot
 
   // Базовые классы для всех аватаров
   const baseClasses = "aspect-square object-cover overflow-hidden flex-shrink-0 border border-slate-300 dark:border-zinc-700"
-  let svgMarkup = ''
 
   const optimizeUrl = (
     url: string | undefined,
@@ -65,20 +66,18 @@
     return letters.join('') || trimmed[0]?.toUpperCase() || '?'
   }
 
-  const fallbackInitials = getInitials(alt || title || '')
-
-  onMount(async () => {
-    if (!browser) return
-    try {
-      const [{ createAvatar }, initials] = await Promise.all([
-        import('@dicebear/core'),
-        import('@dicebear/initials'),
-      ])
-      svgMarkup = createAvatar(initials, { seed: alt || title || fallbackInitials }).toString()
-    } catch (error) {
-      svgMarkup = ''
+  const hueFor = (value: string) => {
+    let hash = 0
+    for (const char of value || '?') {
+      hash = (hash * 31 + char.charCodeAt(0)) % 360
     }
-  })
+    return hash
+  }
+
+  $: fallbackSeed = alt || title || ''
+  $: fallbackInitials = getInitials(fallbackSeed)
+  $: fallbackHue = hueFor(fallbackSeed || fallbackInitials)
+  $: extraClasses = [class_, className].filter(Boolean).join(' ')
 </script>
 
 {#if url}
@@ -89,20 +88,15 @@
     {alt}
     {width}
     title=""
-    class="{baseClasses} {circle ? 'rounded-full' : 'rounded-lg'} {class_}"
+    class="{baseClasses} {circle ? 'rounded-full' : 'rounded-lg'} {extraClasses}"
     style="width: {width}px; height: {width}px"
   />
 {:else}
   <div
-    class="{baseClasses} {circle ? 'rounded-full' : 'rounded-lg'}"
-    style="width: {width}px; height: {width}px"
+    class="{baseClasses} {circle ? 'rounded-full' : 'rounded-lg'} flex items-center justify-center text-xs font-semibold text-white {extraClasses}"
+    style="width: {width}px; height: {width}px; background: linear-gradient(135deg, hsl({fallbackHue} 72% 42%), hsl({(fallbackHue + 42) % 360} 72% 54%));"
+    aria-label={alt || title || 'Avatar'}
   >
-    {#if browser && svgMarkup}
-      {@html svgMarkup}
-    {:else}
-      <span class="w-full h-full flex items-center justify-center text-xs font-semibold text-slate-600 dark:text-zinc-200">
-        {fallbackInitials}
-      </span>
-    {/if}
+    <span>{fallbackInitials}</span>
   </div>
 {/if}

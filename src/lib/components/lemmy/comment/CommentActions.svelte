@@ -167,5 +167,5 @@
       {/if}
     {/if}
   </Menu>
-  <div class="flex-1 w-full" />
+  <div class="flex-1 w-full"></div>
 </div>

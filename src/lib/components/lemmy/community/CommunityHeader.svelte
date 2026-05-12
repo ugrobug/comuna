@@ -36,6 +36,8 @@
   export let counts: CommunityAggregates | undefined = undefined
   export let moderators: CommunityModeratorView[] = []
   export let blocked: boolean = false
+  $: void moderators
+  $: void blocked
 
   // Создаем базовый объект для counts с обязательным полем subscribers_local
   const defaultCounts: CommunityAggregates = {

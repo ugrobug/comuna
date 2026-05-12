@@ -2,12 +2,12 @@ import { browser } from '$app/environment'
 import { env as publicEnv } from '$env/dynamic/public'
 import type { SitePostTemplate } from '$lib/postTemplates'
 import { slugifyTitle } from '$lib/util/slug'
+import type { PostView } from 'lemmy-js-client'
 
 export const getBackendBaseUrl = (): string => {
   if (!browser) {
     const base =
       process.env.INTERNAL_BACKEND_URL ||
-      publicEnv.PUBLIC_INTERNAL_BACKEND_URL ||
       publicEnv.PUBLIC_BACKEND_URL ||
       ''
     return base.replace(/\/$/, '')
@@ -211,6 +211,7 @@ export const buildBackendPostPath = (post: { id: number; title: string }): strin
 export const buildHomeFeedUrl = (options?: {
   hideRead?: boolean
   onlyRead?: boolean
+  card?: boolean
 }): string => {
   const base = `${getBackendBaseUrl()}/api/home/`
   const params = new URLSearchParams()
@@ -218,6 +219,9 @@ export const buildHomeFeedUrl = (options?: {
     params.set('only_read', '1')
   } else if (options?.hideRead) {
     params.set('hide_read', '1')
+  }
+  if (options?.card) {
+    params.set('card', '1')
   }
   const query = params.toString()
   return query ? `${base}?${query}` : base
@@ -655,7 +659,7 @@ export const backendPostCommunityPath = (post: BackendPost): string | undefined 
 export const backendPostToPostView = (
   post: BackendPost,
   fallbackAuthor?: BackendAuthor
-) => {
+): PostView => {
   const author = post.author ?? fallbackAuthor
   const authorName = author?.username ?? 'author'
   const authorTitle = author?.title ?? authorName
@@ -698,7 +702,7 @@ export const backendPostToPostView = (
       community_id: communityId,
       ap_id: sourceUrl || `https://post.local/${post.id}`,
       embed_description: '',
-      thumbnail_url: null,
+      thumbnail_url: undefined,
       language_id: 0,
     },
     creator: {
@@ -743,10 +747,13 @@ export const backendPostToPostView = (
     creator_is_admin: false,
     creator_is_moderator: false,
     creator_banned_from_community: false,
+    banned_from_community: false,
+    creator_blocked: false,
     subscribed: 'NotSubscribed',
     saved: Boolean(post.is_favorite),
     read: false,
     hidden: false,
+    unread_comments: 0,
     my_vote: 0,
-  }
+  } as unknown as PostView
 }

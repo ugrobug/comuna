@@ -44,6 +44,10 @@ class ComunCategory(models.Model):
     class Meta:
         app_label = "feeds"
         ordering = ["sort_order", "name"]
+        indexes = [
+            models.Index(fields=["hide_from_home"], name="comcat_hide_home_idx"),
+            models.Index(fields=["comun", "is_active", "sort_order"], name="comcat_active_sort_idx"),
+        ]
         constraints = [
             models.UniqueConstraint(
                 fields=["comun", "slug"],
@@ -229,6 +233,10 @@ class Comun(models.Model):
     class Meta:
         app_label = "feeds"
         ordering = ["sort_order", "name"]
+        indexes = [
+            models.Index(fields=["is_active", "-rating_score", "sort_order"], name="comun_active_rating_idx"),
+            models.Index(fields=["hide_from_home"], name="comun_hide_home_idx"),
+        ]
         verbose_name = "Комуна"
         verbose_name_plural = "Комуны"
 
@@ -284,6 +292,10 @@ class ComunPostCategoryAssignment(models.Model):
     class Meta:
         app_label = "feeds"
         unique_together = ("comun", "post")
+        indexes = [
+            models.Index(fields=["category", "post"], name="compost_cat_post_idx"),
+            models.Index(fields=["post", "comun"], name="compost_post_comun_idx"),
+        ]
         verbose_name = "Категория поста в комуне"
         verbose_name_plural = "Категории постов в коммунах"
 

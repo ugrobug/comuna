@@ -1,8 +1,10 @@
 import { writable } from 'svelte/store'
 
+export type TemplateEditorFieldType = 'text' | 'file' | 'select' | 'checkbox'
+
 export type TemplateEditorDragPaletteItem =
   | { kind: 'block'; blockType: string; dragId?: string }
-  | { kind: 'field'; fieldType: 'text' | 'select' | 'checkbox'; dragId?: string }
+  | { kind: 'field'; fieldType: TemplateEditorFieldType; dragId?: string }
 
 export type TemplateEditorDropZone = 'header' | 'available' | 'footer'
 

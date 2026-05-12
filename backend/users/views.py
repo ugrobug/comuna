@@ -7,6 +7,7 @@ from django.contrib.auth import get_user_model
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
+from rabotaem_backend.rate_limit import is_rate_limited
 from telegram_integration import views as telegram_views
 from users import serializers as user_serializers
 from users import service as user_service
@@ -45,10 +46,19 @@ def _auth_success_response(user: User, request: HttpRequest, extra: dict | None 
     return response
 
 
+def _rate_limit_response() -> JsonResponse:
+    return JsonResponse(
+        {"ok": False, "error": "Слишком много попыток. Попробуйте позже."},
+        status=429,
+    )
+
+
 @csrf_exempt
 def register_user(request: HttpRequest) -> HttpResponse:
     if request.method != "POST":
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    if is_rate_limited(request, scope="auth_register", limit=5, window_seconds=300):
+        return _rate_limit_response()
     if not getattr(settings, "ALLOW_PASSWORD_REGISTRATION", False):
         return JsonResponse(
             {"ok": False, "error": "Регистрация по почте отключена. Используйте Telegram."},
@@ -84,6 +94,14 @@ def login_user(request: HttpRequest) -> HttpResponse:
 
     username_or_email = (payload.get("username") or "").strip()
     password = payload.get("password") or ""
+    if is_rate_limited(
+        request,
+        scope="auth_login",
+        limit=10,
+        window_seconds=300,
+        identifiers=(username_or_email.lower(),),
+    ):
+        return _rate_limit_response()
     try:
         user = user_service._authenticate_password_user(username_or_email, password)
     except ValueError as exc:
@@ -97,6 +115,8 @@ def login_user(request: HttpRequest) -> HttpResponse:
 def password_reset_request(request: HttpRequest) -> HttpResponse:
     if request.method != "POST":
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    if is_rate_limited(request, scope="auth_password_reset", limit=5, window_seconds=300):
+        return _rate_limit_response()
     try:
         payload = json.loads(request.body.decode("utf-8"))
     except json.JSONDecodeError:
@@ -135,6 +155,8 @@ def verify_email(request: HttpRequest) -> HttpResponse:
 def password_reset_confirm(request: HttpRequest) -> HttpResponse:
     if request.method != "POST":
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    if is_rate_limited(request, scope="auth_password_reset_confirm", limit=10, window_seconds=300):
+        return _rate_limit_response()
     try:
         payload = json.loads(request.body.decode("utf-8"))
     except json.JSONDecodeError:
@@ -239,6 +261,8 @@ def author_verification_code(request: HttpRequest) -> HttpResponse:
 def vk_auth(request: HttpRequest) -> HttpResponse:
     if request.method != "POST":
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    if is_rate_limited(request, scope="auth_vk", limit=20, window_seconds=300):
+        return _rate_limit_response()
     try:
         payload = json.loads(request.body.decode("utf-8"))
     except json.JSONDecodeError:

@@ -32,6 +32,7 @@ from communities.models import Comun
 from feeds.models import Author, Post
 from post.service import send_email
 from telegram_integration import service as telegram_service
+from telegram_integration.media import is_private_telegram_file_url
 from users.models import (
     AuthorAdmin,
     AuthorVerificationCode,
@@ -397,6 +398,8 @@ def _update_site_profile(
     if avatar_url is not None:
         next_avatar_url = str(avatar_url or "").strip()
         if next_avatar_url and not re.match(r"^https?://", next_avatar_url):
+            raise ValueError("invalid avatar_url")
+        if is_private_telegram_file_url(next_avatar_url):
             raise ValueError("invalid avatar_url")
         if len(next_avatar_url) > 500:
             raise ValueError("avatar_url too long")

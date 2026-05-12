@@ -183,7 +183,7 @@
             >
               <div class="flex items-center gap-2 text-sm text-slate-600 dark:text-zinc-400">
                 <span>Crossposts</span>
-                <div class="h-px flex-1 bg-slate-200 dark:bg-zinc-800" />
+                <div class="h-px flex-1 bg-slate-200 dark:bg-zinc-800"></div>
                 <span>{post.crossposts.length}</span>
               </div>
               

@@ -104,6 +104,11 @@
   let settingsLogoInput: HTMLInputElement | null = null
   let settingsTab: ComunSettingsTabKey = 'description'
 
+  const patchSettingsDraft = (patch: Partial<BackendComun>) => {
+    if (!settingsDraft) return
+    settingsDraft = { ...settingsDraft, ...patch }
+  }
+
   const cloneComun = (value: BackendComun | null): BackendComun | null =>
     value ? JSON.parse(JSON.stringify(value)) : null
 
@@ -1250,9 +1255,8 @@
                   class="mt-0.5"
                   checked={Boolean(settingsDraft.forbid_external_links)}
                   on:change={() =>
-                    (settingsDraft = {
-                      ...settingsDraft,
-                      forbid_external_links: !Boolean(settingsDraft.forbid_external_links),
+                    patchSettingsDraft({
+                      forbid_external_links: !Boolean(settingsDraft?.forbid_external_links),
                     })}
                 />
                 <span class="min-w-0">
@@ -1497,9 +1501,8 @@
                 class="mt-0.5"
                 checked={Boolean(settingsDraft.glossary_enabled)}
                 on:change={() =>
-                  (settingsDraft = {
-                    ...settingsDraft,
-                    glossary_enabled: !Boolean(settingsDraft.glossary_enabled),
+                  patchSettingsDraft({
+                    glossary_enabled: !Boolean(settingsDraft?.glossary_enabled),
                   })}
               />
               <span class="min-w-0">
@@ -1512,9 +1515,8 @@
                 class="mt-0.5"
                 checked={Boolean(settingsDraft.roadmap_enabled ?? false)}
                 on:change={() =>
-                  (settingsDraft = {
-                    ...settingsDraft,
-                    roadmap_enabled: !Boolean(settingsDraft.roadmap_enabled ?? false),
+                  patchSettingsDraft({
+                    roadmap_enabled: !Boolean(settingsDraft?.roadmap_enabled ?? false),
                   })}
               />
               <span class="min-w-0">
@@ -1541,7 +1543,7 @@
                   customItemsTitle="Пользовательские шаблоны"
                   on:change={(event) => setDraftAllowedTemplateTypes(event.detail)}
                   on:action={openCreateCustomTemplateEditor}
-                  on:customitemclick={(event) => openEditCustomTemplateEditor(Number(event.detail))}
+                  on:customitemclick={(event) => openEditCustomTemplateEditor(String(event.detail))}
                 />
                 <div class="flex flex-col gap-2 rounded-xl bg-slate-50 dark:bg-zinc-900/60 px-3 py-3">
                   <label class="flex items-start gap-2 cursor-pointer">
@@ -1550,9 +1552,8 @@
                       class="mt-0.5"
                       checked={Boolean(settingsDraft.only_moderators_can_post)}
                       on:change={() =>
-                        (settingsDraft = {
-                          ...settingsDraft,
-                          only_moderators_can_post: !Boolean(settingsDraft.only_moderators_can_post),
+                        patchSettingsDraft({
+                          only_moderators_can_post: !Boolean(settingsDraft?.only_moderators_can_post),
                         })}
                     />
                     <span class="min-w-0">
@@ -1568,9 +1569,8 @@
                         class="mt-0.5"
                         checked={!settingsDraft.hide_from_home}
                         on:change={() =>
-                          (settingsDraft = {
-                            ...settingsDraft,
-                            hide_from_home: !Boolean(settingsDraft.hide_from_home),
+                          patchSettingsDraft({
+                            hide_from_home: !Boolean(settingsDraft?.hide_from_home),
                           })}
                       />
                       <span class="min-w-0">

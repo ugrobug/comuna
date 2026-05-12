@@ -9,13 +9,13 @@ from communities import views as community_views
 from communities import service as community_service
 from communities.models import Comun, ComunCategory, ComunPostCategoryAssignment
 from django.conf import settings
-from django.core.files.storage import default_storage
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils import timezone
 from django.utils.text import get_valid_filename
 from django.views.decorators.csrf import csrf_exempt
 from PIL import Image, UnidentifiedImageError
 
+from rabotaem_backend.images import save_image_with_variants
 from editor.models import (
     POST_TEMPLATE_TYPE_MOVIE_REVIEW,
     PostPollVote,
@@ -45,6 +45,17 @@ from editor.service import (
 from editor import service as editor_service
 from feeds.models import Post
 from users.models import AuthorAdmin
+
+
+def _absolute_storage_url(request: HttpRequest, relative_url: str) -> str:
+    site_base = (getattr(settings, "SITE_BASE_URL", "") or "").rstrip("/")
+    if site_base and relative_url.startswith("/"):
+        return f"{site_base}{relative_url}"
+    if site_base and not relative_url.startswith(("http://", "https://")):
+        return f"{site_base}/{relative_url.lstrip('/')}"
+    if relative_url.startswith(("http://", "https://")):
+        return relative_url
+    return request.build_absolute_uri(relative_url)
 
 
 def _fv():
@@ -496,15 +507,24 @@ def user_upload(request: HttpRequest) -> HttpResponse:
     if ext not in {".jpg", ".jpeg", ".png", ".webp", ".gif"}:
         ext = ".jpg"
     filename = f"uploads/manual/{base_name}-{secrets.token_hex(8)}{ext}"
-    saved_path = default_storage.save(filename, upload)
-    relative_url = default_storage.url(saved_path)
-    site_base = (getattr(settings, "SITE_BASE_URL", "") or "").rstrip("/")
-    if site_base:
-        url = f"{site_base}{relative_url}"
-    else:
-        url = request.build_absolute_uri(relative_url)
+    upload.seek(0)
+    image_set = save_image_with_variants(data=upload.read(), original_path=filename)
+    url = _absolute_storage_url(request, image_set.default_url)
 
-    return JsonResponse({"ok": True, "url": url})
+    return JsonResponse(
+        {
+            "ok": True,
+            "url": url,
+            "original_url": _absolute_storage_url(request, image_set.original_url),
+            "variants": [
+                {
+                    "width": variant.width,
+                    "url": _absolute_storage_url(request, variant.url),
+                }
+                for variant in image_set.variants
+            ],
+        }
+    )
 
 
 @csrf_exempt

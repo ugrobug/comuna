@@ -92,21 +92,28 @@ export function client({
   })
 }
 
+type FetchFunction = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+
+type ClientOptions = {
+  instanceURL?: string
+  auth?: string
+  func?: FetchFunction
+}
+
+export function getClient(options?: string, func?: FetchFunction): LemmyHttp
+export function getClient(options?: ClientOptions): LemmyHttp
 export function getClient(
-  options?: string | { 
-    instanceURL?: string,
-    auth?: string,
-    func?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
-  }
+  options?: string | ClientOptions,
+  func?: FetchFunction
 ): LemmyHttp {
   if (typeof options === 'string') {
-    return client({ instanceURL: options })
+    return client({ instanceURL: options, func })
   }
 
   return client({
     instanceURL: options?.instanceURL,
     auth: options?.auth,
-    func: options?.func
+    func: options?.func ?? func
   })
 }
 

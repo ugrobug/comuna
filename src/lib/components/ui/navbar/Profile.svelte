@@ -79,7 +79,7 @@
       {#if $notifications.inbox > 0}
         <div
           class="rounded-full w-2 h-2 bg-red-500 absolute top-0 left-0 z-10"
-        />
+        ></div>
       {/if}
     {:else}
       <div class="w-full h-full grid place-items-center">

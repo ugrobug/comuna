@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from html import escape
 from typing import Iterable
 
 from django.conf import settings
@@ -15,6 +16,7 @@ from telegram_integration.media import (
     download_telegram_file_by_path,
     download_telegram_file_by_url,
     extract_telegram_file_path,
+    is_private_telegram_file_url,
 )
 
 IMG_SRC_RE = re.compile(r'<img[^>]+src="([^"]+)"')
@@ -80,12 +82,12 @@ class Command(BaseCommand):
                     local_urls.append(url)
                     continue
 
-                local_url = download_telegram_file_by_url(url)
-                if not local_url:
-                    file_path = extract_telegram_file_path(url)
-                    if file_path:
-                        local_url = download_telegram_file_by_path(file_path, token)
-
+                file_path = extract_telegram_file_path(url)
+                local_url = None
+                if file_path:
+                    local_url = download_telegram_file_by_path(file_path, token)
+                elif url:
+                    local_url = download_telegram_file_by_url(url)
                 if not local_url:
                     file_id = None
                     if index < len(gallery_file_ids):
@@ -95,7 +97,13 @@ class Command(BaseCommand):
                     if file_id:
                         local_url = download_telegram_file_by_id(file_id, token)
 
-                local_urls.append(local_url or url)
+                if local_url:
+                    local_urls.append(local_url)
+                elif is_private_telegram_file_url(url):
+                    local_urls.append("")
+                    changed = True
+                else:
+                    local_urls.append(url)
                 if local_url:
                     changed = True
 
@@ -136,8 +144,11 @@ class Command(BaseCommand):
             nonlocal index
             if index >= len(new_urls):
                 return match.group(0)
-            replacement = match.group(0).replace(match.group(1), new_urls[index])
+            next_url = new_urls[index]
             index += 1
+            if not next_url:
+                return ""
+            replacement = match.group(0).replace(match.group(1), next_url)
             return replacement
 
         return IMG_SRC_RE.sub(replacer, content)
@@ -148,9 +159,9 @@ class Command(BaseCommand):
         if not urls:
             return content
         if len(urls) == 1:
-            media_html = f'<img src="{urls[0]}" alt="" />'
+            media_html = f'<img src="{escape(urls[0], quote=True)}" alt="" />'
         else:
-            gallery_imgs = "".join(f'<img src="{url}" alt="" />' for url in urls)
+            gallery_imgs = "".join(f'<img src="{escape(url, quote=True)}" alt="" />' for url in urls)
             media_html = f'<div class="post-gallery">{gallery_imgs}</div>'
         if content:
             return f"{media_html}<br><br>{content}"

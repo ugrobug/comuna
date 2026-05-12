@@ -7,6 +7,7 @@ from django.contrib.auth import get_user_model
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
+from rabotaem_backend.rate_limit import is_rate_limited
 from telegram_integration import serializers as telegram_serializers
 from telegram_integration.bot import (
     _handle_callback_query,
@@ -45,6 +46,11 @@ def _is_privacy_accepted(value) -> bool:
 
 @csrf_exempt
 def telegram_auth(request: HttpRequest) -> HttpResponse:
+    if is_rate_limited(request, scope="auth_telegram", limit=20, window_seconds=300):
+        return JsonResponse(
+            {"ok": False, "error": "Слишком много попыток. Попробуйте позже."},
+            status=429,
+        )
     if request.method == "GET":
         payload = dict(request.GET.items())
     elif request.method == "POST":

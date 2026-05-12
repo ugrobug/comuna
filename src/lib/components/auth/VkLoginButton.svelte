@@ -141,7 +141,7 @@
         class:is-loading={!scriptLoaded || loading}
         class:is-disabled={disabled}
         aria-label={label}
-      />
+      ></div>
     </div>
 
     {#if loading}

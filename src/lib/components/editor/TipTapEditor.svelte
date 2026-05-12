@@ -1,10 +1,9 @@
 <script lang="ts">
-  import { Editor } from '@tiptap/core'
+  import { Editor, Node as TiptapNode } from '@tiptap/core'
   import StarterKit from '@tiptap/starter-kit'
   import Placeholder from '@tiptap/extension-placeholder'
   import Link from '@tiptap/extension-link'
   import Image from '@tiptap/extension-image'
-  import { Node } from '@tiptap/core'
   import { onMount, onDestroy } from 'svelte'
   import { Button } from 'mono-svelte'
   import TurndownService from 'turndown'
@@ -33,20 +32,20 @@
   })
 
   // Создаем расширение для галереи
-  const Gallery = Node.create({
+  const Gallery = TiptapNode.create({
     name: 'gallery',
     group: 'block',
     content: 'image*',
     isolating: true,
     addCommands() {
       return {
-        insertGallery: () => ({ commands, chain }) => {
+        insertGallery: () => ({ commands }: any) => {
           return commands.insertContent({
             type: this.name,
             content: []
           })
         }
-      }
+      } as any
     },
     parseHTML() {
       return [
@@ -60,7 +59,7 @@
     }
   })
 
-  const ImageCompare = Node.create({
+  const ImageCompare = TiptapNode.create({
     name: 'imageCompare',
     group: 'block',
     atom: true,
@@ -189,7 +188,7 @@
     },
   })
 
-  const TelegramEmbed = Node.create({
+  const TelegramEmbed = TiptapNode.create({
     name: 'telegramEmbed',
     group: 'block',
     atom: true,
@@ -379,7 +378,7 @@
     const gallery = target.closest('.post-gallery')
     const isInGallery = gallery !== null
     const isGallery = target.classList.contains('post-gallery') || target === gallery
-    const hasSelection = window.getSelection()?.toString().length > 0
+    const hasSelection = Boolean(window.getSelection()?.toString())
 
     // Сохраняем ссылку на галерею и её позицию
     if ((isGallery || isInGallery) && gallery instanceof HTMLElement) {
@@ -536,6 +535,11 @@
       }
 
       const [beforeFile, afterFile] = files
+      if (!beforeFile || !afterFile) {
+        return
+      }
+      const uploadInstance = $profile.instance || ''
+      const uploadJwt = $profile.jwt || ''
       try {
         isImageUploading = true
         uploadProgress = {
@@ -544,9 +548,9 @@
           percent: 0,
         }
 
-        const beforeUrlRaw = await uploadImage(beforeFile, $profile.instance, $profile.jwt)
+        const beforeUrlRaw = await uploadImage(beforeFile, uploadInstance, uploadJwt)
         uploadProgress = { current: 1, total: 2, percent: 50 }
-        const afterUrlRaw = await uploadImage(afterFile, $profile.instance, $profile.jwt)
+        const afterUrlRaw = await uploadImage(afterFile, uploadInstance, uploadJwt)
         uploadProgress = { current: 2, total: 2, percent: 100 }
 
         if (!beforeUrlRaw || !afterUrlRaw) {
@@ -603,7 +607,7 @@
   const handleClickOutside = (e: MouseEvent) => {
     if (showContextMenu && 
         contextMenuRef && 
-        !contextMenuRef.contains(e.target as Node) && 
+        !contextMenuRef.contains(e.target as globalThis.Node) && 
         !(e.target as HTMLElement).closest('.context-menu')) {
       hideContextMenu()
     }
@@ -785,10 +789,11 @@
 
   const deleteImage = () => {
     if (selectedImage && editor) {
+      const imageSrc = selectedImage.src
       // Находим позицию изображения в документе
       let imagePos = -1
       editor.state.doc.descendants((node, pos) => {
-        if (node.type.name === 'image' && node.attrs.src === selectedImage.src) {
+        if (node.type.name === 'image' && node.attrs.src === imageSrc) {
           imagePos = pos
           return false
         }
@@ -839,9 +844,10 @@
 
   const updateImageUrl = () => {
     if (selectedImage && editor && !contextType.isInGallery) {
+      const imageSrc = selectedImage.src
       let imagePos = -1
       editor.state.doc.descendants((node, pos) => {
-        if (node.type.name === 'image' && node.attrs.src === selectedImage.src) {
+        if (node.type.name === 'image' && node.attrs.src === imageSrc) {
           imagePos = pos
           return false
         }
@@ -1245,19 +1251,21 @@
     <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div class="bg-white dark:bg-slate-800 rounded-lg p-4 w-full max-w-md">
         <div class="mb-4">
-          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+          <label for="image-alt-input" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
             ALT изображения
           </label>
           <input
+            id="image-alt-input"
             type="text"
             bind:value={editingImageAlt}
             placeholder="Что на этой картинке?"
             class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-slate-700 dark:border-slate-600 mb-4"
           />
-          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+          <label for="image-title-input" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
             Title изображения
           </label>
           <input
+            id="image-title-input"
             type="text"
             bind:value={editingImageTitle}
             placeholder="Подсказка при наведении"
@@ -1292,10 +1300,11 @@
     <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div class="bg-white dark:bg-slate-800 rounded-lg p-4 w-full max-w-md">
         <div class="mb-4">
-          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+          <label for="image-url-input" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
             URL изображения
           </label>
           <input
+            id="image-url-input"
             type="url"
             bind:value={editingImageUrl}
             placeholder="https://example.com"
@@ -1589,7 +1598,7 @@
   <div
     class="min-h-[400px] p-3 rounded-lg focus-within:ring-2 focus-within:ring-blue-500 transition-all duration-200 editor-content bg-white dark:bg-slate-800 border dark:border-slate-700"
     bind:this={element}
-  />
+  ></div>
 
   {#if false}
   <div class="mt-2">
@@ -1712,17 +1721,6 @@
     position: relative;
   }
 
-  .editor-content {
-    /* padding-left: 2.5rem; */
-  }
-
-  .floating-toolbar {
-    position: fixed;
-    transform: translateX(-50%) translateY(-100%);
-    z-index: 50;
-    pointer-events: all;
-  }
-
   .toolbar {
     display: flex;
     flex-wrap: wrap;
@@ -1824,8 +1822,8 @@
     margin-top: 4px;
   }
 
-  :global(.dark) .ProseMirror img[title]:hover::after,
-  :global(.dark) .ProseMirror img[alt]:hover::before {
+  :global(.dark .ProseMirror img[title]:hover::after),
+  :global(.dark .ProseMirror img[alt]:hover::before) {
     background: rgba(255, 255, 255, 0.9);
     color: black;
   }
@@ -2016,29 +2014,29 @@
   }
 
   /* Темная тема */
-  :global(.dark) .ProseMirror {
+  :global(.dark .ProseMirror) {
     color: #e5e7eb;
   }
 
-  :global(.dark) .ProseMirror blockquote {
+  :global(.dark .ProseMirror blockquote) {
     border-color: #374151;
     color: #9ca3af;
     background: rgba(255, 255, 255, 0.02);
   }
 
-  :global(.dark) .ProseMirror pre {
+  :global(.dark .ProseMirror pre) {
     background-color: #1f2937;
   }
 
-  :global(.dark) .ProseMirror code {
+  :global(.dark .ProseMirror code) {
     background-color: rgba(255, 255, 255, 0.1);
   }
 
-  :global(.dark) .ProseMirror a {
+  :global(.dark .ProseMirror a) {
     color: #60a5fa;
   }
 
-  :global(.dark) .ProseMirror a:hover {
+  :global(.dark .ProseMirror a:hover) {
     color: #93c5fd;
   }
 
@@ -2073,12 +2071,12 @@
     border-color: rgba(37, 99, 235, 0.3);
   }
 
-  :global(.dark) .ProseMirror .post-gallery {
+  :global(.dark .ProseMirror .post-gallery) {
     background: rgba(96, 165, 250, 0.05);
     border-color: rgba(96, 165, 250, 0.2);
   }
 
-  :global(.dark) .ProseMirror .post-gallery:hover {
+  :global(.dark .ProseMirror .post-gallery:hover) {
     background: rgba(96, 165, 250, 0.08);
     border-color: rgba(96, 165, 250, 0.3);
   }
@@ -2099,7 +2097,7 @@
     aspect-ratio: 16 / 9;
   }
 
-  :global(.dark) .ProseMirror .post-image-compare__viewport {
+  :global(.dark .ProseMirror .post-image-compare__viewport) {
     border-color: rgb(63 63 70);
     background: rgb(24 24 27);
   }
@@ -2153,7 +2151,7 @@
     box-shadow: 0 6px 18px rgba(15, 23, 42, 0.28);
   }
 
-  :global(.dark) .ProseMirror .post-image-compare__knob {
+  :global(.dark .ProseMirror .post-image-compare__knob) {
     border-color: rgba(113, 113, 122, 0.85);
     background: rgba(24, 24, 27, 0.95);
   }
@@ -2174,7 +2172,7 @@
     text-align: center;
   }
 
-  :global(.dark) .ProseMirror .post-image-compare__caption {
+  :global(.dark .ProseMirror .post-image-compare__caption) {
     color: rgb(161 161 170);
   }
 
@@ -2214,14 +2212,9 @@
     z-index: 10;
   }
 
-  :global(.dark) .ProseMirror img[data-url]:hover::after {
+  :global(.dark .ProseMirror img[data-url]:hover::after) {
     background: rgba(255, 255, 255, 0.9);
     color: black;
-  }
-
-  /* Стили для прогресс-бара */
-  .progress-bar {
-    transition: width 0.3s ease;
   }
 
   /* Стили для спиннера */

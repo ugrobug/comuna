@@ -127,9 +127,9 @@
       </div>
 
       <div class="flex items-center gap-3 text-xs text-slate-400 dark:text-zinc-500 mt-4">
-        <span class="h-px flex-1 bg-slate-200 dark:bg-zinc-800" />
+        <span class="h-px flex-1 bg-slate-200 dark:bg-zinc-800"></span>
         или по почте
-        <span class="h-px flex-1 bg-slate-200 dark:bg-zinc-800" />
+        <span class="h-px flex-1 bg-slate-200 dark:bg-zinc-800"></span>
       </div>
 
       <form on:submit|preventDefault={handleLogin} class="flex flex-col gap-5 mt-3">
@@ -181,9 +181,9 @@
       </div>
 
       <div class="flex items-center gap-3 text-xs text-slate-400 dark:text-zinc-500 mt-4">
-        <span class="h-px flex-1 bg-slate-200 dark:bg-zinc-800" />
+        <span class="h-px flex-1 bg-slate-200 dark:bg-zinc-800"></span>
         или через Telegram / VK
-        <span class="h-px flex-1 bg-slate-200 dark:bg-zinc-800" />
+        <span class="h-px flex-1 bg-slate-200 dark:bg-zinc-800"></span>
       </div>
 
       <div class="mt-3 flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300">

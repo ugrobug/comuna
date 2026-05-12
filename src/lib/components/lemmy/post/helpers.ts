@@ -25,6 +25,18 @@ export const optimizeImageURL = (
   try {
     const cleanUrl = urlStr.replace(/^(https?:\/\/)+(https?\/\/)/, '$1')
     const url = new URL(cleanUrl)
+    const localVariantMatch = url.pathname.match(/-(320|640|960|1280|1920)\.webp$/)
+    if (url.pathname.startsWith('/media/') || url.pathname.includes('/media/')) {
+      if (localVariantMatch && width > 0) {
+        const currentWidth = Number(localVariantMatch[1])
+        const closest = Math.min(
+          findClosestNumber([320, 640, 960, 1280, 1920], width),
+          currentWidth
+        )
+        url.pathname = url.pathname.replace(/-(320|640|960|1280|1920)\.webp$/, `-${closest}.webp`)
+      }
+      return url.toString()
+    }
 
     if (!url.searchParams.has('format')) url.searchParams.set('format', 'webp')
 
@@ -44,7 +56,6 @@ export const optimizeImageURL = (
 
     return url.toString()
   } catch (e) {
-    console.log(e)
     return urlStr
   }
 }

@@ -786,7 +786,7 @@
       </div>
     {/if}
   {/if}-->
-  <div class="mt-auto" />
+  <div class="mt-auto"></div>
   <div class="flex flex-row items-center gap-2 w-full">
     <div class="flex flex-col flex-1 gap-1">
       <Button

@@ -41,7 +41,7 @@
 
   type Result = PostView | CommentView | PersonView | CommunityView
 
-  export let data
+  export let data: any
 
   let query = data.query || ''
   let searchElement: HTMLInputElement
@@ -252,7 +252,7 @@
       {/if}
     {/each}
   </div>
-  <div class="mt-4" />
+  <div class="mt-4"></div>
   {#if data.results.length > 0}
     <Pageination
       bind:page={pageNum}

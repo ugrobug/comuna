@@ -44,6 +44,7 @@
     let baseUrl = buildHomeFeedUrl({
       hideRead: effectiveHideRead,
       onlyRead: readOnly,
+      card: true,
     })
     if (feedType === 'favorites') {
       baseUrl = buildFavoritesFeedUrl()

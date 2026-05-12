@@ -11,7 +11,9 @@ export const siteUserPostToBackendPost = (post: SiteUserPost): BackendPost => ({
   post_rating: post.post_rating ?? null,
   created_at: post.created_at,
   tags: (post.tags ?? []).map((tag) =>
-    typeof tag === 'string' ? { name: tag } : { name: tag.name, lemma: tag.lemma ?? null }
+    typeof tag === 'string'
+      ? { id: 0, name: tag }
+      : { id: ('id' in tag ? Number(tag.id) : 0) || 0, name: tag.name, lemma: tag.lemma ?? null }
   ),
   author: {
     username: post.author?.username || 'author',

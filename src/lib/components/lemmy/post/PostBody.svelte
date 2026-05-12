@@ -104,6 +104,8 @@
   export let clickThrough = false
   export let showFullBody = false
   export let collapsible = false
+  $: void view
+  $: void clickThrough
   
   let htmlElement = 'div'
 
@@ -1874,7 +1876,7 @@
       const bodyRows = withHeadings ? rows.slice(1) : rows
 
       const headHtml = headRow?.length
-        ? `<thead><tr>${headRow.map((cell) => `<th>${cell || '&nbsp;'}</th>`).join('')}</tr></thead>`
+        ? `<thead><tr>${headRow.map((cell: string) => `<th>${cell || '&nbsp;'}</th>`).join('')}</tr></thead>`
         : ''
       const bodyHtml = bodyRows.length
         ? `<tbody>${bodyRows
@@ -2806,15 +2808,16 @@
       }
       void handlePollClick(event)
     }
-    const keydownHandler = (event: KeyboardEvent) => {
-      if (event.key !== 'Enter' && event.key !== ' ') return
-      const target = event.target as HTMLElement | null
+    const keydownHandler: EventListener = (event) => {
+      const keyboardEvent = event as KeyboardEvent
+      if (keyboardEvent.key !== 'Enter' && keyboardEvent.key !== ' ') return
+      const target = keyboardEvent.target as HTMLElement | null
       const spoilerTrigger = target?.closest('.post-spoiler__trigger') as HTMLElement | null
       if (!spoilerTrigger || !element?.contains(spoilerTrigger)) return
       const spoilerElement = spoilerTrigger.closest('.post-spoiler') as HTMLElement | null
       if (!spoilerElement || !element?.contains(spoilerElement)) return
-      event.preventDefault()
-      event.stopPropagation()
+      keyboardEvent.preventDefault()
+      keyboardEvent.stopPropagation()
       toggleSpoilerBlock(spoilerElement)
     }
     element?.addEventListener('click', clickHandler)
@@ -4523,11 +4526,16 @@
   }
 
   :global(.post-content ul) {
-    @apply list-disc list-outside pl-6 my-4 space-y-2;
+    @apply list-disc list-outside pl-6 my-4;
   }
 
   :global(.post-content ol) {
-    @apply list-decimal list-outside pl-6 my-4 space-y-2;
+    @apply list-decimal list-outside pl-6 my-4;
+  }
+
+  :global(.post-content ul li + li),
+  :global(.post-content ol li + li) {
+    margin-top: 0.5rem;
   }
 
   :global(.post-content ul.checklist) {

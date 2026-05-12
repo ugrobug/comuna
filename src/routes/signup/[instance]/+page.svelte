@@ -25,7 +25,7 @@
 
   export let data
 
-  const instance = $page.params.instance
+  const instance = $page.params.instance ?? ''
 
   let captchaRequired = data.site_view.local_site.captcha_enabled
 
@@ -76,7 +76,7 @@
       })
 
       if (res?.jwt) {
-        await setUser(res.jwt, $page.params.instance, username)
+        await setUser(res.jwt, instance, username)
 
         toast({ content: $t('toast.logIn'), type: 'success' })
         goto('/')
@@ -181,7 +181,7 @@
                 alt="Captcha"
                 class="w-max"
               />
-              <audio controls src={captchaAudio} />
+              <audio controls src={captchaAudio}></audio>
             {:else}
               <Material
                 class="flex gap-2 dark:text-yellow-200 text-yellow-800 bg-yellow-500/20"

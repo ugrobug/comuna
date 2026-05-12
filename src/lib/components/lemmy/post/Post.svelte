@@ -43,7 +43,7 @@
   export let showFullBody: boolean = false
   export let communityUrlOverride: string | undefined = undefined
   export let userUrlOverride: string | undefined = undefined
-  export let subscribeUrl: string | undefined = undefined
+  export let subscribeUrl: string | null | undefined = undefined
   export let subscribeLabel: string = 'Подписаться'
   export let disableUserLink: boolean | undefined = undefined
 
@@ -132,6 +132,7 @@
 
   const queueVisibleRead = () => {
     if (!isBackendPost) return
+    if (!$siteToken || !$userSettings.markPostsAsRead) return
     if (readOverride ?? post.read) return
     if (readTimer) return
     readTimer = setTimeout(async () => {
@@ -142,6 +143,7 @@
 
   onMount(() => {
     if (typeof IntersectionObserver === 'undefined') return
+    if (!isBackendPost || !$siteToken || !$userSettings.markPostsAsRead) return
     if (!postElement) return
     visibilityObserver = new IntersectionObserver(
       ([entry]) => {
@@ -229,7 +231,7 @@
     {communityUrlOverride}
     {userUrlOverride}
     disableUserLink={autoDisableUserLink}
-    {subscribeUrl}
+    subscribeUrl={subscribeUrl ?? undefined}
     {subscribeLabel}
     authorNotifyCommentsEnabled={isBackendPost ? backendAuthorNotifyCommentsEnabled : undefined}
   >
@@ -463,7 +465,7 @@
     </div>
   {/if}
 
-  <div class="absolute overflow-hidden inset-0 sm:rounded-xl opacity-0 -z-50 no-list-margin" />
+  <div class="absolute overflow-hidden inset-0 sm:rounded-xl opacity-0 -z-50 no-list-margin"></div>
 </div>
 
 <style lang="postcss">

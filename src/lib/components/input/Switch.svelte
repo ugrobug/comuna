@@ -61,7 +61,7 @@
       {#if headless && option == selected}
         <div
           class="absolute -bottom-1 left-0 w-full border-b-2 rounded-t-sm border-black dark:border-white"
-        />
+        ></div>
       {/if}
     </button>
   {/each}

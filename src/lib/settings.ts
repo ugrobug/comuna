@@ -6,11 +6,6 @@ import { browser } from '$app/environment'
 import type { Link } from './components/ui/navbar/link'
 import { buildAuthFeedSettingsUrl } from './api/backend'
 
-console.log('Using the following default settings from the environment:')
-console.log(env)
-console.log('PUBLIC_DEFAULT_FEED:', env.PUBLIC_DEFAULT_FEED)
-console.log('Default feed type:', (env.PUBLIC_DEFAULT_FEED as 'All' | 'Subscribed' | 'Local') ?? 'Local')
-
 export type View = 'card' | 'cozy' | 'list' | 'compact'
 
 export const SSR_ENABLED = env.PUBLIC_SSR_ENABLED?.toLowerCase() == 'true'

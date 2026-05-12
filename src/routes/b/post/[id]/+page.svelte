@@ -208,9 +208,18 @@
     }
   }
 
+  const schedulePostVisitTracking = (postId: number) => {
+    const run = () => void trackPostVisit(postId)
+    if ('requestIdleCallback' in window) {
+      window.requestIdleCallback(run, { timeout: 2500 })
+      return
+    }
+    globalThis.setTimeout(run, 1000)
+  }
+
   $: if (browser && data?.post?.id && data.post.id !== lastVisitedPostId) {
     lastVisitedPostId = data.post.id
-    void trackPostVisit(data.post.id)
+    schedulePostVisitTracking(data.post.id)
   }
 </script>
 

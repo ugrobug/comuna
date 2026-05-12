@@ -199,7 +199,7 @@
               <div class="pt-1">
                 <span
                   class="block w-2 h-2 rounded-full {item.is_read ? 'bg-slate-300 dark:bg-zinc-700' : 'bg-blue-500'}"
-                />
+                ></span>
               </div>
               <div class="min-w-0 flex-1">
                 <div class="text-sm font-medium text-slate-900 dark:text-zinc-100">

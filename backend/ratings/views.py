@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from django.http import HttpRequest, HttpResponse, JsonResponse
 
+from rabotaem_backend.cache import anonymous_cache
 from ratings import serializers as ratings_serializers
 from ratings import service as ratings_service
 
@@ -31,14 +32,17 @@ def _top_authors_response(request: HttpRequest, *, default_period: str = "month"
     )
 
 
+@anonymous_cache(prefix="top-authors", seconds=120)
 def top_authors(request: HttpRequest) -> HttpResponse:
     return _top_authors_response(request)
 
 
+@anonymous_cache(prefix="top-authors-month", seconds=120)
 def top_authors_month(request: HttpRequest) -> HttpResponse:
     return _top_authors_response(request, default_period="month")
 
 
+@anonymous_cache(prefix="top-comuns", seconds=120)
 def top_comuns(request: HttpRequest) -> HttpResponse:
     limit = _parse_top_authors_limit(request.GET.get("limit"), default=5)
     comuns, total_comuns = _list_top_comuns(limit=limit)

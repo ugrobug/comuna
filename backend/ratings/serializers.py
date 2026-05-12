@@ -7,6 +7,7 @@ from django.http import HttpRequest
 from django.db.models import Sum
 
 from ratings.service import author_rating_value
+from telegram_integration.media import safe_public_url
 
 
 def _author_avatar_url(request: HttpRequest | None, author: Any) -> str | None:
@@ -21,7 +22,7 @@ def _author_avatar_url(request: HttpRequest | None, author: Any) -> str | None:
             return avatar_image.url
         except Exception:
             pass
-    return getattr(author, "avatar_url", None) or None
+    return safe_public_url(getattr(author, "avatar_url", None))
 
 
 def serialize_top_author_item(

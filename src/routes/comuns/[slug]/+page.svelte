@@ -55,6 +55,11 @@
   const ROADMAP_PREVIEW_LIMIT = 4
   const ROADMAP_PREVIEW_FETCH_LIMIT = 8
 
+  const patchSettingsDraft = (patch: Partial<BackendComun>) => {
+    if (!settingsDraft) return
+    settingsDraft = { ...settingsDraft, ...patch }
+  }
+
   type ComunCategoryCount = {
     category_id?: number | null
     slug?: string | null
@@ -398,8 +403,8 @@
     return nextStages
   }
 
-  const roadmapStageStyleVars = (stageKey: RoadmapStageKey) => {
-    switch (stageKey) {
+  const roadmapStageStyleVars = (stageKey: string) => {
+    switch (stageKey as RoadmapStageKey) {
       case 'suggestions':
         return '--roadmap-stage-h: 201; --roadmap-stage-s: 88%; --roadmap-stage-l: 47%;'
       case 'backlog':
@@ -534,8 +539,8 @@
     return new Intl.NumberFormat('ru-RU').format(normalized)
   }
 
-  const getRoadmapPreviewState = (stageKey: RoadmapStageKey): RoadmapPreviewState =>
-    roadmapPreviewStates[stageKey] ?? { loading: false, error: null, posts: [] }
+  const getRoadmapPreviewState = (stageKey: string): RoadmapPreviewState =>
+    roadmapPreviewStates[stageKey as RoadmapStageKey] ?? { loading: false, error: null, posts: [] }
 
   const openRoadmapSubmitFlow = () => {
     if (!comun?.slug) return
@@ -1170,7 +1175,7 @@
             <button
               type="button"
               class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 text-slate-700 transition hover:bg-slate-50 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-800/60"
-              on:click={() => goto(`/comuns/${comun.slug}/settings`)}
+              on:click={() => comun?.slug && goto(`/comuns/${comun.slug}/settings`)}
               title="Настройки сообщества"
               aria-label="Настройки сообщества"
             >
@@ -1274,7 +1279,7 @@
     onSubmit={openRoadmapSubmitFlow}
   />
 
-  {#if comun?.welcome_post}
+  {#if comun?.welcome_post && welcomePostView}
     <section class="rounded-2xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/60 dark:bg-blue-950/20 p-4 sm:p-5">
       <div class="mb-3 text-sm font-semibold text-blue-800 dark:text-blue-300">
         Приветственный пост
@@ -1401,7 +1406,7 @@
                 <Button
                   color="ghost"
                   size="sm"
-                  on:click={() => (settingsDraft = { ...settingsDraft, logo_url: '' })}
+                  on:click={() => patchSettingsDraft({ logo_url: '' })}
                   disabled={settingsSaving || settingsLogoUploading}
                 >
                   Убрать
@@ -1453,9 +1458,8 @@
             type="checkbox"
             checked={Boolean(settingsDraft.only_moderators_can_post)}
             on:change={() =>
-              (settingsDraft = {
-                ...settingsDraft,
-                only_moderators_can_post: !Boolean(settingsDraft.only_moderators_can_post),
+              patchSettingsDraft({
+                only_moderators_can_post: !Boolean(settingsDraft?.only_moderators_can_post),
               })}
             class="mt-0.5"
           />
@@ -1477,9 +1481,8 @@
                 type="checkbox"
                 checked={!settingsDraft.hide_from_home}
                 on:change={() =>
-                  (settingsDraft = {
-                    ...settingsDraft,
-                    hide_from_home: !Boolean(settingsDraft.hide_from_home),
+                  patchSettingsDraft({
+                    hide_from_home: !Boolean(settingsDraft?.hide_from_home),
                   })}
                 class="mt-0.5"
               />

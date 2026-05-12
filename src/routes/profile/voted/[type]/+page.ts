@@ -12,7 +12,9 @@ export async function load({ url, params, fetch }) {
     feed: await postFeed({
       id: 'votes',
       request: {
+        type_: 'All',
         sort: 'New',
+        limit: 20,
         liked_only: upvoted || undefined,
         disliked_only: !upvoted || undefined,
       },
