@@ -14,6 +14,7 @@
   } from '$lib/postTemplates'
 
   export let template: BugReportTemplate
+  export let fallbackTitle = ''
   export let compact = false
   export let canManageStatus = false
   export let postId: number | null = null
@@ -36,7 +37,10 @@
   $: statusTone = bugReportStatusTone(selectedStatus)
   $: platformLabels = bugReportPlatformLabels(data.platforms)
   $: browserLabels = bugReportBrowserLabels(data.browsers)
-  $: hasMeta = platformLabels.length > 0 || browserLabels.length > 0
+  $: metaParts = [
+    platformLabels.length ? `Платформа: ${platformLabels.join(', ')}` : '',
+    browserLabels.length ? `Браузер: ${browserLabels.join(', ')}` : '',
+  ].filter(Boolean)
 
   const updateStatus = async (event: Event) => {
     const nextStatus = (event.currentTarget as HTMLSelectElement).value as BugReportStatus
@@ -75,7 +79,11 @@
 
 <section class:bug-report-card={true} class:is-compact={compact}>
   <div class="bug-report-card__surface">
-    <div class="bug-report-card__topline">
+    {#if fallbackTitle}
+      <h2 class="bug-report-card__title">{fallbackTitle}</h2>
+    {/if}
+
+    <div class="bug-report-card__meta-line">
       {#if canManageStatus}
         <label class={`bug-report-card__status-control tone-${statusTone}`}>
           <select
@@ -92,35 +100,14 @@
       {:else}
         <div class={`bug-report-card__status tone-${statusTone}`}>{bugReportStatusLabel(selectedStatus)}</div>
       {/if}
+
+      {#each metaParts as part}
+        <span class="bug-report-card__meta-part">{part}</span>
+      {/each}
     </div>
+
     {#if statusError}
       <div class="bug-report-card__status-error">{statusError}</div>
-    {/if}
-
-    {#if hasMeta}
-      <div class="bug-report-card__meta">
-        {#if platformLabels.length}
-          <div class="bug-report-card__meta-group">
-            <div class="bug-report-card__meta-label">Платформы</div>
-            <div class="bug-report-card__chips">
-              {#each platformLabels as label}
-                <span class="bug-report-card__chip">{label}</span>
-              {/each}
-            </div>
-          </div>
-        {/if}
-
-        {#if browserLabels.length}
-          <div class="bug-report-card__meta-group">
-            <div class="bug-report-card__meta-label">Браузеры</div>
-            <div class="bug-report-card__chips">
-              {#each browserLabels as label}
-                <span class="bug-report-card__chip">{label}</span>
-              {/each}
-            </div>
-          </div>
-        {/if}
-      </div>
     {/if}
 
     {#if !compact}
@@ -146,29 +133,53 @@
   }
 
   .bug-report-card__surface {
-    border-radius: 28px;
-    border: 1px solid rgba(191, 143, 43, 0.45);
-    background:
-      radial-gradient(circle at top right, rgba(191, 143, 43, 0.18), transparent 40%),
-      linear-gradient(145deg, #252833 0%, #2f3a51 100%);
-    box-shadow: 0 18px 44px rgba(12, 18, 34, 0.22);
-    padding: 1.25rem;
-    color: #f8fafc;
+    color: #111827;
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: 0.75rem;
   }
 
   .bug-report-card.is-compact .bug-report-card__surface {
-    border-radius: 22px;
-    padding: 1rem 1.1rem;
-    gap: 0.8rem;
+    gap: 0.55rem;
   }
 
-  .bug-report-card__topline {
+  .bug-report-card__title {
+    margin: 0;
+    color: #111827;
+    font-size: clamp(1.35rem, 2vw, 1.9rem);
+    font-weight: 800;
+    line-height: 1.18;
+    letter-spacing: -0.03em;
+  }
+
+  .bug-report-card.is-compact .bug-report-card__title {
+    font-size: 1.2rem;
+  }
+
+  .bug-report-card__meta-line {
     display: flex;
     align-items: center;
     justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+    color: #4b5563;
+    font-size: 0.92rem;
+    line-height: 1.35;
+  }
+
+  .bug-report-card__meta-part {
+    display: inline-flex;
+    align-items: center;
+    color: #4b5563;
+  }
+
+  .bug-report-card__meta-part::before {
+    content: '';
+    width: 0.25rem;
+    height: 0.25rem;
+    margin-right: 0.55rem;
+    border-radius: 999px;
+    background: #c7a65b;
   }
 
   .bug-report-card__status,
@@ -180,9 +191,8 @@
     border-radius: 999px;
     font-size: 0.84rem;
     font-weight: 700;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    letter-spacing: 0.01em;
+    border: 1px solid rgba(17, 24, 39, 0.08);
   }
 
   .bug-report-card__status-control select {
@@ -192,7 +202,6 @@
     color: inherit;
     font: inherit;
     letter-spacing: inherit;
-    text-transform: inherit;
     outline: none;
     cursor: pointer;
   }
@@ -205,43 +214,30 @@
   .bug-report-card__status.tone-amber,
   .bug-report-card__status-control.tone-amber {
     background: rgba(245, 158, 11, 0.16);
-    color: #fde68a;
+    color: #92400e;
   }
 
   .bug-report-card__status.tone-blue,
   .bug-report-card__status-control.tone-blue {
     background: rgba(59, 130, 246, 0.16);
-    color: #bfdbfe;
+    color: #1d4ed8;
   }
 
   .bug-report-card__status.tone-green,
   .bug-report-card__status-control.tone-green {
     background: rgba(34, 197, 94, 0.16);
-    color: #bbf7d0;
+    color: #15803d;
   }
 
   .bug-report-card__status.tone-red,
   .bug-report-card__status-control.tone-red {
     background: rgba(239, 68, 68, 0.16);
-    color: #fecaca;
+    color: #b91c1c;
   }
 
   .bug-report-card__status-error {
-    margin-top: -0.45rem;
-    color: #fecaca;
+    color: #b91c1c;
     font-size: 0.82rem;
-  }
-
-  .bug-report-card__meta {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 0.9rem;
-  }
-
-  .bug-report-card__meta-group {
-    display: flex;
-    flex-direction: column;
-    gap: 0.55rem;
   }
 
   .bug-report-card__meta-label {
@@ -249,25 +245,7 @@
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: rgba(248, 250, 252, 0.68);
-  }
-
-  .bug-report-card__chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.45rem;
-  }
-
-  .bug-report-card__chip {
-    display: inline-flex;
-    align-items: center;
-    padding: 0.35rem 0.7rem;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    color: #f8fafc;
-    font-size: 0.86rem;
-    line-height: 1.1;
+    color: #6b7280;
   }
 
   .bug-report-card__code-wrap,
@@ -281,10 +259,10 @@
     margin: 0;
     white-space: pre-wrap;
     word-break: break-word;
-    border-radius: 18px;
-    border: 1px solid rgba(191, 143, 43, 0.24);
-    background: rgba(16, 23, 39, 0.72);
-    color: #fde68a;
+    border-radius: 14px;
+    border: 1px solid rgba(17, 24, 39, 0.1);
+    background: #f8fafc;
+    color: #374151;
     padding: 0.95rem 1rem;
     font-size: 0.86rem;
     line-height: 1.45;
@@ -294,21 +272,16 @@
   .bug-report-card__image {
     width: 100%;
     display: block;
-    border-radius: 20px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    border: 1px solid rgba(17, 24, 39, 0.1);
     object-fit: cover;
     max-height: 24rem;
-    background: rgba(15, 23, 42, 0.6);
+    background: #f8fafc;
   }
 
   @media (max-width: 640px) {
-    .bug-report-card__surface {
-      border-radius: 24px;
-      padding: 1rem;
-    }
-
-    .bug-report-card__meta {
-      grid-template-columns: 1fr;
+    .bug-report-card__meta-line {
+      gap: 0.45rem;
     }
   }
 </style>

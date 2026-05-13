@@ -37,6 +37,7 @@ import {
 {:else if isBugReportTemplate(template)}
   <BugReportTemplateHeader
     {template}
+    {fallbackTitle}
     {compact}
     canManageStatus={canManageBugReportStatus}
     {postId}
