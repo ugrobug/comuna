@@ -8,6 +8,7 @@
   import type { ComponentType } from 'svelte'
   import SignupForm from './SignupForm.svelte'
   import ResetPasswordForm from './ResetPasswordForm.svelte'
+  import { Envelope, Icon } from 'svelte-hero-icons'
 
   export let open = false
   export let initialMode: 'login' | 'signup' = 'login'
@@ -77,6 +78,18 @@
 
   $: if (authMode !== 'signup' && signupMethod !== 'options') {
     signupMethod = 'options'
+  }
+
+  const requireSignupPrivacyAcceptance = (onAccepted: () => void) => {
+    if (signupPrivacyAccepted) {
+      onAccepted()
+      return
+    }
+
+    toast({
+      content: 'Сначала примите политику обработки персональных данных.',
+      type: 'info',
+    })
   }
 </script>
 
@@ -248,10 +261,13 @@
           />
           <button
             type="button"
-            class="inline-flex w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-900 transition hover:border-slate-300 hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100 dark:hover:border-zinc-700 dark:hover:bg-zinc-900"
-            on:click={() => (signupMethod = 'email')}
+            class="inline-flex w-full items-center justify-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-900 transition hover:border-slate-300 hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100 dark:hover:border-zinc-700 dark:hover:bg-zinc-900"
+            on:click={() => requireSignupPrivacyAcceptance(() => (signupMethod = 'email'))}
           >
-            Зарегистрироваться через почту
+            <span class="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-zinc-200">
+              <Icon src={Envelope} size="18" solid />
+            </span>
+            <span>Зарегистрироваться через почту</span>
           </button>
         </div>
       {/if}
