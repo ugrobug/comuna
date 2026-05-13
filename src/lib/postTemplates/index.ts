@@ -105,7 +105,6 @@ export type BugReportTemplateData = {
   browsers?: string[]
   error_code?: string
   screenshot_url?: string
-  description?: string
 }
 
 export type BugReportTemplate = {
@@ -145,7 +144,7 @@ export const POST_TEMPLATE_TYPE_OPTIONS: PostTemplateTypeOption[] = [
   { value: 'movie_review', label: 'Кинообзор' },
   { value: 'post_vote_poll', label: 'Голосование за посты' },
   { value: 'music_release', label: 'Музыкальный релиз' },
-  { value: 'bug_report', label: 'Баг-репорт', description: 'Статус, платформа, браузер, код ошибки и скриншот.' },
+  { value: 'bug_report', label: 'Баг-репорт', description: 'Платформа, браузер, код ошибки и скриншот.' },
   { value: 'tweet', label: 'Твит', description: 'До 280 символов и один медиаблок с изображениями.' },
 ]
 
@@ -725,7 +724,6 @@ export const createEmptyBugReportTemplateData = (): BugReportTemplateData => ({
   browsers: [],
   error_code: '',
   screenshot_url: '',
-  description: '',
 })
 
 const normalizeMovieReviewGenre = (value: unknown): string => {
@@ -919,7 +917,6 @@ export const normalizeBugReportTemplateData = (
     ),
     error_code: trimOrEmpty(value?.error_code).slice(0, 4000),
     screenshot_url: trimOrEmpty(value?.screenshot_url),
-    description: trimOrEmpty(value?.description).slice(0, 4000),
   }
 }
 

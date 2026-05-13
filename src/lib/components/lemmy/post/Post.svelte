@@ -31,7 +31,7 @@
   import { buildPostReadUrl, type BackendPoll, type BackendPostRating } from '$lib/api/backend'
   import { siteToken } from '$lib/siteAuth'
   import PostTemplateHeader from '$lib/components/site/post-templates/PostTemplateHeader.svelte'
-  import { type SitePostTemplate } from '$lib/postTemplates'
+  import { type BugReportTemplate, type SitePostTemplate } from '$lib/postTemplates'
 
   export let post: PostView
   export let actions: boolean = true
@@ -70,6 +70,9 @@
   }
   $: backendTags = (post.post as { tags?: TagItem[] }).tags ?? []
   $: backendTemplate = (post.post as { template?: SitePostTemplate | null }).template ?? null
+  $: canManageBugReportStatus = Boolean(
+    (post.post as { can_manage_bug_report_status?: boolean }).can_manage_bug_report_status
+  )
   $: backendPoll = (post.post as { poll?: BackendPoll | null }).poll ?? null
   $: backendPostRatings = (
     post.post as { post_ratings?: Record<string, BackendPostRating> | null }
@@ -186,6 +189,12 @@
     })
 
     return rule
+  }
+
+  function handleBugReportStatusChange(event: CustomEvent<{ template: BugReportTemplate }>) {
+    if (!event.detail?.template) return
+    ;(post.post as { template?: SitePostTemplate | null }).template = event.detail.template
+    post = post
   }
 </script>
 
@@ -315,7 +324,10 @@
               poll={backendPoll}
               pollPostId={post.post.id}
               allowPollVoting={isBackendPost}
+              postId={isBackendPost ? post.post.id : null}
+              {canManageBugReportStatus}
               compact={false}
+              on:statuschange={handleBugReportStatusChange}
             />
           </div>
         {/if}
@@ -387,7 +399,10 @@
               poll={backendPoll}
               pollPostId={post.post.id}
               allowPollVoting={isBackendPost}
+              postId={isBackendPost ? post.post.id : null}
+              {canManageBugReportStatus}
               compact={backendTemplate?.type === 'bug_report'}
+              on:statuschange={handleBugReportStatusChange}
             />
           </div>
           {/if}

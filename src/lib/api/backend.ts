@@ -72,6 +72,10 @@ export const buildPostRatingVoteUrl = (id: number | string): string => {
   return `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/rating-vote/`
 }
 
+export const buildBugReportStatusUrl = (id: number | string): string => {
+  return `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/bug-report-status/`
+}
+
 export const buildTagsListUrl = (): string => {
   return `${getBackendBaseUrl()}/api/tags/`
 }
@@ -650,6 +654,7 @@ export type BackendPost = {
   views_count?: number
   is_favorite?: boolean
   can_manage?: boolean
+  can_manage_bug_report_status?: boolean
   tags?: BackendTag[]
   comun_category?: BackendComunCategory | null
   comun_category_id?: number | null
@@ -694,6 +699,7 @@ export const backendPostToPostView = (
       body: post.content,
       template: post.template ?? null,
       enabled_template_editor_blocks: post.enabled_template_editor_blocks ?? [],
+      can_manage_bug_report_status: Boolean(post.can_manage_bug_report_status),
       vote_poll_participations: post.vote_poll_participations ?? [],
       poll: post.poll ?? null,
       post_ratings: post.post_ratings ?? {},

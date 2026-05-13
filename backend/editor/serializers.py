@@ -6,6 +6,7 @@ from django.http import HttpRequest
 
 from editor import service as editor_service
 from editor.models import (
+    POST_TEMPLATE_TYPE_BUG_REPORT,
     POST_TEMPLATE_TYPE_POST_VOTE_POLL,
     PostRatingVote,
     PostTemplateConfig,
@@ -158,6 +159,23 @@ def _serialize_enabled_template_editor_blocks(
     )
 
 
+def _user_can_manage_bug_report_status(user: User | None, post: Post) -> bool:
+    if not user:
+        return False
+    template_payload = _serialize_post_template(post)
+    if (
+        not isinstance(template_payload, dict)
+        or str(template_payload.get("type") or "").strip() != POST_TEMPLATE_TYPE_BUG_REPORT
+    ):
+        return False
+    if bool(getattr(user, "is_staff", False)):
+        return True
+    comun = _fv().community_service._post_comun(post)
+    if not comun:
+        return False
+    return _fv().community_service._comun_is_moderator(user, comun)
+
+
 def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None = None) -> dict:
     author_channel_url, author_title = _fv()._author_display_fields(
         request, post.author, post.channel_url
@@ -229,6 +247,7 @@ def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None
         "tags": _fv()._serialize_tags(post.tags.all()),
         "is_favorite": is_favorite,
         "can_manage": editor_service._user_can_manage_site_post(user, post),
+        "can_manage_bug_report_status": _user_can_manage_bug_report_status(user, post),
         "author": {
             "username": post.author.username,
             "title": author_title,
@@ -250,4 +269,5 @@ __all__ = [
     "_serialize_post_rating_block",
     "_serialize_post_ratings",
     "_serialize_post_template",
+    "_user_can_manage_bug_report_status",
 ]

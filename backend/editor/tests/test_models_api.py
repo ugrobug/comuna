@@ -1,5 +1,7 @@
 from django.apps import apps
 import json
+from unittest.mock import patch
+from django.db import OperationalError
 from django.test import SimpleTestCase, TestCase
 
 from editor import service as editor_service
@@ -142,32 +144,41 @@ class TweetTemplateTests(SimpleTestCase):
 
 class BugReportTemplateTests(SimpleTestCase):
     def test_builtin_bug_report_template_type_is_exposed(self):
-        options = editor_service._serialize_post_template_type_options()
+        with patch(
+            "editor.service.PostTemplateConfig.objects.filter",
+            side_effect=OperationalError,
+        ), patch(
+            "editor.service.post_template_type_choices",
+            return_value=[("basic", "Пост"), ("bug_report", "Баг-репорт")],
+        ):
+            options = editor_service._serialize_post_template_type_options()
         self.assertIn(
             {
                 "value": "bug_report",
                 "label": "Баг-репорт",
-                "description": "Статус, платформа, браузер, код ошибки и скриншот.",
+                "description": "Платформа, браузер, код ошибки и скриншот.",
             },
             options,
         )
 
     def test_bug_report_template_normalizes_structured_fields(self):
-        template, error = editor_service._normalize_post_template_payload(
-            {
-                "type": "bug_report",
-                "data": {
-                    "status": "В работе",
-                    "platforms": ["Windows", "android", "windows"],
-                    "browsers": ["Chrome", "Яндекс Браузер"],
-                    "error_code": "Traceback...",
-                    "description": "Шаги воспроизведения",
-                    "screenshot_url": "https://example.com/shot.png",
-                },
-            }
-        )
+        with patch("editor.service.is_post_template_type_configured", return_value=True):
+            template, error = editor_service._normalize_post_template_payload(
+                {
+                    "type": "bug_report",
+                    "data": {
+                        "status": "В работе",
+                        "platforms": ["Windows", "android", "windows"],
+                        "browsers": ["Chrome", "Яндекс Браузер"],
+                        "error_code": "Traceback...",
+                        "description": "Шаги воспроизведения",
+                        "screenshot_url": "https://example.com/shot.png",
+                    },
+                }
+            )
         self.assertIsNone(error)
         self.assertEqual(template["type"], "bug_report")
         self.assertEqual(template["data"]["status"], "in_progress")
         self.assertEqual(template["data"]["platforms"], ["windows", "android"])
         self.assertEqual(template["data"]["browsers"], ["chrome", "yandex_browser"])
+        self.assertNotIn("description", template["data"])

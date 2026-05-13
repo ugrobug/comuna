@@ -18,6 +18,8 @@ import {
   export let pollPostId: number | null = null
   export let allowPollVoting = false
   export let compact = false
+  export let canManageBugReportStatus = false
+  export let postId: number | null = null
 </script>
 
 {#if isMovieReviewTemplate(template)}
@@ -33,5 +35,11 @@ import {
     {allowPollVoting}
   />
 {:else if isBugReportTemplate(template)}
-  <BugReportTemplateHeader {template} {compact} />
+  <BugReportTemplateHeader
+    {template}
+    {compact}
+    canManageStatus={canManageBugReportStatus}
+    {postId}
+    on:statuschange
+  />
 {/if}

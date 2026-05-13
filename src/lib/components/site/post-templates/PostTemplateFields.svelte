@@ -11,7 +11,6 @@
   import {
     BUG_REPORT_BROWSER_OPTIONS,
     BUG_REPORT_PLATFORM_OPTIONS,
-    BUG_REPORT_STATUS_OPTIONS,
     MUSIC_RELEASE_STYLE_OPTIONS,
     MOVIE_REVIEW_GENRE_OPTIONS,
     MOVIE_REVIEW_KIND_OPTIONS,
@@ -941,18 +940,6 @@
     </div>
     {:else if templateType === 'bug_report'}
     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-      <label class="flex flex-col gap-1">
-        <span class="text-sm text-slate-700 dark:text-zinc-300">Статус задачи</span>
-        <select
-          bind:value={bugReportData.status}
-          class="w-full rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm text-slate-900 dark:text-zinc-100"
-        >
-          {#each BUG_REPORT_STATUS_OPTIONS as option}
-            <option value={option.value}>{option.label}</option>
-          {/each}
-        </select>
-      </label>
-
       <div class="md:col-span-2 flex flex-col gap-2">
         <span class="text-sm text-slate-700 dark:text-zinc-300">Платформы</span>
         <details class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900">
@@ -1010,16 +997,6 @@
           rows="4"
           placeholder="Вставьте текст ошибки, stack trace или системное сообщение"
           class="w-full rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm font-mono text-slate-900 dark:text-zinc-100"
-        ></textarea>
-      </label>
-
-      <label class="md:col-span-2 flex flex-col gap-1">
-        <span class="text-sm text-slate-700 dark:text-zinc-300">Краткое описание</span>
-        <textarea
-          bind:value={bugReportData.description}
-          rows="5"
-          placeholder="Что именно произошло, как воспроизвести проблему, чего вы ожидали"
-          class="w-full rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm text-slate-900 dark:text-zinc-100"
         ></textarea>
       </label>
 

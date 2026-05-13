@@ -1136,9 +1136,6 @@ def _normalize_bug_report_template_data(raw_data: object) -> tuple[dict, str | N
         "screenshot_url": str(
             source.get("screenshot_url") or source.get("photo_url") or source.get("image_url") or ""
         ).strip()[:2000],
-        "description": str(
-            source.get("description") or source.get("text_description") or ""
-        ).strip()[:4000],
     }, None
 
 
@@ -1449,7 +1446,7 @@ def _sync_template_derived_raw_data(
 def _serialize_post_template_type_options() -> list[dict]:
     descriptions_by_type: dict[str, str] = {
         POST_TEMPLATE_TYPE_TWEET: "До 280 символов и один медиаблок с изображениями.",
-        POST_TEMPLATE_TYPE_BUG_REPORT: "Структурированный баг-репорт со статусом, платформами и браузерами.",
+        POST_TEMPLATE_TYPE_BUG_REPORT: "Платформа, браузер, код ошибки и скриншот.",
     }
     try:
         for template_type, description in PostTemplateConfig.objects.filter(
@@ -1460,7 +1457,7 @@ def _serialize_post_template_type_options() -> list[dict]:
             if code and normalized_description:
                 descriptions_by_type[code] = normalized_description
     except (OperationalError, ProgrammingError):
-        descriptions_by_type = {}
+        pass
 
     options: list[dict] = []
     for value, label in post_template_type_choices():
@@ -2028,8 +2025,6 @@ def _normalize_post_template_payload(
                     "screenshot_url",
                     "photo_url",
                     "image_url",
-                    "description",
-                    "text_description",
                 )
                 if raw_template.get(key) is not None
             }

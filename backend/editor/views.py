@@ -17,6 +17,7 @@ from PIL import Image, UnidentifiedImageError
 
 from rabotaem_backend.images import save_image_with_variants
 from editor.models import (
+    POST_TEMPLATE_TYPE_BUG_REPORT,
     POST_TEMPLATE_TYPE_MOVIE_REVIEW,
     PostPollVote,
     PostRatingVote,
@@ -25,6 +26,8 @@ from editor.serializers import (
     _serialize_post_for_user,
     _serialize_post_rating_block,
     _serialize_post_ratings,
+    _serialize_post_template,
+    _user_can_manage_bug_report_status,
 )
 from editor.service import (
     _canonical_imdb_url,
@@ -86,6 +89,36 @@ def _payload_comun_id(payload: dict) -> int | None:
         if value:
             return value
     return None
+
+
+def _bug_report_status_from_template(template_payload: dict | None) -> str:
+    if (
+        not isinstance(template_payload, dict)
+        or str(template_payload.get("type") or "").strip() != POST_TEMPLATE_TYPE_BUG_REPORT
+    ):
+        return "review"
+    data = template_payload.get("data")
+    if not isinstance(data, dict):
+        return "review"
+    return editor_service._normalize_bug_report_status(data.get("status"))
+
+
+def _preserve_bug_report_status(
+    template_payload: dict | None,
+    previous_template_payload: dict | None = None,
+) -> dict | None:
+    if (
+        not isinstance(template_payload, dict)
+        or str(template_payload.get("type") or "").strip() != POST_TEMPLATE_TYPE_BUG_REPORT
+    ):
+        return template_payload
+    preserved_status = _bug_report_status_from_template(previous_template_payload)
+    template_payload = dict(template_payload)
+    data = dict(template_payload.get("data") if isinstance(template_payload.get("data"), dict) else {})
+    data["status"] = preserved_status
+    data.pop("description", None)
+    template_payload["data"] = data
+    return template_payload
 
 
 def _payload_comun_category_id(payload: dict) -> int | None:
@@ -341,6 +374,7 @@ def user_posts(request: HttpRequest) -> HttpResponse:
         )
         if template_error:
             return JsonResponse({"ok": False, "error": template_error}, status=400)
+        template_payload = _preserve_bug_report_status(template_payload)
         template_content_error = editor_service._validate_template_content_constraints(
             template_payload,
             content,
@@ -630,6 +664,8 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
         if isinstance(post.raw_data, dict) and isinstance(post.raw_data.get("template"), dict)
         else None
     )
+    if template_in_payload:
+        template_payload = _preserve_bug_report_status(template_payload, current_template_payload)
     effective_template_payload_for_validation = (
         template_payload
         if template_in_payload
@@ -809,6 +845,62 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
             community_service._recalculate_comun_rating(comun_id)
         community_service._recalculate_comun_ratings_for_post(post)
     return JsonResponse({"ok": True, "post": _serialize_post_for_user(request, post, user)})
+
+
+@csrf_exempt
+def bug_report_status_update(request: HttpRequest, post_id: int) -> HttpResponse:
+    user = _fv()._get_user_from_request(request)
+    if not user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    if request.method not in {"PATCH", "PUT"}:
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    try:
+        post = Post.objects.select_related("author").get(
+            id=post_id, is_blocked=False, author__is_blocked=False
+        )
+    except Post.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "post not found"}, status=404)
+
+    template_payload = _serialize_post_template(post)
+    if (
+        not isinstance(template_payload, dict)
+        or str(template_payload.get("type") or "").strip() != POST_TEMPLATE_TYPE_BUG_REPORT
+    ):
+        return JsonResponse({"ok": False, "error": "bug report not found"}, status=404)
+    if not _user_can_manage_bug_report_status(user, post):
+        return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+
+    next_status = editor_service._normalize_bug_report_status(payload.get("status"))
+    raw_data = dict(post.raw_data or {})
+    stored_template = raw_data.get("template") if isinstance(raw_data.get("template"), dict) else {}
+    stored_template = dict(stored_template)
+    data = dict(stored_template.get("data") if isinstance(stored_template.get("data"), dict) else {})
+    data["status"] = next_status
+    data.pop("description", None)
+    stored_template["type"] = POST_TEMPLATE_TYPE_BUG_REPORT
+    stored_template["version"] = 1
+    stored_template["data"] = data
+    raw_data["template"] = stored_template
+    raw_data["bug_report_status_updated_at"] = timezone.now().isoformat()
+    raw_data["bug_report_status_updated_by_user_id"] = user.id
+    post.raw_data = raw_data
+    post.save(update_fields=["raw_data", "updated_at"])
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "post_id": post.id,
+            "status": next_status,
+            "template": _serialize_post_template(post),
+            "content": _fv()._post_card_preview_content(post),
+        }
+    )
 
 
 @csrf_exempt
