@@ -10,6 +10,7 @@ from editor.models import (
     ComunCustomPostTemplateBlock,
     ComunCustomPostTemplateField,
     POST_TEMPLATE_TYPE_MOVIE_REVIEW,
+    PostBugReportConfirmation,
     PostPollVote,
     PostRatingVote,
     POST_TEMPLATE_EDITOR_BLOCK_OPTION_ITEMS,
@@ -31,6 +32,7 @@ class EditorModelsApiTests(SimpleTestCase):
         self.assertEqual(ComunCustomPostTemplateField._meta.app_label, "feeds")
         self.assertEqual(PostPollVote._meta.app_label, "feeds")
         self.assertEqual(PostRatingVote._meta.app_label, "feeds")
+        self.assertEqual(PostBugReportConfirmation._meta.app_label, "feeds")
 
     def test_editor_models_remain_available_through_feeds_app_label(self):
         self.assertIs(apps.get_model("feeds", "PostTemplateConfig"), PostTemplateConfig)
@@ -45,6 +47,10 @@ class EditorModelsApiTests(SimpleTestCase):
         )
         self.assertIs(apps.get_model("feeds", "PostPollVote"), PostPollVote)
         self.assertIs(apps.get_model("feeds", "PostRatingVote"), PostRatingVote)
+        self.assertIs(
+            apps.get_model("feeds", "PostBugReportConfirmation"),
+            PostBugReportConfirmation,
+        )
 
     def test_custom_template_editor_exposes_full_editor_block_list(self):
         option_values = {item["value"] for item in POST_TEMPLATE_EDITOR_BLOCK_OPTION_ITEMS}

@@ -1,6 +1,11 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte'
-  import { buildBugReportStatusUrl } from '$lib/api/backend'
+  import {
+    buildBugReportConfirmationUrl,
+    buildBugReportStatusUrl,
+    type BackendBugReportConfirmation,
+  } from '$lib/api/backend'
+  import LoginModal from '$lib/components/auth/LoginModal.svelte'
   import { siteToken } from '$lib/siteAuth'
   import {
     BUG_REPORT_STATUS_OPTIONS,
@@ -17,9 +22,11 @@
   export let fallbackTitle = ''
   export let compact = false
   export let canManageStatus = false
+  export let confirmation: BackendBugReportConfirmation | null = null
   export let postId: number | null = null
 
   const dispatch = createEventDispatcher<{
+    confirmationchange: { confirmation: BackendBugReportConfirmation }
     statuschange: { status: BugReportStatus; template: BugReportTemplate }
   }>()
 
@@ -27,6 +34,12 @@
   let lastTemplateStatus: BugReportStatus = 'review'
   let statusSaving = false
   let statusError = ''
+  let confirmationSaving = false
+  let confirmationError = ''
+  let confirmationCount = 0
+  let isConfirmed = false
+  let lastConfirmationKey = ''
+  let showLoginModal = false
 
   $: data = template.data
   $: normalizedTemplateStatus = normalizeBugReportTemplateData(data).status ?? 'review'
@@ -41,6 +54,12 @@
     platformLabels.length ? `Платформа: ${platformLabels.join(', ')}` : '',
     browserLabels.length ? `Браузер: ${browserLabels.join(', ')}` : '',
   ].filter(Boolean)
+  $: confirmationKey = `${Number(confirmation?.count ?? 0)}:${confirmation?.confirmed ? 1 : 0}`
+  $: if (!confirmationSaving && confirmationKey !== lastConfirmationKey) {
+    lastConfirmationKey = confirmationKey
+    confirmationCount = Math.max(Number(confirmation?.count ?? 0), 0)
+    isConfirmed = Boolean(confirmation?.confirmed)
+  }
 
   const updateStatus = async (event: Event) => {
     const nextStatus = (event.currentTarget as HTMLSelectElement).value as BugReportStatus
@@ -75,11 +94,47 @@
       statusSaving = false
     }
   }
+
+  const confirmSameProblem = async () => {
+    confirmationError = ''
+    if (isConfirmed || confirmationSaving) return
+    if (!postId) return
+    if (!$siteToken) {
+      showLoginModal = true
+      return
+    }
+    confirmationSaving = true
+    try {
+      const response = await fetch(buildBugReportConfirmationUrl(postId), {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${$siteToken}`,
+          'Content-Type': 'application/json',
+        },
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || !payload?.ok || !payload?.bug_report_confirmation) {
+        throw new Error(payload?.error || 'confirmation failed')
+      }
+      const nextConfirmation = payload.bug_report_confirmation as BackendBugReportConfirmation
+      confirmationCount = Math.max(Number(nextConfirmation.count ?? 0), 0)
+      isConfirmed = Boolean(nextConfirmation.confirmed)
+      lastConfirmationKey = `${confirmationCount}:${isConfirmed ? 1 : 0}`
+      dispatch('confirmationchange', { confirmation: nextConfirmation })
+    } catch (error) {
+      console.error('Failed to confirm bug report:', error)
+      confirmationError = 'Не удалось отметить проблему'
+    } finally {
+      confirmationSaving = false
+    }
+  }
 </script>
+
+<LoginModal bind:open={showLoginModal} />
 
 <section class:bug-report-card={true} class:is-compact={compact}>
   <div class="bug-report-card__surface">
-    {#if fallbackTitle}
+    {#if fallbackTitle && !compact}
       <h2 class="bug-report-card__title">{fallbackTitle}</h2>
     {/if}
 
@@ -108,6 +163,29 @@
 
     {#if statusError}
       <div class="bug-report-card__status-error">{statusError}</div>
+    {/if}
+
+    {#if compact && !canManageStatus}
+      <div class="bug-report-card__confirmation">
+        <button
+          type="button"
+          class:confirmed={isConfirmed}
+          disabled={isConfirmed || confirmationSaving}
+          on:click|stopPropagation|preventDefault={confirmSameProblem}
+        >
+          {#if isConfirmed}
+            Вы отметили эту проблему
+          {:else if confirmationSaving}
+            Отмечаем...
+          {:else}
+            У меня та же проблема
+          {/if}
+        </button>
+        <span>{confirmationCount}</span>
+      </div>
+      {#if confirmationError}
+        <div class="bug-report-card__status-error">{confirmationError}</div>
+      {/if}
     {/if}
 
     {#if !compact}
@@ -238,6 +316,52 @@
   .bug-report-card__status-error {
     color: #b91c1c;
     font-size: 0.82rem;
+  }
+
+  .bug-report-card__confirmation {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: max-content;
+    max-width: 100%;
+  }
+
+  .bug-report-card__confirmation button {
+    border: 1px solid rgba(191, 143, 43, 0.42);
+    border-radius: 999px;
+    background: rgba(191, 143, 43, 0.08);
+    color: #5b4a24;
+    cursor: pointer;
+    font-size: 0.88rem;
+    font-weight: 700;
+    line-height: 1.1;
+    padding: 0.48rem 0.85rem;
+    transition:
+      background 0.15s ease,
+      border-color 0.15s ease,
+      color 0.15s ease;
+  }
+
+  .bug-report-card__confirmation button:hover:not(:disabled) {
+    background: rgba(191, 143, 43, 0.14);
+    border-color: rgba(191, 143, 43, 0.72);
+  }
+
+  .bug-report-card__confirmation button.confirmed,
+  .bug-report-card__confirmation button:disabled {
+    cursor: default;
+    opacity: 0.78;
+  }
+
+  .bug-report-card__confirmation span {
+    border-radius: 999px;
+    background: #f3f4f6;
+    color: #4b5563;
+    font-size: 0.82rem;
+    font-weight: 800;
+    min-width: 1.8rem;
+    padding: 0.34rem 0.55rem;
+    text-align: center;
   }
 
   .bug-report-card__meta-label {

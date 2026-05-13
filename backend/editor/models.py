@@ -572,6 +572,30 @@ class PostRatingVote(models.Model):
         return f"{self.post_id}:{self.user_id}:{self.block_id}:{self.value}"
 
 
+class PostBugReportConfirmation(models.Model):
+    post = models.ForeignKey(
+        "feeds.Post",
+        on_delete=models.CASCADE,
+        related_name="bug_report_confirmations",
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="bug_report_confirmations",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = "feeds"
+        unique_together = ("post", "user")
+        verbose_name = "Подтверждение баг-репорта"
+        verbose_name_plural = "Подтверждения баг-репортов"
+
+    def __str__(self) -> str:
+        return f"{self.post_id}:{self.user_id}"
+
+
 __all__ = [
     "COMUN_CUSTOM_TEMPLATE_BLOCK_PLACEMENT_AVAILABLE",
     "COMUN_CUSTOM_TEMPLATE_BLOCK_PLACEMENT_HEADER",
@@ -612,6 +636,7 @@ __all__ = [
     "PostTemplateConfig",
     "PostPollVote",
     "PostRatingVote",
+    "PostBugReportConfirmation",
     "default_allowed_post_templates",
     "configured_post_template_type_values",
     "is_post_template_type_configured",

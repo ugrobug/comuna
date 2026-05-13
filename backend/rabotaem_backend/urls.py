@@ -14,6 +14,7 @@ from communities.views import (
 )
 from editor.views import (
     auth_movie_review_autofill,
+    bug_report_confirmation_update,
     bug_report_status_update,
     post_poll_vote,
     post_rating_vote,
@@ -100,6 +101,11 @@ urlpatterns = [
         "api/posts/<int:post_id>/bug-report-status/",
         bug_report_status_update,
         name="post-bug-report-status",
+    ),
+    path(
+        "api/posts/<int:post_id>/bug-report-confirmation/",
+        bug_report_confirmation_update,
+        name="post-bug-report-confirmation",
     ),
     path("api/posts/<int:post_id>/read/", post_read, name="post-read"),
     path("api/posts/<int:post_id>/view/", post_view, name="post-view"),

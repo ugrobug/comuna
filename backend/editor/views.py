@@ -19,10 +19,12 @@ from rabotaem_backend.images import save_image_with_variants
 from editor.models import (
     POST_TEMPLATE_TYPE_BUG_REPORT,
     POST_TEMPLATE_TYPE_MOVIE_REVIEW,
+    PostBugReportConfirmation,
     PostPollVote,
     PostRatingVote,
 )
 from editor.serializers import (
+    _serialize_bug_report_confirmation,
     _serialize_post_for_user,
     _serialize_post_rating_block,
     _serialize_post_ratings,
@@ -47,6 +49,7 @@ from editor.service import (
 )
 from editor import service as editor_service
 from feeds.models import Post
+from notifications.service import create_user_notification
 from users.models import AuthorAdmin
 
 
@@ -119,6 +122,51 @@ def _preserve_bug_report_status(
     data.pop("description", None)
     template_payload["data"] = data
     return template_payload
+
+
+def _bug_report_status_label(status: str) -> str:
+    return {
+        "review": "Рассмотрение",
+        "in_progress": "В работе",
+        "resolved": "Решена",
+        "rejected": "Отклонена",
+    }.get(str(status or "").strip(), str(status or "").strip() or "Рассмотрение")
+
+
+def _notify_bug_report_status_changed(
+    *,
+    post: Post,
+    status: str,
+    actor,
+) -> None:
+    confirmations = (
+        PostBugReportConfirmation.objects.select_related("user")
+        .filter(post=post, user__is_active=True)
+        .exclude(user=actor)
+        .order_by("user_id")
+    )
+    if not confirmations.exists():
+        return
+    post_title = _fv()._post_display_title(post)
+    status_label = _bug_report_status_label(status)
+    link_url = _fv()._post_public_path(post)
+    notified_user_ids: set[int] = set()
+    for confirmation in confirmations:
+        if confirmation.user_id in notified_user_ids:
+            continue
+        notified_user_ids.add(confirmation.user_id)
+        create_user_notification(
+            user=confirmation.user,
+            event_key="bug_report_status_changed",
+            title="Изменился статус баг-репорта",
+            message=f"Статус «{post_title}» изменен на «{status_label}».",
+            link_url=link_url,
+            payload={
+                "post_id": post.id,
+                "status": status,
+                "status_label": status_label,
+            },
+        )
 
 
 def _payload_comun_category_id(payload: dict) -> int | None:
@@ -876,6 +924,7 @@ def bug_report_status_update(request: HttpRequest, post_id: int) -> HttpResponse
     except json.JSONDecodeError:
         return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
 
+    previous_status = _bug_report_status_from_template(template_payload)
     next_status = editor_service._normalize_bug_report_status(payload.get("status"))
     raw_data = dict(post.raw_data or {})
     stored_template = raw_data.get("template") if isinstance(raw_data.get("template"), dict) else {}
@@ -891,6 +940,8 @@ def bug_report_status_update(request: HttpRequest, post_id: int) -> HttpResponse
     raw_data["bug_report_status_updated_by_user_id"] = user.id
     post.raw_data = raw_data
     post.save(update_fields=["raw_data", "updated_at"])
+    if next_status != previous_status:
+        _notify_bug_report_status_changed(post=post, status=next_status, actor=user)
 
     return JsonResponse(
         {
@@ -899,6 +950,44 @@ def bug_report_status_update(request: HttpRequest, post_id: int) -> HttpResponse
             "status": next_status,
             "template": _serialize_post_template(post),
             "content": _fv()._post_card_preview_content(post),
+            "bug_report_confirmation": _serialize_bug_report_confirmation(post, user),
+        }
+    )
+
+
+@csrf_exempt
+def bug_report_confirmation_update(request: HttpRequest, post_id: int) -> HttpResponse:
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    user = _fv()._get_user_from_request(request)
+    if not user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+
+    try:
+        now = timezone.now()
+        post = (
+            Post.objects.select_related("author")
+            .filter(is_blocked=False, is_pending=False, author__is_blocked=False)
+            .filter(_fv()._publish_ready_filter(now))
+            .get(id=post_id)
+        )
+    except Post.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "post not found"}, status=404)
+
+    template_payload = _serialize_post_template(post)
+    if (
+        not isinstance(template_payload, dict)
+        or str(template_payload.get("type") or "").strip() != POST_TEMPLATE_TYPE_BUG_REPORT
+    ):
+        return JsonResponse({"ok": False, "error": "bug report not found"}, status=404)
+
+    PostBugReportConfirmation.objects.get_or_create(post=post, user=user)
+    return JsonResponse(
+        {
+            "ok": True,
+            "post_id": post.id,
+            "bug_report_confirmation": _serialize_bug_report_confirmation(post, user),
         }
     )
 
@@ -1057,6 +1146,7 @@ def post_rating_vote(request: HttpRequest, post_id: int) -> HttpResponse:
 
 __all__ = [
     "auth_movie_review_autofill",
+    "bug_report_confirmation_update",
     "post_poll_vote",
     "post_rating_vote",
     "shared_draft_detail",

@@ -28,7 +28,12 @@
   import PostBody from './PostBody.svelte'
   import { profile } from '$lib/auth'
   import { getTagKey, getTagName, normalizeTag, type TagItem } from '$lib/tags'
-  import { buildPostReadUrl, type BackendPoll, type BackendPostRating } from '$lib/api/backend'
+  import {
+    buildPostReadUrl,
+    type BackendBugReportConfirmation,
+    type BackendPoll,
+    type BackendPostRating,
+  } from '$lib/api/backend'
   import { siteToken } from '$lib/siteAuth'
   import PostTemplateHeader from '$lib/components/site/post-templates/PostTemplateHeader.svelte'
   import { type BugReportTemplate, type SitePostTemplate } from '$lib/postTemplates'
@@ -73,6 +78,9 @@
   $: canManageBugReportStatus = Boolean(
     (post.post as { can_manage_bug_report_status?: boolean }).can_manage_bug_report_status
   )
+  $: bugReportConfirmation = (
+    post.post as { bug_report_confirmation?: BackendBugReportConfirmation | null }
+  ).bug_report_confirmation ?? null
   $: backendPoll = (post.post as { poll?: BackendPoll | null }).poll ?? null
   $: backendPostRatings = (
     post.post as { post_ratings?: Record<string, BackendPostRating> | null }
@@ -194,6 +202,15 @@
   function handleBugReportStatusChange(event: CustomEvent<{ template: BugReportTemplate }>) {
     if (!event.detail?.template) return
     ;(post.post as { template?: SitePostTemplate | null }).template = event.detail.template
+    post = post
+  }
+
+  function handleBugReportConfirmationChange(
+    event: CustomEvent<{ confirmation: BackendBugReportConfirmation }>
+  ) {
+    if (!event.detail?.confirmation) return
+    ;(post.post as { bug_report_confirmation?: BackendBugReportConfirmation | null }).bug_report_confirmation =
+      event.detail.confirmation
     post = post
   }
 </script>
@@ -326,7 +343,9 @@
               allowPollVoting={isBackendPost}
               postId={isBackendPost ? post.post.id : null}
               {canManageBugReportStatus}
+              bugReportConfirmation={bugReportConfirmation}
               compact={false}
+              on:confirmationchange={handleBugReportConfirmationChange}
               on:statuschange={handleBugReportStatusChange}
             />
           </div>
@@ -401,7 +420,9 @@
               allowPollVoting={isBackendPost}
               postId={isBackendPost ? post.post.id : null}
               {canManageBugReportStatus}
+              bugReportConfirmation={bugReportConfirmation}
               compact={backendTemplate?.type === 'bug_report'}
+              on:confirmationchange={handleBugReportConfirmationChange}
               on:statuschange={handleBugReportStatusChange}
             />
           </div>

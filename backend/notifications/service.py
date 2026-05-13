@@ -59,6 +59,14 @@ NOTIFICATION_EVENT_DEFINITIONS: list[dict[str, Any]] = [
         "default_push_enabled": True,
     },
     {
+        "key": "bug_report_status_changed",
+        "title": "Изменился статус баг-репорта",
+        "description": "Баг-репорт, который вы отметили, получил новый статус.",
+        "default_site_enabled": True,
+        "default_telegram_enabled": True,
+        "default_push_enabled": True,
+    },
+    {
         "key": "system_announcement",
         "title": "Системное объявление",
         "description": "Важные новости и сообщения от команды проекта.",

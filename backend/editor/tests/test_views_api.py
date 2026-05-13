@@ -13,3 +13,7 @@ class EditorViewsRoutingTests(SimpleTestCase):
         self.assertIs(resolve("/api/auth/uploads/").func, editor_views.user_upload)
         self.assertIs(resolve("/api/posts/1/poll-vote/").func, editor_views.post_poll_vote)
         self.assertIs(resolve("/api/posts/1/rating-vote/").func, editor_views.post_rating_vote)
+        self.assertIs(
+            resolve("/api/posts/1/bug-report-confirmation/").func,
+            editor_views.bug_report_confirmation_update,
+        )

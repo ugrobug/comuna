@@ -3,7 +3,7 @@ import BugReportTemplateHeader from '$lib/components/site/post-templates/BugRepo
 import MovieReviewTemplateHeader from '$lib/components/site/post-templates/MovieReviewTemplateHeader.svelte'
 import MusicReleaseTemplateHeader from '$lib/components/site/post-templates/MusicReleaseTemplateHeader.svelte'
 import PostVotePollTemplateHeader from '$lib/components/site/post-templates/PostVotePollTemplateHeader.svelte'
-import type { BackendPoll } from '$lib/api/backend'
+import type { BackendBugReportConfirmation, BackendPoll } from '$lib/api/backend'
 import {
   isBugReportTemplate,
   isMusicReleaseTemplate,
@@ -19,6 +19,7 @@ import {
   export let allowPollVoting = false
   export let compact = false
   export let canManageBugReportStatus = false
+  export let bugReportConfirmation: BackendBugReportConfirmation | null = null
   export let postId: number | null = null
 </script>
 
@@ -40,7 +41,9 @@ import {
     {fallbackTitle}
     {compact}
     canManageStatus={canManageBugReportStatus}
+    confirmation={bugReportConfirmation}
     {postId}
+    on:confirmationchange
     on:statuschange
   />
 {/if}

@@ -8,6 +8,7 @@ from editor import service as editor_service
 from editor.models import (
     POST_TEMPLATE_TYPE_BUG_REPORT,
     POST_TEMPLATE_TYPE_POST_VOTE_POLL,
+    PostBugReportConfirmation,
     PostRatingVote,
     PostTemplateConfig,
     default_enabled_template_editor_blocks,
@@ -176,6 +177,20 @@ def _user_can_manage_bug_report_status(user: User | None, post: Post) -> bool:
     return _fv().community_service._comun_is_moderator(user, comun)
 
 
+def _serialize_bug_report_confirmation(post: Post, user: User | None) -> dict | None:
+    template_payload = _serialize_post_template(post)
+    if (
+        not isinstance(template_payload, dict)
+        or str(template_payload.get("type") or "").strip() != POST_TEMPLATE_TYPE_BUG_REPORT
+    ):
+        return None
+    confirmations = PostBugReportConfirmation.objects.filter(post=post)
+    return {
+        "count": confirmations.count(),
+        "confirmed": confirmations.filter(user=user).exists() if user else False,
+    }
+
+
 def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None = None) -> dict:
     author_channel_url, author_title = _fv()._author_display_fields(
         request, post.author, post.channel_url
@@ -248,6 +263,7 @@ def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None
         "is_favorite": is_favorite,
         "can_manage": editor_service._user_can_manage_site_post(user, post),
         "can_manage_bug_report_status": _user_can_manage_bug_report_status(user, post),
+        "bug_report_confirmation": _serialize_bug_report_confirmation(post, user),
         "author": {
             "username": post.author.username,
             "title": author_title,
@@ -265,6 +281,7 @@ __all__ = [
     "_content_with_live_poll",
     "_serialize_enabled_template_editor_blocks",
     "_serialize_post_for_user",
+    "_serialize_bug_report_confirmation",
     "_serialize_post_rating",
     "_serialize_post_rating_block",
     "_serialize_post_ratings",
