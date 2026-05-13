@@ -83,7 +83,14 @@
   $: showTemplateHeaderPreview = Boolean(
     isBackendPost &&
       !showFullBody &&
-      (backendTemplate?.type === 'post_vote_poll' || backendTemplate?.type === 'movie_review')
+      (
+        backendTemplate?.type === 'post_vote_poll' ||
+        backendTemplate?.type === 'movie_review' ||
+        backendTemplate?.type === 'bug_report'
+      )
+  )
+  $: hideBodyForTemplatePreview = Boolean(
+    isBackendPost && !showFullBody && backendTemplate?.type === 'bug_report'
   )
   $: backendViewsValue = ((post.counts as { views?: number }).views ?? 0)
   $: backendAuthorNotifyCommentsEnabled = (
@@ -308,6 +315,7 @@
               poll={backendPoll}
               pollPostId={post.post.id}
               allowPollVoting={isBackendPost}
+              compact={false}
             />
           </div>
         {/if}
@@ -374,31 +382,34 @@
           {#if showTemplateHeaderPreview}
             <div class="mb-3">
               <PostTemplateHeader
-                template={backendTemplate}
-                fallbackTitle={post.post.name}
-                poll={backendPoll}
-                pollPostId={post.post.id}
-                allowPollVoting={isBackendPost}
-              />
-            </div>
+              template={backendTemplate}
+              fallbackTitle={post.post.name}
+              poll={backendPoll}
+              pollPostId={post.post.id}
+              allowPollVoting={isBackendPost}
+              compact={backendTemplate?.type === 'bug_report'}
+            />
+          </div>
           {/if}
-          <PostBody
-            element="section"
-            body={post.post.body}
-            template={backendTemplate}
-            poll={backendPoll}
-            postRatings={backendPostRatings}
-            postId={isBackendPost ? post.post.id : null}
-            allowPollVoting={isBackendPost}
-            title={post.post.name}
-            {view}
-            clickThrough={false}
-            {showFullBody}
-            collapsible={true}
-            externalPreviewImageUrl={post.post.url}
-            class="relative text-slate-600 dark:text-zinc-400"
-            on:expand={markBackendPostRead}
-          />
+          {#if !hideBodyForTemplatePreview}
+            <PostBody
+              element="section"
+              body={post.post.body}
+              template={backendTemplate}
+              poll={backendPoll}
+              postRatings={backendPostRatings}
+              postId={isBackendPost ? post.post.id : null}
+              allowPollVoting={isBackendPost}
+              title={post.post.name}
+              {view}
+              clickThrough={false}
+              {showFullBody}
+              collapsible={true}
+              externalPreviewImageUrl={post.post.url}
+              class="relative text-slate-600 dark:text-zinc-400"
+              on:expand={markBackendPostRead}
+            />
+          {/if}
         </div>
       {:else}
         <a

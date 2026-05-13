@@ -17,6 +17,7 @@
   import PostTemplateFields from '$lib/components/site/post-templates/PostTemplateFields.svelte'
   import {
     buildPostTemplatePayload,
+    createEmptyBugReportTemplateData,
     createEmptyMusicReleaseTemplateData,
     createEmptyMovieReviewTemplateData,
     createEmptyPostVotePollTemplateData,
@@ -25,6 +26,7 @@
     normalizePostTemplateTypeOptions,
     normalizeTemplateEditorBlockSettings,
     resolveEnabledTemplateEditorBlockTypes,
+    type BugReportTemplateData,
     type MusicReleaseTemplateData,
     type MovieReviewTemplateData,
     type PostVotePollTemplateData,
@@ -51,6 +53,7 @@
   let createMovieReviewData: MovieReviewTemplateData = createEmptyMovieReviewTemplateData()
   let createPostVotePollData: PostVotePollTemplateData = createEmptyPostVotePollTemplateData()
   let createMusicReleaseData: MusicReleaseTemplateData = createEmptyMusicReleaseTemplateData()
+  let createBugReportData: BugReportTemplateData = createEmptyBugReportTemplateData()
   let comunAllowedTemplateTypes: string[] = ['basic']
   let templateTypeOptions: PostTemplateTypeOption[] = []
   let templateEditorBlockSettings: TemplateEditorBlockSettings = {}
@@ -357,7 +360,8 @@
       createTemplateType,
       createMovieReviewData,
       createPostVotePollData,
-      createMusicReleaseData
+      createMusicReleaseData,
+      createBugReportData
     )
     if (
       comun?.forbid_external_links &&
@@ -638,6 +642,7 @@
           bind:movieReviewData={createMovieReviewData}
           bind:postVotePollData={createPostVotePollData}
           bind:musicReleaseData={createMusicReleaseData}
+          bind:bugReportData={createBugReportData}
           allowedTemplateTypes={comunAllowedTemplateTypes}
           {templateTypeOptions}
         />
@@ -678,6 +683,7 @@
               createMovieReviewData = createEmptyMovieReviewTemplateData()
               createPostVotePollData = createEmptyPostVotePollTemplateData()
               createMusicReleaseData = createEmptyMusicReleaseTemplateData()
+              createBugReportData = createEmptyBugReportTemplateData()
               createError = ''
             }}
             disabled={creating}

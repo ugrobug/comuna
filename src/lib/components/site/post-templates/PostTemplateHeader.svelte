@@ -1,9 +1,11 @@
 <script lang="ts">
+import BugReportTemplateHeader from '$lib/components/site/post-templates/BugReportTemplateHeader.svelte'
 import MovieReviewTemplateHeader from '$lib/components/site/post-templates/MovieReviewTemplateHeader.svelte'
 import MusicReleaseTemplateHeader from '$lib/components/site/post-templates/MusicReleaseTemplateHeader.svelte'
 import PostVotePollTemplateHeader from '$lib/components/site/post-templates/PostVotePollTemplateHeader.svelte'
 import type { BackendPoll } from '$lib/api/backend'
 import {
+  isBugReportTemplate,
   isMusicReleaseTemplate,
   isMovieReviewTemplate,
   isPostVotePollTemplate,
@@ -15,6 +17,7 @@ import {
   export let poll: BackendPoll | null = null
   export let pollPostId: number | null = null
   export let allowPollVoting = false
+  export let compact = false
 </script>
 
 {#if isMovieReviewTemplate(template)}
@@ -29,4 +32,6 @@ import {
     {pollPostId}
     {allowPollVoting}
   />
+{:else if isBugReportTemplate(template)}
+  <BugReportTemplateHeader {template} {compact} />
 {/if}

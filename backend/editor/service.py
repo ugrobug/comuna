@@ -37,6 +37,7 @@ from editor.models import (
     POST_TEMPLATE_TYPE_MUSIC_RELEASE,
     POST_TEMPLATE_TYPE_POST_VOTE_POLL,
     POST_TEMPLATE_TYPE_TWEET,
+    POST_TEMPLATE_TYPE_BUG_REPORT,
     ComunCustomPostTemplate,
     ComunCustomPostTemplateBlock,
     ComunCustomPostTemplateField,
@@ -290,6 +291,66 @@ _CONTENT_POLL_SOURCE_INLINE = "content_inline_poll"
 _TWEET_TEMPLATE_MAX_LENGTH = 280
 _TWEET_ALLOWED_EDITOR_BLOCK_TYPES = {"paragraph", "image", "gallery"}
 _JUSTWATCH_PROVIDER_CACHE: dict[str, tuple[float, dict[int, str]]] = {}
+_BUG_REPORT_STATUSES = {"review", "in_progress", "resolved", "rejected"}
+_BUG_REPORT_STATUS_ALIASES = {
+    "review": "review",
+    "рассмотрение": "review",
+    "in_progress": "in_progress",
+    "в работе": "in_progress",
+    "resolved": "resolved",
+    "решена": "resolved",
+    "rejected": "rejected",
+    "отклонена": "rejected",
+}
+_BUG_REPORT_PLATFORMS = {"web", "windows", "macos", "linux", "android", "ios"}
+_BUG_REPORT_PLATFORM_ALIASES = {
+    "web": "web",
+    "веб": "web",
+    "браузер": "web",
+    "windows": "windows",
+    "виндовс": "windows",
+    "win": "windows",
+    "macos": "macos",
+    "mac os": "macos",
+    "mac": "macos",
+    "linux": "linux",
+    "линукс": "linux",
+    "android": "android",
+    "андроид": "android",
+    "ios": "ios",
+    "айос": "ios",
+    "iphone": "ios",
+    "ipad": "ios",
+}
+_BUG_REPORT_BROWSERS = {
+    "chrome",
+    "safari",
+    "firefox",
+    "edge",
+    "opera",
+    "yandex_browser",
+    "samsung_internet",
+    "arc",
+    "other",
+}
+_BUG_REPORT_BROWSER_ALIASES = {
+    "chrome": "chrome",
+    "google chrome": "chrome",
+    "safari": "safari",
+    "firefox": "firefox",
+    "mozilla firefox": "firefox",
+    "edge": "edge",
+    "microsoft edge": "edge",
+    "opera": "opera",
+    "yandex browser": "yandex_browser",
+    "яндекс браузер": "yandex_browser",
+    "yandex_browser": "yandex_browser",
+    "samsung internet": "samsung_internet",
+    "samsung_internet": "samsung_internet",
+    "arc": "arc",
+    "other": "other",
+    "другое": "other",
+}
 
 
 def _fv():
@@ -1023,6 +1084,64 @@ def _normalize_music_release_template_data(raw_data: object) -> tuple[dict | Non
     return cleaned_data, None
 
 
+def _normalize_bug_report_status(value: object) -> str:
+    raw = str(value or "").strip().lower()
+    if not raw:
+        return "review"
+    return _BUG_REPORT_STATUS_ALIASES.get(raw, "review")
+
+
+def _normalize_bug_report_multi_value(
+    value: object,
+    *,
+    aliases: dict[str, str],
+    allowed_values: set[str],
+) -> list[str]:
+    if isinstance(value, str):
+        source = re.split(r"[\n,;]+", value)
+    elif isinstance(value, (list, tuple, set)):
+        source = list(value)
+    else:
+        source = []
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in source:
+        raw = str(item or "").strip()
+        if not raw:
+            continue
+        normalized_value = aliases.get(raw.lower(), raw.lower())
+        if normalized_value not in allowed_values or normalized_value in seen:
+            continue
+        seen.add(normalized_value)
+        normalized.append(normalized_value)
+    return normalized
+
+
+def _normalize_bug_report_template_data(raw_data: object) -> tuple[dict, str | None]:
+    source = raw_data if isinstance(raw_data, dict) else {}
+    return {
+        "status": _normalize_bug_report_status(source.get("status")),
+        "platforms": _normalize_bug_report_multi_value(
+            source.get("platforms") or source.get("platform"),
+            aliases=_BUG_REPORT_PLATFORM_ALIASES,
+            allowed_values=_BUG_REPORT_PLATFORMS,
+        ),
+        "browsers": _normalize_bug_report_multi_value(
+            source.get("browsers") or source.get("browser"),
+            aliases=_BUG_REPORT_BROWSER_ALIASES,
+            allowed_values=_BUG_REPORT_BROWSERS,
+        ),
+        "error_code": str(source.get("error_code") or source.get("error") or "").strip()[:4000],
+        "screenshot_url": str(
+            source.get("screenshot_url") or source.get("photo_url") or source.get("image_url") or ""
+        ).strip()[:2000],
+        "description": str(
+            source.get("description") or source.get("text_description") or ""
+        ).strip()[:4000],
+    }, None
+
+
 def _normalize_template_datetime(value: object) -> tuple[str, str | None]:
     raw = str(value or "").strip()
     if not raw:
@@ -1330,6 +1449,7 @@ def _sync_template_derived_raw_data(
 def _serialize_post_template_type_options() -> list[dict]:
     descriptions_by_type: dict[str, str] = {
         POST_TEMPLATE_TYPE_TWEET: "До 280 символов и один медиаблок с изображениями.",
+        POST_TEMPLATE_TYPE_BUG_REPORT: "Структурированный баг-репорт со статусом, платформами и браузерами.",
     }
     try:
         for template_type, description in PostTemplateConfig.objects.filter(
@@ -1888,6 +2008,36 @@ def _normalize_post_template_payload(
             return None, None
         return {
             "type": POST_TEMPLATE_TYPE_MUSIC_RELEASE,
+            "version": 1,
+            "data": normalized_data,
+        }, None
+
+    if template_type == POST_TEMPLATE_TYPE_BUG_REPORT:
+        template_data_input = raw_template.get("data")
+        if template_data_input is None:
+            template_data_input = {
+                key: raw_template.get(key)
+                for key in (
+                    "status",
+                    "platforms",
+                    "platform",
+                    "browsers",
+                    "browser",
+                    "error_code",
+                    "error",
+                    "screenshot_url",
+                    "photo_url",
+                    "image_url",
+                    "description",
+                    "text_description",
+                )
+                if raw_template.get(key) is not None
+            }
+        normalized_data, template_error = _normalize_bug_report_template_data(template_data_input)
+        if template_error:
+            return None, template_error
+        return {
+            "type": POST_TEMPLATE_TYPE_BUG_REPORT,
             "version": 1,
             "data": normalized_data,
         }, None

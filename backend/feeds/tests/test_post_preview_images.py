@@ -1,5 +1,6 @@
 import json
 import base64
+from unittest.mock import patch
 
 from django.test import SimpleTestCase, override_settings
 
@@ -145,3 +146,37 @@ class PostPreviewImageTests(SimpleTestCase):
         preview = build_post_preview(content, {})
 
         self.assertEqual(preview["preview_image_url"], "/media/uploads/post/first.jpg")
+
+    def test_bug_report_preview_uses_platforms_and_browsers(self) -> None:
+        with patch(
+            "feeds.preview.editor_service._normalize_post_template_payload",
+            return_value=(
+                {
+                    "type": "bug_report",
+                    "data": {
+                        "status": "in_progress",
+                        "platforms": ["windows", "android"],
+                        "browsers": ["chrome", "yandex_browser"],
+                    },
+                },
+                None,
+            ),
+        ):
+            preview = build_post_preview(
+                "<p>Обычное тело поста</p>",
+                {
+                    "template": {
+                        "type": "bug_report",
+                        "data": {
+                            "status": "in_progress",
+                            "platforms": ["windows", "android"],
+                            "browsers": ["chrome", "yandex_browser"],
+                        },
+                    }
+                },
+            )
+
+        self.assertEqual(
+            preview["preview_content"],
+            "<p>Платформы: Windows, Android<br>Браузеры: Chrome, Яндекс Браузер</p>",
+        )

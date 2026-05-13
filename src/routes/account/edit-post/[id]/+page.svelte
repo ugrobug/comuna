@@ -21,9 +21,11 @@
     POST_TEMPLATE_TYPE_OPTIONS,
     TWEET_TEMPLATE_MAX_LENGTH,
     buildPostTemplatePayload,
+    createEmptyBugReportTemplateData,
     createEmptyMusicReleaseTemplateData,
     createEmptyMovieReviewTemplateData,
     createEmptyPostVotePollTemplateData,
+    isBugReportTemplate,
     isRecognizedPostTemplateType,
     isMovieReviewTemplate,
     isMusicReleaseTemplate,
@@ -31,6 +33,7 @@
     isTweetTemplateType,
     normalizeAllowedPostTemplateTypeOverrides,
     normalizeAllowedPostTemplateTypes,
+    normalizeBugReportTemplateData,
     normalizePostTemplateTypeOptions,
     normalizeMusicReleaseTemplateData,
     normalizeMovieReviewTemplateData,
@@ -39,6 +42,7 @@
     resolveEnabledTemplateEditorBlockTypes,
     tweetTemplateCharacterCount,
     validateTweetTemplateContent,
+    type BugReportTemplateData,
     type MusicReleaseTemplateData,
     type MovieReviewTemplateData,
     type PostTemplateType,
@@ -97,6 +101,7 @@
   let editMovieReviewData: MovieReviewTemplateData = createEmptyMovieReviewTemplateData()
   let editPostVotePollData: PostVotePollTemplateData = createEmptyPostVotePollTemplateData()
   let editMusicReleaseData: MusicReleaseTemplateData = createEmptyMusicReleaseTemplateData()
+  let editBugReportData: BugReportTemplateData = createEmptyBugReportTemplateData()
   let allowedTemplateTypes: string[] = ['basic']
 
   let saving = false
@@ -232,7 +237,8 @@
       editTemplateType,
       editMovieReviewData,
       editPostVotePollData,
-      editMusicReleaseData
+      editMusicReleaseData,
+      editBugReportData
     )
 
   const buildEditPayload = () => {
@@ -335,6 +341,7 @@
     editMovieReviewData = createEmptyMovieReviewTemplateData()
     editPostVotePollData = createEmptyPostVotePollTemplateData()
     editMusicReleaseData = createEmptyMusicReleaseTemplateData()
+    editBugReportData = createEmptyBugReportTemplateData()
     editTemplateType = isRecognizedPostTemplateType(currentPost.template?.type)
       ? currentPost.template.type
       : ''
@@ -344,6 +351,8 @@
       editPostVotePollData = normalizePostVotePollTemplateData(currentPost.template.data)
     } else if (isMusicReleaseTemplate(currentPost.template)) {
       editMusicReleaseData = normalizeMusicReleaseTemplateData(currentPost.template.data)
+    } else if (isBugReportTemplate(currentPost.template)) {
+      editBugReportData = normalizeBugReportTemplateData(currentPost.template.data)
     }
     const tagNames = (currentPost.tags ?? []).map((tag) =>
       typeof tag === 'string' ? tag : tag.name
@@ -917,6 +926,7 @@
           bind:movieReviewData={editMovieReviewData}
           bind:postVotePollData={editPostVotePollData}
           bind:musicReleaseData={editMusicReleaseData}
+          bind:bugReportData={editBugReportData}
           {allowedTemplateTypes}
           {templateTypeOptions}
           showTypeSelector={false}

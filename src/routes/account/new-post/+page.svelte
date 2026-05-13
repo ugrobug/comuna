@@ -26,6 +26,7 @@
     POST_TEMPLATE_TYPE_OPTIONS,
     TWEET_TEMPLATE_MAX_LENGTH,
     buildPostTemplatePayload,
+    createEmptyBugReportTemplateData,
     createEmptyMusicReleaseTemplateData,
     createEmptyMovieReviewTemplateData,
     createEmptyPostVotePollTemplateData,
@@ -38,6 +39,7 @@
     resolveEnabledTemplateEditorBlockTypes,
     tweetTemplateCharacterCount,
     validateTweetTemplateContent,
+    type BugReportTemplateData,
     type MusicReleaseTemplateData,
     type MovieReviewTemplateData,
     type PostVotePollTemplateData,
@@ -87,6 +89,7 @@
   let createMovieReviewData: MovieReviewTemplateData = createEmptyMovieReviewTemplateData()
   let createPostVotePollData: PostVotePollTemplateData = createEmptyPostVotePollTemplateData()
   let createMusicReleaseData: MusicReleaseTemplateData = createEmptyMusicReleaseTemplateData()
+  let createBugReportData: BugReportTemplateData = createEmptyBugReportTemplateData()
   let templateEditorBlockSettings: TemplateEditorBlockSettings = {}
   let firstDraftChangeAt: number | null = null
   let firstDraftAutosaveCompleted = false
@@ -204,7 +207,8 @@
       createTemplateType,
       createMovieReviewData,
       createPostVotePollData,
-      createMusicReleaseData
+      createMusicReleaseData,
+      createBugReportData
     )
 
   const buildDraftPayload = () => {
@@ -232,6 +236,7 @@
     movieReviewData: createMovieReviewData,
     postVotePollData: createPostVotePollData,
     musicReleaseData: createMusicReleaseData,
+    bugReportData: createBugReportData,
   })
 
   const localDraftStorageKey = () =>
@@ -288,6 +293,7 @@
         parsed?.postVotePollData ?? createEmptyPostVotePollTemplateData()
       createMusicReleaseData =
         parsed?.musicReleaseData ?? createEmptyMusicReleaseTemplateData()
+      createBugReportData = parsed?.bugReportData ?? createEmptyBugReportTemplateData()
       draftId = Number.isFinite(nextDraftId) && nextDraftId > 0 ? nextDraftId : null
       firstDraftChangeAt =
         Number.isFinite(nextFirstChangeAt) && nextFirstChangeAt > 0 ? nextFirstChangeAt : null
@@ -487,6 +493,7 @@
     createMovieReviewData = createEmptyMovieReviewTemplateData()
     createPostVotePollData = createEmptyPostVotePollTemplateData()
     createMusicReleaseData = createEmptyMusicReleaseTemplateData()
+    createBugReportData = createEmptyBugReportTemplateData()
     createError = ''
     draftError = ''
     clearLocalDraftBuffer()
@@ -1005,6 +1012,7 @@
           bind:movieReviewData={createMovieReviewData}
           bind:postVotePollData={createPostVotePollData}
           bind:musicReleaseData={createMusicReleaseData}
+          bind:bugReportData={createBugReportData}
           allowedTemplateTypes={selectedAllowedTemplateTypes}
           {templateTypeOptions}
           showTypeSelector={false}

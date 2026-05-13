@@ -942,6 +942,11 @@ def _extract_post_preview_image_urls(
     post: Post,
     template_payload: dict | None = None,
 ) -> tuple[str | None, str | None]:
+    if (
+        isinstance(template_payload, dict)
+        and str(template_payload.get("type") or "").strip() == "bug_report"
+    ):
+        return None, None
     candidates: list[object] = []
     stored_preview_image_url = str(getattr(post, "preview_image_url", "") or "").strip()
     if stored_preview_image_url:

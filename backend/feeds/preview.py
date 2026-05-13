@@ -22,6 +22,25 @@ PREVIEW_DESCRIPTION_RE = re.compile(
 )
 BR_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
 BLOCK_BOUNDARY_RE = re.compile(r"</(?:p|div|li|blockquote|h[1-6])\s*>", re.IGNORECASE)
+BUG_REPORT_PLATFORM_LABELS = {
+    "web": "Web",
+    "windows": "Windows",
+    "macos": "macOS",
+    "linux": "Linux",
+    "android": "Android",
+    "ios": "iOS",
+}
+BUG_REPORT_BROWSER_LABELS = {
+    "chrome": "Chrome",
+    "safari": "Safari",
+    "firefox": "Firefox",
+    "edge": "Edge",
+    "opera": "Opera",
+    "yandex_browser": "Яндекс Браузер",
+    "samsung_internet": "Samsung Internet",
+    "arc": "Arc",
+    "other": "Другое",
+}
 
 
 def _normalize_text(value: str) -> str:
@@ -195,6 +214,33 @@ def _editor_preview_content(payload: dict[str, Any], max_length: int) -> str:
     return ""
 
 
+def _bug_report_preview_content(template_payload: dict[str, Any] | None, max_length: int) -> str:
+    if not isinstance(template_payload, dict) or str(template_payload.get("type") or "").strip() != "bug_report":
+        return ""
+    data = template_payload.get("data")
+    if not isinstance(data, dict):
+        return ""
+
+    platforms = [
+        BUG_REPORT_PLATFORM_LABELS.get(str(item or "").strip(), str(item or "").strip())
+        for item in data.get("platforms") or []
+        if str(item or "").strip()
+    ]
+    browsers = [
+        BUG_REPORT_BROWSER_LABELS.get(str(item or "").strip(), str(item or "").strip())
+        for item in data.get("browsers") or []
+        if str(item or "").strip()
+    ]
+    parts: list[str] = []
+    if platforms:
+        parts.append(f"Платформы: {', '.join(platforms)}")
+    if browsers:
+        parts.append(f"Браузеры: {', '.join(browsers)}")
+    if not parts:
+        return ""
+    return _preview_paragraph_from_text("\n".join(parts), max_length)
+
+
 def _html_preview_content(content: str, max_length: int) -> str:
     description_match = PREVIEW_DESCRIPTION_RE.search(content or "")
     if description_match and description_match.group(1).strip():
@@ -220,21 +266,28 @@ def build_post_preview(
         raw_data.get("template") if isinstance(raw_data.get("template"), dict) else None
     )
     editor_payload = parse_editor_payload(content)
+    is_bug_report = (
+        isinstance(template_payload, dict)
+        and str(template_payload.get("type") or "").strip() == "bug_report"
+    )
 
     image_candidates: list[str] = []
-    image_candidates.extend(_template_image_candidates(template_payload))
-    if editor_payload:
-        image_candidates.extend(_editor_image_candidates(editor_payload))
-    else:
-        image_candidates.extend(_html_image_candidates(content))
-    image_candidates.extend(_raw_data_image_candidates(raw_data))
+    if not is_bug_report:
+        image_candidates.extend(_template_image_candidates(template_payload))
+        if editor_payload:
+            image_candidates.extend(_editor_image_candidates(editor_payload))
+        else:
+            image_candidates.extend(_html_image_candidates(content))
+        image_candidates.extend(_raw_data_image_candidates(raw_data))
 
     preview_image_url = next((url for url in image_candidates if url), "")
-    preview_content = (
-        _editor_preview_content(editor_payload, max_length)
-        if editor_payload
-        else _html_preview_content(content, max_length)
-    )
+    preview_content = _bug_report_preview_content(template_payload, max_length)
+    if not preview_content:
+        preview_content = (
+            _editor_preview_content(editor_payload, max_length)
+            if editor_payload
+            else _html_preview_content(content, max_length)
+        )
 
     return {
         "preview_content": preview_content,

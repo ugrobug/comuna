@@ -138,3 +138,36 @@ class TweetTemplateTests(SimpleTestCase):
             content,
         )
         self.assertEqual(error, "Шаблон «Твит» поддерживает только текст и изображения.")
+
+
+class BugReportTemplateTests(SimpleTestCase):
+    def test_builtin_bug_report_template_type_is_exposed(self):
+        options = editor_service._serialize_post_template_type_options()
+        self.assertIn(
+            {
+                "value": "bug_report",
+                "label": "Баг-репорт",
+                "description": "Статус, платформа, браузер, код ошибки и скриншот.",
+            },
+            options,
+        )
+
+    def test_bug_report_template_normalizes_structured_fields(self):
+        template, error = editor_service._normalize_post_template_payload(
+            {
+                "type": "bug_report",
+                "data": {
+                    "status": "В работе",
+                    "platforms": ["Windows", "android", "windows"],
+                    "browsers": ["Chrome", "Яндекс Браузер"],
+                    "error_code": "Traceback...",
+                    "description": "Шаги воспроизведения",
+                    "screenshot_url": "https://example.com/shot.png",
+                },
+            }
+        )
+        self.assertIsNone(error)
+        self.assertEqual(template["type"], "bug_report")
+        self.assertEqual(template["data"]["status"], "in_progress")
+        self.assertEqual(template["data"]["platforms"], ["windows", "android"])
+        self.assertEqual(template["data"]["browsers"], ["chrome", "yandex_browser"])

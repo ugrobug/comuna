@@ -9,21 +9,29 @@
     type VotePollPostCandidate,
   } from '$lib/siteAuth'
   import {
+    BUG_REPORT_BROWSER_OPTIONS,
+    BUG_REPORT_PLATFORM_OPTIONS,
+    BUG_REPORT_STATUS_OPTIONS,
     MUSIC_RELEASE_STYLE_OPTIONS,
     MOVIE_REVIEW_GENRE_OPTIONS,
     MOVIE_REVIEW_KIND_OPTIONS,
     MOVIE_REVIEW_WATCH_PROVIDER_OPTIONS,
     POST_TEMPLATE_TYPE_OPTIONS,
+    bugReportBrowserLabels,
+    bugReportPlatformLabels,
+    createEmptyBugReportTemplateData,
     createEmptyMusicReleaseTemplateData,
     createEmptyMovieReviewTemplateData,
     createEmptyPostVotePollTemplateData,
     formatPostVotePollDeadline,
     normalizeAllowedPostTemplateTypes,
+    normalizeBugReportTemplateData,
     normalizePostTemplateTypeOptions,
     normalizeMusicReleaseTemplateData,
     normalizeMovieReviewTemplateData,
     normalizePostVotePollTemplateData,
     postVotePollOptionLabel,
+    type BugReportTemplateData,
     type MusicReleaseTemplateData,
     type MovieReviewTemplateData,
     type PostTemplateType,
@@ -36,6 +44,7 @@
   export let movieReviewData: MovieReviewTemplateData = createEmptyMovieReviewTemplateData()
   export let postVotePollData: PostVotePollTemplateData = createEmptyPostVotePollTemplateData()
   export let musicReleaseData: MusicReleaseTemplateData = createEmptyMusicReleaseTemplateData()
+  export let bugReportData: BugReportTemplateData = createEmptyBugReportTemplateData()
   export let allowedTemplateTypes: string[] | undefined = undefined
   export let templateTypeOptions: PostTemplateTypeOption[] = POST_TEMPLATE_TYPE_OPTIONS
   export let showTypeSelector = true
@@ -44,6 +53,8 @@
   let posterUploading = false
   let coverInput: HTMLInputElement | null = null
   let coverUploading = false
+  let bugScreenshotInput: HTMLInputElement | null = null
+  let bugScreenshotUploading = false
   let imdbAutofillLoading = false
   let watchProviderValues: string[] = []
   let watchProviderSet = new Set<string>()
@@ -61,6 +72,12 @@
   let votePollItems: PostVotePollTemplateItem[] = []
   let votePollItemIds = new Set<number>()
   let votePollDeadlineInput = ''
+  let bugPlatformValues: string[] = []
+  let bugPlatformSet = new Set<string>()
+  let bugPlatformLabelValues: string[] = []
+  let bugBrowserValues: string[] = []
+  let bugBrowserSet = new Set<string>()
+  let bugBrowserLabelValues: string[] = []
   let templateMenuOpen = false
   let templateMenuRef: HTMLDivElement | null = null
   let hasTemplateTypeChoice = false
@@ -221,6 +238,12 @@
   $: votePollItems = normalizePostVotePollTemplateData(postVotePollData).items ?? []
   $: votePollItemIds = new Set(votePollItems.map((item) => item.post_id))
   $: votePollDeadlineInput = formatDateTimeLocalValue(postVotePollData.ends_at)
+  $: bugPlatformValues = normalizeBugReportTemplateData(bugReportData).platforms ?? []
+  $: bugPlatformSet = new Set(bugPlatformValues)
+  $: bugPlatformLabelValues = bugReportPlatformLabels(bugPlatformValues)
+  $: bugBrowserValues = normalizeBugReportTemplateData(bugReportData).browsers ?? []
+  $: bugBrowserSet = new Set(bugBrowserValues)
+  $: bugBrowserLabelValues = bugReportBrowserLabels(bugBrowserValues)
 
   const toggleWatchProvider = (provider: string, enabled: boolean) => {
     const next = new Set(watchProviderValues)
@@ -238,6 +261,36 @@
   const onWatchProviderChange = (provider: string, event: Event) => {
     const input = event.currentTarget as HTMLInputElement | null
     toggleWatchProvider(provider, Boolean(input?.checked))
+  }
+
+  const toggleBugReportValue = (
+    values: string[],
+    selectedValue: string,
+    enabled: boolean
+  ): string[] => {
+    const next = new Set(values)
+    if (enabled) {
+      next.add(selectedValue)
+    } else {
+      next.delete(selectedValue)
+    }
+    return Array.from(next)
+  }
+
+  const onBugPlatformChange = (platform: string, event: Event) => {
+    const input = event.currentTarget as HTMLInputElement | null
+    bugReportData = normalizeBugReportTemplateData({
+      ...bugReportData,
+      platforms: toggleBugReportValue(bugPlatformValues, platform, Boolean(input?.checked)),
+    })
+  }
+
+  const onBugBrowserChange = (browser: string, event: Event) => {
+    const input = event.currentTarget as HTMLInputElement | null
+    bugReportData = normalizeBugReportTemplateData({
+      ...bugReportData,
+      browsers: toggleBugReportValue(bugBrowserValues, browser, Boolean(input?.checked)),
+    })
   }
 
   const pickPoster = () => {
@@ -310,6 +363,43 @@
       })
     } finally {
       coverUploading = false
+      if (input) input.value = ''
+    }
+  }
+
+  const pickBugScreenshot = () => {
+    bugScreenshotInput?.click()
+  }
+
+  const removeBugScreenshot = () => {
+    bugReportData = normalizeBugReportTemplateData({
+      ...bugReportData,
+      screenshot_url: '',
+    })
+  }
+
+  const onBugScreenshotSelected = async (event: Event) => {
+    const input = event.currentTarget as HTMLInputElement | null
+    const file = input?.files?.[0]
+    if (!file || bugScreenshotUploading) return
+    bugScreenshotUploading = true
+    try {
+      const uploadedUrl = await uploadSiteImage(file)
+      bugReportData = normalizeBugReportTemplateData({
+        ...bugReportData,
+        screenshot_url: uploadedUrl,
+      })
+      toast({
+        content: 'Скриншот загружен',
+        type: 'success',
+      })
+    } catch (error) {
+      toast({
+        content: (error as Error)?.message ?? 'Не удалось загрузить скриншот',
+        type: 'error',
+      })
+    } finally {
+      bugScreenshotUploading = false
       if (input) input.value = ''
     }
   }
@@ -847,6 +937,144 @@
         <p class="text-xs text-slate-500 dark:text-zinc-400">
           Для публикации голосования добавьте минимум 2 поста и укажите срок голосования.
         </p>
+      </div>
+    </div>
+    {:else if templateType === 'bug_report'}
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <label class="flex flex-col gap-1">
+        <span class="text-sm text-slate-700 dark:text-zinc-300">Статус задачи</span>
+        <select
+          bind:value={bugReportData.status}
+          class="w-full rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm text-slate-900 dark:text-zinc-100"
+        >
+          {#each BUG_REPORT_STATUS_OPTIONS as option}
+            <option value={option.value}>{option.label}</option>
+          {/each}
+        </select>
+      </label>
+
+      <div class="md:col-span-2 flex flex-col gap-2">
+        <span class="text-sm text-slate-700 dark:text-zinc-300">Платформы</span>
+        <details class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900">
+          <summary class="list-none cursor-pointer px-3 py-2 text-sm text-slate-900 dark:text-zinc-100 flex items-center justify-between gap-3">
+            <span class="truncate">
+              {bugPlatformLabelValues.length ? bugPlatformLabelValues.join(', ') : 'Выберите платформы'}
+            </span>
+            <span class="text-xs text-slate-500 dark:text-zinc-400">▼</span>
+          </summary>
+          <div class="p-2 border-t border-slate-200 dark:border-zinc-800 grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {#each BUG_REPORT_PLATFORM_OPTIONS as option}
+              <label class="flex items-center gap-2 rounded-lg border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/40 px-3 py-2 cursor-pointer hover:bg-slate-100 dark:hover:bg-zinc-800/70">
+                <input
+                  type="checkbox"
+                  class="accent-slate-900 dark:accent-zinc-200"
+                  checked={bugPlatformSet.has(option.value)}
+                  on:change={(event) => onBugPlatformChange(option.value, event)}
+                />
+                <span class="text-sm text-slate-700 dark:text-zinc-200">{option.label}</span>
+              </label>
+            {/each}
+          </div>
+        </details>
+      </div>
+
+      <div class="md:col-span-2 flex flex-col gap-2">
+        <span class="text-sm text-slate-700 dark:text-zinc-300">Браузеры</span>
+        <details class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900">
+          <summary class="list-none cursor-pointer px-3 py-2 text-sm text-slate-900 dark:text-zinc-100 flex items-center justify-between gap-3">
+            <span class="truncate">
+              {bugBrowserLabelValues.length ? bugBrowserLabelValues.join(', ') : 'Выберите браузеры'}
+            </span>
+            <span class="text-xs text-slate-500 dark:text-zinc-400">▼</span>
+          </summary>
+          <div class="p-2 border-t border-slate-200 dark:border-zinc-800 grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {#each BUG_REPORT_BROWSER_OPTIONS as option}
+              <label class="flex items-center gap-2 rounded-lg border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/40 px-3 py-2 cursor-pointer hover:bg-slate-100 dark:hover:bg-zinc-800/70">
+                <input
+                  type="checkbox"
+                  class="accent-slate-900 dark:accent-zinc-200"
+                  checked={bugBrowserSet.has(option.value)}
+                  on:change={(event) => onBugBrowserChange(option.value, event)}
+                />
+                <span class="text-sm text-slate-700 dark:text-zinc-200">{option.label}</span>
+              </label>
+            {/each}
+          </div>
+        </details>
+      </div>
+
+      <label class="md:col-span-2 flex flex-col gap-1">
+        <span class="text-sm text-slate-700 dark:text-zinc-300">Код ошибки</span>
+        <textarea
+          bind:value={bugReportData.error_code}
+          rows="4"
+          placeholder="Вставьте текст ошибки, stack trace или системное сообщение"
+          class="w-full rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm font-mono text-slate-900 dark:text-zinc-100"
+        ></textarea>
+      </label>
+
+      <label class="md:col-span-2 flex flex-col gap-1">
+        <span class="text-sm text-slate-700 dark:text-zinc-300">Краткое описание</span>
+        <textarea
+          bind:value={bugReportData.description}
+          rows="5"
+          placeholder="Что именно произошло, как воспроизвести проблему, чего вы ожидали"
+          class="w-full rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm text-slate-900 dark:text-zinc-100"
+        ></textarea>
+      </label>
+
+      <div class="md:col-span-2 flex flex-col gap-2">
+        <span class="text-sm text-slate-700 dark:text-zinc-300">Скриншот</span>
+        <input
+          bind:this={bugScreenshotInput}
+          type="file"
+          accept="image/*"
+          class="hidden"
+          on:change={onBugScreenshotSelected}
+        />
+        <div class="flex items-center gap-3 rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-3">
+          <div class="h-20 w-28 rounded-lg overflow-hidden border border-slate-200 dark:border-zinc-800 bg-slate-100 dark:bg-zinc-800 shrink-0">
+            {#if bugReportData.screenshot_url}
+              <img src={bugReportData.screenshot_url} alt="Скриншот бага" class="h-full w-full object-cover" />
+            {:else}
+              <div class="h-full w-full grid place-items-center text-[10px] text-slate-400 dark:text-zinc-500 text-center px-1">
+                Нет скриншота
+              </div>
+            {/if}
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="text-sm text-slate-700 dark:text-zinc-300">
+              {#if bugScreenshotUploading}
+                Загрузка скриншота...
+              {:else if bugReportData.screenshot_url}
+                Скриншот загружен
+              {:else}
+                Прикрепите фото ошибки
+              {/if}
+            </div>
+            <div class="text-xs text-slate-500 dark:text-zinc-400">PNG, JPG, WEBP, GIF</div>
+          </div>
+          <div class="flex flex-wrap gap-2 justify-end">
+            <button
+              type="button"
+              class="rounded-lg border border-slate-300 dark:border-zinc-700 px-3 py-1.5 text-sm text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 disabled:opacity-50"
+              on:click={pickBugScreenshot}
+              disabled={bugScreenshotUploading}
+            >
+              {bugReportData.screenshot_url ? 'Заменить' : 'Загрузить'}
+            </button>
+            {#if bugReportData.screenshot_url}
+              <button
+                type="button"
+                class="rounded-lg border border-slate-300 dark:border-zinc-700 px-3 py-1.5 text-sm text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 disabled:opacity-50"
+                on:click={removeBugScreenshot}
+                disabled={bugScreenshotUploading}
+              >
+                Убрать
+              </button>
+            {/if}
+          </div>
+        </div>
       </div>
     </div>
     {:else if templateType === 'tweet'}

@@ -72,6 +72,8 @@
     { value: 'movie_review', label: 'Кинообзор' },
     { value: 'post_vote_poll', label: 'Голосование за посты' },
     { value: 'music_release', label: 'Музыкальный релиз' },
+    { value: 'bug_report', label: 'Баг-репорт' },
+    { value: 'tweet', label: 'Твит' },
   ]
   const fallbackCustomTemplateBlockPlacementOptions = [
     { value: 'available', label: 'Доступен в шаблоне' },
