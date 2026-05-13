@@ -22,6 +22,8 @@
   type LazyModule = { default: ComponentType }
 
   const pageSize = 10
+  const myFeedInitialBatchSize = 2
+  const myFeedInitialTarget = 10
   const scrollThreshold = 400
 
   let feedType = data.feedType ?? 'hot'
@@ -37,10 +39,11 @@
   let lastFeedType = feedType
   let lastFeedKey: string | null = null
   let lastMyFeedKey = ''
+  let myFeedLoadGeneration = 0
   let scrollRaf: number | null = null
   let myFeedSectionModulePromise: Promise<LazyModule> | null = null
 
-  const buildPageUrl = (currentOffset: number) => {
+  const buildPageUrl = (currentOffset: number, limit = pageSize) => {
     let baseUrl = buildHomeFeedUrl({
       hideRead: effectiveHideRead,
       onlyRead: readOnly,
@@ -70,7 +73,7 @@
           )
     }
     const url = new URL(baseUrl, $page.url.origin)
-    url.searchParams.set('limit', String(pageSize))
+    url.searchParams.set('limit', String(limit))
     url.searchParams.set('offset', String(currentOffset))
     return url.toString()
   }
@@ -84,7 +87,7 @@
     return !hiddenAuthorKeys.has(key)
   }
 
-  const loadMore = async () => {
+  const loadMore = async (limit = pageSize) => {
     if (!browser || loadingMore || !hasMore) return
     if (feedType === 'mine' && !canLoadMyFeed) return
     if (feedType === 'favorites' && !$siteUser) return
@@ -93,7 +96,7 @@
     try {
       const token = $siteToken
       const headers = token ? { Authorization: `Bearer ${token}` } : undefined
-      const response = await fetch(buildPageUrl(offset), {
+      const response = await fetch(buildPageUrl(offset, limit), {
         headers,
       })
       if (!response.ok) {
@@ -109,13 +112,28 @@
         posts = [...posts, ...nextPosts]
         offset += nextPosts.length
       }
-      if (nextPosts.length < pageSize) {
+      if (nextPosts.length < limit) {
         hasMore = false
       }
+      return nextPosts.length
     } catch (error) {
       console.error('Failed to load more posts:', error)
     } finally {
       loadingMore = false
+    }
+  }
+
+  const loadInitialMyFeed = async (generation: number) => {
+    while (
+      browser &&
+      generation === myFeedLoadGeneration &&
+      feedType === 'mine' &&
+      canLoadMyFeed &&
+      hasMore &&
+      posts.length < myFeedInitialTarget
+    ) {
+      const loaded = await loadMore(myFeedInitialBatchSize)
+      if (!loaded) break
     }
   }
 
@@ -286,9 +304,10 @@
       hasMore = false
       loadingMore = false
       hiddenReadCount = 0
+      myFeedLoadGeneration += 1
       if (canLoadMyFeed) {
         hasMore = true
-        void loadMore()
+        void loadInitialMyFeed(myFeedLoadGeneration)
       }
     }
   }
