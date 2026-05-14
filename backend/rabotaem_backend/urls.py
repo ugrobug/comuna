@@ -50,6 +50,7 @@ from my_feed.views import (
     auth_feed_settings,
     my_feed,
 )
+from moderator.views import moderator_analytics
 from notifications.views import (
     auth_notification_read,
     auth_notification_push_devices,
@@ -179,6 +180,7 @@ urlpatterns = [
     path("api/site-users/<int:user_id>/profile/", public_user_profile, name="public-user-profile"),
     path("api/auth/verification-code/", author_verification_code, name="auth-verification-code"),
     path("api/auth/posts/", user_posts, name="auth-posts"),
+    path("api/moderator/analytics/", moderator_analytics, name="moderator-analytics"),
     path("api/auth/posts/<int:post_id>/", user_post_update, name="auth-post-update"),
     path(
         "api/auth/drafts/shared/<str:share_token>/",

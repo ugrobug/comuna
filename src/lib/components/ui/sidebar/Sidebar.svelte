@@ -12,6 +12,7 @@
     PencilSquare,
     ClipboardDocumentList,
     Bookmark,
+    ChartBar,
   } from 'svelte-hero-icons'
   import { notifications, profile } from '$lib/auth.js'
   import SidebarButton from '$lib/components/ui/sidebar/SidebarButton.svelte'
@@ -29,7 +30,7 @@
   import { buildComunsSidebarUrl, type BackendComun } from '$lib/api/backend'
   import { cachedJson } from '$lib/api/publicCache'
   import { feedSettingsHydrated, userSettings } from '$lib/settings'
-  import { siteToken } from '$lib/siteAuth'
+  import { siteToken, siteUser } from '$lib/siteAuth'
   import { selectSidebarComuns } from '$lib/communitySidebar'
 
   const PUBLIC_PROJECT_ABOUT = env.PUBLIC_PROJECT_ABOUT || '/about';
@@ -218,6 +219,14 @@
             </Badge>
           {/if}
         </span>
+      </SidebarButton>
+    </div>
+  {/if}
+
+  {#if $siteUser?.is_staff}
+    <div class="flex flex-col gap-1">
+      <SidebarButton icon={ChartBar} href="/moderator">
+        <span slot="label">Модераторская</span>
       </SidebarButton>
     </div>
   {/if}

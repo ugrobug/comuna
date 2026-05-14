@@ -162,6 +162,22 @@ export const buildAuthFeedSettingsUrl = (): string => {
   return `${getBackendBaseUrl()}/api/auth/feed-settings/`
 }
 
+export const buildModeratorAnalyticsUrl = (options?: {
+  from?: string
+  to?: string
+}): string => {
+  const base = `${getBackendBaseUrl()}/api/moderator/analytics/`
+  const params = new URLSearchParams()
+  if (options?.from) {
+    params.set('from', options.from)
+  }
+  if (options?.to) {
+    params.set('to', options.to)
+  }
+  const query = params.toString()
+  return query ? `${base}?${query}` : base
+}
+
 export const buildSpecialLandnameUrl = (text: string = '', options?: { track?: boolean }): string => {
   const params = new URLSearchParams()
   if (text) {

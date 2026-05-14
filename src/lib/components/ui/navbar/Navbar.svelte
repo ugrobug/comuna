@@ -25,7 +25,8 @@
     Megaphone,
     ClipboardDocumentList,
     ChevronDown,
-    Bookmark
+    Bookmark,
+    ChartBar
   } from 'svelte-hero-icons'
   import Profile from './Profile.svelte'
   import NavButton from './NavButton.svelte'
@@ -218,6 +219,15 @@
             />
           </NavButton>
         {/if}
+        {#if $siteUser?.is_staff}
+          <NavButton
+            href="/moderator"
+            label="Модераторская"
+            icon={ChartBar}
+            class="relative"
+            isSelectedFilter={(path) => path.startsWith('/moderator')}
+          />
+        {/if}
         {#if randomTagline}
           <div class="w-full flex items-center justify-center gap-2 hidden md:flex">
             <div class="text-sm font-light text-center">
@@ -399,6 +409,18 @@
                 </Badge>
               {/if}
             </span>
+          </SidebarButton>
+        </div>
+      {/if}
+
+      {#if $siteUser?.is_staff}
+        <div class="flex flex-col gap-1">
+          <SidebarButton
+            icon={ChartBar}
+            href="/moderator"
+            on:click={() => { sidebarOpen = false; }}
+          >
+            <span slot="label">Модераторская</span>
           </SidebarButton>
         </div>
       {/if}

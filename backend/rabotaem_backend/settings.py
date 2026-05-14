@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     "communities.apps.CommunitiesConfig",
     "users.apps.UsersConfig",
     "notifications.apps.NotificationsConfig",
+    "moderator.apps.ModeratorConfig",
     "post.apps.PostConfig",
     "ratings.apps.RatingsConfig",
     "editor.apps.EditorConfig",
