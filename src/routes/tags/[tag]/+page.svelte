@@ -128,15 +128,33 @@
     }
   })
 
-  const addToBlacklist = () => {
+  const toggleBlacklist = () => {
     if (!tagKey) return
-    userSettings.update((settings) => {
-      const next = { ...settings, tagRules: { ...settings.tagRules } }
-      next.tagRules[tagKey] = 'hide'
-      return next
-    })
+    if (isBlacklisted) {
+      userSettings.update((settings) => {
+        const nextRules = { ...(settings.tagRules ?? {}) }
+        delete nextRules[tagKey]
+        return {
+          ...settings,
+          tagRules: nextRules,
+        }
+      })
+      toast({
+        content: 'Посты с этим тегом снова будут отображаться',
+        type: 'success',
+      })
+      return
+    }
+
+    userSettings.update((settings) => ({
+      ...settings,
+      tagRules: {
+        ...(settings.tagRules ?? {}),
+        [tagKey]: 'hide',
+      },
+    }))
     toast({
-      content: `Тег #${tagName} добавлен в черный список`,
+      content: 'Посты с этим тегом больше не будут отображаться',
       type: 'success',
     })
   }
@@ -151,10 +169,9 @@
     <Button
       size="sm"
       color="secondary"
-      on:click={addToBlacklist}
-      disabled={isBlacklisted}
+      on:click={toggleBlacklist}
     >
-      {isBlacklisted ? 'Тег уже в черном списке' : 'Добавить тег в черный список'}
+      {isBlacklisted ? 'Убрать из черного списка' : 'Добавить тег в черный список'}
     </Button>
   </div>
 
