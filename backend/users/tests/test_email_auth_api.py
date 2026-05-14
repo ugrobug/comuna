@@ -170,6 +170,83 @@ class EmailAuthApiTests(TestCase):
         self.assertEqual(account.email, "reader@example.test")
         self.assertEqual(User.objects.count(), 1)
 
+    def test_vk_login_new_account_does_not_show_privacy_consent_error(self):
+        with patch(
+            "users.service._authenticate_vk_payload",
+            return_value={
+                "vk_id": 12345,
+                "screen_name": "reader_vk",
+                "email": "",
+                "phone": "",
+                "first_name": "Reader",
+                "last_name": "",
+                "avatar_url": "",
+            },
+        ):
+            response = self.post_json(
+                "/api/auth/vk/",
+                {"access_token": "token", "auth_intent": "login"},
+            )
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 404)
+        self.assertIn("Аккаунт не найден", payload["error"])
+        self.assertNotIn("политик", payload["error"].lower())
+        self.assertEqual(User.objects.count(), 0)
+        self.assertEqual(VkAccount.objects.count(), 0)
+
+    def test_vk_signup_new_account_requires_privacy_consent(self):
+        with patch(
+            "users.service._authenticate_vk_payload",
+            return_value={
+                "vk_id": 12345,
+                "screen_name": "reader_vk",
+                "email": "",
+                "phone": "",
+                "first_name": "Reader",
+                "last_name": "",
+                "avatar_url": "",
+            },
+        ):
+            response = self.post_json(
+                "/api/auth/vk/",
+                {"access_token": "token", "auth_intent": "signup"},
+            )
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("политик", payload["error"].lower())
+        self.assertEqual(User.objects.count(), 0)
+        self.assertEqual(VkAccount.objects.count(), 0)
+
+    def test_vk_signup_new_account_with_privacy_consent_creates_user(self):
+        with patch(
+            "users.service._authenticate_vk_payload",
+            return_value={
+                "vk_id": 12345,
+                "screen_name": "reader_vk",
+                "email": "",
+                "phone": "",
+                "first_name": "Reader",
+                "last_name": "",
+                "avatar_url": "",
+            },
+        ):
+            response = self.post_json(
+                "/api/auth/vk/",
+                {
+                    "access_token": "token",
+                    "auth_intent": "signup",
+                    "privacy_accepted": True,
+                },
+            )
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(payload["token"])
+        self.assertEqual(User.objects.count(), 1)
+        self.assertEqual(VkAccount.objects.get(vk_id=12345).user_id, payload["user"]["id"])
+
     def test_register_email_does_not_claim_existing_vk_only_user(self):
         user = User.objects.create_user(
             username="reader_vk",

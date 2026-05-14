@@ -15,6 +15,7 @@ from users import service as user_service
 User = get_user_model()
 
 _PRIVACY_CONSENT_ERROR = "Для регистрации нужно согласиться с политикой обработки персональных данных."
+_OAUTH_ACCOUNT_NOT_FOUND_ERROR = "Аккаунт не найден. Перейдите на вкладку регистрации."
 
 _get_user_from_request = user_service._get_user_from_request
 _get_user_from_token = user_service._get_user_from_token
@@ -34,6 +35,16 @@ def _is_privacy_accepted(value) -> bool:
         normalized = value.strip().lower()
         return normalized in {"1", "true", "yes", "on", "accepted"}
     return False
+
+
+def _is_registration_intent(payload: dict) -> bool:
+    raw_intent = payload.get("auth_intent") or payload.get("intent") or payload.get("mode")
+    intent = str(raw_intent or "").strip().lower()
+    if intent in {"signup", "register", "registration"}:
+        return True
+    if intent in {"login", "auth", "signin", "sign_in"}:
+        return False
+    return _is_privacy_accepted(payload.get("privacy_accepted"))
 
 
 def _auth_success_response(user: User, request: HttpRequest, extra: dict | None = None) -> JsonResponse:
@@ -270,11 +281,11 @@ def vk_auth(request: HttpRequest) -> HttpResponse:
 
     try:
         vk_user = user_service._authenticate_vk_payload(payload)
-        if (
-            user_service._vk_login_will_create_new_user(vk_user)
-            and not _is_privacy_accepted(payload.get("privacy_accepted"))
-        ):
-            return JsonResponse({"ok": False, "error": _PRIVACY_CONSENT_ERROR}, status=400)
+        if user_service._vk_login_will_create_new_user(vk_user):
+            if not _is_registration_intent(payload):
+                return JsonResponse({"ok": False, "error": _OAUTH_ACCOUNT_NOT_FOUND_ERROR}, status=404)
+            if not _is_privacy_accepted(payload.get("privacy_accepted")):
+                return JsonResponse({"ok": False, "error": _PRIVACY_CONSENT_ERROR}, status=400)
         user = user_service._upsert_vk_account(vk_user)
     except ValueError as exc:
         return JsonResponse({"ok": False, "error": str(exc)}, status=400)

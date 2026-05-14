@@ -89,6 +89,64 @@ class TelegramOidcAuthTests(TestCase):
         self.assertEqual(TelegramAccount.objects.get(telegram_id=987654321).user_id, user.id)
         self.assertEqual(User.objects.count(), 1)
 
+    def test_oidc_login_new_account_does_not_show_privacy_consent_error(self):
+        with patch(
+            "telegram_integration.views.validate_telegram_oidc_token",
+            return_value={
+                "id": 987654321,
+                "name": "Reader One",
+                "preferred_username": "reader_tg",
+            },
+        ):
+            response = self.post_json({"id_token": "token", "auth_intent": "login"})
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 404)
+        self.assertIn("Аккаунт не найден", payload["error"])
+        self.assertNotIn("политик", payload["error"].lower())
+        self.assertEqual(User.objects.count(), 0)
+        self.assertEqual(TelegramAccount.objects.count(), 0)
+
+    def test_oidc_signup_new_account_requires_privacy_consent(self):
+        with patch(
+            "telegram_integration.views.validate_telegram_oidc_token",
+            return_value={
+                "id": 987654321,
+                "name": "Reader One",
+                "preferred_username": "reader_tg",
+            },
+        ):
+            response = self.post_json({"id_token": "token", "auth_intent": "signup"})
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("политик", payload["error"].lower())
+        self.assertEqual(User.objects.count(), 0)
+        self.assertEqual(TelegramAccount.objects.count(), 0)
+
+    def test_oidc_signup_new_account_with_privacy_consent_creates_user(self):
+        with patch(
+            "telegram_integration.views.validate_telegram_oidc_token",
+            return_value={
+                "id": 987654321,
+                "name": "Reader One",
+                "preferred_username": "reader_tg",
+            },
+        ):
+            response = self.post_json(
+                {
+                    "id_token": "token",
+                    "auth_intent": "signup",
+                    "privacy_accepted": True,
+                }
+            )
+
+        payload = response.json()
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(payload["token"])
+        self.assertEqual(User.objects.count(), 1)
+        self.assertEqual(TelegramAccount.objects.get(telegram_id=987654321).user_id, payload["user"]["id"])
+
     def test_oidc_login_keeps_existing_telegram_account_user(self):
         user = User.objects.create_user(username="channel_owner")
         TelegramAccount.objects.create(

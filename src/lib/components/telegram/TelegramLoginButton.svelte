@@ -3,7 +3,12 @@
   import { browser } from '$app/environment'
   import { env } from '$env/dynamic/public'
   import { toast } from 'mono-svelte'
-  import { loginTelegram, type TelegramAuthPayload } from '$lib/siteAuth'
+  import { loginTelegram, refreshSiteUser, type TelegramAuthPayload } from '$lib/siteAuth'
+  import {
+    forgetTelegramAuthContext,
+    rememberTelegramAuthContext,
+    TELEGRAM_AUTH_COMPLETE_EVENT,
+  } from '$lib/telegramAuthContext'
 
   export let onSuccess: (() => void) | null = null
   export let label = 'Продолжить с Telegram'
@@ -11,6 +16,7 @@
   export let active = true
   export let disabled = false
   export let privacyAccepted = false
+  export let authIntent: 'login' | 'signup' = 'login'
 
   let container: HTMLDivElement | null = null
   let loading = false
@@ -180,7 +186,7 @@
   }
 
   const getTelegramRedirectUri = () => {
-    const fallback = `${window.location.origin}/login`
+    const fallback = `${window.location.origin}/auth/telegram/callback`
     const configured = oidcRedirectUri.trim()
     if (!configured) return fallback
     try {
@@ -221,10 +227,31 @@
 
   onMount(() => {
     if (!browser) return
+    const handleTelegramAuthComplete = async (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return
+      if (event.data?.type !== TELEGRAM_AUTH_COMPLETE_EVENT) return
+      if (event.data?.ok) {
+        await refreshSiteUser()
+        toast({ content: 'Вы успешно вошли через Telegram', type: 'success' })
+        onSuccess?.()
+        return
+      }
+      toast({
+        content: event.data?.error || 'Не удалось войти через Telegram',
+        type: 'error',
+      })
+    }
+    window.addEventListener('message', handleTelegramAuthComplete)
+
     ;(window as any).onTelegramAuth = async (user: TelegramAuthPayload) => {
       loading = true
       try {
-        await loginTelegram({ ...user, privacy_accepted: privacyAccepted })
+        await loginTelegram({
+          ...user,
+          auth_intent: authIntent,
+          privacy_accepted: privacyAccepted,
+        })
+        forgetTelegramAuthContext()
         toast({ content: 'Вы успешно вошли через Telegram', type: 'success' })
         onSuccess?.()
       } catch (error) {
@@ -247,6 +274,7 @@
       if ((window as any).onTelegramAuth) {
         delete (window as any).onTelegramAuth
       }
+      window.removeEventListener('message', handleTelegramAuthComplete)
     }
   })
 
@@ -288,6 +316,11 @@
       return
     }
     const telegramAuth = telegram.Login.auth
+    rememberTelegramAuthContext({
+      authIntent,
+      privacyAccepted,
+      returnTo: `${window.location.pathname}${window.location.search}${window.location.hash}`,
+    })
     loading = true
     try {
       const result = await new Promise<TelegramOidcResult>((resolve) => {
@@ -313,9 +346,11 @@
         throw new Error('Telegram не вернул id_token')
       }
       await loginTelegram({
+        auth_intent: authIntent,
         id_token: result.id_token,
         privacy_accepted: privacyAccepted,
       })
+      forgetTelegramAuthContext()
       toast({ content: 'Вы успешно вошли через Telegram', type: 'success' })
       onSuccess?.()
     } catch (error) {

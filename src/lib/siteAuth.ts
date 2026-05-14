@@ -423,6 +423,7 @@ export const confirmPasswordReset = async (payload: {
 }
 
 export type TelegramAuthPayload = {
+  auth_intent?: 'login' | 'signup'
   id_token?: string
   id?: number
   first_name?: string
@@ -459,6 +460,7 @@ export const loginTelegram = async (payload: TelegramAuthPayload) => {
 }
 
 export type VkAuthPayload = {
+  auth_intent?: 'login' | 'signup'
   access_token: string
   expires_in?: number
   user_id?: number

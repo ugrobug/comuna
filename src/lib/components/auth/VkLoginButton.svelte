@@ -10,6 +10,7 @@
   export let helperText = ''
   export let disabled = false
   export let privacyAccepted = false
+  export let authIntent: 'login' | 'signup' = 'login'
 
   let container: HTMLDivElement | null = null
   let loading = false
@@ -57,6 +58,7 @@
         VKID.Auth.exchangeCode(code, deviceId)
           .then(async (data: any) => {
             await loginVK({
+              auth_intent: authIntent,
               access_token: data.access_token,
               expires_in: data.expires_in,
               user_id: data.user_id,

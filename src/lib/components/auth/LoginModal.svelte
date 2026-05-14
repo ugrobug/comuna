@@ -141,6 +141,7 @@
               this={module.default}
               onSuccess={handleSuccessfulAuth}
               active={open}
+              authIntent="login"
               privacyAccepted={false}
               label="Войти через Telegram"
             />
@@ -148,6 +149,7 @@
         {/if}
         <VkLoginButton
           onSuccess={handleSuccessfulAuth}
+          authIntent="login"
           privacyAccepted={false}
           label="Войти через VK"
         />
@@ -262,6 +264,7 @@
                 this={module.default}
                 onSuccess={handleSuccessfulAuth}
                 active={open}
+                authIntent="signup"
                 disabled={!signupPrivacyAccepted}
                 privacyAccepted={signupPrivacyAccepted}
                 label="Зарегистрироваться через Telegram"
@@ -270,6 +273,7 @@
           {/if}
           <VkLoginButton
             onSuccess={handleSuccessfulAuth}
+            authIntent="signup"
             disabled={!signupPrivacyAccepted}
             privacyAccepted={signupPrivacyAccepted}
             label="Зарегистрироваться через VK"

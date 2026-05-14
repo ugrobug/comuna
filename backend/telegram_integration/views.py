@@ -25,6 +25,7 @@ from telegram_integration.service import (
 )
 User = get_user_model()
 _PRIVACY_CONSENT_ERROR = "Для регистрации нужно согласиться с политикой обработки персональных данных."
+_OAUTH_ACCOUNT_NOT_FOUND_ERROR = "Аккаунт не найден. Перейдите на вкладку регистрации."
 
 
 def _user_service():
@@ -42,6 +43,16 @@ def _is_privacy_accepted(value) -> bool:
         normalized = value.strip().lower()
         return normalized in {"1", "true", "yes", "on", "accepted"}
     return False
+
+
+def _is_registration_intent(payload: dict) -> bool:
+    raw_intent = payload.get("auth_intent") or payload.get("intent") or payload.get("mode")
+    intent = str(raw_intent or "").strip().lower()
+    if intent in {"signup", "register", "registration"}:
+        return True
+    if intent in {"login", "auth", "signin", "sign_in"}:
+        return False
+    return _is_privacy_accepted(payload.get("privacy_accepted"))
 
 
 @csrf_exempt
@@ -66,15 +77,16 @@ def telegram_auth(request: HttpRequest) -> HttpResponse:
             claims = validate_telegram_oidc_token(payload.get("id_token"))
             payload = {
                 **telegram_payload_from_oidc_claims(claims),
+                "auth_intent": payload.get("auth_intent"),
                 "privacy_accepted": payload.get("privacy_accepted"),
             }
         else:
             validate_telegram_login(payload)
-        if (
-            telegram_login_will_create_new_user(payload)
-            and not _is_privacy_accepted(payload.get("privacy_accepted"))
-        ):
-            return JsonResponse({"ok": False, "error": _PRIVACY_CONSENT_ERROR}, status=400)
+        if telegram_login_will_create_new_user(payload):
+            if not _is_registration_intent(payload):
+                return JsonResponse({"ok": False, "error": _OAUTH_ACCOUNT_NOT_FOUND_ERROR}, status=404)
+            if not _is_privacy_accepted(payload.get("privacy_accepted")):
+                return JsonResponse({"ok": False, "error": _PRIVACY_CONSENT_ERROR}, status=400)
         user = upsert_telegram_account(payload)
     except ValueError as exc:
         return JsonResponse({"ok": False, "error": str(exc)}, status=400)
