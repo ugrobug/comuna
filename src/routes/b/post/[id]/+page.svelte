@@ -2,7 +2,6 @@
   import { env } from '$env/dynamic/public'
   import { browser } from '$app/environment'
   import { page } from '$app/stores'
-  import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import Post from '$lib/components/lemmy/post/Post.svelte'
   import PostComments from '$lib/components/site/PostComments.svelte'
   import {
@@ -262,10 +261,6 @@
 </svelte:head>
 
 <div class="flex flex-col gap-6 max-w-3xl">
-  <Header pageHeader>
-    <h1 class="text-2xl font-bold">Публикация</h1>
-  </Header>
-
   <div class="rounded-xl border border-slate-200 border-b-slate-300 bg-white p-4 dark:border-zinc-800 dark:border-t-zinc-700 dark:bg-zinc-900 sm:p-6">
     <Post
       post={postView}
