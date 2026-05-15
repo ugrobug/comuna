@@ -592,7 +592,12 @@ def _author_owner_users_for_notifications(author: Author) -> list[User]:
     return list(User.objects.filter(id__in=user_ids))
 
 
-def _maybe_notify_post_comment(post: Post, comment: PostComment) -> None:
+def _maybe_notify_post_comment(
+    post: Post,
+    comment: PostComment,
+    *,
+    parent: PostComment | None = None,
+) -> None:
     recipients = _author_owner_users_for_notifications(post.author)
     if not recipients:
         return
@@ -616,6 +621,13 @@ def _maybe_notify_post_comment(post: Post, comment: PostComment) -> None:
 
     for recipient in recipients:
         if recipient.id == comment.user_id:
+            continue
+        if (
+            parent
+            and not parent.is_deleted
+            and not getattr(parent, "persona_key", "")
+            and parent.user_id == recipient.id
+        ):
             continue
         create_user_notification(
             user=recipient,
@@ -2542,7 +2554,7 @@ def post_comments(request: HttpRequest, post_id: int) -> HttpResponse:
     Post.objects.filter(id=post.id).update(comments_count=F("comments_count") + 1)
     post.refresh_from_db(fields=["comments_count"])
     community_service._recalculate_comun_ratings_for_post(post)
-    _maybe_notify_post_comment(post, comment)
+    _maybe_notify_post_comment(post, comment, parent=parent)
     _maybe_notify_comment_reply(post, parent, comment)
     _maybe_notify_author_comment(post, comment)
 
