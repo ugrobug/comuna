@@ -64,8 +64,8 @@
     firstName={telegramFirstName}
   />
 
-  <div class="rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3 text-sm dark:border-zinc-800 dark:bg-zinc-900/60">
-    {#if pushConfigured}
+  {#if pushConfigured}
+    <div class="rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3 text-sm dark:border-zinc-800 dark:bg-zinc-900/60">
       <div class="font-medium text-slate-900 dark:text-zinc-100">
         Push-канал подключен
       </div>
@@ -75,15 +75,8 @@
           ({pushPlatforms.join(', ')})
         {/if}
       </div>
-    {:else}
-      <div class="font-medium text-slate-900 dark:text-zinc-100">
-        Push-канал пока не настроен на сервере
-      </div>
-      <div class="mt-1 text-slate-500 dark:text-zinc-400">
-        После добавления Firebase credentials сайт сможет отправлять push в iOS и Android.
-      </div>
-    {/if}
-  </div>
+    </div>
+  {/if}
 
   {#if loading && !events.length}
     <div class="text-sm text-slate-500 dark:text-zinc-400">
@@ -159,9 +152,6 @@
       </table>
     </div>
 
-    <div class="text-xs text-slate-500 dark:text-zinc-400">
-      Изменения сохраняются автоматически и применяются ко всем будущим уведомлениям.
-    </div>
   {:else}
     <div class="text-sm text-slate-500 dark:text-zinc-400">
       Список событий уведомлений пока пуст.

@@ -1,6 +1,5 @@
 <script lang="ts">
   import { goto } from '$app/navigation'
-  import NotificationHistoryPanel from '$lib/components/notifications/NotificationHistoryPanel.svelte'
   import NotificationSettingsPanel from '$lib/components/notifications/NotificationSettingsPanel.svelte'
   import { subscribeToComunBySlug } from '$lib/settings'
   import { defaultSettings, userSettings } from '$lib/settings'
@@ -395,10 +394,7 @@
   {/if}
   {#if $siteUser}
     <Section id="notifications" title="Оповещения">
-      <div class="flex flex-col gap-6">
-        <NotificationSettingsPanel />
-        <NotificationHistoryPanel />
-      </div>
+      <NotificationSettingsPanel />
     </Section>
   {/if}
   <Section id="app" title={$t('settings.app.title')}>

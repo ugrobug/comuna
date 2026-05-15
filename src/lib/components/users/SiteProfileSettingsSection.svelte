@@ -119,9 +119,6 @@
         <div class="text-sm font-semibold text-slate-900 dark:text-zinc-100">
           Связанные способы входа
         </div>
-        <div class="mt-1 text-xs text-slate-500 dark:text-zinc-400">
-          Привязка помогает не потерять доступ и автоматически объединяет дубли, если этот Telegram, VK или подтвержденная почта уже были у другой учетки.
-        </div>
         <div class="mt-3 grid gap-3 md:grid-cols-2">
           {#if siteUser?.telegram_linked}
             <div class="rounded-xl border border-emerald-200 bg-white px-4 py-3 text-sm text-emerald-700 dark:border-emerald-900/70 dark:bg-zinc-950 dark:text-emerald-300">
