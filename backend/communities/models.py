@@ -30,7 +30,7 @@ class ComunCategory(models.Model):
     only_moderators_can_post = models.BooleanField(
         default=False,
         verbose_name="Публикация только для создателя и модераторов",
-        help_text="Если включено, писать в эту категорию смогут только создатель сообщества, модераторы и администраторы сайта.",
+        help_text="Если включено, писать в эту категорию смогут только создатель сообщества и модераторы.",
     )
     hide_from_home = models.BooleanField(
         default=False,
@@ -199,7 +199,7 @@ class Comun(models.Model):
     only_moderators_can_post = models.BooleanField(
         default=False,
         verbose_name="Публикация только для создателя и модераторов",
-        help_text="Если включено, писать в коммуну смогут только ее создатель, модераторы и администраторы сайта.",
+        help_text="Если включено, писать в коммуну смогут только ее создатель и модераторы.",
     )
     forbid_external_links = models.BooleanField(
         default=False,

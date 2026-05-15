@@ -1256,6 +1256,7 @@ def comun_create_from_telegram_channel(request: HttpRequest) -> HttpResponse:
         product_description=(author.description or "").strip(),
         telegram_source_author=author,
         telegram_channel_username=_normalize_telegram_channel_username(author.username),
+        only_moderators_can_post=True,
     )
     comun.moderators.add(current_user)
     comun = (

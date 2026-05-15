@@ -271,6 +271,75 @@ class ComunPostingApiTests(TestCase):
         self.assertIsNone(comun.creator_id)
         self.assertEqual(comun.logo_url, "https://example.com/orphan-channel.jpg")
         self.assertEqual(comun.telegram_source_author_id, telegram_author.id)
+        self.assertTrue(comun.only_moderators_can_post)
+
+    def test_create_from_telegram_channel_defaults_to_moderator_only(self):
+        telegram_author = Author.objects.create(
+            username="managed-channel",
+            title="Managed Channel",
+            channel_id=780,
+            channel_url="https://t.me/managed-channel",
+        )
+        AuthorAdmin.objects.create(
+            user=self.user,
+            author=telegram_author,
+            verified_at=timezone.now(),
+        )
+
+        response = self.client.post(
+            reverse("comun-create-from-telegram-channel"),
+            data=json.dumps({"author_id": telegram_author.id}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        payload = response.json()
+        self.assertTrue(payload.get("ok"))
+        self.assertTrue(payload.get("created"))
+        self.assertTrue(payload["comun"]["only_moderators_can_post"])
+
+        comun = Comun.objects.get(telegram_source_author=telegram_author)
+        self.assertTrue(comun.only_moderators_can_post)
+        self.assertTrue(comun.moderators.filter(id=self.user.id).exists())
+
+    def test_interface_created_comun_remains_open_by_default(self):
+        response = self.client.post(
+            reverse("comuns-list-create"),
+            data=json.dumps({"name": "Open Product Community"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        payload = response.json()
+        self.assertTrue(payload.get("ok"))
+        self.assertFalse(payload["comun"]["only_moderators_can_post"])
+
+        comun = Comun.objects.get(slug=payload["comun"]["slug"])
+        self.assertFalse(comun.only_moderators_can_post)
+
+    def test_site_admin_is_not_implicit_moderator_for_restricted_comun(self):
+        site_admin = User.objects.create_user(username="site-admin", password="secret", is_staff=True)
+        telegram_author = Author.objects.create(
+            username="restricted-channel",
+            title="Restricted Channel",
+            channel_id=781,
+            channel_url="https://t.me/restricted-channel",
+        )
+        comun = Comun.objects.create(
+            name="Restricted Channel",
+            slug="restricted-channel",
+            creator=self.user,
+            telegram_source_author=telegram_author,
+            telegram_channel_username=telegram_author.username,
+            only_moderators_can_post=True,
+        )
+
+        can_post, _minimum_rating, _author_rating = community_service._comun_post_access_state(
+            site_admin,
+            comun,
+        )
+
+        self.assertFalse(can_post)
 
     def test_comun_access_uses_personal_site_author_rating(self):
         personal_author_id = editor_personal_author_id(self.user)

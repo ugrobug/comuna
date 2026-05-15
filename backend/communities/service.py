@@ -684,6 +684,7 @@ def _ensure_telegram_channel_comun_for_author(author: Author | None) -> Comun | 
         product_description=(author.description or "").strip(),
         telegram_source_author=author,
         telegram_channel_username=normalized_username,
+        only_moderators_can_post=True,
     )
     if owner_id:
         comun.moderators.add(owner_id)
