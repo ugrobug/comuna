@@ -37,6 +37,27 @@ class ModeratorAnalyticsApiTests(TestCase):
         response = self.client.get(reverse("moderator-analytics"), **self.user_headers)
         self.assertEqual(response.status_code, 403)
 
+        response = self.client.get(reverse("moderator-post-view-settings"))
+        self.assertEqual(response.status_code, 401)
+
+        response = self.client.get(reverse("moderator-post-view-settings"), **self.user_headers)
+        self.assertEqual(response.status_code, 403)
+
+        response = self.client.patch(
+            reverse("moderator-post-view-setting-update", args=[1]),
+            data='{"display_views_target": 10}',
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 401)
+
+        response = self.client.patch(
+            reverse("moderator-post-view-setting-update", args=[1]),
+            data='{"display_views_target": 10}',
+            content_type="application/json",
+            **self.user_headers,
+        )
+        self.assertEqual(response.status_code, 403)
+
     def test_returns_period_analytics_for_staff(self):
         author = Author.objects.create(
             username="channel",
@@ -73,6 +94,9 @@ class ModeratorAnalyticsApiTests(TestCase):
         comment = PostComment.objects.create(post=telegram_post, user=self.user, body="Comment")
         PostLike.objects.create(post=telegram_post, user=self.user, value=1)
         PostCommentLike.objects.create(comment=comment, user=self.staff)
+        Post.objects.filter(id=telegram_post.id).update(real_views_count=10)
+        Post.objects.filter(id=site_post.id).update(real_views_count=5)
+        Post.objects.filter(id=manual_comun_post.id).update(real_views_count=0)
 
         older = timezone.now() - timedelta(days=10)
         Post.objects.filter(id=site_post.id).update(created_at=older)
@@ -103,7 +127,40 @@ class ModeratorAnalyticsApiTests(TestCase):
                 "likes": 2,
                 "posts_telegram": 1,
                 "posts_site": 2,
+                "post_real_views": 15,
+                "average_real_views_per_post": 5.0,
             },
         )
         self.assertEqual(data["breakdown"]["post_likes"], 1)
         self.assertEqual(data["breakdown"]["comment_likes"], 1)
+
+    def test_view_settings_can_be_listed_and_updated_by_staff(self):
+        author = Author.objects.create(username="channel")
+        post = Post.objects.create(
+            author=author,
+            message_id=10,
+            title="Managed post",
+            real_views_count=12,
+        )
+        post.set_display_views_target(40, save=True)
+
+        response = self.client.get(reverse("moderator-post-view-settings"), **self.staff_headers)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["posts"][0]["id"], post.id)
+        self.assertEqual(data["posts"][0]["real_views_count"], 12)
+        self.assertEqual(data["posts"][0]["display_views_target"], 40)
+
+        response = self.client.patch(
+            reverse("moderator-post-view-setting-update", args=[post.id]),
+            data='{"display_views_target": 125}',
+            content_type="application/json",
+            **self.staff_headers,
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["post"]["display_views_target"], 125)
+        post.refresh_from_db()
+        self.assertEqual(post.display_views_target, 125)

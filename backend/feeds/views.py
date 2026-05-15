@@ -1232,6 +1232,9 @@ def _post_fake_views_current(post: Post, now=None) -> int:
     return min(max(fake_views, 0), target)
 
 
+_post_display_views_current = _post_fake_views_current
+
+
 def _post_total_views(post: Post, now=None) -> int:
     real_views = max(int(getattr(post, "real_views_count", 0) or 0), 0)
     return real_views + _post_fake_views_current(post, now=now)

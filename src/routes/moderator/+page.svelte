@@ -1,12 +1,17 @@
 <script lang="ts">
   import { goto } from '$app/navigation'
   import { browser } from '$app/environment'
-  import { buildModeratorAnalyticsUrl } from '$lib/api/backend'
+  import {
+    buildModeratorAnalyticsUrl,
+    buildModeratorPostViewSettingsUrl,
+    buildModeratorPostViewSettingUrl,
+  } from '$lib/api/backend'
   import { refreshSiteUser, siteToken, siteUser } from '$lib/siteAuth'
   import { onMount } from 'svelte'
   import {
     ChartBar,
     ChatBubbleLeftRight,
+    Eye,
     Heart,
     Newspaper,
     UserGroup,
@@ -21,6 +26,8 @@
     likes: number
     posts_telegram: number
     posts_site: number
+    post_real_views: number
+    average_real_views_per_post: number
   }
 
   type AnalyticsResponse = {
@@ -35,6 +42,28 @@
       post_likes: number
       comment_likes: number
     }
+  }
+
+  type PostViewSettingsItem = {
+    id: number
+    title: string
+    created_at: string
+    real_views_count: number
+    display_views_target: number
+    display_views_current: number
+    views_total: number
+    author: {
+      id: number
+      username: string
+      title?: string | null
+    }
+  }
+
+  type PostViewSettingsResponse = {
+    ok: boolean
+    error?: string
+    posts?: PostViewSettingsItem[]
+    post?: PostViewSettingsItem
   }
 
   const dateValue = (date: Date) => {
@@ -52,6 +81,11 @@
   let loading = true
   let error = ''
   let analytics: AnalyticsResponse | null = null
+  let viewSettingsLoading = true
+  let viewSettingsError = ''
+  let viewSettingsQuery = ''
+  let viewSettingsPosts: PostViewSettingsItem[] = []
+  let savingViewSettings: Record<number, boolean> = {}
 
   const metrics = (totals: AnalyticsTotals) => [
     {
@@ -90,9 +124,27 @@
       value: totals.posts_site,
       icon: Newspaper,
     },
+    {
+      key: 'post_real_views',
+      label: 'Просмотры постов',
+      value: totals.post_real_views,
+      icon: Eye,
+    },
+    {
+      key: 'average_real_views_per_post',
+      label: 'Среднее на пост',
+      value: totals.average_real_views_per_post,
+      icon: ChartBar,
+    },
   ]
 
   const formatNumber = (value: number) => new Intl.NumberFormat('ru-RU').format(value)
+  const formatDate = (value: string) =>
+    new Intl.DateTimeFormat('ru-RU', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    }).format(new Date(value))
 
   async function loadAnalytics() {
     if (!$siteUser?.is_staff) return
@@ -118,6 +170,64 @@
     }
   }
 
+  async function loadViewSettings() {
+    if (!$siteUser?.is_staff) return
+    viewSettingsLoading = true
+    viewSettingsError = ''
+
+    try {
+      const token = $siteToken
+      const response = await fetch(
+        buildModeratorPostViewSettingsUrl({ q: viewSettingsQuery.trim(), limit: 30 }),
+        {
+          credentials: 'include',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        }
+      )
+      const data = (await response.json()) as PostViewSettingsResponse
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || 'Не удалось загрузить просмотры')
+      }
+      viewSettingsPosts = data.posts ?? []
+    } catch (err) {
+      viewSettingsError = err instanceof Error ? err.message : 'Не удалось загрузить просмотры'
+      viewSettingsPosts = []
+    } finally {
+      viewSettingsLoading = false
+    }
+  }
+
+  async function saveViewSettings(post: PostViewSettingsItem) {
+    const nextTarget = Math.max(0, Math.trunc(Number(post.display_views_target) || 0))
+    post.display_views_target = nextTarget
+    savingViewSettings = { ...savingViewSettings, [post.id]: true }
+    viewSettingsError = ''
+
+    try {
+      const token = $siteToken
+      const response = await fetch(buildModeratorPostViewSettingUrl(post.id), {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ display_views_target: nextTarget }),
+      })
+      const data = (await response.json()) as PostViewSettingsResponse
+      if (!response.ok || !data.ok || !data.post) {
+        throw new Error(data.error || 'Не удалось сохранить просмотры')
+      }
+      viewSettingsPosts = viewSettingsPosts.map((item) =>
+        item.id === post.id ? data.post! : item
+      )
+    } catch (err) {
+      viewSettingsError = err instanceof Error ? err.message : 'Не удалось сохранить просмотры'
+    } finally {
+      savingViewSettings = { ...savingViewSettings, [post.id]: false }
+    }
+  }
+
   function setPreset(days: number) {
     const end = new Date()
     const start = new Date(end)
@@ -139,6 +249,7 @@
       return
     }
     loadAnalytics()
+    loadViewSettings()
   })
 </script>
 
@@ -180,7 +291,7 @@
 
   {#if loading}
     <div class="metrics-grid">
-      {#each Array(6) as _}
+      {#each Array(8) as _}
         <div class="metric-card skeleton"></div>
       {/each}
     </div>
@@ -215,6 +326,83 @@
       </div>
     </section>
   {/if}
+
+  <section class="view-settings-section">
+    <div class="section-header">
+      <div>
+        <p class="section-label">Раздел</p>
+        <h2>Настройки просмотров</h2>
+      </div>
+      <form class="view-settings-search" on:submit|preventDefault={loadViewSettings}>
+        <input
+          type="search"
+          bind:value={viewSettingsQuery}
+          placeholder="ID, заголовок или автор"
+          aria-label="Поиск постов"
+        />
+        <button class="secondary-button" type="submit" disabled={viewSettingsLoading}>
+          Найти
+        </button>
+      </form>
+    </div>
+
+    {#if viewSettingsError}
+      <div class="notice error">{viewSettingsError}</div>
+    {/if}
+
+    {#if viewSettingsLoading}
+      <div class="view-settings-table">
+        {#each Array(5) as _}
+          <div class="view-settings-row skeleton"></div>
+        {/each}
+      </div>
+    {:else if viewSettingsPosts.length}
+      <div class="view-settings-table">
+        {#each viewSettingsPosts as post (post.id)}
+          <article class="view-settings-row">
+            <div class="post-info">
+              <strong>{post.title}</strong>
+              <span>
+                #{post.id} · {post.author.title || post.author.username} · {formatDate(post.created_at)}
+              </span>
+            </div>
+            <div class="view-cell">
+              <span>Реальные</span>
+              <strong>{formatNumber(post.real_views_count)}</strong>
+            </div>
+            <label class="display-input">
+              <span>Цель отображения</span>
+              <input
+                type="number"
+                min="0"
+                max="1000000"
+                step="1"
+                bind:value={post.display_views_target}
+              />
+            </label>
+            <div class="view-cell">
+              <span>Отображение сейчас</span>
+              <strong>{formatNumber(post.display_views_current)}</strong>
+            </div>
+            <div class="view-cell">
+              <span>Итого</span>
+              <strong>{formatNumber(post.views_total)}</strong>
+            </div>
+            <button
+              class="secondary-button save-button"
+              type="button"
+              disabled={savingViewSettings[post.id]}
+              on:click={() => saveViewSettings(post)}
+            >
+              {savingViewSettings[post.id] ? 'Сохраняю' : 'Сохранить'}
+            </button>
+          </article>
+        {/each}
+      </div>
+    {:else}
+      <div class="empty-state">Посты не найдены.</div>
+    {/if}
+  </section>
 </div>
 
 <style>
@@ -362,14 +550,26 @@
     flex: 0 0 auto;
   }
 
-  .analytics-section {
+  .analytics-section,
+  .view-settings-section {
     border: 1px solid rgb(226 232 240);
     border-radius: 8px;
     background: white;
     padding: 18px;
+  }
+
+  .analytics-section {
     display: flex;
     justify-content: space-between;
     gap: 18px;
+  }
+
+  .section-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 16px;
   }
 
   .summary-row {
@@ -387,6 +587,112 @@
     border-radius: 999px;
     padding: 6px 10px;
     background: rgb(248 250 252);
+  }
+
+  .view-settings-search {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+  }
+
+  .view-settings-search input,
+  .display-input input {
+    height: 38px;
+    border: 1px solid rgb(226 232 240);
+    border-radius: 8px;
+    padding: 0 10px;
+    background: white;
+    color: rgb(15 23 42);
+  }
+
+  .view-settings-search input {
+    width: min(320px, 46vw);
+  }
+
+  .secondary-button {
+    height: 38px;
+    border: 1px solid rgb(203 213 225);
+    border-radius: 8px;
+    padding: 0 14px;
+    background: white;
+    color: rgb(15 23 42);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .secondary-button:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+
+  .view-settings-table {
+    display: grid;
+    gap: 10px;
+  }
+
+  .view-settings-row {
+    min-height: 76px;
+    border: 1px solid rgb(226 232 240);
+    border-radius: 8px;
+    padding: 12px;
+    display: grid;
+    grid-template-columns: minmax(220px, 1.7fr) repeat(4, minmax(96px, 0.65fr)) auto;
+    gap: 12px;
+    align-items: center;
+    background: rgb(248 250 252);
+  }
+
+  .post-info {
+    min-width: 0;
+    display: grid;
+    gap: 5px;
+  }
+
+  .post-info strong {
+    overflow: hidden;
+    color: rgb(15 23 42);
+    font-size: 15px;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .post-info span,
+  .view-cell span,
+  .display-input span {
+    color: rgb(100 116 139);
+    font-size: 12px;
+    line-height: 1.2;
+  }
+
+  .view-cell,
+  .display-input {
+    min-width: 0;
+    display: grid;
+    gap: 5px;
+  }
+
+  .view-cell strong {
+    color: rgb(15 23 42);
+    font-size: 18px;
+    line-height: 1.2;
+  }
+
+  .display-input input {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .save-button {
+    justify-self: end;
+  }
+
+  .empty-state {
+    border: 1px dashed rgb(203 213 225);
+    border-radius: 8px;
+    padding: 22px;
+    color: rgb(71 85 105);
+    text-align: center;
   }
 
   .notice {
@@ -420,21 +726,36 @@
   :global(.dark) .section-label,
   :global(.dark) .metric-card p,
   :global(.dark) .summary-row,
-  :global(.dark) .period-form label {
+  :global(.dark) .period-form label,
+  :global(.dark) .post-info span,
+  :global(.dark) .view-cell span,
+  :global(.dark) .display-input span,
+  :global(.dark) .empty-state {
     color: rgb(161 161 170);
   }
 
   :global(.dark) h1,
   :global(.dark) h2,
   :global(.dark) .metric-card strong,
-  :global(.dark) .period-form input {
+  :global(.dark) .period-form input,
+  :global(.dark) .view-settings-search input,
+  :global(.dark) .display-input input,
+  :global(.dark) .secondary-button,
+  :global(.dark) .post-info strong,
+  :global(.dark) .view-cell strong {
     color: white;
   }
 
   :global(.dark) .metric-card,
   :global(.dark) .analytics-section,
+  :global(.dark) .view-settings-section,
+  :global(.dark) .view-settings-row,
   :global(.dark) .preset-group,
-  :global(.dark) .period-form input {
+  :global(.dark) .period-form input,
+  :global(.dark) .view-settings-search input,
+  :global(.dark) .display-input input,
+  :global(.dark) .secondary-button,
+  :global(.dark) .empty-state {
     border-color: rgb(63 63 70);
     background: rgb(24 24 27);
   }
@@ -461,7 +782,8 @@
 
   @media (max-width: 900px) {
     .dashboard-header,
-    .analytics-section {
+    .analytics-section,
+    .section-header {
       align-items: stretch;
       flex-direction: column;
     }
@@ -473,6 +795,27 @@
 
     .metrics-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .view-settings-search {
+      align-items: stretch;
+    }
+
+    .view-settings-search input {
+      width: 100%;
+    }
+
+    .view-settings-row {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .post-info,
+    .save-button {
+      grid-column: 1 / -1;
+    }
+
+    .save-button {
+      justify-self: stretch;
     }
   }
 
@@ -493,6 +836,15 @@
 
     .metrics-grid {
       grid-template-columns: 1fr;
+    }
+
+    .view-settings-search,
+    .view-settings-row {
+      grid-template-columns: 1fr;
+    }
+
+    .view-settings-search {
+      display: grid;
     }
   }
 </style>

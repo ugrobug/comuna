@@ -178,6 +178,26 @@ export const buildModeratorAnalyticsUrl = (options?: {
   return query ? `${base}?${query}` : base
 }
 
+export const buildModeratorPostViewSettingsUrl = (options?: {
+  q?: string
+  limit?: number
+}): string => {
+  const base = `${getBackendBaseUrl()}/api/moderator/post-view-settings/`
+  const params = new URLSearchParams()
+  if (options?.q) {
+    params.set('q', options.q)
+  }
+  if (typeof options?.limit === 'number') {
+    params.set('limit', String(options.limit))
+  }
+  const query = params.toString()
+  return query ? `${base}?${query}` : base
+}
+
+export const buildModeratorPostViewSettingUrl = (id: number | string): string => {
+  return `${getBackendBaseUrl()}/api/moderator/posts/${encodeURIComponent(id)}/view-settings/`
+}
+
 export const buildSpecialLandnameUrl = (text: string = '', options?: { track?: boolean }): string => {
   const params = new URLSearchParams()
   if (text) {

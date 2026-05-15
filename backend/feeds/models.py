@@ -332,6 +332,19 @@ class Post(models.Model):
     def __str__(self) -> str:
         return f"{self.author.username}:{self.message_id}"
 
+    @property
+    def display_views_target(self) -> int:
+        return self.fake_views_target
+
+    @display_views_target.setter
+    def display_views_target(self, value: int) -> None:
+        self.fake_views_target = value
+
+    def set_display_views_target(self, value: int, *, save: bool = False) -> None:
+        self.display_views_target = value
+        if save:
+            self.save(update_fields=["fake_views_target", "updated_at"])
+
     def save(self, *args, **kwargs) -> None:
         update_fields = kwargs.get("update_fields")
         should_refresh_preview = update_fields is None or bool(
