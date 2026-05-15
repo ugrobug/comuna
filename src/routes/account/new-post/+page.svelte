@@ -127,9 +127,36 @@
     lemma?: string | null
   }
 
-  $: availableComuns = comuns.filter((comun) => Boolean(comun.can_post))
+  const canPostWithoutCategory = (comun: BackendComun | undefined) =>
+    Boolean(comun?.can_post_without_category ?? comun?.can_post)
+
+  const categoryCanPost = (comun: BackendComun, category: NonNullable<BackendComun['categories']>[number]) => {
+    if (typeof category.can_post === 'boolean') return category.can_post
+    if (comun.can_moderate) return true
+    return !category.only_moderators_can_post
+  }
+
+  const writableCategoriesForComun = (comun: BackendComun | undefined) => {
+    if (!comun) return [] as NonNullable<BackendComun['categories']>
+    return (comun.categories ?? []).filter((category) => categoryCanPost(comun, category))
+  }
+
+  const canUseComunInComposer = (comun: BackendComun) => {
+    if (comun.can_moderate) return true
+    if (!comun.is_subscribed) return false
+    return Boolean(comun.can_start_post || canPostWithoutCategory(comun) || writableCategoriesForComun(comun).length)
+  }
+
+  const defaultCategoryIdForComun = (comun: BackendComun | undefined) => {
+    if (!comun || canPostWithoutCategory(comun)) return ''
+    const firstCategory = writableCategoriesForComun(comun)[0]
+    return firstCategory ? String(firstCategory.id) : ''
+  }
+
+  $: availableComuns = comuns.filter(canUseComunInComposer)
   $: selectedComun = availableComuns.find((comun) => comun.slug === createComunSlug)
-  $: selectedComunCategories = selectedComun?.categories ?? []
+  $: selectedComunCategories = writableCategoriesForComun(selectedComun)
+  $: selectedComunCanPostWithoutCategory = canPostWithoutCategory(selectedComun)
   $: selectedTargetLabel = selectedComun?.name || 'Выберите сообщество'
   $: selectedComunCategory =
     selectedComunCategories.find((category) => String(category.id) === createComunCategoryId) ?? null
@@ -627,11 +654,11 @@
           const restored = requestedNewPost ? false : restoreLocalDraftBuffer()
           if (requestedComunSlug) {
             const requestedComun = comuns.find(
-              (comun) => comun.slug === requestedComunSlug && Boolean(comun.can_post)
+              (comun) => comun.slug === requestedComunSlug && canUseComunInComposer(comun)
             )
             if (requestedComun) {
               createComunSlug = requestedComun.slug
-              createComunCategoryId = ''
+              createComunCategoryId = defaultCategoryIdForComun(requestedComun)
             }
           }
           if (restored) {
@@ -698,6 +725,14 @@
   ) {
     createComunCategoryId = ''
   }
+  $: if (
+    selectedComun &&
+    !createComunCategoryId &&
+    !selectedComunCanPostWithoutCategory &&
+    selectedComunCategories.length
+  ) {
+    createComunCategoryId = String(selectedComunCategories[0].id)
+  }
   $: if (createTemplateType && !selectedAllowedTemplateTypes.includes(createTemplateType)) {
     createTemplateType = availableTemplateTypeOptions[0]?.value ?? ''
   }
@@ -747,6 +782,10 @@
       createError = 'Выберите сообщество для публикации.'
       return
     }
+    if (!createComunCategoryId && !selectedComunCanPostWithoutCategory) {
+      createError = 'Выберите раздел сообщества для публикации.'
+      return
+    }
     if (selectedCategoryRestrictedForCurrentUser) {
       createError = `Публикация в категории "${selectedComunCategory?.name ?? ''}" доступна только создателю и модераторам.`
       return
@@ -793,8 +832,9 @@
   }
 
   const selectComun = (slug: string) => {
-    createComunSlug = slug
-    createComunCategoryId = ''
+    const comun = availableComuns.find((item) => item.slug === slug)
+    createComunSlug = comun?.slug ?? slug
+    createComunCategoryId = defaultCategoryIdForComun(comun)
     comunMenuOpen = false
     comunSearchQuery = ''
   }
@@ -1012,7 +1052,7 @@
                       {/if}
                       {#if !filteredComuns.length}
                         <div class="px-3 py-3 text-sm text-slate-500 dark:text-zinc-400">
-                          Ничего не найдено
+                          Нет доступных сообществ для публикации
                         </div>
                       {/if}
                     </div>
@@ -1032,7 +1072,9 @@
                       bind:value={createComunCategoryId}
                       class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
                     >
-                      <option value="">Без раздела</option>
+                      {#if selectedComunCanPostWithoutCategory}
+                        <option value="">Без раздела</option>
+                      {/if}
                       {#each selectedComunCategories as category}
                         <option value={String(category.id)}>{category.name}</option>
                       {/each}

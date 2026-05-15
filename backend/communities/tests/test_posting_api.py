@@ -8,6 +8,7 @@ from django.utils import timezone
 from communities import service as community_service
 from communities.models import Comun, ComunCategory, ComunPostCategoryAssignment
 from feeds.models import Author, Post
+from my_feed.models import UserFeedSettings
 from users.models import AuthorAdmin
 
 
@@ -301,6 +302,88 @@ class ComunPostingApiTests(TestCase):
         self.assertFalse(can_post)
         self.assertEqual(minimum_rating, 50)
         self.assertEqual(author_rating, 0)
+
+    def test_comuns_list_marks_subscribed_and_writable_targets_for_composer(self):
+        viewer = User.objects.create_user(username="subscriber", password="secret")
+        self.client.force_login(viewer)
+
+        subscribed_comun = Comun.objects.create(
+            name="Subscribed Open",
+            slug="subscribed-open",
+            creator=self.user,
+        )
+        subscribed_category = ComunCategory.objects.create(
+            comun=subscribed_comun,
+            name="Отзывы",
+            slug="otzyvy",
+        )
+        subscribed_comun.categories.add(subscribed_category)
+
+        unsubscribed_comun = Comun.objects.create(
+            name="Unsubscribed Open",
+            slug="unsubscribed-open",
+            creator=self.user,
+        )
+        unsubscribed_category = ComunCategory.objects.create(
+            comun=unsubscribed_comun,
+            name="Новости",
+            slug="novosti",
+        )
+        unsubscribed_comun.categories.add(unsubscribed_category)
+
+        restricted_comun = Comun.objects.create(
+            name="Subscribed Restricted",
+            slug="subscribed-restricted",
+            creator=self.user,
+            only_moderators_can_post=True,
+        )
+        restricted_category = ComunCategory.objects.create(
+            comun=restricted_comun,
+            name="Модераторская",
+            slug="moderatorskaya",
+            only_moderators_can_post=True,
+        )
+        restricted_comun.categories.add(restricted_category)
+
+        moderated_comun = Comun.objects.create(
+            name="Moderated Restricted",
+            slug="moderated-restricted",
+            creator=self.user,
+            only_moderators_can_post=True,
+        )
+        moderated_comun.moderators.add(viewer)
+
+        UserFeedSettings.objects.create(
+            user=viewer,
+            my_feed_comuns=[subscribed_comun.slug, restricted_comun.slug],
+        )
+
+        response = self.client.get(reverse("comuns-list-create"))
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        payload = response.json()
+        comuns_by_slug = {comun["slug"]: comun for comun in payload["comuns"]}
+
+        subscribed_payload = comuns_by_slug[subscribed_comun.slug]
+        self.assertTrue(subscribed_payload["is_subscribed"])
+        self.assertTrue(subscribed_payload["can_start_post"])
+        self.assertIn(subscribed_category.id, subscribed_payload["can_post_category_ids"])
+        self.assertTrue(subscribed_payload["categories"][0]["can_post"])
+
+        unsubscribed_payload = comuns_by_slug[unsubscribed_comun.slug]
+        self.assertFalse(unsubscribed_payload["is_subscribed"])
+        self.assertTrue(unsubscribed_payload["can_start_post"])
+
+        restricted_payload = comuns_by_slug[restricted_comun.slug]
+        self.assertTrue(restricted_payload["is_subscribed"])
+        self.assertFalse(restricted_payload["can_start_post"])
+        self.assertFalse(restricted_payload["can_post_without_category"])
+        self.assertFalse(restricted_payload["categories"][0]["can_post"])
+
+        moderated_payload = comuns_by_slug[moderated_comun.slug]
+        self.assertFalse(moderated_payload["is_subscribed"])
+        self.assertTrue(moderated_payload["can_moderate"])
+        self.assertTrue(moderated_payload["can_start_post"])
 
 
 def editor_personal_author_id(user):

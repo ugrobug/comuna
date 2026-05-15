@@ -422,6 +422,7 @@ export type BackendComunCategory = {
   sort_order?: number
   only_moderators_can_post?: boolean
   hide_from_home?: boolean
+  can_post?: boolean
   allowed_template_types?: string[]
   category_allowed_template_types?: string[]
   inherits_comun_template_types?: boolean
@@ -521,6 +522,10 @@ export type BackendComun = {
   can_moderate?: boolean
   can_manage_moderators?: boolean
   can_post?: boolean
+  can_post_without_category?: boolean
+  can_post_category_ids?: number[]
+  can_start_post?: boolean
+  is_subscribed?: boolean
   creator?: { id?: number; username?: string | null; display_name?: string | null }
   moderators?: Array<{ id: number; username: string; display_name?: string | null }>
   moderators_count?: number

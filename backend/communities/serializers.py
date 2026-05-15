@@ -18,6 +18,7 @@ from editor.models import PostPollVote
 from communities import service as community_service
 from editor import service as editor_service
 from feeds.models import Author, Post, PostComment, PostCommentLike, PostFavorite, PostLike, PostRead, Tag
+from my_feed import service as my_feed_service
 
 User = get_user_model()
 
@@ -92,9 +93,14 @@ def _serialize_comun_profile_card(
     }
 
 
-def _serialize_comun_category(category: ComunCategory, comun: Comun | None = None) -> dict:
+def _serialize_comun_category(
+    category: ComunCategory,
+    comun: Comun | None = None,
+    *,
+    can_post: bool | None = None,
+) -> dict:
     category_allowed_template_types = community_service._allowed_template_overrides_for_comun_category(category)
-    return {
+    payload = {
         "id": category.id,
         "name": category.name,
         "slug": category.slug,
@@ -106,6 +112,21 @@ def _serialize_comun_category(category: ComunCategory, comun: Comun | None = Non
         "allowed_template_types": community_service._allowed_templates_for_comun_category(comun, category),
         "inherits_comun_template_types": not bool(category_allowed_template_types),
     }
+    if can_post is not None:
+        payload["can_post"] = bool(can_post)
+    return payload
+
+
+def _subscribed_comun_slugs_for_user(user: User | None) -> set[str]:
+    if not user:
+        return set()
+    feed_settings = getattr(user, "feed_settings", None)
+    if feed_settings is None:
+        return set()
+    serialized_settings = my_feed_service._serialize_user_feed_settings(feed_settings)
+    subscribed_slugs = set(serialized_settings.get("my_feed_comuns", []) or [])
+    subscribed_slugs.update((serialized_settings.get("my_feed_comun_categories", {}) or {}).keys())
+    return subscribed_slugs
 
 
 def _serialize_comun_rating(
@@ -293,6 +314,16 @@ def _serialize_comun(
     blocked_tags = list(comun.blocked_tags.filter(is_active=True).order_by("name"))
     glossary_terms = list(community_service._active_comun_glossary_queryset(comun).order_by("sort_order", "term"))
     welcome_post_payload = None
+    can_moderate = community_service._comun_is_moderator(current_user, comun)
+    can_post_without_category = community_service._comun_post_access_state(current_user, comun)[0]
+    category_can_post_by_id = {
+        category.id: community_service._comun_post_access_state(current_user, comun, category=category)[0]
+        for category in categories
+    }
+    can_post_category_ids = [
+        category.id for category in categories if category_can_post_by_id.get(category.id)
+    ]
+    is_subscribed = comun.slug in _subscribed_comun_slugs_for_user(current_user)
     if comun.welcome_post_id:
         welcome_post = (
             Post.objects.select_related("author")
@@ -358,7 +389,14 @@ def _serialize_comun(
         ],
         "moderators_count": len(moderators),
         "excluded_authors_count": len(excluded_authors),
-        "categories": [_serialize_comun_category(category, comun) for category in categories],
+        "categories": [
+            _serialize_comun_category(
+                category,
+                comun,
+                can_post=category_can_post_by_id.get(category.id),
+            )
+            for category in categories
+        ],
         "categories_count": len(categories),
         "telegram_source_author": _serialize_author_source_summary(request, telegram_source_author),
         "telegram_channel_username": (
@@ -402,9 +440,13 @@ def _serialize_comun(
         ],
         "welcome_post_id": comun.welcome_post_id,
         "welcome_post": welcome_post_payload,
-        "can_moderate": community_service._comun_is_moderator(current_user, comun),
+        "is_subscribed": is_subscribed,
+        "can_moderate": can_moderate,
         "can_manage_moderators": community_service._comun_can_manage_moderators(current_user, comun),
-        "can_post": community_service._comun_post_access_state(current_user, comun)[0],
+        "can_post": can_post_without_category,
+        "can_post_without_category": can_post_without_category,
+        "can_post_category_ids": can_post_category_ids,
+        "can_start_post": bool(can_post_without_category or can_post_category_ids),
     }
     if include_activity:
         payload["activity"] = _serialize_comun_activity(request, comun)
