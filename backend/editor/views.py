@@ -529,6 +529,12 @@ def user_posts(request: HttpRequest) -> HttpResponse:
         _fv()._apply_post_tags(post, explicit_tags)
         if not is_draft:
             _fv()._maybe_notify_new_author(author, post)
+            _fv()._maybe_notify_post_published_to_subscribers(
+                post,
+                actor=user,
+                comun=comun,
+                category=comun_category,
+            )
             community_service._recalculate_comun_ratings_for_post(post)
         return JsonResponse({"ok": True, "post": _serialize_post_for_user(request, post, user)})
 
@@ -882,6 +888,12 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
     _fv()._apply_post_tags(post, explicit_tags)
     if current_is_draft and not target_is_draft:
         _fv()._maybe_notify_new_author(post.author, post)
+        _fv()._maybe_notify_post_published_to_subscribers(
+            post,
+            actor=user,
+            comun=next_comun,
+            category=next_comun_category,
+        )
     if (
         current_is_draft != target_is_draft
         or next_comun

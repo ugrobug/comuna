@@ -1207,6 +1207,21 @@ def _maybe_notify_new_author(author: Author, post: Post) -> None:
     _feeds_views()._maybe_notify_new_author(author, post)
 
 
+def _maybe_notify_post_published_to_subscribers(
+    post: Post,
+    *,
+    actor: User | None = None,
+    comun: Comun | None = None,
+    category: ComunCategory | None = None,
+) -> None:
+    _feeds_views()._maybe_notify_post_published_to_subscribers(
+        post,
+        actor=actor,
+        comun=comun,
+        category=category,
+    )
+
+
 __all__ = [
     "_COMUN_ACTIVITY_POINTS",
     "_COMUN_EXTERNAL_LINKS_FORBIDDEN_ERROR",
@@ -1251,6 +1266,7 @@ __all__ = [
     "_is_internal_comuna_url",
     "_lemmatize_tag",
     "_maybe_notify_new_author",
+    "_maybe_notify_post_published_to_subscribers",
     "_maybe_notify_post_added_to_voting",
     "_normalize_comun_category_name",
     "_normalize_comun_glossary_definition",

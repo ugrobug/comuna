@@ -37,18 +37,17 @@ NOTIFICATION_EVENT_DEFINITIONS: list[dict[str, Any]] = [
     {
         "key": "post_published",
         "title": "Пост опубликован",
-        "description": "Ваш пост был опубликован и стал доступен на сайте.",
+        "description": "Опубликован пост в сообществе на которую вы подписаны.",
         "default_site_enabled": True,
         "default_telegram_enabled": False,
         "default_push_enabled": True,
-    },
-    {
-        "key": "comun_invite",
-        "title": "Приглашение в коммуну",
-        "description": "Вас пригласили в коммуну или назначили модератором.",
-        "default_site_enabled": True,
-        "default_telegram_enabled": True,
-        "default_push_enabled": True,
+        "supports_grouping": True,
+        "default_grouping_period": "none",
+        "grouping_options": [
+            {"value": "none", "label": "Не группировать"},
+            {"value": "day", "label": "Группировать за день"},
+            {"value": "week", "label": "Группировать за неделю"},
+        ],
     },
     {
         "key": "post_added_to_voting",
@@ -66,19 +65,23 @@ NOTIFICATION_EVENT_DEFINITIONS: list[dict[str, Any]] = [
         "default_telegram_enabled": True,
         "default_push_enabled": True,
     },
-    {
-        "key": "system_announcement",
-        "title": "Системное объявление",
-        "description": "Важные новости и сообщения от команды проекта.",
-        "default_site_enabled": True,
-        "default_telegram_enabled": False,
-        "default_push_enabled": True,
-    },
 ]
 
 _NOTIFICATION_EVENT_MAP = {
     str(item["key"]): item for item in NOTIFICATION_EVENT_DEFINITIONS
 }
+VALID_NOTIFICATION_GROUPING_PERIODS = {"none", "day", "week"}
+
+
+def _normalize_grouping_period(value: object, *, default: str = "none") -> str:
+    period = str(value or "").strip().lower()
+    if period in VALID_NOTIFICATION_GROUPING_PERIODS:
+        return period
+    return default if default in VALID_NOTIFICATION_GROUPING_PERIODS else "none"
+
+
+def _default_grouping_period(definition: dict[str, Any]) -> str:
+    return _normalize_grouping_period(definition.get("default_grouping_period"), default="none")
 
 
 def get_notification_event_catalog() -> list[dict[str, Any]]:
@@ -106,6 +109,7 @@ def _ensure_user_notification_preferences(user: User) -> dict[str, SiteNotificat
                 site_enabled=bool(definition.get("default_site_enabled", True)),
                 telegram_enabled=bool(definition.get("default_telegram_enabled", False)),
                 push_enabled=bool(definition.get("default_push_enabled", True)),
+                grouping_period=_default_grouping_period(definition),
             )
         )
     if missing:
@@ -127,6 +131,13 @@ def serialize_notification_settings_for_user(user: User) -> dict[str, Any]:
         default_site_enabled = bool(definition.get("default_site_enabled", True))
         default_telegram_enabled = bool(definition.get("default_telegram_enabled", False))
         default_push_enabled = bool(definition.get("default_push_enabled", True))
+        supports_grouping = bool(definition.get("supports_grouping", False))
+        default_grouping_period = _default_grouping_period(definition)
+        grouping_period = (
+            _normalize_grouping_period(pref.grouping_period, default=default_grouping_period)
+            if pref and supports_grouping
+            else default_grouping_period
+        )
         events.append(
             {
                 "key": key,
@@ -135,6 +146,10 @@ def serialize_notification_settings_for_user(user: User) -> dict[str, Any]:
                 "site_enabled": pref.site_enabled if pref else default_site_enabled,
                 "telegram_enabled": pref.telegram_enabled if pref else default_telegram_enabled,
                 "push_enabled": pref.push_enabled if pref else default_push_enabled,
+                "supports_grouping": supports_grouping,
+                "grouping_period": grouping_period if supports_grouping else "none",
+                "default_grouping_period": default_grouping_period,
+                "grouping_options": list(definition.get("grouping_options") or []),
                 "default_site_enabled": default_site_enabled,
                 "default_telegram_enabled": default_telegram_enabled,
                 "default_push_enabled": default_push_enabled,
@@ -190,17 +205,32 @@ def update_notification_settings_for_user(
             default_push_enabled = bool(
                 (_NOTIFICATION_EVENT_MAP.get(key) or {}).get("default_push_enabled", True)
             )
+            definition = _NOTIFICATION_EVENT_MAP.get(key) or {}
+            supports_grouping = bool(definition.get("supports_grouping", False))
+            default_grouping_period = _default_grouping_period(definition)
             site_enabled = pref.site_enabled if pref is not None else default_site_enabled
             telegram_enabled = (
                 pref.telegram_enabled if pref is not None else default_telegram_enabled
             )
             push_enabled = pref.push_enabled if pref is not None else default_push_enabled
+            grouping_period = (
+                _normalize_grouping_period(pref.grouping_period, default=default_grouping_period)
+                if pref is not None and supports_grouping
+                else default_grouping_period
+            )
             if "site_enabled" in item:
                 site_enabled = bool(item.get("site_enabled"))
             if "telegram_enabled" in item:
                 telegram_enabled = bool(item.get("telegram_enabled"))
             if "push_enabled" in item:
                 push_enabled = bool(item.get("push_enabled"))
+            if supports_grouping and "grouping_period" in item:
+                grouping_period = _normalize_grouping_period(
+                    item.get("grouping_period"),
+                    default=default_grouping_period,
+                )
+            if not supports_grouping:
+                grouping_period = "none"
             if pref is None:
                 pref = SiteNotificationPreference.objects.create(
                     user=user,
@@ -208,6 +238,7 @@ def update_notification_settings_for_user(
                     site_enabled=site_enabled,
                     telegram_enabled=telegram_enabled,
                     push_enabled=push_enabled,
+                    grouping_period=grouping_period,
                 )
                 preferences[key] = pref
                 continue
@@ -222,12 +253,16 @@ def update_notification_settings_for_user(
             if pref.push_enabled != push_enabled:
                 pref.push_enabled = push_enabled
                 changed = True
+            if pref.grouping_period != grouping_period:
+                pref.grouping_period = grouping_period
+                changed = True
             if changed:
                 pref.save(
                     update_fields=[
                         "site_enabled",
                         "telegram_enabled",
                         "push_enabled",
+                        "grouping_period",
                         "updated_at",
                     ]
                 )
@@ -274,6 +309,7 @@ def create_user_notification(
         message=str(message or "").strip(),
         link_url=str(link_url or "").strip()[:500],
         payload=payload or {},
+        group_count=1,
         is_site=is_site,
         is_telegram=is_telegram,
         is_push=is_push,
@@ -283,6 +319,125 @@ def create_user_notification(
     if is_push:
         send_site_notification_to_push(notification)
     return notification
+
+
+def create_grouped_user_notification(
+    *,
+    user: User | None,
+    event_key: str,
+    title: str,
+    message: str = "",
+    link_url: str = "",
+    payload: dict[str, Any] | None = None,
+    group_key: str = "",
+    group_item: dict[str, Any] | None = None,
+    force_site: bool | None = None,
+    force_telegram: bool | None = None,
+    force_push: bool | None = None,
+) -> SiteNotification | None:
+    if user is None or not group_key:
+        return create_user_notification(
+            user=user,
+            event_key=event_key,
+            title=title,
+            message=message,
+            link_url=link_url,
+            payload=payload,
+            force_site=force_site,
+            force_telegram=force_telegram,
+            force_push=force_push,
+        )
+
+    definition = get_notification_event_definition(event_key) or {}
+    preferences = _ensure_user_notification_preferences(user)
+    pref = preferences.get(event_key)
+    is_site = bool(force_site) if force_site is not None else bool(
+        pref.site_enabled if pref else definition.get("default_site_enabled", True)
+    )
+    is_telegram = bool(force_telegram) if force_telegram is not None else bool(
+        pref.telegram_enabled if pref else definition.get("default_telegram_enabled", False)
+    )
+    is_push = bool(force_push) if force_push is not None else bool(
+        pref.push_enabled if pref else definition.get("default_push_enabled", True)
+    )
+    if not is_site and not is_telegram and not is_push:
+        return None
+
+    item = group_item if isinstance(group_item, dict) else {}
+    with transaction.atomic():
+        notification = (
+            SiteNotification.objects.select_for_update()
+            .filter(user=user, event_key=event_key, group_key=group_key)
+            .first()
+        )
+        if not notification:
+            group_payload = dict(payload or {})
+            group_payload["items"] = [item] if item else []
+            notification = SiteNotification.objects.create(
+                user=user,
+                event_key=event_key,
+                title=str(title or "").strip()[:255],
+                message=str(message or "").strip(),
+                link_url=str(link_url or "").strip()[:500],
+                payload=group_payload,
+                group_key=str(group_key or "").strip()[:160],
+                group_count=1,
+                is_site=is_site,
+                is_telegram=is_telegram,
+                is_push=is_push,
+            )
+        else:
+            group_payload = notification.payload if isinstance(notification.payload, dict) else {}
+            items = list(group_payload.get("items") or [])
+            item_id = item.get("id") if item else None
+            if item and not any(existing.get("id") == item_id for existing in items if isinstance(existing, dict)):
+                items.append(item)
+            group_payload.update(payload or {})
+            group_payload["items"] = items[-100:]
+            notification.title = str(title or "").strip()[:255]
+            notification.message = str(message or "").strip()
+            notification.link_url = str(link_url or "").strip()[:500]
+            notification.payload = group_payload
+            notification.group_count = max(len(items), int(notification.group_count or 0), 1)
+            notification.is_site = is_site
+            notification.is_telegram = is_telegram
+            notification.is_push = is_push
+            notification.read_at = None
+            notification.save(
+                update_fields=[
+                    "title",
+                    "message",
+                    "link_url",
+                    "payload",
+                    "group_count",
+                    "is_site",
+                    "is_telegram",
+                    "is_push",
+                    "read_at",
+                    "updated_at",
+                ]
+            )
+
+    if is_telegram:
+        send_site_notification_to_telegram(notification)
+    if is_push:
+        send_site_notification_to_push(notification)
+    return notification
+
+
+def notification_grouping_period_for_user(user: User | None, event_key: str) -> str:
+    if user is None:
+        return "none"
+    definition = get_notification_event_definition(event_key) or {}
+    if not definition.get("supports_grouping"):
+        return "none"
+    preferences = _ensure_user_notification_preferences(user)
+    pref = preferences.get(event_key)
+    default_grouping_period = _default_grouping_period(definition)
+    return _normalize_grouping_period(
+        pref.grouping_period if pref else default_grouping_period,
+        default=default_grouping_period,
+    )
 
 
 def list_site_notifications_for_user(
@@ -297,7 +452,7 @@ def list_site_notifications_for_user(
     base_qs = SiteNotification.objects.filter(user=user, is_site=True)
     list_qs = base_qs.filter(read_at__isnull=True) if unread_only else base_qs
     total_count = list_qs.count()
-    items = list(list_qs.order_by("-created_at", "-id")[safe_offset : safe_offset + safe_limit])
+    items = list(list_qs.order_by("-updated_at", "-id")[safe_offset : safe_offset + safe_limit])
     unread_count = base_qs.filter(read_at__isnull=True).count()
     return items, unread_count, total_count
 
@@ -341,12 +496,14 @@ def mark_all_site_notifications_read_for_user(user: User) -> int:
 
 __all__ = [
     "NOTIFICATION_EVENT_DEFINITIONS",
+    "create_grouped_user_notification",
     "create_user_notification",
     "get_notification_event_catalog",
     "get_notification_event_definition",
     "list_site_notifications_for_user",
     "mark_all_site_notifications_read_for_user",
     "mark_site_notification_read_for_user",
+    "notification_grouping_period_for_user",
     "serialize_notification_settings_for_user",
     "update_notification_settings_for_user",
 ]

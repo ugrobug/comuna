@@ -122,7 +122,13 @@ from .models import (
     Tag,
 )
 from .preview import build_post_preview
-from notifications.service import create_user_notification
+from notifications.service import (
+    create_grouped_user_notification,
+    create_user_notification,
+    notification_grouping_period_for_user,
+)
+from my_feed import service as my_feed_service
+from my_feed.models import UserFeedSettings
 from ratings.service import (
     apply_author_rating_delta as _apply_author_rating_delta,
     author_rating_value as _author_rating_value,
@@ -721,6 +727,159 @@ def _maybe_notify_post_added_to_voting(
             event_key="post_added_to_voting",
             title="Ваш пост добавили в голосование",
             message=message,
+            link_url=link_url,
+            payload=payload,
+        )
+
+
+def _post_comun_category_for_notifications(
+    post: Post,
+    comun: Comun,
+    explicit_category: ComunCategory | None = None,
+) -> ComunCategory | None:
+    if explicit_category is not None:
+        return explicit_category
+    assignment = (
+        ComunPostCategoryAssignment.objects.select_related("category")
+        .filter(post=post, comun=comun)
+        .first()
+    )
+    if assignment and assignment.category_id:
+        return assignment.category
+    raw_data = post.raw_data if isinstance(getattr(post, "raw_data", None), dict) else {}
+    category_id = _parse_post_reference_to_id(raw_data.get("comun_category_id"))
+    if category_id:
+        return ComunCategory.objects.filter(id=category_id, comun=comun, is_active=True).first()
+    return None
+
+
+def _feed_settings_subscribed_to_comun_post(
+    settings: UserFeedSettings,
+    *,
+    comun: Comun,
+    category: ComunCategory | None,
+) -> bool:
+    serialized = my_feed_service._serialize_user_feed_settings(settings)
+    comun_slug = (comun.slug or "").strip()
+    if not comun_slug:
+        return False
+    if comun_slug in set(serialized.get("my_feed_comuns", []) or []):
+        return True
+    category_selection = serialized.get("my_feed_comun_categories", {}) or {}
+    selected_category_slugs = set(category_selection.get(comun_slug, []) or [])
+    if not selected_category_slugs:
+        return False
+    return bool(category and (category.slug or "").strip() in selected_category_slugs)
+
+
+def _post_published_group_key(period: str, *, now=None) -> str:
+    now = timezone.localtime(now or timezone.now())
+    local_date = now.date()
+    if period == "day":
+        return f"post_published:day:{local_date.isoformat()}"
+    if period == "week":
+        iso_year, iso_week, _weekday = local_date.isocalendar()
+        return f"post_published:week:{iso_year}-W{iso_week:02d}"
+    return ""
+
+
+def _maybe_notify_post_published_to_subscribers(
+    post: Post,
+    *,
+    actor: User | None = None,
+    comun: Comun | None = None,
+    category: ComunCategory | None = None,
+) -> None:
+    if post.is_pending or post.is_blocked:
+        return
+    comun = comun or community_service._post_comun(post)
+    if not comun:
+        return
+    category = _post_comun_category_for_notifications(post, comun, category)
+
+    author_owner_ids = {
+        user.id for user in _author_owner_users_for_notifications(post.author)
+    }
+    if actor:
+        author_owner_ids.add(actor.id)
+
+    post_title = _post_display_title(post)
+    comun_title = (comun.name or comun.slug or "").strip() or "сообществе"
+    category_title = (category.name or category.slug or "").strip() if category else ""
+    link_url = _post_public_path(post)
+    payload = {
+        "post_id": post.id,
+        "post_title": post_title,
+        "comun_id": comun.id,
+        "comun_slug": comun.slug,
+        "comun_name": comun_title,
+        "category_id": category.id if category else None,
+        "category_slug": category.slug if category else "",
+        "category_name": category_title,
+    }
+    item_payload = {
+        "id": post.id,
+        "title": post_title,
+        "link_url": link_url,
+        "comun_slug": comun.slug,
+        "comun_name": comun_title,
+        "category_slug": category.slug if category else "",
+        "category_name": category_title,
+        "published_at": timezone.now().isoformat(),
+    }
+
+    settings_qs = (
+        UserFeedSettings.objects.select_related("user")
+        .filter(user__is_active=True)
+        .order_by("user_id")
+    )
+    if author_owner_ids:
+        settings_qs = settings_qs.exclude(user_id__in=author_owner_ids)
+
+    notified_user_ids: set[int] = set()
+    for feed_settings in settings_qs.iterator(chunk_size=500):
+        recipient = feed_settings.user
+        if not recipient or recipient.id in notified_user_ids:
+            continue
+        if not _feed_settings_subscribed_to_comun_post(
+            feed_settings,
+            comun=comun,
+            category=category,
+        ):
+            continue
+        notified_user_ids.add(recipient.id)
+
+        grouping_period = notification_grouping_period_for_user(recipient, "post_published")
+        if grouping_period in {"day", "week"}:
+            group_key = _post_published_group_key(grouping_period)
+            group_label = "сегодня" if grouping_period == "day" else "за неделю"
+            create_grouped_user_notification(
+                user=recipient,
+                event_key="post_published",
+                title=f"Новые посты {group_label}",
+                message=(
+                    "В сообществах, на которые вы подписаны, появились новые публикации. "
+                    f"Последний пост: «{post_title}» в «{comun_title}»."
+                ),
+                link_url=link_url,
+                payload={
+                    "grouping_period": grouping_period,
+                    "group_label": group_label,
+                    "latest": payload,
+                },
+                group_key=group_key,
+                group_item=item_payload,
+            )
+            continue
+
+        create_user_notification(
+            user=recipient,
+            event_key="post_published",
+            title="Пост опубликован",
+            message=(
+                f"Опубликован пост в сообществе «{comun_title}», "
+                f"на которое вы подписаны: «{post_title}»."
+            ),
             link_url=link_url,
             payload=payload,
         )

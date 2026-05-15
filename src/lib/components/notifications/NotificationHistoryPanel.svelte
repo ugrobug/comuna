@@ -165,6 +165,11 @@
               <div class="flex flex-wrap items-center gap-2">
                 <div class="text-sm font-medium text-slate-900 dark:text-zinc-100">
                   {item.title}
+                  {#if (item.group_count || 1) > 1}
+                    <span class="ml-1 text-xs font-normal text-slate-500 dark:text-zinc-400">
+                      ({item.group_count})
+                    </span>
+                  {/if}
                 </div>
                 {#if !item.is_read}
                   <span class="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
@@ -178,7 +183,7 @@
                 </div>
               {/if}
               <div class="mt-2 text-xs text-slate-500 dark:text-zinc-400">
-                {formatTime(item.created_at)}
+                {formatTime(item.updated_at || item.created_at)}
               </div>
             </div>
           </div>

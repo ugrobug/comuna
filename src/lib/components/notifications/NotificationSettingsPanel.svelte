@@ -21,17 +21,7 @@
   let notificationPushConfigured = false
   let notificationPushRegisteredDevicesCount = 0
   let notificationPushPlatforms: string[] = []
-  let notificationSettingsSnapshot = '[]'
-
-  $: notificationSettingsDirty =
-    JSON.stringify(
-      notificationEvents.map((event) => ({
-        key: event.key,
-        site_enabled: event.site_enabled,
-        telegram_enabled: event.telegram_enabled,
-        push_enabled: event.push_enabled,
-      }))
-    ) !== notificationSettingsSnapshot
+  let notificationSettingsSaveVersion = 0
 
   const resetNotificationSettingsState = () => {
     notificationEvents = []
@@ -45,7 +35,54 @@
     notificationPushConfigured = false
     notificationPushRegisteredDevicesCount = 0
     notificationPushPlatforms = []
-    notificationSettingsSnapshot = '[]'
+    notificationSettingsSaveVersion += 1
+  }
+
+  const notificationSettingsPayload = (events: SiteNotificationEventSetting[]) =>
+    events.map((event) => ({
+      key: event.key,
+      site_enabled: event.site_enabled,
+      telegram_enabled: event.telegram_enabled,
+      push_enabled: event.push_enabled,
+      grouping_period: event.grouping_period,
+    }))
+
+  const saveNotificationSettingsNow = async (
+    events: SiteNotificationEventSetting[],
+    previousEvents: SiteNotificationEventSetting[]
+  ) => {
+    if (!$siteUser) {
+      toast({ content: 'Нужна авторизация', type: 'error' })
+      notificationEvents = previousEvents
+      return
+    }
+
+    const saveVersion = ++notificationSettingsSaveVersion
+    notificationSettingsSaving = true
+    try {
+      const data = await updateSiteNotificationSettings(notificationSettingsPayload(events))
+      if (saveVersion !== notificationSettingsSaveVersion) return
+      notificationEvents = data.events ?? []
+      notificationTelegramLinked = Boolean(data.telegram?.linked)
+      notificationTelegramUsername = data.telegram?.username ?? ''
+      notificationTelegramFirstName = data.telegram?.first_name ?? ''
+      notificationPushConfigured = Boolean(data.push?.configured)
+      notificationPushRegisteredDevicesCount = Number(data.push?.registered_devices_count || 0)
+      notificationPushPlatforms = data.push?.active_platforms ?? []
+    } catch (error) {
+      if (saveVersion === notificationSettingsSaveVersion) {
+        notificationEvents = previousEvents
+        toast({
+          content:
+            (error as Error)?.message ?? 'Не удалось сохранить настройки оповещений',
+          type: 'error',
+        })
+      }
+    } finally {
+      if (saveVersion === notificationSettingsSaveVersion) {
+        notificationSettingsSaving = false
+      }
+    }
   }
 
   const loadSiteNotificationSettings = async () => {
@@ -61,14 +98,6 @@
       notificationPushConfigured = Boolean(data.push?.configured)
       notificationPushRegisteredDevicesCount = Number(data.push?.registered_devices_count || 0)
       notificationPushPlatforms = data.push?.active_platforms ?? []
-      notificationSettingsSnapshot = JSON.stringify(
-        (data.events ?? []).map((event) => ({
-          key: event.key,
-          site_enabled: event.site_enabled,
-          telegram_enabled: event.telegram_enabled,
-          push_enabled: event.push_enabled,
-        }))
-      )
       notificationSettingsLoaded = true
     } catch (error) {
       toast({
@@ -89,6 +118,7 @@
     const next = [...notificationEvents]
     const item = next[index]
     if (!item) return
+    const previousEvents = notificationEvents
     next[index] = {
       ...item,
       site_enabled: channel === 'site' ? value : item.site_enabled,
@@ -96,48 +126,23 @@
       push_enabled: channel === 'push' ? value : item.push_enabled,
     }
     notificationEvents = next
+    saveNotificationSettingsNow(next, previousEvents).catch(() => {})
   }
 
-  const saveNotificationSettings = async () => {
-    if (!$siteUser) {
-      toast({ content: 'Нужна авторизация', type: 'error' })
-      return
+  const updateNotificationEventGrouping = (
+    index: number,
+    groupingPeriod: 'none' | 'day' | 'week'
+  ) => {
+    const next = [...notificationEvents]
+    const item = next[index]
+    if (!item || !item.supports_grouping) return
+    const previousEvents = notificationEvents
+    next[index] = {
+      ...item,
+      grouping_period: groupingPeriod,
     }
-    notificationSettingsSaving = true
-    try {
-      const data = await updateSiteNotificationSettings(
-        notificationEvents.map((event) => ({
-          key: event.key,
-          site_enabled: event.site_enabled,
-          telegram_enabled: event.telegram_enabled,
-          push_enabled: event.push_enabled,
-        }))
-      )
-      notificationEvents = data.events ?? []
-      notificationTelegramLinked = Boolean(data.telegram?.linked)
-      notificationTelegramUsername = data.telegram?.username ?? ''
-      notificationTelegramFirstName = data.telegram?.first_name ?? ''
-      notificationPushConfigured = Boolean(data.push?.configured)
-      notificationPushRegisteredDevicesCount = Number(data.push?.registered_devices_count || 0)
-      notificationPushPlatforms = data.push?.active_platforms ?? []
-      notificationSettingsSnapshot = JSON.stringify(
-        (data.events ?? []).map((event) => ({
-          key: event.key,
-          site_enabled: event.site_enabled,
-          telegram_enabled: event.telegram_enabled,
-          push_enabled: event.push_enabled,
-        }))
-      )
-      toast({ content: 'Настройки оповещений сохранены', type: 'success' })
-    } catch (error) {
-      toast({
-        content:
-          (error as Error)?.message ?? 'Не удалось сохранить настройки оповещений',
-        type: 'error',
-      })
-    } finally {
-      notificationSettingsSaving = false
-    }
+    notificationEvents = next
+    saveNotificationSettingsNow(next, previousEvents).catch(() => {})
   }
 
   onMount(() => {
@@ -169,18 +174,21 @@
   events={notificationEvents}
   loading={notificationSettingsLoading}
   saving={notificationSettingsSaving}
-  dirty={notificationSettingsDirty}
   telegramLinked={notificationTelegramLinked}
   telegramUsername={notificationTelegramUsername}
   telegramFirstName={notificationTelegramFirstName}
   pushConfigured={notificationPushConfigured}
   pushRegisteredDevicesCount={notificationPushRegisteredDevicesCount}
   pushPlatforms={notificationPushPlatforms}
-  on:save={saveNotificationSettings}
   on:toggle={(event) =>
     toggleNotificationEventChannel(
       event.detail.index,
       event.detail.channel,
       event.detail.value
+    )}
+  on:grouping={(event) =>
+    updateNotificationEventGrouping(
+      event.detail.index,
+      event.detail.groupingPeriod
     )}
 />

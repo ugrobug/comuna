@@ -1926,6 +1926,12 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
                 previous_category=None,
             )
         community_service._maybe_notify_new_author(author, post)
+        community_service._maybe_notify_post_published_to_subscribers(
+            post,
+            actor=current_user,
+            comun=comun,
+            category=category,
+        )
         _recalculate_comun_rating(comun.id)
         serialized_post = editor_service._serialize_post_for_user(request, post, current_user)
         serialized_post["comun_category_id"] = category.id if category else None

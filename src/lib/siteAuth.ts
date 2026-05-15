@@ -89,9 +89,12 @@ export type SiteNotificationItem = {
   message: string
   link_url?: string | null
   payload?: Record<string, unknown>
+  group_key?: string
+  group_count?: number
   is_read: boolean
   read_at?: string | null
   created_at: string
+  updated_at?: string | null
 }
 
 export type SiteNotificationEventSetting = {
@@ -101,6 +104,10 @@ export type SiteNotificationEventSetting = {
   site_enabled: boolean
   telegram_enabled: boolean
   push_enabled: boolean
+  supports_grouping: boolean
+  grouping_period: 'none' | 'day' | 'week'
+  default_grouping_period: 'none' | 'day' | 'week'
+  grouping_options: Array<{ value: 'none' | 'day' | 'week'; label: string }>
   default_site_enabled: boolean
   default_telegram_enabled: boolean
   default_push_enabled: boolean
@@ -144,6 +151,11 @@ export const siteUser = writable<SiteUser | null>(null)
 
 const buildUrl = (path: string) => `${getBackendBaseUrl()}${path}`
 
+const normalizeNotificationGroupingPeriod = (value: any): 'none' | 'day' | 'week' => {
+  const text = String(value || '').trim()
+  return text === 'day' || text === 'week' ? text : 'none'
+}
+
 const normalizeSiteNotificationEventSetting = (value: any): SiteNotificationEventSetting => ({
   key: String(value?.key || ''),
   title: String(value?.title || value?.key || ''),
@@ -154,6 +166,17 @@ const normalizeSiteNotificationEventSetting = (value: any): SiteNotificationEven
     typeof value?.push_enabled === 'boolean'
       ? value.push_enabled
       : Boolean(value?.default_push_enabled),
+  supports_grouping: Boolean(value?.supports_grouping),
+  grouping_period: normalizeNotificationGroupingPeriod(value?.grouping_period),
+  default_grouping_period: normalizeNotificationGroupingPeriod(value?.default_grouping_period),
+  grouping_options: Array.isArray(value?.grouping_options)
+    ? value.grouping_options
+        .map((option: any) => ({
+          value: normalizeNotificationGroupingPeriod(option?.value),
+          label: String(option?.label || ''),
+        }))
+        .filter((option: { value: 'none' | 'day' | 'week'; label: string }) => option.label)
+    : [],
   default_site_enabled: Boolean(value?.default_site_enabled),
   default_telegram_enabled: Boolean(value?.default_telegram_enabled),
   default_push_enabled:
@@ -1062,6 +1085,7 @@ export const updateSiteNotificationSettings = async (
     site_enabled: boolean
     telegram_enabled: boolean
     push_enabled: boolean
+    grouping_period?: 'none' | 'day' | 'week'
   }>
 ): Promise<SiteNotificationSettingsResponse> => {
   const token = get(siteToken)
