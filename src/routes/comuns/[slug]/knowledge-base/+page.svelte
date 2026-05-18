@@ -45,6 +45,21 @@
   const itemLevelStyle = (item: BackendComunKnowledgeBaseItem) =>
     `padding-left: ${Math.min(Number(item.depth ?? 0), 8) * 1.25}rem`
 
+  const itemFrameClass = (item: BackendComunKnowledgeBaseItem) => {
+    const dragState = `${dragOverKey === `into-${item.id}` ? ' ring-2 ring-blue-200 dark:ring-blue-900/60' : ''}${draggedItemId === Number(item.id) ? ' opacity-50' : ''}`
+    if (canManage) {
+      const base = 'transition ' + (canManage ? 'cursor-grab active:cursor-grabbing ' : '')
+      if (item.item_type === 'group') {
+        return `${base}rounded-2xl border border-slate-300 bg-slate-100/90 px-4 py-3 shadow-sm dark:border-zinc-700 dark:bg-zinc-800/80${dragState}`
+      }
+      return `${base}rounded-xl border border-transparent bg-transparent px-3 py-2 hover:bg-slate-50 dark:hover:bg-zinc-900/70${dragState}`
+    }
+    if (item.item_type === 'group') {
+      return `mt-5 border-b border-slate-200 pb-2 pt-1 dark:border-zinc-800${dragState}`
+    }
+    return `rounded-lg border border-transparent bg-transparent px-2 py-1.5 transition hover:bg-slate-50 dark:hover:bg-zinc-900/70${dragState}`
+  }
+
   const childItems = (parentId: number | null) =>
     flatItems.filter((item) => Number(item.parent_id ?? 0) === Number(parentId ?? 0))
 
@@ -324,7 +339,7 @@
           {/if}
           <article
             draggable={canManage && !saving}
-            class="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3 transition dark:border-zinc-800 dark:bg-zinc-900/60 {canManage ? 'cursor-grab active:cursor-grabbing' : ''} {dragOverKey === `into-${item.id}` ? 'border-blue-300 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30' : ''} {draggedItemId === Number(item.id) ? 'opacity-50' : ''}"
+            class={itemFrameClass(item)}
             style={itemLevelStyle(item)}
             on:dragstart={(event) => onDragStart(event, item)}
             on:dragend={onDragEnd}
@@ -334,12 +349,12 @@
           >
             {#if canManage}
               <div class="flex items-center gap-3">
-                <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-500" aria-hidden="true">
-                  ⋮⋮
+                <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl {item.item_type === 'group' ? 'bg-white text-slate-700 shadow-sm dark:bg-zinc-950 dark:text-zinc-200' : 'text-slate-400 dark:text-zinc-500'}" aria-hidden="true">
+                  {item.item_type === 'group' ? '▾' : '⋮⋮'}
                 </div>
                 <div class="min-w-0 flex-1">
                   <div
-                    class="outline-none rounded-lg px-1 py-0.5 text-base font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-200 dark:text-zinc-100 dark:focus:bg-zinc-950 dark:focus:ring-blue-900"
+                    class="outline-none rounded-lg px-1 py-0.5 {item.item_type === 'group' ? 'text-lg font-bold' : 'text-base font-semibold'} text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-200 dark:text-zinc-100 dark:focus:bg-zinc-950 dark:focus:ring-blue-900"
                     contenteditable="true"
                     role="textbox"
                     tabindex="0"
@@ -376,19 +391,24 @@
                 </button>
               </div>
             {:else if item.item_type === 'group'}
-              <div class="text-base font-semibold text-slate-900 dark:text-zinc-100">
-                {itemTitle(item)}
+              <div class="flex items-center gap-2">
+                <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-slate-100 text-xs text-slate-600 dark:bg-zinc-800 dark:text-zinc-300" aria-hidden="true">▾</span>
+                <div class="text-lg font-bold text-slate-950 dark:text-zinc-50">
+                  {itemTitle(item)}
+                </div>
               </div>
             {:else if item.post_path}
               <a
                 href={item.post_path}
-                class="text-base font-semibold text-slate-900 hover:underline dark:text-zinc-100"
+                class="group inline-flex min-w-0 items-center gap-2 text-base font-medium text-slate-800 dark:text-zinc-100"
               >
-                {itemTitle(item)}
+                <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-slate-100 text-xs text-slate-500 transition group-hover:bg-blue-50 group-hover:text-blue-700 dark:bg-zinc-800 dark:text-zinc-400 dark:group-hover:bg-blue-950/40 dark:group-hover:text-blue-300" aria-hidden="true">↗</span>
+                <span class="truncate underline-offset-4 group-hover:underline">{itemTitle(item)}</span>
               </a>
             {:else}
-              <div class="text-base font-semibold text-slate-900 dark:text-zinc-100">
-                {itemTitle(item)}
+              <div class="inline-flex min-w-0 items-center gap-2 text-base font-medium text-slate-800 dark:text-zinc-100">
+                <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-slate-100 text-xs text-slate-500 dark:bg-zinc-800 dark:text-zinc-400" aria-hidden="true">·</span>
+                <span class="truncate">{itemTitle(item)}</span>
               </div>
             {/if}
           </article>
