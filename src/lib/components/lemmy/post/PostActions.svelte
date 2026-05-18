@@ -70,7 +70,11 @@
     formatRelativeDate,
   } from '$lib/components/util/RelativeDate.svelte'
   import { deleteUserPost, siteToken, siteUser } from '$lib/siteAuth'
-  import { buildPostFavoriteUrl, buildPostLikeUrl } from '$lib/api/backend'
+  import {
+    buildComunKnowledgeBaseUrl,
+    buildPostFavoriteUrl,
+    buildPostLikeUrl,
+  } from '$lib/api/backend'
 
   export let post: PostView
   export let view: View = 'cozy'
@@ -103,6 +107,7 @@
   let backendViewsCount = backendViews ?? 0
   let backendFavoriteSaving = false
   let backendFavorited = false
+  let knowledgeBaseSaving = false
 
   $: buttonHeight = view == 'compact' ? 'h-7' : 'h-8'
   $: buttonSquare = view == 'compact' ? 'w-7 h-7' : 'w-8 h-8'
@@ -134,6 +139,15 @@
   $: canManageBackendPost = Boolean(isBackendPost && (canEditBackendPost || canEditViaLegacyProfile))
   $: canDeleteBackendPost =
     canManageBackendPost || Boolean(isBackendPost && $siteUser?.is_staff)
+  $: backendComunSlug = String((post.post as any)?.comun_slug ?? '').trim()
+  $: canAddToKnowledgeBase = Boolean(
+    isBackendPost &&
+      backendPostId &&
+      $siteToken &&
+      backendComunSlug &&
+      (post.post as any)?.comun_knowledge_base_enabled &&
+      (post.post as any)?.comun_can_moderate
+  )
   $: if (backendLikes !== null && backendLikes !== undefined) backendLikesCount = backendLikes
   $: if (backendComments !== null && backendComments !== undefined)
     backendCommentsCount = backendComments
@@ -319,6 +333,34 @@
       toast({ content: (error as Error)?.message || 'Не удалось удалить пост', type: 'error' })
     } finally {
       deletingBackendPost = false
+    }
+  }
+
+  const addToKnowledgeBase = async () => {
+    if (!backendPostId || !backendComunSlug || !$siteToken || knowledgeBaseSaving) return
+    knowledgeBaseSaving = true
+    try {
+      const response = await fetch(buildComunKnowledgeBaseUrl(backendComunSlug), {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${$siteToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ post_id: backendPostId }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(data?.error || 'Не удалось добавить пост в базу знаний')
+      }
+      toast({ content: 'Пост добавлен в базу знаний', type: 'success' })
+    } catch (error) {
+      toast({
+        content:
+          error instanceof Error ? error.message : 'Не удалось добавить пост в базу знаний',
+        type: 'error',
+      })
+    } finally {
+      knowledgeBaseSaving = false
     }
   }
 </script>
@@ -608,6 +650,12 @@
       >
         <Icon src={Trash} size="16" micro slot="prefix" />
         {deletingBackendPost ? 'Удаление...' : 'Удалить пост'}
+      </MenuButton>
+    {/if}
+    {#if canAddToKnowledgeBase}
+      <MenuButton on:click={addToKnowledgeBase} disabled={knowledgeBaseSaving}>
+        <Icon src={Bookmark} size="16" micro slot="prefix" />
+        {knowledgeBaseSaving ? 'Добавляем...' : 'Добавить в базу знаний'}
       </MenuButton>
     {/if}
     {#if $profile?.jwt}

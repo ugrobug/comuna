@@ -260,6 +260,7 @@
       target_audience: (value?.target_audience ?? '').trim(),
       glossary_enabled: Boolean(value?.glossary_enabled),
       roadmap_enabled: Boolean(value?.roadmap_enabled ?? false),
+      knowledge_base_enabled: Boolean(value?.knowledge_base_enabled ?? false),
       minimum_author_rating_to_post: Math.max(
         Number(value?.minimum_author_rating_to_post ?? 0) || 0,
         0
@@ -852,6 +853,7 @@
           target_audience: settingsDraft.target_audience ?? '',
           glossary_enabled: Boolean(settingsDraft.glossary_enabled),
           roadmap_enabled: Boolean(settingsDraft.roadmap_enabled ?? false),
+          knowledge_base_enabled: Boolean(settingsDraft.knowledge_base_enabled ?? false),
           minimum_author_rating_to_post: Math.max(
             Number(settingsDraft.minimum_author_rating_to_post ?? 0) || 0,
             0
@@ -1509,6 +1511,22 @@
               />
               <span class="min-w-0">
                 <span class="block text-sm text-slate-900 dark:text-zinc-100">Глоссарий</span>
+              </span>
+            </label>
+            <label class="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                class="mt-0.5"
+                checked={Boolean(settingsDraft.knowledge_base_enabled ?? false)}
+                on:change={() =>
+                  patchSettingsDraft({
+                    knowledge_base_enabled: !Boolean(
+                      settingsDraft?.knowledge_base_enabled ?? false
+                    ),
+                  })}
+              />
+              <span class="min-w-0">
+                <span class="block text-sm text-slate-900 dark:text-zinc-100">База знаний</span>
               </span>
             </label>
             <label class="flex items-start gap-2 cursor-pointer">

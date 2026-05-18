@@ -183,6 +183,11 @@ class Comun(models.Model):
         verbose_name="Включить дорожную карту",
         help_text="Если включено, в сообществе будет доступна публичная дорожная карта.",
     )
+    knowledge_base_enabled = models.BooleanField(
+        default=False,
+        verbose_name="Включить базу знаний",
+        help_text="Если включено, в сообществе будет доступна публичная база знаний из отмеченных постов.",
+    )
     roadmap_category_ids = models.JSONField(
         default=list,
         blank=True,
@@ -303,10 +308,73 @@ class ComunPostCategoryAssignment(models.Model):
         return f"{self.comun_id}:{self.post_id}:{self.category_id or 0}"
 
 
+class ComunKnowledgeBaseItem(models.Model):
+    TYPE_GROUP = "group"
+    TYPE_POST = "post"
+    TYPE_CHOICES = (
+        (TYPE_GROUP, "Группа"),
+        (TYPE_POST, "Пост"),
+    )
+
+    comun = models.ForeignKey(
+        "feeds.Comun",
+        on_delete=models.CASCADE,
+        related_name="knowledge_base_items",
+    )
+    post = models.ForeignKey(
+        "feeds.Post",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="knowledge_base_items",
+    )
+    parent = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="children",
+    )
+    item_type = models.CharField(max_length=16, choices=TYPE_CHOICES, default=TYPE_POST)
+    title = models.CharField(max_length=255, blank=True)
+    sort_order = models.IntegerField(default=0)
+    created_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="created_comun_knowledge_base_items",
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = "feeds"
+        ordering = ["sort_order", "title", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["comun", "post"],
+                condition=models.Q(post__isnull=False),
+                name="comun_kb_unique_post",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["comun", "parent", "sort_order"], name="comun_kb_tree_idx"),
+            models.Index(fields=["post"], name="comun_kb_post_idx"),
+        ]
+        verbose_name = "Элемент базы знаний"
+        verbose_name_plural = "База знаний сообществ"
+
+    def __str__(self) -> str:
+        return self.title or f"{self.comun_id}:{self.post_id or self.item_type}"
+
+
 __all__ = [
     "Comun",
     "ComunCategory",
     "ComunGlossaryTerm",
+    "ComunKnowledgeBaseItem",
     "ComunPostCategoryAssignment",
     "ComunVote",
 ]

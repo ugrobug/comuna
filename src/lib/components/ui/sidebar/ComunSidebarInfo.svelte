@@ -1,5 +1,10 @@
 <script lang="ts">
-  import { buildComunGlossaryPath, buildComunRoadmapPath, type BackendComun } from '$lib/api/backend'
+  import {
+    buildComunGlossaryPath,
+    buildComunKnowledgeBasePath,
+    buildComunRoadmapPath,
+    type BackendComun,
+  } from '$lib/api/backend'
 
   export let comun: BackendComun | null = null
 
@@ -23,6 +28,7 @@
   $: creator = comun?.creator
   $: moderators = comun?.moderators ?? []
   $: glossaryPath = comun?.slug ? buildComunGlossaryPath(comun.slug) : '/comuns'
+  $: knowledgeBasePath = comun?.slug ? buildComunKnowledgeBasePath(comun.slug) : '/comuns'
   $: roadmapPath = comun?.slug ? buildComunRoadmapPath(comun.slug) : '/comuns'
   $: moderatorList = (() => {
     const seen = new Set<number>()
@@ -95,6 +101,15 @@
       class="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900/85 dark:text-zinc-100 dark:hover:bg-zinc-800"
     >
       Дорожная карта
+    </a>
+  {/if}
+
+  {#if comun?.knowledge_base_enabled}
+    <a
+      href={knowledgeBasePath}
+      class="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900/85 dark:text-zinc-100 dark:hover:bg-zinc-800"
+    >
+      База знаний
     </a>
   {/if}
 

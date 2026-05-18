@@ -21,6 +21,7 @@ from communities.models import (
     Comun,
     ComunCategory,
     ComunGlossaryTerm,
+    ComunKnowledgeBaseItem,
     ComunPostCategoryAssignment,
     ComunVote,
 )
@@ -172,6 +173,61 @@ def _serialize_comun_glossary_term(term: ComunGlossaryTerm) -> dict:
         "definition": term.definition,
         "sort_order": term.sort_order,
     }
+
+
+def _post_public_path(post: Post) -> str:
+    post_title = _fv()._post_display_title(post)
+    post_slug = _fv()._slugify_title(post_title)
+    return f"/b/post/{post.id}-{post_slug}" if post_slug else f"/b/post/{post.id}"
+
+
+def _serialize_comun_knowledge_base_item(item: ComunKnowledgeBaseItem) -> dict:
+    post = getattr(item, "post", None)
+    title = (item.title or "").strip()
+    if not title and post:
+        title = _fv()._post_display_title(post)
+    if not title:
+        title = "Без названия"
+    return {
+        "id": item.id,
+        "item_type": item.item_type,
+        "title": title,
+        "parent_id": item.parent_id,
+        "post_id": item.post_id,
+        "post_path": _post_public_path(post) if post else None,
+        "sort_order": item.sort_order,
+    }
+
+
+def _serialize_comun_knowledge_base(items: list[ComunKnowledgeBaseItem]) -> dict:
+    nodes = {
+        item.id: {
+            **_serialize_comun_knowledge_base_item(item),
+            "children": [],
+        }
+        for item in items
+    }
+    roots: list[dict] = []
+    for item in items:
+        node = nodes[item.id]
+        parent_id = item.parent_id
+        if parent_id and parent_id in nodes and parent_id != item.id:
+            nodes[parent_id]["children"].append(node)
+        else:
+            roots.append(node)
+
+    flat_items: list[dict] = []
+
+    def visit(node: dict, depth: int) -> None:
+        flat_node = {**node, "depth": depth}
+        children = flat_node.pop("children", [])
+        flat_items.append(flat_node)
+        for child in children:
+            visit(child, depth + 1)
+
+    for root in roots:
+        visit(root, 0)
+    return {"items": roots, "flat_items": flat_items}
 
 
 def _parse_post_reference_to_id(value: object) -> int | None:
@@ -718,6 +774,7 @@ def _serialize_comun(
         "target_audience": comun.target_audience,
         "glossary_enabled": bool(getattr(comun, "glossary_enabled", False)),
         "roadmap_enabled": bool(getattr(comun, "roadmap_enabled", False)),
+        "knowledge_base_enabled": bool(getattr(comun, "knowledge_base_enabled", False)),
         "roadmap_category_ids": [category.id for category in roadmap_categories],
         "roadmap_categories": [_serialize_comun_category(category, comun) for category in roadmap_categories],
         "glossary_terms": [_serialize_comun_glossary_term(term) for term in glossary_terms],
@@ -1471,6 +1528,8 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
         comun.glossary_enabled = bool(body.get("glossary_enabled"))
     if "roadmap_enabled" in body:
         comun.roadmap_enabled = bool(body.get("roadmap_enabled"))
+    if "knowledge_base_enabled" in body:
+        comun.knowledge_base_enabled = bool(body.get("knowledge_base_enabled"))
     if "roadmap_category_ids" in body:
         requested_roadmap_category_ids = community_service._parse_int_list(body.get("roadmap_category_ids"))
         active_category_ids = set(
@@ -2044,6 +2103,186 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
             "uncategorized_count": uncategorized_count,
         }
     )
+
+
+def _comun_knowledge_base_queryset(comun: Comun):
+    return (
+        ComunKnowledgeBaseItem.objects.filter(comun=comun, is_active=True)
+        .select_related("post", "post__author", "parent")
+        .order_by("parent_id", "sort_order", "title", "id")
+    )
+
+
+def _next_knowledge_base_sort_order(comun: Comun, parent_id: int | None = None) -> int:
+    siblings = ComunKnowledgeBaseItem.objects.filter(comun=comun, is_active=True, parent_id=parent_id)
+    last_sort_order = siblings.order_by("-sort_order", "-id").values_list("sort_order", flat=True).first()
+    return int(last_sort_order or 0) + 10
+
+
+def _knowledge_base_parent(comun: Comun, parent_id: int | None, *, item_id: int | None = None):
+    if not parent_id:
+        return None
+    parent = ComunKnowledgeBaseItem.objects.filter(comun=comun, is_active=True, id=parent_id).first()
+    if not parent:
+        raise ValueError("parent not found")
+    if item_id and parent.id == item_id:
+        raise ValueError("item cannot be its own parent")
+    cursor = parent
+    seen = {int(item_id or 0)}
+    while cursor and cursor.parent_id:
+        if cursor.parent_id in seen:
+            raise ValueError("parent cycle is not allowed")
+        seen.add(cursor.parent_id)
+        cursor = cursor.parent
+    return parent
+
+
+def _knowledge_base_post_for_comun(comun: Comun, post_id: int | None) -> Post | None:
+    if not post_id:
+        return None
+    membership_filter = _comun_post_membership_filter(comun)
+    if not membership_filter:
+        return None
+    return (
+        Post.objects.filter(id=post_id, is_blocked=False, author__is_blocked=False)
+        .filter(membership_filter)
+        .select_related("author")
+        .first()
+    )
+
+
+@csrf_exempt
+def comun_knowledge_base(request: HttpRequest, slug: str) -> HttpResponse:
+    current_user = user_views._get_user_from_request(request)
+    try:
+        comun = (
+            Comun.objects.filter(slug=slug)
+            .select_related("creator", "telegram_source_author")
+            .prefetch_related("moderators")
+            .get()
+        )
+    except Comun.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "comun not found"}, status=404)
+
+    can_moderate = _comun_is_moderator(current_user, comun)
+    if not comun.is_active and not can_moderate:
+        return JsonResponse({"ok": False, "error": "comun not found"}, status=404)
+    if not comun.knowledge_base_enabled and not can_moderate:
+        return JsonResponse({"ok": False, "error": "knowledge base disabled"}, status=404)
+
+    if request.method in ("GET", "HEAD"):
+        serialized = _serialize_comun_knowledge_base(list(_comun_knowledge_base_queryset(comun)))
+        return JsonResponse(
+            {
+                "ok": True,
+                "comun": _serialize_comun(request, comun, current_user=current_user),
+                **serialized,
+            }
+        )
+
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    if not current_user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    if not can_moderate:
+        return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+
+    try:
+        body = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+
+    parent_id = _parse_post_reference_to_id(body.get("parent_id"))
+    try:
+        parent = _knowledge_base_parent(comun, parent_id)
+    except ValueError as error:
+        return JsonResponse({"ok": False, "error": str(error)}, status=400)
+
+    post_id = _parse_post_reference_to_id(body.get("post_id"))
+    title = str(body.get("title") or "").strip()
+    if post_id:
+        post = _knowledge_base_post_for_comun(comun, post_id)
+        if not post:
+            return JsonResponse({"ok": False, "error": "post not found in comun"}, status=404)
+        item, created = ComunKnowledgeBaseItem.objects.get_or_create(
+            comun=comun,
+            post=post,
+            defaults={
+                "item_type": ComunKnowledgeBaseItem.TYPE_POST,
+                "title": title[:255],
+                "parent": parent,
+                "sort_order": _next_knowledge_base_sort_order(comun, parent.id if parent else None),
+                "created_by": current_user,
+                "is_active": True,
+            },
+        )
+        if not created:
+            item.is_active = True
+            if title:
+                item.title = title[:255]
+            if parent_id is not None:
+                item.parent = parent
+            item.save(update_fields=["is_active", "title", "parent", "updated_at"])
+    else:
+        if not title:
+            return JsonResponse({"ok": False, "error": "title required"}, status=400)
+        item = ComunKnowledgeBaseItem.objects.create(
+            comun=comun,
+            item_type=ComunKnowledgeBaseItem.TYPE_GROUP,
+            title=title[:255],
+            parent=parent,
+            sort_order=_next_knowledge_base_sort_order(comun, parent.id if parent else None),
+            created_by=current_user,
+        )
+
+    serialized = _serialize_comun_knowledge_base(list(_comun_knowledge_base_queryset(comun)))
+    return JsonResponse({"ok": True, "item": _serialize_comun_knowledge_base_item(item), **serialized})
+
+
+@csrf_exempt
+def comun_knowledge_base_item(request: HttpRequest, slug: str, item_id: int) -> HttpResponse:
+    if request.method not in ("PATCH", "DELETE"):
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    current_user = user_views._get_user_from_request(request)
+    if not current_user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    try:
+        comun = Comun.objects.filter(slug=slug).prefetch_related("moderators").get()
+    except Comun.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "comun not found"}, status=404)
+    if not _comun_is_moderator(current_user, comun):
+        return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+    item = ComunKnowledgeBaseItem.objects.filter(comun=comun, id=item_id, is_active=True).first()
+    if not item:
+        return JsonResponse({"ok": False, "error": "item not found"}, status=404)
+
+    if request.method == "DELETE":
+        item.is_active = False
+        item.save(update_fields=["is_active", "updated_at"])
+        serialized = _serialize_comun_knowledge_base(list(_comun_knowledge_base_queryset(comun)))
+        return JsonResponse({"ok": True, **serialized})
+
+    try:
+        body = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+
+    if "title" in body:
+        item.title = str(body.get("title") or "").strip()[:255]
+    if "sort_order" in body:
+        try:
+            item.sort_order = int(body.get("sort_order") or 0)
+        except (TypeError, ValueError):
+            return JsonResponse({"ok": False, "error": "invalid sort order"}, status=400)
+    if "parent_id" in body:
+        parent_id = _parse_post_reference_to_id(body.get("parent_id"))
+        try:
+            item.parent = _knowledge_base_parent(comun, parent_id, item_id=item.id)
+        except ValueError as error:
+            return JsonResponse({"ok": False, "error": str(error)}, status=400)
+    item.save(update_fields=["title", "sort_order", "parent", "updated_at"])
+    serialized = _serialize_comun_knowledge_base(list(_comun_knowledge_base_queryset(comun)))
+    return JsonResponse({"ok": True, "item": _serialize_comun_knowledge_base_item(item), **serialized})
 
 
 @csrf_exempt

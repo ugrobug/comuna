@@ -115,6 +115,21 @@ export const buildComunGlossaryPath = (slug: string): string => {
   return `/comuns/${encodeURIComponent(slug)}/glossary`
 }
 
+export const buildComunKnowledgeBasePath = (slug: string): string => {
+  return `/comuns/${encodeURIComponent(slug)}/knowledge-base`
+}
+
+export const buildComunKnowledgeBaseUrl = (slug: string): string => {
+  return `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/knowledge-base/`
+}
+
+export const buildComunKnowledgeBaseItemUrl = (
+  slug: string,
+  itemId: number | string
+): string => {
+  return `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/knowledge-base/${encodeURIComponent(itemId)}/`
+}
+
 export const buildComunRoadmapPath = (slug: string): string => {
   return `/comuns/${encodeURIComponent(slug)}/roadmap`
 }
@@ -537,6 +552,7 @@ export type BackendComun = {
   target_audience?: string | null
   glossary_enabled?: boolean
   roadmap_enabled?: boolean
+  knowledge_base_enabled?: boolean
   roadmap_category_ids?: number[]
   roadmap_categories?: BackendComunCategory[]
   glossary_terms?: BackendComunGlossaryTerm[]
@@ -617,6 +633,20 @@ export type BackendPostComun = {
   name: string
   slug: string
   logo_url?: string | null
+  knowledge_base_enabled?: boolean
+  can_moderate?: boolean
+}
+
+export type BackendComunKnowledgeBaseItem = {
+  id: number
+  item_type: 'group' | 'post'
+  title: string
+  parent_id?: number | null
+  post_id?: number | null
+  post_path?: string | null
+  sort_order?: number
+  depth?: number
+  children?: BackendComunKnowledgeBaseItem[]
 }
 
 export type BackendPublicSiteUser = {
@@ -766,6 +796,9 @@ export const backendPostToPostView = (
       body: post.content,
       template: post.template ?? null,
       enabled_template_editor_blocks: post.enabled_template_editor_blocks ?? [],
+      comun_slug: comunSlug,
+      comun_knowledge_base_enabled: Boolean(post.comun?.knowledge_base_enabled),
+      comun_can_moderate: Boolean(post.comun?.can_moderate),
       can_manage_bug_report_status: Boolean(post.can_manage_bug_report_status),
       bug_report_confirmation: post.bug_report_confirmation ?? null,
       vote_poll_participations: post.vote_poll_participations ?? [],

@@ -783,7 +783,11 @@ def _post_comun(post: Post) -> Comun | None:
     return None
 
 
-def _serialize_post_comun(request: HttpRequest | None, post: Post) -> dict | None:
+def _serialize_post_comun(
+    request: HttpRequest | None,
+    post: Post,
+    current_user: User | None = None,
+) -> dict | None:
     comun = _post_comun(post)
     if not comun:
         return None
@@ -792,6 +796,8 @@ def _serialize_post_comun(request: HttpRequest | None, post: Post) -> dict | Non
         "name": comun.name,
         "slug": comun.slug,
         "logo_url": _comun_logo_url(request, comun),
+        "knowledge_base_enabled": bool(getattr(comun, "knowledge_base_enabled", False)),
+        "can_moderate": _comun_is_moderator(current_user, comun),
     }
 
 

@@ -345,6 +345,7 @@ def _serialize_comun(
         "target_audience": comun.target_audience,
         "glossary_enabled": bool(getattr(comun, "glossary_enabled", False)),
         "roadmap_enabled": bool(getattr(comun, "roadmap_enabled", False)),
+        "knowledge_base_enabled": bool(getattr(comun, "knowledge_base_enabled", False)),
         "roadmap_category_ids": [category.id for category in roadmap_categories],
         "roadmap_categories": [
             _serialize_comun_category(category, comun) for category in roadmap_categories
