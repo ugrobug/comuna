@@ -122,7 +122,7 @@
     title: `Кадр ${slot}`,
     image_url: '',
     source_url: '',
-    is_active: false,
+    is_active: true,
   })
 
   const normalizeLandingImages = (items: LandingImage[] = []) => {
@@ -278,9 +278,20 @@
 
   function setLandingFile(slot: string, event: Event) {
     const input = event.currentTarget as HTMLInputElement
+    const file = input.files?.[0] ?? null
     landingFiles = {
       ...landingFiles,
-      [slot]: input.files?.[0] ?? null,
+      [slot]: file,
+    }
+    if (file) {
+      const draftImage = landingDrafts[slot] ?? emptyLandingImage(slot)
+      landingDrafts = {
+        ...landingDrafts,
+        [slot]: {
+          ...draftImage,
+          is_active: true,
+        },
+      }
     }
   }
 
