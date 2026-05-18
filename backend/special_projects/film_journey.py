@@ -20,6 +20,7 @@ from special_projects.models import (
 User = get_user_model()
 
 PROJECT_SLUG = FilmJourneyFilm.PROJECT_SLUG
+PUBLIC_TOTAL_COUNT = 1001
 DAILY_EVENT_KEY = "film_journey_daily"
 REMINDER_EVENT_KEY = "film_journey_reminder"
 FIRST_REMINDER_AFTER = timedelta(days=2)
@@ -123,7 +124,6 @@ def latest_entry(subscription: FilmJourneySubscription) -> FilmJourneyEntry | No
 def serialize_subscription(subscription: FilmJourneySubscription | None) -> dict[str, Any] | None:
     if subscription is None:
         return None
-    total = active_films_count()
     completed_count = subscription.entries.filter(completed_at__isnull=False).count()
     current = latest_entry(subscription)
     return {
@@ -138,7 +138,7 @@ def serialize_subscription(subscription: FilmJourneySubscription | None) -> dict
         "pause_reason": subscription.pause_reason,
         "completed_at": subscription.completed_at.isoformat() if subscription.completed_at else None,
         "completed_count": completed_count,
-        "total_count": total,
+        "total_count": PUBLIC_TOTAL_COUNT,
         "current_entry": serialize_entry(current, include_film=True) if current else None,
     }
 
@@ -153,7 +153,7 @@ def project_status_for_user(user: User | None) -> dict[str, Any]:
     return {
         "ok": True,
         "project": PROJECT_SLUG,
-        "total_count": active_films_count(),
+        "total_count": PUBLIC_TOTAL_COUNT,
         "subscription": serialize_subscription(subscription),
     }
 
