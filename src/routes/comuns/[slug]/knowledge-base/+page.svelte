@@ -7,20 +7,21 @@
     type BackendComunKnowledgeBaseItem,
   } from '$lib/api/backend'
   import { siteToken } from '$lib/siteAuth'
-  import { Button, toast } from 'mono-svelte'
+  import { toast } from 'mono-svelte'
 
   export let data
 
   let comun: BackendComun | null = data?.comun ?? null
   let items: BackendComunKnowledgeBaseItem[] = data?.items ?? []
   let flatItems: BackendComunKnowledgeBaseItem[] = data?.flatItems ?? []
-  let groupTitle = ''
   let saving = false
   let errorMessage = ''
+  let draggedItemId: number | null = null
+  let dragOverKey = ''
 
   $: canManage = Boolean($siteToken && comun?.can_moderate)
   $: comunBackPath = comun?.slug ? `/comuns/${encodeURIComponent(comun.slug)}` : '/comuns'
-  $: groupOptions = flatItems.filter((item) => item.item_type === 'group')
+  $: itemById = new Map(flatItems.map((item) => [Number(item.id), item]))
 
   const authHeaders = () => {
     if (!$siteToken) throw new Error('Нужна авторизация')
@@ -44,64 +45,198 @@
   const itemLevelStyle = (item: BackendComunKnowledgeBaseItem) =>
     `padding-left: ${Math.min(Number(item.depth ?? 0), 8) * 1.25}rem`
 
-  const availableParents = (item: BackendComunKnowledgeBaseItem) =>
-    groupOptions.filter((group) => Number(group.id) !== Number(item.id))
+  const childItems = (parentId: number | null) =>
+    flatItems.filter((item) => Number(item.parent_id ?? 0) === Number(parentId ?? 0))
 
-  const addGroup = async () => {
-    if (!comun?.slug || !canManage || saving) return
-    const title = groupTitle.trim()
-    if (!title) {
-      errorMessage = 'Введите название группы'
-      return
-    }
-    saving = true
-    errorMessage = ''
-    try {
-      const response = await fetch(buildComunKnowledgeBaseUrl(comun.slug), {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({ title }),
-      })
-      const payload = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        throw new Error(payload?.error || 'Не удалось добавить группу')
+  const itemDescendantIds = (itemId: number) => {
+    const result = new Set<number>()
+    const visit = (parentId: number) => {
+      for (const child of childItems(parentId)) {
+        const childId = Number(child.id)
+        result.add(childId)
+        visit(childId)
       }
-      applyPayload(payload)
-      groupTitle = ''
-      toast({ content: 'Группа добавлена', type: 'success' })
-    } catch (error) {
-      errorMessage = error instanceof Error ? error.message : 'Не удалось добавить группу'
-      toast({ content: errorMessage, type: 'error' })
-    } finally {
-      saving = false
     }
+    visit(itemId)
+    return result
+  }
+
+  const canMoveInto = (itemId: number, parentId: number | null) => {
+    if (!parentId) return true
+    if (itemId === parentId) return false
+    return !itemDescendantIds(itemId).has(parentId)
   }
 
   const updateItem = async (
     item: BackendComunKnowledgeBaseItem,
     patch: Partial<BackendComunKnowledgeBaseItem>
+  ) => patchItem(item, patch, true)
+
+  const patchItem = async (
+    item: BackendComunKnowledgeBaseItem,
+    patch: Partial<BackendComunKnowledgeBaseItem>,
+    showToast = false
   ) => {
-    if (!comun?.slug || !canManage || saving) return
+    if (!comun?.slug || !canManage) return null
+    const response = await fetch(buildComunKnowledgeBaseItemUrl(comun.slug, item.id), {
+      method: 'PATCH',
+      headers: authHeaders(),
+      body: JSON.stringify(patch),
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      throw new Error(payload?.error || 'Не удалось обновить базу знаний')
+    }
+    applyPayload(payload)
+    if (showToast) toast({ content: 'База знаний обновлена', type: 'success' })
+    return payload
+  }
+
+  const createGroup = async (title: string, parentId: number | null) => {
+    if (!comun?.slug || !canManage) return null
+    const response = await fetch(buildComunKnowledgeBaseUrl(comun.slug), {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ title, parent_id: parentId }),
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      throw new Error(payload?.error || 'Не удалось создать группу')
+    }
+    applyPayload(payload)
+    return payload?.item as BackendComunKnowledgeBaseItem | undefined
+  }
+
+  const persistSiblingOrder = async (
+    parentId: number | null,
+    orderedIds: number[],
+    movedItemId?: number,
+    fallbackItems: Map<number, BackendComunKnowledgeBaseItem> = new Map()
+  ) => {
+    let payload: Record<string, unknown> | null = null
+    for (const [index, itemId] of orderedIds.entries()) {
+      const item = itemById.get(itemId) ?? fallbackItems.get(itemId)
+      if (!item) continue
+      const patch: Partial<BackendComunKnowledgeBaseItem> = { sort_order: (index + 1) * 10 }
+      if (itemId === movedItemId || Number(item.parent_id ?? 0) !== Number(parentId ?? 0)) {
+        patch.parent_id = parentId
+      }
+      payload = await patchItem(item, patch)
+    }
+    if (payload) applyPayload(payload)
+  }
+
+  const moveRelativeToItem = async (
+    draggedId: number,
+    target: BackendComunKnowledgeBaseItem,
+    position: 'before' | 'after'
+  ) => {
+    const dragged = itemById.get(draggedId)
+    if (!dragged || draggedId === Number(target.id)) return
+
+    const parentId = Number(target.parent_id ?? 0) || null
+    if (!canMoveInto(draggedId, parentId)) {
+      throw new Error('Нельзя вложить группу в саму себя')
+    }
+
+    const orderedIds = childItems(parentId)
+      .map((item) => Number(item.id))
+      .filter((itemId) => itemId !== draggedId)
+    const targetIndex = orderedIds.indexOf(Number(target.id))
+    const insertIndex = position === 'before' ? targetIndex : targetIndex + 1
+    orderedIds.splice(Math.max(insertIndex, 0), 0, draggedId)
+    await persistSiblingOrder(parentId, orderedIds, draggedId)
+  }
+
+  const moveIntoGroup = async (draggedId: number, group: BackendComunKnowledgeBaseItem) => {
+    const dragged = itemById.get(draggedId)
+    const groupId = Number(group.id)
+    if (!dragged || draggedId === groupId) return
+    if (!canMoveInto(draggedId, groupId)) {
+      throw new Error('Нельзя вложить группу в саму себя')
+    }
+    const orderedIds = [
+      ...childItems(groupId)
+        .map((item) => Number(item.id))
+        .filter((itemId) => itemId !== draggedId),
+      draggedId,
+    ]
+    await persistSiblingOrder(groupId, orderedIds, draggedId)
+  }
+
+  const createGroupFromDrop = async (
+    draggedId: number,
+    target: BackendComunKnowledgeBaseItem
+  ) => {
+    const dragged = itemById.get(draggedId)
+    if (!dragged || draggedId === Number(target.id)) return
+    const title = window.prompt('Название группы')
+    if (!title?.trim()) return
+
+    const parentId = Number(target.parent_id ?? 0) || null
+    const group = await createGroup(title.trim(), parentId)
+    const groupId = Number(group?.id ?? 0)
+    if (!groupId) throw new Error('Не удалось создать группу')
+
+    const originalSiblings = childItems(parentId)
+      .map((item) => Number(item.id))
+      .filter((itemId) => itemId !== draggedId)
+    const targetIndex = originalSiblings.indexOf(Number(target.id))
+    const parentSiblings = originalSiblings.filter((itemId) => itemId !== Number(target.id))
+    parentSiblings.splice(Math.max(targetIndex, 0), 0, groupId)
+    await persistSiblingOrder(parentId, parentSiblings, groupId, new Map([[groupId, group]]))
+    await patchItem(target, { parent_id: groupId, sort_order: 10 })
+    await patchItem(dragged, { parent_id: groupId, sort_order: 20 })
+  }
+
+  const withDragSave = async (action: () => Promise<void>) => {
+    if (saving || !canManage) return
     saving = true
     errorMessage = ''
     try {
-      const response = await fetch(buildComunKnowledgeBaseItemUrl(comun.slug, item.id), {
-        method: 'PATCH',
-        headers: authHeaders(),
-        body: JSON.stringify(patch),
-      })
-      const payload = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        throw new Error(payload?.error || 'Не удалось обновить базу знаний')
-      }
-      applyPayload(payload)
+      await action()
       toast({ content: 'База знаний обновлена', type: 'success' })
     } catch (error) {
       errorMessage = error instanceof Error ? error.message : 'Не удалось обновить базу знаний'
       toast({ content: errorMessage, type: 'error' })
     } finally {
       saving = false
+      draggedItemId = null
+      dragOverKey = ''
     }
+  }
+
+  const onDragStart = (event: DragEvent, item: BackendComunKnowledgeBaseItem) => {
+    if (!canManage) return
+    draggedItemId = Number(item.id)
+    event.dataTransfer?.setData('text/plain', String(item.id))
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
+  }
+
+  const onDragEnd = () => {
+    draggedItemId = null
+    dragOverKey = ''
+  }
+
+  const draggedIdFromEvent = (event: DragEvent) =>
+    Number(event.dataTransfer?.getData('text/plain') || draggedItemId || 0)
+
+  const onDropZone = (event: DragEvent, target: BackendComunKnowledgeBaseItem, position: 'before' | 'after') => {
+    event.preventDefault()
+    const draggedId = draggedIdFromEvent(event)
+    if (!draggedId) return
+    withDragSave(() => moveRelativeToItem(draggedId, target, position))
+  }
+
+  const onDropItem = (event: DragEvent, target: BackendComunKnowledgeBaseItem) => {
+    event.preventDefault()
+    const draggedId = draggedIdFromEvent(event)
+    if (!draggedId || draggedId === Number(target.id)) return
+    withDragSave(() =>
+      target.item_type === 'group'
+        ? moveIntoGroup(draggedId, target)
+        : createGroupFromDrop(draggedId, target)
+    )
   }
 
   const deleteItem = async (item: BackendComunKnowledgeBaseItem) => {
@@ -127,6 +262,20 @@
     } finally {
       saving = false
     }
+  }
+
+  const onTitleChange = (item: BackendComunKnowledgeBaseItem, event: Event) => {
+    const title = (event.currentTarget as HTMLElement | null)?.textContent?.trim() ?? ''
+    if (!title || title === itemTitle(item)) return
+    saving = true
+    updateItem(item, { title })
+      .catch((error) => {
+        errorMessage = error instanceof Error ? error.message : 'Не удалось обновить заголовок'
+        toast({ content: errorMessage, type: 'error' })
+      })
+      .finally(() => {
+        saving = false
+      })
   }
 </script>
 
@@ -155,83 +304,77 @@
     </div>
   {/if}
 
-  {#if canManage}
-    <section class="rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/85">
-      <div class="text-base font-semibold text-slate-900 dark:text-zinc-100">
-        Управление базой знаний
-      </div>
-      <div class="mt-3 flex flex-col gap-2 sm:flex-row">
-        <input
-          bind:value={groupTitle}
-          type="text"
-          placeholder="Название новой группы"
-          class="min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
-        />
-        <Button on:click={addGroup} disabled={saving || !groupTitle.trim()}>
-          Добавить группу
-        </Button>
-      </div>
-    </section>
-  {/if}
-
   <section class="rounded-2xl border border-slate-200 bg-white/95 p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/85">
+    {#if canManage}
+      <div class="mb-4 rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-sm text-slate-600 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-400">
+        Перетащите элемент выше или ниже другого, чтобы поменять порядок. Перетащите на группу, чтобы вложить. Перетащите запись на запись, чтобы создать новую группу.
+      </div>
+    {/if}
     {#if flatItems.length}
       <div class="flex flex-col gap-2">
         {#each flatItems as item (item.id)}
+          {#if canManage}
+            <div
+              class="h-3 rounded-full transition {dragOverKey === `before-${item.id}` ? 'bg-blue-200 dark:bg-blue-900/50' : 'bg-transparent'}"
+              role="presentation"
+              on:dragenter={() => (dragOverKey = `before-${item.id}`)}
+              on:dragover|preventDefault={() => (dragOverKey = `before-${item.id}`)}
+              on:drop={(event) => onDropZone(event, item, 'before')}
+            ></div>
+          {/if}
           <article
-            class="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900/60"
+            draggable={canManage && !saving}
+            class="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3 transition dark:border-zinc-800 dark:bg-zinc-900/60 {canManage ? 'cursor-grab active:cursor-grabbing' : ''} {dragOverKey === `into-${item.id}` ? 'border-blue-300 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30' : ''} {draggedItemId === Number(item.id) ? 'opacity-50' : ''}"
             style={itemLevelStyle(item)}
+            on:dragstart={(event) => onDragStart(event, item)}
+            on:dragend={onDragEnd}
+            on:dragenter={() => (dragOverKey = `into-${item.id}`)}
+            on:dragover|preventDefault={() => (dragOverKey = `into-${item.id}`)}
+            on:drop={(event) => onDropItem(event, item)}
           >
             {#if canManage}
-              <div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_9rem_12rem_auto] md:items-center">
-                <input
-                  value={itemTitle(item)}
-                  on:change={(event) =>
-                    updateItem(item, { title: (event.currentTarget as HTMLInputElement).value })}
-                  class="min-w-0 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
-                />
-                <input
-                  value={Number(item.sort_order ?? 0)}
-                  type="number"
-                  on:change={(event) =>
-                    updateItem(item, {
-                      sort_order: Number((event.currentTarget as HTMLInputElement).value) || 0,
-                    })}
-                  class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
-                  aria-label="Порядок"
-                />
-                <select
-                  value={item.parent_id ?? ''}
-                  on:change={(event) =>
-                    updateItem(item, {
-                      parent_id:
-                        Number((event.currentTarget as HTMLSelectElement).value) || null,
-                    })}
-                  class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
-                  aria-label="Родительская группа"
-                >
-                  <option value="">Без группы</option>
-                  {#each availableParents(item) as parent}
-                    <option value={parent.id}>{'—'.repeat(Number(parent.depth ?? 0))} {parent.title}</option>
-                  {/each}
-                </select>
+              <div class="flex items-center gap-3">
+                <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-500" aria-hidden="true">
+                  ⋮⋮
+                </div>
+                <div class="min-w-0 flex-1">
+                  <div
+                    class="outline-none rounded-lg px-1 py-0.5 text-base font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-200 dark:text-zinc-100 dark:focus:bg-zinc-950 dark:focus:ring-blue-900"
+                    contenteditable="true"
+                    role="textbox"
+                    tabindex="0"
+                    on:blur={(event) => onTitleChange(item, event)}
+                    on:keydown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault()
+                        ;(event.currentTarget as HTMLElement).blur()
+                      }
+                    }}
+                  >{itemTitle(item)}</div>
+                  {#if item.item_type === 'group'}
+                    <div class="mt-1 text-xs uppercase tracking-wide text-slate-500 dark:text-zinc-500">
+                      Группа · {childItems(Number(item.id)).length} записей
+                    </div>
+                  {:else if item.post_path}
+                    <a
+                      href={item.post_path}
+                      class="mt-1 inline-flex text-sm font-medium text-blue-700 hover:underline dark:text-blue-300"
+                    >
+                      Открыть статью
+                    </a>
+                  {/if}
+                </div>
                 <button
                   type="button"
-                  class="rounded-xl border border-rose-200 px-3 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50 dark:border-rose-900/50 dark:text-rose-300 dark:hover:bg-rose-950/30"
+                  class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-rose-200 text-lg leading-none text-rose-700 transition hover:bg-rose-50 dark:border-rose-900/50 dark:text-rose-300 dark:hover:bg-rose-950/30"
                   on:click={() => deleteItem(item)}
                   disabled={saving}
+                  aria-label="Удалить из базы знаний"
+                  title="Удалить"
                 >
-                  Удалить
+                  ×
                 </button>
               </div>
-              {#if item.item_type === 'post' && item.post_path}
-                <a
-                  href={item.post_path}
-                  class="mt-2 inline-flex text-sm font-medium text-blue-700 hover:underline dark:text-blue-300"
-                >
-                  Открыть статью
-                </a>
-              {/if}
             {:else if item.item_type === 'group'}
               <div class="text-base font-semibold text-slate-900 dark:text-zinc-100">
                 {itemTitle(item)}
@@ -249,6 +392,15 @@
               </div>
             {/if}
           </article>
+          {#if canManage}
+            <div
+              class="h-3 rounded-full transition {dragOverKey === `after-${item.id}` ? 'bg-blue-200 dark:bg-blue-900/50' : 'bg-transparent'}"
+              role="presentation"
+              on:dragenter={() => (dragOverKey = `after-${item.id}`)}
+              on:dragover|preventDefault={() => (dragOverKey = `after-${item.id}`)}
+              on:drop={(event) => onDropZone(event, item, 'after')}
+            ></div>
+          {/if}
         {/each}
       </div>
     {:else}
