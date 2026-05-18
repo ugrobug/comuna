@@ -186,7 +186,7 @@
 </script>
 
 <svelte:head>
-  <title>1001 фильм, который нужно посмотреть до смерти</title>
+  <title>1001 фильм, который должен посмотреть каждый</title>
   <meta
     name="description"
     content="Спецпроект Tambur: один фильм в день, секретные ссылки и общий порядок для всех участников."
@@ -199,10 +199,11 @@
 <section class="films-page">
   <div class="hero">
     <div class="hero-copy">
-      <h1>1001 фильм, который нужно посмотреть до смерти</h1>
+      <h1>1001 фильм, который должен посмотреть каждый</h1>
       <p class="lead">
         Каждый день вы получаете один фильм, только посмотрев и оценив его вы переходите
-        к следующему, но только по одному в день.
+        к следующему, пропускать нельзя, выбирать нельзя — погрузиться в мир разных жанров,
+        культур и эпох — нужно!
       </p>
       <div class="actions">
         {#if loading}
@@ -561,6 +562,13 @@
     line-height: 1.6;
   }
 
+  .how-heading a {
+    color: var(--btn-primary-background);
+    font-weight: 500;
+    text-decoration: underline;
+    text-underline-offset: 0.16em;
+  }
+
   .steps {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -614,6 +622,10 @@
   :global(.dark) .panel-grid span,
   :global(.dark) .status-line {
     color: #a1a1aa;
+  }
+
+  :global(.dark) .how-heading a {
+    color: #93c5fd;
   }
 
   :global(.dark) .telegram-callout {
