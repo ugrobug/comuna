@@ -365,6 +365,44 @@
         с того места, где вы остановились.
       </p>
     </div>
+
+    <div class="faq" aria-label="Частые вопросы">
+      <details>
+        <summary>Я могу посмотреть фильм у вас на сайте?</summary>
+        <p>
+          Нет, мы только предоставляем сервис выдающий вам список фильмов для просмотра.
+          Мы не даем сами фильмы, но они без проблем доступны в интернете.
+        </p>
+      </details>
+      <details>
+        <summary>Это бесплатно?</summary>
+        <p>Да, сервис полностью бесплатен и не содержит никаких рекламных элементов.</p>
+      </details>
+      <details>
+        <summary>У меня займет посмотреть все фильмы около 2,5 лет?</summary>
+        <p>
+          Да, это большое кинопутешествие, но вы можете делать паузы и возвращаться к нему
+          когда будет настроение.
+        </p>
+      </details>
+      <details>
+        <summary>Какие фильмы я смогу увидеть в списке?</summary>
+        <p>
+          Критики подобрали фильмы абсолютно разных жанров, эпох и школ. Мы постарались собрать
+          список, чтобы он не пересекался с известными топами, то есть тут будут преимущественно
+          другие фильмы, но более интересные!
+        </p>
+      </details>
+      <details>
+        <summary>Зачем мне этот список?</summary>
+        <p>
+          Это интересный опыт, когда вы не выбираете фильм совсем, только выбираете смотреть его
+          сегодня или нет. А наш призыв дать комментарий про фильм в конце дает вам ощущение более
+          вдумчивого просмотра. Этот список для любителей кино и возможность погрузиться в
+          увлекательное путешествие.
+        </p>
+      </details>
+    </div>
   </div>
 </section>
 
@@ -557,7 +595,8 @@
 
   .how-heading p,
   .step p,
-  .rules p {
+  .rules p,
+  .faq p {
     color: #475569;
     line-height: 1.6;
   }
@@ -609,6 +648,35 @@
     background: rgb(255 255 255);
   }
 
+  .faq {
+    margin-top: 1rem;
+    display: grid;
+    gap: 0.6rem;
+  }
+
+  .faq details {
+    border: 1px solid rgb(226 232 240);
+    border-radius: 8px;
+    background: rgb(248 250 252);
+    padding: 0.9rem 1rem;
+  }
+
+  .faq summary {
+    cursor: pointer;
+    color: #0f172a;
+    font-size: 1rem;
+    font-weight: 500;
+    line-height: 1.35;
+  }
+
+  .faq summary::marker {
+    color: var(--btn-primary-background);
+  }
+
+  .faq p {
+    margin-top: 0.65rem;
+  }
+
   :global(.dark) .films-page {
     background: rgb(9 9 11 / 1);
     color: #fafafa;
@@ -619,6 +687,7 @@
   :global(.dark) .how-heading p,
   :global(.dark) .step p,
   :global(.dark) .rules p,
+  :global(.dark) .faq p,
   :global(.dark) .panel-grid span,
   :global(.dark) .status-line {
     color: #a1a1aa;
@@ -687,6 +756,19 @@
   :global(.dark) .rules {
     border-color: rgb(39 39 42);
     background: rgb(9 9 11);
+  }
+
+  :global(.dark) .faq details {
+    border-color: rgb(39 39 42);
+    background: rgb(24 24 27);
+  }
+
+  :global(.dark) .faq summary {
+    color: #fafafa;
+  }
+
+  :global(.dark) .faq summary::marker {
+    color: #93c5fd;
   }
 
   @media (max-width: 820px) {
