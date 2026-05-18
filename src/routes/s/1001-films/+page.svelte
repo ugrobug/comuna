@@ -553,11 +553,12 @@
     border-radius: 2rem;
     padding: 2.6rem;
     background:
-      radial-gradient(circle at 73% 37%, rgb(53 212 223 / 0.35), transparent 11rem),
-      radial-gradient(circle at 48% 65%, rgb(215 59 47 / 0.48), transparent 13rem),
-      linear-gradient(135deg, #0d1034 0, #151357 52%, #07081d 100%);
+      radial-gradient(circle at 73% 37%, rgb(53 212 223 / 0.44), transparent 12rem),
+      radial-gradient(circle at 48% 65%, rgb(215 59 47 / 0.42), transparent 13rem),
+      radial-gradient(circle at 18% 14%, rgb(255 245 207 / 0.14), transparent 10rem),
+      linear-gradient(135deg, #233084 0, #322b92 52%, #18205e 100%);
     color: var(--retro-cream);
-    box-shadow: inset 0 0 3rem rgb(0 0 0 / 0.74);
+    box-shadow: inset 0 0 2.1rem rgb(0 0 0 / 0.46);
   }
 
   .screen-glass::before,
@@ -571,7 +572,7 @@
   .screen-glass::before {
     background:
       repeating-linear-gradient(0deg, rgb(255 255 255 / 0.08) 0 1px, transparent 1px 4px),
-      radial-gradient(ellipse at 50% 40%, transparent 0 44%, rgb(0 0 0 / 0.35) 74%);
+      radial-gradient(ellipse at 50% 40%, transparent 0 48%, rgb(0 0 0 / 0.22) 78%);
     z-index: 2;
   }
 
@@ -862,7 +863,7 @@
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 0.9rem;
-    grid-column: 2;
+    grid-column: 1 / -1;
   }
 
   .step {
@@ -948,7 +949,7 @@
   }
 
   .rules {
-    grid-column: 2;
+    grid-column: 1 / -1;
     border-radius: 0.35rem;
     border: 0.16rem solid var(--retro-ink);
     padding: 1.05rem 1.2rem;
@@ -962,8 +963,8 @@
     grid-column: 1 / -1;
     margin-top: 0.35rem;
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 0.75rem;
+    grid-template-columns: 1fr;
+    gap: 0.6rem;
     align-items: start;
   }
 
@@ -971,7 +972,7 @@
     border: 0.14rem solid var(--retro-ink);
     border-radius: 0.35rem;
     background: var(--retro-cream);
-    padding: 0.9rem 1rem;
+    padding: 0.78rem 1rem;
     box-shadow: 0.35rem 0.35rem 0 rgb(43 24 48 / 0.12);
   }
 
