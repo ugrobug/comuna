@@ -1,0 +1,596 @@
+<script lang="ts">
+  import { onMount } from 'svelte'
+  import { Button, toast } from 'mono-svelte'
+  import {
+    buildSpecial1001FilmsResumeUrl,
+    buildSpecial1001FilmsStartUrl,
+    buildSpecial1001FilmsStatusUrl,
+  } from '$lib/api/backend'
+  import LoginModal from '$lib/components/auth/LoginModal.svelte'
+  import { siteToken, siteUser } from '$lib/siteAuth'
+  import {
+    ArrowPath,
+    CalendarDays,
+    CheckCircle,
+    Film,
+    Icon,
+    LockClosed,
+    Play,
+  } from 'svelte-hero-icons'
+
+  type FilmJourneyEntry = {
+    position: number
+    path: string
+    completed_at?: string | null
+    film?: {
+      title: string
+      original_title?: string
+      year?: number
+      category?: string
+    }
+  }
+
+  type FilmJourneySubscription = {
+    status: 'active' | 'paused' | 'completed'
+    next_delivery_at: string
+    completed_count: number
+    total_count: number
+    pause_reason?: string
+    current_entry?: FilmJourneyEntry | null
+  }
+
+  type FilmJourneyStatus = {
+    ok: boolean
+    total_count: number
+    subscription?: FilmJourneySubscription | null
+  }
+
+  let status: FilmJourneyStatus | null = null
+  let loading = true
+  let actionLoading = false
+  let error = ''
+  let authOpen = false
+
+  const authHeaders = (): Record<string, string> =>
+    $siteToken ? { Authorization: `Bearer ${$siteToken}` } : {}
+
+  async function loadStatus() {
+    loading = true
+    error = ''
+    try {
+      const response = await fetch(buildSpecial1001FilmsStatusUrl(), {
+        credentials: 'include',
+        headers: authHeaders(),
+      })
+      const data = await response.json()
+      if (!response.ok || !data?.ok) {
+        throw new Error(data?.error || 'Не удалось загрузить спецпроект')
+      }
+      status = data
+    } catch (err) {
+      error = (err as Error)?.message || 'Не удалось загрузить спецпроект'
+    }
+    loading = false
+  }
+
+  async function postAction(url: string) {
+    if (!$siteToken) {
+      authOpen = true
+      return
+    }
+    actionLoading = true
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        credentials: 'include',
+        headers: authHeaders(),
+      })
+      const data = await response.json()
+      if (!response.ok || !data?.ok) {
+        throw new Error(data?.error || 'Не удалось выполнить действие')
+      }
+      status = {
+        ok: true,
+        total_count: data.subscription?.total_count ?? status?.total_count ?? 0,
+        subscription: data.subscription,
+      }
+      toast({ content: 'Готово', type: 'success' })
+    } catch (err) {
+      toast({ content: (err as Error)?.message || 'Не удалось выполнить действие', type: 'error' })
+    }
+    actionLoading = false
+  }
+
+  const formatDate = (value?: string | null) => {
+    if (!value) return ''
+    return new Intl.DateTimeFormat('ru-RU', {
+      day: 'numeric',
+      month: 'long',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(new Date(value))
+  }
+
+  $: subscription = status?.subscription ?? null
+  $: currentEntry = subscription?.current_entry ?? null
+  $: progressLabel = subscription
+    ? `${subscription.completed_count} из 1001`
+    : '0 из 1001'
+
+  onMount(loadStatus)
+</script>
+
+<svelte:head>
+  <title>1001 фильм, который нужно посмотреть до смерти</title>
+  <meta
+    name="description"
+    content="Спецпроект Tambur: один фильм в день, секретные ссылки и общий порядок для всех участников."
+  />
+  <link rel="canonical" href="/s/1001-films" />
+</svelte:head>
+
+<LoginModal bind:open={authOpen} initialMode="signup" />
+
+<section class="films-page">
+  <div class="hero">
+    <div class="hero-copy">
+      <h1>1001 фильм, который нужно посмотреть до смерти</h1>
+      <p class="lead">
+        Один фильм в день из общего списка. Секретная ссылка приходит только участникам,
+        а следующий фильм открывается после оценки и комментария к предыдущему.
+      </p>
+      <div class="actions">
+        {#if loading}
+          <Button size="lg" disabled>
+            <Icon src={ArrowPath} size="18" mini slot="prefix" />
+            Загрузка
+          </Button>
+        {:else if !$siteToken || !$siteUser}
+          <Button size="lg" color="primary" on:click={() => (authOpen = true)}>
+            <Icon src={LockClosed} size="18" mini slot="prefix" />
+            Зарегистрироваться и начать
+          </Button>
+        {:else if !subscription}
+          <Button
+            size="lg"
+            color="primary"
+            loading={actionLoading}
+            disabled={actionLoading}
+            on:click={() => postAction(buildSpecial1001FilmsStartUrl())}
+          >
+            <Icon src={Play} size="18" mini slot="prefix" />
+            Начать путешествие
+          </Button>
+        {:else if subscription.status === 'paused'}
+          <Button
+            size="lg"
+            color="primary"
+            loading={actionLoading}
+            disabled={actionLoading}
+            on:click={() => postAction(buildSpecial1001FilmsResumeUrl())}
+          >
+            <Icon src={Play} size="18" mini slot="prefix" />
+            Возобновить
+          </Button>
+        {:else if currentEntry && !currentEntry.completed_at}
+          <Button size="lg" color="primary" href={currentEntry.path}>
+            <Icon src={Film} size="18" mini slot="prefix" />
+            Открыть текущий фильм
+          </Button>
+        {:else if subscription.status === 'completed'}
+          <Button size="lg" disabled>
+            <Icon src={CheckCircle} size="18" mini slot="prefix" />
+            Маршрут завершён
+          </Button>
+        {:else}
+          <Button size="lg" disabled>
+            <Icon src={CalendarDays} size="18" mini slot="prefix" />
+            Следующий фильм {formatDate(subscription.next_delivery_at)}
+          </Button>
+        {/if}
+      </div>
+      {#if error}
+        <p class="error">{error}</p>
+      {/if}
+    </div>
+
+    <div class="project-panel" aria-label="Статус проекта">
+      <div class="film-stack">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+      <div class="panel-grid">
+        <div>
+          <span>Прогресс</span>
+          <strong>{progressLabel}</strong>
+        </div>
+      </div>
+      {#if subscription}
+        <div class="status-line">
+          {#if subscription.status === 'paused'}
+            Пауза: {subscription.pause_reason || 'ждём оценки текущего фильма'}
+          {:else if subscription.status === 'completed'}
+            Все доступные фильмы пройдены.
+          {:else if currentEntry && !currentEntry.completed_at}
+            Сейчас открыт фильм #{currentEntry.position}: {currentEntry.film?.title}
+          {:else}
+            Следующая выдача запланирована на {formatDate(subscription.next_delivery_at)}.
+          {/if}
+        </div>
+      {:else}
+        <div class="status-line">Каждый участник идет по одному общему маршруту.</div>
+      {/if}
+    </div>
+  </div>
+</section>
+
+<section class="how-it-works">
+  <div class="how-inner">
+    <div class="how-heading">
+      <p>
+        Это не каталог и не рейтинг. У всех участников один и тот же порядок фильмов,
+        а доступ открывается постепенно: один день, один фильм, одна короткая реакция.
+      </p>
+    </div>
+
+    <div class="steps">
+      <article class="step">
+        <span class="step-icon">
+          <Icon src={Play} size="18" mini />
+        </span>
+        <h3>Запускаете маршрут</h3>
+        <p>Регистрация нужна только для того, чтобы помнить ваш прогресс и выдавать личные секретные ссылки.</p>
+      </article>
+      <article class="step">
+        <span class="step-icon">
+          <Icon src={CalendarDays} size="18" mini />
+        </span>
+        <h3>Получаете фильм дня</h3>
+        <p>Раз в сутки приходит ссылка на страницу фильма: название, описание, IMDb-данные и постер, если они заполнены.</p>
+      </article>
+      <article class="step">
+        <span class="step-icon">
+          <Icon src={CheckCircle} size="18" mini />
+        </span>
+        <h3>Оставляете след</h3>
+        <p>Чтобы открыть следующий фильм, нужно поставить оценку и написать комментарий. Без этого маршрут ждёт.</p>
+      </article>
+    </div>
+
+    <div class="rules">
+      <p>
+        Если фильм завис без реакции, через пару дней придёт напоминание, потом ещё одно.
+        После этого подписка ставится на паузу. Вернуться можно в любой момент: проект продолжит
+        с того места, где вы остановились.
+      </p>
+    </div>
+  </div>
+</section>
+
+<style>
+  .films-page {
+    min-height: auto;
+    margin-top: -1rem;
+    background: rgb(248 250 252 / 1);
+    color: #0f172a;
+    padding: clamp(0.25rem, 1.2vw, 0.9rem) clamp(1rem, 4vw, 3rem) 10px;
+    display: flex;
+    align-items: flex-start;
+  }
+
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(18rem, 25rem);
+    gap: clamp(1.25rem, 4vw, 3.5rem);
+    align-items: center;
+    max-width: 70rem;
+    width: 100%;
+    margin: 0 auto;
+  }
+
+  .hero-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+  }
+
+  h1 {
+    max-width: 17ch;
+    font-size: clamp(1.78rem, 3.68vw, 3.22rem);
+    line-height: 1.02;
+    letter-spacing: 0;
+    font-weight: 500;
+  }
+
+  .lead {
+    max-width: 42rem;
+    color: #475569;
+    font-size: clamp(0.98rem, 1.5vw, 1.08rem);
+    line-height: 1.55;
+  }
+
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 0.25rem;
+  }
+
+  .error {
+    color: #b91c1c;
+  }
+
+  .project-panel {
+    border: 1px solid rgb(203 213 225);
+    border-radius: 8px;
+    background: rgb(255 255 255 / 0.82);
+    padding: 1rem;
+    box-shadow: 0 18px 48px rgb(15 23 42 / 0.08);
+    backdrop-filter: blur(18px);
+  }
+
+  .film-stack {
+    position: relative;
+    height: clamp(9.5rem, 26svh, 14rem);
+    margin-bottom: 0.85rem;
+  }
+
+  .film-stack span {
+    position: absolute;
+    inset: 0;
+    border-radius: 8px;
+    border: 1px solid rgb(203 213 225 / 0.82);
+    background:
+      linear-gradient(90deg, rgb(15 23 42 / 0.1) 0 12%, transparent 12% 88%, rgb(15 23 42 / 0.1) 88%),
+      linear-gradient(145deg, #e2e8f0, #f8fafc 48%, #cbd5e1);
+  }
+
+  .film-stack span:nth-child(1) {
+    transform: rotate(-7deg) translate(-0.7rem, 0.6rem);
+    opacity: 0.72;
+  }
+
+  .film-stack span:nth-child(2) {
+    transform: rotate(5deg) translate(0.7rem, 0.2rem);
+    opacity: 0.82;
+  }
+
+  .film-stack span:nth-child(3) {
+    background:
+      linear-gradient(90deg, rgb(15 23 42 / 0.12) 0 10%, transparent 10% 90%, rgb(15 23 42 / 0.12) 90%),
+      linear-gradient(150deg, #f8fafc, rgb(11 93 215 / 0.16) 52%, #e2e8f0);
+  }
+
+  .panel-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.6rem;
+  }
+
+  .panel-grid div {
+    border-radius: 8px;
+    background: rgb(241 245 249);
+    padding: 0.7rem;
+  }
+
+  .panel-grid span,
+  .status-line {
+    color: #64748b;
+    font-size: 0.9rem;
+  }
+
+  .panel-grid strong {
+    display: block;
+    margin-top: 0.18rem;
+    font-size: 1.45rem;
+    font-weight: 500;
+  }
+
+  .status-line {
+    margin-top: 0.75rem;
+    line-height: 1.45;
+  }
+
+  .how-it-works {
+    background: rgb(255 255 255);
+    color: #0f172a;
+    border-top: 1px solid rgb(226 232 240);
+    padding: clamp(0.65rem, 1.5vw, 1.2rem) clamp(1rem, 4vw, 3rem) clamp(2rem, 5vw, 4.5rem);
+  }
+
+  .how-inner {
+    max-width: 70rem;
+    margin: 0 auto;
+  }
+
+  .how-heading {
+    max-width: 46rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+  }
+
+  .how-heading p,
+  .step p,
+  .rules p {
+    color: #475569;
+    line-height: 1.6;
+  }
+
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.85rem;
+    margin-top: clamp(0.8rem, 2vw, 1.35rem);
+  }
+
+  .step {
+    border: 1px solid rgb(226 232 240);
+    border-radius: 8px;
+    background: rgb(248 250 252);
+    padding: 1rem;
+  }
+
+  .step-icon {
+    width: 2rem;
+    height: 2rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    color: var(--btn-primary-background);
+    background: rgb(219 234 254);
+    margin-bottom: 0.9rem;
+  }
+
+  .step h3 {
+    font-size: 1.05rem;
+    font-weight: 500;
+    margin-bottom: 0.45rem;
+  }
+
+  .rules {
+    margin-top: 0.85rem;
+    border-radius: 8px;
+    border: 1px solid rgb(203 213 225);
+    padding: 1rem;
+    background: rgb(255 255 255);
+  }
+
+  :global(.dark) .films-page {
+    background: rgb(9 9 11 / 1);
+    color: #fafafa;
+  }
+
+  :global(.dark) .lead,
+  :global(.dark) .how-heading p,
+  :global(.dark) .step p,
+  :global(.dark) .rules p,
+  :global(.dark) .panel-grid span,
+  :global(.dark) .status-line {
+    color: #a1a1aa;
+  }
+
+  :global(.dark) .project-panel {
+    border-color: rgb(39 39 42);
+    background: rgb(9 9 11 / 0.8);
+    box-shadow: 0 18px 48px rgb(0 0 0 / 0.24);
+  }
+
+  :global(.dark) .panel-grid div {
+    background: rgb(24 24 27);
+  }
+
+  :global(.dark) .film-stack span {
+    border-color: rgb(39 39 42 / 0.9);
+    background:
+      linear-gradient(90deg, rgb(255 255 255 / 0.08) 0 12%, transparent 12% 88%, rgb(255 255 255 / 0.08) 88%),
+      linear-gradient(145deg, #18181b, #27272a 48%, #09090b);
+  }
+
+  :global(.dark) .film-stack span:nth-child(3) {
+    background:
+      linear-gradient(90deg, rgb(255 255 255 / 0.09) 0 10%, transparent 10% 90%, rgb(255 255 255 / 0.09) 90%),
+      linear-gradient(150deg, #09090b, rgb(37 99 235 / 0.36) 52%, #18181b);
+  }
+
+  :global(.dark) .how-it-works {
+    background: rgb(9 9 11);
+    color: #fafafa;
+    border-top-color: rgb(39 39 42);
+  }
+
+  :global(.dark) .step {
+    border-color: rgb(39 39 42);
+    background: rgb(24 24 27);
+  }
+
+  :global(.dark) .step-icon {
+    background: rgb(30 58 138 / 0.45);
+    color: #93c5fd;
+  }
+
+  :global(.dark) .rules {
+    border-color: rgb(39 39 42);
+    background: rgb(9 9 11);
+  }
+
+  @media (max-width: 820px) {
+    .films-page {
+      min-height: auto;
+      align-items: flex-start;
+      padding: 1rem 1rem 1.5rem;
+    }
+
+    .hero {
+      grid-template-columns: 1fr;
+      gap: 1rem;
+    }
+
+    h1 {
+      max-width: 18ch;
+      font-size: clamp(1.55rem, 5.46vw, 2.07rem);
+      line-height: 1.02;
+    }
+
+    .lead {
+      font-size: 0.94rem;
+      line-height: 1.45;
+    }
+
+    .film-stack {
+      height: min(20svh, 8.5rem);
+    }
+
+    .project-panel {
+      padding: 0.7rem;
+    }
+
+    .panel-grid div {
+      padding: 0.55rem 0.65rem;
+    }
+
+    .panel-grid strong {
+      font-size: 1.18rem;
+    }
+
+    .status-line {
+      font-size: 0.82rem;
+      margin-top: 0.55rem;
+    }
+
+    .how-it-works {
+      padding: 2rem 1rem;
+    }
+
+    .steps {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (min-width: 560px) and (max-width: 820px) {
+    .films-page {
+      align-items: center;
+    }
+
+    .hero {
+      grid-template-columns: minmax(0, 1fr) 13.5rem;
+      gap: 1rem;
+    }
+
+    h1 {
+      max-width: 16ch;
+      font-size: clamp(1.44rem, 4.25vw, 1.84rem);
+    }
+
+    .lead {
+      max-width: 30rem;
+      font-size: 0.9rem;
+    }
+
+    .film-stack {
+      height: min(28svh, 10.5rem);
+    }
+  }
+</style>

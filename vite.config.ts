@@ -4,6 +4,10 @@ import { loadEnv } from 'vite'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
+  const apiProxyTarget =
+    env.PUBLIC_BACKEND_URL ||
+    (env.PUBLIC_INSTANCE_URL ? `https://${env.PUBLIC_INSTANCE_URL}` : 'http://127.0.0.1:8000')
+  const apiProxyKeepsPrefix = Boolean(env.PUBLIC_BACKEND_URL || !env.PUBLIC_INSTANCE_URL)
   return {
     plugins: [sveltekit()],
 
@@ -16,9 +20,9 @@ export default defineConfig(({ mode }) => {
       },
       proxy: {
         '/api': {
-          target: `https://${env.PUBLIC_INSTANCE_URL}`,
+          target: apiProxyTarget,
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/api/, '')
+          rewrite: (path) => (apiProxyKeepsPrefix ? path : path.replace(/^\/api/, ''))
         }
       },
       fs: {

@@ -251,6 +251,22 @@ export const buildSpecialLandnameAdminSuggestionApproveUrl = (id: number | strin
   return `${getBackendBaseUrl()}/api/special-projects/landname/admin/suggestions/${encodeURIComponent(id)}/approve/`
 }
 
+export const buildSpecial1001FilmsStatusUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/1001-films/status/`
+}
+
+export const buildSpecial1001FilmsStartUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/1001-films/start/`
+}
+
+export const buildSpecial1001FilmsResumeUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/1001-films/resume/`
+}
+
+export const buildSpecial1001FilmsEntryUrl = (token: string): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/1001-films/entries/${encodeURIComponent(token)}/`
+}
+
 export const buildBackendPostPath = (post: { id: number; title: string }): string => {
   const slug = slugifyTitle(post.title)
   return slug ? `/b/post/${post.id}-${slug}` : `/b/post/${post.id}`

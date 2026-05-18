@@ -324,8 +324,8 @@
             </Menu>
           {:else}
             <Button
-              color="none"
-              class="!rounded-full bg-orange-600 hover:bg-orange-700 text-white font-normal py-2 px-4 !text-base md:py-2 md:px-4"
+              color="primary"
+              class="!rounded-full font-normal py-2 px-4 !text-base md:py-2 md:px-4 dark:!bg-primary-900 dark:!text-white dark:!border-transparent dark:hover:!brightness-110"
               title={$t('account.login')}
               on:click={() => (loginModalOpen = true)}
             >

@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+import secrets
+
 from django.contrib.auth import get_user_model
 from django.db import models
+from django.utils import timezone
 
 User = get_user_model()
+
+
+def film_journey_access_token() -> str:
+    return secrets.token_urlsafe(32)
 
 
 class SpecialProjectLetterImage(models.Model):
@@ -118,3 +125,139 @@ class SpecialProjectGeneratedPhrase(models.Model):
 
     def __str__(self) -> str:
         return f"{self.project_slug}:{self.text}:{self.created_at:%Y-%m-%d %H:%M}"
+
+
+class FilmJourneyFilm(models.Model):
+    PROJECT_SLUG = "1001-films"
+
+    project_slug = models.SlugField(max_length=80, default=PROJECT_SLUG)
+    title = models.CharField(max_length=220)
+    original_title = models.CharField(max_length=220, blank=True)
+    year = models.PositiveSmallIntegerField(null=True, blank=True)
+    category = models.CharField(max_length=120, blank=True)
+    description = models.TextField(blank=True)
+    imdb_url = models.URLField(max_length=700, blank=True)
+    imdb_rating = models.DecimalField(max_digits=3, decimal_places=1, null=True, blank=True)
+    poster_url = models.URLField(max_length=700, blank=True)
+    runtime_minutes = models.PositiveSmallIntegerField(null=True, blank=True)
+    director = models.CharField(max_length=220, blank=True)
+    country = models.CharField(max_length=160, blank=True)
+    genres = models.CharField(max_length=240, blank=True)
+    sort_order = models.PositiveIntegerField(default=100)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Фильм спецпроекта 1001"
+        verbose_name_plural = "Фильмы спецпроекта 1001"
+        ordering = ("project_slug", "sort_order", "id")
+        indexes = [
+            models.Index(fields=("project_slug", "is_active", "sort_order")),
+            models.Index(fields=("project_slug", "title")),
+            models.Index(fields=("project_slug", "original_title")),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=("project_slug", "sort_order"),
+                name="special_projects_film_journey_unique_order",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        label = self.title
+        if self.year:
+            label = f"{label} ({self.year})"
+        return f"{self.sort_order}. {label}"
+
+
+class FilmJourneySubscription(models.Model):
+    STATUS_ACTIVE = "active"
+    STATUS_PAUSED = "paused"
+    STATUS_COMPLETED = "completed"
+    STATUS_CHOICES = (
+        (STATUS_ACTIVE, "Активна"),
+        (STATUS_PAUSED, "Пауза"),
+        (STATUS_COMPLETED, "Завершена"),
+    )
+
+    project_slug = models.SlugField(max_length=80, default=FilmJourneyFilm.PROJECT_SLUG)
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="film_journey_subscriptions",
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_ACTIVE)
+    started_at = models.DateTimeField(default=timezone.now)
+    next_delivery_at = models.DateTimeField()
+    last_delivered_at = models.DateTimeField(null=True, blank=True)
+    paused_at = models.DateTimeField(null=True, blank=True)
+    pause_reason = models.CharField(max_length=160, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Подписка на спецпроект 1001"
+        verbose_name_plural = "Подписки на спецпроект 1001"
+        ordering = ("-created_at", "-id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("project_slug", "user"),
+                name="special_projects_film_journey_unique_user",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=("project_slug", "status", "next_delivery_at")),
+            models.Index(fields=("user", "status")),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.project_slug}:{self.user_id}:{self.status}"
+
+
+class FilmJourneyEntry(models.Model):
+    subscription = models.ForeignKey(
+        FilmJourneySubscription,
+        on_delete=models.CASCADE,
+        related_name="entries",
+    )
+    film = models.ForeignKey(
+        FilmJourneyFilm,
+        on_delete=models.PROTECT,
+        related_name="journey_entries",
+    )
+    position = models.PositiveIntegerField()
+    access_token = models.CharField(max_length=96, unique=True, default=film_journey_access_token)
+    available_at = models.DateTimeField(default=timezone.now)
+    notification_sent_at = models.DateTimeField(null=True, blank=True)
+    first_reminder_sent_at = models.DateTimeField(null=True, blank=True)
+    second_reminder_sent_at = models.DateTimeField(null=True, blank=True)
+    rating = models.PositiveSmallIntegerField(null=True, blank=True)
+    comment = models.TextField(blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Выдача фильма спецпроекта 1001"
+        verbose_name_plural = "Выдачи фильмов спецпроекта 1001"
+        ordering = ("subscription", "position")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("subscription", "position"),
+                name="special_projects_film_journey_unique_position",
+            ),
+            models.UniqueConstraint(
+                fields=("subscription", "film"),
+                name="special_projects_film_journey_unique_film",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=("access_token",)),
+            models.Index(fields=("subscription", "completed_at")),
+            models.Index(fields=("available_at", "notification_sent_at")),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.subscription_id}:{self.position}:{self.film_id}"

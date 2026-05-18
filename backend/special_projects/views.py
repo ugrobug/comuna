@@ -14,7 +14,9 @@ from django.utils.text import get_valid_filename
 from django.views.decorators.csrf import csrf_exempt
 from PIL import Image, ImageDraw, ImageFont, UnidentifiedImageError
 
+from special_projects import film_journey
 from special_projects.models import (
+    FilmJourneySubscription,
     SpecialProjectGeneratedPhrase,
     SpecialProjectLetterImage,
     SpecialProjectLetterSuggestion,
@@ -234,6 +236,97 @@ def landname_tile(request: HttpRequest, key: str) -> HttpResponse:
     if svg is None:
         return JsonResponse({"ok": False, "error": "tile not found"}, status=404)
     return HttpResponse(svg, content_type="image/svg+xml")
+
+
+def film_journey_status(request: HttpRequest) -> HttpResponse:
+    if request.method != "GET":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    return JsonResponse(film_journey.project_status_for_user(_get_user_from_request(request)))
+
+
+@csrf_exempt
+def film_journey_start(request: HttpRequest) -> HttpResponse:
+    user = _get_user_from_request(request)
+    if user is None:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    if film_journey.active_films_count() <= 0:
+        return JsonResponse({"ok": False, "error": "Список фильмов пока пуст."}, status=400)
+    subscription = film_journey.start_subscription(user)
+    return JsonResponse(
+        {
+            "ok": True,
+            "subscription": film_journey.serialize_subscription(subscription),
+        },
+        status=201,
+    )
+
+
+@csrf_exempt
+def film_journey_resume(request: HttpRequest) -> HttpResponse:
+    user = _get_user_from_request(request)
+    if user is None:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    subscription = FilmJourneySubscription.objects.filter(
+        project_slug=film_journey.PROJECT_SLUG,
+        user=user,
+    ).first()
+    if subscription is None:
+        return JsonResponse({"ok": False, "error": "subscription not found"}, status=404)
+    film_journey.resume_subscription(subscription)
+    subscription.refresh_from_db()
+    return JsonResponse(
+        {
+            "ok": True,
+            "subscription": film_journey.serialize_subscription(subscription),
+        }
+    )
+
+
+@csrf_exempt
+def film_journey_entry_detail(request: HttpRequest, access_token: str) -> HttpResponse:
+    user = _get_user_from_request(request)
+    if user is None:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    entry = film_journey.entry_for_token_and_user(access_token, user)
+    if entry is None:
+        return JsonResponse({"ok": False, "error": "film not found"}, status=404)
+
+    if request.method == "GET":
+        return JsonResponse(
+            {
+                "ok": True,
+                "entry": film_journey.serialize_entry(entry, include_film=True),
+                "subscription": film_journey.serialize_subscription(entry.subscription),
+            }
+        )
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+    try:
+        rating = int(payload.get("rating"))
+    except (TypeError, ValueError):
+        return JsonResponse({"ok": False, "error": "Поставьте оценку от 1 до 10."}, status=400)
+    comment = str(payload.get("comment") or "")
+    try:
+        entry = film_journey.submit_entry_review(entry, rating=rating, comment=comment)
+    except ValueError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+    entry.refresh_from_db()
+    return JsonResponse(
+        {
+            "ok": True,
+            "entry": film_journey.serialize_entry(entry, include_film=True),
+            "subscription": film_journey.serialize_subscription(entry.subscription),
+        }
+    )
 
 
 def _save_letter_upload(request: HttpRequest, upload) -> str:

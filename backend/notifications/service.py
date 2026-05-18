@@ -65,6 +65,22 @@ NOTIFICATION_EVENT_DEFINITIONS: list[dict[str, Any]] = [
         "default_telegram_enabled": True,
         "default_push_enabled": True,
     },
+    {
+        "key": "film_journey_daily",
+        "title": "Новый фильм спецпроекта",
+        "description": "Ежедневная секретная ссылка на фильм из спецпроекта 1001.",
+        "default_site_enabled": True,
+        "default_telegram_enabled": True,
+        "default_push_enabled": True,
+    },
+    {
+        "key": "film_journey_reminder",
+        "title": "Напоминание спецпроекта 1001",
+        "description": "Напоминание оставить оценку и комментарий, чтобы получить следующий фильм.",
+        "default_site_enabled": True,
+        "default_telegram_enabled": True,
+        "default_push_enabled": True,
+    },
 ]
 
 _NOTIFICATION_EVENT_MAP = {

@@ -1,6 +1,9 @@
 from django.contrib import admin
 
 from special_projects.models import (
+    FilmJourneyEntry,
+    FilmJourneyFilm,
+    FilmJourneySubscription,
     SpecialProjectGeneratedPhrase,
     SpecialProjectLetterImage,
     SpecialProjectLetterSuggestion,
@@ -53,3 +56,88 @@ class SpecialProjectGeneratedPhraseAdmin(admin.ModelAdmin):
     search_fields = ("text", "share_query", "generated_by__username")
     autocomplete_fields = ("generated_by",)
     readonly_fields = ("created_at", "updated_at", "shared_at")
+
+
+@admin.register(FilmJourneyFilm)
+class FilmJourneyFilmAdmin(admin.ModelAdmin):
+    list_display = (
+        "sort_order",
+        "title",
+        "original_title",
+        "year",
+        "category",
+        "imdb_rating",
+        "is_active",
+        "updated_at",
+    )
+    list_filter = ("project_slug", "category", "is_active", "year")
+    search_fields = ("title", "original_title", "description", "imdb_url", "director", "genres")
+    ordering = ("project_slug", "sort_order", "id")
+    readonly_fields = ("created_at", "updated_at")
+
+
+class FilmJourneyEntryInline(admin.TabularInline):
+    model = FilmJourneyEntry
+    extra = 0
+    readonly_fields = (
+        "access_token",
+        "available_at",
+        "notification_sent_at",
+        "first_reminder_sent_at",
+        "second_reminder_sent_at",
+        "completed_at",
+        "created_at",
+        "updated_at",
+    )
+    autocomplete_fields = ("film",)
+    fields = (
+        "position",
+        "film",
+        "rating",
+        "comment",
+        "access_token",
+        "notification_sent_at",
+        "completed_at",
+    )
+
+
+@admin.register(FilmJourneySubscription)
+class FilmJourneySubscriptionAdmin(admin.ModelAdmin):
+    list_display = (
+        "user",
+        "status",
+        "started_at",
+        "next_delivery_at",
+        "last_delivered_at",
+        "paused_at",
+        "completed_at",
+    )
+    list_filter = ("project_slug", "status", "started_at", "paused_at")
+    search_fields = ("user__username", "user__email", "pause_reason")
+    autocomplete_fields = ("user",)
+    readonly_fields = ("started_at", "created_at", "updated_at")
+    inlines = (FilmJourneyEntryInline,)
+
+
+@admin.register(FilmJourneyEntry)
+class FilmJourneyEntryAdmin(admin.ModelAdmin):
+    list_display = (
+        "subscription",
+        "position",
+        "film",
+        "rating",
+        "notification_sent_at",
+        "completed_at",
+    )
+    list_filter = ("completed_at", "notification_sent_at", "first_reminder_sent_at", "second_reminder_sent_at")
+    search_fields = ("film__title", "film__original_title", "subscription__user__username", "comment")
+    autocomplete_fields = ("subscription", "film")
+    readonly_fields = (
+        "access_token",
+        "available_at",
+        "notification_sent_at",
+        "first_reminder_sent_at",
+        "second_reminder_sent_at",
+        "created_at",
+        "updated_at",
+    )

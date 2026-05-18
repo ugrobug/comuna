@@ -64,6 +64,10 @@ from notifications.views import (
 )
 from ratings.views import top_authors, top_authors_month, top_comuns, top_comuns_month
 from special_projects.views import (
+    film_journey_entry_detail,
+    film_journey_resume,
+    film_journey_start,
+    film_journey_status,
     landname_admin_generations,
     landname_admin_letter_detail,
     landname_admin_letters,
@@ -252,6 +256,26 @@ urlpatterns = [
         "api/special-projects/landname/tiles/<str:key>.svg",
         landname_tile,
         name="special-landname-tile",
+    ),
+    path(
+        "api/special-projects/1001-films/status/",
+        film_journey_status,
+        name="special-1001-films-status",
+    ),
+    path(
+        "api/special-projects/1001-films/start/",
+        film_journey_start,
+        name="special-1001-films-start",
+    ),
+    path(
+        "api/special-projects/1001-films/resume/",
+        film_journey_resume,
+        name="special-1001-films-resume",
+    ),
+    path(
+        "api/special-projects/1001-films/entries/<str:access_token>/",
+        film_journey_entry_detail,
+        name="special-1001-films-entry",
     ),
     path("sitemap.xml", sitemap_xml, name="sitemap-xml"),
     path("sitemap-static.xml", sitemap_static_xml, name="sitemap-static-xml"),
