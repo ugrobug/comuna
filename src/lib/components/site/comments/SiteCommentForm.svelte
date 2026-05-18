@@ -5,7 +5,7 @@
   import MarkdownEditor from '$lib/components/markdown/MarkdownEditor.svelte'
   import LoginModal from '$lib/components/auth/LoginModal.svelte'
   import { buildCommentDetailUrl, buildPostCommentsUrl } from '$lib/api/backend'
-  import { siteToken, siteUser } from '$lib/siteAuth'
+  import { siteToken, siteUser, uploadSiteImage } from '$lib/siteAuth'
   import type { SiteComment, SiteCommentMask } from './types'
 
   export let postId: number
@@ -69,6 +69,14 @@
   function handleMaskChange(event: Event) {
     const target = event.currentTarget as HTMLSelectElement | null
     updateMaskSelection(target?.value || '')
+  }
+
+  async function uploadCommentImage(image: File) {
+    if (!$siteToken) {
+      showLoginModal = true
+      throw new Error('Войдите, чтобы загрузить изображение')
+    }
+    return uploadSiteImage(image)
   }
 
   async function submit() {
@@ -158,7 +166,8 @@
     {autoFocus}
     tools={true}
     previewButton={false}
-    images={false}
+    images={true}
+    imageUploadHandler={uploadCommentImage}
   />
   {#if error}
     <p class="text-sm text-red-600">{error}</p>
