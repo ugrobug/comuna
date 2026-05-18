@@ -992,8 +992,8 @@
   }
 
   .how-heading {
-    position: sticky;
-    top: 1rem;
+    position: relative;
+    grid-column: 1 / -1;
     align-self: start;
     border-top: 0.42rem solid var(--retro-red);
     background:
