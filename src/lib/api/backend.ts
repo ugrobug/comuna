@@ -282,6 +282,14 @@ export const buildSpecial1001FilmsEntryUrl = (token: string): string => {
   return `${getBackendBaseUrl()}/api/special-projects/1001-films/entries/${encodeURIComponent(token)}/`
 }
 
+export const buildSpecial1001FilmsAdminFilmsUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/1001-films/admin/films/`
+}
+
+export const buildSpecial1001FilmsAdminFilmUrl = (id: number | string): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/1001-films/admin/films/${encodeURIComponent(id)}/`
+}
+
 export const buildBackendPostPath = (post: { id: number; title: string }): string => {
   const slug = slugifyTitle(post.title)
   return slug ? `/b/post/${post.id}-${slug}` : `/b/post/${post.id}`

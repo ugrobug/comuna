@@ -66,6 +66,8 @@ from notifications.views import (
 )
 from ratings.views import top_authors, top_authors_month, top_comuns, top_comuns_month
 from special_projects.views import (
+    film_journey_admin_film_detail,
+    film_journey_admin_films,
     film_journey_entry_detail,
     film_journey_resume,
     film_journey_start,
@@ -288,6 +290,16 @@ urlpatterns = [
         "api/special-projects/1001-films/entries/<str:access_token>/",
         film_journey_entry_detail,
         name="special-1001-films-entry",
+    ),
+    path(
+        "api/special-projects/1001-films/admin/films/",
+        film_journey_admin_films,
+        name="special-1001-films-admin-films",
+    ),
+    path(
+        "api/special-projects/1001-films/admin/films/<int:film_id>/",
+        film_journey_admin_film_detail,
+        name="special-1001-films-admin-film-detail",
     ),
     path("sitemap.xml", sitemap_xml, name="sitemap-xml"),
     path("sitemap-static.xml", sitemap_static_xml, name="sitemap-static-xml"),

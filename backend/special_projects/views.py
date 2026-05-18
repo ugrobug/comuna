@@ -7,7 +7,7 @@ from io import BytesIO
 
 from django.conf import settings
 from django.core.files.storage import default_storage
-from django.db.models import F, Max
+from django.db.models import Avg, Count, F, Max, Q
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils import timezone
 from django.utils.text import get_valid_filename
@@ -16,6 +16,8 @@ from PIL import Image, ImageDraw, ImageFont, UnidentifiedImageError
 
 from special_projects import film_journey
 from special_projects.models import (
+    FilmJourneyEntry,
+    FilmJourneyFilm,
     FilmJourneySubscription,
     SpecialProjectGeneratedPhrase,
     SpecialProjectLetterImage,
@@ -364,6 +366,268 @@ def _require_staff(request: HttpRequest):
     if not user.is_staff:
         return None, JsonResponse({"ok": False, "error": "forbidden"}, status=403)
     return user, None
+
+
+def _parse_bool(value, *, default: bool = True) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() not in {"0", "false", "no", "off", ""}
+
+
+def _parse_positive_int(value, *, default=None, maximum=None):
+    if value in (None, ""):
+        return default
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    if parsed < 0:
+        return default
+    if maximum is not None:
+        parsed = min(parsed, maximum)
+    return parsed
+
+
+def _parse_imdb_rating(value):
+    if value in (None, ""):
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    if parsed < 0 or parsed > 10:
+        return None
+    return round(parsed, 1)
+
+
+def _film_admin_payload(film: FilmJourneyFilm) -> dict:
+    avg_rating = getattr(film, "avg_user_rating", None)
+    return {
+        "id": film.id,
+        "title": film.title,
+        "original_title": film.original_title,
+        "year": film.year,
+        "category": film.category,
+        "description": film.description,
+        "imdb_url": film.imdb_url,
+        "imdb_rating": str(film.imdb_rating) if film.imdb_rating is not None else "",
+        "poster_url": film.poster_url,
+        "runtime_minutes": film.runtime_minutes,
+        "director": film.director,
+        "country": film.country,
+        "genres": film.genres,
+        "sort_order": film.sort_order,
+        "is_active": film.is_active,
+        "created_at": film.created_at.isoformat(),
+        "updated_at": film.updated_at.isoformat(),
+        "analytics": {
+            "delivered_count": getattr(film, "delivered_count", 0) or 0,
+            "completed_count": getattr(film, "completed_count", 0) or 0,
+            "waiting_review_count": getattr(film, "waiting_review_count", 0) or 0,
+            "avg_user_rating": round(float(avg_rating), 1) if avg_rating is not None else None,
+        },
+    }
+
+
+def _film_admin_queryset():
+    return (
+        FilmJourneyFilm.objects.filter(project_slug=film_journey.PROJECT_SLUG)
+        .annotate(
+            delivered_count=Count("journey_entries", distinct=True),
+            completed_count=Count(
+                "journey_entries",
+                filter=Q(journey_entries__completed_at__isnull=False),
+                distinct=True,
+            ),
+            waiting_review_count=Count(
+                "journey_entries",
+                filter=Q(journey_entries__completed_at__isnull=True),
+                distinct=True,
+            ),
+            avg_user_rating=Avg("journey_entries__rating"),
+        )
+        .order_by("sort_order", "id")
+    )
+
+
+def _film_journey_admin_analytics() -> dict:
+    subscriptions = FilmJourneySubscription.objects.filter(
+        project_slug=film_journey.PROJECT_SLUG,
+    )
+    subscription_totals = {
+        "total": subscriptions.count(),
+        "active": subscriptions.filter(status=FilmJourneySubscription.STATUS_ACTIVE).count(),
+        "paused": subscriptions.filter(status=FilmJourneySubscription.STATUS_PAUSED).count(),
+        "completed": subscriptions.filter(status=FilmJourneySubscription.STATUS_COMPLETED).count(),
+    }
+
+    entries = FilmJourneyEntry.objects.filter(
+        subscription__project_slug=film_journey.PROJECT_SLUG,
+    )
+    entry_totals = {
+        "delivered": entries.count(),
+        "completed": entries.filter(completed_at__isnull=False).count(),
+        "waiting_review": entries.filter(completed_at__isnull=True).count(),
+        "commented": entries.exclude(comment="").count(),
+    }
+
+    stages = {
+        "active_no_film": 0,
+        "active_review_required": 0,
+        "active_waiting_next": 0,
+        "paused": subscription_totals["paused"],
+        "completed": subscription_totals["completed"],
+    }
+    latest_entries = (
+        FilmJourneyEntry.objects.filter(subscription__project_slug=film_journey.PROJECT_SLUG)
+        .select_related("subscription")
+        .order_by("subscription_id", "-position", "-id")
+    )
+    latest_by_subscription: dict[int, FilmJourneyEntry] = {}
+    for entry in latest_entries:
+        latest_by_subscription.setdefault(entry.subscription_id, entry)
+
+    active_subscriptions = subscriptions.filter(status=FilmJourneySubscription.STATUS_ACTIVE)
+    for subscription in active_subscriptions.only("id", "status"):
+        latest = latest_by_subscription.get(subscription.id)
+        if latest is None:
+            stages["active_no_film"] += 1
+        elif latest.completed_at is None:
+            stages["active_review_required"] += 1
+        else:
+            stages["active_waiting_next"] += 1
+
+    return {
+        "public_total": film_journey.PUBLIC_TOTAL_COUNT,
+        "loaded_films": FilmJourneyFilm.objects.filter(project_slug=film_journey.PROJECT_SLUG).count(),
+        "active_films": FilmJourneyFilm.objects.filter(
+            project_slug=film_journey.PROJECT_SLUG,
+            is_active=True,
+        ).count(),
+        "subscriptions": subscription_totals,
+        "entries": entry_totals,
+        "stages": stages,
+    }
+
+
+def _film_payload_from_request(payload: dict, *, existing: FilmJourneyFilm | None = None) -> dict:
+    title = str(payload.get("title", existing.title if existing else "") or "").strip()
+    if not title:
+        raise ValueError("Укажите название фильма.")
+    if len(title) > 220:
+        raise ValueError("Название слишком длинное.")
+
+    sort_order = _parse_positive_int(
+        payload.get("sort_order", existing.sort_order if existing else None),
+        default=None,
+    )
+    if sort_order is None:
+        sort_order = (
+            FilmJourneyFilm.objects.filter(project_slug=film_journey.PROJECT_SLUG).aggregate(value=Max("sort_order"))[
+                "value"
+            ]
+            or 0
+        ) + 10
+
+    data = {
+        "project_slug": film_journey.PROJECT_SLUG,
+        "title": title,
+        "original_title": str(payload.get("original_title", existing.original_title if existing else "") or "").strip()[:220],
+        "year": _parse_positive_int(payload.get("year", existing.year if existing else None), default=None, maximum=3000),
+        "category": str(payload.get("category", existing.category if existing else "") or "").strip()[:120],
+        "description": str(payload.get("description", existing.description if existing else "") or "").strip(),
+        "imdb_url": str(payload.get("imdb_url", existing.imdb_url if existing else "") or "").strip()[:700],
+        "imdb_rating": _parse_imdb_rating(payload.get("imdb_rating", existing.imdb_rating if existing else None)),
+        "poster_url": str(payload.get("poster_url", existing.poster_url if existing else "") or "").strip()[:700],
+        "runtime_minutes": _parse_positive_int(
+            payload.get("runtime_minutes", existing.runtime_minutes if existing else None),
+            default=None,
+            maximum=2000,
+        ),
+        "director": str(payload.get("director", existing.director if existing else "") or "").strip()[:220],
+        "country": str(payload.get("country", existing.country if existing else "") or "").strip()[:160],
+        "genres": str(payload.get("genres", existing.genres if existing else "") or "").strip()[:240],
+        "sort_order": sort_order,
+        "is_active": _parse_bool(payload.get("is_active", existing.is_active if existing else True), default=True),
+    }
+    for url_field in ("imdb_url", "poster_url"):
+        if data[url_field] and not data[url_field].startswith(("http://", "https://")):
+            raise ValueError("Ссылки должны начинаться с http:// или https://.")
+    return data
+
+
+@csrf_exempt
+def film_journey_admin_films(request: HttpRequest) -> HttpResponse:
+    _, error_response = _require_staff(request)
+    if error_response is not None:
+        return error_response
+
+    if request.method == "GET":
+        films = [_film_admin_payload(film) for film in _film_admin_queryset()]
+        return JsonResponse(
+            {
+                "ok": True,
+                "analytics": _film_journey_admin_analytics(),
+                "films": films,
+            }
+        )
+
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+
+    try:
+        data = _film_payload_from_request(payload)
+        film = FilmJourneyFilm.objects.create(**data)
+    except ValueError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+    except Exception:
+        return JsonResponse({"ok": False, "error": "Не удалось сохранить фильм."}, status=400)
+
+    return JsonResponse({"ok": True, "film": _film_admin_payload(film)}, status=201)
+
+
+@csrf_exempt
+def film_journey_admin_film_detail(request: HttpRequest, film_id: int) -> HttpResponse:
+    _, error_response = _require_staff(request)
+    if error_response is not None:
+        return error_response
+
+    film = FilmJourneyFilm.objects.filter(
+        id=film_id,
+        project_slug=film_journey.PROJECT_SLUG,
+    ).first()
+    if film is None:
+        return JsonResponse({"ok": False, "error": "film not found"}, status=404)
+
+    if request.method == "PATCH":
+        try:
+            payload = json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+        try:
+            data = _film_payload_from_request(payload, existing=film)
+            for key, value in data.items():
+                setattr(film, key, value)
+            film.save()
+        except ValueError as exc:
+            return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+        except Exception:
+            return JsonResponse({"ok": False, "error": "Не удалось сохранить фильм."}, status=400)
+        return JsonResponse({"ok": True, "film": _film_admin_payload(film)})
+
+    if request.method == "DELETE":
+        film.is_active = False
+        film.save(update_fields=("is_active", "updated_at"))
+        return JsonResponse({"ok": True, "deleted": True, "id": film.id})
+
+    return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
 
 
 def _serialize_admin_letter(request: HttpRequest, image: SpecialProjectLetterImage) -> dict:

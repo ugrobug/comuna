@@ -7,7 +7,8 @@
     buildSpecial1001FilmsStatusUrl,
   } from '$lib/api/backend'
   import LoginModal from '$lib/components/auth/LoginModal.svelte'
-  import { siteToken, siteUser } from '$lib/siteAuth'
+  import TelegramLoginButton from '$lib/components/telegram/TelegramLoginButton.svelte'
+  import { refreshSiteUser, siteToken, siteUser } from '$lib/siteAuth'
   import {
     ArrowPath,
     CalendarDays,
@@ -50,6 +51,7 @@
   let actionLoading = false
   let error = ''
   let authOpen = false
+  let telegramPromptOpen = false
 
   const authHeaders = (): Record<string, string> =>
     $siteToken ? { Authorization: `Bearer ${$siteToken}` } : {}
@@ -73,7 +75,7 @@
     loading = false
   }
 
-  async function postAction(url: string) {
+  async function postAction(url: string, successMessage = 'Готово') {
     if (!$siteToken) {
       authOpen = true
       return
@@ -94,11 +96,58 @@
         total_count: data.subscription?.total_count ?? status?.total_count ?? 0,
         subscription: data.subscription,
       }
-      toast({ content: 'Готово', type: 'success' })
+      toast({ content: successMessage, type: 'success' })
     } catch (err) {
       toast({ content: (err as Error)?.message || 'Не удалось выполнить действие', type: 'error' })
     }
     actionLoading = false
+  }
+
+  async function startJourney() {
+    if (!$siteToken || !$siteUser) {
+      authOpen = true
+      return
+    }
+    if (!$siteUser.telegram_linked) {
+      telegramPromptOpen = true
+      toast({
+        content: 'Фильмы будут приходить в Telegram-бота и на сайт. Давайте сначала привяжем Telegram.',
+        type: 'info',
+      })
+      return
+    }
+    await postAction(
+      buildSpecial1001FilmsStartUrl(),
+      'Маршрут запущен. Оповещения будут приходить в Telegram-бота и на сайт.',
+    )
+  }
+
+  async function resumeJourney() {
+    if (!$siteToken || !$siteUser) {
+      authOpen = true
+      return
+    }
+    if (!$siteUser.telegram_linked) {
+      telegramPromptOpen = true
+      toast({
+        content: 'Чтобы продолжить с оповещениями, давайте привяжем Telegram.',
+        type: 'info',
+      })
+      return
+    }
+    await postAction(
+      buildSpecial1001FilmsResumeUrl(),
+      'Маршрут возобновлен. Оповещения будут приходить в Telegram-бота и на сайт.',
+    )
+  }
+
+  async function handleTelegramLinked() {
+    await refreshSiteUser()
+    telegramPromptOpen = false
+    toast({
+      content: 'Telegram привязан. Теперь можно начать маршрут и получать фильм дня в боте.',
+      type: 'success',
+    })
   }
 
   const formatDate = (value?: string | null) => {
@@ -156,7 +205,7 @@
             color="primary"
             loading={actionLoading}
             disabled={actionLoading}
-            on:click={() => postAction(buildSpecial1001FilmsStartUrl())}
+            on:click={startJourney}
           >
             <Icon src={Play} size="18" mini slot="prefix" />
             Начать путешествие
@@ -167,7 +216,7 @@
             color="primary"
             loading={actionLoading}
             disabled={actionLoading}
-            on:click={() => postAction(buildSpecial1001FilmsResumeUrl())}
+            on:click={resumeJourney}
           >
             <Icon src={Play} size="18" mini slot="prefix" />
             Возобновить
@@ -188,7 +237,35 @@
             Следующий фильм {formatDate(subscription.next_delivery_at)}
           </Button>
         {/if}
+        {#if $siteUser?.is_staff}
+          <Button size="lg" href="/s/1001-films/admin">
+            Управление фильмами
+          </Button>
+        {/if}
       </div>
+      {#if $siteUser?.telegram_linked && !subscription}
+        <p class="notification-note">
+          После старта фильм дня будет приходить в Telegram-бота и в уведомления на сайте.
+        </p>
+      {/if}
+      {#if telegramPromptOpen && $siteUser && !$siteUser.telegram_linked}
+        <div class="telegram-callout">
+          <div>
+            <strong>Привяжем Telegram для оповещений</strong>
+            <p>
+              Секретная ссылка на новый фильм придет в Telegram-бота и останется в уведомлениях на сайте.
+            </p>
+          </div>
+          <TelegramLoginButton
+            label="Связать Telegram"
+            helperText="Нужно для ежедневных ссылок и напоминаний"
+            authIntent="login"
+            privacyAccepted={false}
+            active={telegramPromptOpen}
+            onSuccess={handleTelegramLinked}
+          />
+        </div>
+      {/if}
       {#if error}
         <p class="error">{error}</p>
       {/if}
@@ -319,6 +396,38 @@
 
   .error {
     color: #b91c1c;
+  }
+
+  .notification-note {
+    max-width: 35rem;
+    color: #475569;
+    font-size: 0.92rem;
+    line-height: 1.45;
+  }
+
+  .telegram-callout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(16rem, 20rem);
+    gap: 0.8rem;
+    align-items: center;
+    max-width: 42rem;
+    border: 1px solid rgb(191 219 254);
+    border-radius: 8px;
+    background: rgb(239 246 255);
+    padding: 0.85rem;
+  }
+
+  .telegram-callout strong {
+    display: block;
+    margin-bottom: 0.25rem;
+    font-weight: 500;
+    color: #0f172a;
+  }
+
+  .telegram-callout p {
+    color: #475569;
+    font-size: 0.9rem;
+    line-height: 1.45;
   }
 
   .project-panel {
@@ -464,12 +573,26 @@
   }
 
   :global(.dark) .lead,
+  :global(.dark) .notification-note,
   :global(.dark) .how-heading p,
   :global(.dark) .step p,
   :global(.dark) .rules p,
   :global(.dark) .panel-grid span,
   :global(.dark) .status-line {
     color: #a1a1aa;
+  }
+
+  :global(.dark) .telegram-callout {
+    border-color: rgb(30 64 175 / 0.75);
+    background: rgb(30 58 138 / 0.22);
+  }
+
+  :global(.dark) .telegram-callout strong {
+    color: #fafafa;
+  }
+
+  :global(.dark) .telegram-callout p {
+    color: #cbd5e1;
   }
 
   :global(.dark) .project-panel {
@@ -558,6 +681,10 @@
     .status-line {
       font-size: 0.82rem;
       margin-top: 0.55rem;
+    }
+
+    .telegram-callout {
+      grid-template-columns: 1fr;
     }
 
     .how-it-works {
