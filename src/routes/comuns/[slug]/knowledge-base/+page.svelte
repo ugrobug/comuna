@@ -47,17 +47,11 @@
 
   const itemFrameClass = (item: BackendComunKnowledgeBaseItem) => {
     const dragState = `${dragOverKey === `into-${item.id}` ? ' ring-2 ring-blue-200 dark:ring-blue-900/60' : ''}${draggedItemId === Number(item.id) ? ' opacity-50' : ''}`
-    if (canManage) {
-      const base = 'transition ' + (canManage ? 'cursor-grab active:cursor-grabbing ' : '')
-      if (item.item_type === 'group') {
-        return `${base}rounded-2xl border border-slate-300 bg-slate-100/90 px-4 py-3 shadow-sm dark:border-zinc-700 dark:bg-zinc-800/80${dragState}`
-      }
-      return `${base}rounded-xl border border-transparent bg-transparent px-3 py-2 hover:bg-slate-50 dark:hover:bg-zinc-900/70${dragState}`
-    }
+    const dragClass = canManage ? ' cursor-grab active:cursor-grabbing' : ''
     if (item.item_type === 'group') {
-      return `mt-5 border-b border-slate-200 pb-2 pt-1 dark:border-zinc-800${dragState}`
+      return `mt-5 border-b border-slate-200 pb-2 pt-1 transition dark:border-zinc-800${dragClass}${dragState}`
     }
-    return `rounded-lg border border-transparent bg-transparent px-2 py-1.5 transition hover:bg-slate-50 dark:hover:bg-zinc-900/70${dragState}`
+    return `rounded-lg border border-transparent bg-transparent px-2 py-1.5 transition hover:bg-slate-50 dark:hover:bg-zinc-900/70${dragClass}${dragState}`
   }
 
   const childItems = (parentId: number | null) =>
@@ -348,13 +342,14 @@
             on:drop={(event) => onDropItem(event, item)}
           >
             {#if canManage}
-              <div class="flex items-center gap-3">
-                <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl {item.item_type === 'group' ? 'bg-white text-slate-700 shadow-sm dark:bg-zinc-950 dark:text-zinc-200' : 'text-slate-400 dark:text-zinc-500'}" aria-hidden="true">
-                  {item.item_type === 'group' ? '▾' : '⋮⋮'}
+              <div class="group flex items-center gap-2">
+                <div class="flex h-6 w-4 shrink-0 items-center justify-center text-xs text-slate-300 transition group-hover:text-slate-500 dark:text-zinc-600 dark:group-hover:text-zinc-400" aria-hidden="true">
+                  ⋮⋮
                 </div>
-                <div class="min-w-0 flex-1">
+                {#if item.item_type === 'group'}
+                  <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-slate-100 text-xs text-slate-600 dark:bg-zinc-800 dark:text-zinc-300" aria-hidden="true">▾</span>
                   <div
-                    class="outline-none rounded-lg px-1 py-0.5 {item.item_type === 'group' ? 'text-lg font-bold' : 'text-base font-semibold'} text-slate-900 focus:bg-white focus:ring-2 focus:ring-blue-200 dark:text-zinc-100 dark:focus:bg-zinc-950 dark:focus:ring-blue-900"
+                    class="min-w-0 flex-1 rounded-md px-1 py-0.5 text-lg font-bold text-slate-950 outline-none focus:bg-white focus:ring-2 focus:ring-blue-200 dark:text-zinc-50 dark:focus:bg-zinc-950 dark:focus:ring-blue-900"
                     contenteditable="true"
                     role="textbox"
                     tabindex="0"
@@ -366,22 +361,36 @@
                       }
                     }}
                   >{itemTitle(item)}</div>
-                  {#if item.item_type === 'group'}
-                    <div class="mt-1 text-xs uppercase tracking-wide text-slate-500 dark:text-zinc-500">
-                      Группа · {childItems(Number(item.id)).length} записей
-                    </div>
-                  {:else if item.post_path}
+                {:else}
+                  {#if item.post_path}
                     <a
                       href={item.post_path}
-                      class="mt-1 inline-flex text-sm font-medium text-blue-700 hover:underline dark:text-blue-300"
+                      class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-slate-100 text-xs text-slate-500 transition hover:bg-blue-50 hover:text-blue-700 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-blue-950/40 dark:hover:text-blue-300"
+                      aria-label="Открыть статью"
+                      title="Открыть статью"
                     >
-                      Открыть статью
+                      ↗
                     </a>
+                  {:else}
+                    <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-slate-100 text-xs text-slate-500 dark:bg-zinc-800 dark:text-zinc-400" aria-hidden="true">·</span>
                   {/if}
-                </div>
+                  <div
+                    class="min-w-0 flex-1 truncate rounded-md px-1 py-0.5 text-base font-medium text-slate-800 outline-none underline-offset-4 focus:bg-white focus:ring-2 focus:ring-blue-200 dark:text-zinc-100 dark:focus:bg-zinc-950 dark:focus:ring-blue-900"
+                    contenteditable="true"
+                    role="textbox"
+                    tabindex="0"
+                    on:blur={(event) => onTitleChange(item, event)}
+                    on:keydown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault()
+                        ;(event.currentTarget as HTMLElement).blur()
+                      }
+                    }}
+                  >{itemTitle(item)}</div>
+                {/if}
                 <button
                   type="button"
-                  class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-rose-200 text-lg leading-none text-rose-700 transition hover:bg-rose-50 dark:border-rose-900/50 dark:text-rose-300 dark:hover:bg-rose-950/30"
+                  class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-lg leading-none text-slate-300 opacity-70 transition hover:bg-rose-50 hover:text-rose-700 group-hover:opacity-100 dark:text-zinc-600 dark:hover:bg-rose-950/30 dark:hover:text-rose-300"
                   on:click={() => deleteItem(item)}
                   disabled={saving}
                   aria-label="Удалить из базы знаний"
