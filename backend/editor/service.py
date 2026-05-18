@@ -828,6 +828,52 @@ def _movie_review_autofill_from_justwatch(
     return {"watch_where": collected[:10]}
 
 
+def movie_review_autofill_template_from_imdb(imdb_input: object) -> tuple[dict | None, str | None, list[str], list[str], str]:
+    imdb_id = _extract_imdb_id(imdb_input)
+    if not imdb_id:
+        return None, "invalid imdb url", [], [], ""
+
+    autofill_data: dict[str, object] = {"imdb_url": _canonical_imdb_url(imdb_id)}
+    sources: list[str] = []
+    warnings: list[str] = []
+
+    cinemeta_data = _movie_review_autofill_from_cinemeta(imdb_id)
+    if cinemeta_data:
+        sources.append("cinemeta")
+        for key, value in cinemeta_data.items():
+            if isinstance(value, str) and value.strip():
+                autofill_data[key] = value.strip()
+
+    wikidata_data = _movie_review_autofill_from_wikidata(imdb_id)
+    if wikidata_data:
+        sources.append("wikidata")
+        for key in ("title", "original_title", "genre", "release_date", "content_kind", "poster_url"):
+            value = wikidata_data.get(key)
+            if isinstance(value, str) and value.strip() and not autofill_data.get(key):
+                autofill_data[key] = value.strip()
+
+    justwatch_data = _movie_review_autofill_from_justwatch(
+        imdb_id,
+        title=str(autofill_data.get("title") or ""),
+        original_title=str(autofill_data.get("original_title") or ""),
+        content_kind=str(autofill_data.get("content_kind") or ""),
+    )
+    if justwatch_data:
+        sources.append("justwatch")
+        watch_where = justwatch_data.get("watch_where")
+        if isinstance(watch_where, list) and watch_where:
+            autofill_data["watch_where"] = watch_where
+    else:
+        warnings.append("Не удалось определить площадки для просмотра")
+
+    normalized_data, template_error = _normalize_movie_review_template_data(autofill_data)
+    if template_error:
+        return None, template_error, sources, warnings, imdb_id
+    if not normalized_data:
+        return None, "could not fetch movie data", sources, warnings, imdb_id
+    return normalized_data, None, sources, warnings, imdb_id
+
+
 def _normalize_template_text(value: object, max_length: int) -> tuple[str, str | None]:
     text = str(value or "").strip()
     if len(text) > max_length:
@@ -2414,6 +2460,7 @@ __all__ = [
     "_get_or_create_personal_author",
     "_get_personal_author_for_user",
     "_is_post_draft",
+    "movie_review_autofill_template_from_imdb",
     "_normalize_editor_block_identifier",
     "_normalize_movie_review_template_data",
     "_normalize_comun_custom_templates",

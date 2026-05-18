@@ -1,5 +1,6 @@
 from django.contrib import admin
 
+from special_projects import film_journey
 from special_projects.models import (
     FilmJourneyEntry,
     FilmJourneyFilm,
@@ -74,6 +75,29 @@ class FilmJourneyFilmAdmin(admin.ModelAdmin):
     search_fields = ("title", "original_title", "description", "imdb_url", "director", "genres")
     ordering = ("project_slug", "sort_order", "id")
     readonly_fields = ("created_at", "updated_at")
+
+    def save_model(self, request, obj, form, change):
+        data = {
+            "project_slug": obj.project_slug,
+            "title": obj.title,
+            "original_title": obj.original_title,
+            "year": obj.year,
+            "category": obj.category,
+            "description": obj.description,
+            "imdb_url": obj.imdb_url,
+            "imdb_rating": obj.imdb_rating,
+            "poster_url": obj.poster_url,
+            "runtime_minutes": obj.runtime_minutes,
+            "director": obj.director,
+            "country": obj.country,
+            "genres": obj.genres,
+            "sort_order": obj.sort_order,
+            "is_active": obj.is_active,
+        }
+        film_journey.apply_imdb_autofill_to_film_payload(data)
+        for field, value in data.items():
+            setattr(obj, field, value)
+        super().save_model(request, obj, form, change)
 
 
 class FilmJourneyEntryInline(admin.TabularInline):

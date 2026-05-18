@@ -32,13 +32,10 @@ from editor.serializers import (
     _user_can_manage_bug_report_status,
 )
 from editor.service import (
-    _canonical_imdb_url,
-    _extract_imdb_id,
     _extract_inline_post_rating_blocks,
     _get_or_create_personal_author,
     _is_post_draft,
     _normalize_editor_block_identifier,
-    _normalize_movie_review_template_data,
     _normalize_post_template_payload,
     _requested_template_type,
     _resolve_manual_post_author,
@@ -46,6 +43,7 @@ from editor.service import (
     _set_post_draft_state,
     _sync_template_derived_raw_data,
     _template_not_allowed_error,
+    movie_review_autofill_template_from_imdb,
 )
 from editor import service as editor_service
 from feeds.models import Post
@@ -299,48 +297,10 @@ def auth_movie_review_autofill(request: HttpRequest) -> HttpResponse:
         return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
 
     imdb_input = payload.get("imdb_url") or payload.get("imdb") or payload.get("url") or ""
-    imdb_id = _extract_imdb_id(imdb_input)
-    if not imdb_id:
-        return JsonResponse({"ok": False, "error": "invalid imdb url"}, status=400)
-
-    autofill_data: dict[str, object] = {"imdb_url": _canonical_imdb_url(imdb_id)}
-    sources: list[str] = []
-    warnings: list[str] = []
-
-    cinemeta_data = editor_service._movie_review_autofill_from_cinemeta(imdb_id)
-    if cinemeta_data:
-        sources.append("cinemeta")
-        for key, value in cinemeta_data.items():
-            if isinstance(value, str) and value.strip():
-                autofill_data[key] = value.strip()
-
-    wikidata_data = editor_service._movie_review_autofill_from_wikidata(imdb_id)
-    if wikidata_data:
-        sources.append("wikidata")
-        for key in ("title", "original_title", "genre", "release_date", "content_kind", "poster_url"):
-            value = wikidata_data.get(key)
-            if isinstance(value, str) and value.strip() and not autofill_data.get(key):
-                autofill_data[key] = value.strip()
-
-    justwatch_data = editor_service._movie_review_autofill_from_justwatch(
-        imdb_id,
-        title=str(autofill_data.get("title") or ""),
-        original_title=str(autofill_data.get("original_title") or ""),
-        content_kind=str(autofill_data.get("content_kind") or ""),
-    )
-    if justwatch_data:
-        sources.append("justwatch")
-        watch_where = justwatch_data.get("watch_where")
-        if isinstance(watch_where, list) and watch_where:
-            autofill_data["watch_where"] = watch_where
-    else:
-        warnings.append("Не удалось определить площадки для просмотра")
-
-    normalized_data, template_error = _normalize_movie_review_template_data(autofill_data)
+    normalized_data, template_error, sources, warnings, imdb_id = movie_review_autofill_template_from_imdb(imdb_input)
     if template_error:
-        return JsonResponse({"ok": False, "error": template_error}, status=400)
-    if not normalized_data:
-        return JsonResponse({"ok": False, "error": "could not fetch movie data"}, status=404)
+        status = 404 if template_error == "could not fetch movie data" else 400
+        return JsonResponse({"ok": False, "error": template_error}, status=status)
 
     return JsonResponse(
         {

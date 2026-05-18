@@ -155,46 +155,62 @@ def _film_genre_for_template(film: FilmJourneyFilm) -> str:
 
 
 def movie_review_autofill_data_from_imdb(imdb_input: str) -> dict[str, Any]:
-    from editor import service as editor_service
-    from editor.service import (
-        _canonical_imdb_url,
-        _extract_imdb_id,
-        _normalize_movie_review_template_data,
-    )
+    from editor.service import movie_review_autofill_template_from_imdb
 
-    imdb_id = _extract_imdb_id(imdb_input)
-    if not imdb_id:
-        return {}
-
-    autofill_data: dict[str, object] = {"imdb_url": _canonical_imdb_url(imdb_id)}
-    cinemeta_data = editor_service._movie_review_autofill_from_cinemeta(imdb_id)
-    if cinemeta_data:
-        for key, value in cinemeta_data.items():
-            if isinstance(value, str) and value.strip():
-                autofill_data[key] = value.strip()
-
-    wikidata_data = editor_service._movie_review_autofill_from_wikidata(imdb_id)
-    if wikidata_data:
-        for key in ("title", "original_title", "genre", "release_date", "content_kind", "poster_url"):
-            value = wikidata_data.get(key)
-            if isinstance(value, str) and value.strip() and not autofill_data.get(key):
-                autofill_data[key] = value.strip()
-
-    justwatch_data = editor_service._movie_review_autofill_from_justwatch(
-        imdb_id,
-        title=str(autofill_data.get("title") or ""),
-        original_title=str(autofill_data.get("original_title") or ""),
-        content_kind=str(autofill_data.get("content_kind") or ""),
-    )
-    if justwatch_data:
-        watch_where = justwatch_data.get("watch_where")
-        if isinstance(watch_where, list) and watch_where:
-            autofill_data["watch_where"] = watch_where
-
-    normalized_data, template_error = _normalize_movie_review_template_data(autofill_data)
+    normalized_data, template_error, _, _, _ = movie_review_autofill_template_from_imdb(imdb_input)
     if template_error or not normalized_data:
         return {}
     return normalized_data
+
+
+def _autofill_release_year(data: dict[str, Any]) -> int | None:
+    release_date = str(data.get("release_date") or "").strip()
+    if len(release_date) < 4:
+        return None
+    try:
+        year = int(release_date[:4])
+    except ValueError:
+        return None
+    if year < 1880 or year > 3000:
+        return None
+    return year
+
+
+def apply_imdb_autofill_to_film_payload(data: dict[str, Any]) -> dict[str, Any]:
+    imdb_url = str(data.get("imdb_url") or "").strip()
+    if not imdb_url:
+        return data
+
+    template_data = movie_review_autofill_data_from_imdb(imdb_url)
+    if not template_data:
+        return data
+
+    canonical_imdb_url = str(template_data.get("imdb_url") or "").strip()
+    if canonical_imdb_url:
+        data["imdb_url"] = canonical_imdb_url
+
+    poster_url = str(template_data.get("poster_url") or "").strip()
+    if poster_url and not data.get("poster_url"):
+        data["poster_url"] = poster_url[:700]
+
+    release_year = _autofill_release_year(template_data)
+    if release_year and not data.get("year"):
+        data["year"] = release_year
+
+    genre = str(template_data.get("genre") or "").strip()
+    if genre and not data.get("genres"):
+        data["genres"] = genre[:240]
+    if genre and not data.get("category"):
+        data["category"] = genre[:120]
+
+    original_title = str(template_data.get("original_title") or "").strip()
+    template_title = str(template_data.get("title") or "").strip()
+    if not original_title and template_title and template_title != data.get("title"):
+        original_title = template_title
+    if original_title and not data.get("original_title"):
+        data["original_title"] = original_title[:220]
+
+    return data
 
 
 def _film_review_template_data(film: FilmJourneyFilm) -> dict[str, Any]:
@@ -205,6 +221,7 @@ def _film_review_template_data(film: FilmJourneyFilm) -> dict[str, Any]:
         "content_kind": "movie",
         "title": film.title,
         "original_title": film.original_title,
+        "release_date": f"{film.year}-01-01" if film.year else "",
         "watch_where": [],
         "author_rating": "",
     }

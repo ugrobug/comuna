@@ -627,57 +627,8 @@ def _parse_imdb_rating(value):
     return round(parsed, 1)
 
 
-def _release_year_from_template_data(data: dict) -> int | None:
-    release_date = str(data.get("release_date") or "").strip()
-    if len(release_date) < 4:
-        return None
-    try:
-        year = int(release_date[:4])
-    except ValueError:
-        return None
-    if year < 1880 or year > 3000:
-        return None
-    return year
-
-
 def _apply_imdb_autofill_to_film_payload(data: dict) -> dict:
-    imdb_url = str(data.get("imdb_url") or "").strip()
-    if not imdb_url:
-        return data
-
-    template_data = film_journey.movie_review_autofill_data_from_imdb(imdb_url)
-    if not template_data:
-        return data
-
-    canonical_imdb_url = str(template_data.get("imdb_url") or "").strip()
-    if canonical_imdb_url:
-        data["imdb_url"] = canonical_imdb_url
-
-    poster_url = str(template_data.get("poster_url") or "").strip()
-    if poster_url and not data.get("poster_url"):
-        data["poster_url"] = poster_url[:700]
-
-    release_year = _release_year_from_template_data(template_data)
-    if release_year and not data.get("year"):
-        data["year"] = release_year
-
-    genre = str(template_data.get("genre") or "").strip()
-    if genre and not data.get("genres"):
-        data["genres"] = genre[:240]
-    if genre and not data.get("category"):
-        data["category"] = genre[:120]
-
-    original_title = str(template_data.get("original_title") or "").strip()
-    template_title = str(template_data.get("title") or "").strip()
-    if not original_title and template_title and template_title != data.get("title"):
-        original_title = template_title
-    if original_title and not data.get("original_title"):
-        data["original_title"] = original_title[:220]
-
-    if template_title and not data.get("title"):
-        data["title"] = template_title[:220]
-
-    return data
+    return film_journey.apply_imdb_autofill_to_film_payload(data)
 
 
 def _film_admin_payload(film: FilmJourneyFilm) -> dict:
