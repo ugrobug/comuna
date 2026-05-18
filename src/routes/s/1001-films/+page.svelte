@@ -416,25 +416,40 @@
 
 <style>
   .films-page {
-    --play-ink: #171717;
-    --play-pink: #e11d48;
-    --play-yellow: #facc15;
-    --play-mint: #10b981;
-    --play-violet: #7c3aed;
+    --play-ink: #19130f;
+    --play-red: #d83a2f;
+    --play-yellow: #f8c847;
+    --play-cream: #fff2cf;
+    --play-mint: #39b7a5;
+    --play-blue: #2578bd;
+    --play-shadow: #060606;
 
     position: relative;
     overflow: hidden;
     min-height: auto;
     margin-top: -1rem;
     background:
-      linear-gradient(115deg, rgb(225 29 72 / 0.09) 0 10rem, transparent 10rem 100%),
-      linear-gradient(245deg, rgb(250 204 21 / 0.18) 0 14rem, transparent 14rem 100%),
-      linear-gradient(90deg, rgb(23 23 23 / 0.035) 1px, transparent 1px) 0 0 / 3.5rem 100%,
-      linear-gradient(135deg, #fff7ed 0, #f8fafc 42%, #ecfeff 100%);
-    color: #0f172a;
+      radial-gradient(circle at 1rem 1rem, rgb(25 19 15 / 0.12) 0 0.08rem, transparent 0.1rem) 0 0 / 1rem 1rem,
+      linear-gradient(112deg, rgb(216 58 47 / 0.16) 0 10rem, transparent 10rem 100%),
+      linear-gradient(246deg, rgb(57 183 165 / 0.2) 0 15rem, transparent 15rem 100%),
+      linear-gradient(90deg, rgb(25 19 15 / 0.06) 1px, transparent 1px) 0 0 / 3.5rem 100%,
+      linear-gradient(135deg, #fff2cf 0, #fff8e6 48%, #dff6f0 100%);
+    color: var(--play-ink);
     padding: clamp(0.75rem, 1.8vw, 1.35rem) clamp(1rem, 4vw, 3rem) 10px;
     display: flex;
     align-items: flex-start;
+  }
+
+  .films-page::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      linear-gradient(rgb(255 255 255 / 0.18), transparent 0.18rem) 0 0 / 100% 0.46rem,
+      radial-gradient(circle, rgb(25 19 15 / 0.12) 0 0.05rem, transparent 0.07rem) 0.2rem 0.3rem / 0.8rem 0.8rem;
+    mix-blend-mode: multiply;
+    opacity: 0.32;
   }
 
   .hero-shapes {
@@ -445,26 +460,32 @@
 
   .hero-shapes span {
     position: absolute;
+    border: 3px solid var(--play-shadow);
     border-radius: 8px;
-    opacity: 0.88;
+    opacity: 0.95;
   }
 
   .hero-shapes span:nth-child(1) {
-    width: 9rem;
-    height: 1.1rem;
+    width: 10rem;
+    height: 1.25rem;
     left: max(1rem, calc(50% - 34rem));
     top: 1.1rem;
-    background: repeating-linear-gradient(90deg, var(--play-pink) 0 0.8rem, transparent 0.8rem 1.2rem);
-    transform: rotate(-5deg);
+    background: repeating-linear-gradient(90deg, var(--play-red) 0 0.9rem, var(--play-cream) 0.9rem 1.3rem);
+    box-shadow: 0.34rem 0.34rem 0 var(--play-shadow);
+    transform: rotate(-6deg);
   }
 
   .hero-shapes span:nth-child(2) {
-    width: 7.5rem;
-    height: 7.5rem;
+    width: 7.25rem;
+    height: 7.25rem;
     right: max(0.5rem, calc(50% - 38rem));
     bottom: -3.2rem;
-    border: 1.1rem solid rgb(124 58 237 / 0.22);
-    transform: rotate(12deg);
+    border-width: 0.95rem;
+    background:
+      radial-gradient(circle, rgb(25 19 15 / 0.18) 0 0.12rem, transparent 0.14rem) 0 0 / 0.8rem 0.8rem,
+      var(--play-yellow);
+    box-shadow: -0.36rem 0.36rem 0 var(--play-shadow);
+    transform: rotate(14deg);
   }
 
   .hero-shapes span:nth-child(3) {
@@ -472,7 +493,8 @@
     height: 1.25rem;
     right: max(2rem, calc(50% - 33rem));
     top: 2.7rem;
-    background: linear-gradient(90deg, var(--play-mint), var(--play-yellow), var(--btn-primary-background));
+    background: linear-gradient(90deg, var(--play-mint), var(--play-yellow), var(--play-blue), var(--play-red));
+    box-shadow: 0.34rem 0.34rem 0 var(--play-shadow);
     transform: rotate(8deg);
   }
 
@@ -499,12 +521,16 @@
     font-size: clamp(1.78rem, 3.68vw, 3.22rem);
     line-height: 1.02;
     letter-spacing: 0;
-    font-weight: 500;
+    font-weight: 800;
+    color: var(--play-ink);
+    text-shadow:
+      0.05em 0.05em 0 var(--play-yellow),
+      0.1em 0.1em 0 rgb(216 58 47 / 0.85);
   }
 
   .lead {
     max-width: 42rem;
-    color: #475569;
+    color: #4a3426;
     font-size: clamp(0.98rem, 1.5vw, 1.08rem);
     line-height: 1.55;
   }
@@ -533,10 +559,11 @@
     gap: 0.8rem;
     align-items: center;
     max-width: 42rem;
-    border: 1px solid rgb(191 219 254);
+    border: 3px solid var(--play-shadow);
     border-radius: 8px;
-    background: rgb(239 246 255);
+    background: #dff6f0;
     padding: 0.85rem;
+    box-shadow: 0.34rem 0.34rem 0 var(--play-shadow);
   }
 
   .telegram-callout strong {
@@ -555,13 +582,16 @@
   .project-panel {
     position: relative;
     overflow: hidden;
-    border: 1px solid rgb(23 23 23 / 0.12);
+    border: 4px solid var(--play-shadow);
     border-radius: 8px;
     background:
-      linear-gradient(135deg, rgb(255 255 255 / 0.92), rgb(255 255 255 / 0.72)),
-      linear-gradient(135deg, rgb(225 29 72 / 0.18), rgb(250 204 21 / 0.22) 45%, rgb(16 185 129 / 0.18));
+      radial-gradient(circle, rgb(25 19 15 / 0.12) 0 0.08rem, transparent 0.1rem) 0.2rem 0.2rem / 0.78rem 0.78rem,
+      linear-gradient(135deg, rgb(255 242 207 / 0.96), rgb(255 248 230 / 0.88)),
+      linear-gradient(135deg, rgb(216 58 47 / 0.18), rgb(248 200 71 / 0.22) 45%, rgb(57 183 165 / 0.2));
     padding: 1rem;
-    box-shadow: 0 22px 58px rgb(15 23 42 / 0.14);
+    box-shadow:
+      0.55rem 0.55rem 0 var(--play-shadow),
+      0 22px 58px rgb(15 23 42 / 0.14);
     backdrop-filter: blur(18px);
   }
 
@@ -569,8 +599,14 @@
     content: "";
     position: absolute;
     inset: 0 0 auto;
-    height: 0.45rem;
-    background: linear-gradient(90deg, var(--play-pink), var(--play-yellow), var(--play-mint), var(--btn-primary-background));
+    height: 0.62rem;
+    background: repeating-linear-gradient(
+      90deg,
+      var(--play-red) 0 1.1rem,
+      var(--play-yellow) 1.1rem 2.2rem,
+      var(--play-mint) 2.2rem 3.3rem,
+      var(--play-blue) 3.3rem 4.4rem
+    );
   }
 
   .film-stack {
@@ -583,11 +619,13 @@
     position: absolute;
     inset: 0;
     border-radius: 8px;
-    border: 1px solid rgb(23 23 23 / 0.2);
+    border: 4px solid var(--play-shadow);
     background:
-      linear-gradient(90deg, rgb(255 255 255 / 0.5) 0 12%, transparent 12% 88%, rgb(255 255 255 / 0.5) 88%),
-      linear-gradient(145deg, #fef3c7, #fafafa 48%, #cffafe);
-    box-shadow: 0 0.8rem 1.6rem rgb(15 23 42 / 0.13);
+      radial-gradient(circle, #fff8e6 0 0.14rem, transparent 0.16rem) 0.46rem 0.46rem / 1rem 1rem repeat-y,
+      radial-gradient(circle, #fff8e6 0 0.14rem, transparent 0.16rem) calc(100% - 0.46rem) 0.46rem / 1rem 1rem repeat-y,
+      linear-gradient(90deg, rgb(25 19 15 / 0.24) 0 12%, transparent 12% 88%, rgb(25 19 15 / 0.24) 88%),
+      linear-gradient(145deg, var(--play-yellow), #fff8e6 48%, #bfeee6);
+    box-shadow: 0.4rem 0.4rem 0 var(--play-shadow);
   }
 
   .film-stack span:nth-child(1) {
@@ -602,8 +640,10 @@
 
   .film-stack span:nth-child(3) {
     background:
-      linear-gradient(90deg, rgb(255 255 255 / 0.45) 0 10%, transparent 10% 90%, rgb(255 255 255 / 0.45) 90%),
-      linear-gradient(150deg, #fff7ed, rgb(11 93 215 / 0.18) 46%, rgb(225 29 72 / 0.18) 74%, #ecfeff);
+      radial-gradient(circle, #fff8e6 0 0.14rem, transparent 0.16rem) 0.46rem 0.46rem / 1rem 1rem repeat-y,
+      radial-gradient(circle, #fff8e6 0 0.14rem, transparent 0.16rem) calc(100% - 0.46rem) 0.46rem / 1rem 1rem repeat-y,
+      linear-gradient(90deg, rgb(25 19 15 / 0.26) 0 10%, transparent 10% 90%, rgb(25 19 15 / 0.26) 90%),
+      linear-gradient(150deg, #fff2cf, rgb(37 120 189 / 0.26) 46%, rgb(216 58 47 / 0.24) 74%, #dff6f0);
   }
 
   .film-stack span.has-image {
@@ -623,8 +663,9 @@
     position: absolute;
     inset: 0;
     background:
-      linear-gradient(90deg, rgb(15 23 42 / 0.26) 0 10%, transparent 10% 90%, rgb(15 23 42 / 0.26) 90%),
-      linear-gradient(180deg, transparent 58%, rgb(15 23 42 / 0.26));
+      radial-gradient(circle, rgb(255 242 207 / 0.38) 0 0.07rem, transparent 0.09rem) 0.3rem 0.3rem / 0.72rem 0.72rem,
+      linear-gradient(90deg, rgb(25 19 15 / 0.38) 0 10%, transparent 10% 90%, rgb(25 19 15 / 0.38) 90%),
+      linear-gradient(180deg, transparent 55%, rgb(25 19 15 / 0.32));
     pointer-events: none;
   }
 
@@ -636,9 +677,10 @@
 
   .panel-grid div {
     border-radius: 8px;
-    background: rgb(255 255 255 / 0.9);
-    border: 1px solid rgb(23 23 23 / 0.08);
+    background: #fff8e6;
+    border: 3px solid var(--play-shadow);
     padding: 0.7rem;
+    box-shadow: 0.25rem 0.25rem 0 var(--play-shadow);
   }
 
   .panel-grid span,
@@ -651,7 +693,8 @@
     display: block;
     margin-top: 0.18rem;
     font-size: 1.45rem;
-    font-weight: 500;
+    font-weight: 800;
+    color: var(--play-red);
   }
 
   .status-line {
@@ -660,19 +703,22 @@
   }
 
   .how-it-works {
-    --play-ink: #171717;
-    --play-pink: #e11d48;
-    --play-yellow: #facc15;
-    --play-mint: #10b981;
-    --play-violet: #7c3aed;
+    --play-ink: #19130f;
+    --play-red: #d83a2f;
+    --play-yellow: #f8c847;
+    --play-cream: #fff2cf;
+    --play-mint: #39b7a5;
+    --play-blue: #2578bd;
+    --play-shadow: #060606;
 
     background:
-      linear-gradient(102deg, rgb(225 29 72 / 0.08) 0 8rem, transparent 8rem 100%),
-      linear-gradient(258deg, rgb(16 185 129 / 0.11) 0 10rem, transparent 10rem 100%),
-      linear-gradient(90deg, transparent 0 calc(100% - 1px), rgb(18 18 22 / 0.045) calc(100% - 1px)) 0 0 / 3.5rem 100%,
-      linear-gradient(180deg, #ffffff, #f8fafc);
-    color: #0f172a;
-    border-top: 1px solid rgb(15 23 42 / 0.08);
+      radial-gradient(circle at 0.5rem 0.5rem, rgb(25 19 15 / 0.11) 0 0.07rem, transparent 0.09rem) 0 0 / 0.95rem 0.95rem,
+      linear-gradient(102deg, rgb(216 58 47 / 0.11) 0 8rem, transparent 8rem 100%),
+      linear-gradient(258deg, rgb(37 120 189 / 0.12) 0 10rem, transparent 10rem 100%),
+      linear-gradient(90deg, transparent 0 calc(100% - 1px), rgb(25 19 15 / 0.055) calc(100% - 1px)) 0 0 / 3.5rem 100%,
+      linear-gradient(180deg, #fff8e6, #fff2cf);
+    color: var(--play-ink);
+    border-top: 4px solid var(--play-shadow);
     padding: clamp(0.65rem, 1.5vw, 1.2rem) clamp(1rem, 4vw, 3rem) clamp(2rem, 5vw, 4.5rem);
   }
 
@@ -686,8 +732,8 @@
     display: flex;
     flex-direction: column;
     gap: 0.8rem;
-    border-left: 4px solid var(--play-pink);
-    border-image: linear-gradient(var(--play-pink), var(--play-yellow), var(--play-mint)) 1;
+    border-left: 5px solid var(--play-red);
+    border-image: linear-gradient(var(--play-red), var(--play-yellow), var(--play-mint)) 1;
     padding-left: 1rem;
   }
 
@@ -695,7 +741,7 @@
   .step p,
   .rules p,
   .faq p {
-    color: #475569;
+    color: #4a3426;
     line-height: 1.6;
   }
 
@@ -716,35 +762,35 @@
   .step {
     position: relative;
     overflow: hidden;
-    border: 1px solid rgb(23 23 23 / 0.08);
+    border: 3px solid var(--play-shadow);
     border-radius: 8px;
-    background: rgb(255 255 255 / 0.9);
+    background: var(--play-cream);
     padding: 1rem;
-    box-shadow: 0 0.7rem 1.5rem rgb(15 23 42 / 0.06);
+    box-shadow: 0.36rem 0.36rem 0 var(--play-shadow);
   }
 
   .step::before {
     content: "";
     position: absolute;
     inset: 0 0 auto;
-    height: 0.24rem;
-    background: var(--btn-primary-background);
+    height: 0.42rem;
+    background: var(--play-blue);
   }
 
   .step:nth-child(1) {
-    background: linear-gradient(160deg, #fff1f2, rgb(255 255 255 / 0.92) 58%);
+    background: linear-gradient(160deg, #ffe1d6, #fff8e6 62%);
   }
 
   .step:nth-child(2) {
-    background: linear-gradient(160deg, #eff6ff, rgb(255 255 255 / 0.92) 58%);
+    background: linear-gradient(160deg, #dff6f0, #fff8e6 62%);
   }
 
   .step:nth-child(3) {
-    background: linear-gradient(160deg, #fef9c3, rgb(255 255 255 / 0.92) 58%);
+    background: linear-gradient(160deg, #ffef9c, #fff8e6 62%);
   }
 
   .step:nth-child(1)::before {
-    background: var(--play-pink);
+    background: var(--play-red);
   }
 
   .step:nth-child(3)::before {
@@ -758,8 +804,10 @@
     align-items: center;
     justify-content: center;
     border-radius: 999px;
-    color: var(--btn-primary-background);
-    background: rgb(18 18 22);
+    color: #fff8e6;
+    background: var(--play-shadow);
+    border: 2px solid var(--play-shadow);
+    box-shadow: 0.18rem 0.18rem 0 var(--play-red);
     margin-bottom: 0.9rem;
   }
 
@@ -777,20 +825,20 @@
 
   .step h3 {
     font-size: 1.05rem;
-    font-weight: 500;
+    font-weight: 800;
     margin-bottom: 0.45rem;
+    color: var(--play-ink);
   }
 
   .rules {
     margin-top: 0.85rem;
     border-radius: 8px;
-    border: 1px solid rgb(18 18 22 / 0.1);
-    border-left: 4px solid var(--play-mint);
+    border: 3px solid var(--play-shadow);
     padding: 1rem;
     background:
-      linear-gradient(135deg, rgb(236 253 245 / 0.82), rgb(239 246 255 / 0.82)),
-      rgb(255 255 255);
-    box-shadow: 0 0.7rem 1.5rem rgb(15 23 42 / 0.05);
+      radial-gradient(circle, rgb(25 19 15 / 0.12) 0 0.08rem, transparent 0.1rem) 0.22rem 0.28rem / 0.78rem 0.78rem,
+      linear-gradient(135deg, #dff6f0, #fff8e6);
+    box-shadow: 0.36rem 0.36rem 0 var(--play-shadow);
   }
 
   .faq {
@@ -800,40 +848,40 @@
   }
 
   .faq details {
-    border: 1px solid rgb(18 18 22 / 0.1);
+    border: 3px solid var(--play-shadow);
     border-radius: 8px;
-    background: rgb(255 255 255);
+    background: #fff8e6;
     padding: 0.9rem 1rem;
-    box-shadow: 0 0.5rem 1.4rem rgb(18 18 22 / 0.04);
+    box-shadow: 0.3rem 0.3rem 0 var(--play-shadow);
   }
 
   .faq details:nth-child(3n + 1) {
-    background: #fff1f2;
+    background: #ffe1d6;
   }
 
   .faq details:nth-child(3n + 2) {
-    background: #f0f9ff;
+    background: #dff6f0;
   }
 
   .faq details:nth-child(3n + 3) {
-    background: #fffbeb;
+    background: #ffef9c;
   }
 
   .faq details[open] {
-    border-color: rgb(11 93 215 / 0.28);
-    background: rgb(255 255 255);
+    border-color: var(--play-shadow);
+    background: #fff8e6;
   }
 
   .faq summary {
     cursor: pointer;
-    color: #0f172a;
+    color: var(--play-ink);
     font-size: 1rem;
-    font-weight: 500;
+    font-weight: 800;
     line-height: 1.35;
   }
 
   .faq summary::marker {
-    color: var(--btn-primary-background);
+    color: var(--play-red);
   }
 
   .faq p {
@@ -847,6 +895,13 @@
       linear-gradient(90deg, rgb(255 255 255 / 0.035) 1px, transparent 1px) 0 0 / 3.5rem 100%,
       rgb(9 9 11 / 1);
     color: #fafafa;
+  }
+
+  :global(.dark) h1 {
+    color: #fff8e6;
+    text-shadow:
+      0.05em 0.05em 0 rgb(248 200 71 / 0.75),
+      0.1em 0.1em 0 rgb(216 58 47 / 0.7);
   }
 
   :global(.dark) .lead,
@@ -878,16 +933,19 @@
   }
 
   :global(.dark) .project-panel {
-    border-color: rgb(39 39 42);
+    border-color: #fff8e6;
     background:
       linear-gradient(135deg, rgb(24 24 27 / 0.94), rgb(9 9 11 / 0.85)),
       linear-gradient(135deg, rgb(225 29 72 / 0.26), rgb(250 204 21 / 0.14) 45%, rgb(16 185 129 / 0.18));
-    box-shadow: 0 18px 48px rgb(0 0 0 / 0.24);
+    box-shadow:
+      0.5rem 0.5rem 0 rgb(255 248 230 / 0.55),
+      0 18px 48px rgb(0 0 0 / 0.24);
   }
 
   :global(.dark) .panel-grid div {
-    border-color: rgb(63 63 70);
+    border-color: #fff8e6;
     background: rgb(24 24 27);
+    box-shadow: 0.25rem 0.25rem 0 rgb(255 248 230 / 0.4);
   }
 
   :global(.dark) .film-stack span {
@@ -918,9 +976,13 @@
   }
 
   :global(.dark) .step {
-    border-color: rgb(39 39 42);
+    border-color: #fff8e6;
     background: linear-gradient(160deg, rgb(39 39 42), rgb(24 24 27));
-    box-shadow: none;
+    box-shadow: 0.34rem 0.34rem 0 rgb(255 248 230 / 0.34);
+  }
+
+  :global(.dark) .step h3 {
+    color: #fff8e6;
   }
 
   :global(.dark) .step-icon {
@@ -928,15 +990,15 @@
   }
 
   :global(.dark) .rules {
-    border-color: rgb(39 39 42);
+    border-color: #fff8e6;
     background: linear-gradient(135deg, rgb(20 83 45 / 0.24), rgb(30 64 175 / 0.18));
-    box-shadow: none;
+    box-shadow: 0.34rem 0.34rem 0 rgb(255 248 230 / 0.34);
   }
 
   :global(.dark) .faq details {
-    border-color: rgb(39 39 42);
+    border-color: #fff8e6;
     background: rgb(24 24 27);
-    box-shadow: none;
+    box-shadow: 0.28rem 0.28rem 0 rgb(255 248 230 / 0.3);
   }
 
   :global(.dark) .faq details[open] {
