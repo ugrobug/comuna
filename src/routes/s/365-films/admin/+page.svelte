@@ -341,11 +341,11 @@
     if (!browser) return
     const currentUser = $siteUser || (await refreshSiteUser())
     if (!currentUser) {
-      goto(`/login?next=${encodeURIComponent('/s/1001-films/admin')}`)
+      goto(`/login?next=${encodeURIComponent('/s/365-films/admin')}`)
       return
     }
     if (!currentUser.is_staff) {
-      goto('/s/1001-films')
+      goto('/s/365-films')
       return
     }
     await loadAdmin()
@@ -360,7 +360,7 @@
 <main class="admin-page">
   <header class="page-header">
     <div>
-      <a class="back-link" href="/s/1001-films">← к лендингу</a>
+      <a class="back-link" href="/s/365-films">← к лендингу</a>
       <h1>365 фильмов: управление</h1>
     </div>
     <Button on:click={loadAdmin} disabled={loading}>Обновить</Button>
@@ -515,7 +515,7 @@
                 </Button>
               {:else}
                 <Button size="sm" on:click={() => editFilm(film)}>Править</Button>
-                <Button size="sm" href={`/s/1001-films/admin/preview/${film.id}`}>
+                <Button size="sm" href={`/s/365-films/admin/preview/${film.id}`}>
                   Предпросмотр
                 </Button>
                 {#if film.is_active}

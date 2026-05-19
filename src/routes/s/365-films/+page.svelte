@@ -191,7 +191,7 @@
     name="description"
     content="Спецпроект Tambur: один фильм в день, секретные ссылки и общий порядок для всех участников."
   />
-  <link rel="canonical" href="/s/1001-films" />
+  <link rel="canonical" href="/s/365-films" />
 </svelte:head>
 
 <LoginModal bind:open={authOpen} initialMode="signup" />
@@ -255,7 +255,7 @@
           </Button>
         {/if}
         {#if $siteUser?.is_staff}
-          <Button size="lg" href="/s/1001-films/admin">
+          <Button size="lg" href="/s/365-films/admin">
             Управление фильмами
           </Button>
         {/if}

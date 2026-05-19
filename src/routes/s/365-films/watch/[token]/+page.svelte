@@ -270,7 +270,7 @@
 {/if}
 
 <section class="watch-page">
-  <a class="back-link" href="/s/1001-films">
+  <a class="back-link" href="/s/365-films">
     <Icon src={ArrowLeft} size="16" mini />
     К проекту
   </a>

@@ -267,39 +267,39 @@ export const buildSpecialLandnameAdminSuggestionApproveUrl = (id: number | strin
 }
 
 export const buildSpecial1001FilmsStatusUrl = (): string => {
-  return `${getBackendBaseUrl()}/api/special-projects/1001-films/status/`
+  return `${getBackendBaseUrl()}/api/special-projects/365-films/status/`
 }
 
 export const buildSpecial1001FilmsStartUrl = (): string => {
-  return `${getBackendBaseUrl()}/api/special-projects/1001-films/start/`
+  return `${getBackendBaseUrl()}/api/special-projects/365-films/start/`
 }
 
 export const buildSpecial1001FilmsResumeUrl = (): string => {
-  return `${getBackendBaseUrl()}/api/special-projects/1001-films/resume/`
+  return `${getBackendBaseUrl()}/api/special-projects/365-films/resume/`
 }
 
 export const buildSpecial1001FilmsEntryUrl = (token: string): string => {
-  return `${getBackendBaseUrl()}/api/special-projects/1001-films/entries/${encodeURIComponent(token)}/`
+  return `${getBackendBaseUrl()}/api/special-projects/365-films/entries/${encodeURIComponent(token)}/`
 }
 
 export const buildSpecial1001FilmsEntryCommentsUrl = (token: string): string => {
-  return `${getBackendBaseUrl()}/api/special-projects/1001-films/entries/${encodeURIComponent(token)}/comments/`
+  return `${getBackendBaseUrl()}/api/special-projects/365-films/entries/${encodeURIComponent(token)}/comments/`
 }
 
 export const buildSpecial1001FilmsEntryRatingVoteUrl = (token: string): string => {
-  return `${getBackendBaseUrl()}/api/special-projects/1001-films/entries/${encodeURIComponent(token)}/rating-vote/`
+  return `${getBackendBaseUrl()}/api/special-projects/365-films/entries/${encodeURIComponent(token)}/rating-vote/`
 }
 
 export const buildSpecial1001FilmsAdminFilmsUrl = (): string => {
-  return `${getBackendBaseUrl()}/api/special-projects/1001-films/admin/films/`
+  return `${getBackendBaseUrl()}/api/special-projects/365-films/admin/films/`
 }
 
 export const buildSpecial1001FilmsAdminLandingImagesUrl = (): string => {
-  return `${getBackendBaseUrl()}/api/special-projects/1001-films/admin/landing-images/`
+  return `${getBackendBaseUrl()}/api/special-projects/365-films/admin/landing-images/`
 }
 
 export const buildSpecial1001FilmsAdminFilmUrl = (id: number | string): string => {
-  return `${getBackendBaseUrl()}/api/special-projects/1001-films/admin/films/${encodeURIComponent(id)}/`
+  return `${getBackendBaseUrl()}/api/special-projects/365-films/admin/films/${encodeURIComponent(id)}/`
 }
 
 export const buildBackendPostPath = (post: { id: number; title: string }): string => {

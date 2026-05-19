@@ -275,6 +275,51 @@ urlpatterns = [
         name="special-landname-tile",
     ),
     path(
+        "api/special-projects/365-films/status/",
+        film_journey_status,
+        name="special-365-films-status",
+    ),
+    path(
+        "api/special-projects/365-films/start/",
+        film_journey_start,
+        name="special-365-films-start",
+    ),
+    path(
+        "api/special-projects/365-films/resume/",
+        film_journey_resume,
+        name="special-365-films-resume",
+    ),
+    path(
+        "api/special-projects/365-films/entries/<str:access_token>/",
+        film_journey_entry_detail,
+        name="special-365-films-entry",
+    ),
+    path(
+        "api/special-projects/365-films/entries/<str:access_token>/comments/",
+        film_journey_entry_comments,
+        name="special-365-films-entry-comments",
+    ),
+    path(
+        "api/special-projects/365-films/entries/<str:access_token>/rating-vote/",
+        film_journey_entry_rating_vote,
+        name="special-365-films-entry-rating-vote",
+    ),
+    path(
+        "api/special-projects/365-films/admin/films/",
+        film_journey_admin_films,
+        name="special-365-films-admin-films",
+    ),
+    path(
+        "api/special-projects/365-films/admin/landing-images/",
+        film_journey_admin_landing_images,
+        name="special-365-films-admin-landing-images",
+    ),
+    path(
+        "api/special-projects/365-films/admin/films/<int:film_id>/",
+        film_journey_admin_film_detail,
+        name="special-365-films-admin-film-detail",
+    ),
+    path(
         "api/special-projects/1001-films/status/",
         film_journey_status,
         name="special-1001-films-status",

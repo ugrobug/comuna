@@ -65,11 +65,11 @@
     if (!browser) return
     const currentUser = $siteUser || (await refreshSiteUser())
     if (!currentUser) {
-      goto(`/login?next=${encodeURIComponent(`/s/1001-films/admin/preview/${filmId}`)}`)
+      goto(`/login?next=${encodeURIComponent(`/s/365-films/admin/preview/${filmId}`)}`)
       return
     }
     if (!currentUser.is_staff) {
-      goto('/s/1001-films')
+      goto('/s/365-films')
       return
     }
     await loadPreview()
@@ -84,7 +84,7 @@
 <main class="preview-page">
   <header class="preview-header">
     <div>
-      <a href="/s/1001-films/admin">← к управлению</a>
+      <a href="/s/365-films/admin">← к управлению</a>
       <h1>{film ? `${film.sort_order}. ${film.title}` : 'Предпросмотр фильма'}</h1>
     </div>
     <Button on:click={loadPreview} disabled={loading}>Обновить</Button>

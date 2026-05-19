@@ -35,7 +35,7 @@ NEXT_DELIVERY_DEADLINE_HOUR = 18
 DISCUSSION_AUTHOR_USERNAME = "tambur-1001-films"
 DISCUSSION_AUTHOR_TITLE = "Проект 365 фильмов"
 DISCUSSION_AUTHOR_DESCRIPTION = (
-    "https://tambur.pub/s/1001-films/\n\n"
+    "https://tambur.pub/s/365-films/\n\n"
     "Это челлендж без права выбора. Каждый день — один фильм. Посмотрели, "
     "оценили, перешли к следующему. Пропускать нельзя, выбирать нельзя — "
     "просто смотрите и открывайте для себя разные жанры, культуры и эпохи."
@@ -380,7 +380,7 @@ def special_project_post_filter(post) -> bool:
 
 
 def entry_public_path(entry: FilmJourneyEntry) -> str:
-    return f"/s/1001-films/watch/{entry.access_token}"
+    return f"/s/365-films/watch/{entry.access_token}"
 
 
 def entry_absolute_url(entry: FilmJourneyEntry) -> str:
