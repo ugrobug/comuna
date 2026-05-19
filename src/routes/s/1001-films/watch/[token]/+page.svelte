@@ -1,8 +1,10 @@
 <script lang="ts">
   import { page } from '$app/stores'
+  import { goto } from '$app/navigation'
   import { onMount } from 'svelte'
   import { Button } from 'mono-svelte'
   import {
+    buildBackendPostPath,
     buildSpecial1001FilmsEntryCommentsUrl,
     buildSpecial1001FilmsEntryRatingVoteUrl,
     buildSpecial1001FilmsEntryUrl,
@@ -10,7 +12,6 @@
   } from '$lib/api/backend'
   import LoginModal from '$lib/components/auth/LoginModal.svelte'
   import PostTemplateHeader from '$lib/components/site/post-templates/PostTemplateHeader.svelte'
-  import PostComments from '$lib/components/site/PostComments.svelte'
   import { refreshSiteUser, siteToken, siteUser } from '$lib/siteAuth'
   import type { SitePostTemplate } from '$lib/postTemplates'
   import { ArrowLeft, CheckCircle, Icon, LockClosed } from 'svelte-hero-icons'
@@ -54,7 +55,6 @@
   let confirmEarlyOpen = false
   let reviewOpen = false
   let submitSuccess = false
-  let showReviews = false
   let selectedRating: number | null = null
   let opinion = ''
   let submittingReview = false
@@ -106,7 +106,7 @@
 
   function openReviewFlow() {
     if (!entry || entry.completed_at) {
-      showReviews = true
+      openDiscussionPost()
       return
     }
     reviewError = ''
@@ -169,13 +169,17 @@
       reviewOpen = false
       confirmEarlyOpen = false
       submitSuccess = true
-      showReviews = false
       opinion = ''
     } catch (err) {
       reviewError = (err as Error)?.message || 'Не удалось сохранить отзыв'
     } finally {
       submittingReview = false
     }
+  }
+
+  function openDiscussionPost() {
+    if (!discussionPost) return
+    goto(buildBackendPostPath({ id: discussionPost.id, title: discussionPost.title || film?.title || '' }))
   }
 
   onMount(loadEntry)
@@ -335,7 +339,7 @@
 
         <div class="watch-actions">
           {#if entry.completed_at || submitSuccess}
-            <button type="button" class="primary-action" on:click={() => (showReviews = true)}>
+            <button type="button" class="primary-action" on:click={openDiscussionPost}>
               Посмотреть все отзывы
             </button>
           {:else}
@@ -345,13 +349,6 @@
           {/if}
         </div>
 
-        {#if showReviews}
-          <PostComments
-            postId={discussionPost.id}
-            {commentsUrl}
-            on:comment={loadEntry}
-          />
-        {/if}
       {:else}
         <p class="meta">Не удалось подготовить обсуждение фильма.</p>
       {/if}
