@@ -14,12 +14,14 @@ class TelegramAccountAdmin(admin.ModelAdmin):
 class BotSessionAdmin(admin.ModelAdmin):
     list_display = (
         "telegram_user_id",
+        "verified_user_id",
+        "channel_flow",
         "selected_author",
         "auto_publish",
         "publish_delay_days",
         "instructions_sent",
         "updated_at",
     )
-    list_filter = ("auto_publish", "instructions_sent", "mode_selected", "invite_waiting")
+    list_filter = ("auto_publish", "instructions_sent", "mode_selected", "invite_waiting", "channel_flow")
     search_fields = ("telegram_user_id", "selected_author__username")
     raw_id_fields = ("selected_author",)
