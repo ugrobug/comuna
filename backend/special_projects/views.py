@@ -923,12 +923,16 @@ def film_journey_admin_film_detail(request: HttpRequest, film_id: int) -> HttpRe
         return JsonResponse({"ok": False, "error": "film not found"}, status=404)
 
     if request.method == "GET":
-        post = film_journey.ensure_film_discussion_post(film)
+        post = film_journey.get_film_discussion_post(film)
         return JsonResponse(
             {
                 "ok": True,
                 "film": _film_admin_payload(film),
-                "discussion_post": film_journey.serialize_discussion_post(post, user),
+                "discussion_post": (
+                    film_journey.serialize_discussion_post(post, user)
+                    if post
+                    else film_journey.serialize_film_discussion_preview(film)
+                ),
             }
         )
 

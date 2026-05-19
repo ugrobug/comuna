@@ -17,10 +17,11 @@ from special_projects.film_journey import (
     PROJECT_TIME_ZONE,
     ensure_film_discussion_post,
     next_delivery_time,
+    serialize_entry,
     send_due_deliveries,
     start_subscription,
 )
-from special_projects.models import FilmJourneyFilm, FilmJourneySubscription
+from special_projects.models import FilmJourneyEntry, FilmJourneyFilm, FilmJourneySubscription
 
 
 User = get_user_model()
@@ -125,6 +126,31 @@ class FilmJourneyDeliveryTests(TestCase):
         self.assertEqual(post.title, 'Как вам фильм "Фильм дня"?')
         self.assertFalse(post.is_pending)
         notify_mock.assert_called_once()
+
+    def test_entry_serialization_does_not_create_discussion_post(self):
+        user = User.objects.create_user(username="film-user-preview", password="pass")
+        film = FilmJourneyFilm.objects.create(
+            title="Фильм для предпросмотра",
+            sort_order=1,
+            is_active=True,
+        )
+        subscription = FilmJourneySubscription.objects.create(
+            project_slug=FilmJourneyFilm.PROJECT_SLUG,
+            user=user,
+            status=FilmJourneySubscription.STATUS_ACTIVE,
+            next_delivery_at=datetime(2026, 5, 19, 12, 0, tzinfo=PROJECT_TIME_ZONE),
+        )
+        entry = FilmJourneyEntry.objects.create(
+            subscription=subscription,
+            film=film,
+            position=1,
+            available_at=datetime(2026, 5, 19, 12, 0, tzinfo=PROJECT_TIME_ZONE),
+        )
+
+        payload = serialize_entry(entry, include_film=True, include_discussion=True, user=user)
+
+        self.assertIsNone(payload["discussion_post"])
+        self.assertFalse(Post.objects.filter(raw_data__special_project__film_id=film.id).exists())
 
     @patch("special_projects.film_journey.create_user_notification")
     def test_due_deliveries_sends_first_film_for_active_subscription_without_entries(self, notify_mock):

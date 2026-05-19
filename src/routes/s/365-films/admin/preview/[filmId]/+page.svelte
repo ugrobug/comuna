@@ -22,7 +22,7 @@
       sort_order: number
     }
     discussion_post?: {
-      id: number
+      id: number | null
       title: string
       content: string
       template?: SitePostTemplate | null

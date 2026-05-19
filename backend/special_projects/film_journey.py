@@ -296,12 +296,12 @@ def _film_discussion_title(film: FilmJourneyFilm) -> str:
     return f'Как вам фильм "{film.title}"{year_part}?'[:255]
 
 
-def ensure_film_discussion_post(film: FilmJourneyFilm):
-    from feeds.models import Post
+def _film_discussion_message_id(film: FilmJourneyFilm) -> int:
+    return DISCUSSION_MESSAGE_ID_BASE + int(film.id)
 
-    author = _discussion_author()
-    message_id = DISCUSSION_MESSAGE_ID_BASE + int(film.id)
-    raw_data = {
+
+def _film_discussion_raw_data(film: FilmJourneyFilm) -> dict[str, Any]:
+    return {
         "source": "manual_comun",
         "comun_slug": DISCUSSION_COMUN_SLUG,
         "special_project": {
@@ -314,6 +314,26 @@ def ensure_film_discussion_post(film: FilmJourneyFilm):
             "data": _film_review_template_data(film),
         },
     }
+
+
+def get_film_discussion_post(film: FilmJourneyFilm):
+    from feeds.models import Author, Post
+
+    author = Author.objects.filter(username=DISCUSSION_AUTHOR_USERNAME).first()
+    if author is None:
+        return None
+    return Post.objects.filter(
+        author=author,
+        message_id=_film_discussion_message_id(film),
+    ).first()
+
+
+def ensure_film_discussion_post(film: FilmJourneyFilm):
+    from feeds.models import Post
+
+    author = _discussion_author()
+    message_id = _film_discussion_message_id(film)
+    raw_data = _film_discussion_raw_data(film)
     title = _film_discussion_title(film)
     content = _film_review_content(film)
     post, created = Post.objects.get_or_create(
@@ -373,6 +393,21 @@ def serialize_discussion_post(post, user: User | None = None) -> dict[str, Any]:
     }
 
 
+def serialize_film_discussion_preview(film: FilmJourneyFilm) -> dict[str, Any]:
+    from editor.service import _normalize_post_template_payload
+
+    raw_data = _film_discussion_raw_data(film)
+    template, _template_error = _normalize_post_template_payload(raw_data.get("template"))
+    return {
+        "id": None,
+        "title": _film_discussion_title(film),
+        "content": _film_review_content(film),
+        "template": template,
+        "post_ratings": {},
+        "comments_count": 0,
+    }
+
+
 def special_project_post_filter(post) -> bool:
     raw_data = post.raw_data if isinstance(getattr(post, "raw_data", None), dict) else {}
     project = raw_data.get("special_project") if isinstance(raw_data.get("special_project"), dict) else {}
@@ -417,8 +452,8 @@ def serialize_entry(
     if include_film:
         payload["film"] = serialize_film(entry.film)
     if include_discussion:
-        post = ensure_film_discussion_post(entry.film)
-        payload["discussion_post"] = serialize_discussion_post(post, user)
+        post = get_film_discussion_post(entry.film)
+        payload["discussion_post"] = serialize_discussion_post(post, user) if post else None
     return payload
 
 
