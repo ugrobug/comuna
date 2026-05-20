@@ -127,6 +127,99 @@ class SpecialProjectGeneratedPhrase(models.Model):
         return f"{self.project_slug}:{self.text}:{self.created_at:%Y-%m-%d %H:%M}"
 
 
+class PublicBookState(models.Model):
+    PROJECT_SLUG = "book"
+
+    project_slug = models.SlugField(max_length=80, default=PROJECT_SLUG, unique=True)
+    total_words = models.PositiveIntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Состояние книги спецпроекта"
+        verbose_name_plural = "Состояния книги спецпроекта"
+
+    def __str__(self) -> str:
+        return f"{self.project_slug}:{self.total_words}"
+
+
+class PublicBookWord(models.Model):
+    PROJECT_SLUG = PublicBookState.PROJECT_SLUG
+
+    project_slug = models.SlugField(max_length=80, default=PROJECT_SLUG)
+    position = models.PositiveIntegerField()
+    word = models.CharField(max_length=64)
+    normalized_word = models.CharField(max_length=64)
+    submitted_by = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="public_book_words",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Слово книги спецпроекта"
+        verbose_name_plural = "Слова книги спецпроекта"
+        ordering = ("project_slug", "position")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("project_slug", "position"),
+                name="special_projects_public_book_unique_position",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=("project_slug", "position")),
+            models.Index(fields=("project_slug", "created_at")),
+            models.Index(fields=("submitted_by", "created_at")),
+            models.Index(fields=("project_slug", "normalized_word")),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.position}. {self.word}"
+
+
+class PublicBookBlockedWord(models.Model):
+    PROJECT_SLUG = PublicBookState.PROJECT_SLUG
+
+    project_slug = models.SlugField(max_length=80, default=PROJECT_SLUG)
+    word = models.CharField(max_length=64)
+    normalized_word = models.CharField(max_length=64)
+    is_active = models.BooleanField(default=True)
+    note = models.CharField(max_length=240, blank=True)
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="public_book_blocked_words",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Запрещенное слово книги"
+        verbose_name_plural = "Запрещенные слова книги"
+        ordering = ("project_slug", "normalized_word")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("project_slug", "normalized_word"),
+                name="special_projects_public_book_unique_blocked_word",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=("project_slug", "is_active", "normalized_word")),
+        ]
+
+    def save(self, *args, **kwargs) -> None:
+        from special_projects.public_book import normalize_public_book_word
+
+        self.word = str(self.word or "").strip()
+        self.normalized_word = normalize_public_book_word(self.word)["normalized_word"]
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return self.word
+
+
 class FilmJourneyFilm(models.Model):
     PROJECT_SLUG = "1001-films"
 

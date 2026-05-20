@@ -266,6 +266,29 @@ export const buildSpecialLandnameAdminSuggestionApproveUrl = (id: number | strin
   return `${getBackendBaseUrl()}/api/special-projects/landname/admin/suggestions/${encodeURIComponent(id)}/approve/`
 }
 
+export const buildSpecialBookStatusUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/book/status/`
+}
+
+export const buildSpecialBookWordsUrl = (options?: {
+  offset?: number
+  limit?: number
+}): string => {
+  const params = new URLSearchParams()
+  if (typeof options?.offset === 'number') {
+    params.set('offset', String(options.offset))
+  }
+  if (typeof options?.limit === 'number') {
+    params.set('limit', String(options.limit))
+  }
+  const query = params.toString()
+  return `${getBackendBaseUrl()}/api/special-projects/book/words/${query ? `?${query}` : ''}`
+}
+
+export const buildSpecialBookSubmitUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/book/submit/`
+}
+
 export const buildSpecial1001FilmsStatusUrl = (): string => {
   return `${getBackendBaseUrl()}/api/special-projects/365-films/status/`
 }

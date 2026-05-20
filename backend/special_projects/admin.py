@@ -5,6 +5,9 @@ from special_projects.models import (
     FilmJourneyEntry,
     FilmJourneyFilm,
     FilmJourneySubscription,
+    PublicBookBlockedWord,
+    PublicBookState,
+    PublicBookWord,
     SpecialProjectGeneratedPhrase,
     SpecialProjectLetterImage,
     SpecialProjectLetterSuggestion,
@@ -57,6 +60,36 @@ class SpecialProjectGeneratedPhraseAdmin(admin.ModelAdmin):
     search_fields = ("text", "share_query", "generated_by__username")
     autocomplete_fields = ("generated_by",)
     readonly_fields = ("created_at", "updated_at", "shared_at")
+
+
+@admin.register(PublicBookState)
+class PublicBookStateAdmin(admin.ModelAdmin):
+    list_display = ("project_slug", "total_words", "updated_at")
+    readonly_fields = ("updated_at",)
+
+
+@admin.register(PublicBookWord)
+class PublicBookWordAdmin(admin.ModelAdmin):
+    list_display = ("project_slug", "position", "word", "submitted_by", "created_at")
+    list_filter = ("project_slug", "created_at")
+    search_fields = ("word", "normalized_word", "submitted_by__username", "submitted_by__email")
+    autocomplete_fields = ("submitted_by",)
+    readonly_fields = ("created_at",)
+    ordering = ("project_slug", "position")
+
+
+@admin.register(PublicBookBlockedWord)
+class PublicBookBlockedWordAdmin(admin.ModelAdmin):
+    list_display = ("project_slug", "word", "normalized_word", "is_active", "created_by", "updated_at")
+    list_filter = ("project_slug", "is_active", "created_at", "updated_at")
+    search_fields = ("word", "normalized_word", "note", "created_by__username")
+    autocomplete_fields = ("created_by",)
+    readonly_fields = ("created_at", "updated_at")
+
+    def save_model(self, request, obj, form, change):
+        if not obj.created_by_id:
+            obj.created_by = request.user
+        super().save_model(request, obj, form, change)
 
 
 @admin.register(FilmJourneyFilm)

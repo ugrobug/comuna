@@ -14,7 +14,7 @@ from django.utils.text import get_valid_filename
 from django.views.decorators.csrf import csrf_exempt
 from PIL import Image, ImageDraw, ImageFont, UnidentifiedImageError
 
-from special_projects import film_journey
+from special_projects import film_journey, public_book
 from special_projects.models import (
     FilmJourneyEntry,
     FilmJourneyFilm,
@@ -238,6 +238,52 @@ def landname_tile(request: HttpRequest, key: str) -> HttpResponse:
     if svg is None:
         return JsonResponse({"ok": False, "error": "tile not found"}, status=404)
     return HttpResponse(svg, content_type="image/svg+xml")
+
+
+def public_book_status(request: HttpRequest) -> HttpResponse:
+    if request.method != "GET":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    return JsonResponse(public_book.project_status_for_user(_get_user_from_request(request)))
+
+
+def public_book_words(request: HttpRequest) -> HttpResponse:
+    if request.method != "GET":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    offset = _parse_positive_int(request.GET.get("offset"), default=0)
+    limit = _parse_positive_int(request.GET.get("limit"), default=500, maximum=2000)
+    return JsonResponse(public_book.words_payload(offset=offset or 0, limit=limit or 500))
+
+
+@csrf_exempt
+def public_book_submit(request: HttpRequest) -> HttpResponse:
+    user = _get_user_from_request(request)
+    if user is None:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+    try:
+        word = public_book.submit_word(user, str(payload.get("word", "")))
+    except ValueError as exc:
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": str(exc),
+                **public_book.can_submit_payload(user),
+            },
+            status=400,
+        )
+    return JsonResponse(
+        {
+            "ok": True,
+            "word": public_book.serialize_word(word),
+            **public_book.project_status_for_user(user),
+        },
+        status=201,
+    )
 
 
 def film_journey_status(request: HttpRequest) -> HttpResponse:

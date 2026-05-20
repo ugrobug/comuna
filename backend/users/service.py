@@ -486,6 +486,8 @@ def _merge_user_accounts(target: User, source: User, *, reason: str = "") -> Use
         _model_class("special_projects", "SpecialProjectLetterSuggestion").objects.filter(submitted_by=source).update(submitted_by=target)
         _model_class("special_projects", "SpecialProjectLetterSuggestion").objects.filter(reviewed_by=source).update(reviewed_by=target)
         _model_class("special_projects", "SpecialProjectGeneratedPhrase").objects.filter(generated_by=source).update(generated_by=target)
+        _model_class("special_projects", "PublicBookWord").objects.filter(submitted_by=source).update(submitted_by=target)
+        _model_class("special_projects", "PublicBookBlockedWord").objects.filter(created_by=source).update(created_by=target)
 
         source.email = ""
         source.is_active = False

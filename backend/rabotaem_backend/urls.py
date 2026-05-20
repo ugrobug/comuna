@@ -86,6 +86,9 @@ from special_projects.views import (
     landname_share_event,
     landname_suggestions,
     landname_tile,
+    public_book_status,
+    public_book_submit,
+    public_book_words,
 )
 from telegram_integration.views import telegram_auth, telegram_webhook
 from users.views import (
@@ -273,6 +276,21 @@ urlpatterns = [
         "api/special-projects/landname/tiles/<str:key>.svg",
         landname_tile,
         name="special-landname-tile",
+    ),
+    path(
+        "api/special-projects/book/status/",
+        public_book_status,
+        name="special-book-status",
+    ),
+    path(
+        "api/special-projects/book/words/",
+        public_book_words,
+        name="special-book-words",
+    ),
+    path(
+        "api/special-projects/book/submit/",
+        public_book_submit,
+        name="special-book-submit",
     ),
     path(
         "api/special-projects/365-films/status/",
