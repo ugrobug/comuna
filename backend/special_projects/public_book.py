@@ -483,10 +483,6 @@ def _next_available_at_for_user(user: User | None, now=None):
     return candidate if candidate > current else None
 
 
-def _user_bypasses_submission_interval(user: User | None) -> bool:
-    return bool(user is not None and (user.is_staff or user.is_superuser))
-
-
 def _latest_word_for_user(user: User | None) -> PublicBookWord | None:
     if user is None:
         return None
@@ -565,11 +561,7 @@ def final_notification_payload_for_user(user: User | None) -> dict[str, Any]:
 
 def can_submit_payload(user: User | None, now=None) -> dict[str, Any]:
     current = now or timezone.now()
-    next_available_at = (
-        None
-        if _user_bypasses_submission_interval(user)
-        else _next_available_at_for_user(user, now=now)
-    )
+    next_available_at = _next_available_at_for_user(user, now=now)
     moderation_locked_until = moderation_lock_until_for_user(user, now=current)
     has_social_identity = _user_has_social_identity(user)
     can_submit = bool(
@@ -985,7 +977,7 @@ def submit_word(user: User, raw_word: str) -> PublicBookWord:
             raise ValueError("Чтобы добавить слово, привяжите Telegram или VK к учетной записи.")
 
         next_available_at = _next_available_at_for_user(user, now=now)
-        if next_available_at is not None and not _user_bypasses_submission_interval(user):
+        if next_available_at is not None:
             raise ValueError("Следующее слово можно будет добавить через 24 часа после предыдущего.")
 
         previous_word = (

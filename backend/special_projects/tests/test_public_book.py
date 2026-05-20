@@ -335,7 +335,7 @@ class PublicBookTests(TestCase):
 
         self.assertEqual(second.position, 2)
 
-    def test_staff_user_bypasses_24_hour_submission_interval(self):
+    def test_staff_user_is_limited_by_24_hour_submission_interval(self):
         user = self.make_user("staff-book-user", telegram=True)
         user.is_staff = True
         user.save(update_fields=("is_staff",))
@@ -345,12 +345,14 @@ class PublicBookTests(TestCase):
         first.save(update_fields=("created_at",))
 
         with patch("special_projects.public_book.timezone.now", return_value=now + timedelta(minutes=5)):
-            second = submit_word(user, "Второе")
             status = project_status_for_user(user)
 
-        self.assertEqual(second.position, 2)
-        self.assertTrue(status["can_submit"])
-        self.assertIsNone(status["next_available_at"])
+            with self.assertRaisesMessage(ValueError, "24 часа"):
+                submit_word(user, "Второе")
+
+        self.assertFalse(status["can_submit"])
+        self.assertEqual(status["submit_block_reason"], "cooldown")
+        self.assertIsNotNone(status["next_available_at"])
 
     def test_submit_word_rejects_full_book(self):
         user = self.make_user("late-book-user", telegram=True)
