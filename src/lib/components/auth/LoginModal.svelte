@@ -12,6 +12,8 @@
 
   export let open = false
   export let initialMode: 'login' | 'signup' = 'login'
+  export let registrationSource = ''
+  export let registrationPath = ''
   let authMode: 'login' | 'signup' | 'reset' = initialMode
   let wasOpen = false
   let telegramButtonModulePromise: Promise<{ default: ComponentType }> | null = null
@@ -143,6 +145,8 @@
               active={open}
               authIntent="login"
               privacyAccepted={false}
+              registrationSource=""
+              registrationPath=""
               label="Войти через Telegram"
             />
           {/await}
@@ -151,6 +155,8 @@
           onSuccess={handleSuccessfulAuth}
           authIntent="login"
           privacyAccepted={false}
+          registrationSource=""
+          registrationPath=""
           label="Войти через VK"
         />
       </div>
@@ -239,6 +245,8 @@
           <SignupForm
             onSuccess={handleSuccessfulAuth}
             externalPrivacyAccepted={signupPrivacyAccepted}
+            registrationSource={registrationSource}
+            registrationPath={registrationPath}
           />
         </div>
       {:else}
@@ -267,6 +275,8 @@
                 authIntent="signup"
                 disabled={!signupPrivacyAccepted}
                 privacyAccepted={signupPrivacyAccepted}
+                registrationSource={registrationSource}
+                registrationPath={registrationPath}
                 label="Зарегистрироваться через Telegram"
               />
             {/await}
@@ -276,6 +286,8 @@
             authIntent="signup"
             disabled={!signupPrivacyAccepted}
             privacyAccepted={signupPrivacyAccepted}
+            registrationSource={registrationSource}
+            registrationPath={registrationPath}
             label="Зарегистрироваться через VK"
           />
         </div>

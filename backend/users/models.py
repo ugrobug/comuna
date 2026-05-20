@@ -66,6 +66,8 @@ class SiteUserProfile(models.Model):
     phone = models.CharField(max_length=32, blank=True)
     avatar_url = models.URLField(max_length=500, blank=True)
     email_verified_at = models.DateTimeField(null=True, blank=True)
+    registration_source = models.CharField(max_length=80, blank=True)
+    registration_path = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -75,6 +77,7 @@ class SiteUserProfile(models.Model):
         verbose_name_plural = "Профили пользователей сайта"
         indexes = [
             models.Index(fields=("phone",), name="feeds_siteu_phone_43c849_idx"),
+            models.Index(fields=("registration_source",), name="feeds_siteu_regsrc_8f2c4d_idx"),
         ]
 
     def __str__(self) -> str:

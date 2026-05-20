@@ -86,7 +86,10 @@ from special_projects.views import (
     landname_share_event,
     landname_suggestions,
     landname_tile,
+    public_book_admin_settings,
+    public_book_final_notification,
     public_book_reminder,
+    public_book_admin_stats,
     public_book_status,
     public_book_submit,
     public_book_words,
@@ -284,6 +287,16 @@ urlpatterns = [
         name="special-book-status",
     ),
     path(
+        "api/special-projects/book/admin/stats/",
+        public_book_admin_stats,
+        name="special-book-admin-stats",
+    ),
+    path(
+        "api/special-projects/book/admin/settings/",
+        public_book_admin_settings,
+        name="special-book-admin-settings",
+    ),
+    path(
         "api/special-projects/book/words/",
         public_book_words,
         name="special-book-words",
@@ -297,6 +310,11 @@ urlpatterns = [
         "api/special-projects/book/reminder/",
         public_book_reminder,
         name="special-book-reminder",
+    ),
+    path(
+        "api/special-projects/book/final-notification/",
+        public_book_final_notification,
+        name="special-book-final-notification",
     ),
     path(
         "api/special-projects/365-films/status/",

@@ -228,6 +228,32 @@ def _mark_email_unverified(user: User) -> SiteUserProfile:
     return profile
 
 
+def _normalize_registration_source(value: str | None) -> str:
+    source = re.sub(r"[^a-zA-Z0-9_-]+", "_", str(value or "").strip().lower()).strip("_")
+    return source[:80]
+
+
+def _remember_registration_source(
+    user: User,
+    source: str | None,
+    path: str | None = "",
+) -> None:
+    normalized_source = _normalize_registration_source(source)
+    if not normalized_source:
+        return
+    normalized_path = str(path or "").strip()[:255]
+    profile, _ = SiteUserProfile.objects.get_or_create(user=user)
+    update_fields: list[str] = []
+    if not profile.registration_source:
+        profile.registration_source = normalized_source
+        update_fields.append("registration_source")
+    if normalized_path and not profile.registration_path:
+        profile.registration_path = normalized_path
+        update_fields.append("registration_path")
+    if update_fields:
+        profile.save(update_fields=[*update_fields, "updated_at"])
+
+
 def _email_verification_secret(user: User) -> str:
     uid = urlsafe_base64_encode(force_bytes(user.pk))
     token = default_token_generator.make_token(user)
@@ -329,6 +355,12 @@ def _merge_site_profiles(target: User, source: User) -> None:
     ):
         target_profile.email_verified_at = source_profile.email_verified_at
         update_fields.append("email_verified_at")
+    if source_profile.registration_source and not target_profile.registration_source:
+        target_profile.registration_source = source_profile.registration_source
+        update_fields.append("registration_source")
+    if source_profile.registration_path and not target_profile.registration_path:
+        target_profile.registration_path = source_profile.registration_path
+        update_fields.append("registration_path")
     if update_fields:
         target_profile.save(update_fields=[*set(update_fields), "updated_at"])
     source_profile.delete()

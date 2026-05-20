@@ -6,20 +6,30 @@ from typing import Any
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.db.models import Count
 from django.utils import timezone
 
 from special_projects.models import (
     PublicBookBlockedWord,
+    PublicBookFinalNotificationSubscription,
+    PublicBookProjectSettings,
     PublicBookReminder,
     PublicBookState,
     PublicBookWord,
 )
+from users.models import SiteUserProfile
 
 User = get_user_model()
 
 PROJECT_SLUG = PublicBookState.PROJECT_SLUG
 MAX_WORDS = 185_000
 SUBMISSION_INTERVAL = timedelta(hours=24)
+DEFAULT_RULES_TEXT = (
+    "Каждый зарегистрированный пользователь с привязанным Telegram или VK может добавить "
+    "одно слово в сутки. Слово должно состоять только из букв и быть не длиннее 30 символов. "
+    "Слова из стоп-листа не принимаются. Финальная версия книги будет отцензурирована по "
+    "нарушениям закона и выпущена в электронном виде бесплатно."
+)
 DISCUSSION_AUTHOR_USERNAME = "tambur-book"
 DISCUSSION_AUTHOR_TITLE = "Книга сообщества интернет"
 DISCUSSION_AUTHOR_DESCRIPTION = (
@@ -32,6 +42,7 @@ DISCUSSION_AUTHOR_DESCRIPTION = (
 DISCUSSION_MESSAGE_ID = 150000001
 MAX_WORD_LENGTH = 30
 REMINDER_EVENT_KEY = "public_book_reminder"
+FINAL_PDF_EVENT_KEY = "public_book_final_pdf"
 
 
 def _site_url(path: str) -> str:
@@ -41,6 +52,48 @@ def _site_url(path: str) -> str:
     if not path.startswith("/"):
         path = f"/{path}"
     return f"{base_url}{path}"
+
+
+def _file_url(path: str) -> str:
+    if not path:
+        return ""
+    if path.startswith(("http://", "https://")):
+        return path
+    return _site_url(path)
+
+
+def project_settings() -> PublicBookProjectSettings:
+    settings_obj, _created = PublicBookProjectSettings.objects.get_or_create(
+        project_slug=PROJECT_SLUG,
+    )
+    return settings_obj
+
+
+def settings_payload(settings_obj: PublicBookProjectSettings | None = None) -> dict[str, Any]:
+    settings_obj = settings_obj or project_settings()
+    final_pdf_url = _file_url(settings_obj.final_pdf.url) if settings_obj.final_pdf else ""
+    return {
+        "rules_text": (settings_obj.rules_text or DEFAULT_RULES_TEXT).strip(),
+        "final_pdf": {
+            "available": bool(settings_obj.final_pdf),
+            "url": final_pdf_url or None,
+            "uploaded_at": settings_obj.final_pdf_uploaded_at.isoformat()
+            if settings_obj.final_pdf_uploaded_at
+            else None,
+            "announced_at": settings_obj.final_pdf_announced_at.isoformat()
+            if settings_obj.final_pdf_announced_at
+            else None,
+        },
+    }
+
+
+def update_admin_settings(payload: dict[str, Any], user: User) -> dict[str, Any]:
+    settings_obj = project_settings()
+    if "rules_text" in payload:
+        settings_obj.rules_text = str(payload.get("rules_text") or "").strip()
+    settings_obj.updated_by = user
+    settings_obj.save(update_fields=("rules_text", "updated_by", "updated_at"))
+    return {"ok": True, "project": PROJECT_SLUG, **settings_payload(settings_obj)}
 
 
 def normalize_public_book_word(value: str) -> dict[str, str]:
@@ -142,6 +195,25 @@ def reminder_payload_for_user(user: User | None, now=None) -> dict[str, Any]:
     }
 
 
+def final_notification_payload_for_user(user: User | None) -> dict[str, Any]:
+    if user is None:
+        return {"subscribed": False, "notified_at": None}
+    subscription = (
+        PublicBookFinalNotificationSubscription.objects.filter(
+            project_slug=PROJECT_SLUG,
+            user=user,
+        )
+        .order_by("-id")
+        .first()
+    )
+    return {
+        "subscribed": bool(subscription),
+        "notified_at": subscription.notified_at.isoformat()
+        if subscription and subscription.notified_at
+        else None,
+    }
+
+
 def can_submit_payload(user: User | None, now=None) -> dict[str, Any]:
     next_available_at = _next_available_at_for_user(user, now=now)
     has_social_identity = _user_has_social_identity(user)
@@ -162,6 +234,7 @@ def can_submit_payload(user: User | None, now=None) -> dict[str, Any]:
         "vk_linked": _user_has_vk(user),
         "has_social_identity": has_social_identity,
         "reminder": reminder_payload_for_user(user, now=now),
+        "final_notification": final_notification_payload_for_user(user),
     }
 
 
@@ -249,6 +322,7 @@ def project_status_for_user(user: User | None) -> dict[str, Any]:
         defaults={"total_words": PublicBookWord.objects.filter(project_slug=PROJECT_SLUG).count()},
     )
     discussion_post = ensure_public_book_discussion_post()
+    settings_obj = project_settings()
     total_words = int(state.total_words or 0)
     return {
         "ok": True,
@@ -260,7 +334,51 @@ def project_status_for_user(user: User | None) -> dict[str, Any]:
             "id": discussion_post.id,
             "comments_count": discussion_post.comments_count,
         },
+        **settings_payload(settings_obj),
         **can_submit_payload(user),
+    }
+
+
+def admin_stats_payload() -> dict[str, Any]:
+    words = PublicBookWord.objects.filter(project_slug=PROJECT_SLUG)
+    total_words = words.count()
+    contributors = (
+        words.values(
+            "submitted_by_id",
+            "submitted_by__username",
+            "submitted_by__first_name",
+            "submitted_by__last_name",
+        )
+        .annotate(words_count=Count("id"))
+        .order_by("-words_count", "submitted_by__username", "submitted_by_id")
+    )
+    contributors_count = contributors.count()
+    top_users = list(contributors[:3])
+    top_three_words = sum(int(row["words_count"] or 0) for row in top_users)
+    return {
+        "ok": True,
+        "project": PROJECT_SLUG,
+        "total_words": total_words,
+        "contributors_count": contributors_count,
+        "average_words_per_user": round(total_words / contributors_count, 2)
+        if contributors_count
+        else 0,
+        "top_three_words": top_three_words,
+        "top_users": [
+            {
+                "user": {
+                    "id": row["submitted_by_id"],
+                    "username": row["submitted_by__username"] or "",
+                    "first_name": row["submitted_by__first_name"] or "",
+                    "last_name": row["submitted_by__last_name"] or "",
+                },
+                "words_count": int(row["words_count"] or 0),
+            }
+            for row in top_users
+        ],
+        "registrations_from_page_count": SiteUserProfile.objects.filter(
+            registration_source=PROJECT_SLUG,
+        ).count(),
     }
 
 
@@ -353,6 +471,61 @@ def serialize_reminder(reminder: PublicBookReminder) -> dict[str, Any]:
         "scheduled_at": reminder.scheduled_at.isoformat(),
         "sent_at": reminder.sent_at.isoformat() if reminder.sent_at else None,
     }
+
+
+def subscribe_final_pdf_notification(user: User) -> PublicBookFinalNotificationSubscription:
+    subscription, _created = PublicBookFinalNotificationSubscription.objects.get_or_create(
+        project_slug=PROJECT_SLUG,
+        user=user,
+    )
+    settings_obj = project_settings()
+    if settings_obj.final_pdf and subscription.notified_at is None:
+        notify_final_pdf_subscribers(settings_obj=settings_obj, user_ids=[user.id])
+        subscription.refresh_from_db(fields=("notified_at", "updated_at"))
+    return subscription
+
+
+def notify_final_pdf_subscribers(
+    *,
+    settings_obj: PublicBookProjectSettings | None = None,
+    user_ids: list[int] | None = None,
+) -> int:
+    from notifications.service import create_user_notification
+
+    settings_obj = settings_obj or project_settings()
+    if not settings_obj.final_pdf:
+        return 0
+
+    pdf_url = _file_url(settings_obj.final_pdf.url)
+    subscriptions = PublicBookFinalNotificationSubscription.objects.select_related("user").filter(
+        project_slug=PROJECT_SLUG,
+        notified_at__isnull=True,
+    )
+    if user_ids is not None:
+        subscriptions = subscriptions.filter(user_id__in=user_ids)
+
+    now = timezone.now()
+    sent = 0
+    for subscription in subscriptions.order_by("created_at", "id"):
+        create_user_notification(
+            user=subscription.user,
+            event_key=FINAL_PDF_EVENT_KEY,
+            title="Книга сообщества доступна в PDF",
+            message="Финальная отцензурированная версия книги готова к скачиванию.",
+            link_url=pdf_url or "/s/book",
+            payload={"project": PROJECT_SLUG, "pdf_url": pdf_url},
+            force_site=True,
+            force_telegram=True,
+            force_push=True,
+        )
+        subscription.notified_at = now
+        subscription.save(update_fields=("notified_at", "updated_at"))
+        sent += 1
+
+    if sent and settings_obj.final_pdf_announced_at is None:
+        settings_obj.final_pdf_announced_at = now
+        settings_obj.save(update_fields=("final_pdf_announced_at", "updated_at"))
+    return sent
 
 
 def send_due_reminders(*, now=None, limit: int = 500) -> int:

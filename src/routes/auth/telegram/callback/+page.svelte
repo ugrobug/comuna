@@ -114,6 +114,8 @@
         ...payload,
         auth_intent: context.authIntent,
         privacy_accepted: context.privacyAccepted,
+        registration_source: context.registrationSource,
+        registration_path: context.registrationPath,
       })
 
       title = 'Вход выполнен'

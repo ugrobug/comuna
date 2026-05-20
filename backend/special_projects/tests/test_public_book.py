@@ -4,6 +4,7 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.files.base import ContentFile
 from django.test import TestCase
 from django.utils import timezone
 
@@ -12,21 +13,25 @@ from special_projects.public_book import (
     DISCUSSION_AUTHOR_TITLE,
     MAX_WORDS,
     PROJECT_SLUG,
+    admin_stats_payload,
     ensure_public_book_discussion_post,
+    notify_final_pdf_subscribers,
     normalize_public_book_word,
     project_status_for_user,
     schedule_reminder_for_user,
     send_due_reminders,
+    subscribe_final_pdf_notification,
     submit_word,
 )
 from special_projects.models import (
     PublicBookBlockedWord,
+    PublicBookProjectSettings,
     PublicBookReminder,
     PublicBookState,
     PublicBookWord,
 )
 from telegram_integration.models import TelegramAccount
-from users.models import VkAccount
+from users.models import SiteUserProfile, VkAccount
 
 
 User = get_user_model()
@@ -73,6 +78,9 @@ class PublicBookTests(TestCase):
         self.assertEqual(word.normalized_word, "свобода")
         self.assertEqual(PublicBookState.objects.get(project_slug=PROJECT_SLUG).total_words, 1)
         self.assertEqual(status["total_words"], 1)
+        self.assertIn("30 символов", status["rules_text"])
+        self.assertFalse(status["final_pdf"]["available"])
+        self.assertFalse(status["final_notification"]["subscribed"])
         self.assertFalse(status["can_submit"])
         self.assertTrue(status["telegram_linked"])
         self.assertTrue(status["has_social_identity"])
@@ -164,3 +172,58 @@ class PublicBookTests(TestCase):
         self.assertEqual(post.raw_data.get("special_project", {}).get("slug"), PROJECT_SLUG)
         self.assertIn("Книга сообщества интернет", post.title)
         self.assertIn(post, Post.objects.filter(is_blocked=False, is_pending=False))
+
+    def test_admin_stats_payload_counts_contributors_top_users_and_registrations(self):
+        users = [
+            self.make_user("top-one", telegram=True),
+            self.make_user("top-two", telegram=True),
+            self.make_user("top-three", telegram=True),
+            self.make_user("top-four", telegram=True),
+        ]
+        position = 1
+        for user, count in ((users[0], 4), (users[1], 3), (users[2], 2), (users[3], 1)):
+            for index in range(count):
+                PublicBookWord.objects.create(
+                    project_slug=PROJECT_SLUG,
+                    position=position,
+                    word=f"Слово{position}",
+                    normalized_word=f"слово{position}",
+                    submitted_by=user,
+                )
+                position += 1
+        SiteUserProfile.objects.create(user=users[0], registration_source=PROJECT_SLUG, registration_path="/s/book")
+        SiteUserProfile.objects.create(user=users[1], registration_source=PROJECT_SLUG, registration_path="/s/book")
+
+        stats = admin_stats_payload()
+
+        self.assertEqual(stats["contributors_count"], 4)
+        self.assertEqual(stats["total_words"], 10)
+        self.assertEqual(stats["average_words_per_user"], 2.5)
+        self.assertEqual(stats["top_three_words"], 9)
+        self.assertEqual(stats["registrations_from_page_count"], 2)
+        self.assertEqual([item["user"]["username"] for item in stats["top_users"]], ["top-one", "top-two", "top-three"])
+        self.assertEqual([item["words_count"] for item in stats["top_users"]], [4, 3, 2])
+
+    def test_final_pdf_subscription_is_notified_after_upload(self):
+        user = self.make_user("pdf-book-user", telegram=True)
+        subscription = subscribe_final_pdf_notification(user)
+        self.assertIsNone(subscription.notified_at)
+
+        settings_obj = PublicBookProjectSettings.objects.create(project_slug=PROJECT_SLUG)
+        settings_obj.final_pdf.save("final.pdf", ContentFile(b"%PDF-1.4"), save=True)
+
+        with (
+            patch("notifications.service.send_site_notification_to_telegram") as telegram_mock,
+            patch("notifications.service.send_site_notification_to_push") as push_mock,
+        ):
+            sent = notify_final_pdf_subscribers(settings_obj=settings_obj)
+
+        self.assertEqual(sent, 1)
+        self.assertTrue(telegram_mock.called)
+        self.assertTrue(push_mock.called)
+        subscription.refresh_from_db()
+        self.assertIsNotNone(subscription.notified_at)
+
+        status = project_status_for_user(user)
+        self.assertTrue(status["final_pdf"]["available"])
+        self.assertTrue(status["final_notification"]["subscribed"])

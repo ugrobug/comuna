@@ -89,6 +89,14 @@ NOTIFICATION_EVENT_DEFINITIONS: list[dict[str, Any]] = [
         "default_telegram_enabled": True,
         "default_push_enabled": False,
     },
+    {
+        "key": "public_book_final_pdf",
+        "title": "PDF книги сообщества",
+        "description": "Оповещение, когда финальная версия книги станет доступна.",
+        "default_site_enabled": True,
+        "default_telegram_enabled": True,
+        "default_push_enabled": True,
+    },
 ]
 
 _NOTIFICATION_EVENT_MAP = {

@@ -270,6 +270,14 @@ export const buildSpecialBookStatusUrl = (): string => {
   return `${getBackendBaseUrl()}/api/special-projects/book/status/`
 }
 
+export const buildSpecialBookAdminStatsUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/book/admin/stats/`
+}
+
+export const buildSpecialBookAdminSettingsUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/book/admin/settings/`
+}
+
 export const buildSpecialBookWordsUrl = (options?: {
   offset?: number
   limit?: number
@@ -291,6 +299,10 @@ export const buildSpecialBookSubmitUrl = (): string => {
 
 export const buildSpecialBookReminderUrl = (): string => {
   return `${getBackendBaseUrl()}/api/special-projects/book/reminder/`
+}
+
+export const buildSpecialBookFinalNotificationUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/book/final-notification/`
 }
 
 export const buildSpecial1001FilmsStatusUrl = (): string => {

@@ -11,6 +11,8 @@ export type TelegramAuthContext = {
   authIntent: TelegramAuthIntent
   privacyAccepted: boolean
   returnTo: string
+  registrationSource?: string
+  registrationPath?: string
   createdAt: number
 }
 
@@ -37,6 +39,8 @@ export const rememberTelegramAuthContext = (context: Omit<TelegramAuthContext, '
       authIntent: context.authIntent === 'signup' ? 'signup' : 'login',
       privacyAccepted: Boolean(context.privacyAccepted),
       returnTo: normalizeReturnTo(context.returnTo),
+      registrationSource: String(context.registrationSource || '').trim(),
+      registrationPath: String(context.registrationPath || '').trim(),
       createdAt: Date.now(),
     }),
   )
@@ -65,6 +69,8 @@ export const consumeTelegramAuthContext = (): TelegramAuthContext => {
       authIntent: parsed?.authIntent === 'signup' ? 'signup' : 'login',
       privacyAccepted: Boolean(parsed?.privacyAccepted),
       returnTo: normalizeReturnTo(parsed?.returnTo),
+      registrationSource: String(parsed?.registrationSource || '').trim(),
+      registrationPath: String(parsed?.registrationPath || '').trim(),
       createdAt,
     }
   } catch {

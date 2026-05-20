@@ -73,24 +73,37 @@ def telegram_auth(request: HttpRequest) -> HttpResponse:
 
     try:
         if payload.get("id_token"):
+            registration_source = payload.get("registration_source")
+            registration_path = payload.get("registration_path")
             claims = validate_telegram_oidc_token(payload.get("id_token"))
             payload = {
                 **telegram_payload_from_oidc_claims(claims),
                 "auth_intent": payload.get("auth_intent"),
                 "privacy_accepted": payload.get("privacy_accepted"),
+                "registration_source": registration_source,
+                "registration_path": registration_path,
             }
         else:
             validate_telegram_login(payload)
         user_service = _user_service()
         current_user = user_service._get_user_from_request(request)
-        if (
+        creates_new_user = (
             telegram_login_will_create_new_user(payload)
             and not current_user
             and _is_registration_intent(payload)
+        )
+        if (
+            creates_new_user
             and not _is_privacy_accepted(payload.get("privacy_accepted"))
         ):
             return JsonResponse({"ok": False, "error": _PRIVACY_CONSENT_ERROR}, status=400)
         user = upsert_telegram_account(payload, link_user=current_user)
+        if creates_new_user:
+            user_service._remember_registration_source(
+                user,
+                payload.get("registration_source"),
+                payload.get("registration_path"),
+            )
     except ValueError as exc:
         return JsonResponse({"ok": False, "error": str(exc)}, status=400)
 

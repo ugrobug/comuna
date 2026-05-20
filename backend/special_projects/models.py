@@ -5,12 +5,18 @@ import secrets
 from django.contrib.auth import get_user_model
 from django.db import models
 from django.utils import timezone
+from django.utils.text import get_valid_filename
 
 User = get_user_model()
 
 
 def film_journey_access_token() -> str:
     return secrets.token_urlsafe(32)
+
+
+def public_book_final_pdf_path(instance, filename: str) -> str:
+    safe_name = get_valid_filename(str(filename or "book.pdf").strip() or "book.pdf")
+    return f"special-projects/book/final/{timezone.now():%Y%m%d%H%M%S}-{safe_name}"
 
 
 class SpecialProjectLetterImage(models.Model):
@@ -147,8 +153,8 @@ class PublicBookWord(models.Model):
 
     project_slug = models.SlugField(max_length=80, default=PROJECT_SLUG)
     position = models.PositiveIntegerField()
-    word = models.CharField(max_length=64)
-    normalized_word = models.CharField(max_length=64)
+    word = models.CharField(max_length=30)
+    normalized_word = models.CharField(max_length=30)
     submitted_by = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
@@ -175,6 +181,31 @@ class PublicBookWord(models.Model):
 
     def __str__(self) -> str:
         return f"{self.position}. {self.word}"
+
+
+class PublicBookProjectSettings(models.Model):
+    PROJECT_SLUG = PublicBookState.PROJECT_SLUG
+
+    project_slug = models.SlugField(max_length=80, default=PROJECT_SLUG, unique=True)
+    rules_text = models.TextField(blank=True)
+    final_pdf = models.FileField(upload_to=public_book_final_pdf_path, blank=True)
+    final_pdf_uploaded_at = models.DateTimeField(null=True, blank=True)
+    final_pdf_announced_at = models.DateTimeField(null=True, blank=True)
+    updated_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="updated_public_book_settings",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Настройки книги сообщества"
+        verbose_name_plural = "Настройки книги сообщества"
+
+    def __str__(self) -> str:
+        return self.project_slug
 
 
 class PublicBookReminder(models.Model):
@@ -208,6 +239,38 @@ class PublicBookReminder(models.Model):
 
     def __str__(self) -> str:
         return f"{self.project_slug}:{self.user_id}:{self.scheduled_at:%Y-%m-%d %H:%M}"
+
+
+class PublicBookFinalNotificationSubscription(models.Model):
+    PROJECT_SLUG = PublicBookState.PROJECT_SLUG
+
+    project_slug = models.SlugField(max_length=80, default=PROJECT_SLUG)
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="public_book_final_subscriptions",
+    )
+    notified_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Подписка на финальную книгу"
+        verbose_name_plural = "Подписки на финальную книгу"
+        ordering = ("-created_at", "-id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("project_slug", "user"),
+                name="special_projects_public_book_unique_final_subscription",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=("project_slug", "notified_at", "created_at")),
+            models.Index(fields=("user", "created_at")),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.project_slug}:{self.user_id}"
 
 
 class PublicBookBlockedWord(models.Model):

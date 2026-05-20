@@ -89,6 +89,11 @@ def register_user(request: HttpRequest) -> HttpResponse:
     except ValueError as exc:
         status = 403 if not getattr(settings, "ALLOW_PASSWORD_REGISTRATION", False) else 400
         return JsonResponse({"ok": False, "error": str(exc)}, status=status)
+    user_service._remember_registration_source(
+        user,
+        payload.get("registration_source"),
+        payload.get("registration_path"),
+    )
     email_sent = user_service._send_registration_email(user)
     return _auth_success_response(user, request, {"email_sent": email_sent})
 
@@ -289,14 +294,20 @@ def vk_auth(request: HttpRequest) -> HttpResponse:
     try:
         vk_user = user_service._authenticate_vk_payload(payload)
         current_user = _get_user_from_request(request)
-        if (
+        creates_new_user = (
             user_service._vk_login_will_create_new_user(vk_user)
             and not current_user
             and _is_registration_intent(payload)
-            and not _is_privacy_accepted(payload.get("privacy_accepted"))
-        ):
+        )
+        if creates_new_user and not _is_privacy_accepted(payload.get("privacy_accepted")):
             return JsonResponse({"ok": False, "error": _PRIVACY_CONSENT_ERROR}, status=400)
         user = user_service._upsert_vk_account(vk_user, link_user=current_user)
+        if creates_new_user:
+            user_service._remember_registration_source(
+                user,
+                payload.get("registration_source"),
+                payload.get("registration_path"),
+            )
     except ValueError as exc:
         return JsonResponse({"ok": False, "error": str(exc)}, status=400)
 

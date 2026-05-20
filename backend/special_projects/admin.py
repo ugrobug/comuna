@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.utils import timezone
 
 from special_projects import film_journey
 from special_projects.models import (
@@ -6,6 +7,8 @@ from special_projects.models import (
     FilmJourneyFilm,
     FilmJourneySubscription,
     PublicBookBlockedWord,
+    PublicBookFinalNotificationSubscription,
+    PublicBookProjectSettings,
     PublicBookReminder,
     PublicBookState,
     PublicBookWord,
@@ -79,6 +82,31 @@ class PublicBookWordAdmin(admin.ModelAdmin):
     ordering = ("project_slug", "position")
 
 
+@admin.register(PublicBookProjectSettings)
+class PublicBookProjectSettingsAdmin(admin.ModelAdmin):
+    list_display = ("project_slug", "final_pdf_uploaded_at", "final_pdf_announced_at", "updated_by", "updated_at")
+    search_fields = ("project_slug", "rules_text", "updated_by__username", "updated_by__email")
+    autocomplete_fields = ("updated_by",)
+    readonly_fields = ("final_pdf_uploaded_at", "final_pdf_announced_at", "updated_at")
+
+    def save_model(self, request, obj, form, change):
+        previous_pdf = ""
+        if change and obj.pk:
+            previous_pdf = (
+                type(obj).objects.filter(pk=obj.pk).values_list("final_pdf", flat=True).first()
+                or ""
+            )
+        final_pdf_changed = bool(obj.final_pdf) and str(obj.final_pdf) != str(previous_pdf)
+        if final_pdf_changed:
+            obj.final_pdf_uploaded_at = timezone.now()
+        obj.updated_by = request.user
+        super().save_model(request, obj, form, change)
+        if final_pdf_changed:
+            from special_projects.public_book import notify_final_pdf_subscribers
+
+            notify_final_pdf_subscribers(settings_obj=obj)
+
+
 @admin.register(PublicBookBlockedWord)
 class PublicBookBlockedWordAdmin(admin.ModelAdmin):
     list_display = ("project_slug", "word", "normalized_word", "is_active", "created_by", "updated_at")
@@ -101,6 +129,16 @@ class PublicBookReminderAdmin(admin.ModelAdmin):
     autocomplete_fields = ("user",)
     readonly_fields = ("created_at", "updated_at")
     ordering = ("scheduled_at", "id")
+
+
+@admin.register(PublicBookFinalNotificationSubscription)
+class PublicBookFinalNotificationSubscriptionAdmin(admin.ModelAdmin):
+    list_display = ("project_slug", "user", "notified_at", "created_at")
+    list_filter = ("project_slug", "notified_at", "created_at")
+    search_fields = ("user__username", "user__email")
+    autocomplete_fields = ("user",)
+    readonly_fields = ("created_at", "updated_at")
+    ordering = ("-created_at", "-id")
 
 
 @admin.register(FilmJourneyFilm)

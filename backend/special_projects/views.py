@@ -246,6 +246,31 @@ def public_book_status(request: HttpRequest) -> HttpResponse:
     return JsonResponse(public_book.project_status_for_user(_get_user_from_request(request)))
 
 
+def public_book_admin_stats(request: HttpRequest) -> HttpResponse:
+    _user, error_response = _require_staff(request)
+    if error_response is not None:
+        return error_response
+    if request.method != "GET":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    return JsonResponse(public_book.admin_stats_payload())
+
+
+@csrf_exempt
+def public_book_admin_settings(request: HttpRequest) -> HttpResponse:
+    user, error_response = _require_staff(request)
+    if error_response is not None:
+        return error_response
+    if request.method == "GET":
+        return JsonResponse({"ok": True, "project": public_book.PROJECT_SLUG, **public_book.settings_payload()})
+    if request.method not in {"POST", "PATCH"}:
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+    return JsonResponse(public_book.update_admin_settings(payload, user))
+
+
 def public_book_words(request: HttpRequest) -> HttpResponse:
     if request.method != "GET":
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
@@ -313,6 +338,17 @@ def public_book_reminder(request: HttpRequest) -> HttpResponse:
         },
         status=201,
     )
+
+
+@csrf_exempt
+def public_book_final_notification(request: HttpRequest) -> HttpResponse:
+    user = _get_user_from_request(request)
+    if user is None:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    public_book.subscribe_final_pdf_notification(user)
+    return JsonResponse(public_book.project_status_for_user(user), status=201)
 
 
 def film_journey_status(request: HttpRequest) -> HttpResponse:

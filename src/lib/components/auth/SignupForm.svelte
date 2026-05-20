@@ -7,6 +7,8 @@
 
   export let onSuccess: () => void
   export let externalPrivacyAccepted: boolean | null = null
+  export let registrationSource = ''
+  export let registrationPath = ''
 
   let signupData = {
     username: '',
@@ -35,6 +37,8 @@
         email: signupData.email.trim(),
         password: signupData.password,
         privacy_accepted: privacyAccepted,
+        registration_source: registrationSource,
+        registration_path: registrationPath,
       })
 
       toast({ content: 'Регистрация успешна. Мы отправили письмо на вашу почту.', type: 'success' })

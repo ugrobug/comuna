@@ -11,6 +11,8 @@
   export let disabled = false
   export let privacyAccepted = false
   export let authIntent: 'login' | 'signup' = 'login'
+  export let registrationSource = ''
+  export let registrationPath = ''
 
   let container: HTMLDivElement | null = null
   let loading = false
@@ -66,6 +68,8 @@
               email: data.email,
               phone: data.phone || data.phone_number,
               privacy_accepted: privacyAccepted,
+              registration_source: registrationSource,
+              registration_path: registrationPath,
             })
             toast({ content: 'Вы успешно вошли через VK', type: 'success' })
             onSuccess?.()

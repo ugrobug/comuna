@@ -17,6 +17,8 @@
   export let disabled = false
   export let privacyAccepted = false
   export let authIntent: 'login' | 'signup' = 'login'
+  export let registrationSource = ''
+  export let registrationPath = ''
 
   let container: HTMLDivElement | null = null
   let loading = false
@@ -250,6 +252,8 @@
           ...user,
           auth_intent: authIntent,
           privacy_accepted: privacyAccepted,
+          registration_source: registrationSource,
+          registration_path: registrationPath,
         })
         forgetTelegramAuthContext()
         toast({ content: 'Вы успешно вошли через Telegram', type: 'success' })
@@ -319,6 +323,8 @@
     rememberTelegramAuthContext({
       authIntent,
       privacyAccepted,
+      registrationSource,
+      registrationPath,
       returnTo: `${window.location.pathname}${window.location.search}${window.location.hash}`,
     })
     loading = true
@@ -349,6 +355,8 @@
         auth_intent: authIntent,
         id_token: result.id_token,
         privacy_accepted: privacyAccepted,
+        registration_source: registrationSource,
+        registration_path: registrationPath,
       })
       forgetTelegramAuthContext()
       toast({ content: 'Вы успешно вошли через Telegram', type: 'success' })
