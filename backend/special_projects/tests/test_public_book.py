@@ -105,6 +105,14 @@ class PublicBookTests(TestCase):
 
         self.assertFalse(PublicBookWord.objects.exists())
 
+    def test_submit_word_ignores_too_short_consonant_substring_matches(self):
+        user = self.make_user("short-consonant-book-user", telegram=True)
+        PublicBookBlockedWord.objects.create(word="яровая")
+
+        word = submit_word(user, "Первоеслово")
+
+        self.assertEqual(word.word, "Первоеслово")
+
     def test_submit_word_rejects_translit_blocked_word(self):
         user = self.make_user("translit-book-user", telegram=True)
         PublicBookBlockedWord.objects.create(word="путин лох")

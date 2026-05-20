@@ -58,6 +58,7 @@ PUBLIC_BOOK_BANNED_PATTERNS = (
     r"путинхуйло",
     r"смертьпутину",
 )
+MIN_CONSONANT_PATTERN_LENGTH = 4
 INVISIBLE_UNICODE_RE = re.compile(r"[\u200B-\u200D\uFEFF]")
 REPEATED_CHAR_RE = re.compile(r"(.)\1+")
 LATIN_TO_CYRILLIC = str.maketrans(
@@ -346,6 +347,10 @@ def _without_vowels(value: str) -> str:
     return "".join(char for char in value if char not in RUSSIAN_VOWELS)
 
 
+def _consonant_pattern_allowed(value: str) -> bool:
+    return len(value) >= MIN_CONSONANT_PATTERN_LENGTH
+
+
 def _public_book_ban_match(raw_text: str) -> dict[str, str] | None:
     normalized_texts = normalize_public_book_moderation_variants(raw_text)
     if not normalized_texts:
@@ -359,6 +364,7 @@ def _public_book_ban_match(raw_text: str) -> dict[str, str] | None:
                 if re.search(normalized_pattern, normalized_text) or (
                     consonants_text
                     and consonants_pattern
+                    and _consonant_pattern_allowed(consonants_pattern)
                     and re.search(consonants_pattern, consonants_text)
                 ):
                     return {
@@ -378,8 +384,16 @@ def _public_book_ban_match(raw_text: str) -> dict[str, str] | None:
                 if (
                     normalized_text == blocked
                     or blocked in normalized_text
-                    or (blocked_consonants and consonants_text == blocked_consonants)
-                    or (blocked_consonants and blocked_consonants in consonants_text)
+                    or (
+                        blocked_consonants
+                        and _consonant_pattern_allowed(blocked_consonants)
+                        and consonants_text == blocked_consonants
+                    )
+                    or (
+                        blocked_consonants
+                        and _consonant_pattern_allowed(blocked_consonants)
+                        and blocked_consonants in consonants_text
+                    )
                 ):
                     return {
                         "normalized_text": normalized_text,
