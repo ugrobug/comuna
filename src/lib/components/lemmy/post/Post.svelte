@@ -122,6 +122,15 @@
   let postElement: HTMLDivElement | null = null
   let visibilityObserver: IntersectionObserver | null = null
   let readTimer: ReturnType<typeof setTimeout> | null = null
+  let backendPreviewExpanded = false
+  let renderedPostId = post.post.id
+
+  $: if (renderedPostId !== post.post.id) {
+    renderedPostId = post.post.id
+    backendPreviewExpanded = false
+  }
+
+  $: hideBackendPreviewChrome = isBackendPost && !showFullBody && backendPreviewExpanded
 
   const READ_VISIBILITY_DELAY_MS = 2000
   const READ_VISIBILITY_THRESHOLD = 0.6
@@ -213,6 +222,11 @@
       event.detail.confirmation
     post = post
   }
+
+  function handleBackendPreviewExpand() {
+    backendPreviewExpanded = true
+    void markBackendPostRead()
+  }
 </script>
 
 <!-- 
@@ -290,7 +304,7 @@
       style="grid-area:embed;"
       class={view == 'list' || view == 'compact' ? '' : 'contents'}
     >
-      {#if rule != 'hide'}
+      {#if rule != 'hide' && !hideBackendPreviewChrome}
         <PostMedia
           post={post.post}
           blur={rule == 'blur' ? true : undefined}
@@ -300,7 +314,7 @@
         />
       {/if}
     </div>
-    {#if view == 'list' || view == 'compact'}
+    {#if (view == 'list' || view == 'compact') && !hideBackendPreviewChrome}
       <PostMediaCompact
         post={post.post}
         {type}
@@ -443,7 +457,7 @@
               collapsible={true}
               externalPreviewImageUrl={post.post.url}
               class="relative text-slate-600 dark:text-zinc-400"
-              on:expand={markBackendPostRead}
+              on:expand={handleBackendPreviewExpand}
             />
           {/if}
         </div>
