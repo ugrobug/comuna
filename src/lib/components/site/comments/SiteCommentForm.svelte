@@ -31,6 +31,8 @@
   let lastCommentId = commentId
   let selectedMaskKey = ''
   let masksInitialized = false
+  let loginPromptedForDraft = false
+  let lastObservedValue = value
   const COMMENT_MASK_STORAGE_KEY = 'comuna.admin.comment.mask'
 
   $: canChooseMask = Boolean($siteUser?.is_staff && !commentId && commentMasks.length > 0)
@@ -54,6 +56,18 @@
   $: if (!canChooseMask) {
     selectedMaskKey = ''
     masksInitialized = false
+  }
+
+  $: if (value !== lastObservedValue) {
+    lastObservedValue = value
+    if (!$siteToken && value.trim() && !loginPromptedForDraft) {
+      showLoginModal = true
+      loginPromptedForDraft = true
+    }
+  }
+
+  $: if ($siteToken || !value.trim()) {
+    loginPromptedForDraft = false
   }
 
   function updateMaskSelection(nextKey: string) {
