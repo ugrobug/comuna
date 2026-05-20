@@ -21,7 +21,9 @@ from special_projects.public_book import (
     censor_admin_word,
     ensure_public_book_discussion_post,
     notify_final_pdf_subscribers,
+    normalize_public_book_blocked_word_key,
     normalize_public_book_moderation_text,
+    normalize_public_book_translit_text,
     normalize_public_book_word,
     project_status_for_user,
     schedule_reminder_for_user,
@@ -80,6 +82,8 @@ class PublicBookTests(TestCase):
             normalize_public_book_moderation_text("П\u200b.УууT😊ИИИН-Л000Х"),
             "путинлох",
         )
+        self.assertEqual(normalize_public_book_translit_text("putin-loh"), "путинлох")
+        self.assertEqual(normalize_public_book_blocked_word_key("putin loh"), "путинлох")
 
     def test_submit_word_rejects_obfuscated_blocked_phrase(self):
         user = self.make_user("obfuscated-book-user", telegram=True)
@@ -100,6 +104,27 @@ class PublicBookTests(TestCase):
             submit_word(user, "пyтинлoх")
 
         self.assertFalse(PublicBookWord.objects.exists())
+
+    def test_submit_word_rejects_translit_blocked_word(self):
+        user = self.make_user("translit-book-user", telegram=True)
+        PublicBookBlockedWord.objects.create(word="путин лох")
+
+        with self.assertRaisesMessage(ValueError, BLOCKED_WORD_WARNING):
+            submit_word(user, "putinloh")
+
+        self.assertFalse(PublicBookWord.objects.exists())
+
+    def test_submit_word_rejects_translit_in_previous_word_pair(self):
+        first_user = self.make_user("translit-pair-first-book-user", telegram=True)
+        second_user = self.make_user("translit-pair-second-book-user", telegram=True)
+        PublicBookBlockedWord.objects.create(word="лох путин")
+
+        submit_word(first_user, "лох")
+
+        with self.assertRaisesMessage(ValueError, BLOCKED_WORD_WARNING):
+            submit_word(second_user, "putin")
+
+        self.assertEqual(PublicBookWord.objects.count(), 1)
 
     def test_submit_word_rejects_previous_word_pair_from_blocklist(self):
         first_user = self.make_user("pair-first-book-user", telegram=True)

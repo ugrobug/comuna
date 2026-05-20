@@ -78,6 +78,57 @@ LATIN_TO_CYRILLIC = str.maketrans(
         "6": "б",
     }
 )
+TRANSLIT_DIGITS_TO_CYRILLIC = {
+    "0": "о",
+    "3": "з",
+    "4": "ч",
+    "6": "б",
+}
+TRANSLIT_MULTI_TO_CYRILLIC = (
+    ("shch", "щ"),
+    ("sch", "щ"),
+    ("yo", "е"),
+    ("jo", "е"),
+    ("zh", "ж"),
+    ("kh", "х"),
+    ("ts", "ц"),
+    ("ch", "ч"),
+    ("sh", "ш"),
+    ("yu", "ю"),
+    ("ju", "ю"),
+    ("ya", "я"),
+    ("ja", "я"),
+    ("ye", "е"),
+    ("je", "е"),
+)
+TRANSLIT_CHAR_TO_CYRILLIC = {
+    "a": "а",
+    "b": "б",
+    "c": "к",
+    "d": "д",
+    "e": "е",
+    "f": "ф",
+    "g": "г",
+    "h": "х",
+    "i": "и",
+    "j": "й",
+    "k": "к",
+    "l": "л",
+    "m": "м",
+    "n": "н",
+    "o": "о",
+    "p": "п",
+    "q": "к",
+    "r": "р",
+    "s": "с",
+    "t": "т",
+    "u": "у",
+    "v": "в",
+    "w": "в",
+    "x": "кс",
+    "y": "ы",
+    "z": "з",
+}
 RUSSIAN_VOWELS = frozenset("аеёиоуыэюя")
 
 
@@ -189,7 +240,7 @@ def _payload_bool(payload: dict[str, Any], key: str, *, default: bool) -> bool:
 
 def upsert_admin_blocked_word(payload: dict[str, Any], user: User) -> PublicBookBlockedWord:
     word = str(payload.get("word") or "").strip()
-    normalized_word = normalize_public_book_moderation_text(word)[:64]
+    normalized_word = normalize_public_book_blocked_word_key(word)
     if not normalized_word:
         raise ValueError("Введите запрещенное слово или выражение.")
     item, created = PublicBookBlockedWord.objects.update_or_create(
@@ -238,47 +289,100 @@ def normalize_public_book_moderation_text(value: str) -> str:
     return REPEATED_CHAR_RE.sub(r"\1", text)
 
 
+def normalize_public_book_translit_text(value: str) -> str:
+    text = unicodedata.normalize("NFKC", str(value or "")).casefold().replace("ё", "е")
+    text = INVISIBLE_UNICODE_RE.sub("", text)
+    result: list[str] = []
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if not char.isalnum() or unicodedata.category(char) in {"Cf", "Mn"}:
+            index += 1
+            continue
+        if char in TRANSLIT_DIGITS_TO_CYRILLIC:
+            result.append(TRANSLIT_DIGITS_TO_CYRILLIC[char])
+            index += 1
+            continue
+        if "a" <= char <= "z":
+            matched = False
+            for latin, cyrillic in TRANSLIT_MULTI_TO_CYRILLIC:
+                if text.startswith(latin, index):
+                    result.append(cyrillic)
+                    index += len(latin)
+                    matched = True
+                    break
+            if matched:
+                continue
+            result.append(TRANSLIT_CHAR_TO_CYRILLIC.get(char, char))
+            index += 1
+            continue
+        result.append(char)
+        index += 1
+    return REPEATED_CHAR_RE.sub(r"\1", "".join(result))
+
+
+def normalize_public_book_moderation_variants(value: str) -> set[str]:
+    return {
+        variant
+        for variant in (
+            normalize_public_book_moderation_text(value),
+            normalize_public_book_translit_text(value),
+        )
+        if variant
+    }
+
+
+def normalize_public_book_blocked_word_key(value: str) -> str:
+    normalized = normalize_public_book_moderation_text(value)
+    if normalized and not any("a" <= char <= "z" for char in normalized):
+        return normalized[:64]
+    transliterated = normalize_public_book_translit_text(value)
+    return (transliterated or normalized)[:64]
+
+
 def _without_vowels(value: str) -> str:
     return "".join(char for char in value if char not in RUSSIAN_VOWELS)
 
 
 def _public_book_ban_match(raw_text: str) -> dict[str, str] | None:
-    normalized_text = normalize_public_book_moderation_text(raw_text)
-    if not normalized_text:
+    normalized_texts = normalize_public_book_moderation_variants(raw_text)
+    if not normalized_texts:
         return None
-    consonants_text = _without_vowels(normalized_text)
 
-    for pattern in PUBLIC_BOOK_BANNED_PATTERNS:
-        consonants_pattern = _without_vowels(normalize_public_book_moderation_text(pattern))
-        if re.search(pattern, normalized_text) or (
-            consonants_text
-            and consonants_pattern
-            and re.search(consonants_pattern, consonants_text)
-        ):
-            return {
-                "normalized_text": normalized_text,
-                "pattern": pattern,
-            }
+    for normalized_text in normalized_texts:
+        consonants_text = _without_vowels(normalized_text)
+        for pattern in PUBLIC_BOOK_BANNED_PATTERNS:
+            for normalized_pattern in normalize_public_book_moderation_variants(pattern):
+                consonants_pattern = _without_vowels(normalized_pattern)
+                if re.search(normalized_pattern, normalized_text) or (
+                    consonants_text
+                    and consonants_pattern
+                    and re.search(consonants_pattern, consonants_text)
+                ):
+                    return {
+                        "normalized_text": normalized_text,
+                        "pattern": normalized_pattern,
+                    }
 
     blocked_words = PublicBookBlockedWord.objects.filter(
         project_slug=PROJECT_SLUG,
         is_active=True,
     ).values_list("normalized_word", flat=True)
-    for blocked_word in blocked_words:
-        blocked = normalize_public_book_moderation_text(blocked_word)
-        if not blocked:
-            continue
-        blocked_consonants = _without_vowels(blocked)
-        if (
-            normalized_text == blocked
-            or blocked in normalized_text
-            or (blocked_consonants and consonants_text == blocked_consonants)
-            or (blocked_consonants and blocked_consonants in consonants_text)
-        ):
-            return {
-                "normalized_text": normalized_text,
-                "pattern": blocked,
-            }
+    for normalized_text in normalized_texts:
+        consonants_text = _without_vowels(normalized_text)
+        for blocked_word in blocked_words:
+            for blocked in normalize_public_book_moderation_variants(blocked_word):
+                blocked_consonants = _without_vowels(blocked)
+                if (
+                    normalized_text == blocked
+                    or blocked in normalized_text
+                    or (blocked_consonants and consonants_text == blocked_consonants)
+                    or (blocked_consonants and blocked_consonants in consonants_text)
+                ):
+                    return {
+                        "normalized_text": normalized_text,
+                        "pattern": blocked,
+                    }
     return None
 
 
