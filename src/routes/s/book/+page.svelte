@@ -833,6 +833,10 @@
     line-height: 1.55;
   }
 
+  :global(.dark) .book-modal-content {
+    color: #f4efe6;
+  }
+
   .book-modal-content p {
     margin: 0;
     white-space: pre-wrap;
