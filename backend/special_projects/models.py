@@ -155,6 +155,15 @@ class PublicBookWord(models.Model):
     position = models.PositiveIntegerField()
     word = models.CharField(max_length=30)
     normalized_word = models.CharField(max_length=30)
+    is_censored = models.BooleanField(default=False)
+    censored_at = models.DateTimeField(null=True, blank=True)
+    censored_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="censored_public_book_words",
+    )
     submitted_by = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
@@ -175,6 +184,7 @@ class PublicBookWord(models.Model):
         indexes = [
             models.Index(fields=("project_slug", "position")),
             models.Index(fields=("project_slug", "created_at")),
+            models.Index(fields=("project_slug", "is_censored")),
             models.Index(fields=("submitted_by", "created_at")),
             models.Index(fields=("project_slug", "normalized_word")),
         ]
@@ -317,6 +327,40 @@ class PublicBookBlockedWord(models.Model):
 
     def __str__(self) -> str:
         return self.word
+
+
+class PublicBookModerationState(models.Model):
+    PROJECT_SLUG = PublicBookState.PROJECT_SLUG
+
+    project_slug = models.SlugField(max_length=80, default=PROJECT_SLUG)
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="public_book_moderation_states",
+    )
+    consecutive_violations = models.PositiveSmallIntegerField(default=0)
+    locked_until = models.DateTimeField(null=True, blank=True)
+    last_violation_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Состояние модерации книги"
+        verbose_name_plural = "Состояния модерации книги"
+        ordering = ("project_slug", "user_id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("project_slug", "user"),
+                name="special_projects_public_book_unique_moderation_user",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=("project_slug", "locked_until")),
+            models.Index(fields=("user", "locked_until")),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.project_slug}:{self.user_id}:{self.consecutive_violations}"
 
 
 class FilmJourneyFilm(models.Model):

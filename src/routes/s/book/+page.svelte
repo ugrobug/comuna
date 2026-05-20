@@ -39,6 +39,7 @@
     can_submit: boolean
     submit_block_reason?: string
     next_available_at?: string | null
+    moderation_locked_until?: string | null
     telegram_linked?: boolean
     vk_linked?: boolean
     has_social_identity?: boolean
@@ -176,6 +177,15 @@
       return
     }
     if (status && !status.can_submit) {
+      if (status.submit_block_reason === 'moderation_lock' || status.moderation_locked_until) {
+        toast({
+          content: status.moderation_locked_until
+            ? `Возможность добавить слово заблокирована до ${formatDate(status.moderation_locked_until)}.`
+            : 'Возможность добавить слово временно заблокирована.',
+          type: 'error',
+        })
+        return
+      }
       if (status.submit_block_reason === 'cooldown' || status.next_available_at) {
         cooldownOpen = true
         return
@@ -208,6 +218,7 @@
               ...status,
               can_submit: Boolean(data?.can_submit),
               next_available_at: data?.next_available_at ?? status.next_available_at,
+              moderation_locked_until: data?.moderation_locked_until ?? status.moderation_locked_until,
               submit_block_reason: data?.submit_block_reason ?? status.submit_block_reason,
               telegram_linked: data?.telegram_linked ?? status.telegram_linked,
               vk_linked: data?.vk_linked ?? status.vk_linked,
@@ -316,6 +327,7 @@
   $: canLoadMore = Boolean(status && words.length < status.total_words)
   $: submitDisabled = submitLoading || loading
   $: needsSocialLink = Boolean($siteUser && !$siteUser.telegram_linked && !$siteUser.vk_linked)
+  $: moderationLockedUntil = status?.moderation_locked_until || null
   $: canShowReminder = Boolean($siteUser && status?.next_available_at)
   $: reminderScheduled = Boolean(status?.reminder?.scheduled)
   $: displayedRulesText = status?.rules_text || rulesDraft || DEFAULT_RULES_TEXT
@@ -442,6 +454,11 @@
           <div class="cooldown">
             <Icon src={Clock} size="16" mini />
             Следующее слово: {formatDate(status.next_available_at)}
+          </div>
+        {/if}
+        {#if moderationLockedUntil}
+          <div class="counter-note">
+            Возможность добавить слово заблокирована до {formatDate(moderationLockedUntil)}.
           </div>
         {/if}
         {#if needsSocialLink}

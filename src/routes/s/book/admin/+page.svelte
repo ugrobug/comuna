@@ -8,6 +8,8 @@
     buildSpecialBookAdminBlockedWordsUrl,
     buildSpecialBookAdminSettingsUrl,
     buildSpecialBookAdminStatsUrl,
+    buildSpecialBookAdminWordCensorUrl,
+    buildSpecialBookAdminWordsUrl,
   } from '$lib/api/backend'
   import { refreshSiteUser, siteToken, siteUser } from '$lib/siteAuth'
   import { ArrowPath, Check, Icon, Trash } from 'svelte-hero-icons'
@@ -51,6 +53,18 @@
     updated_at: string
   }
 
+  type AdminBookWord = {
+    id: number
+    position: number
+    word: string
+    is_censored?: boolean
+    created_at: string
+    submitted_by: {
+      id: number
+      username: string
+    }
+  }
+
   let loading = true
   let savingRules = false
   let uploadingPdf = false
@@ -61,12 +75,18 @@
   let rulesDraft = ''
   let finalPdfFile: File | null = null
   let blockedWords: BlockedWord[] = []
+  let adminWords: AdminBookWord[] = []
+  let adminWordsTotal = 0
+  let adminWordsOffset = 0
+  let adminWordsLoading = false
+  let wordSearch = ''
   let blockedDraft = {
     word: '',
     note: '',
     is_active: true,
   }
   let rowSaving: Record<number, boolean> = {}
+  let wordSaving: Record<number, boolean> = {}
 
   const authHeaders = (): Record<string, string> =>
     $siteToken ? { Authorization: `Bearer ${$siteToken}` } : {}
@@ -114,19 +134,66 @@
     loading = true
     error = ''
     try {
-      const [statsData, settingsData, blockedData] = await Promise.all([
+      const [statsData, settingsData, blockedData, wordsData] = await Promise.all([
         fetchJson<BookAdminStats>(buildSpecialBookAdminStatsUrl()),
         fetchJson<BookSettings>(buildSpecialBookAdminSettingsUrl()),
         fetchJson<{ ok: boolean; blocked_words: BlockedWord[] }>(buildSpecialBookAdminBlockedWordsUrl()),
+        fetchJson<{ ok: boolean; total_words: number; words: AdminBookWord[] }>(
+          buildSpecialBookAdminWordsUrl({ offset: 0, limit: 500 }),
+        ),
       ])
       stats = statsData
       settings = settingsData
       rulesDraft = settingsData.rules_text || ''
       blockedWords = blockedData.blocked_words || []
+      adminWords = wordsData.words || []
+      adminWordsTotal = wordsData.total_words || 0
+      adminWordsOffset = adminWords.length
     } catch (err) {
       error = err instanceof Error ? err.message : 'Не удалось загрузить управление книгой'
     } finally {
       loading = false
+    }
+  }
+
+  async function loadAdminWords(options: { reset?: boolean } = {}) {
+    adminWordsLoading = true
+    error = ''
+    const offset = options.reset ? 0 : adminWordsOffset
+    try {
+      const data = await fetchJson<{ ok: boolean; total_words: number; words: AdminBookWord[] }>(
+        buildSpecialBookAdminWordsUrl({
+          offset,
+          limit: 500,
+          q: wordSearch.trim(),
+        }),
+      )
+      adminWords = options.reset ? data.words || [] : [...adminWords, ...(data.words || [])]
+      adminWordsTotal = data.total_words || 0
+      adminWordsOffset = offset + (data.words?.length || 0)
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Не удалось загрузить слова книги'
+    } finally {
+      adminWordsLoading = false
+    }
+  }
+
+  async function censorWord(item: AdminBookWord) {
+    if (item.is_censored) return
+    if (!window.confirm(`Зацензурить слово №${item.position}? Оригинал будет удален из базы.`)) return
+    wordSaving = { ...wordSaving, [item.id]: true }
+    error = ''
+    try {
+      const data = await fetchJson<{ ok: boolean; word: AdminBookWord }>(
+        buildSpecialBookAdminWordCensorUrl(item.id),
+        { method: 'POST' },
+      )
+      adminWords = adminWords.map((row) => (row.id === item.id ? data.word : row))
+      toast({ content: 'Слово зацензурировано', type: 'success' })
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Не удалось зацензурить слово'
+    } finally {
+      wordSaving = { ...wordSaving, [item.id]: false }
     }
   }
 
@@ -322,6 +389,63 @@
         {/if}
       </section>
     {/if}
+
+    <section class="panel">
+      <div class="section-heading">
+        <h2>Слова книги</h2>
+        <span>{formatNumber(adminWordsTotal)} строк</span>
+      </div>
+
+      <form class="word-search" on:submit|preventDefault={() => loadAdminWords({ reset: true })}>
+        <input bind:value={wordSearch} placeholder="Найти слово" />
+        <Button submit loading={adminWordsLoading} disabled={adminWordsLoading}>Найти</Button>
+        <Button
+          color="secondary"
+          disabled={adminWordsLoading || (!wordSearch && adminWordsOffset >= adminWordsTotal)}
+          on:click={() => {
+            wordSearch = ''
+            loadAdminWords({ reset: true })
+          }}
+        >
+          Сбросить
+        </Button>
+      </form>
+
+      <div class="book-word-list">
+        {#each adminWords as item (item.id)}
+          <article class:censored={item.is_censored}>
+            <span class="position">#{item.position}</span>
+            <button
+              type="button"
+              class="word-select"
+              disabled={item.is_censored || wordSaving[item.id]}
+              on:click={() => censorWord(item)}
+              title="Зацензурить слово"
+            >
+              {item.word}
+            </button>
+            <a href={`/id${item.submitted_by.id}`}>@{item.submitted_by.username || item.submitted_by.id}</a>
+            <Button
+              size="sm"
+              color="secondary"
+              disabled={item.is_censored || wordSaving[item.id]}
+              loading={wordSaving[item.id]}
+              on:click={() => censorWord(item)}
+            >
+              {item.is_censored ? 'Зацензурено' : 'Замазать'}
+            </Button>
+          </article>
+        {/each}
+      </div>
+
+      {#if adminWordsOffset < adminWordsTotal}
+        <div class="actions-row">
+          <Button color="secondary" loading={adminWordsLoading} disabled={adminWordsLoading} on:click={() => loadAdminWords()}>
+            Загрузить еще
+          </Button>
+        </div>
+      {/if}
+    </section>
 
     <section class="panel">
       <div class="section-heading">
@@ -613,6 +737,60 @@
     margin-bottom: 16px;
   }
 
+  .word-search {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+
+  .book-word-list {
+    display: grid;
+    gap: 8px;
+  }
+
+  .book-word-list article {
+    display: grid;
+    grid-template-columns: 86px minmax(0, 1fr) minmax(140px, auto) auto;
+    gap: 10px;
+    align-items: center;
+    border: 1px solid #eadfce;
+    border-radius: 8px;
+    background: #ffffff;
+    padding: 10px;
+  }
+
+  .book-word-list article.censored {
+    background: #f4efe7;
+  }
+
+  .position {
+    color: #6b5f51;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .word-select {
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    color: #1f2933;
+    font: inherit;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+    padding: 0;
+    text-align: left;
+  }
+
+  .word-select:not(:disabled) {
+    cursor: pointer;
+  }
+
+  .word-select:not(:disabled):hover {
+    color: #9f2a22;
+  }
+
   .checkbox-row {
     display: inline-flex;
     align-items: center;
@@ -666,6 +844,8 @@
 
     .stats-grid,
     .pdf-grid,
+    .word-search,
+    .book-word-list article,
     .blocked-form,
     .blocked-list article,
     .top-users div {

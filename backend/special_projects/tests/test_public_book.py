@@ -10,10 +10,12 @@ from django.utils import timezone
 
 from feeds.models import Post
 from special_projects.public_book import (
+    BLOCKED_WORD_WARNING,
     DISCUSSION_AUTHOR_TITLE,
     MAX_WORDS,
     PROJECT_SLUG,
     admin_stats_payload,
+    censor_admin_word,
     ensure_public_book_discussion_post,
     notify_final_pdf_subscribers,
     normalize_public_book_moderation_text,
@@ -26,6 +28,7 @@ from special_projects.public_book import (
 )
 from special_projects.models import (
     PublicBookBlockedWord,
+    PublicBookModerationState,
     PublicBookProjectSettings,
     PublicBookReminder,
     PublicBookState,
@@ -77,7 +80,7 @@ class PublicBookTests(TestCase):
     def test_submit_word_rejects_obfuscated_blocked_phrase(self):
         user = self.make_user("obfuscated-book-user", telegram=True)
 
-        with self.assertRaisesMessage(ValueError, "нельзя добавить"):
+        with self.assertRaisesMessage(ValueError, BLOCKED_WORD_WARNING):
             submit_word(user, "пуууTин-л000х")
 
         self.assertFalse(PublicBookWord.objects.exists())
@@ -86,10 +89,10 @@ class PublicBookTests(TestCase):
         user = self.make_user("admin-block-book-user", telegram=True)
         PublicBookBlockedWord.objects.create(word="путин лох")
 
-        with self.assertRaisesMessage(ValueError, "нельзя добавить"):
+        with self.assertRaisesMessage(ValueError, BLOCKED_WORD_WARNING):
             submit_word(user, "птнлх")
 
-        with self.assertRaisesMessage(ValueError, "нельзя добавить"):
+        with self.assertRaisesMessage(ValueError, BLOCKED_WORD_WARNING):
             submit_word(user, "пyтинлoх")
 
         self.assertFalse(PublicBookWord.objects.exists())
@@ -135,10 +138,59 @@ class PublicBookTests(TestCase):
         user = self.make_user("blocked-book-user", telegram=True)
         PublicBookBlockedWord.objects.create(word="Запрет")
 
-        with self.assertRaisesMessage(ValueError, "нельзя добавить"):
+        with self.assertRaisesMessage(ValueError, BLOCKED_WORD_WARNING):
             submit_word(user, "запрет")
 
         self.assertFalse(PublicBookWord.objects.exists())
+
+    def test_blocked_words_lock_user_after_three_consecutive_violations(self):
+        user = self.make_user("locked-book-user", telegram=True)
+        PublicBookBlockedWord.objects.create(word="Запрет")
+
+        for _index in range(2):
+            with self.assertRaisesMessage(ValueError, BLOCKED_WORD_WARNING):
+                submit_word(user, "запрет")
+
+        state = PublicBookModerationState.objects.get(user=user, project_slug=PROJECT_SLUG)
+        self.assertEqual(state.consecutive_violations, 2)
+        self.assertIsNone(state.locked_until)
+
+        with self.assertRaisesMessage(ValueError, "заблокирована на 24 часа"):
+            submit_word(user, "запрет")
+
+        state.refresh_from_db()
+        self.assertEqual(state.consecutive_violations, 3)
+        self.assertIsNotNone(state.locked_until)
+
+        status = project_status_for_user(user)
+        self.assertFalse(status["can_submit"])
+        self.assertEqual(status["submit_block_reason"], "moderation_lock")
+        self.assertIsNotNone(status["moderation_locked_until"])
+
+    def test_successful_word_resets_moderation_violations(self):
+        user = self.make_user("reset-book-user", telegram=True)
+        PublicBookBlockedWord.objects.create(word="Запрет")
+
+        with self.assertRaisesMessage(ValueError, BLOCKED_WORD_WARNING):
+            submit_word(user, "запрет")
+
+        submit_word(user, "Свобода")
+
+        state = PublicBookModerationState.objects.get(user=user, project_slug=PROJECT_SLUG)
+        self.assertEqual(state.consecutive_violations, 0)
+        self.assertIsNone(state.locked_until)
+
+    def test_admin_can_replace_book_word_with_real_censor_blocks(self):
+        author = self.make_user("censor-author", telegram=True)
+        moderator = User.objects.create_user(username="censor-admin", password="pass", is_staff=True)
+        word = submit_word(author, "Свобода")
+
+        censored = censor_admin_word(word.id, moderator)
+
+        self.assertEqual(censored.word, "███████")
+        self.assertEqual(censored.normalized_word, "")
+        self.assertTrue(censored.is_censored)
+        self.assertEqual(censored.censored_by, moderator)
 
     def test_submit_word_rejects_more_than_one_word_per_24_hours(self):
         user = self.make_user("slow-book-user", telegram=True)
@@ -155,6 +207,23 @@ class PublicBookTests(TestCase):
             second = submit_word(user, "Второе")
 
         self.assertEqual(second.position, 2)
+
+    def test_staff_user_bypasses_24_hour_submission_interval(self):
+        user = self.make_user("staff-book-user", telegram=True)
+        user.is_staff = True
+        user.save(update_fields=("is_staff",))
+        now = timezone.now()
+        first = submit_word(user, "Первое")
+        first.created_at = now
+        first.save(update_fields=("created_at",))
+
+        with patch("special_projects.public_book.timezone.now", return_value=now + timedelta(minutes=5)):
+            second = submit_word(user, "Второе")
+            status = project_status_for_user(user)
+
+        self.assertEqual(second.position, 2)
+        self.assertTrue(status["can_submit"])
+        self.assertIsNone(status["next_available_at"])
 
     def test_submit_word_rejects_full_book(self):
         user = self.make_user("late-book-user", telegram=True)

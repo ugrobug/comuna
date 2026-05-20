@@ -318,6 +318,37 @@ def public_book_admin_blocked_word_detail(request: HttpRequest, item_id: int) ->
     return JsonResponse({"ok": True, "blocked_word": public_book.serialize_blocked_word(item)})
 
 
+def public_book_admin_words(request: HttpRequest) -> HttpResponse:
+    _user, error_response = _require_staff(request)
+    if error_response is not None:
+        return error_response
+    if request.method != "GET":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    offset = _parse_positive_int(request.GET.get("offset"), default=0)
+    limit = _parse_positive_int(request.GET.get("limit"), default=500, maximum=1000)
+    return JsonResponse(
+        public_book.admin_words_payload(
+            offset=offset or 0,
+            limit=limit or 500,
+            query=request.GET.get("q", ""),
+        )
+    )
+
+
+@csrf_exempt
+def public_book_admin_word_censor(request: HttpRequest, word_id: int) -> HttpResponse:
+    user, error_response = _require_staff(request)
+    if error_response is not None:
+        return error_response
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    try:
+        word = public_book.censor_admin_word(word_id, user)
+    except public_book.PublicBookWord.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "word not found"}, status=404)
+    return JsonResponse({"ok": True, "word": public_book.serialize_word(word)})
+
+
 def public_book_words(request: HttpRequest) -> HttpResponse:
     if request.method != "GET":
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)

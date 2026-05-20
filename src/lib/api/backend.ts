@@ -286,6 +286,29 @@ export const buildSpecialBookAdminBlockedWordUrl = (id: number | string): string
   return `${getBackendBaseUrl()}/api/special-projects/book/admin/blocked-words/${encodeURIComponent(id)}/`
 }
 
+export const buildSpecialBookAdminWordsUrl = (options?: {
+  offset?: number
+  limit?: number
+  q?: string
+}): string => {
+  const params = new URLSearchParams()
+  if (typeof options?.offset === 'number') {
+    params.set('offset', String(options.offset))
+  }
+  if (typeof options?.limit === 'number') {
+    params.set('limit', String(options.limit))
+  }
+  if (options?.q) {
+    params.set('q', options.q)
+  }
+  const query = params.toString()
+  return `${getBackendBaseUrl()}/api/special-projects/book/admin/words/${query ? `?${query}` : ''}`
+}
+
+export const buildSpecialBookAdminWordCensorUrl = (id: number | string): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/book/admin/words/${encodeURIComponent(id)}/censor/`
+}
+
 export const buildSpecialBookWordsUrl = (options?: {
   offset?: number
   limit?: number

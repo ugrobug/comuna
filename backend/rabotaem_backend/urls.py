@@ -92,6 +92,8 @@ from special_projects.views import (
     public_book_final_notification,
     public_book_reminder,
     public_book_admin_stats,
+    public_book_admin_word_censor,
+    public_book_admin_words,
     public_book_status,
     public_book_submit,
     public_book_words,
@@ -307,6 +309,16 @@ urlpatterns = [
         "api/special-projects/book/admin/blocked-words/<int:item_id>/",
         public_book_admin_blocked_word_detail,
         name="special-book-admin-blocked-word-detail",
+    ),
+    path(
+        "api/special-projects/book/admin/words/",
+        public_book_admin_words,
+        name="special-book-admin-words",
+    ),
+    path(
+        "api/special-projects/book/admin/words/<int:word_id>/censor/",
+        public_book_admin_word_censor,
+        name="special-book-admin-word-censor",
     ),
     path(
         "api/special-projects/book/words/",

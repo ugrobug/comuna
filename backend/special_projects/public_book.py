@@ -15,6 +15,7 @@ from django.utils import timezone
 from special_projects.models import (
     PublicBookBlockedWord,
     PublicBookFinalNotificationSubscription,
+    PublicBookModerationState,
     PublicBookProjectSettings,
     PublicBookReminder,
     PublicBookState,
@@ -28,6 +29,9 @@ logger = logging.getLogger(__name__)
 PROJECT_SLUG = PublicBookState.PROJECT_SLUG
 MAX_WORDS = 185_000
 SUBMISSION_INTERVAL = timedelta(hours=24)
+MODERATION_VIOLATION_LIMIT = 3
+MODERATION_LOCK_INTERVAL = timedelta(hours=24)
+BLOCKED_WORD_WARNING = "Кажется вы хотите вбить что-то недозволенное, ай-яй-яй."
 DEFAULT_RULES_TEXT = (
     "Каждый зарегистрированный пользователь с привязанным Telegram или VK может добавить "
     "одно слово в сутки. Слово должно состоять только из букв и быть не длиннее 30 символов. "
@@ -324,6 +328,7 @@ def serialize_word(word: PublicBookWord) -> dict[str, Any]:
         "id": word.id,
         "position": word.position,
         "word": word.word,
+        "is_censored": word.is_censored,
         "created_at": word.created_at.isoformat(),
         "submitted_by": {
             "id": word.submitted_by_id,
@@ -347,6 +352,10 @@ def _next_available_at_for_user(user: User | None, now=None):
     return candidate if candidate > current else None
 
 
+def _user_bypasses_submission_interval(user: User | None) -> bool:
+    return bool(user is not None and (user.is_staff or user.is_superuser))
+
+
 def _latest_word_for_user(user: User | None) -> PublicBookWord | None:
     if user is None:
         return None
@@ -355,6 +364,18 @@ def _latest_word_for_user(user: User | None) -> PublicBookWord | None:
         .order_by("-created_at", "-id")
         .first()
     )
+
+
+def moderation_lock_until_for_user(user: User | None, now=None):
+    if user is None:
+        return None
+    current = now or timezone.now()
+    locked_until = (
+        PublicBookModerationState.objects.filter(project_slug=PROJECT_SLUG, user=user)
+        .values_list("locked_until", flat=True)
+        .first()
+    )
+    return locked_until if locked_until and locked_until > current else None
 
 
 def _user_has_telegram(user: User | None) -> bool:
@@ -412,11 +433,24 @@ def final_notification_payload_for_user(user: User | None) -> dict[str, Any]:
 
 
 def can_submit_payload(user: User | None, now=None) -> dict[str, Any]:
-    next_available_at = _next_available_at_for_user(user, now=now)
+    current = now or timezone.now()
+    next_available_at = (
+        None
+        if _user_bypasses_submission_interval(user)
+        else _next_available_at_for_user(user, now=now)
+    )
+    moderation_locked_until = moderation_lock_until_for_user(user, now=current)
     has_social_identity = _user_has_social_identity(user)
-    can_submit = bool(user is not None and has_social_identity and next_available_at is None)
+    can_submit = bool(
+        user is not None
+        and has_social_identity
+        and next_available_at is None
+        and moderation_locked_until is None
+    )
     if user is None:
         reason = "auth_required"
+    elif moderation_locked_until is not None:
+        reason = "moderation_lock"
     elif not has_social_identity:
         reason = "social_required"
     elif next_available_at is not None:
@@ -427,10 +461,13 @@ def can_submit_payload(user: User | None, now=None) -> dict[str, Any]:
         "can_submit": can_submit,
         "submit_block_reason": reason,
         "next_available_at": next_available_at.isoformat() if next_available_at else None,
+        "moderation_locked_until": moderation_locked_until.isoformat()
+        if moderation_locked_until
+        else None,
         "telegram_linked": _user_has_telegram(user),
         "vk_linked": _user_has_vk(user),
         "has_social_identity": has_social_identity,
-        "reminder": reminder_payload_for_user(user, now=now),
+        "reminder": reminder_payload_for_user(user, now=current),
         "final_notification": final_notification_payload_for_user(user),
     }
 
@@ -604,10 +641,127 @@ def words_payload(*, offset: int = 0, limit: int = 500) -> dict[str, Any]:
     }
 
 
+def admin_words_payload(*, offset: int = 0, limit: int = 500, query: str = "") -> dict[str, Any]:
+    offset = max(int(offset or 0), 0)
+    limit = min(max(int(limit or 1), 1), 1000)
+    queryset = (
+        PublicBookWord.objects.filter(project_slug=PROJECT_SLUG)
+        .select_related("submitted_by", "censored_by")
+        .order_by("position")
+    )
+    query = str(query or "").strip()
+    if query:
+        queryset = queryset.filter(word__icontains=query)
+    total = queryset.count()
+    words = list(queryset[offset : offset + limit])
+    return {
+        "ok": True,
+        "project": PROJECT_SLUG,
+        "total_words": total,
+        "offset": offset,
+        "limit": limit,
+        "words": [serialize_word(word) for word in words],
+    }
+
+
+def censor_admin_word(word_id: int, user: User) -> PublicBookWord:
+    word = PublicBookWord.objects.select_related("submitted_by").get(
+        id=word_id,
+        project_slug=PROJECT_SLUG,
+    )
+    if not word.is_censored:
+        censored_length = max(1, min(MAX_WORD_LENGTH, len(word.word or "")))
+        word.word = "█" * censored_length
+        word.normalized_word = ""
+        word.is_censored = True
+        word.censored_at = timezone.now()
+        word.censored_by = user
+        word.save(
+            update_fields=(
+                "word",
+                "normalized_word",
+                "is_censored",
+                "censored_at",
+                "censored_by",
+            )
+        )
+    return word
+
+
+def _reset_moderation_violations(user: User) -> None:
+    PublicBookModerationState.objects.filter(project_slug=PROJECT_SLUG, user=user).update(
+        consecutive_violations=0,
+        locked_until=None,
+        updated_at=timezone.now(),
+    )
+
+
+class PublicBookBlockedTextError(ValueError):
+    def __init__(self, message: str = BLOCKED_WORD_WARNING):
+        super().__init__(message)
+
+
+class PublicBookModerationLockedError(ValueError):
+    def __init__(self, locked_until):
+        self.locked_until = locked_until
+        super().__init__("Вы временно не можете добавлять слова. Попробуйте через 24 часа.")
+
+
+def _record_moderation_violation(user: User, raw_text: str, match: dict[str, str], now) -> None:
+    with transaction.atomic():
+        User.objects.select_for_update().get(pk=user.pk)
+        state, _created = PublicBookModerationState.objects.select_for_update().get_or_create(
+            project_slug=PROJECT_SLUG,
+            user=user,
+        )
+        if state.locked_until and state.locked_until > now:
+            raise PublicBookModerationLockedError(state.locked_until)
+        if state.locked_until and state.locked_until <= now:
+            state.consecutive_violations = 0
+            state.locked_until = None
+        state.consecutive_violations += 1
+        state.last_violation_at = now
+        if state.consecutive_violations >= MODERATION_VIOLATION_LIMIT:
+            state.locked_until = now + MODERATION_LOCK_INTERVAL
+        else:
+            state.locked_until = None
+        state.save(
+            update_fields=(
+                "consecutive_violations",
+                "last_violation_at",
+                "locked_until",
+                "updated_at",
+            )
+        )
+    logger.warning(
+        "public_book_blocked_text_detected",
+        extra={
+            "user_id": user.id,
+            "raw_text": str(raw_text or ""),
+            "normalized_text": match["normalized_text"],
+            "matched_pattern": match["pattern"],
+            "consecutive_violations": state.consecutive_violations,
+            "locked_until": state.locked_until.isoformat() if state.locked_until else "",
+        },
+    )
+    if state.locked_until and state.locked_until > now:
+        raise PublicBookBlockedTextError(
+            f"{BLOCKED_WORD_WARNING} Возможность писать слово заблокирована на 24 часа."
+        )
+    raise PublicBookBlockedTextError()
+
+
 def submit_word(user: User, raw_word: str) -> PublicBookWord:
-    _ensure_public_book_text_allowed(raw_word)
-    normalized = normalize_public_book_word(raw_word)
     now = timezone.now()
+    locked_until = moderation_lock_until_for_user(user, now=now)
+    if locked_until is not None:
+        raise PublicBookModerationLockedError(locked_until)
+
+    match = _public_book_ban_match(raw_word)
+    if match is not None:
+        _record_moderation_violation(user, raw_word, match, now)
+
+    normalized = normalize_public_book_word(raw_word)
 
     with transaction.atomic():
         User.objects.select_for_update().get(pk=user.pk)
@@ -620,7 +774,7 @@ def submit_word(user: User, raw_word: str) -> PublicBookWord:
             raise ValueError("Чтобы добавить слово, привяжите Telegram или VK к учетной записи.")
 
         next_available_at = _next_available_at_for_user(user, now=now)
-        if next_available_at is not None:
+        if next_available_at is not None and not _user_bypasses_submission_interval(user):
             raise ValueError("Следующее слово можно будет добавить через 24 часа после предыдущего.")
 
         word = PublicBookWord.objects.create(
@@ -632,6 +786,7 @@ def submit_word(user: User, raw_word: str) -> PublicBookWord:
         )
         state.total_words += 1
         state.save(update_fields=("total_words", "updated_at"))
+        _reset_moderation_violations(user)
         return word
 
 
