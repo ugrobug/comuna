@@ -61,6 +61,14 @@
     node = { ...node, comment }
   }
 
+  function toggleReply() {
+    if (!$siteToken) {
+      showLoginModal = true
+      return
+    }
+    replying = !replying
+  }
+
   async function toggleLike() {
     if (!$siteToken) {
       showLoginModal = true
@@ -189,7 +197,7 @@
           <button
             type="button"
             class="flex items-center gap-1 hover:text-slate-700 dark:hover:text-zinc-200 transition"
-            on:click={() => (replying = !replying)}
+            on:click={toggleReply}
             disabled={isDeleted}
           >
             <Icon src={ChatBubbleOvalLeft} size="14" mini />
