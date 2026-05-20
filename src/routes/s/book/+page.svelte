@@ -2,6 +2,7 @@
   import { onMount } from 'svelte'
   import { Button, Modal, toast } from 'mono-svelte'
   import {
+    buildSpecialBookAdminSelectionCensorUrl,
     buildSpecialBookFinalNotificationUrl,
     buildSpecialBookReminderUrl,
     buildSpecialBookStatusUrl,
@@ -24,11 +25,18 @@
     id: number
     position: number
     word: string
+    is_censored?: boolean
     created_at: string
     submitted_by: {
       id: number
       username: string
     }
+  }
+
+  type CensorFragment = {
+    word_id: number
+    start: number
+    end: number
   }
 
   type BookStatus = {
@@ -89,6 +97,12 @@
   let cooldownOpen = false
   let exportOpen = false
   let finalNotificationLoading = false
+  let bookSheetEl: HTMLElement | null = null
+  let bookWordsEl: HTMLElement | null = null
+  let selectedFragments: CensorFragment[] = []
+  let selectedText = ''
+  let selectionCensorButtonStyle = ''
+  let selectionCensorLoading = false
 
   const authHeaders = (): Record<string, string> =>
     $siteToken ? { Authorization: `Bearer ${$siteToken}` } : {}
@@ -318,12 +332,131 @@
     finalNotificationLoading = false
   }
 
+  function clearCensorSelection(removeBrowserSelection = false) {
+    selectedFragments = []
+    selectedText = ''
+    selectionCensorButtonStyle = ''
+    if (removeBrowserSelection) {
+      window.getSelection()?.removeAllRanges()
+    }
+  }
+
+  function rangeOffsetInsideSpan(range: Range, span: HTMLElement, boundary: 'start' | 'end') {
+    const textLength = span.textContent?.length ?? 0
+    const spanRange = document.createRange()
+    spanRange.selectNodeContents(span)
+
+    if (boundary === 'start') {
+      if (range.compareBoundaryPoints(Range.START_TO_START, spanRange) <= 0) return 0
+      const offsetRange = document.createRange()
+      offsetRange.selectNodeContents(span)
+      offsetRange.setEnd(range.startContainer, range.startOffset)
+      return Math.min(textLength, Math.max(0, offsetRange.toString().length))
+    }
+
+    if (range.compareBoundaryPoints(Range.END_TO_END, spanRange) >= 0) return textLength
+    const offsetRange = document.createRange()
+    offsetRange.selectNodeContents(span)
+    offsetRange.setEnd(range.endContainer, range.endOffset)
+    return Math.min(textLength, Math.max(0, offsetRange.toString().length))
+  }
+
+  function updateCensorSelection() {
+    if (!$siteUser?.is_staff || !bookWordsEl || !bookSheetEl) {
+      clearCensorSelection()
+      return
+    }
+
+    const selection = window.getSelection()
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+      clearCensorSelection()
+      return
+    }
+
+    const range = selection.getRangeAt(0)
+    if (!range.intersectsNode(bookWordsEl)) {
+      clearCensorSelection()
+      return
+    }
+
+    const fragments: CensorFragment[] = []
+    const spans = Array.from(bookWordsEl.querySelectorAll<HTMLElement>('[data-book-word-id]'))
+    for (const span of spans) {
+      if (!range.intersectsNode(span)) continue
+      const wordId = Number(span.dataset.bookWordId)
+      if (!wordId) continue
+      const start = rangeOffsetInsideSpan(range, span, 'start')
+      const end = rangeOffsetInsideSpan(range, span, 'end')
+      if (start < end) {
+        fragments.push({ word_id: wordId, start, end })
+      }
+    }
+
+    if (!fragments.length) {
+      clearCensorSelection()
+      return
+    }
+
+    const rect = range.getBoundingClientRect()
+    const fallbackRect = range.getClientRects()[0]
+    const buttonRect = rect.width || rect.height ? rect : fallbackRect
+    if (buttonRect) {
+      const sheetRect = bookSheetEl.getBoundingClientRect()
+      const left = Math.max(80, Math.min(sheetRect.width - 80, buttonRect.left - sheetRect.left + buttonRect.width / 2))
+      const top = Math.max(44, buttonRect.bottom - sheetRect.top + 10)
+      selectionCensorButtonStyle = `left: ${left}px; top: ${top}px;`
+    }
+
+    selectedText = selection.toString().trim()
+    selectedFragments = fragments
+  }
+
+  async function censorSelection() {
+    if (!$siteUser?.is_staff) {
+      clearCensorSelection(true)
+      toast({ content: 'Недостаточно прав для цензуры.', type: 'error' })
+      return
+    }
+    if (!selectedFragments.length) {
+      toast({ content: 'Выделите фрагмент книги.', type: 'info' })
+      return
+    }
+    if (!window.confirm('Зацензурить выделенный фрагмент? Оригинальный текст будет удален из базы.')) {
+      return
+    }
+
+    selectionCensorLoading = true
+    try {
+      const response = await fetch(buildSpecialBookAdminSelectionCensorUrl(), {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders(),
+        },
+        body: JSON.stringify({ fragments: selectedFragments }),
+      })
+      const data = await response.json()
+      if (!response.ok || !data?.ok) {
+        throw new Error(data?.error || 'Не удалось зацензурить фрагмент')
+      }
+      const updatedWords = new Map<number, BookWord>(
+        ((data.words || []) as BookWord[]).map((item) => [item.id, item]),
+      )
+      words = words.map((item) => updatedWords.get(item.id) || item)
+      clearCensorSelection(true)
+      toast({ content: 'Фрагмент зацензурирован', type: 'success' })
+    } catch (err) {
+      toast({ content: (err as Error)?.message || 'Не удалось зацензурить фрагмент', type: 'error' })
+    }
+    selectionCensorLoading = false
+  }
+
   $: progressPercent = status
     ? Math.min(100, Math.max(0, (status.total_words / status.max_words) * 100))
     : 0
   $: displayTotalWords = status?.total_words ?? 0
   $: displayMaxWords = status?.max_words ?? 185000
-  $: bookText = words.map((item) => item.word).join(' ')
   $: canLoadMore = Boolean(status && words.length < status.total_words)
   $: submitDisabled = submitLoading || loading
   $: needsSocialLink = Boolean($siteUser && !$siteUser.telegram_linked && !$siteUser.vk_linked)
@@ -332,6 +465,10 @@
   $: reminderScheduled = Boolean(status?.reminder?.scheduled)
   $: displayedRulesText = status?.rules_text || rulesDraft || DEFAULT_RULES_TEXT
   $: finalNotificationSubscribed = Boolean(status?.final_notification?.subscribed)
+
+  $: if (!$siteUser?.is_staff && selectedFragments.length) {
+    clearCensorSelection()
+  }
 
   $: if ($siteToken !== lastToken) {
     lastToken = $siteToken
@@ -342,7 +479,13 @@
     }
   }
 
-  onMount(loadProject)
+  onMount(() => {
+    loadProject()
+    document.addEventListener('selectionchange', updateCensorSelection)
+    return () => {
+      document.removeEventListener('selectionchange', updateCensorSelection)
+    }
+  })
 </script>
 
 <svelte:head>
@@ -499,14 +642,39 @@
         Загрузка
       </div>
     {:else}
-      <section class="book-sheet" aria-label="Текст книги">
+      <section class="book-sheet" bind:this={bookSheetEl} aria-label="Текст книги">
         <div class="sheet-head">
           <span>Текущая версия</span>
           <span>{formatNumber(displayTotalWords)} из {formatNumber(displayMaxWords)}</span>
         </div>
+        {#if $siteUser?.is_staff && selectedFragments.length}
+          <button
+            class="selection-censor-button"
+            style={selectionCensorButtonStyle}
+            type="button"
+            disabled={selectionCensorLoading}
+            title={selectedText ? `Зацензурить: ${selectedText}` : 'Зацензурить выделенный фрагмент'}
+            on:mousedown|preventDefault={() => undefined}
+            on:click={censorSelection}
+          >
+            {selectionCensorLoading ? '...' : 'Цензура'}
+          </button>
+        {/if}
         <div class="book-text">
-          {#if bookText}
-            <span>{bookText}</span>
+          {#if words.length}
+            <span
+              class="book-words-flow"
+              bind:this={bookWordsEl}
+            >
+              {#each words as item, index (item.id)}
+                <span
+                  class="book-word"
+                  class:censored={item.is_censored}
+                  data-book-word-id={item.id}
+                  data-position={item.position}
+                >{item.word}</span>{index < words.length - 1 ? ' ' : ''}
+              {/each}
+            </span>
           {:else}
             <span class="empty-book">Книга пока пустая.</span>
           {/if}
@@ -761,6 +929,7 @@
   }
 
   .book-sheet {
+    position: relative;
     border: 1px solid #d8cbb9;
     border-radius: 8px;
     background: #fffdf8;
@@ -775,6 +944,47 @@
     font-size: clamp(22px, 3vw, 34px);
     line-height: 1.7;
     overflow-wrap: anywhere;
+  }
+
+  .book-words-flow {
+    user-select: text;
+  }
+
+  .book-word {
+    border-radius: 2px;
+  }
+
+  .book-word.censored {
+    letter-spacing: 0;
+  }
+
+  .selection-censor-button {
+    position: absolute;
+    z-index: 5;
+    display: inline-flex;
+    min-width: 92px;
+    min-height: 34px;
+    align-items: center;
+    justify-content: center;
+    transform: translateX(-50%);
+    border: 1px solid #111827;
+    border-radius: 999px;
+    background: #111827;
+    box-shadow: 0 12px 28px rgba(17, 24, 39, 0.24);
+    color: #fffdf8;
+    font-size: 13px;
+    font-weight: 800;
+    padding: 7px 12px;
+  }
+
+  .selection-censor-button:hover:not(:disabled) {
+    background: #9f2a22;
+    border-color: #9f2a22;
+  }
+
+  .selection-censor-button:disabled {
+    cursor: default;
+    opacity: 0.65;
   }
 
   .empty-book {

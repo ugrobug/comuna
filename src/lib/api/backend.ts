@@ -309,6 +309,10 @@ export const buildSpecialBookAdminWordCensorUrl = (id: number | string): string 
   return `${getBackendBaseUrl()}/api/special-projects/book/admin/words/${encodeURIComponent(id)}/censor/`
 }
 
+export const buildSpecialBookAdminSelectionCensorUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/book/admin/selection/censor/`
+}
+
 export const buildSpecialBookWordsUrl = (options?: {
   offset?: number
   limit?: number

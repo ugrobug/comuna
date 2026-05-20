@@ -89,6 +89,7 @@ from special_projects.views import (
     public_book_admin_blocked_word_detail,
     public_book_admin_blocked_words,
     public_book_admin_settings,
+    public_book_admin_selection_censor,
     public_book_final_notification,
     public_book_reminder,
     public_book_admin_stats,
@@ -319,6 +320,11 @@ urlpatterns = [
         "api/special-projects/book/admin/words/<int:word_id>/censor/",
         public_book_admin_word_censor,
         name="special-book-admin-word-censor",
+    ),
+    path(
+        "api/special-projects/book/admin/selection/censor/",
+        public_book_admin_selection_censor,
+        name="special-book-admin-selection-censor",
     ),
     path(
         "api/special-projects/book/words/",

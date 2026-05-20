@@ -297,6 +297,12 @@ def _ensure_public_book_text_allowed(raw_text: str) -> None:
     raise ValueError("Это слово нельзя добавить в книгу.")
 
 
+def _previous_word_pair_text(previous_word: PublicBookWord | None, current_word: str) -> str:
+    if previous_word is None:
+        return current_word
+    return f"{previous_word.word}{current_word}"
+
+
 def normalize_public_book_word(value: str) -> dict[str, str]:
     word = str(value or "").strip()
     if not word:
@@ -688,6 +694,84 @@ def censor_admin_word(word_id: int, user: User) -> PublicBookWord:
     return word
 
 
+def _censor_text_range(value: str, start: int, end: int) -> str:
+    chars = list(str(value or ""))
+    for index in range(start, end):
+        chars[index] = "█"
+    return "".join(chars)
+
+
+def censor_admin_selection(fragments: list[dict[str, Any]], user: User) -> list[PublicBookWord]:
+    if not isinstance(fragments, list) or not fragments:
+        raise ValueError("Не выбран фрагмент для цензуры.")
+    if len(fragments) > 500:
+        raise ValueError("Слишком большой фрагмент для одной операции.")
+
+    ranges_by_word_id: dict[int, list[tuple[int, int]]] = {}
+    for fragment in fragments:
+        if not isinstance(fragment, dict):
+            raise ValueError("Некорректный фрагмент для цензуры.")
+        try:
+            word_id = int(fragment.get("word_id"))
+            start = int(fragment.get("start"))
+            end = int(fragment.get("end"))
+        except (TypeError, ValueError):
+            raise ValueError("Некорректный фрагмент для цензуры.") from None
+        if start < 0 or end <= start:
+            raise ValueError("Некорректный диапазон цензуры.")
+        ranges_by_word_id.setdefault(word_id, []).append((start, end))
+
+    now = timezone.now()
+    changed_words: list[PublicBookWord] = []
+    with transaction.atomic():
+        words = {
+            item.id: item
+            for item in PublicBookWord.objects.select_for_update()
+            .select_related("submitted_by")
+            .filter(project_slug=PROJECT_SLUG, id__in=ranges_by_word_id.keys())
+            .order_by("position")
+        }
+        if len(words) != len(ranges_by_word_id):
+            raise PublicBookWord.DoesNotExist
+
+        for word_id in sorted(words, key=lambda key: words[key].position):
+            word = words[word_id]
+            text = str(word.word or "")
+            text_length = len(text)
+            merged_ranges: list[tuple[int, int]] = []
+            for start, end in sorted(ranges_by_word_id[word_id]):
+                if end > text_length:
+                    raise ValueError("Диапазон цензуры выходит за границы слова.")
+                if merged_ranges and start <= merged_ranges[-1][1]:
+                    merged_ranges[-1] = (merged_ranges[-1][0], max(merged_ranges[-1][1], end))
+                else:
+                    merged_ranges.append((start, end))
+
+            censored_text = text
+            for start, end in reversed(merged_ranges):
+                censored_text = _censor_text_range(censored_text, start, end)
+            if censored_text == text and word.is_censored:
+                changed_words.append(word)
+                continue
+
+            word.word = censored_text
+            word.normalized_word = normalize_public_book_moderation_text(censored_text)[:MAX_WORD_LENGTH]
+            word.is_censored = True
+            word.censored_at = now
+            word.censored_by = user
+            word.save(
+                update_fields=(
+                    "word",
+                    "normalized_word",
+                    "is_censored",
+                    "censored_at",
+                    "censored_by",
+                )
+            )
+            changed_words.append(word)
+    return changed_words
+
+
 def _reset_moderation_violations(user: User) -> None:
     PublicBookModerationState.objects.filter(project_slug=PROJECT_SLUG, user=user).update(
         consecutive_violations=0,
@@ -763,6 +847,7 @@ def submit_word(user: User, raw_word: str) -> PublicBookWord:
 
     normalized = normalize_public_book_word(raw_word)
 
+    blocked_pair: tuple[str, dict[str, str]] | None = None
     with transaction.atomic():
         User.objects.select_for_update().get(pk=user.pk)
         state = _book_state_for_update()
@@ -777,17 +862,33 @@ def submit_word(user: User, raw_word: str) -> PublicBookWord:
         if next_available_at is not None and not _user_bypasses_submission_interval(user):
             raise ValueError("Следующее слово можно будет добавить через 24 часа после предыдущего.")
 
-        word = PublicBookWord.objects.create(
-            project_slug=PROJECT_SLUG,
-            position=state.total_words + 1,
-            word=normalized["word"],
-            normalized_word=normalized["normalized_word"],
-            submitted_by=user,
+        previous_word = (
+            PublicBookWord.objects.filter(project_slug=PROJECT_SLUG)
+            .order_by("-position")
+            .first()
         )
-        state.total_words += 1
-        state.save(update_fields=("total_words", "updated_at"))
-        _reset_moderation_violations(user)
-        return word
+        pair_text = _previous_word_pair_text(previous_word, normalized["word"])
+        pair_match = _public_book_ban_match(pair_text)
+        if pair_match is not None:
+            blocked_pair = (pair_text, pair_match)
+        else:
+            word = PublicBookWord.objects.create(
+                project_slug=PROJECT_SLUG,
+                position=state.total_words + 1,
+                word=normalized["word"],
+                normalized_word=normalized["normalized_word"],
+                submitted_by=user,
+            )
+            state.total_words += 1
+            state.save(update_fields=("total_words", "updated_at"))
+            _reset_moderation_violations(user)
+            return word
+
+    if blocked_pair is not None:
+        pair_text, pair_match = blocked_pair
+        _record_moderation_violation(user, pair_text, pair_match, now)
+
+    raise RuntimeError("Public book word submission finished without a result.")
 
 
 def schedule_reminder_for_user(user: User) -> PublicBookReminder:

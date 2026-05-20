@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
 from django.test import TestCase
+from django.urls import reverse
 from django.utils import timezone
 
 from feeds.models import Post
@@ -15,6 +17,7 @@ from special_projects.public_book import (
     MAX_WORDS,
     PROJECT_SLUG,
     admin_stats_payload,
+    censor_admin_selection,
     censor_admin_word,
     ensure_public_book_discussion_post,
     notify_final_pdf_subscribers,
@@ -36,6 +39,7 @@ from special_projects.models import (
 )
 from telegram_integration.models import TelegramAccount
 from users.models import SiteUserProfile, VkAccount
+from users.service import _issue_token
 
 
 User = get_user_model()
@@ -96,6 +100,42 @@ class PublicBookTests(TestCase):
             submit_word(user, "пyтинлoх")
 
         self.assertFalse(PublicBookWord.objects.exists())
+
+    def test_submit_word_rejects_previous_word_pair_from_blocklist(self):
+        first_user = self.make_user("pair-first-book-user", telegram=True)
+        second_user = self.make_user("pair-second-book-user", telegram=True)
+        PublicBookBlockedWord.objects.create(word="красный флаг")
+
+        first_word = submit_word(first_user, "красный")
+
+        with self.assertRaisesMessage(ValueError, BLOCKED_WORD_WARNING):
+            submit_word(second_user, "флаг")
+
+        self.assertEqual(PublicBookWord.objects.count(), 1)
+        self.assertEqual(PublicBookWord.objects.get(), first_word)
+        state = PublicBookModerationState.objects.get(user=second_user, project_slug=PROJECT_SLUG)
+        self.assertEqual(state.consecutive_violations, 1)
+
+    def test_submit_word_rejects_blocked_word_inside_longer_word(self):
+        user = self.make_user("substring-book-user", telegram=True)
+        PublicBookBlockedWord.objects.create(word="убитьпутин")
+
+        with self.assertRaisesMessage(ValueError, BLOCKED_WORD_WARNING):
+            submit_word(user, "убитьпутина")
+
+        self.assertFalse(PublicBookWord.objects.exists())
+
+    def test_submit_word_rejects_blocked_word_inside_previous_word_pair(self):
+        first_user = self.make_user("substring-pair-first-book-user", telegram=True)
+        second_user = self.make_user("substring-pair-second-book-user", telegram=True)
+        PublicBookBlockedWord.objects.create(word="убитьпутин")
+
+        submit_word(first_user, "убить")
+
+        with self.assertRaisesMessage(ValueError, BLOCKED_WORD_WARNING):
+            submit_word(second_user, "путина")
+
+        self.assertEqual(PublicBookWord.objects.count(), 1)
 
     def test_submit_word_creates_position_and_updates_status(self):
         user = self.make_user("book-user", telegram=True)
@@ -191,6 +231,52 @@ class PublicBookTests(TestCase):
         self.assertEqual(censored.normalized_word, "")
         self.assertTrue(censored.is_censored)
         self.assertEqual(censored.censored_by, moderator)
+
+    def test_admin_can_censor_selected_book_fragment(self):
+        author = self.make_user("fragment-author", telegram=True)
+        moderator = User.objects.create_user(username="fragment-admin", password="pass", is_staff=True)
+        word = submit_word(author, "Свобода")
+
+        changed_words = censor_admin_selection(
+            [{"word_id": word.id, "start": 1, "end": 4}],
+            moderator,
+        )
+
+        self.assertEqual(len(changed_words), 1)
+        word.refresh_from_db()
+        self.assertEqual(word.word, "С███ода")
+        self.assertEqual(word.normalized_word, "сода")
+        self.assertTrue(word.is_censored)
+        self.assertEqual(word.censored_by, moderator)
+
+    def test_selection_censor_api_requires_staff(self):
+        author = self.make_user("fragment-api-author", telegram=True)
+        user = self.make_user("fragment-api-user", telegram=True)
+        moderator = User.objects.create_user(username="fragment-api-admin", password="pass", is_staff=True)
+        word = submit_word(author, "Проверка")
+        url = reverse("special-book-admin-selection-censor")
+        payload = json.dumps({"fragments": [{"word_id": word.id, "start": 0, "end": 3}]})
+
+        response = self.client.post(url, data=payload, content_type="application/json")
+        self.assertEqual(response.status_code, 401)
+
+        response = self.client.post(
+            url,
+            data=payload,
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {_issue_token(user)}",
+        )
+        self.assertEqual(response.status_code, 403)
+
+        response = self.client.post(
+            url,
+            data=payload,
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {_issue_token(moderator)}",
+        )
+        self.assertEqual(response.status_code, 200)
+        word.refresh_from_db()
+        self.assertEqual(word.word, "███верка")
 
     def test_submit_word_rejects_more_than_one_word_per_24_hours(self):
         user = self.make_user("slow-book-user", telegram=True)
