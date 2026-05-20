@@ -846,6 +846,7 @@
   }
 
   .book-counter-panel {
+    align-self: start;
     border: 1px solid #d6c8b6;
     border-radius: 8px;
     background: #fffdf8;
