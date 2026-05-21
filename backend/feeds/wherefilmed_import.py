@@ -9,6 +9,7 @@ import secrets
 import urllib.error
 import urllib.parse
 import urllib.request
+from decimal import Decimal, InvalidOperation
 from html import escape
 from typing import Any
 
@@ -219,6 +220,18 @@ def _list_titles(items: object) -> list[str]:
     return titles
 
 
+def _movie_genre(movie: dict[str, Any]) -> str:
+    genres = _list_titles(movie.get("genres"))
+    return genres[0][:80] if genres else ""
+
+
+def _movie_content_kind(movie: dict[str, Any]) -> str:
+    raw_kind = re.sub(r"\s+", "", str(movie.get("type") or "").strip().lower())
+    if raw_kind in {"series", "serial", "tv", "show", "сериал"}:
+        return "series"
+    return "movie"
+
+
 def _movie_title(movie: dict[str, Any]) -> str:
     title = _text(movie.get("title"), 180)
     original_title = _text(movie.get("original_title"), 180)
@@ -264,47 +277,33 @@ def _gallery_block(images: list[dict[str, str]], block_id: str) -> dict[str, Any
     return {"id": block_id, "type": "gallery", "data": {"images": images}}
 
 
-def _image_block(url: str, caption: str, block_id: str) -> dict[str, Any] | None:
-    if not url:
-        return None
-    return {
-        "id": block_id,
-        "type": "image",
-        "data": {
-            "file": {"url": url, "alt": caption, "title": caption},
-            "caption": escape(caption),
-        },
-    }
+def _map_block(location: dict[str, Any], block_id: str) -> dict[str, Any] | None:
+    gps = str(location.get("gps_coordinate") or "").strip()
+    matches = re.findall(r"[-+]?\d{1,3}(?:[.,]\d+)?", gps)
+    for index in range(0, max(len(matches) - 1, 0)):
+        try:
+            lat = Decimal(matches[index].replace(",", "."))
+            lng = Decimal(matches[index + 1].replace(",", "."))
+        except InvalidOperation:
+            continue
+        if Decimal("-90") <= lat <= Decimal("90") and Decimal("-180") <= lng <= Decimal("180"):
+            return {
+                "id": block_id,
+                "type": "map",
+                "data": {
+                    "lat": float(lat.quantize(Decimal("0.000001"))),
+                    "lng": float(lng.quantize(Decimal("0.000001"))),
+                    "zoom": 16,
+                },
+            }
+    return None
 
 
-def _location_meta_html(location: dict[str, Any]) -> str:
-    parts: list[str] = []
-    cities = ", ".join(_list_titles(location.get("cities")))
-    places = ", ".join(_list_titles(location.get("places")))
-    address = _text(location.get("address"))
-    timing = _text(location.get("timing"))
-    season = _as_int(location.get("season"))
-    episode = _as_int(location.get("episode"))
-    gps = _text(location.get("gps_coordinate"))
-    map_link = _public_url(location.get("map_link"))
-
-    if cities:
-        parts.append(f"<b>Город:</b> {escape(cities)}")
-    if places:
-        parts.append(f"<b>Место:</b> {escape(places)}")
-    if address:
-        parts.append(f"<b>Адрес:</b> {escape(address)}")
-    if timing:
-        parts.append(f"<b>Тайминг:</b> {escape(timing)}")
-    if season and episode:
-        parts.append(f"<b>Эпизод:</b> S{season:02d}E{episode:02d}")
-    elif episode:
-        parts.append(f"<b>Эпизод:</b> {episode}")
-    if gps:
-        parts.append(f"<b>Координаты:</b> {escape(gps)}")
-    if map_link:
-        parts.append(f'<a href="{escape(map_link, quote=True)}" target="_blank" rel="noopener noreferrer">Открыть карту</a>')
-    return "<br>".join(parts)
+def _prefixed_paragraph_html(prefix: str, value: str) -> str:
+    html = _editor_paragraph_html(value)
+    if not html:
+        return ""
+    return f"<b>{escape(prefix)}</b> {html}"
 
 
 def _build_content(
@@ -321,36 +320,19 @@ def _build_content(
     poster_url = _download_image(str(movie.get("poster_url") or ""), movie_id=movie_id)
     if poster_url:
         saved_images.append(poster_url)
-        block = _image_block(poster_url, _movie_title(movie), "wf-poster")
-        if block:
-            blocks.append(block)
 
     description_html = str(movie.get("description_html") or "").strip()
     description_text = _text(movie.get("description_text"))
-    description_block = _paragraph_block(description_html or escape(description_text), "wf-description")
+    description_value = description_html or escape(description_text)
+    description_block = _paragraph_block(
+        _prefixed_paragraph_html("Описание [ru]:", description_value),
+        "wf-description",
+    )
     if description_block:
         blocks.append(description_block)
 
-    movie_meta: list[str] = []
-    countries = ", ".join(_list_titles(movie.get("countries")))
-    genres = ", ".join(_list_titles(movie.get("genres")))
-    source = payload.get("source") if isinstance(payload.get("source"), dict) else {}
-    source_url = _public_url(source.get("url"))
-    trailer_url = _public_url(movie.get("trailer_url"))
-    if countries:
-        movie_meta.append(f"<b>Страны:</b> {escape(countries)}")
-    if genres:
-        movie_meta.append(f"<b>Жанры:</b> {escape(genres)}")
-    if trailer_url:
-        movie_meta.append(f'<a href="{escape(trailer_url, quote=True)}" target="_blank" rel="noopener noreferrer">Трейлер</a>')
-    if source_url:
-        movie_meta.append(f'<a href="{escape(source_url, quote=True)}" target="_blank" rel="noopener noreferrer">Оригинальная карточка WhereFilmed</a>')
-    meta_block = _paragraph_block("<br>".join(movie_meta), "wf-movie-meta")
-    if meta_block:
-        blocks.append(meta_block)
-
     if locations:
-        header = _header_block("Локации съемок", "wf-locations", level=2)
+        header = _header_block("Локации съемок:", "wf-locations", level=2)
         if header:
             blocks.append(header)
 
@@ -365,35 +347,51 @@ def _build_content(
         if header:
             blocks.append(header)
 
-        meta_html = _location_meta_html(raw_location)
-        meta = _paragraph_block(meta_html, f"wf-location-{location_id}-meta")
-        if meta:
-            blocks.append(meta)
-
-        scene_html = str(raw_location.get("scene_description_html") or "").strip()
-        if not scene_html:
-            scene_html = escape(_text(raw_location.get("scene_description_text")))
-        scene = _paragraph_block(scene_html, f"wf-location-{location_id}-scene")
-        if scene:
-            blocks.append(scene)
-
-        spot_html = str(raw_location.get("movie_spot_html") or "").strip()
-        if not spot_html:
-            spot_html = escape(_text(raw_location.get("movie_spot_text")))
-        spot = _paragraph_block(spot_html, f"wf-location-{location_id}-spot")
-        if spot:
-            blocks.append(spot)
+        movie_section = _header_block("В кино", f"wf-location-{location_id}-movie", level=4)
+        if movie_section:
+            blocks.append(movie_section)
 
         movie_gallery = _gallery_items(raw_location.get("movie_gallery"), movie_id=movie_id)
-        reality_gallery = _gallery_items(raw_location.get("reality_gallery"), movie_id=movie_id)
-        saved_images.extend(item["url"] for item in [*movie_gallery, *reality_gallery])
+        saved_images.extend(item["url"] for item in movie_gallery)
 
         gallery = _gallery_block(movie_gallery, f"wf-location-{location_id}-movie-gallery")
         if gallery:
             blocks.append(gallery)
+
+        scene_html = str(raw_location.get("scene_description_html") or "").strip()
+        if not scene_html:
+            scene_html = escape(_text(raw_location.get("scene_description_text")))
+        scene = _paragraph_block(
+            _prefixed_paragraph_html("Сцена, где", scene_html),
+            f"wf-location-{location_id}-scene",
+        )
+        if scene:
+            blocks.append(scene)
+
+        reality_section = _header_block("В реальности", f"wf-location-{location_id}-reality", level=4)
+        if reality_section:
+            blocks.append(reality_section)
+
+        reality_gallery = _gallery_items(raw_location.get("reality_gallery"), movie_id=movie_id)
+        saved_images.extend(item["url"] for item in reality_gallery)
+
         reality = _gallery_block(reality_gallery, f"wf-location-{location_id}-reality-gallery")
         if reality:
             blocks.append(reality)
+
+        map_block = _map_block(raw_location, f"wf-location-{location_id}-map")
+        if map_block:
+            blocks.append(map_block)
+
+        spot_html = str(raw_location.get("movie_spot_html") or "").strip()
+        if not spot_html:
+            spot_html = escape(_text(raw_location.get("movie_spot_text")))
+        spot = _paragraph_block(
+            _prefixed_paragraph_html("Сцена была снята", spot_html),
+            f"wf-location-{location_id}-spot",
+        )
+        if spot:
+            blocks.append(spot)
 
         source_locations.append(
             {
@@ -401,6 +399,7 @@ def _build_content(
                 "title": location_title,
                 "movie_gallery_count": len(movie_gallery),
                 "reality_gallery_count": len(reality_gallery),
+                "gps_coordinate": raw_location.get("gps_coordinate"),
             }
         )
 
@@ -417,11 +416,33 @@ def _raw_data(
     image_payload: dict[str, Any],
 ) -> dict[str, Any]:
     source = payload.get("source") if isinstance(payload.get("source"), dict) else {}
-    source_url = _public_url(source.get("url"))
+    movie = payload.get("movie") if isinstance(payload.get("movie"), dict) else {}
+    template_data: dict[str, object] = {}
+    title = _text(movie.get("title"), 255)
+    original_title = _text(movie.get("original_title"), 255)
+    poster_url = _public_url(image_payload.get("poster_url"))
+    genre = _movie_genre(movie)
+    year = _as_int(movie.get("year"))
+    if title:
+        template_data["title"] = title
+    if original_title:
+        template_data["original_title"] = original_title
+    if poster_url:
+        template_data["poster_url"] = poster_url
+    if genre:
+        template_data["genre"] = genre
+    if year:
+        template_data["release_date"] = f"{year}-01-01"
+    template_data["content_kind"] = _movie_content_kind(movie)
     return {
         "source": "manual_comun",
         "comun_slug": WHEREFILMED_COMUN_SLUG,
         "comun_category_name": WHEREFILMED_CATEGORY_NAME,
+        "template": {
+            "type": "movie_review",
+            "version": 1,
+            "data": template_data,
+        },
         "wherefilmed": {
             "source_site": "wherefilmed",
             "movie_id": movie_id,
