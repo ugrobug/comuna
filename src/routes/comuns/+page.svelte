@@ -370,31 +370,10 @@
                 <div class="text-base font-semibold text-slate-900 dark:text-zinc-100 truncate">
                   {comun.name}
                 </div>
-                {#if comun.tags?.length}
-                  {#each comun.tags.slice(0, 2) as sourceTag}
-                    <span class="shrink-0 rounded-full bg-slate-100 dark:bg-zinc-800 px-2 py-0.5 text-xs text-slate-600 dark:text-zinc-300">
-                      #{sourceTag.name}
-                    </span>
-                  {/each}
-                {/if}
               </div>
               {#if comun.product_description}
                 <div class="mt-1 text-sm text-slate-600 dark:text-zinc-400 line-clamp-3">
                   {comun.product_description}
-                </div>
-              {/if}
-              {#if comun.tags?.length}
-                <div class="mt-3 flex flex-wrap gap-2">
-                  {#each comun.tags.slice(0, 4) as tag}
-                    <span class="rounded-full bg-slate-100 dark:bg-zinc-800 px-2 py-1 text-xs text-slate-600 dark:text-zinc-300">
-                      #{tag.name}
-                    </span>
-                  {/each}
-                  {#if comun.tags.length > 4}
-                    <span class="rounded-full bg-slate-100 dark:bg-zinc-800 px-2 py-1 text-xs text-slate-500 dark:text-zinc-400">
-                      +{comun.tags.length - 4}
-                    </span>
-                  {/if}
                 </div>
               {/if}
             </a>
