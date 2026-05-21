@@ -36,7 +36,11 @@
   } from '$lib/api/backend'
   import { siteToken } from '$lib/siteAuth'
   import PostTemplateHeader from '$lib/components/site/post-templates/PostTemplateHeader.svelte'
-  import { type BugReportTemplate, type SitePostTemplate } from '$lib/postTemplates'
+  import {
+    isMovieReviewTemplate,
+    type BugReportTemplate,
+    type SitePostTemplate,
+  } from '$lib/postTemplates'
 
   export let post: PostView
   export let actions: boolean = true
@@ -132,6 +136,23 @@
   }
 
   $: hideBackendPreviewChrome = isBackendPost && !showFullBody && backendPreviewExpanded
+  $: hasMovieReviewCardPreview = Boolean(
+    isBackendPost &&
+      !showFullBody &&
+      isMovieReviewTemplate(backendTemplate) &&
+      (
+        backendTemplate.data.poster_url ||
+        backendTemplate.data.genre ||
+        backendTemplate.data.content_kind ||
+        backendTemplate.data.author_rating ||
+        backendTemplate.data.title ||
+        backendTemplate.data.original_title ||
+        backendTemplate.data.release_date ||
+        backendTemplate.data.imdb_url ||
+        backendTemplate.data.watch_where?.length
+      )
+  )
+  $: hideBackendPreviewMedia = hideBackendPreviewChrome || hasMovieReviewCardPreview
 
   const READ_VISIBILITY_DELAY_MS = 2000
   const READ_VISIBILITY_THRESHOLD = 0.6
@@ -306,7 +327,7 @@
       style="grid-area:embed;"
       class={view == 'list' || view == 'compact' ? '' : 'contents'}
     >
-      {#if rule != 'hide' && !hideBackendPreviewChrome}
+      {#if rule != 'hide' && !hideBackendPreviewMedia}
         <PostMedia
           post={post.post}
           blur={rule == 'blur' ? true : undefined}
@@ -316,7 +337,7 @@
         />
       {/if}
     </div>
-    {#if (view == 'list' || view == 'compact') && !hideBackendPreviewChrome}
+    {#if (view == 'list' || view == 'compact') && !hideBackendPreviewMedia}
       <PostMediaCompact
         post={post.post}
         {type}
