@@ -39,6 +39,7 @@ from special_projects.models import (
     PublicBookProjectSettings,
     PublicBookReminder,
     PublicBookState,
+    PublicBookSubmissionState,
     PublicBookWord,
 )
 from telegram_integration.models import TelegramAccount
@@ -65,6 +66,12 @@ class PublicBookTests(TestCase):
                 username=f"{username}_vk",
             )
         return user
+
+    def set_book_next_available_at(self, user, value):
+        state = PublicBookSubmissionState.objects.get(user=user, project_slug=PROJECT_SLUG)
+        state.next_available_at = value
+        state.save(update_fields=("next_available_at",))
+        return state
 
     def test_normalize_allows_letters_and_punctuation(self):
         self.assertEqual(
@@ -190,6 +197,9 @@ class PublicBookTests(TestCase):
         self.assertEqual(word.word, "сВоБоДа")
         self.assertEqual(word.normalized_word, "свобода")
         self.assertEqual(PublicBookState.objects.get(project_slug=PROJECT_SLUG).total_words, 1)
+        submission_state = PublicBookSubmissionState.objects.get(user=user, project_slug=PROJECT_SLUG)
+        self.assertEqual(submission_state.words_count, 1)
+        self.assertIsNotNone(submission_state.next_available_at)
         self.assertEqual(status["total_words"], 1)
         self.assertIn("30 символов", status["rules_text"])
         self.assertFalse(status["final_pdf"]["available"])
@@ -215,7 +225,10 @@ class PublicBookTests(TestCase):
         word = submit_word(user, "Голос")
 
         self.assertEqual(word.position, 1)
-        self.assertEqual(word.submitted_by, user)
+        self.assertEqual(
+            PublicBookSubmissionState.objects.get(user=user, project_slug=PROJECT_SLUG).words_count,
+            1,
+        )
 
     def test_submit_word_rejects_blocked_word(self):
         user = self.make_user("blocked-book-user", telegram=True)
@@ -324,9 +337,8 @@ class PublicBookTests(TestCase):
     def test_submit_word_rejects_more_than_one_word_per_24_hours(self):
         user = self.make_user("slow-book-user", telegram=True)
         now = timezone.now()
-        first = submit_word(user, "Первое")
-        first.created_at = now
-        first.save(update_fields=("created_at",))
+        submit_word(user, "Первое")
+        self.set_book_next_available_at(user, now + timedelta(hours=24))
 
         with patch("special_projects.public_book.timezone.now", return_value=now + timedelta(hours=23)):
             with self.assertRaisesMessage(ValueError, "24 часа"):
@@ -337,8 +349,7 @@ class PublicBookTests(TestCase):
 
         self.assertEqual(second.position, 2)
 
-        second.created_at = now + timedelta(hours=25)
-        second.save(update_fields=("created_at",))
+        self.set_book_next_available_at(user, now + timedelta(hours=49))
         with patch("special_projects.public_book.timezone.now", return_value=now + timedelta(hours=48)):
             with self.assertRaisesMessage(ValueError, "24 часа"):
                 submit_word(user, "Третье")
@@ -353,9 +364,8 @@ class PublicBookTests(TestCase):
         user.is_staff = True
         user.save(update_fields=("is_staff",))
         now = timezone.now()
-        first = submit_word(user, "Первое")
-        first.created_at = now
-        first.save(update_fields=("created_at",))
+        submit_word(user, "Первое")
+        self.set_book_next_available_at(user, now + timedelta(hours=24))
 
         with patch("special_projects.public_book.timezone.now", return_value=now + timedelta(minutes=5)):
             status = project_status_for_user(user)
@@ -373,9 +383,8 @@ class PublicBookTests(TestCase):
         user.is_superuser = True
         user.save(update_fields=("is_staff", "is_superuser"))
         now = timezone.now()
-        first = submit_word(user, "Первое")
-        first.created_at = now
-        first.save(update_fields=("created_at",))
+        submit_word(user, "Первое")
+        self.set_book_next_available_at(user, now + timedelta(hours=24))
 
         with patch("special_projects.public_book.timezone.now", return_value=now + timedelta(minutes=5)):
             status = project_status_for_user(user)
@@ -403,17 +412,17 @@ class PublicBookTests(TestCase):
     def test_schedule_reminder_for_latest_word_and_send_due(self):
         user = self.make_user("reminder-book-user", telegram=True)
         now = timezone.now()
-        word = submit_word(user, "Слово")
-        word.created_at = now - timedelta(hours=23)
-        word.save(update_fields=("created_at",))
+        submit_word(user, "Слово")
+        expected_at = now + timedelta(hours=1)
+        self.set_book_next_available_at(user, expected_at)
 
         reminder = schedule_reminder_for_user(user)
 
-        self.assertEqual(reminder.scheduled_at, word.created_at + timedelta(hours=24))
+        self.assertEqual(reminder.scheduled_at, expected_at)
         self.assertEqual(PublicBookReminder.objects.count(), 1)
 
         with patch("notifications.service.send_site_notification_to_telegram") as send_mock:
-            sent = send_due_reminders(now=word.created_at + timedelta(hours=24, minutes=1))
+            sent = send_due_reminders(now=expected_at + timedelta(minutes=1))
 
         self.assertEqual(sent, 1)
         self.assertTrue(send_mock.called)
@@ -423,9 +432,8 @@ class PublicBookTests(TestCase):
     def test_cancel_reminder_removes_pending_reminders(self):
         user = self.make_user("cancel-reminder-book-user", telegram=True)
         now = timezone.now()
-        word = submit_word(user, "Слово")
-        word.created_at = now - timedelta(hours=23)
-        word.save(update_fields=("created_at",))
+        submit_word(user, "Слово")
+        self.set_book_next_available_at(user, now + timedelta(hours=1))
         schedule_reminder_for_user(user)
 
         deleted = cancel_reminder_for_user(user)
@@ -436,17 +444,17 @@ class PublicBookTests(TestCase):
     def test_send_due_reminders_skips_stale_reminder_after_new_word(self):
         user = self.make_user("stale-reminder-book-user", telegram=True)
         now = timezone.now()
-        first_word = submit_word(user, "Первое")
-        first_word.created_at = now - timedelta(hours=25)
-        first_word.save(update_fields=("created_at",))
+        submit_word(user, "Первое")
+        stale_scheduled_at = now - timedelta(hours=1)
+        self.set_book_next_available_at(user, stale_scheduled_at)
         stale_reminder = PublicBookReminder.objects.create(
             project_slug=PROJECT_SLUG,
             user=user,
-            scheduled_at=first_word.created_at + timedelta(hours=24),
+            scheduled_at=stale_scheduled_at,
         )
         second_word = submit_word(user, "Второе")
-        second_word.created_at = now
-        second_word.save(update_fields=("created_at",))
+        self.assertEqual(second_word.position, 2)
+        self.set_book_next_available_at(user, now + timedelta(hours=24))
 
         with patch("notifications.service.send_site_notification_to_telegram") as send_mock:
             sent = send_due_reminders(now=now)
@@ -486,7 +494,7 @@ class PublicBookTests(TestCase):
         self.assertEqual(recent_comment["id"], comment.id)
         self.assertEqual(recent_comment["link_url"], f"/s/book#site-comment-{comment.id}")
 
-    def test_admin_stats_payload_counts_contributors_top_users_and_registrations(self):
+    def test_admin_stats_payload_counts_anonymous_contributors_and_registrations(self):
         users = [
             self.make_user("top-one", telegram=True),
             self.make_user("top-two", telegram=True),
@@ -501,9 +509,14 @@ class PublicBookTests(TestCase):
                     position=position,
                     word=f"Слово{position}",
                     normalized_word=f"слово{position}",
-                    submitted_by=user,
                 )
                 position += 1
+            PublicBookSubmissionState.objects.create(
+                project_slug=PROJECT_SLUG,
+                user=user,
+                words_count=count,
+                next_available_at=timezone.now() + timedelta(hours=24),
+            )
         SiteUserProfile.objects.create(user=users[0], registration_source=PROJECT_SLUG, registration_path="/s/book")
         SiteUserProfile.objects.create(user=users[1], registration_source=PROJECT_SLUG, registration_path="/s/book")
 
@@ -512,10 +525,9 @@ class PublicBookTests(TestCase):
         self.assertEqual(stats["contributors_count"], 4)
         self.assertEqual(stats["total_words"], 10)
         self.assertEqual(stats["average_words_per_user"], 2.5)
-        self.assertEqual(stats["top_three_words"], 9)
         self.assertEqual(stats["registrations_from_page_count"], 2)
-        self.assertEqual([item["user"]["username"] for item in stats["top_users"]], ["top-one", "top-two", "top-three"])
-        self.assertEqual([item["words_count"] for item in stats["top_users"]], [4, 3, 2])
+        self.assertNotIn("top_three_words", stats)
+        self.assertNotIn("top_users", stats)
 
     def test_final_pdf_subscription_is_notified_after_upload(self):
         user = self.make_user("pdf-book-user", telegram=True)

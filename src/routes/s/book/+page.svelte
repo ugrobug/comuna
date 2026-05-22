@@ -26,11 +26,6 @@
     position: number
     word: string
     is_censored?: boolean
-    created_at: string
-    submitted_by: {
-      id: number
-      username: string
-    }
   }
 
   type CensorFragment = {

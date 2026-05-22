@@ -17,17 +17,7 @@
     total_words: number
     contributors_count: number
     average_words_per_user: number
-    top_three_words: number
     registrations_from_page_count: number
-    top_users: Array<{
-      user: {
-        id: number
-        username: string
-        first_name?: string
-        last_name?: string
-      }
-      words_count: number
-    }>
   }
 
   type BookSettings = {
@@ -87,11 +77,6 @@
     } catch {
       return value
     }
-  }
-
-  const displayUserName = (user: BookAdminStats['top_users'][number]['user']) => {
-    const name = [user.first_name, user.last_name].filter(Boolean).join(' ').trim()
-    return name || user.username || `id ${user.id}`
   }
 
   async function fetchJson<T>(url: string, options: RequestInit = {}) {
@@ -302,25 +287,6 @@
         </article>
       </section>
 
-      <section class="panel">
-        <div class="section-heading">
-          <h2>Первая тройка</h2>
-          <span>{formatNumber(stats.top_three_words)} слов</span>
-        </div>
-        {#if stats.top_users.length}
-          <div class="top-users">
-            {#each stats.top_users as item}
-              <div>
-                <a href={`/id${item.user.id}`}>{displayUserName(item.user)}</a>
-                <span>@{item.user.username}</span>
-                <strong>{formatNumber(item.words_count)}</strong>
-              </div>
-            {/each}
-          </div>
-        {:else}
-          <p class="muted">Пока нет добавленных слов.</p>
-        {/if}
-      </section>
     {/if}
 
     <section class="panel">
@@ -492,8 +458,7 @@
 
   .stats-grid span,
   .pdf-grid span,
-  .section-heading span,
-  .muted {
+  .section-heading span {
     color: #6b5f51;
     font-size: 13px;
   }
@@ -526,13 +491,11 @@
     line-height: 1.1;
   }
 
-  .top-users,
   .blocked-list {
     display: grid;
     gap: 10px;
   }
 
-  .top-users div,
   .blocked-list article {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto auto;
@@ -542,16 +505,6 @@
     border-radius: 8px;
     background: #ffffff;
     padding: 10px;
-  }
-
-  .top-users div {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
-  }
-
-  .top-users a {
-    color: #1f2933;
-    font-weight: 700;
-    overflow-wrap: anywhere;
   }
 
   input,
@@ -667,8 +620,7 @@
     .stats-grid,
     .pdf-grid,
     .blocked-form,
-    .blocked-list article,
-    .top-users div {
+    .blocked-list article {
       grid-template-columns: 1fr;
     }
 

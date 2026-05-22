@@ -9,7 +9,7 @@ from typing import Any
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Sum
 from django.utils import timezone
 
 from special_projects.models import (
@@ -19,6 +19,7 @@ from special_projects.models import (
     PublicBookProjectSettings,
     PublicBookReminder,
     PublicBookState,
+    PublicBookSubmissionState,
     PublicBookWord,
 )
 from users.models import SiteUserProfile
@@ -464,11 +465,6 @@ def serialize_word(word: PublicBookWord) -> dict[str, Any]:
         "position": word.position,
         "word": word.word,
         "is_censored": word.is_censored,
-        "created_at": word.created_at.isoformat(),
-        "submitted_by": {
-            "id": word.submitted_by_id,
-            "username": (getattr(word.submitted_by, "username", "") or "").strip(),
-        },
     }
 
 
@@ -477,31 +473,40 @@ def _next_available_at_for_user(user: User | None, now=None):
         return None
     if getattr(user, "is_superuser", False):
         return None
-    latest = (
-        PublicBookWord.objects.filter(project_slug=PROJECT_SLUG, submitted_by=user)
-        .order_by("-created_at", "-id")
+    next_available_at = (
+        PublicBookSubmissionState.objects.filter(project_slug=PROJECT_SLUG, user=user)
+        .values_list("next_available_at", flat=True)
         .first()
     )
-    if latest is None:
+    if next_available_at is None:
         return None
-    candidate = latest.created_at + SUBMISSION_INTERVAL
     current = now or timezone.now()
-    return candidate if candidate > current else None
+    return next_available_at if next_available_at > current else None
 
 
-def _latest_word_for_user(user: User | None) -> PublicBookWord | None:
+def _submission_state_for_update(user: User) -> PublicBookSubmissionState:
+    state = (
+        PublicBookSubmissionState.objects.select_for_update()
+        .filter(project_slug=PROJECT_SLUG, user=user)
+        .first()
+    )
+    if state is not None:
+        return state
+    return PublicBookSubmissionState.objects.create(project_slug=PROJECT_SLUG, user=user)
+
+
+def _submission_state_for_user(user: User | None) -> PublicBookSubmissionState | None:
     if user is None:
         return None
     return (
-        PublicBookWord.objects.filter(project_slug=PROJECT_SLUG, submitted_by=user)
-        .order_by("-created_at", "-id")
+        PublicBookSubmissionState.objects.filter(project_slug=PROJECT_SLUG, user=user)
         .first()
     )
 
 
 def _expected_reminder_at_for_user(user: User | None):
-    latest = _latest_word_for_user(user)
-    return latest.created_at + SUBMISSION_INTERVAL if latest is not None else None
+    state = _submission_state_for_user(user)
+    return state.next_available_at if state is not None else None
 
 
 def moderation_lock_until_for_user(user: User | None, now=None):
@@ -710,40 +715,21 @@ def project_status_for_user(user: User | None) -> dict[str, Any]:
 def admin_stats_payload() -> dict[str, Any]:
     words = PublicBookWord.objects.filter(project_slug=PROJECT_SLUG)
     total_words = words.count()
-    contributors = (
-        words.values(
-            "submitted_by_id",
-            "submitted_by__username",
-            "submitted_by__first_name",
-            "submitted_by__last_name",
-        )
-        .annotate(words_count=Count("id"))
-        .order_by("-words_count", "submitted_by__username", "submitted_by_id")
+    contributor_states = PublicBookSubmissionState.objects.filter(
+        project_slug=PROJECT_SLUG,
+        words_count__gt=0,
     )
-    contributors_count = contributors.count()
-    top_users = list(contributors[:3])
-    top_three_words = sum(int(row["words_count"] or 0) for row in top_users)
+    contributors_count = contributor_states.count()
+    recorded_submissions = contributor_states.aggregate(total=Sum("words_count"))["total"] or 0
+    average_source = total_words if total_words else int(recorded_submissions or 0)
     return {
         "ok": True,
         "project": PROJECT_SLUG,
         "total_words": total_words,
         "contributors_count": contributors_count,
-        "average_words_per_user": round(total_words / contributors_count, 2)
+        "average_words_per_user": round(average_source / contributors_count, 2)
         if contributors_count
         else 0,
-        "top_three_words": top_three_words,
-        "top_users": [
-            {
-                "user": {
-                    "id": row["submitted_by_id"],
-                    "username": row["submitted_by__username"] or "",
-                    "first_name": row["submitted_by__first_name"] or "",
-                    "last_name": row["submitted_by__last_name"] or "",
-                },
-                "words_count": int(row["words_count"] or 0),
-            }
-            for row in top_users
-        ],
         "registrations_from_page_count": SiteUserProfile.objects.filter(
             registration_source=PROJECT_SLUG,
         ).count(),
@@ -755,7 +741,6 @@ def words_payload(*, offset: int = 0, limit: int = 500) -> dict[str, Any]:
     limit = min(max(int(limit or 1), 1), 2000)
     queryset = (
         PublicBookWord.objects.filter(project_slug=PROJECT_SLUG)
-        .select_related("submitted_by")
         .order_by("position")
     )
     total_words = PublicBookState.objects.filter(project_slug=PROJECT_SLUG).values_list(
@@ -780,7 +765,7 @@ def admin_words_payload(*, offset: int = 0, limit: int = 500, query: str = "") -
     limit = min(max(int(limit or 1), 1), 1000)
     queryset = (
         PublicBookWord.objects.filter(project_slug=PROJECT_SLUG)
-        .select_related("submitted_by", "censored_by")
+        .select_related("censored_by")
         .order_by("position")
     )
     query = str(query or "").strip()
@@ -799,7 +784,7 @@ def admin_words_payload(*, offset: int = 0, limit: int = 500, query: str = "") -
 
 
 def censor_admin_word(word_id: int, user: User) -> PublicBookWord:
-    word = PublicBookWord.objects.select_related("submitted_by").get(
+    word = PublicBookWord.objects.get(
         id=word_id,
         project_slug=PROJECT_SLUG,
     )
@@ -855,7 +840,6 @@ def censor_admin_selection(fragments: list[dict[str, Any]], user: User) -> list[
         words = {
             item.id: item
             for item in PublicBookWord.objects.select_for_update()
-            .select_related("submitted_by")
             .filter(project_slug=PROJECT_SLUG, id__in=ranges_by_word_id.keys())
             .order_by("position")
         }
@@ -986,7 +970,12 @@ def submit_word(user: User, raw_word: str) -> PublicBookWord:
         if not _user_has_social_identity(user):
             raise ValueError(SOCIAL_IDENTITY_REQUIRED_MESSAGE)
 
-        next_available_at = _next_available_at_for_user(user, now=now)
+        submission_state = _submission_state_for_update(user)
+        next_available_at = None
+        if not getattr(user, "is_superuser", False):
+            next_available_at = submission_state.next_available_at
+            if next_available_at is not None and next_available_at <= now:
+                next_available_at = None
         if next_available_at is not None:
             raise ValueError("Следующее слово можно будет добавить через 24 часа после предыдущего.")
 
@@ -1005,10 +994,12 @@ def submit_word(user: User, raw_word: str) -> PublicBookWord:
                 position=state.total_words + 1,
                 word=normalized["word"],
                 normalized_word=normalized["normalized_word"],
-                submitted_by=user,
             )
             state.total_words += 1
             state.save(update_fields=("total_words", "updated_at"))
+            submission_state.words_count += 1
+            submission_state.next_available_at = now + SUBMISSION_INTERVAL
+            submission_state.save(update_fields=("words_count", "next_available_at"))
             _reset_moderation_violations(user)
             return word
 

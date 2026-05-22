@@ -164,12 +164,6 @@ class PublicBookWord(models.Model):
         blank=True,
         related_name="censored_public_book_words",
     )
-    submitted_by = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name="public_book_words",
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         verbose_name = "Слово книги сообщества"
@@ -183,14 +177,44 @@ class PublicBookWord(models.Model):
         ]
         indexes = [
             models.Index(fields=("project_slug", "position")),
-            models.Index(fields=("project_slug", "created_at")),
             models.Index(fields=("project_slug", "is_censored")),
-            models.Index(fields=("submitted_by", "created_at")),
             models.Index(fields=("project_slug", "normalized_word")),
         ]
 
     def __str__(self) -> str:
         return f"{self.position}. {self.word}"
+
+
+class PublicBookSubmissionState(models.Model):
+    PROJECT_SLUG = PublicBookState.PROJECT_SLUG
+
+    project_slug = models.SlugField(max_length=80, default=PROJECT_SLUG)
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="public_book_submission_states",
+    )
+    words_count = models.PositiveIntegerField(default=0)
+    next_available_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Состояние отправок в книгу"
+        verbose_name_plural = "Состояния отправок в книгу"
+        ordering = ("project_slug", "user_id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("project_slug", "user"),
+                name="special_projects_public_book_unique_submission_state",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=("project_slug", "next_available_at")),
+            models.Index(fields=("user", "next_available_at")),
+            models.Index(fields=("project_slug", "words_count")),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.project_slug}:{self.user_id}:{self.words_count}"
 
 
 class PublicBookProjectSettings(models.Model):

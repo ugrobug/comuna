@@ -74,11 +74,9 @@ class PublicBookStateAdmin(admin.ModelAdmin):
 
 @admin.register(PublicBookWord)
 class PublicBookWordAdmin(admin.ModelAdmin):
-    list_display = ("project_slug", "position", "word", "submitted_by", "created_at")
-    list_filter = ("project_slug", "created_at")
-    search_fields = ("word", "normalized_word", "submitted_by__username", "submitted_by__email")
-    autocomplete_fields = ("submitted_by",)
-    readonly_fields = ("created_at",)
+    list_display = ("project_slug", "position", "word", "is_censored")
+    list_filter = ("project_slug", "is_censored")
+    search_fields = ("word", "normalized_word")
     ordering = ("project_slug", "position")
 
 
