@@ -475,6 +475,8 @@ def serialize_word(word: PublicBookWord) -> dict[str, Any]:
 def _next_available_at_for_user(user: User | None, now=None):
     if user is None:
         return None
+    if getattr(user, "is_superuser", False):
+        return None
     latest = (
         PublicBookWord.objects.filter(project_slug=PROJECT_SLUG, submitted_by=user)
         .order_by("-created_at", "-id")

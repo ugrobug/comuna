@@ -367,6 +367,25 @@ class PublicBookTests(TestCase):
         self.assertEqual(status["submit_block_reason"], "cooldown")
         self.assertIsNotNone(status["next_available_at"])
 
+    def test_superuser_can_submit_without_24_hour_submission_interval(self):
+        user = self.make_user("superuser-book-user", telegram=True)
+        user.is_staff = True
+        user.is_superuser = True
+        user.save(update_fields=("is_staff", "is_superuser"))
+        now = timezone.now()
+        first = submit_word(user, "Первое")
+        first.created_at = now
+        first.save(update_fields=("created_at",))
+
+        with patch("special_projects.public_book.timezone.now", return_value=now + timedelta(minutes=5)):
+            status = project_status_for_user(user)
+            second = submit_word(user, "Второе")
+
+        self.assertTrue(status["can_submit"])
+        self.assertEqual(status["submit_block_reason"], "")
+        self.assertIsNone(status["next_available_at"])
+        self.assertEqual(second.position, 2)
+
     def test_submit_word_rejects_full_book(self):
         user = self.make_user("late-book-user", telegram=True)
         PublicBookState.objects.create(project_slug=PROJECT_SLUG, total_words=MAX_WORDS)
