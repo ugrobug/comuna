@@ -303,6 +303,7 @@
 <div class="flex flex-col gap-6 max-w-3xl">
   <div class="rounded-xl border border-slate-200 border-b-slate-300 bg-white p-4 dark:border-zinc-800 dark:border-t-zinc-700 dark:bg-zinc-900 sm:p-6">
     <Post
+      class="post-detail-post-compact-top"
       post={postView}
       view="cozy"
       actions={true}
@@ -319,3 +320,9 @@
 
   <PostComments postId={postData.id} postAuthor={postData.author?.username ?? null} />
 </div>
+
+<style>
+  :global(.post.post-detail-post-compact-top) {
+    padding-top: 0;
+  }
+</style>
