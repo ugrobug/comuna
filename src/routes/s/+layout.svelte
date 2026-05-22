@@ -324,6 +324,7 @@
   @media (max-width: 900px) {
     .special-shell {
       display: block;
+      margin-top: -16px;
     }
 
     .mobile-menu-bar {
