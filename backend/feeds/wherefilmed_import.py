@@ -425,6 +425,9 @@ def _raw_data(
         template_data["genre"] = genre
     if year:
         template_data["release_date"] = f"{year}-01-01"
+    poster_url = _public_url(image_payload.get("poster_url"))
+    if poster_url:
+        template_data["poster_url"] = poster_url
     template_data["content_kind"] = _movie_content_kind(movie)
     return {
         "source": "manual_comun",
@@ -447,6 +450,33 @@ def _raw_data(
     }
 
 
+def _sync_existing_template_poster(post: Post) -> None:
+    raw_data = post.raw_data if isinstance(post.raw_data, dict) else {}
+    wherefilmed_data = raw_data.get("wherefilmed")
+    if not isinstance(wherefilmed_data, dict):
+        return
+    images = wherefilmed_data.get("images")
+    if not isinstance(images, dict):
+        return
+    poster_url = _public_url(images.get("poster_url"))
+    if not poster_url:
+        return
+
+    template = raw_data.get("template")
+    if not isinstance(template, dict) or str(template.get("type") or "").strip() != "movie_review":
+        return
+    template_data = template.get("data")
+    if not isinstance(template_data, dict):
+        template_data = {}
+        template["data"] = template_data
+    if template_data.get("poster_url") == poster_url:
+        return
+
+    template_data["poster_url"] = poster_url
+    post.raw_data = raw_data
+    post.save(update_fields=["raw_data", "updated_at"])
+
+
 def _import_payload(payload: dict[str, Any]) -> tuple[Post, bool]:
     if payload.get("payload_version") != 1:
         raise WhereFilmedImportError("unsupported payload_version")
@@ -458,6 +488,7 @@ def _import_payload(payload: dict[str, Any]) -> tuple[Post, bool]:
     existing = Post.objects.filter(author=author, message_id=message_id).first()
     comun, category = _target_comun_and_category()
     if existing:
+        _sync_existing_template_poster(existing)
         ComunPostCategoryAssignment.objects.update_or_create(
             comun=comun,
             post=existing,

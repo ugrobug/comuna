@@ -96,7 +96,10 @@ class WhereFilmedImportTests(TestCase):
         self.assertEqual(post.raw_data["template"]["type"], "movie_review")
         self.assertEqual(post.raw_data["template"]["data"]["title"], "Дружба")
         self.assertEqual(post.raw_data["template"]["data"]["original_title"], "Friendship")
-        self.assertNotIn("poster_url", post.raw_data["template"]["data"])
+        self.assertEqual(
+            post.raw_data["template"]["data"]["poster_url"],
+            "https://tambur.pub/media/posts/wherefilmed/123/poster-960.webp",
+        )
         self.assertEqual(
             post.raw_data["wherefilmed"]["images"]["poster_url"],
             "https://tambur.pub/media/posts/wherefilmed/123/poster-960.webp",
@@ -149,6 +152,12 @@ class WhereFilmedImportTests(TestCase):
         )
         self.assertEqual(first.status_code, 201, first.content.decode())
 
+        post = Post.objects.get(message_id=-3000000000123)
+        raw_data = post.raw_data
+        raw_data["template"]["data"].pop("poster_url", None)
+        post.raw_data = raw_data
+        post.save(update_fields=["raw_data", "updated_at"])
+
         download_image.reset_mock()
         second = self.client.post(
             reverse("wherefilmed-import"),
@@ -161,3 +170,8 @@ class WhereFilmedImportTests(TestCase):
         self.assertEqual(second.json()["url"], first.json()["url"])
         self.assertEqual(Post.objects.count(), 1)
         download_image.assert_not_called()
+        post.refresh_from_db()
+        self.assertEqual(
+            post.raw_data["template"]["data"]["poster_url"],
+            "https://tambur.pub/media/posts/wherefilmed/123/poster-960.webp",
+        )
