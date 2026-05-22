@@ -1,6 +1,8 @@
 <script lang="ts">
   import { page } from '$app/stores'
-  import { BookOpen, Film, Home, Icon, ListBullet, MapPin } from 'svelte-hero-icons'
+  import { Bars3, BookOpen, Film, Home, Icon, ListBullet, MapPin, XMark } from 'svelte-hero-icons'
+
+  let mobileMenuOpen = false
 
   const projects = [
     {
@@ -25,12 +27,60 @@
 
   const isActiveProject = (href: string) =>
     $page.url.pathname === href || $page.url.pathname.startsWith(`${href}/`)
+
+  $: if ($page.url.pathname) {
+    mobileMenuOpen = false
+  }
+
+  const closeMobileMenu = () => {
+    mobileMenuOpen = false
+  }
+
+  const handleKeydown = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') {
+      closeMobileMenu()
+    }
+  }
 </script>
 
+<svelte:window on:keydown={handleKeydown} />
+
 <div class="special-shell">
-  <aside class="special-sidebar" aria-label="Спецпроекты">
+  <div class="mobile-menu-bar">
+    <button
+      class="mobile-menu-button"
+      type="button"
+      aria-label="Открыть меню спецпроектов"
+      aria-expanded={mobileMenuOpen}
+      aria-controls="special-projects-sidebar"
+      on:click={() => (mobileMenuOpen = true)}
+    >
+      <Icon src={Bars3} size="18" mini />
+      <span>Спецпроекты</span>
+    </button>
+  </div>
+
+  {#if mobileMenuOpen}
+    <button
+      class="mobile-menu-backdrop"
+      type="button"
+      aria-label="Закрыть меню спецпроектов"
+      on:click={closeMobileMenu}
+    ></button>
+  {/if}
+
+  <aside
+    id="special-projects-sidebar"
+    class:mobile-open={mobileMenuOpen}
+    class="special-sidebar"
+    aria-label="Спецпроекты"
+  >
     <nav class="special-nav">
-      <a class="site-link" href="/">
+      <button class="mobile-close-button" type="button" aria-label="Закрыть меню" on:click={closeMobileMenu}>
+        <Icon src={XMark} size="18" mini />
+      </button>
+
+      <a class="site-link" href="/" on:click={closeMobileMenu}>
         <span class="nav-icon">
           <Icon src={Home} size="18" mini />
         </span>
@@ -52,6 +102,7 @@
               class="project-link"
               href={project.href}
               aria-current={isActiveProject(project.href) ? 'page' : undefined}
+              on:click={closeMobileMenu}
             >
               <span class="project-icon">
                 <Icon src={project.icon} size="18" mini />
@@ -79,6 +130,12 @@
     min-height: 100vh;
     background: #f8fafc;
     color: #111827;
+  }
+
+  .mobile-menu-bar,
+  .mobile-menu-backdrop,
+  .mobile-close-button {
+    display: none;
   }
 
   .special-sidebar {
@@ -269,46 +326,113 @@
       display: block;
     }
 
-    .special-sidebar {
+    .mobile-menu-bar {
       position: sticky;
       top: 72px;
-      height: auto;
-      border-right: 0;
+      z-index: 30;
+      display: flex;
+      justify-content: flex-start;
       border-bottom: 1px solid #e5e7eb;
+      background: rgba(255, 255, 255, 0.94);
       padding: 10px 12px;
+      backdrop-filter: blur(12px);
+    }
+
+    .mobile-menu-button {
+      display: inline-flex;
+      min-height: 38px;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      background: #ffffff;
+      color: #111827;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 0;
+      padding: 0 12px;
+    }
+
+    .mobile-menu-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 49;
+      display: block;
+      border: 0;
+      background: rgba(15, 23, 42, 0.46);
+      padding: 0;
+    }
+
+    .mobile-close-button {
+      display: inline-flex;
+      width: 38px;
+      height: 38px;
+      align-items: center;
+      justify-content: center;
+      justify-self: end;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #ffffff;
+      color: #111827;
+      padding: 0;
+    }
+
+    .special-sidebar {
+      position: fixed;
+      inset: 0 auto 0 0;
+      z-index: 50;
+      width: min(320px, 86vw);
+      height: 100dvh;
+      border-right: 1px solid #e5e7eb;
+      border-bottom: 0;
+      background: #f8fafc;
+      padding: max(16px, env(safe-area-inset-top)) 14px 18px;
+      transform: translateX(-105%);
+      transition:
+        transform 180ms ease,
+        visibility 180ms ease;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .special-sidebar.mobile-open {
+      transform: translateX(0);
+      visibility: visible;
+      pointer-events: auto;
     }
 
     .special-nav {
-      gap: 8px;
-    }
-
-    .projects-group {
-      margin-top: 0;
-    }
-
-    .group-title {
-      min-height: 28px;
-      padding: 0 2px;
+      gap: 12px;
     }
 
     .project-links {
-      display: flex;
-      gap: 8px;
-      overflow-x: auto;
-      padding-bottom: 2px;
+      display: grid;
     }
 
     .project-link {
-      min-width: 210px;
+      min-width: 0;
     }
 
     .site-link {
-      width: max-content;
       min-height: 38px;
     }
 
-    :global(.dark) .special-sidebar {
+    :global(.dark) .mobile-menu-bar {
       border-bottom-color: #27272a;
+      background: rgba(9, 9, 11, 0.92);
+    }
+
+    :global(.dark) .mobile-menu-button,
+    :global(.dark) .mobile-close-button {
+      border-color: #3f3f46;
+      background: #18181b;
+      color: #f4f4f5;
+    }
+
+    :global(.dark) .special-sidebar {
+      border-right-color: #27272a;
+      background: #09090b;
     }
   }
 </style>
