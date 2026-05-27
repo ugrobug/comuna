@@ -202,6 +202,47 @@
   const canDeleteComun = () => Boolean(comun?.can_manage_moderators && $siteToken)
   const isComunCreator = () =>
     Boolean($siteToken && $siteUser?.id && comun?.creator?.id && $siteUser.id === comun.creator.id)
+  const applyPostCategory = (
+    post: BackendPost,
+    category: BackendComunCategory | null,
+    categoryId: number | null
+  ): BackendPost => ({
+    ...post,
+    comun_category: category,
+    comun_category_id: categoryId,
+  })
+  const withCurrentComunContext = (post: BackendPost): BackendPost => ({
+    ...post,
+    comun_slug: post.comun_slug ?? comun?.slug ?? null,
+    comun: {
+      ...(post.comun ?? {
+        id: comun?.id ?? 0,
+        name: comun?.name ?? '',
+        slug: comun?.slug ?? '',
+        logo_url: comun?.logo_url ?? null,
+      }),
+      knowledge_base_enabled: Boolean(comun?.knowledge_base_enabled),
+      can_moderate: Boolean(comun?.can_moderate),
+    },
+  })
+  const handlePostCategoryChange = (
+    event: CustomEvent<{
+      postId: number
+      category: BackendComunCategory | null
+      categoryId: number | null
+    }>
+  ) => {
+    const { postId, category, categoryId } = event.detail
+    posts = posts
+      .map((post) => (post.id === postId ? applyPostCategory(post, category, categoryId) : post))
+      .filter((post) => !selectedCategorySlug || post.comun_category?.slug === selectedCategorySlug)
+    if (comun?.welcome_post?.id === postId) {
+      comun = {
+        ...comun,
+        welcome_post: applyPostCategory(comun.welcome_post, category, categoryId),
+      }
+    }
+  }
   const formatRatingValue = (value?: number | null) => {
     const normalized = Math.max(Number(value ?? 0) || 0, 0)
     return new Intl.NumberFormat('ru-RU', {
@@ -212,7 +253,7 @@
 
   $: siteTitle = env.PUBLIC_SITE_TITLE || 'Тамбур'
   $: comunName = comun?.name || 'Сообщество'
-  $: welcomePostView = comun?.welcome_post ? backendPostToPostView(comun.welcome_post) : null
+  $: welcomePostView = comun?.welcome_post ? backendPostToPostView(withCurrentComunContext(comun.welcome_post)) : null
   $: comunTopMembers = comun?.activity?.top_members ?? []
   $: comunParticipantsCount = comun?.activity?.participants_count ?? comunTopMembers.length
   $: minimumAuthorRatingToPost = Math.max(Number(comun?.minimum_author_rating_to_post ?? 0) || 0, 0)
@@ -1171,16 +1212,6 @@
               </div>
             {/if}
           </div>
-          {#if comun?.website_url}
-            <a
-              href={comun.website_url}
-              target="_blank"
-              rel="nofollow noopener"
-              class="inline-flex items-center rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-zinc-800/60"
-            >
-              Сайт
-            </a>
-          {/if}
           {#if $siteToken && comun?.slug}
             <button
               type="button"
@@ -1301,12 +1332,15 @@
         actions={true}
         showReadMore={false}
         showFullBody={false}
+        hideCommunity={true}
+        {comunCategories}
         linkOverride={buildBackendPostPath(comun.welcome_post)}
         userUrlOverride={comun.welcome_post.author?.username ? `/${comun.welcome_post.author.username}` : undefined}
         communityUrlOverride={backendPostCommunityPath(comun.welcome_post)}
         subscribeUrl={comun.welcome_post.channel_url ?? comun.welcome_post.author?.channel_url}
         subscribeLabel="Подписаться"
         hideSubscribe={isSpecialProjectPost(comun.welcome_post)}
+        on:categorychange={handlePostCategoryChange}
       />
     </section>
   {/if}
@@ -1316,18 +1350,21 @@
       {#each visiblePosts as backendPost (backendPost.id)}
         <div class="flex flex-col gap-3">
           <Post
-            post={backendPostToPostView(backendPost)}
+            post={backendPostToPostView(withCurrentComunContext(backendPost))}
             class="feed-shortcut-post rounded-2xl border border-slate-200/80 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 shadow-sm px-4 sm:px-5"
             view="cozy"
             actions={true}
             showReadMore={false}
             showFullBody={false}
+            hideCommunity={true}
+            {comunCategories}
             linkOverride={buildBackendPostPath(backendPost)}
             userUrlOverride={backendPost.author?.username ? `/${backendPost.author.username}` : undefined}
             communityUrlOverride={backendPostCommunityPath(backendPost)}
             subscribeUrl={backendPost.channel_url ?? backendPost.author?.channel_url}
             subscribeLabel="Подписаться"
             hideSubscribe={isSpecialProjectPost(backendPost)}
+            on:categorychange={handlePostCategoryChange}
           />
         </div>
       {/each}

@@ -30,6 +30,7 @@
   import { getTagKey, getTagName, normalizeTag, type TagItem } from '$lib/tags'
   import {
     buildPostReadUrl,
+    type BackendComunCategory,
     type BackendBugReportConfirmation,
     type BackendPoll,
     type BackendPostRating,
@@ -56,6 +57,7 @@
   export let subscribeLabel: string = 'Подписаться'
   export let hideSubscribe: boolean = false
   export let disableUserLink: boolean | undefined = undefined
+  export let comunCategories: BackendComunCategory[] = []
 
   $: postUrl = linkOverride ?? postLink(post.post)
   $: isBackendPost = Boolean(linkOverride)
@@ -527,6 +529,7 @@
     <PostActions
       on:hide
       on:deleted={() => (removedByAdmin = true)}
+      on:categorychange
       {post}
       style="grid-area: actions;"
       {view}
@@ -537,6 +540,7 @@
       backendViews={isBackendPost ? backendViewsValue : null}
       {userUrlOverride}
       {communityUrlOverride}
+      {comunCategories}
     />
   {:else if view == 'compact'}
     <div class="flex flex-row items-center gap-2 text-sm">

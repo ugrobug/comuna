@@ -904,6 +904,8 @@ export const backendPostToPostView = (
       template: post.template ?? null,
       enabled_template_editor_blocks: post.enabled_template_editor_blocks ?? [],
       comun_slug: comunSlug,
+      comun_category_id: post.comun_category_id ?? null,
+      comun_category: post.comun_category ?? null,
       comun_knowledge_base_enabled: Boolean(post.comun?.knowledge_base_enabled),
       comun_can_moderate: Boolean(post.comun?.can_moderate),
       can_manage_bug_report_status: Boolean(post.can_manage_bug_report_status),
