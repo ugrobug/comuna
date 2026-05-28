@@ -8,6 +8,7 @@ from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
+from communities import service as community_service
 from communities import views as community_views
 from feeds.models import Author, Post, PostRead
 from my_feed import serializers as my_feed_serializers
@@ -118,6 +119,7 @@ def auth_feed_settings(request: HttpRequest) -> HttpResponse:
         or previous_settings.get("my_feed_comun_categories")
         != next_settings.get("my_feed_comun_categories")
     ):
+        community_service._sync_comun_subscriber_counts(previous_settings, next_settings)
         bump_public_cache_prefix("comuns-sidebar")
         bump_public_cache_prefix("top-comuns")
     return JsonResponse(

@@ -4,7 +4,7 @@ from collections import defaultdict
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.db.models import Count, Q
+from django.db.models import Count
 from django.http import HttpRequest
 
 from communities.models import (
@@ -19,7 +19,6 @@ from communities import service as community_service
 from editor import service as editor_service
 from feeds.models import Author, Post, PostComment, PostCommentLike, PostFavorite, PostLike, PostRead, Tag
 from my_feed import service as my_feed_service
-from my_feed.models import UserFeedSettings
 
 User = get_user_model()
 
@@ -452,21 +451,8 @@ def _serialize_comun(
         "can_start_post": bool(can_post_without_category or can_post_category_ids),
     }
     if include_counts:
-        payload["subscribers_count"] = (
-            UserFeedSettings.objects.filter(
-                Q(my_feed_comuns__contains=[comun.slug])
-                | Q(my_feed_comun_categories__has_key=comun.slug)
-            )
-            .distinct()
-            .count()
-        )
-        payload["authors_count"] = (
-            community_service._comun_posts_base_queryset(comun)
-            .exclude(author_id__isnull=True)
-            .values("author_id")
-            .distinct()
-            .count()
-        )
+        payload["subscribers_count"] = int(getattr(comun, "subscribers_count", 0) or 0)
+        payload["authors_count"] = int(getattr(comun, "authors_count", 0) or 0)
     if include_activity:
         payload["activity"] = _serialize_comun_activity(request, comun)
     if include_manage_fields:

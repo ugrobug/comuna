@@ -200,6 +200,32 @@ class UserFeedSettingsApiTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content.decode())
         self.assertTrue(response.json()["has_customizations"])
 
+    def test_auth_feed_settings_updates_cached_comun_subscribers_count(self):
+        response = self.client.patch(
+            reverse("auth-feed-settings"),
+            data=json.dumps(
+                {
+                    "my_feed_comuns": [self.comun.slug],
+                    "my_feed_comun_categories": {self.comun.slug: ["general"]},
+                }
+            ),
+            content_type="application/json",
+            **self.auth_headers,
+        )
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        self.comun.refresh_from_db()
+        self.assertEqual(self.comun.subscribers_count, 1)
+
+        response = self.client.patch(
+            reverse("auth-feed-settings"),
+            data=json.dumps({"my_feed_comuns": [], "my_feed_comun_categories": {}}),
+            content_type="application/json",
+            **self.auth_headers,
+        )
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        self.comun.refresh_from_db()
+        self.assertEqual(self.comun.subscribers_count, 0)
+
     def test_my_feed_uses_saved_comun_subscriptions_without_query_filters(self):
         UserFeedSettings.objects.create(
             user=self.user,

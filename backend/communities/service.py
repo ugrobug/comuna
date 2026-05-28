@@ -17,7 +17,7 @@ except ImportError:  # optional dependency for lemmatization
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.db.models import Count, Q
+from django.db.models import Case, Count, F, IntegerField, Q, Value, When
 from django.http import HttpRequest
 from django.utils import timezone
 from django.utils.text import slugify
@@ -1063,6 +1063,97 @@ def _recalculate_comun_rating(comun_id: int) -> tuple[int, int, Decimal]:
     return votes_up, votes_down, rating_score
 
 
+def _subscribed_comun_slugs_from_settings(settings: dict | None) -> set[str]:
+    if not isinstance(settings, dict):
+        return set()
+    subscribed_slugs = {
+        str(slug or "").strip()
+        for slug in (settings.get("my_feed_comuns", []) or [])
+        if str(slug or "").strip()
+    }
+    category_selection = settings.get("my_feed_comun_categories", {}) or {}
+    if isinstance(category_selection, dict):
+        subscribed_slugs.update(
+            str(slug or "").strip()
+            for slug in category_selection.keys()
+            if str(slug or "").strip()
+        )
+    return subscribed_slugs
+
+
+def _sync_comun_subscriber_counts(previous_settings: dict, next_settings: dict) -> None:
+    previous_slugs = _subscribed_comun_slugs_from_settings(previous_settings)
+    next_slugs = _subscribed_comun_slugs_from_settings(next_settings)
+    added_slugs = next_slugs - previous_slugs
+    removed_slugs = previous_slugs - next_slugs
+    if added_slugs:
+        Comun.objects.filter(slug__in=added_slugs).update(subscribers_count=F("subscribers_count") + 1)
+    if removed_slugs:
+        Comun.objects.filter(slug__in=removed_slugs).update(
+            subscribers_count=Case(
+                When(subscribers_count__gt=0, then=F("subscribers_count") - 1),
+                default=Value(0),
+                output_field=IntegerField(),
+            )
+        )
+
+
+def _post_author_is_site_user(post: Post) -> bool:
+    author = getattr(post, "author", None)
+    if author is None and getattr(post, "author_id", None):
+        author = Author.objects.filter(id=post.author_id).first()
+    if not author:
+        return False
+    if getattr(author, "channel_id", None) or getattr(author, "channel_url", "") or getattr(author, "invite_url", ""):
+        return False
+    username = str(getattr(author, "username", "") or "").strip()
+    if not username:
+        return False
+    return User.objects.filter(username__iexact=username, is_active=True).exists()
+
+
+def _comun_site_user_posts_queryset(comun: Comun):
+    return (
+        _comun_posts_base_queryset(comun)
+        .filter(
+            author__channel_id__isnull=True,
+            author__channel_url="",
+            author__invite_url="",
+            author__username__in=User.objects.filter(is_active=True).values("username"),
+        )
+    )
+
+
+def _maybe_increment_comun_author_count_for_post(
+    post: Post | None,
+    *,
+    comun: Comun | None = None,
+) -> bool:
+    if not post or not getattr(post, "author_id", None):
+        return False
+    if bool(getattr(post, "is_pending", False)) or bool(getattr(post, "is_blocked", False)):
+        return False
+    if not _post_author_is_site_user(post):
+        return False
+    comun = comun or _post_comun(post)
+    if not comun:
+        return False
+    previous_site_posts = _comun_site_user_posts_queryset(comun).exclude(id=post.id)
+    if previous_site_posts.filter(author_id=post.author_id).exists():
+        return False
+    if previous_site_posts.exists():
+        Comun.objects.filter(id=comun.id).update(authors_count=F("authors_count") + 1)
+    else:
+        Comun.objects.filter(id=comun.id).update(
+            authors_count=Case(
+                When(authors_count__lt=1, then=Value(1)),
+                default=F("authors_count"),
+                output_field=IntegerField(),
+            )
+        )
+    return True
+
+
 def _candidate_comun_ids_for_post(post: Post | None) -> list[int]:
     if not post:
         return []
@@ -1268,6 +1359,7 @@ __all__ = [
     "_maybe_notify_new_author",
     "_maybe_notify_post_published_to_subscribers",
     "_maybe_notify_post_added_to_voting",
+    "_maybe_increment_comun_author_count_for_post",
     "_normalize_comun_category_name",
     "_normalize_comun_glossary_definition",
     "_normalize_comun_glossary_term",
@@ -1290,6 +1382,7 @@ __all__ = [
     "_site_user_avatar_url",
     "_slugify_title",
     "_sync_comun_glossary_terms",
+    "_sync_comun_subscriber_counts",
     "_sync_comun_logo_from_author",
     "_text_contains_external_links",
 ]

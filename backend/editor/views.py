@@ -495,6 +495,7 @@ def user_posts(request: HttpRequest) -> HttpResponse:
                 comun=comun,
                 category=comun_category,
             )
+            community_service._maybe_increment_comun_author_count_for_post(post, comun=comun)
             community_service._recalculate_comun_ratings_for_post(post)
         return JsonResponse({"ok": True, "post": _serialize_post_for_user(request, post, user)})
 
@@ -854,6 +855,10 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
             comun=next_comun,
             category=next_comun_category,
         )
+    if next_comun and not target_is_draft and (
+        current_is_draft or next_comun.id not in previous_comun_ids
+    ):
+        community_service._maybe_increment_comun_author_count_for_post(post, comun=next_comun)
     if (
         current_is_draft != target_is_draft
         or next_comun

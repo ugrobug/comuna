@@ -219,6 +219,8 @@ class Comun(models.Model):
     )
     votes_up = models.PositiveIntegerField(default=0, verbose_name="Буду использовать")
     votes_down = models.PositiveIntegerField(default=0, verbose_name="Не нравится")
+    subscribers_count = models.PositiveIntegerField(default=0, verbose_name="Подписчиков")
+    authors_count = models.PositiveIntegerField(default=0, verbose_name="Авторов")
     hide_from_home = models.BooleanField(
         default=False,
         verbose_name="Не показывать на главной",

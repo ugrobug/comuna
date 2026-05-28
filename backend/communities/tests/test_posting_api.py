@@ -55,6 +55,54 @@ class ComunPostingApiTests(TestCase):
 
         assignment = ComunPostCategoryAssignment.objects.get(comun=self.comun, post=post)
         self.assertEqual(assignment.category_id, self.category.id)
+        self.comun.refresh_from_db()
+        self.assertEqual(self.comun.authors_count, 1)
+
+    def test_comun_authors_count_increments_once_per_author(self):
+        for index in range(2):
+            response = self.client.post(
+                reverse("auth-posts"),
+                data=json.dumps(
+                    {
+                        "title": f"Пост автора {index}",
+                        "content": "{\"time\":1772104218738,\"blocks\":[{\"type\":\"paragraph\",\"data\":{\"text\":\"Текст\"}}]}",
+                        "author_source": "site",
+                        "comun_slug": self.comun.slug,
+                        "comun_category_id": self.category.id,
+                    }
+                ),
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, 200, response.content.decode())
+
+        self.comun.refresh_from_db()
+        self.assertEqual(self.comun.authors_count, 1)
+
+    def test_comun_authors_count_ignores_channel_posts(self):
+        channel_author = Author.objects.create(
+            username="channel-author",
+            title="Channel Author",
+            channel_id=12345,
+            channel_url="https://t.me/channel-author",
+        )
+        post = Post.objects.create(
+            author=channel_author,
+            message_id=12345,
+            title="Пост канала",
+            content="{}",
+            raw_data={"source": "manual_comun", "comun_slug": self.comun.slug},
+            is_pending=False,
+            is_blocked=False,
+        )
+
+        incremented = community_service._maybe_increment_comun_author_count_for_post(
+            post,
+            comun=self.comun,
+        )
+
+        self.assertFalse(incremented)
+        self.comun.refresh_from_db()
+        self.assertEqual(self.comun.authors_count, 0)
 
     def test_auth_posts_require_comun_for_published_post(self):
         response = self.client.post(

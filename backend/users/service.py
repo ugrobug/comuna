@@ -422,6 +422,14 @@ def _merge_feed_settings(target: User, source: User) -> None:
         source_settings.user = target
         source_settings.save(update_fields=["user", "updated_at"])
         return
+    previous_source_settings = {
+        "my_feed_comuns": source_settings.my_feed_comuns or [],
+        "my_feed_comun_categories": source_settings.my_feed_comun_categories or {},
+    }
+    previous_target_settings = {
+        "my_feed_comuns": target_settings.my_feed_comuns or [],
+        "my_feed_comun_categories": target_settings.my_feed_comun_categories or {},
+    }
     for field in ("my_feed_authors", "my_feed_tags", "my_feed_comuns", "hidden_authors"):
         merged = list(dict.fromkeys([*(getattr(target_settings, field) or []), *(getattr(source_settings, field) or [])]))
         setattr(target_settings, field, merged)
@@ -435,6 +443,12 @@ def _merge_feed_settings(target: User, source: User) -> None:
     }
     target_settings.save()
     source_settings.delete()
+    next_target_settings = {
+        "my_feed_comuns": target_settings.my_feed_comuns or [],
+        "my_feed_comun_categories": target_settings.my_feed_comun_categories or {},
+    }
+    community_service._sync_comun_subscriber_counts(previous_source_settings, {})
+    community_service._sync_comun_subscriber_counts(previous_target_settings, next_target_settings)
 
 
 def _merge_notification_preferences(target: User, source: User) -> None:

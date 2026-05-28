@@ -1368,7 +1368,6 @@ def comuns_list_create(request: HttpRequest) -> HttpResponse:
                 request,
                 comun,
                 current_user=current_user,
-                include_counts=False,
             )
             for comun in comuns
         ]
@@ -2012,6 +2011,7 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
             comun=comun,
             category=category,
         )
+        community_service._maybe_increment_comun_author_count_for_post(post, comun=comun)
         _recalculate_comun_rating(comun.id)
         serialized_post = editor_service._serialize_post_for_user(request, post, current_user)
         serialized_post["comun_category_id"] = category.id if category else None
