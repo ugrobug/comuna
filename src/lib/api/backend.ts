@@ -647,6 +647,8 @@ export type BackendComun = {
   id: number
   name: string
   slug: string
+  subscribers_count?: number
+  authors_count?: number
   website_url?: string | null
   logo_url?: string | null
   product_description?: string | null

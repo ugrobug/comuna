@@ -84,7 +84,7 @@ NOTIFICATION_EVENT_DEFINITIONS: list[dict[str, Any]] = [
     {
         "key": "public_book_reminder",
         "title": "Напоминание книги сообщества",
-        "description": "Одноразовое напоминание добавить следующее слово в книгу.",
+        "description": "Ежедневное напоминание добавить следующее слово в книгу, пока пользователь не отключит его.",
         "default_site_enabled": False,
         "default_telegram_enabled": True,
         "default_push_enabled": False,

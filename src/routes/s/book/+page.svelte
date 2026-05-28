@@ -529,7 +529,7 @@
   $: submitDisabled = submitLoading || loading
   $: needsSocialLink = Boolean($siteUser && !$siteUser.telegram_linked && !$siteUser.vk_linked)
   $: moderationLockedUntil = status?.moderation_locked_until || null
-  $: canShowReminder = Boolean($siteUser && status?.next_available_at)
+  $: canShowReminder = Boolean($siteUser && (status?.next_available_at || status?.reminder?.scheduled))
   $: reminderScheduled = Boolean(status?.reminder?.scheduled)
   $: reminderToggleLabel = reminderScheduled
     ? 'Напоминание включено'

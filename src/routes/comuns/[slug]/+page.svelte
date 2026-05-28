@@ -197,7 +197,6 @@
   $: visiblePosts = posts.filter(isAuthorVisible)
 
   const isModerator = () => Boolean(comun?.can_moderate && $siteToken)
-  const canPostInComun = () => Boolean(comun?.can_post && $siteToken)
   const canManageComunModerators = () => Boolean(comun?.can_manage_moderators && $siteToken)
   const canDeleteComun = () => Boolean(comun?.can_manage_moderators && $siteToken)
   const isComunCreator = () =>
@@ -251,18 +250,32 @@
     }).format(normalized)
   }
 
+  const formatComunCount = (value?: number | null) =>
+    new Intl.NumberFormat('ru-RU').format(Math.max(Number(value ?? 0) || 0, 0))
+
   $: siteTitle = env.PUBLIC_SITE_TITLE || 'Тамбур'
   $: comunName = comun?.name || 'Сообщество'
   $: welcomePostView = comun?.welcome_post ? backendPostToPostView(withCurrentComunContext(comun.welcome_post)) : null
-  $: comunTopMembers = comun?.activity?.top_members ?? []
-  $: comunParticipantsCount = comun?.activity?.participants_count ?? comunTopMembers.length
   $: minimumAuthorRatingToPost = Math.max(Number(comun?.minimum_author_rating_to_post ?? 0) || 0, 0)
   $: comunCategories = comun?.categories ?? []
   $: hasComunCategories = comunCategories.length > 0
+  $: hasUserWritableComunCategory = comunCategories.some(
+    (category) => !Boolean(category.only_moderators_can_post)
+  )
+  $: canShowComunPostButton = Boolean(comun?.slug && hasUserWritableComunCategory)
   $: myFeedComunSlugs = ($userSettings.myFeedComuns ?? []).map((slug) => slug.trim()).filter(Boolean)
   $: myFeedComunCategoryMap = $userSettings.myFeedComunCategories ?? {}
   $: currentComunSlug = (comun?.slug ?? '').trim()
   $: isSubscribedToComun = !!currentComunSlug && myFeedComunSlugs.includes(currentComunSlug)
+  $: initialComunSubscribed = Boolean(comun?.is_subscribed)
+  $: baseComunSubscribersCount = Math.max(Number(comun?.subscribers_count ?? 0) || 0, 0)
+  $: comunSubscribersCount = Math.max(
+    0,
+    baseComunSubscribersCount +
+      (isSubscribedToComun && !initialComunSubscribed ? 1 : 0) -
+      (!isSubscribedToComun && initialComunSubscribed ? 1 : 0)
+  )
+  $: comunAuthorsCount = Math.max(Number(comun?.authors_count ?? 0) || 0, 0)
   $: comunCategorySlugs = comunCategories.map((category) => category.slug).filter(Boolean)
   $: hasExplicitComunCategorySelection =
     !!currentComunSlug && Object.prototype.hasOwnProperty.call(myFeedComunCategoryMap, currentComunSlug)
@@ -369,9 +382,6 @@
 
   const comunWelcomePostRef = (value: BackendComun | null) =>
     String(value?.welcome_post_ref ?? value?.welcome_post_id ?? '').trim()
-
-  const userInitials = (username?: string | null) =>
-    (username || '?').trim().slice(0, 1).toUpperCase() || '?'
 
   const userDisplayName = (user?: { username?: string | null; display_name?: string | null } | null) => {
     const displayName = (user?.display_name ?? '').trim()
@@ -1170,9 +1180,19 @@
             <h1 class="text-2xl font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
               {comun?.name ?? 'Сообщество'}
             </h1>
+            <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-600 dark:text-zinc-400">
+              <span>Подписчиков: {formatComunCount(comunSubscribersCount)}</span>
+              <span>Авторов: {formatComunCount(comunAuthorsCount)}</span>
+            </div>
           </div>
         </div>
         <div class="flex flex-wrap items-center gap-2">
+          {#if canShowComunPostButton}
+            <Button size="sm" on:click={openComunPostEditor}>
+              <span slot="prefix" class="text-base leading-none">+</span>
+              Добавить пост
+            </Button>
+          {/if}
           <div class="relative">
             <Button
               color={isSubscribedToComun ? 'ghost' : undefined}
@@ -1239,42 +1259,6 @@
         <div class="text-sm text-slate-600 dark:text-zinc-400 whitespace-pre-line">
           <span class="font-medium text-slate-800 dark:text-zinc-200">Для кого:</span>
           {comun.target_audience}
-        </div>
-      {/if}
-
-      {#if comunTopMembers.length}
-        <div class="flex flex-col gap-2 pt-1">
-          <div class="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-zinc-400">
-            <span class="uppercase tracking-wide">Рейтинг активности</span>
-            <span>•</span>
-            <span>{comunParticipantsCount} участников</span>
-          </div>
-          <div class="flex flex-wrap items-end justify-between gap-3">
-            <div class="flex flex-wrap items-center gap-2">
-              {#each comunTopMembers as member}
-                <a
-                  href={`/id${member.user_id}`}
-                  class="inline-flex items-center justify-center h-9 w-9 rounded-full overflow-hidden border border-slate-200 dark:border-zinc-800 bg-slate-100 dark:bg-zinc-800 text-xs font-semibold text-slate-700 dark:text-zinc-200 hover:ring-2 hover:ring-blue-300/70 dark:hover:ring-blue-700/70 focus:outline-none focus:ring-2 focus:ring-blue-400/80 dark:focus:ring-blue-600/80 transition-shadow"
-                  title={`#${member.rank} @${member.username} — ${member.points} баллов`}
-                  aria-label={`#${member.rank} ${member.username}, ${member.points} баллов`}
-                >
-                  {#if member.avatar_url}
-                    <img
-                      src={member.avatar_url}
-                      alt={`Аватар @${member.username}`}
-                      class="h-full w-full object-cover"
-                      loading="lazy"
-                    />
-                  {:else}
-                    {userInitials(member.username)}
-                  {/if}
-                </a>
-              {/each}
-            </div>
-            {#if comun?.slug}
-              <Button size="sm" class="self-end" on:click={openComunPostEditor}>Написать</Button>
-            {/if}
-          </div>
         </div>
       {/if}
 
@@ -1376,11 +1360,6 @@
     <div class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-6 text-slate-600 dark:text-zinc-400">
       <div class="flex flex-col gap-4">
         <div>В этом сообществе пока нет публикаций.</div>
-        {#if comun?.slug && canPostInComun()}
-          <div>
-            <Button size="sm" on:click={openComunPostEditor}>Написать</Button>
-          </div>
-        {/if}
       </div>
     </div>
   {/if}

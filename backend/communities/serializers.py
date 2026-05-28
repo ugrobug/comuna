@@ -4,7 +4,7 @@ from collections import defaultdict
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.http import HttpRequest
 
 from communities.models import (
@@ -19,6 +19,7 @@ from communities import service as community_service
 from editor import service as editor_service
 from feeds.models import Author, Post, PostComment, PostCommentLike, PostFavorite, PostLike, PostRead, Tag
 from my_feed import service as my_feed_service
+from my_feed.models import UserFeedSettings
 
 User = get_user_model()
 
@@ -334,10 +335,27 @@ def _serialize_comun(
         if welcome_post:
             welcome_post_payload = editor_service._serialize_post_for_user(request, welcome_post, current_user)
 
+    subscribers_count = (
+        UserFeedSettings.objects.filter(
+            Q(my_feed_comuns__contains=[comun.slug]) | Q(my_feed_comun_categories__has_key=comun.slug)
+        )
+        .distinct()
+        .count()
+    )
+    authors_count = (
+        community_service._comun_posts_base_queryset(comun)
+        .exclude(author_id__isnull=True)
+        .values("author_id")
+        .distinct()
+        .count()
+    )
+
     payload = {
         "id": comun.id,
         "name": comun.name,
         "slug": comun.slug,
+        "subscribers_count": subscribers_count,
+        "authors_count": authors_count,
         "website_url": comun.website_url,
         "logo_url": community_service._comun_logo_url(request, comun),
         "product_description": comun.product_description,

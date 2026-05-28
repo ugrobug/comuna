@@ -509,6 +509,72 @@ def _expected_reminder_at_for_user(user: User | None):
     return state.next_available_at if state is not None else None
 
 
+def _pending_reminder_for_user(user: User | None) -> PublicBookReminder | None:
+    if user is None:
+        return None
+    return (
+        PublicBookReminder.objects.filter(
+            project_slug=PROJECT_SLUG,
+            user=user,
+            sent_at__isnull=True,
+        )
+        .order_by("scheduled_at", "id")
+        .first()
+    )
+
+
+def _latest_sent_reminder_at_for_user(user: User | None):
+    if user is None:
+        return None
+    return (
+        PublicBookReminder.objects.filter(
+            project_slug=PROJECT_SLUG,
+            user=user,
+            sent_at__isnull=False,
+        )
+        .order_by("-sent_at", "-scheduled_at", "-id")
+        .values_list("sent_at", flat=True)
+        .first()
+    )
+
+
+def _reminder_subscription_exists(user: User | None) -> bool:
+    return bool(
+        user is not None
+        and PublicBookReminder.objects.filter(project_slug=PROJECT_SLUG, user=user).exists()
+    )
+
+
+def _next_recurring_reminder_at_for_user(user: User, now=None):
+    current = now or timezone.now()
+    next_available_at = _expected_reminder_at_for_user(user)
+    if next_available_at and next_available_at > current:
+        return next_available_at
+
+    latest_sent_at = _latest_sent_reminder_at_for_user(user)
+    if latest_sent_at:
+        return max(latest_sent_at + SUBMISSION_INTERVAL, current)
+
+    return max(next_available_at, current) if next_available_at else None
+
+
+def _replace_pending_reminder_for_user(user: User, scheduled_at) -> PublicBookReminder | None:
+    if scheduled_at is None:
+        return None
+    PublicBookReminder.objects.filter(
+        project_slug=PROJECT_SLUG,
+        user=user,
+        sent_at__isnull=True,
+    ).exclude(scheduled_at=scheduled_at).delete()
+    reminder, _created = PublicBookReminder.objects.update_or_create(
+        project_slug=PROJECT_SLUG,
+        user=user,
+        scheduled_at=scheduled_at,
+        defaults={"sent_at": None},
+    )
+    return reminder
+
+
 def moderation_lock_until_for_user(user: User | None, now=None):
     if user is None:
         return None
@@ -534,24 +600,15 @@ def _user_has_social_identity(user: User | None) -> bool:
 
 
 def reminder_payload_for_user(user: User | None, now=None) -> dict[str, Any]:
-    scheduled_at = _expected_reminder_at_for_user(user)
-    if user is None or scheduled_at is None:
+    if user is None:
         return {"scheduled": False, "scheduled_at": None, "sent_at": None}
-    if scheduled_at <= (now or timezone.now()):
+    reminder = _pending_reminder_for_user(user)
+    if not reminder:
         return {"scheduled": False, "scheduled_at": None, "sent_at": None}
-    reminder = (
-        PublicBookReminder.objects.filter(
-            project_slug=PROJECT_SLUG,
-            user=user,
-            scheduled_at=scheduled_at,
-        )
-        .order_by("-id")
-        .first()
-    )
     return {
-        "scheduled": bool(reminder and reminder.sent_at is None),
-        "scheduled_at": reminder.scheduled_at.isoformat() if reminder else None,
-        "sent_at": reminder.sent_at.isoformat() if reminder and reminder.sent_at else None,
+        "scheduled": True,
+        "scheduled_at": reminder.scheduled_at.isoformat(),
+        "sent_at": None,
     }
 
 
@@ -1000,6 +1057,8 @@ def submit_word(user: User, raw_word: str) -> PublicBookWord:
             submission_state.words_count += 1
             submission_state.next_available_at = now + SUBMISSION_INTERVAL
             submission_state.save(update_fields=("words_count", "next_available_at"))
+            if _reminder_subscription_exists(user):
+                _replace_pending_reminder_for_user(user, submission_state.next_available_at)
             _reset_moderation_violations(user)
             return word
 
@@ -1014,24 +1073,11 @@ def schedule_reminder_for_user(user: User) -> PublicBookReminder:
     if not _user_has_telegram(user):
         raise ValueError("Чтобы получить напоминание, привяжите Telegram к учетной записи.")
 
-    scheduled_at = _expected_reminder_at_for_user(user)
+    scheduled_at = _next_recurring_reminder_at_for_user(user)
     if scheduled_at is None:
         raise ValueError("Сначала добавьте слово в книгу.")
 
-    if scheduled_at <= timezone.now():
-        raise ValueError("Вы уже можете добавить следующее слово.")
-
-    PublicBookReminder.objects.filter(
-        project_slug=PROJECT_SLUG,
-        user=user,
-        sent_at__isnull=True,
-    ).exclude(scheduled_at=scheduled_at).delete()
-
-    reminder, _created = PublicBookReminder.objects.get_or_create(
-        project_slug=PROJECT_SLUG,
-        user=user,
-        scheduled_at=scheduled_at,
-    )
+    reminder = _replace_pending_reminder_for_user(user, scheduled_at)
     return reminder
 
 
@@ -1039,7 +1085,6 @@ def cancel_reminder_for_user(user: User) -> int:
     deleted_count, _deleted_by_model = PublicBookReminder.objects.filter(
         project_slug=PROJECT_SLUG,
         user=user,
-        sent_at__isnull=True,
     ).delete()
     return deleted_count
 
@@ -1119,8 +1164,8 @@ def send_due_reminders(*, now=None, limit: int = 500) -> int:
     )
     for reminder in reminders:
         expected_scheduled_at = _expected_reminder_at_for_user(reminder.user)
-        if expected_scheduled_at != reminder.scheduled_at:
-            reminder.delete()
+        if expected_scheduled_at and expected_scheduled_at > current_time:
+            _replace_pending_reminder_for_user(reminder.user, expected_scheduled_at)
             continue
         if not _user_has_telegram(reminder.user):
             reminder.sent_at = current_time
@@ -1139,5 +1184,6 @@ def send_due_reminders(*, now=None, limit: int = 500) -> int:
         )
         reminder.sent_at = current_time
         reminder.save(update_fields=("sent_at", "updated_at"))
+        _replace_pending_reminder_for_user(reminder.user, current_time + SUBMISSION_INTERVAL)
         sent += 1
     return sent

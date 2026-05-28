@@ -428,18 +428,23 @@ class PublicBookTests(TestCase):
         self.assertTrue(send_mock.called)
         reminder.refresh_from_db()
         self.assertIsNotNone(reminder.sent_at)
+        next_reminder = PublicBookReminder.objects.get(user=user, sent_at__isnull=True)
+        self.assertEqual(next_reminder.scheduled_at, expected_at + timedelta(days=1))
 
     def test_cancel_reminder_removes_pending_reminders(self):
         user = self.make_user("cancel-reminder-book-user", telegram=True)
         now = timezone.now()
         submit_word(user, "Слово")
         self.set_book_next_available_at(user, now + timedelta(hours=1))
+        reminder = schedule_reminder_for_user(user)
+        reminder.sent_at = now
+        reminder.save(update_fields=("sent_at", "updated_at"))
         schedule_reminder_for_user(user)
 
         deleted = cancel_reminder_for_user(user)
 
-        self.assertEqual(deleted, 1)
-        self.assertFalse(PublicBookReminder.objects.filter(user=user, sent_at__isnull=True).exists())
+        self.assertEqual(deleted, 2)
+        self.assertFalse(PublicBookReminder.objects.filter(user=user).exists())
 
     def test_send_due_reminders_skips_stale_reminder_after_new_word(self):
         user = self.make_user("stale-reminder-book-user", telegram=True)
@@ -462,6 +467,13 @@ class PublicBookTests(TestCase):
         self.assertEqual(sent, 0)
         self.assertFalse(send_mock.called)
         self.assertFalse(PublicBookReminder.objects.filter(id=stale_reminder.id).exists())
+        self.assertTrue(
+            PublicBookReminder.objects.filter(
+                user=user,
+                scheduled_at=now + timedelta(hours=24),
+                sent_at__isnull=True,
+            ).exists()
+        )
 
     def test_discussion_post_is_public(self):
         post = ensure_public_book_discussion_post()
