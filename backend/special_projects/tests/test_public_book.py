@@ -429,7 +429,46 @@ class PublicBookTests(TestCase):
         reminder.refresh_from_db()
         self.assertIsNotNone(reminder.sent_at)
         next_reminder = PublicBookReminder.objects.get(user=user, sent_at__isnull=True)
-        self.assertEqual(next_reminder.scheduled_at, expected_at + timedelta(days=1))
+        self.assertEqual(
+            next_reminder.scheduled_at,
+            expected_at + timedelta(minutes=1, days=1),
+        )
+
+        with patch("notifications.service.send_site_notification_to_telegram") as send_mock:
+            sent = send_due_reminders(now=next_reminder.scheduled_at + timedelta(minutes=1))
+
+        self.assertEqual(sent, 1)
+        self.assertTrue(send_mock.called)
+        self.assertFalse(
+            PublicBookReminder.objects.filter(user=user, sent_at__isnull=True).exists()
+        )
+
+    def test_reminder_cycle_restarts_after_next_word(self):
+        user = self.make_user("restart-reminder-book-user", telegram=True)
+        now = timezone.now()
+        with patch("special_projects.public_book.timezone.now", return_value=now):
+            submit_word(user, "Первое")
+
+        first_reminder = schedule_reminder_for_user(user)
+        with patch("notifications.service.send_site_notification_to_telegram"):
+            send_due_reminders(now=first_reminder.scheduled_at)
+        second_reminder = PublicBookReminder.objects.get(user=user, sent_at__isnull=True)
+        with patch("notifications.service.send_site_notification_to_telegram"):
+            send_due_reminders(now=second_reminder.scheduled_at)
+
+        self.assertFalse(
+            PublicBookReminder.objects.filter(user=user, sent_at__isnull=True).exists()
+        )
+
+        second_word_at = second_reminder.scheduled_at + timedelta(hours=1)
+        with patch("special_projects.public_book.timezone.now", return_value=second_word_at):
+            submit_word(user, "Второе")
+
+        restarted_reminder = PublicBookReminder.objects.get(user=user, sent_at__isnull=True)
+        self.assertEqual(
+            restarted_reminder.scheduled_at,
+            second_word_at + timedelta(hours=24),
+        )
 
     def test_cancel_reminder_removes_pending_reminders(self):
         user = self.make_user("cancel-reminder-book-user", telegram=True)
