@@ -2098,19 +2098,21 @@
       if (!content.blocks) return '';
       const { byIndex: tocEntriesByIndex } = buildTocEntries(content.blocks)
       
-      // Обрабатываем мета-информацию
-      const previewImage = content.additional?.previewImage 
-        ? `<preview-image>${content.additional.previewImage}</preview-image>` 
-        : '';
-      const previewDescription = content.additional?.previewDescription 
-        ? `<preview-description>${content.additional.previewDescription}</preview-description>` 
-        : '';
-      const metaTitle = content.additional?.metaTitle 
-        ? `<meta-title>${content.additional.metaTitle}</meta-title>` 
-        : '';
-      const metaDescription = content.additional?.metaDescription 
-        ? `<meta-description>${content.additional.metaDescription}</meta-description>` 
-        : '';
+      // Обложка / врезка (Editor.js additional) — сразу в HTML, не <preview-image> (иначе URL текстом)
+      const previewImageUrl = String(content.additional?.previewImage || '').trim()
+      const previewImage = previewImageUrl
+        ? processImage(previewImageUrl, '', 'Preview image', '', '')
+        : ''
+      const previewDescriptionText = String(content.additional?.previewDescription || '').trim()
+      const previewDescription = previewDescriptionText
+        ? buildPreviewParagraphFromText(previewDescriptionText)
+        : ''
+      const metaTitle = content.additional?.metaTitle
+        ? `<meta-title>${content.additional.metaTitle}</meta-title>`
+        : ''
+      const metaDescription = content.additional?.metaDescription
+        ? `<meta-description>${content.additional.metaDescription}</meta-description>`
+        : ''
         
       const renderSpoilerContainer = (spoilerTitle: string, spoilerHtml: string): string => {
         if (!spoilerHtml.trim()) return ''

@@ -7,11 +7,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 def _csv_env(name: str, default: str = "") -> list[str]:
-    return [
-        value.strip().rstrip("/")
-        for value in os.environ.get(name, default).split(",")
-        if value.strip()
-    ]
+    return [value.strip().rstrip("/") for value in os.environ.get(name, default).split(",") if value.strip()]
+
 
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "")
 DEBUG = os.environ.get("DJANGO_DEBUG", "0") == "1"
@@ -26,9 +23,7 @@ if not DEBUG and SECRET_KEY == "dev-unsafe-secret-key":
     raise ValueError("Refusing to run with an unsafe DJANGO_SECRET_KEY in production")
 
 ALLOWED_HOSTS = [
-    host.strip()
-    for host in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
-    if host.strip()
+    host.strip() for host in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if host.strip()
 ]
 
 INSTALLED_APPS = [
@@ -50,6 +45,7 @@ INSTALLED_APPS = [
     "editor.apps.EditorConfig",
     "telegram_integration.apps.TelegramIntegrationConfig",
     "special_projects.apps.SpecialProjectsConfig",
+    "legacy_migration.apps.LegacyMigrationConfig",
 ]
 
 MIDDLEWARE = [
@@ -93,8 +89,21 @@ DATABASES = {
         "PASSWORD": os.environ.get("POSTGRES_PASSWORD", "rabotaem"),
         "HOST": os.environ.get("POSTGRES_HOST", "localhost"),
         "PORT": os.environ.get("POSTGRES_PORT", "5432"),
-    }
+    },
+    "romawho": {
+        "ENGINE": "legacy_migration.db_backends.mysql57",
+        "NAME": os.environ.get("MYSQL_ROMAWHO_DB", "romawho_posl1"),
+        "USER": os.environ.get("MYSQL_ROMAWHO_USER", "romawho_posl1"),
+        "PASSWORD": os.environ.get("MYSQL_ROMAWHO_PASSWORD", ""),
+        "HOST": os.environ.get("MYSQL_ROMAWHO_HOST", "localhost"),
+        "PORT": os.environ.get("MYSQL_ROMAWHO_PORT", "3306"),
+        "OPTIONS": {
+            "charset": "utf8mb4",
+        },
+    },
 }
+
+DATABASE_ROUTERS = ["legacy_migration.db_router.RomawhoRouter"]
 
 CACHES = {
     "default": {
@@ -170,20 +179,19 @@ WHEREFILMED_IMPORT_TOKEN = os.environ.get(
     "WHEREFILMED_IMPORT_TOKEN",
     os.environ.get("TAMBUR_EXPORT_TOKEN", ""),
 )
-WHEREFILMED_IMPORT_IMAGE_MAX_BYTES = int(
-    os.environ.get("WHEREFILMED_IMPORT_IMAGE_MAX_BYTES", str(15 * 1024 * 1024))
-)
+WHEREFILMED_IMPORT_IMAGE_MAX_BYTES = int(os.environ.get("WHEREFILMED_IMPORT_IMAGE_MAX_BYTES", str(15 * 1024 * 1024)))
 ALLOW_PASSWORD_REGISTRATION = os.environ.get("ALLOW_PASSWORD_REGISTRATION", "0") == "1"
-SITE_AUTH_TOKEN_MAX_AGE_SECONDS = int(
-    os.environ.get("SITE_AUTH_TOKEN_MAX_AGE_SECONDS", str(60 * 60 * 24 * 30))
-)
+SITE_AUTH_TOKEN_MAX_AGE_SECONDS = int(os.environ.get("SITE_AUTH_TOKEN_MAX_AGE_SECONDS", str(60 * 60 * 24 * 30)))
 SITE_AUTH_COOKIE_NAME = os.environ.get("SITE_AUTH_COOKIE_NAME", "comuna_site_token")
 SITE_AUTH_COOKIE_DOMAIN = os.environ.get("SITE_AUTH_COOKIE_DOMAIN", "")
 SITE_AUTH_COOKIE_SAMESITE = os.environ.get("SITE_AUTH_COOKIE_SAMESITE", "Lax")
-SITE_AUTH_COOKIE_SECURE = os.environ.get(
-    "SITE_AUTH_COOKIE_SECURE",
-    "0" if DEBUG else "1",
-) == "1"
+SITE_AUTH_COOKIE_SECURE = (
+    os.environ.get(
+        "SITE_AUTH_COOKIE_SECURE",
+        "0" if DEBUG else "1",
+    )
+    == "1"
+)
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_SSL_REDIRECT = os.environ.get("SECURE_SSL_REDIRECT", "0") == "1"
 SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "0" if DEBUG else "1") == "1"
@@ -207,9 +215,7 @@ VK_OIDC_JWKS_URL = os.environ.get("VK_OIDC_JWKS_URL", "")
 
 EMAIL_BACKEND = os.environ.get(
     "EMAIL_BACKEND",
-    "django.core.mail.backends.console.EmailBackend"
-    if DEBUG
-    else "django.core.mail.backends.smtp.EmailBackend",
+    "django.core.mail.backends.console.EmailBackend" if DEBUG else "django.core.mail.backends.smtp.EmailBackend",
 )
 EMAIL_HOST = os.environ.get("EMAIL_HOST", "localhost")
 EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "25"))
