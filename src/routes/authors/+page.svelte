@@ -6,7 +6,7 @@
   export let data
 
   const meta = EDITABLE_STATIC_PAGE_META.authors
-  const seoTitle = `${meta.heading} — ${env.PUBLIC_SITE_TITLE || 'Comuna'}`
+  const seoTitle = `${meta.heading} — ${env.PUBLIC_SITE_TITLE || 'Тамбур'}`
 </script>
 
 <div class="flex max-w-3xl flex-col gap-6">

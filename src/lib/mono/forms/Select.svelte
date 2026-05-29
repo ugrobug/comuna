@@ -25,6 +25,10 @@
   export let value: T | undefined = undefined
   export let placeholder: string | undefined = undefined
   export let id: string = ''
+  export let label: string = ''
+  export let selected: T | undefined = undefined
+  let className = ''
+  export { className as class }
 
   let open = false
   let element: HTMLSelectElement
@@ -87,6 +91,10 @@
 
   $: if (open) {
     openedSelectId.set(id)
+  }
+
+  $: if (value === undefined && selected !== undefined) {
+    value = selected
   }
 </script>
 
@@ -236,8 +244,13 @@
   }
 </style>
 
-<div class="custom-select-wrapper">
+<div class="custom-select-wrapper {className}">
   <button type="button" class="custom-select-label" on:click={() => open = !open}>
+    {#if label || $$slots.label}
+      <span class="custom-select-provided-label">
+        <slot name="label">{label}</slot>
+      </span>
+    {/if}
     <span class="custom-select-main">
       <span class="custom-select-text">
         {#if value}

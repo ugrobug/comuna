@@ -4,24 +4,14 @@
   import { page } from '$app/stores'
   import { env } from '$env/dynamic/public'
   import {
-    type BackendThematicFeed,
     buildFavoritesFeedUrl,
-    buildFreshFeedUrl,
     buildHomeFeedUrl,
     buildMyFeedUrl,
-    buildThematicFeedPostsUrl,
   } from '$lib/api/backend'
   import FeedPostsList from '$lib/components/feeds/FeedPostsList.svelte'
-  import {
-    buildMyFeedSettingsFromFolderPreset,
-    hasMyFeedCustomizations,
-  } from '$lib/feeds/myFeed'
-  import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import { siteToken, siteUser } from '$lib/siteAuth'
-  import { userSettings } from '$lib/settings'
-  import { t } from '$lib/translations.js'
+  import { feedSettingsHydrated, userSettings } from '$lib/settings'
   import { onDestroy, onMount } from 'svelte'
-  import { Cog6Tooth, Icon } from 'svelte-hero-icons'
   import type { ComponentType } from 'svelte'
   import type { BackendPost } from '$lib/api/backend'
 
@@ -37,9 +27,6 @@
   let offset = posts.length
   let hasMore = posts.length === pageSize
   let loadingMore = false
-  let hiddenReadCount = 0
-  let thematicFeedSlug = data.thematicSlug ?? ''
-  let thematicFeedMeta: BackendThematicFeed | null = data.thematicFeed ?? null
   let feedParam: string | null = null
   let readParam: string | null = null
   let readOnly = false
@@ -48,99 +35,39 @@
   let lastFeedKey: string | null = null
   let lastMyFeedKey = ''
   let scrollRaf: number | null = null
-  let folderSettingsOpen = false
-  let folderSettingsModalModulePromise: Promise<LazyModule> | null = null
   let myFeedSectionModulePromise: Promise<LazyModule> | null = null
 
-  const canManageCurrentFolder = () => {
-    if (!$siteUser || !thematicFeedMeta) return false
-    if ($siteUser.is_staff) return true
-    const currentUsername = ($siteUser.username ?? '').trim().toLowerCase()
-    if (!currentUsername) return false
-    return (thematicFeedMeta.moderators ?? []).some(
-      (moderator) => (moderator?.username ?? '').trim().toLowerCase() === currentUsername
-    )
-  }
-
-  const openCurrentFolderSettings = async () => {
-    if (!thematicFeedSlug) return
-    if (!$siteUser) {
-      const next = encodeURIComponent(`${$page.url.pathname}${$page.url.search}`)
-      goto(`/account?next=${next}`)
-      return
-    }
-    folderSettingsModalModulePromise ??= import(
-      '$lib/components/feeds/ThematicFolderSettingsModal.svelte'
-    )
-    folderSettingsOpen = true
-  }
-
-  const closeCurrentFolderSettings = () => {
-    folderSettingsOpen = false
-  }
-
-  const refreshCurrentFolderFeedAfterSettingsSave = async () => {
-    if (!browser) return
-    posts = []
-    offset = 0
-    hasMore = true
-    loadingMore = false
-    hiddenReadCount = 0
-    await loadMore()
-  }
-
-  const applyThematicFeedToMyFeed = async () => {
-    if (!thematicFeedMeta) return
-    if (!$siteUser) {
-      const next = encodeURIComponent(`${$page.url.pathname}${$page.url.search}`)
-      goto(`/account?next=${next}`)
-      return
-    }
-    if (browser && hasMyFeedCustomizations($userSettings)) {
-      const confirmed = window.confirm(
-        'У вас уже настроена "Моя лента". Нажатие на кнопку заменит текущие настройки настройками папки. После этого вы сможете дополнительно настроить свою ленту. Продолжить?'
-      )
-      if (!confirmed) return
-    }
-    $userSettings = buildMyFeedSettingsFromFolderPreset($userSettings, thematicFeedMeta)
-    goto('/?feed=mine')
-  }
-
-  const onThematicFeedUpdated = (folder: BackendThematicFeed) => {
-    thematicFeedMeta = folder
-  }
-
-  const buildPageUrl = (currentOffset: number) => {
+  const buildPageUrl = (currentOffset: number, limit = pageSize) => {
     let baseUrl = buildHomeFeedUrl({
       hideRead: effectiveHideRead,
       onlyRead: readOnly,
+      card: true,
     })
-    if (feedType === 'fresh') {
-      baseUrl = buildFreshFeedUrl({
-        hideRead: effectiveHideRead,
-        onlyRead: readOnly,
-      })
-    } else if (feedType === 'favorites') {
+    if (feedType === 'favorites') {
       baseUrl = buildFavoritesFeedUrl()
-    } else if (feedType === 'thematic') {
-      baseUrl = buildThematicFeedPostsUrl(thematicFeedSlug, {
-        hideRead: effectiveHideRead,
-        onlyRead: readOnly,
-      })
     } else if (feedType === 'mine') {
-      baseUrl = buildMyFeedUrl(
-        selectedRubrics,
-        selectedAuthors,
-        selectedMyFeedTags,
-        selectedMyFeedComuns,
-        selectedMyFeedComunCategories,
-        hideNegativeMyFeed,
-        effectiveHideRead,
-        readOnly
-      )
+      baseUrl = $siteUser
+        ? buildMyFeedUrl(
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            hideNegativeMyFeed,
+            effectiveHideRead,
+            readOnly
+          )
+        : buildMyFeedUrl(
+            selectedMyFeedAuthors,
+            [],
+            selectedMyFeedComuns,
+            selectedMyFeedComunCategories,
+            hideNegativeMyFeed,
+            effectiveHideRead,
+            readOnly
+          )
     }
-    const url = new URL(baseUrl)
-    url.searchParams.set('limit', String(pageSize))
+    const url = new URL(baseUrl, $page.url.origin)
+    url.searchParams.set('limit', String(limit))
     url.searchParams.set('offset', String(currentOffset))
     return url.toString()
   }
@@ -154,17 +81,16 @@
     return !hiddenAuthorKeys.has(key)
   }
 
-  const loadMore = async () => {
+  const loadMore = async (limit = pageSize) => {
     if (!browser || loadingMore || !hasMore) return
     if (feedType === 'mine' && !canLoadMyFeed) return
     if (feedType === 'favorites' && !$siteUser) return
-    if (feedType === 'thematic' && !thematicFeedSlug) return
     if (readOnly && !$siteUser) return
     loadingMore = true
     try {
       const token = $siteToken
       const headers = token ? { Authorization: `Bearer ${token}` } : undefined
-      const response = await fetch(buildPageUrl(offset), {
+      const response = await fetch(buildPageUrl(offset, limit), {
         headers,
       })
       if (!response.ok) {
@@ -172,20 +98,15 @@
         return
       }
       const payload = await response.json()
-      if (payload?.thematic_feed && feedType === 'thematic') {
-        thematicFeedMeta = payload.thematic_feed
-      }
-      if (typeof payload.hidden_read_count === 'number') {
-        hiddenReadCount = payload.hidden_read_count
-      }
       const nextPosts = payload.posts ?? []
       if (nextPosts.length) {
         posts = [...posts, ...nextPosts]
         offset += nextPosts.length
       }
-      if (nextPosts.length < pageSize) {
+      if (nextPosts.length < limit) {
         hasMore = false
       }
+      return nextPosts.length
     } catch (error) {
       console.error('Failed to load more posts:', error)
     } finally {
@@ -248,9 +169,6 @@
     ) {
       lastPostsRef = data.posts
       posts = data.posts ?? []
-      if (data.feedType === 'thematic') {
-        thematicFeedMeta = data.thematicFeed ?? null
-      }
       offset = posts.length
       hasMore = posts.length === pageSize
       loadingMore = false
@@ -258,24 +176,18 @@
   }
 
   $: feedParam = $page.url.searchParams.get('feed')
-  $: thematicFeedSlug = ($page.url.searchParams.get('theme') ?? '').trim()
   $: readParam = $page.url.searchParams.get('read')
   $: readOnly = readParam === '1' || readParam === 'true' || readParam === 'yes'
 
-  $: selectedRubrics = $userSettings.myFeedRubrics ?? []
-  $: selectedAuthors = $userSettings.myFeedAuthors ?? []
-  $: selectedMyFeedTags = $userSettings.myFeedTags ?? []
   $: selectedMyFeedComuns = $userSettings.myFeedComuns ?? []
+  $: selectedMyFeedAuthors = $userSettings.myFeedAuthors ?? []
   $: selectedMyFeedComunCategories = $userSettings.myFeedComunCategories ?? {}
-  $: myFeedHasBaseSettings =
-    selectedRubrics.length > 0 ||
-    selectedAuthors.length > 0 ||
-    selectedMyFeedTags.length > 0 ||
-    selectedMyFeedComuns.length > 0
+  $: myFeedHasBaseSettings = selectedMyFeedComuns.length > 0 || selectedMyFeedAuthors.length > 0
   $: hiddenAuthorKeys = new Set(
     ($userSettings.hiddenAuthors ?? []).map((value) => value.toLowerCase())
   )
-  $: canLoadMyFeed = feedType === 'mine' && $siteUser && myFeedHasBaseSettings
+  $: canLoadMyFeed =
+    feedType === 'mine' && $siteUser && $feedSettingsHydrated && myFeedHasBaseSettings
   $: hideNegativeMyFeed = $userSettings.myFeedHideNegative ?? true
   $: hideReadPosts = ($userSettings.hideReadPosts ?? false) && !!$siteUser
   $: effectiveHideRead = hideReadPosts && !readOnly
@@ -288,25 +200,17 @@
   $: if (data?.feedType && data.feedType !== lastFeedType && feedParam) {
     lastFeedType = data.feedType
     feedType = data.feedType ?? 'hot'
-    thematicFeedMeta = feedType === 'thematic' ? null : thematicFeedMeta
     if (feedType === 'mine' || feedType === 'favorites') {
       posts = []
       offset = 0
       hasMore = false
       loadingMore = false
-      hiddenReadCount = 0
-      thematicFeedMeta = null
       lastMyFeedKey = ''
     } else {
       posts = data.posts ?? []
-      thematicFeedMeta = feedType === 'thematic' ? (data.thematicFeed ?? null) : thematicFeedMeta
       offset = posts.length
       hasMore = posts.length === pageSize
       loadingMore = false
-      hiddenReadCount = 0
-      if (feedType !== 'thematic') {
-        thematicFeedMeta = null
-      }
     }
   }
 
@@ -315,24 +219,17 @@
     if (preferredFeed !== feedType) {
       feedType = preferredFeed
       lastFeedType = preferredFeed
-      thematicFeedMeta = feedType === 'thematic' ? null : thematicFeedMeta
       if (feedType === 'mine' || feedType === 'favorites') {
         posts = []
         offset = 0
         hasMore = false
         loadingMore = false
-        hiddenReadCount = 0
-        thematicFeedMeta = null
         lastMyFeedKey = ''
       } else {
         posts = []
         offset = 0
         hasMore = true
         loadingMore = false
-        hiddenReadCount = 0
-        if (feedType !== 'thematic') {
-          thematicFeedMeta = null
-        }
         if (browser) {
           void loadMore()
         }
@@ -343,7 +240,6 @@
   $: if (feedType !== 'mine' && feedType !== 'favorites') {
     const feedKey = [
       feedType,
-      feedType === 'thematic' ? thematicFeedSlug || '(none)' : '',
       readOnly ? 'only-read' : effectiveHideRead ? 'hide-read' : 'all',
       hideNegativeMyFeed ? 'hide-neg' : 'show-neg',
     ].join('|')
@@ -354,7 +250,6 @@
         offset = 0
         hasMore = true
         loadingMore = false
-        hiddenReadCount = 0
         void loadMore()
       }
     } else if (feedKey !== lastFeedKey) {
@@ -363,7 +258,6 @@
       offset = 0
       hasMore = true
       loadingMore = false
-      hiddenReadCount = 0
       if (browser) {
         void loadMore()
       }
@@ -372,14 +266,14 @@
 
   $: if (feedType === 'mine') {
     const authKey = $siteUser ? 'auth' : 'anon'
-    const key = `${authKey}:${selectedRubrics.join(',')}:${selectedAuthors.join(',')}:${selectedMyFeedTags.join(',')}:${selectedMyFeedComuns.join(',')}:${hideNegativeMyFeed ? 'no-negative' : 'all'}:${readOnly ? 'only-read' : effectiveHideRead ? 'hide-read' : 'all-read'}`
+    const hydrationKey = $siteUser ? ($feedSettingsHydrated ? 'settings-ready' : 'settings-loading') : 'no-settings'
+    const key = `${authKey}:${hydrationKey}:${selectedMyFeedComuns.join(',')}:${selectedMyFeedAuthors.join(',')}:${JSON.stringify(selectedMyFeedComunCategories)}:${hideNegativeMyFeed ? 'no-negative' : 'all'}:${readOnly ? 'only-read' : effectiveHideRead ? 'hide-read' : 'all-read'}`
     if (key !== lastMyFeedKey) {
       lastMyFeedKey = key
       posts = []
       offset = 0
       hasMore = false
       loadingMore = false
-      hiddenReadCount = 0
       if (canLoadMyFeed) {
         hasMore = true
         void loadMore()
@@ -396,7 +290,6 @@
       offset = 0
       hasMore = !!$siteUser
       loadingMore = false
-      hiddenReadCount = 0
       if ($siteUser && browser) {
         void loadMore()
       }
@@ -408,65 +301,12 @@
 </script>
 
 <div class="flex max-w-full min-w-0 w-full flex-col gap-2">
-  <header class="relative flex flex-col gap-2">
-    {#if feedType === 'thematic'}
-      <div class="flex flex-col gap-2">
-        <h1 class="text-2xl font-semibold text-slate-900 dark:text-zinc-100">
-          {#if thematicFeedMeta?.name}
-            Папка: {thematicFeedMeta.name}
-          {:else}
-            Папка
-          {/if}
-        </h1>
-        {#if thematicFeedMeta?.description}
-          <div class="text-sm text-slate-600 dark:text-zinc-300">
-            {thematicFeedMeta.description}
-          </div>
-        {/if}
-        {#if thematicFeedMeta}
-          <div class="flex flex-wrap gap-2 pt-1">
-            <button
-              type="button"
-              class="inline-flex items-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-200"
-              on:click={applyThematicFeedToMyFeed}
-            >
-              Сделать моей лентой
-            </button>
-            {#if canManageCurrentFolder()}
-              <button
-                type="button"
-                class="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
-                on:click={openCurrentFolderSettings}
-              >
-                <Icon src={Cog6Tooth} size="16" mini />
-                <span>Настройки</span>
-              </button>
-            {/if}
-          </div>
-        {/if}
-      </div>
-    {:else if feedType === 'favorites'}
+  {#if feedType === 'favorites'}
+    <header class="relative flex flex-col gap-2">
       <h1 class="text-2xl font-semibold text-slate-900 dark:text-zinc-100">
         Избранное
       </h1>
-    {:else if feedType !== 'mine'}
-      <Header pageHeader>
-        {$t('routes.frontpage.title')}
-      </Header>
-    {/if}
-  </header>
-
-  {#if folderSettingsModalModulePromise}
-    {#await folderSettingsModalModulePromise then module}
-      <svelte:component
-        this={module.default}
-        open={folderSettingsOpen}
-        {thematicFeedSlug}
-        onClose={closeCurrentFolderSettings}
-        onUpdatedFolder={onThematicFeedUpdated}
-        onRefreshFeed={refreshCurrentFolderFeedAfterSettingsSave}
-      />
-    {/await}
+    </header>
   {/if}
 
   {#if $siteUser && readOnly && feedType !== 'favorites'}
@@ -482,10 +322,10 @@
         Вернуться
       </button>
     </div>
-  {:else if $siteUser && feedType !== 'favorites' && effectiveHideRead && hiddenReadCount > 0}
+  {:else if $siteUser && feedType !== 'favorites' && effectiveHideRead}
     <div class="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900">
       <div class="text-sm text-slate-600 dark:text-zinc-300">
-        {hiddenReadCount} прочитанных постов скрыто
+        Прочитанные посты скрыты
       </div>
       <button
         type="button"
@@ -506,10 +346,6 @@
   {:else if feedType === 'favorites' && !$siteUser}
     <div class="text-base text-slate-500">
       После регистрации вы сможете добавлять посты в избранное и видеть их в отдельной ленте.
-    </div>
-  {:else if feedType === 'thematic' && !thematicFeedSlug}
-    <div class="text-base text-slate-500">
-      Выберите папку в левом меню, чтобы посмотреть готовую подборку авторов и фильтров по тегам.
     </div>
   {:else if visiblePosts.length}
     <FeedPostsList posts={visiblePosts} {loadingMore} />

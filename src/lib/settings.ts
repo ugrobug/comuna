@@ -1,14 +1,11 @@
 import type { CommentSortType, SortType } from 'lemmy-js-client'
-import { writable } from 'svelte/store'
+import { get, writable } from 'svelte/store'
 import { env } from '$env/dynamic/public'
 import { locale } from './translations'
 import { browser } from '$app/environment'
 import type { Link } from './components/ui/navbar/link'
-
-console.log('Using the following default settings from the environment:')
-console.log(env)
-console.log('PUBLIC_DEFAULT_FEED:', env.PUBLIC_DEFAULT_FEED)
-console.log('Default feed type:', (env.PUBLIC_DEFAULT_FEED as 'All' | 'Subscribed' | 'Local') ?? 'Local')
+import { buildAuthFeedSettingsUrl } from './api/backend'
+import { invalidateCachedJson } from './api/publicCache'
 
 export type View = 'card' | 'cozy' | 'list' | 'compact'
 
@@ -27,7 +24,7 @@ interface Preset {
   content: string
 }
 
-interface Settings {
+export interface Settings {
   settingsVer: number
   expandableImages: boolean
   // should have been named "fade" read posts
@@ -99,17 +96,14 @@ interface Settings {
     reverseActions: boolean
   }
   infiniteScroll: boolean
-  homeFeed: 'hot' | 'fresh' | 'mine'
+  homeFeed: 'hot' | 'mine'
   language: string | null
-  myFeedRubrics: string[]
   myFeedAuthors: string[]
   myFeedTags: string[]
   myFeedComuns: string[]
   myFeedComunCategories: Record<string, string[]>
   hiddenAuthors: string[]
   myFeedHideNegative: boolean
-  myFeedMood: 'funny' | 'serious' | 'sad' | null
-  myFeedMoodExpiresAt: number | null
   useRtl: boolean
   translator: string | undefined
   parseTags: boolean
@@ -192,15 +186,12 @@ export const defaultSettings: Settings = {
   infiniteScroll: true,
   homeFeed: 'hot',
   language: 'ru',
-  myFeedRubrics: [],
   myFeedAuthors: [],
   myFeedTags: [],
   myFeedComuns: [],
   myFeedComunCategories: {},
   hiddenAuthors: [],
   myFeedHideNegative: true,
-  myFeedMood: null,
-  myFeedMoodExpiresAt: null,
   useRtl: false,
   translator: undefined,
   parseTags: true,
@@ -213,6 +204,177 @@ export const defaultSettings: Settings = {
 }
 
 export const userSettings = writable(defaultSettings)
+export type FeedSettingsHydrationState = 'idle' | 'loading' | 'ready' | 'error'
+export const feedSettingsHydrationState = writable<FeedSettingsHydrationState>('idle')
+export const feedSettingsHydrated = writable(false)
+
+type BackendFeedSettings = {
+  home_feed?: string
+  hide_read_posts?: boolean
+  my_feed_authors?: string[]
+  my_feed_tags?: string[]
+  my_feed_comuns?: string[]
+  my_feed_comun_categories?: Record<string, string[]>
+  hidden_authors?: string[]
+  my_feed_hide_negative?: boolean
+  tag_rules?: Record<string, 'hide' | 'blur'>
+}
+
+const feedSettingsDefaults = () => ({
+  homeFeed: defaultSettings.homeFeed,
+  hideReadPosts: defaultSettings.hideReadPosts,
+  myFeedAuthors: [...defaultSettings.myFeedAuthors],
+  myFeedTags: [...defaultSettings.myFeedTags],
+  myFeedComuns: [...defaultSettings.myFeedComuns],
+  myFeedComunCategories: { ...defaultSettings.myFeedComunCategories },
+  hiddenAuthors: [...defaultSettings.hiddenAuthors],
+  myFeedHideNegative: defaultSettings.myFeedHideNegative,
+  tagRules: { ...defaultSettings.tagRules },
+})
+
+const feedSettingsSnapshot = (settings: Settings) =>
+  JSON.stringify({
+    homeFeed: settings.homeFeed,
+    hideReadPosts: settings.hideReadPosts,
+    myFeedAuthors: settings.myFeedAuthors ?? [],
+    myFeedTags: [],
+    myFeedComuns: settings.myFeedComuns ?? [],
+    myFeedComunCategories: settings.myFeedComunCategories ?? {},
+    hiddenAuthors: settings.hiddenAuthors ?? [],
+    myFeedHideNegative: settings.myFeedHideNegative,
+    tagRules: settings.tagRules ?? {},
+  })
+
+const backendPayloadFromSettings = (settings: Settings) => ({
+  home_feed: settings.homeFeed,
+  hide_read_posts: settings.hideReadPosts,
+  my_feed_authors: settings.myFeedAuthors ?? [],
+  my_feed_tags: [],
+  my_feed_comuns: settings.myFeedComuns ?? [],
+  my_feed_comun_categories: settings.myFeedComunCategories ?? {},
+  hidden_authors: settings.hiddenAuthors ?? [],
+  my_feed_hide_negative: settings.myFeedHideNegative,
+  tag_rules: settings.tagRules ?? {},
+})
+
+const settingsFromBackendPayload = (settings: Settings, payload: BackendFeedSettings): Settings =>
+  migrate({
+    ...settings,
+    homeFeed: payload.home_feed ?? settings.homeFeed,
+    hideReadPosts: payload.hide_read_posts ?? settings.hideReadPosts,
+    myFeedAuthors: payload.my_feed_authors ?? settings.myFeedAuthors,
+    myFeedTags: [],
+    myFeedComuns: payload.my_feed_comuns ?? settings.myFeedComuns,
+    myFeedComunCategories: payload.my_feed_comun_categories ?? settings.myFeedComunCategories,
+    hiddenAuthors: payload.hidden_authors ?? settings.hiddenAuthors,
+    myFeedHideNegative: payload.my_feed_hide_negative ?? settings.myFeedHideNegative,
+    tagRules: payload.tag_rules ?? settings.tagRules,
+  })
+
+let backendFeedSettingsToken: string | null = null
+let backendFeedSettingsHydrated = false
+let applyingBackendFeedSettings = false
+let backendFeedSettingsSaveTimer: ReturnType<typeof setTimeout> | null = null
+let lastBackendFeedSettingsSnapshot = ''
+let lastCommunitySubscriptionSnapshot = ''
+
+const invalidateCommunityChromeCaches = () => {
+  invalidateCachedJson('public:sidebar-comuns')
+  invalidateCachedJson('public:top-comuns')
+}
+
+const saveBackendFeedSettings = async (settings: Settings) => {
+  if (!browser || !backendFeedSettingsToken || !backendFeedSettingsHydrated) return
+  const snapshot = feedSettingsSnapshot(settings)
+  if (snapshot === lastBackendFeedSettingsSnapshot) return
+  const response = await fetch(buildAuthFeedSettingsUrl(), {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${backendFeedSettingsToken}`,
+    },
+    body: JSON.stringify(backendPayloadFromSettings(settings)),
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(payload?.error || 'Не удалось сохранить настройки ленты')
+  }
+  lastBackendFeedSettingsSnapshot = snapshot
+}
+
+const scheduleBackendFeedSettingsSave = (settings: Settings) => {
+  if (!browser || applyingBackendFeedSettings || !backendFeedSettingsHydrated) return
+  if (!backendFeedSettingsToken) return
+  if (backendFeedSettingsSaveTimer) clearTimeout(backendFeedSettingsSaveTimer)
+  backendFeedSettingsSaveTimer = setTimeout(() => {
+    backendFeedSettingsSaveTimer = null
+    saveBackendFeedSettings(get(userSettings)).catch((error) => {
+      console.error('Failed to save feed settings:', error)
+    })
+  }, 500)
+}
+
+export const loadBackendFeedSettings = async (token: string | null) => {
+  if (!browser || !token) {
+    feedSettingsHydrationState.set('idle')
+    feedSettingsHydrated.set(false)
+    return null
+  }
+  backendFeedSettingsToken = token
+  backendFeedSettingsHydrated = false
+  feedSettingsHydrationState.set('loading')
+  feedSettingsHydrated.set(false)
+  const localSettings = get(userSettings)
+  try {
+    const response = await fetch(buildAuthFeedSettingsUrl(), {
+      credentials: 'include',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok || !payload?.settings) {
+      throw new Error(payload?.error || 'Не удалось загрузить настройки ленты')
+    }
+
+    applyingBackendFeedSettings = true
+    try {
+      userSettings.set(settingsFromBackendPayload(localSettings, payload.settings))
+      lastBackendFeedSettingsSnapshot = feedSettingsSnapshot(get(userSettings))
+      backendFeedSettingsHydrated = true
+      feedSettingsHydrationState.set('ready')
+      feedSettingsHydrated.set(true)
+    } finally {
+      applyingBackendFeedSettings = false
+    }
+    return payload.settings as BackendFeedSettings
+  } catch (error) {
+    backendFeedSettingsHydrated = false
+    feedSettingsHydrationState.set('error')
+    feedSettingsHydrated.set(false)
+    throw error
+  }
+}
+
+export const resetBackendFeedSettingsSync = () => {
+  backendFeedSettingsToken = null
+  backendFeedSettingsHydrated = false
+  feedSettingsHydrationState.set('idle')
+  feedSettingsHydrated.set(false)
+  applyingBackendFeedSettings = false
+  lastBackendFeedSettingsSnapshot = ''
+  if (backendFeedSettingsSaveTimer) {
+    clearTimeout(backendFeedSettingsSaveTimer)
+    backendFeedSettingsSaveTimer = null
+  }
+  if (browser) {
+    userSettings.update((settings) => ({
+      ...settings,
+      ...feedSettingsDefaults(),
+    }))
+  }
+}
 
 export const subscribeToComunBySlug = (slug?: string | null) => {
   const normalizedSlug = String(slug ?? '').trim()
@@ -237,9 +399,6 @@ const migrate = (settings: any): Settings => {
       },
     ]
     settings.moderation.removalReasonPreset = undefined
-  }
-  if (!Array.isArray(settings?.myFeedRubrics)) {
-    settings.myFeedRubrics = []
   }
   if (!Array.isArray(settings?.myFeedAuthors)) {
     settings.myFeedAuthors = []
@@ -312,7 +471,7 @@ const migrate = (settings: any): Settings => {
         return true
       })
   }
-  const validHomeFeeds = new Set(['hot', 'fresh', 'mine'])
+  const validHomeFeeds = new Set(['hot', 'mine'])
   if (!validHomeFeeds.has(settings?.homeFeed)) {
     settings.homeFeed = defaultSettings.homeFeed
   }
@@ -321,21 +480,6 @@ const migrate = (settings: any): Settings => {
   }
   if (typeof settings?.hideReadPosts !== 'boolean') {
     settings.hideReadPosts = defaultSettings.hideReadPosts
-  }
-  const validMoods = new Set(['funny', 'serious', 'sad'])
-  if (!validMoods.has(settings?.myFeedMood)) {
-    settings.myFeedMood = defaultSettings.myFeedMood
-  }
-  if (typeof settings?.myFeedMoodExpiresAt !== 'number') {
-    settings.myFeedMoodExpiresAt = defaultSettings.myFeedMoodExpiresAt
-  }
-  if (
-    settings.myFeedMood &&
-    settings.myFeedMoodExpiresAt &&
-    Date.now() > settings.myFeedMoodExpiresAt
-  ) {
-    settings.myFeedMood = defaultSettings.myFeedMood
-    settings.myFeedMoodExpiresAt = defaultSettings.myFeedMoodExpiresAt
   }
   settings.language = 'ru'
   settings.dock = { ...defaultSettings.dock, pins: [] }
@@ -377,13 +521,34 @@ if (typeof window != 'undefined') {
   userSettings.set({
     ...defaultSettings,
     ...oldUserSettings,
+    ...feedSettingsDefaults(),
     settingsVer: defaultSettings.settingsVer,
   })
 }
 
 userSettings.subscribe((settings) => {
+  const communitySubscriptionSnapshot = JSON.stringify({
+    myFeedComuns: settings.myFeedComuns ?? [],
+    myFeedComunCategories: settings.myFeedComunCategories ?? {},
+  })
+  if (
+    browser &&
+    lastCommunitySubscriptionSnapshot &&
+    communitySubscriptionSnapshot !== lastCommunitySubscriptionSnapshot
+  ) {
+    invalidateCommunityChromeCaches()
+  }
+  lastCommunitySubscriptionSnapshot = communitySubscriptionSnapshot
+
   if (typeof window != 'undefined') {
-    localStorage.setItem('settings', JSON.stringify(settings))
+    localStorage.setItem(
+      'settings',
+      JSON.stringify({
+        ...settings,
+        ...feedSettingsDefaults(),
+      })
+    )
+    scheduleBackendFeedSettingsSave(settings)
   }
   if (settings.language) {
     locale.set(settings.language)

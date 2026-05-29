@@ -121,7 +121,7 @@
         <RelativeDate date={publishedToDate(item.published)} />
       </div>
     </div>
-    <div class="flex-1" />
+    <div class="flex-1"></div>
     <div class="flex gap-2 max-md:hidden flex-shrink-0">
       
     </div>
@@ -144,15 +144,3 @@
     {/if}
   </svelte:fragment>
 </Expandable>
-
-<style>
-  .meta {
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    grid-template-rows: auto 1fr;
-    column-gap: 0.5rem;
-    grid-template-areas:
-      'a b     actions'
-      'a title actions';
-  }
-</style>

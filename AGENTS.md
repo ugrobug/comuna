@@ -50,7 +50,7 @@ Compose-файлы и env лежат здесь:
 Если миграций нет:
 
 ```bash
-ssh <prod> 'cd /opt/comuna/app && git pull && docker compose -f /opt/comuna/app/deploy/docker-compose.prod.yml --env-file /opt/comuna/app/deploy/.env up -d --build'
+ssh <prod> 'cd /opt/comuna/app && git pull && docker compose -f /opt/comuna/app/deploy/docker-compose.prod.yml --env-file /opt/comuna/app/deploy/.env up -d --build && docker compose -f /opt/comuna/app/deploy/docker-compose.prod.yml --env-file /opt/comuna/app/deploy/.env restart nginx'
 ```
 
 ### 5. Деплой с миграциями
@@ -58,7 +58,7 @@ ssh <prod> 'cd /opt/comuna/app && git pull && docker compose -f /opt/comuna/app/
 Если в релизе есть новые Django migration-файлы:
 
 ```bash
-ssh <prod> 'cd /opt/comuna/app && git pull && docker compose -f /opt/comuna/app/deploy/docker-compose.prod.yml --env-file /opt/comuna/app/deploy/.env up -d --build && docker compose -f /opt/comuna/app/deploy/docker-compose.prod.yml --env-file /opt/comuna/app/deploy/.env exec -T backend python manage.py migrate'
+ssh <prod> 'cd /opt/comuna/app && git pull && docker compose -f /opt/comuna/app/deploy/docker-compose.prod.yml --env-file /opt/comuna/app/deploy/.env up -d --build && docker compose -f /opt/comuna/app/deploy/docker-compose.prod.yml --env-file /opt/comuna/app/deploy/.env exec -T backend python manage.py migrate && docker compose -f /opt/comuna/app/deploy/docker-compose.prod.yml --env-file /opt/comuna/app/deploy/.env restart nginx'
 ```
 
 Если нужно прогнать миграции отдельно после уже выполненного `up -d --build`:
@@ -67,6 +67,14 @@ ssh <prod> 'cd /opt/comuna/app && git pull && docker compose -f /opt/comuna/app/
 ssh <prod> 'cd /opt/comuna/app && docker compose -f /opt/comuna/app/deploy/docker-compose.prod.yml --env-file /opt/comuna/app/deploy/.env exec -T backend python manage.py migrate'
 ```
 
+После любого `up -d --build` обязательно перезапустить nginx:
+
+```bash
+ssh <prod> 'cd /opt/comuna/app && docker compose -f /opt/comuna/app/deploy/docker-compose.prod.yml --env-file /opt/comuna/app/deploy/.env restart nginx'
+```
+
+Причина: при пересоздании `backend` или `frontend` Docker может выдать контейнеру новый IP, а живой nginx продолжит некоторое время ходить в старый upstream и отдавать `502 connect() failed`. Рестарт nginx обновляет upstream-адреса сразу.
+
 ### 6. Проверка после деплоя
 
 Проверять лучше через локальный nginx на сервере, а не внешним `curl`, потому что внешний DNS иногда шумит.
@@ -74,13 +82,13 @@ ssh <prod> 'cd /opt/comuna/app && docker compose -f /opt/comuna/app/deploy/docke
 Главная:
 
 ```bash
-ssh <prod> "curl -sS -I -H 'Host: comuna.ru' http://127.0.0.1/ | head -n 10"
+ssh <prod> "curl -sS -I -H 'Host: tambur.pub' http://127.0.0.1/ | head -n 10"
 ```
 
 Страница существующего поста:
 
 ```bash
-ssh <prod> "curl -sS -I -H 'Host: comuna.ru' http://127.0.0.1/b/post/4492-bred-ili-geniy-retsenziya-na-film-druzhba-2024 | head -n 10"
+ssh <prod> "curl -sS -I -H 'Host: tambur.pub' http://127.0.0.1/b/post/4492-bred-ili-geniy-retsenziya-na-film-druzhba-2024 | head -n 10"
 ```
 
 Ожидаемый результат:
@@ -101,7 +109,9 @@ ssh <prod> 'cd /opt/comuna/app && git rev-parse --short HEAD'
 - `git pull` на сервере успешен
 - `docker compose ... up -d --build` завершен без ошибок
 - если есть миграции, `python manage.py migrate` завершен без ошибок
+- `docker compose ... restart nginx` завершен без ошибок
 - главная и хотя бы одна реальная страница поста отвечают `200`
+- API endpoint, например `/api/special-projects/book/status/`, отвечает `200`
 
 ### 8. Частые ошибки
 

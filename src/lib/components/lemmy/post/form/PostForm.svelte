@@ -17,8 +17,8 @@
   } from 'svelte-hero-icons'
   import { profile } from '$lib/auth.js'
   import EditorJS from '$lib/components/editor/EditorJS.svelte'
-  import TipTapEditor from '$lib/components/editor/TipTapEditor.svelte'
-  import { placeholders, uploadImage, deserializeEditorModel } from '$lib/util.js'
+  import { normalizeEditorJsContent } from '$lib/editorJsContent'
+  import { placeholders } from '$lib/util.js'
   import { Checkbox, TextInput } from 'mono-svelte'
   import { getSessionStorage, setSessionStorage, saveDraft, getDraft, removeDraft, formatLastSaved, getDraftLastSaved, debugDrafts } from '$lib/session.js'
   import ObjectAutocomplete from '$lib/components/lemmy/ObjectAutocomplete.svelte'
@@ -79,7 +79,6 @@
 
   const dispatcher = createEventDispatcher<{ submit: PostView }>()
 
-  let isJsonContent = true
   let showDraftModal = false
   let draftData: any = null
   let draftLastSaved: Date | null = null
@@ -88,42 +87,11 @@
   // Получаем ID поста для черновиков
   const postId = editingPost?.id || null
 
-  // Реактивно обновляем тип контента при изменении body
+  // Старые HTML-посты и черновики приводим к формату EditorJS перед редактированием.
   $: if (data.body !== undefined) {
-    isJsonContent = detectContentType(data.body)
-  }
-
-  function detectContentType(content: string): boolean {
-    // Пропускаем пустые строки
-    if (!content || content.trim() === '') {
-      return true; // По умолчанию EditorJS для новых постов
-    }
-
-    // Если контент начинается с < и заканчивается на >, это HTML
-    if (content.trim().startsWith('<') && content.trim().endsWith('>')) {
-      return false; // TipTap для HTML
-    }
-
-    try {
-      // Сначала пробуем парсить как обычный JSON
-      const parsed = JSON.parse(content);
-      return parsed && typeof parsed === 'object' && 'blocks' in parsed;
-    } catch {
-      try {
-        // Проверяем, похоже ли это на base64
-        const isBase64 = /^[A-Za-z0-9+/]*={0,2}$/.test(content);
-        
-        if (!isBase64) {
-          return false; // Не base64, значит HTML -> TipTap
-        }
-        
-        // Если похоже на base64, пробуем десериализовать
-        const decoded = deserializeEditorModel(content);
-        return decoded && typeof decoded === 'object' && 'blocks' in decoded;
-      } catch {
-        // Если оба варианта не работают, это HTML
-        return false; // TipTap для HTML
-      }
+    const normalizedBody = normalizeEditorJsContent(data.body)
+    if (normalizedBody !== data.body) {
+      data.body = normalizedBody
     }
   }
 
@@ -150,9 +118,7 @@
     
     if (editingPost) {
       data.url = editingPost.url ?? ''
-      data.body = editingPost.body ?? ''
-      // Определяем тип контента после установки body
-      isJsonContent = detectContentType(data.body)
+      data.body = normalizeEditorJsContent(editingPost.body ?? '')
       data.title = editingPost.name
       data.nsfw = editingPost.nsfw
       data.alt_text = editingPost.alt_text
@@ -499,21 +465,13 @@
               console.log('🖼️ Миниатюра восстановлена:', data.thumbnail)
             }
             
-            // Определяем тип контента для правильного выбора редактора
-            const oldJsonContent = isJsonContent
-            isJsonContent = detectContentType(data.body)
-            console.log('🔄 Тип контента определен:', {
-              oldJsonContent,
-              newJsonContent: isJsonContent,
-              bodyPreview: data.body?.substring(0, 100) || 'пусто'
-            })
+            data.body = normalizeEditorJsContent(data.body ?? '')
             
             console.log('✅ PostForm: Черновик восстановлен', {
               afterRestore: {
                 title: data.title,
                 bodyLength: data.body?.length || 0,
-                community: data.community?.name || 'нет',
-                isJsonContent
+                community: data.community?.name || 'нет'
               }
             })
             
@@ -648,22 +606,14 @@
       <span aria-hidden="true">↗</span>
     </a>
   </div>
-  {#if isJsonContent}
-    <EditorJS
-      label={$t('form.post.body')}
-      bind:value={data.body}
-      placeholder={placeholders.get('post')}
-      {postId}
-      enableAutosave={draftDecisionMade}
-      onContentChange={autosaveDraft}
-    />
-  {:else}
-    <TipTapEditor
-      label={$t('form.post.body')}
-      bind:value={data.body}
-      placeholder={placeholders.get('post')}
-    />
-  {/if}
+  <EditorJS
+    label={$t('form.post.body')}
+    bind:value={data.body}
+    placeholder={placeholders.get('post')}
+    {postId}
+    enableAutosave={draftDecisionMade}
+    onContentChange={autosaveDraft}
+  />
   <!--
   {#if data.url !== undefined}
     <div class="flex flex-col gap-2">
@@ -786,7 +736,7 @@
       </div>
     {/if}
   {/if}-->
-  <div class="mt-auto" />
+  <div class="mt-auto"></div>
   <div class="flex flex-row items-center gap-2 w-full">
     <div class="flex flex-col flex-1 gap-1">
       <Button
@@ -812,8 +762,7 @@
             draft.loading = false
             // @ts-ignore
             data = draft
-            // Определяем тип контента для правильного выбора редактора
-            isJsonContent = detectContentType(data.body)
+            data.body = normalizeEditorJsContent(data.body ?? '')
           }
         }}
         rounding="xl"

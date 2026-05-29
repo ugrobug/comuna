@@ -1,42 +1,26 @@
-import {
-  buildFreshFeedUrl,
-  buildHomeFeedUrl,
-  buildThematicFeedPostsUrl,
-} from '$lib/api/backend'
+import { buildHomeFeedUrl } from '$lib/api/backend'
 
 const PAGE_SIZE = 10
 
 export async function load({ fetch, url }) {
   const feedParam = url.searchParams.get('feed')
-  const thematicSlug = (url.searchParams.get('theme') ?? '').trim()
   const feedType =
-    feedParam === 'fresh'
-      ? 'fresh'
-      : feedParam === 'mine'
-        ? 'mine'
-        : feedParam === 'favorites'
-          ? 'favorites'
-          : feedParam === 'thematic'
-            ? 'thematic'
-          : 'hot'
+    feedParam === 'mine'
+      ? 'mine'
+      : feedParam === 'favorites'
+        ? 'favorites'
+        : 'hot'
 
   let posts: any[] = []
-  let thematicFeed: any = null
-  if (feedType === 'hot' || feedType === 'fresh' || (feedType === 'thematic' && thematicSlug)) {
+  if (feedType === 'hot') {
     try {
-      const feedUrl =
-        feedType === 'fresh'
-          ? buildFreshFeedUrl()
-          : feedType === 'thematic'
-            ? buildThematicFeedPostsUrl(thematicSlug)
-            : buildHomeFeedUrl()
+      const feedUrl = buildHomeFeedUrl({ card: true })
       const requestUrl = new URL(feedUrl, url.origin)
       requestUrl.searchParams.set('limit', String(PAGE_SIZE))
       const response = await fetch(requestUrl.toString())
       if (response.ok) {
         const data = await response.json()
         posts = data.posts ?? []
-        thematicFeed = data.thematic_feed ?? null
       }
     } catch (error) {
       console.error('Failed to load home feed:', error)
@@ -46,7 +30,5 @@ export async function load({ fetch, url }) {
   return {
     posts,
     feedType,
-    thematicSlug,
-    thematicFeed,
   }
 }

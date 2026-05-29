@@ -10,7 +10,7 @@
   export let open = true
 </script>
 
-<div class="flex flex-col max-w-full w-full">
+<div class="flex flex-col max-w-full w-full rounded-xl border border-slate-200 bg-white dark:border-zinc-800 dark:bg-zinc-900 shadow-sm px-4 py-3 sm:px-5">
   <button
     class="text-left hover:text-primary-900 dark:hover:text-primary-100
     flex items-center justify-between z-0 relative group transition-colors"
@@ -35,7 +35,7 @@
   {#if open}
     <div
       transition:slide={{ axis: 'y', duration: 500, easing: expoOut }}
-      class="w-full flex flex-col divide-y divide-slate-200 dark:divide-zinc-800 *:py-3"
+      class="w-full flex flex-col divide-y divide-slate-200 dark:divide-zinc-800 *:py-3 pt-2"
     >
       <slot />
     </div>

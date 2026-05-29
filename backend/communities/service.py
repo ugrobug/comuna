@@ -7,6 +7,8 @@ import re
 import secrets
 import urllib.parse
 from collections import defaultdict
+from datetime import timedelta
+from decimal import Decimal
 
 try:
     import pymorphy2
@@ -15,7 +17,7 @@ except ImportError:  # optional dependency for lemmatization
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.db.models import Count, Q
+from django.db.models import Case, Count, F, IntegerField, Q, Value, When
 from django.http import HttpRequest
 from django.utils import timezone
 from django.utils.text import slugify
@@ -37,10 +39,16 @@ from feeds.models import (
     PostFavorite,
     PostLike,
     PostRead,
-    Rubric,
     Tag,
 )
-from ratings.service import author_rating_value, format_rating_value, user_max_author_rating
+from ratings.service import (
+    calculate_author_rating,
+    calculate_community_rating_for_posts,
+    format_rating_value,
+    get_rating_settings,
+    user_max_author_rating,
+)
+from telegram_integration.media import safe_public_url
 from users.models import AuthorAdmin
 
 User = get_user_model()
@@ -100,13 +108,44 @@ def _media_url(request: HttpRequest | None, field) -> str | None:
 
 
 def _author_avatar_url(request: HttpRequest | None, author: Author) -> str | None:
-    return _media_url(request, author.avatar_image) or author.avatar_url
+    return _media_url(request, author.avatar_image) or safe_public_url(author.avatar_url)
 
 
-def _rubric_icon_url(request: HttpRequest | None, rubric: Rubric | None) -> str | None:
-    if not rubric:
-        return None
-    return _media_url(request, rubric.icon_thumb) or _media_url(request, rubric.icon_url)
+def _author_avatar_logo_url(author: Author | None) -> str:
+    if not author:
+        return ""
+    avatar_image = getattr(author, "avatar_image", None)
+    if avatar_image:
+        try:
+            image_url = avatar_image.url
+        except Exception:
+            image_url = ""
+        if image_url:
+            site_base = getattr(settings, "SITE_BASE_URL", "").rstrip("/")
+            if site_base and image_url.startswith("/"):
+                image_url = f"{site_base}{image_url}"
+            return image_url[:500]
+    return str(safe_public_url(getattr(author, "avatar_url", "")) or "")[:500]
+
+
+def _sync_comun_logo_from_author(comun: Comun | None, author: Author | None) -> bool:
+    if not comun:
+        return False
+    current_logo_url = str(getattr(comun, "logo_url", "") or "").strip()
+    logo_url = _author_avatar_logo_url(author)
+    if not logo_url or current_logo_url == logo_url:
+        return False
+    if current_logo_url:
+        generated_avatar_logo = (
+            "api.telegram.org/file/" in current_logo_url
+            or "/media/authors/avatars/" in current_logo_url
+            or current_logo_url == str(safe_public_url(getattr(author, "avatar_url", "")) or "")
+        )
+        if not generated_avatar_logo:
+            return False
+    comun.logo_url = logo_url
+    comun.save(update_fields=["logo_url", "updated_at"])
+    return True
 
 
 def _ensure_pymorphy2_compat():
@@ -578,6 +617,86 @@ def _author_telegram_source_comun(author: Author | None) -> Comun | None:
         return None
 
 
+def _verified_author_owner_ids(author: Author | None) -> list[int]:
+    if not author:
+        return []
+    return list(
+        AuthorAdmin.objects.filter(author=author, verified_at__isnull=False)
+        .order_by("verified_at", "created_at", "id")
+        .values_list("user_id", flat=True)
+    )
+
+
+def _claim_unowned_comun_for_author(comun: Comun, author: Author | None) -> bool:
+    if comun.creator_id:
+        return False
+    verified_owner_ids = _verified_author_owner_ids(author)
+    if not verified_owner_ids:
+        return False
+    owner_id = int(verified_owner_ids[0])
+    comun.creator_id = owner_id
+    comun.save(update_fields=["creator", "updated_at"])
+    comun.moderators.add(owner_id)
+    return True
+
+
+def _ensure_telegram_channel_comun_for_author(author: Author | None) -> Comun | None:
+    if not author:
+        return None
+    normalized_username = _normalize_telegram_channel_username(author.username)
+    if not normalized_username:
+        return None
+
+    current_comun = _author_telegram_source_comun(author)
+    if current_comun:
+        _claim_unowned_comun_for_author(current_comun, author)
+        _sync_comun_logo_from_author(current_comun, author)
+        return current_comun
+
+    comun = (
+        Comun.objects.filter(
+            telegram_channel_username__iexact=normalized_username,
+            telegram_source_author__isnull=True,
+            is_active=True,
+        )
+        .order_by("id")
+        .first()
+    )
+    if comun:
+        _claim_unowned_comun_for_author(comun, author)
+        logo_synced = _sync_comun_logo_from_author(comun, author)
+        comun.telegram_source_author = author
+        comun.telegram_channel_username = normalized_username
+        update_fields = ["telegram_source_author", "telegram_channel_username", "updated_at"]
+        if logo_synced:
+            update_fields.append("logo_url")
+        comun.save(update_fields=update_fields)
+        return comun
+
+    verified_owner_ids = _verified_author_owner_ids(author)
+    owner_id = int(verified_owner_ids[0]) if verified_owner_ids else None
+    base_name = (author.title or "").strip() or f"@{author.username}"
+    comun_name = _generate_unique_comun_name(base_name, author.username)
+    comun_slug = _generate_unique_comun_slug(author.username or comun_name)
+    if not comun_slug:
+        comun_slug = _generate_unique_comun_slug(comun_name)
+    if not comun_slug:
+        return None
+    comun = Comun.objects.create(
+        name=comun_name,
+        slug=comun_slug,
+        creator_id=owner_id,
+        logo_url=_author_avatar_logo_url(author),
+        product_description=(author.description or "").strip(),
+        telegram_source_author=author,
+        telegram_channel_username=normalized_username,
+        only_moderators_can_post=True,
+    )
+    if owner_id:
+        comun.moderators.add(owner_id)
+    return comun
+
+
 def _attach_pending_comuns_for_author(author: Author | None) -> None:
     if not author:
         return
@@ -585,7 +704,13 @@ def _attach_pending_comuns_for_author(author: Author | None) -> None:
     if not normalized_username:
         return
 
+    verified_owner_ids = _verified_author_owner_ids(author)
+
     current_comun = _author_telegram_source_comun(author)
+    if current_comun:
+        _claim_unowned_comun_for_author(current_comun, author)
+        _sync_comun_logo_from_author(current_comun, author)
+
     pending_comuns = (
         Comun.objects.filter(
             telegram_channel_username__iexact=normalized_username,
@@ -599,11 +724,19 @@ def _attach_pending_comuns_for_author(author: Author | None) -> None:
     for comun in pending_comuns:
         if current_comun and current_comun.id != comun.id:
             continue
-        if not _author_is_managed_by_comun_team(author, comun):
+        if comun.creator_id:
+            if not _author_is_managed_by_comun_team(author, comun):
+                continue
+        elif not verified_owner_ids:
             continue
+        _claim_unowned_comun_for_author(comun, author)
+        logo_synced = _sync_comun_logo_from_author(comun, author)
         comun.telegram_source_author = author
         comun.telegram_channel_username = normalized_username
-        comun.save(update_fields=["telegram_source_author", "telegram_channel_username", "updated_at"])
+        update_fields = ["telegram_source_author", "telegram_channel_username", "updated_at"]
+        if logo_synced:
+            update_fields.append("logo_url")
+        comun.save(update_fields=update_fields)
         current_comun = comun
 
 
@@ -615,6 +748,18 @@ _allowed_templates_for_comun_category = editor_service._allowed_templates_for_co
 def _post_comun_slug(post: Post) -> str:
     raw_data = post.raw_data if isinstance(post.raw_data, dict) else {}
     return str(raw_data.get("comun_slug") or "").strip()
+
+
+def _is_telegram_channel_author(author: Author | None) -> bool:
+    if not author:
+        return False
+    if getattr(author, "channel_id", None) is not None:
+        return True
+    if str(getattr(author, "channel_url", "") or "").strip():
+        return True
+    if str(getattr(author, "invite_url", "") or "").strip():
+        return True
+    return _author_telegram_source_comun(author) is not None
 
 
 def _post_comun(post: Post) -> Comun | None:
@@ -633,14 +778,22 @@ def _post_comun(post: Post) -> Comun | None:
     if assignment:
         return assignment.comun
 
-    rubric_id = getattr(post, "rubric_id", None)
-    if rubric_id:
-        return Comun.objects.filter(source_rubric_id=rubric_id, is_active=True).order_by("sort_order", "name").first()
+    author = getattr(post, "author", None)
+    author_comun = _author_telegram_source_comun(author)
+    if author_comun and author_comun.is_active:
+        return author_comun
+
+    if _is_telegram_channel_author(author):
+        return None
 
     return None
 
 
-def _serialize_post_comun(request: HttpRequest | None, post: Post) -> dict | None:
+def _serialize_post_comun(
+    request: HttpRequest | None,
+    post: Post,
+    current_user: User | None = None,
+) -> dict | None:
     comun = _post_comun(post)
     if not comun:
         return None
@@ -649,6 +802,8 @@ def _serialize_post_comun(request: HttpRequest | None, post: Post) -> dict | Non
         "name": comun.name,
         "slug": comun.slug,
         "logo_url": _comun_logo_url(request, comun),
+        "knowledge_base_enabled": bool(getattr(comun, "knowledge_base_enabled", False)),
+        "can_moderate": _comun_is_moderator(current_user, comun),
     }
 
 
@@ -698,7 +853,7 @@ def _comun_post_access_state(
         return False, minimum_rating, None
     if _comun_is_moderator(user, comun):
         return True, minimum_rating, None
-    if bool(getattr(comun, "only_moderators_can_post", False)):
+    if category is None and bool(getattr(comun, "only_moderators_can_post", False)):
         return False, minimum_rating, None
     if category is not None and bool(getattr(category, "only_moderators_can_post", False)):
         return False, minimum_rating, None
@@ -706,14 +861,14 @@ def _comun_post_access_state(
         return True, minimum_rating, None
 
     if author is not None:
-        author_rating = author_rating_value(getattr(author, "rating_total", 0))
+        author_rating = round(float(calculate_author_rating(author)), 2)
         return author_rating >= minimum_rating, minimum_rating, author_rating
 
     personal_author = _personal_user_author(user)
     if not personal_author:
         return False, minimum_rating, 0.0
 
-    personal_author_rating = author_rating_value(getattr(personal_author, "rating_total", 0))
+    personal_author_rating = round(float(calculate_author_rating(personal_author)), 2)
     return personal_author_rating >= minimum_rating, minimum_rating, personal_author_rating
 
 
@@ -723,10 +878,12 @@ def _comun_post_access_error_message(
     author_rating: float | None = None,
     category: ComunCategory | None = None,
 ) -> str:
-    if bool(getattr(comun, "only_moderators_can_post", False)):
-        return "Публикация в этом сообществе доступна только создателю и модераторам."
     if category is not None and bool(getattr(category, "only_moderators_can_post", False)):
-        return f'Публикация в категории "{category.name}" доступна только создателю и модераторам.'
+        return (
+            f'Публикация в категории "{category.name}" доступна только создателю и модераторам.'
+        )
+    if category is None and bool(getattr(comun, "only_moderators_can_post", False)):
+        return "Публикация без категории доступна только создателю и модераторам."
     minimum_text = _format_rating_value(_comun_minimum_author_rating_value(comun))
     if author_rating is None:
         return f"Для публикации в этой комуне нужен рейтинг автора не ниже {minimum_text}."
@@ -742,48 +899,13 @@ def _comun_logo_url(request: HttpRequest | None, comun: Comun | None) -> str | N
         return None
     explicit_logo = str(getattr(comun, "logo_url", "") or "").strip()
     if explicit_logo:
-        return explicit_logo
-    return _rubric_icon_url(request, getattr(comun, "source_rubric", None))
-
-
-def _comun_product_tag_filter(product_tag: Tag | None) -> Q | None:
-    if not product_tag:
-        return None
-    filters = Q(tags__id=product_tag.id)
-    tag_name = _normalize_tag_value(product_tag.name)
-    if tag_name:
-        filters |= Q(tags__name__iexact=tag_name)
-    tag_lemma = (product_tag.lemma or _lemmatize_tag(product_tag.name) or "").strip()
-    if tag_lemma:
-        filters |= Q(tags__lemma__iexact=tag_lemma)
-    return filters
-
-
-def _comun_source_tags_list(comun: Comun) -> list[Tag]:
-    source_tags = list(comun.source_tags.filter(is_active=True).order_by("name"))
-    if source_tags:
-        return source_tags
-    product_tag = comun.product_tag
-    if product_tag and product_tag.is_active:
-        return [product_tag]
-    return []
+        return safe_public_url(explicit_logo)
+    return None
 
 
 def _comun_source_filter(comun: Comun) -> Q | None:
     combined_filter = Q()
     has_source = False
-
-    for source_tag in _comun_source_tags_list(comun):
-        tag_filter = _comun_product_tag_filter(source_tag)
-        if tag_filter is None:
-            continue
-        combined_filter |= tag_filter
-        has_source = True
-
-    source_rubric_id = getattr(comun, "source_rubric_id", None)
-    if source_rubric_id:
-        combined_filter |= Q(rubric_id=source_rubric_id)
-        has_source = True
 
     telegram_source_author_id = getattr(comun, "telegram_source_author_id", None)
     if telegram_source_author_id:
@@ -798,6 +920,15 @@ def _comun_manual_posts_filter(comun: Comun) -> Q | None:
     if not comun_slug:
         return None
     return Q(raw_data__source="manual_comun", raw_data__comun_slug=comun_slug)
+
+
+def _telegram_channel_author_filter() -> Q:
+    return (
+        Q(author__channel_id__isnull=False)
+        | Q(author__channel_url__gt="")
+        | Q(author__invite_url__gt="")
+        | Q(author__telegram_source_comun__isnull=False)
+    )
 
 
 def _comun_post_membership_filter(comun: Comun) -> Q | None:
@@ -863,19 +994,19 @@ def _site_user_avatar_url(
     try:
         site_profile = user.site_profile
         if site_profile and site_profile.avatar_url:
-            return site_profile.avatar_url
+            return safe_public_url(site_profile.avatar_url)
     except Exception:
         pass
     try:
         tg = user.telegram_account
         if tg and tg.avatar_url:
-            return tg.avatar_url
+            return safe_public_url(tg.avatar_url)
     except Exception:
         pass
     try:
         vk = user.vk_account
         if vk and vk.avatar_url:
-            return vk.avatar_url
+            return safe_public_url(vk.avatar_url)
     except Exception:
         pass
     if fallback_author_avatars and user.id in fallback_author_avatars:
@@ -905,20 +1036,161 @@ def _comun_categories_count(comun: Comun) -> int:
     return len(_comun_categories_list(comun))
 
 
-def _recalculate_comun_rating(comun_id: int) -> tuple[int, int, int]:
+def _recalculate_comun_rating(comun_id: int) -> tuple[int, int, Decimal]:
+    comun = (
+        Comun.objects.filter(id=comun_id)
+        .select_related("telegram_source_author")
+        .prefetch_related("excluded_authors", "blocked_tags")
+        .first()
+    )
+    if not comun:
+        return 0, 0, Decimal("0.00")
     counts = ComunVote.objects.filter(comun_id=comun_id).aggregate(
         up=Count("id", filter=Q(value=1)),
         down=Count("id", filter=Q(value=-1)),
     )
     votes_up = int(counts.get("up") or 0)
     votes_down = int(counts.get("down") or 0)
-    rating_score = votes_up - votes_down
+    settings = get_rating_settings()
+    cutoff = timezone.now() - timedelta(days=int(settings.community_post_rating_days or 7))
+    posts = _comun_posts_base_queryset(comun).filter(created_at__gte=cutoff)
+    rating_score = calculate_community_rating_for_posts(posts, settings=settings)
     Comun.objects.filter(id=comun_id).update(
         votes_up=votes_up,
         votes_down=votes_down,
         rating_score=rating_score,
     )
     return votes_up, votes_down, rating_score
+
+
+def _subscribed_comun_slugs_from_settings(settings: dict | None) -> set[str]:
+    if not isinstance(settings, dict):
+        return set()
+    subscribed_slugs = {
+        str(slug or "").strip()
+        for slug in (settings.get("my_feed_comuns", []) or [])
+        if str(slug or "").strip()
+    }
+    category_selection = settings.get("my_feed_comun_categories", {}) or {}
+    if isinstance(category_selection, dict):
+        subscribed_slugs.update(
+            str(slug or "").strip()
+            for slug in category_selection.keys()
+            if str(slug or "").strip()
+        )
+    return subscribed_slugs
+
+
+def _sync_comun_subscriber_counts(previous_settings: dict, next_settings: dict) -> None:
+    previous_slugs = _subscribed_comun_slugs_from_settings(previous_settings)
+    next_slugs = _subscribed_comun_slugs_from_settings(next_settings)
+    added_slugs = next_slugs - previous_slugs
+    removed_slugs = previous_slugs - next_slugs
+    if added_slugs:
+        Comun.objects.filter(slug__in=added_slugs).update(subscribers_count=F("subscribers_count") + 1)
+    if removed_slugs:
+        Comun.objects.filter(slug__in=removed_slugs).update(
+            subscribers_count=Case(
+                When(subscribers_count__gt=0, then=F("subscribers_count") - 1),
+                default=Value(0),
+                output_field=IntegerField(),
+            )
+        )
+
+
+def _post_author_is_site_user(post: Post) -> bool:
+    author = getattr(post, "author", None)
+    if author is None and getattr(post, "author_id", None):
+        author = Author.objects.filter(id=post.author_id).first()
+    if not author:
+        return False
+    if getattr(author, "channel_id", None) or getattr(author, "channel_url", "") or getattr(author, "invite_url", ""):
+        return False
+    username = str(getattr(author, "username", "") or "").strip()
+    if not username:
+        return False
+    return User.objects.filter(username__iexact=username, is_active=True).exists()
+
+
+def _comun_site_user_posts_queryset(comun: Comun):
+    return (
+        _comun_posts_base_queryset(comun)
+        .filter(
+            author__channel_id__isnull=True,
+            author__channel_url="",
+            author__invite_url="",
+            author__username__in=User.objects.filter(is_active=True).values("username"),
+        )
+    )
+
+
+def _maybe_increment_comun_author_count_for_post(
+    post: Post | None,
+    *,
+    comun: Comun | None = None,
+) -> bool:
+    if not post or not getattr(post, "author_id", None):
+        return False
+    if bool(getattr(post, "is_pending", False)) or bool(getattr(post, "is_blocked", False)):
+        return False
+    if not _post_author_is_site_user(post):
+        return False
+    comun = comun or _post_comun(post)
+    if not comun:
+        return False
+    previous_site_posts = _comun_site_user_posts_queryset(comun).exclude(id=post.id)
+    if previous_site_posts.filter(author_id=post.author_id).exists():
+        return False
+    if previous_site_posts.exists():
+        Comun.objects.filter(id=comun.id).update(authors_count=F("authors_count") + 1)
+    else:
+        Comun.objects.filter(id=comun.id).update(
+            authors_count=Case(
+                When(authors_count__lt=1, then=Value(1)),
+                default=F("authors_count"),
+                output_field=IntegerField(),
+            )
+        )
+    return True
+
+
+def _candidate_comun_ids_for_post(post: Post | None) -> list[int]:
+    if not post:
+        return []
+
+    combined_filter = Q()
+    has_filter = False
+    raw_data = post.raw_data if isinstance(getattr(post, "raw_data", None), dict) else {}
+    comun_slug = str(raw_data.get("comun_slug") or "").strip()
+    if comun_slug:
+        combined_filter |= Q(slug=comun_slug)
+        has_filter = True
+    if getattr(post, "author_id", None):
+        combined_filter |= Q(telegram_source_author_id=post.author_id)
+        has_filter = True
+
+    if not has_filter:
+        return []
+
+    return list(
+        Comun.objects.filter(combined_filter, is_active=True)
+        .exclude(slug__iexact="faq")
+        .values_list("id", flat=True)
+        .distinct()
+    )
+
+
+def _recalculate_comun_ratings_for_post(post_or_id: Post | int | None) -> None:
+    if not post_or_id:
+        return
+    if isinstance(post_or_id, Post):
+        post = post_or_id
+    else:
+        post = Post.objects.filter(id=post_or_id).prefetch_related("tags").first()
+    if not post:
+        return
+    for comun_id in _candidate_comun_ids_for_post(post):
+        _recalculate_comun_rating(comun_id)
 
 
 def _comun_posts_base_queryset(comun: Comun, now=None):
@@ -936,6 +1208,12 @@ def _comun_posts_base_queryset(comun: Comun, now=None):
         .filter(_publish_ready_filter(now))
         .distinct()
     )
+    telegram_source_author_id = getattr(comun, "telegram_source_author_id", None)
+    channel_author_filter = _telegram_channel_author_filter()
+    if telegram_source_author_id:
+        base_query = base_query.exclude(channel_author_filter & ~Q(author_id=telegram_source_author_id))
+    else:
+        base_query = base_query.exclude(channel_author_filter)
     excluded_author_ids = list(comun.excluded_authors.values_list("id", flat=True))
     if excluded_author_ids:
         base_query = base_query.exclude(author_id__in=excluded_author_ids)
@@ -957,7 +1235,9 @@ def _comun_posts_base_queryset(comun: Comun, now=None):
         blocked_post_ids: list[int] = []
         for row in base_query.values("id", "title", "content", "raw_data").iterator(chunk_size=200):
             raw_data = row.get("raw_data") if isinstance(row, dict) else {}
-            template_payload = raw_data.get("template") if isinstance(raw_data, dict) else None
+            template_payload, _template_error = editor_service._normalize_post_template_payload(
+                raw_data.get("template") if isinstance(raw_data, dict) else None
+            )
             if _payload_contains_external_links(
                 title=row.get("title") if isinstance(row, dict) else None,
                 content=row.get("content") if isinstance(row, dict) else None,
@@ -1019,6 +1299,21 @@ def _maybe_notify_new_author(author: Author, post: Post) -> None:
     _feeds_views()._maybe_notify_new_author(author, post)
 
 
+def _maybe_notify_post_published_to_subscribers(
+    post: Post,
+    *,
+    actor: User | None = None,
+    comun: Comun | None = None,
+    category: ComunCategory | None = None,
+) -> None:
+    _feeds_views()._maybe_notify_post_published_to_subscribers(
+        post,
+        actor=actor,
+        comun=comun,
+        category=category,
+    )
+
+
 __all__ = [
     "_COMUN_ACTIVITY_POINTS",
     "_COMUN_EXTERNAL_LINKS_FORBIDDEN_ERROR",
@@ -1029,8 +1324,10 @@ __all__ = [
     "_allowed_templates_for_comun_category",
     "_apply_post_tags",
     "_attach_pending_comuns_for_author",
+    "_author_avatar_logo_url",
     "_author_avatar_url",
     "_author_telegram_source_comun",
+    "_candidate_comun_ids_for_post",
     "_comun_can_manage_moderators",
     "_comun_categories_count",
     "_comun_categories_list",
@@ -1045,11 +1342,10 @@ __all__ = [
     "_comun_post_access_error_message",
     "_comun_post_access_state",
     "_comun_posts_base_queryset",
-    "_comun_product_tag_filter",
     "_comun_source_filter",
-    "_comun_source_tags_list",
     "_current_user_verified_telegram_authors",
     "_ensure_comun_category_by_name",
+    "_ensure_telegram_channel_comun_for_author",
     "_ensure_tag_by_name",
     "_favorite_post_ids_for_user",
     "_format_rating_value",
@@ -1061,7 +1357,9 @@ __all__ = [
     "_is_internal_comuna_url",
     "_lemmatize_tag",
     "_maybe_notify_new_author",
+    "_maybe_notify_post_published_to_subscribers",
     "_maybe_notify_post_added_to_voting",
+    "_maybe_increment_comun_author_count_for_post",
     "_normalize_comun_category_name",
     "_normalize_comun_glossary_definition",
     "_normalize_comun_glossary_term",
@@ -1078,12 +1376,14 @@ __all__ = [
     "_public_user_author_ids",
     "_publish_ready_filter",
     "_recalculate_comun_rating",
-    "_rubric_icon_url",
+    "_recalculate_comun_ratings_for_post",
     "_serialize_backend_post_card",
     "_serialize_post_comun",
     "_site_user_avatar_url",
     "_slugify_title",
     "_sync_comun_glossary_terms",
+    "_sync_comun_subscriber_counts",
+    "_sync_comun_logo_from_author",
     "_text_contains_external_links",
 ]
 

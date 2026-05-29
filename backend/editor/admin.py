@@ -57,29 +57,45 @@ class PostTemplateConfigAdmin(admin.ModelAdmin):
     list_display = (
         "template_type",
         "label",
+        "description_short",
         "custom_template",
         "enabled_editor_blocks_display",
         "updated_at",
     )
     list_filter = ("custom_template__comun",)
-    search_fields = ("template_type", "label", "custom_template__name", "custom_template__comun__name")
+    search_fields = (
+        "template_type",
+        "label",
+        "description",
+        "custom_template__name",
+        "custom_template__comun__name",
+    )
     fields = (
         "template_type",
         "label",
+        "description",
         "custom_template",
         "enabled_editor_blocks",
+        "is_active",
     )
     readonly_fields = ("template_type", "custom_template")
 
     def get_queryset(self, request):
         PostTemplateConfig.ensure_defaults()
-        return super().get_queryset(request)
+        return super().get_queryset(request).filter(is_active=True)
 
     def has_add_permission(self, request):
         return False
 
     def has_delete_permission(self, request, obj=None):
-        return False
+        return True
+
+    def delete_model(self, request, obj):
+        obj.is_active = False
+        obj.save(update_fields=["is_active", "updated_at"])
+
+    def delete_queryset(self, request, queryset):
+        queryset.update(is_active=False)
 
     def enabled_editor_blocks_display(self, obj):
         choices = dict(template_editor_block_choices_for_template(obj.template_type))
@@ -90,3 +106,11 @@ class PostTemplateConfigAdmin(admin.ModelAdmin):
         return ", ".join(labels) if labels else "Без дополнительных блоков"
 
     enabled_editor_blocks_display.short_description = "Блоки редактора"
+
+    def description_short(self, obj):
+        description = str(getattr(obj, "description", "") or "").strip()
+        if not description:
+            return "—"
+        return description if len(description) <= 120 else f"{description[:117]}..."
+
+    description_short.short_description = "Описание"

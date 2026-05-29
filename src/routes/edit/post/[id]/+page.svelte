@@ -16,7 +16,7 @@
   onMount(async () => {
     try {
       const response = await getClient().getPost({
-        id: parseInt($page.params.id)
+        id: parseInt($page.params.id ?? '0')
       })
       
       if (!$profile?.user || 
@@ -47,7 +47,7 @@
 <div class="w-full max-w-5xl mx-auto h-full">
   {#if loading}
     <div class="flex justify-center">
-      <span class="loading loading-spinner" />
+      <span class="loading loading-spinner"></span>
     </div>
   {:else if error}
     <div class="alert alert-error">
@@ -56,20 +56,7 @@
   {:else}
     <PostForm
       edit
-      editingPost={{
-        id: post.post.id,
-        name: post.post.name,
-        url: post.post.url || "",
-        body: post.post.body || "",
-        nsfw: post.post.nsfw || false,
-        community_id: post.community.id,
-        language_id: post.post.language_id || 0,
-        honeypot: "",
-        removed: post.post.removed || false,
-        deleted: post.post.deleted || false,
-        creator_id: post.post.creator_id,
-        alt_text: post.post.alt_text
-      }}
+      editingPost={post.post}
       data={{
         community: post.community,
         title: post.post.name,
@@ -80,7 +67,6 @@
         url: post.post.url || "",
         language_id: post.post.language_id
       }}
-      community={post.community}
       on:submit={(e) => {
         toast({
           content: $t('toast.postEdited'),

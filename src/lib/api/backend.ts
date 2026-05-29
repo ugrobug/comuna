@@ -1,32 +1,26 @@
 import { browser } from '$app/environment'
-import { env } from '$env/dynamic/public'
+import { env as publicEnv } from '$env/dynamic/public'
 import type { SitePostTemplate } from '$lib/postTemplates'
 import { slugifyTitle } from '$lib/util/slug'
+import type { PostView } from 'lemmy-js-client'
 
 export const getBackendBaseUrl = (): string => {
   if (!browser) {
-    const base = env.PUBLIC_INTERNAL_BACKEND_URL || ''
+    const base =
+      process.env.INTERNAL_BACKEND_URL ||
+      publicEnv.PUBLIC_BACKEND_URL ||
+      ''
     return base.replace(/\/$/, '')
   }
-  const base = env.PUBLIC_BACKEND_URL || 'http://localhost:8000'
-  return base.replace(/\/$/, '')
+  const base = (publicEnv.PUBLIC_BACKEND_URL || '').replace(/\/$/, '')
+  if (!base || base === window.location.origin) {
+    return ''
+  }
+  return base
 }
 
 export const buildAuthorPostsUrl = (username: string): string => {
   return `${getBackendBaseUrl()}/api/authors/${encodeURIComponent(username)}/posts/`
-}
-
-export const buildRubricsUrl = (options?: { includeHidden?: boolean }): string => {
-  const base = `${getBackendBaseUrl()}/api/rubrics/`
-  if (!options?.includeHidden) {
-    return base
-  }
-  const params = new URLSearchParams({ include_hidden: '1' })
-  return `${base}?${params.toString()}`
-}
-
-export const buildRubricPostsUrl = (slug: string): string => {
-  return `${getBackendBaseUrl()}/api/rubrics/${encodeURIComponent(slug)}/posts/`
 }
 
 export const buildTagPostsUrl = (tag: string): string => {
@@ -78,6 +72,14 @@ export const buildPostRatingVoteUrl = (id: number | string): string => {
   return `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/rating-vote/`
 }
 
+export const buildBugReportStatusUrl = (id: number | string): string => {
+  return `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/bug-report-status/`
+}
+
+export const buildBugReportConfirmationUrl = (id: number | string): string => {
+  return `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/bug-report-confirmation/`
+}
+
 export const buildTagsListUrl = (): string => {
   return `${getBackendBaseUrl()}/api/tags/`
 }
@@ -86,12 +88,12 @@ export const buildTagsEnsureUrl = (): string => {
   return `${getBackendBaseUrl()}/api/tags/ensure/`
 }
 
-export const buildThematicFeedsListUrl = (): string => {
-  return `${getBackendBaseUrl()}/api/thematic-feeds/`
-}
-
 export const buildComunsUrl = (): string => {
   return `${getBackendBaseUrl()}/api/comuns/`
+}
+
+export const buildComunsSidebarUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/comuns/sidebar/`
 }
 
 export const buildComunFromTelegramChannelUrl = (): string => {
@@ -111,6 +113,21 @@ export const buildComunCustomTemplateEditorPath = (
 
 export const buildComunGlossaryPath = (slug: string): string => {
   return `/comuns/${encodeURIComponent(slug)}/glossary`
+}
+
+export const buildComunKnowledgeBasePath = (slug: string): string => {
+  return `/comuns/${encodeURIComponent(slug)}/knowledge-base`
+}
+
+export const buildComunKnowledgeBaseUrl = (slug: string): string => {
+  return `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/knowledge-base/`
+}
+
+export const buildComunKnowledgeBaseItemUrl = (
+  slug: string,
+  itemId: number | string
+): string => {
+  return `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/knowledge-base/${encodeURIComponent(itemId)}/`
 }
 
 export const buildComunRoadmapPath = (slug: string): string => {
@@ -156,28 +173,215 @@ export const buildPublicUserProfileUrl = (
   return query ? `${base}?${query}` : base
 }
 
-export const buildThematicFeedPostsUrl = (
-  slug: string,
-  options?: {
-    hideRead?: boolean
-    onlyRead?: boolean
-  }
-): string => {
-  const base = `${getBackendBaseUrl()}/api/thematic-feeds/${encodeURIComponent(slug)}/posts/`
+export const buildAuthFeedSettingsUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/auth/feed-settings/`
+}
+
+export const buildModeratorAnalyticsUrl = (options?: {
+  from?: string
+  to?: string
+}): string => {
+  const base = `${getBackendBaseUrl()}/api/moderator/analytics/`
   const params = new URLSearchParams()
-  if (options?.onlyRead) {
-    params.set('only_read', '1')
-  } else if (options?.hideRead) {
-    params.set('hide_read', '1')
+  if (options?.from) {
+    params.set('from', options.from)
+  }
+  if (options?.to) {
+    params.set('to', options.to)
   }
   const query = params.toString()
   return query ? `${base}?${query}` : base
 }
 
-export const buildThematicFeedsManageUrl = (slug?: string): string => {
-  const base = `${getBackendBaseUrl()}/api/thematic-feeds/manage/`
-  if (!slug) return base
-  return `${base}${encodeURIComponent(slug)}/`
+export const buildModeratorPostViewSettingsUrl = (options?: {
+  q?: string
+  limit?: number
+}): string => {
+  const base = `${getBackendBaseUrl()}/api/moderator/post-view-settings/`
+  const params = new URLSearchParams()
+  if (options?.q) {
+    params.set('q', options.q)
+  }
+  if (typeof options?.limit === 'number') {
+    params.set('limit', String(options.limit))
+  }
+  const query = params.toString()
+  return query ? `${base}?${query}` : base
+}
+
+export const buildModeratorPostViewSettingUrl = (id: number | string): string => {
+  return `${getBackendBaseUrl()}/api/moderator/posts/${encodeURIComponent(id)}/view-settings/`
+}
+
+export const buildModeratorRatingSettingsUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/moderator/rating-settings/`
+}
+
+export const buildModeratorRatingSettingsUpdateUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/moderator/rating-settings/update/`
+}
+
+export const buildSpecialLandnameUrl = (text: string = '', options?: { track?: boolean }): string => {
+  const params = new URLSearchParams()
+  if (text) {
+    params.set('text', text)
+  }
+  if (options?.track) {
+    params.set('track', '1')
+  }
+  const query = params.toString()
+  return `${getBackendBaseUrl()}/api/special-projects/landname/${query ? `?${query}` : ''}`
+}
+
+export const buildSpecialLandnameAlphabetUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/landname/alphabet/`
+}
+
+export const buildSpecialLandnameSuggestionUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/landname/suggestions/`
+}
+
+export const buildSpecialLandnameShareUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/landname/share/`
+}
+
+export const buildSpecialLandnamePreviewImageUrl = (text: string = ''): string => {
+  const params = new URLSearchParams()
+  if (text) {
+    params.set('text', text)
+  }
+  const query = params.toString()
+  return `${getBackendBaseUrl()}/api/special-projects/landname/preview.png${query ? `?${query}` : ''}`
+}
+
+export const buildSpecialLandnameAdminLettersUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/landname/admin/letters/`
+}
+
+export const buildSpecialLandnameAdminGenerationsUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/landname/admin/generations/`
+}
+
+export const buildSpecialLandnameAdminLetterUrl = (id: number | string): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/landname/admin/letters/${encodeURIComponent(id)}/`
+}
+
+export const buildSpecialLandnameAdminSuggestionUrl = (id: number | string): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/landname/admin/suggestions/${encodeURIComponent(id)}/`
+}
+
+export const buildSpecialLandnameAdminSuggestionApproveUrl = (id: number | string): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/landname/admin/suggestions/${encodeURIComponent(id)}/approve/`
+}
+
+export const buildSpecialBookStatusUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/book/status/`
+}
+
+export const buildSpecialBookAdminStatsUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/book/admin/stats/`
+}
+
+export const buildSpecialBookAdminSettingsUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/book/admin/settings/`
+}
+
+export const buildSpecialBookAdminBlockedWordsUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/book/admin/blocked-words/`
+}
+
+export const buildSpecialBookAdminBlockedWordUrl = (id: number | string): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/book/admin/blocked-words/${encodeURIComponent(id)}/`
+}
+
+export const buildSpecialBookAdminWordsUrl = (options?: {
+  offset?: number
+  limit?: number
+  q?: string
+}): string => {
+  const params = new URLSearchParams()
+  if (typeof options?.offset === 'number') {
+    params.set('offset', String(options.offset))
+  }
+  if (typeof options?.limit === 'number') {
+    params.set('limit', String(options.limit))
+  }
+  if (options?.q) {
+    params.set('q', options.q)
+  }
+  const query = params.toString()
+  return `${getBackendBaseUrl()}/api/special-projects/book/admin/words/${query ? `?${query}` : ''}`
+}
+
+export const buildSpecialBookAdminWordCensorUrl = (id: number | string): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/book/admin/words/${encodeURIComponent(id)}/censor/`
+}
+
+export const buildSpecialBookAdminSelectionCensorUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/book/admin/selection/censor/`
+}
+
+export const buildSpecialBookWordsUrl = (options?: {
+  offset?: number
+  limit?: number
+}): string => {
+  const params = new URLSearchParams()
+  if (typeof options?.offset === 'number') {
+    params.set('offset', String(options.offset))
+  }
+  if (typeof options?.limit === 'number') {
+    params.set('limit', String(options.limit))
+  }
+  const query = params.toString()
+  return `${getBackendBaseUrl()}/api/special-projects/book/words/${query ? `?${query}` : ''}`
+}
+
+export const buildSpecialBookSubmitUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/book/submit/`
+}
+
+export const buildSpecialBookReminderUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/book/reminder/`
+}
+
+export const buildSpecialBookFinalNotificationUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/book/final-notification/`
+}
+
+export const buildSpecial1001FilmsStatusUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/365-films/status/`
+}
+
+export const buildSpecial1001FilmsStartUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/365-films/start/`
+}
+
+export const buildSpecial1001FilmsResumeUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/365-films/resume/`
+}
+
+export const buildSpecial1001FilmsEntryUrl = (token: string): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/365-films/entries/${encodeURIComponent(token)}/`
+}
+
+export const buildSpecial1001FilmsEntryCommentsUrl = (token: string): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/365-films/entries/${encodeURIComponent(token)}/comments/`
+}
+
+export const buildSpecial1001FilmsEntryRatingVoteUrl = (token: string): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/365-films/entries/${encodeURIComponent(token)}/rating-vote/`
+}
+
+export const buildSpecial1001FilmsAdminFilmsUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/365-films/admin/films/`
+}
+
+export const buildSpecial1001FilmsAdminLandingImagesUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/365-films/admin/landing-images/`
+}
+
+export const buildSpecial1001FilmsAdminFilmUrl = (id: number | string): string => {
+  return `${getBackendBaseUrl()}/api/special-projects/365-films/admin/films/${encodeURIComponent(id)}/`
 }
 
 export const buildBackendPostPath = (post: { id: number; title: string }): string => {
@@ -188,6 +392,7 @@ export const buildBackendPostPath = (post: { id: number; title: string }): strin
 export const buildHomeFeedUrl = (options?: {
   hideRead?: boolean
   onlyRead?: boolean
+  card?: boolean
 }): string => {
   const base = `${getBackendBaseUrl()}/api/home/`
   const params = new URLSearchParams()
@@ -196,20 +401,8 @@ export const buildHomeFeedUrl = (options?: {
   } else if (options?.hideRead) {
     params.set('hide_read', '1')
   }
-  const query = params.toString()
-  return query ? `${base}?${query}` : base
-}
-
-export const buildFreshFeedUrl = (options?: {
-  hideRead?: boolean
-  onlyRead?: boolean
-}): string => {
-  const base = `${getBackendBaseUrl()}/api/home/fresh/`
-  const params = new URLSearchParams()
-  if (options?.onlyRead) {
-    params.set('only_read', '1')
-  } else if (options?.hideRead) {
-    params.set('hide_read', '1')
+  if (options?.card) {
+    params.set('card', '1')
   }
   const query = params.toString()
   return query ? `${base}?${query}` : base
@@ -231,20 +424,16 @@ export const buildFavoritesFeedUrl = (options?: {
 }
 
 export const buildMyFeedUrl = (
-  rubrics?: string[],
   authors?: string[],
   tags?: string[],
   comuns?: string[],
   comunCategories?: Record<string, string[]>,
-  hideNegative: boolean = true,
+  hideNegative?: boolean,
   hideRead: boolean = false,
   onlyRead: boolean = false
 ): string => {
   const base = `${getBackendBaseUrl()}/api/home/my/`
   const params = new URLSearchParams()
-  if (rubrics?.length) {
-    params.set('rubrics', rubrics.join(','))
-  }
   if (authors?.length) {
     params.set('authors', authors.join(','))
   }
@@ -257,7 +446,7 @@ export const buildMyFeedUrl = (
   if (comunCategories && Object.keys(comunCategories).length) {
     params.set('comun_categories', JSON.stringify(comunCategories))
   }
-  if (!hideNegative) {
+  if (typeof hideNegative === 'boolean' && !hideNegative) {
     params.set('hide_negative', '0')
   }
   if (onlyRead) {
@@ -309,6 +498,19 @@ export type BackendTopAuthor = {
   all_time_posts?: number
 }
 
+export type BackendTopComun = {
+  id: number
+  slug: string
+  name: string
+  title?: string | null
+  logo_url?: string | null
+  avatar_url?: string | null
+  rating: number
+  score?: number
+  posts_count: number
+  comments_count: number
+}
+
 export const buildTopAuthorsUrl = (options?: {
   period?: BackendTopAuthorPeriod
   limit?: number | 'all'
@@ -324,6 +526,14 @@ export const buildTopAuthorsUrl = (options?: {
 export const buildTopAuthorsMonthUrl = (limit = 5): string => {
   const params = new URLSearchParams({ limit: String(limit) })
   return `${getBackendBaseUrl()}/api/authors/top-month/?${params.toString()}`
+}
+
+export const buildTopComunsUrl = (options?: { limit?: number | 'all' }): string => {
+  const params = new URLSearchParams()
+  if (options?.limit !== undefined) {
+    params.set('limit', String(options.limit))
+  }
+  return `${getBackendBaseUrl()}/api/comuns/top/?${params.toString()}`
 }
 
 export const buildStaticPageContentUrl = (slug: string): string => {
@@ -351,50 +561,10 @@ export type BackendAuthor = {
 }
 
 export type BackendTag = {
+  id: number
   name: string
   lemma?: string | null
   mood?: string
-}
-
-export type BackendThematicFeedAuthor = {
-  id?: number
-  username: string
-  title?: string | null
-}
-
-export type BackendThematicFeedRubric = {
-  id?: number
-  name: string
-  slug?: string | null
-  description?: string | null
-}
-
-export type BackendThematicFeed = {
-  id?: number
-  name: string
-  slug: string
-  description?: string | null
-  is_active?: boolean
-  sort_order?: number
-  moderators_count?: number
-  authors_count?: number
-  excluded_authors_count?: number
-  rubrics_count?: number
-  tags_count?: number
-  blocked_tags_count?: number
-  moderators?: Array<{ id: number; username: string }>
-  authors?: BackendThematicFeedAuthor[]
-  excluded_authors?: BackendThematicFeedAuthor[]
-  rubrics?: BackendThematicFeedRubric[]
-  tags?: BackendTag[]
-  blocked_tags?: BackendTag[]
-  excluded_tags?: BackendTag[]
-  moderator_ids?: number[]
-  author_ids?: number[]
-  excluded_author_ids?: number[]
-  rubric_ids?: number[]
-  tag_ids?: number[]
-  excluded_tag_ids?: number[]
 }
 
 export type BackendComunCategory = {
@@ -404,6 +574,8 @@ export type BackendComunCategory = {
   description?: string | null
   sort_order?: number
   only_moderators_can_post?: boolean
+  hide_from_home?: boolean
+  can_post?: boolean
   allowed_template_types?: string[]
   category_allowed_template_types?: string[]
   inherits_comun_template_types?: boolean
@@ -475,6 +647,8 @@ export type BackendComun = {
   id: number
   name: string
   slug: string
+  subscribers_count?: number
+  authors_count?: number
   website_url?: string | null
   logo_url?: string | null
   product_description?: string | null
@@ -482,6 +656,7 @@ export type BackendComun = {
   target_audience?: string | null
   glossary_enabled?: boolean
   roadmap_enabled?: boolean
+  knowledge_base_enabled?: boolean
   roadmap_category_ids?: number[]
   roadmap_categories?: BackendComunCategory[]
   glossary_terms?: BackendComunGlossaryTerm[]
@@ -493,10 +668,9 @@ export type BackendComun = {
   forbid_external_links?: boolean
   rating?: BackendComunRating
   hide_from_home?: boolean
-  hide_from_fresh?: boolean
   allowed_template_types?: string[]
   allowed_post_templates?: string[]
-  template_type_options?: Array<{ value: string; label: string }>
+  template_type_options?: Array<{ value: string; label: string; description?: string }>
   template_editor_blocks_by_template?: Record<string, string[]>
   custom_templates?: BackendComunCustomTemplate[]
   is_active?: boolean
@@ -504,6 +678,10 @@ export type BackendComun = {
   can_moderate?: boolean
   can_manage_moderators?: boolean
   can_post?: boolean
+  can_post_without_category?: boolean
+  can_post_category_ids?: number[]
+  can_start_post?: boolean
+  is_subscribed?: boolean
   creator?: { id?: number; username?: string | null; display_name?: string | null }
   moderators?: Array<{ id: number; username: string; display_name?: string | null }>
   moderators_count?: number
@@ -513,9 +691,6 @@ export type BackendComun = {
   categories?: BackendComunCategory[]
   categories_count?: number
   category_ids?: number[]
-  source_tags?: BackendTag[]
-  source_tag_ids?: number[]
-  product_tag?: { id: number; name: string; lemma?: string | null } | null
   blocked_tags?: BackendTag[]
   excluded_tags?: BackendTag[]
   blocked_tag_ids?: number[]
@@ -529,8 +704,6 @@ export type BackendComun = {
   } | null
   telegram_source_author_id?: number | null
   telegram_channel_username?: string | null
-  source_rubric?: { id: number; name: string; slug: string } | null
-  product_tag_id?: number | null
   welcome_post_id?: number | null
   welcome_post_ref?: string
   welcome_post?: BackendPost | null
@@ -547,7 +720,7 @@ export type BackendComun = {
       channel_url?: string | null
       avatar_url?: string | null
     }>
-    template_types?: Array<{ value: string; label: string }>
+    template_types?: Array<{ value: string; label: string; description?: string }>
     template_editor_block_options_by_template?: Record<string, Array<{ value: string; label: string }>>
     template_editor_blocks_by_template?: Record<string, string[]>
     custom_template_editor?: {
@@ -564,6 +737,20 @@ export type BackendPostComun = {
   name: string
   slug: string
   logo_url?: string | null
+  knowledge_base_enabled?: boolean
+  can_moderate?: boolean
+}
+
+export type BackendComunKnowledgeBaseItem = {
+  id: number
+  item_type: 'group' | 'post'
+  title: string
+  parent_id?: number | null
+  post_id?: number | null
+  post_path?: string | null
+  sort_order?: number
+  depth?: number
+  children?: BackendComunKnowledgeBaseItem[]
 }
 
 export type BackendPublicSiteUser = {
@@ -592,7 +779,6 @@ export type BackendPublicSiteUserComun = {
   role?: 'creator' | 'moderator' | string
   can_moderate?: boolean
   categories_count?: number
-  product_tag?: { id: number; name: string; lemma?: string | null } | null
 }
 
 export type BackendPublicSiteUserAuthor = {
@@ -602,8 +788,6 @@ export type BackendPublicSiteUserAuthor = {
   channel_url?: string | null
   avatar_url?: string | null
   description?: string | null
-  rubric?: string | null
-  rubric_slug?: string | null
 }
 
 export type BackendPollOption = {
@@ -643,6 +827,11 @@ export type BackendPostRating = {
   user_vote?: number | null
 }
 
+export type BackendBugReportConfirmation = {
+  count: number
+  confirmed: boolean
+}
+
 export type BackendPost = {
   id: number
   title: string
@@ -653,12 +842,11 @@ export type BackendPost = {
   poll?: BackendPoll | null
   post_ratings?: Record<string, BackendPostRating>
   post_rating?: BackendPostRating | null
+  preview_image_url?: string | null
+  thumbnail_url?: string | null
   created_at: string
   source_url?: string | null
   channel_url?: string | null
-  rubric?: string | null
-  rubric_slug?: string | null
-  rubric_icon_url?: string | null
   comun?: BackendPostComun | null
   comun_slug?: string | null
   comments_count?: number
@@ -666,42 +854,49 @@ export type BackendPost = {
   views_count?: number
   is_favorite?: boolean
   can_manage?: boolean
+  can_manage_bug_report_status?: boolean
+  bug_report_confirmation?: BackendBugReportConfirmation | null
   tags?: BackendTag[]
   comun_category?: BackendComunCategory | null
   comun_category_id?: number | null
   author?: BackendAuthor
 }
 
+export const isSpecialProjectPost = (post: BackendPost | null | undefined): boolean => {
+  const username = post?.author?.username?.trim().toLowerCase()
+  return username === 'tambur-1001-films'
+}
+
 export const backendPostCommunityPath = (post: BackendPost): string | undefined => {
   const comunSlug = post.comun?.slug ?? post.comun_slug
   if (comunSlug) return `/comuns/${encodeURIComponent(comunSlug)}`
-  return post.rubric_slug ? `/rubrics/${encodeURIComponent(post.rubric_slug)}/posts` : undefined
+  return undefined
 }
 
 export const backendPostToPostView = (
   post: BackendPost,
-  fallbackAuthor?: BackendAuthor
-) => {
+  fallbackAuthor?: BackendAuthor,
+  options: { includePreviewMedia?: boolean } = { includePreviewMedia: true }
+): PostView => {
   const author = post.author ?? fallbackAuthor
   const authorName = author?.username ?? 'author'
   const authorTitle = author?.title ?? authorName
-  const rubricName = post.rubric ?? undefined
-  const rubricSlug = post.rubric_slug ?? undefined
   const comunName = post.comun?.name ?? undefined
   const comunSlug = post.comun?.slug ?? post.comun_slug ?? undefined
   const comunLogoUrl = post.comun?.logo_url ?? undefined
   const sourceUrl = typeof post.source_url === 'string' ? post.source_url.trim() : ''
+  const previewImageUrl =
+    typeof post.preview_image_url === 'string' ? post.preview_image_url.trim() : ''
+  const thumbnailUrl =
+    typeof post.thumbnail_url === 'string' ? post.thumbnail_url.trim() : previewImageUrl
   const authorChannelUrl = typeof author?.channel_url === 'string' ? author.channel_url.trim() : ''
-  const communityName =
-    comunSlug ??
-    rubricSlug ??
-    (rubricName ? rubricName.toLowerCase().replace(/\s+/g, '-') : 'no-rubric')
-  const communityTitle = comunName ?? rubricName ?? 'Без рубрики'
+  const communityName = comunSlug ?? `author-${authorName}`
+  const communityTitle = comunName ?? authorTitle
 
   const titleWithTags = post.title
 
   const creatorId = stableId(authorName)
-  const communityId = communityName ? stableId(communityName) : stableId(`${authorName}-rubric`)
+  const communityId = stableId(communityName)
 
   return {
     post: {
@@ -710,11 +905,18 @@ export const backendPostToPostView = (
       body: post.content,
       template: post.template ?? null,
       enabled_template_editor_blocks: post.enabled_template_editor_blocks ?? [],
+      comun_slug: comunSlug,
+      comun_category_id: post.comun_category_id ?? null,
+      comun_category: post.comun_category ?? null,
+      comun_knowledge_base_enabled: Boolean(post.comun?.knowledge_base_enabled),
+      comun_can_moderate: Boolean(post.comun?.can_moderate),
+      can_manage_bug_report_status: Boolean(post.can_manage_bug_report_status),
+      bug_report_confirmation: post.bug_report_confirmation ?? null,
       vote_poll_participations: post.vote_poll_participations ?? [],
       poll: post.poll ?? null,
       post_ratings: post.post_ratings ?? {},
       post_rating: post.post_rating ?? null,
-      url: '',
+      url: options.includePreviewMedia === false ? '' : previewImageUrl,
       tags: post.tags ?? [],
       published: post.created_at,
       updated: post.created_at,
@@ -729,7 +931,7 @@ export const backendPostToPostView = (
       community_id: communityId,
       ap_id: sourceUrl || `https://post.local/${post.id}`,
       embed_description: '',
-      thumbnail_url: null,
+      thumbnail_url: thumbnailUrl || undefined,
       language_id: 0,
     },
     creator: {
@@ -751,8 +953,8 @@ export const backendPostToPostView = (
       id: communityId,
       name: communityName,
       title: communityTitle,
-      actor_id: comunSlug ? `https://comuns.local/${communityName}` : `https://rubrics.local/${communityName}`,
-      icon: comunLogoUrl ?? post.rubric_icon_url ?? undefined,
+      actor_id: comunSlug ? `https://comuns.local/${communityName}` : `https://authors.local/${authorName}`,
+      icon: comunLogoUrl ?? undefined,
       local: true,
       deleted: false,
       hidden: false,
@@ -774,10 +976,13 @@ export const backendPostToPostView = (
     creator_is_admin: false,
     creator_is_moderator: false,
     creator_banned_from_community: false,
+    banned_from_community: false,
+    creator_blocked: false,
     subscribed: 'NotSubscribed',
     saved: Boolean(post.is_favorite),
     read: false,
     hidden: false,
+    unread_comments: 0,
     my_vote: 0,
-  }
+  } as unknown as PostView
 }

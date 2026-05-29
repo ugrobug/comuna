@@ -65,6 +65,7 @@
   export let displayName = $userSettings.displayNames
 
   $: envBadge = getEnvBadge(user.actor_id)
+  $: userLabel = displayName ? user.display_name || user.name : user.name
 </script>
 
 <a
@@ -77,7 +78,7 @@
   {#if avatar}
     <Avatar
       url={user.avatar}
-      alt={user.display_name || user.name}
+      alt={userLabel}
       width={avatarSize}
       class="flex-shrink-0"
     />
@@ -90,7 +91,7 @@
       class:font-medium={showInstance}
       class="username-text {envBadge && envBadge.classes}"
     >
-      {user.display_name || user.name}
+      {userLabel}
     </span>
   </span>
   {#if badges}

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { createEventDispatcher, onMount } from 'svelte'
   import { browser } from '$app/environment'
   import { buildPostCommentsUrl } from '$lib/api/backend'
   import { siteToken, siteUser } from '$lib/siteAuth'
@@ -9,7 +9,9 @@
 
   export let postId: number
   export let postAuthor: string | null = null
+  export let commentsUrl: string | null = null
 
+  const dispatch = createEventDispatcher<{ comment: SiteComment }>()
   let comments: SiteComment[] = []
   let commentTree: SiteCommentNode[] = []
   let loading = false
@@ -17,6 +19,7 @@
   let commentMasks: SiteCommentMask[] = []
   let lastToken: string | null = null
   let lastPostId = postId
+  let lastCommentsUrl = commentsUrl
 
   const buildTree = (items: SiteComment[]): SiteCommentNode[] => {
     const nodes = new Map<number, SiteCommentNode>()
@@ -51,7 +54,7 @@
     loading = true
     error = ''
     try {
-      const response = await fetch(buildPostCommentsUrl(postId), {
+      const response = await fetch(commentsUrl || buildPostCommentsUrl(postId), {
         headers: $siteToken
           ? {
               Authorization: `Bearer ${$siteToken}`,
@@ -82,6 +85,7 @@
       comments = normalizeList([...comments, comment])
     }
     rebuildTree()
+    dispatch('comment', comment)
   }
 
   const markDeleted = (commentId: number) => {
@@ -102,6 +106,11 @@
 
   $: if (postId !== lastPostId) {
     lastPostId = postId
+    loadComments()
+  }
+
+  $: if (commentsUrl !== lastCommentsUrl) {
+    lastCommentsUrl = commentsUrl
     loadComments()
   }
 </script>
@@ -128,6 +137,7 @@
           {postId}
           {postAuthor}
           {commentMasks}
+          submitUrl={commentsUrl}
           on:reply={(event) => upsertComment(event.detail)}
           on:update={(event) => upsertComment(event.detail)}
           on:remove={(event) => markDeleted(event.detail)}
@@ -146,6 +156,7 @@
     <SiteCommentForm
       {postId}
       {commentMasks}
+      submitUrl={commentsUrl}
       placeholder="Поделитесь мнением..."
       on:comment={(event) => upsertComment(event.detail)}
     />

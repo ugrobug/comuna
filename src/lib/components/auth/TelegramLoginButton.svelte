@@ -5,6 +5,9 @@
   export let label = 'Продолжить с Telegram'
   export let helperText = ''
   export let active = true
+  export let disabled = false
+  export let privacyAccepted = false
+  export let authIntent: 'login' | 'signup' = 'login'
 </script>
 
-<TelegramLoginButton {onSuccess} {label} {helperText} {active} />
+<TelegramLoginButton {onSuccess} {label} {helperText} {active} {disabled} {privacyAccepted} {authIntent} />

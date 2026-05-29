@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import fcntl
 import logging
+import os
 import threading
 import time
 from typing import Any
@@ -18,6 +20,23 @@ from telegram_integration.bot import (
 logger = logging.getLogger(__name__)
 
 _polling_started = False
+_polling_lock_handle = None
+
+
+def _acquire_polling_lock() -> bool:
+    global _polling_lock_handle
+    if _polling_lock_handle is not None:
+        return True
+
+    lock_path = os.environ.get("TELEGRAM_POLLING_LOCK_FILE", "/tmp/tambur-telegram-polling.lock")
+    handle = open(lock_path, "w")
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        handle.close()
+        return False
+    _polling_lock_handle = handle
+    return True
 
 
 def _polling_loop(token: str) -> None:
@@ -67,6 +86,9 @@ def start_polling_thread() -> None:
     if not token:
         logger.warning("TELEGRAM_BOT_TOKEN not set; polling disabled.")
         return
+    if not _acquire_polling_lock():
+        logger.info("Telegram polling already started in another process; skipping.")
+        return
     _polling_started = True
     print("Starting Telegram polling thread")
     thread = threading.Thread(target=_polling_loop, args=(token,), daemon=True)
@@ -74,4 +96,3 @@ def start_polling_thread() -> None:
 
 
 __all__ = ["start_polling_thread"]
-

@@ -11,16 +11,62 @@ from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils import timezone
 from feeds.models import Author, Post
-from telegram_integration.models import BotSession
+from telegram_integration.models import BotSession, TelegramAccount
+from telegram_integration.media import is_private_telegram_file_url
 from users.models import AuthorAdmin, AuthorVerificationCode
 
 _BOT_ID: int | None = None
+CHANNEL_FLOW_CREATE = "create_comun"
+CHANNEL_FLOW_EXISTING = "link_existing"
 
 
 def _fv():
     from feeds import views as feed_views
 
     return feed_views
+
+
+def _notification_service():
+    from notifications import service as notification_service
+
+    return notification_service
+
+
+def _unique_nonempty(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    unique_values: list[str] = []
+    for value in values:
+        normalized = str(value or "").strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        unique_values.append(normalized)
+    return unique_values
+
+
+def _merge_media_group_image(
+    raw_data: dict,
+    *,
+    image_url: str | None,
+    photo_file_id: str | None,
+    media_group_id: str,
+) -> dict:
+    next_raw_data = dict(raw_data or {})
+    existing_urls = _unique_nonempty(list(next_raw_data.get("gallery_urls") or []))
+    existing_file_ids = _unique_nonempty(list(next_raw_data.get("gallery_file_ids") or []))
+    photo_file_seen = bool(photo_file_id and photo_file_id in existing_file_ids)
+
+    if image_url and not photo_file_seen and image_url not in existing_urls:
+        existing_urls.append(image_url)
+    next_raw_data["gallery_urls"] = existing_urls
+
+    if photo_file_id and not photo_file_seen:
+        existing_file_ids.append(photo_file_id)
+    if existing_file_ids:
+        next_raw_data["gallery_file_ids"] = existing_file_ids
+
+    next_raw_data["media_group_id"] = media_group_id
+    return next_raw_data
 
 
 def _fetch_telegram_json(method: str, token: str, payload: dict) -> dict | None:
@@ -68,6 +114,25 @@ def _send_bot_message_with_keyboard(chat_id: int, text: str, keyboard: dict) -> 
     _fetch_telegram_json("sendMessage", token, payload)
 
 
+def _edit_bot_message_with_keyboard(chat_id: int, message_id: int, text: str, keyboard: dict) -> None:
+    token = settings.TELEGRAM_BOT_TOKEN
+    if not token:
+        return
+    payload = {
+        "chat_id": chat_id,
+        "message_id": message_id,
+        "text": text,
+        "reply_markup": json.dumps(keyboard),
+    }
+    response = _fetch_telegram_json("editMessageText", token, payload)
+    if response and response.get("ok"):
+        return
+    description = str((response or {}).get("description") or "").lower()
+    if "message is not modified" in description:
+        return
+    _send_bot_message_with_keyboard(chat_id, text, keyboard)
+
+
 def _answer_callback_query(callback_query_id: str, text: str = "") -> None:
     token = settings.TELEGRAM_BOT_TOKEN
     if not token:
@@ -76,6 +141,23 @@ def _answer_callback_query(callback_query_id: str, text: str = "") -> None:
     if text:
         payload["text"] = text
     _fetch_telegram_json("answerCallbackQuery", token, payload)
+
+
+def _main_reply_keyboard() -> dict:
+    return {
+        "keyboard": [["Управление оповещениями", "Управление каналами"]],
+        "resize_keyboard": True,
+    }
+
+
+def _send_main_menu(chat_id: int) -> None:
+    _send_bot_message_with_keyboard(
+        chat_id,
+        "Привет! Это бот сайта Тамбур, у меня две основные задачи, я присылаю "
+        "оповещения (только на которые подписан пользователь), а также я помогаю "
+        "привязать канал телеграм к сообществу. Выбери что ты хочешь.",
+        _main_reply_keyboard(),
+    )
 
 
 def _refresh_author_from_telegram(author: Author, chat_ref, token: str) -> None:
@@ -105,10 +187,12 @@ def _refresh_author_from_telegram(author: Author, chat_ref, token: str) -> None:
         if file_info and file_info.get("ok") and file_info.get("result"):
             file_path = file_info["result"].get("file_path")
             if file_path:
-                author.avatar_url = f"https://api.telegram.org/file/bot{token}/{file_path}"
+                telegram_file_url = f"https://api.telegram.org/file/bot{token}/{file_path}"
+                if is_private_telegram_file_url(author.avatar_url):
+                    author.avatar_url = ""
                 if file_id != author.avatar_file_id:
                     try:
-                        with urllib.request.urlopen(author.avatar_url, timeout=10) as response:
+                        with urllib.request.urlopen(telegram_file_url, timeout=10) as response:
                             data = response.read()
                         filename = os.path.basename(file_path) or f"{author.username}.jpg"
                         author.avatar_image.save(filename, ContentFile(data), save=False)
@@ -194,12 +278,107 @@ def _send_channel_settings_menu(chat_id: int, author: Author) -> None:
     )
 
 
-def _send_setup_options(chat_id: int) -> None:
-    BotSession.objects.update_or_create(
-        telegram_user_id=chat_id, defaults={"instructions_sent": False}
+def _channel_management_keyboard(chat_id: int) -> dict:
+    inline_keyboard: list[list[dict]] = [
+        [{"text": "Создать сообщество под канал", "callback_data": "channel_flow:create"}],
+        [{"text": "Привязать к существующему сообществу", "callback_data": "channel_flow:existing"}],
+    ]
+    if _get_admin_authors(chat_id):
+        inline_keyboard.append(
+            [{"text": "Настроить подключенные каналы", "callback_data": "channel_flow:settings"}]
+        )
+    return {"inline_keyboard": inline_keyboard}
+
+
+def _send_channel_management_menu(chat_id: int, message_id: int | None = None) -> None:
+    text = (
+        "Управление каналами:\n"
+        "1) Можно создать новое сообщество под Telegram-канал.\n"
+        "2) Можно привязать канал к уже существующему сообществу на сайте.\n"
+        "3) Если канал уже подключен, можно изменить его настройки."
     )
-    if _send_channel_picker(chat_id, "Выберите канал для настройки"):
+    keyboard = _channel_management_keyboard(chat_id)
+    if message_id:
+        _edit_bot_message_with_keyboard(chat_id, message_id, text, keyboard)
         return
+    _send_bot_message_with_keyboard(chat_id, text, keyboard)
+
+
+def _notification_settings_for_chat(chat_id: int) -> tuple[TelegramAccount | None, dict | None]:
+    account = TelegramAccount.objects.select_related("user").filter(telegram_id=chat_id).first()
+    if not account:
+        return None, None
+    return account, _notification_service().serialize_notification_settings_for_user(account.user)
+
+
+def _notification_menu_text(payload: dict) -> str:
+    events = payload.get("events") or []
+    lines = ["Ваши Telegram-оповещения:"]
+    for index, event in enumerate(events, start=1):
+        title = str(event.get("title") or event.get("key") or "").strip()
+        enabled = bool(event.get("telegram_enabled"))
+        lines.append(f"{index}) {title} - {'включены' if enabled else 'выключены'}")
+    lines.append("")
+    lines.append("Нажмите на пункт ниже, чтобы изменить подписку.")
+    return "\n".join(lines)
+
+
+def _notification_menu_keyboard(payload: dict) -> dict:
+    inline_keyboard: list[list[dict]] = []
+    for event in payload.get("events") or []:
+        event_key = str(event.get("key") or "").strip()
+        if not event_key:
+            continue
+        title = str(event.get("title") or event_key).strip()
+        status = "ON" if bool(event.get("telegram_enabled")) else "OFF"
+        inline_keyboard.append(
+            [{"text": f"{status} {title}", "callback_data": f"notiftoggle:{event_key}"}]
+        )
+    inline_keyboard.append([{"text": "Назад к каналам", "callback_data": "menu:channels"}])
+    return {"inline_keyboard": inline_keyboard}
+
+
+def _send_notification_settings_menu(chat_id: int, message_id: int | None = None) -> None:
+    account, payload = _notification_settings_for_chat(chat_id)
+    if not account or not payload:
+        text = (
+            "Telegram-аккаунт пока не привязан к сайту Тамбур. "
+            "Войдите на сайте через Telegram или привяжите Telegram в профиле, "
+            "после этого здесь появятся настройки оповещений.\n\n"
+            "Сайт: https://tambur.pub/settings#notifications"
+        )
+        if message_id:
+            _edit_bot_message_with_keyboard(
+                chat_id,
+                message_id,
+                text,
+                {"inline_keyboard": [[{"text": "К управлению каналами", "callback_data": "menu:channels"}]]},
+            )
+            return
+        _send_bot_message(chat_id, text)
+        return
+
+    text = _notification_menu_text(payload)
+    keyboard = _notification_menu_keyboard(payload)
+    if message_id:
+        _edit_bot_message_with_keyboard(chat_id, message_id, text, keyboard)
+        return
+    _send_bot_message_with_keyboard(chat_id, text, keyboard)
+
+
+def _send_setup_options(chat_id: int, *, channel_flow: str) -> None:
+    BotSession.objects.update_or_create(
+        telegram_user_id=chat_id,
+        defaults={
+            "selected_author": None,
+            "invite_waiting": False,
+            "instructions_sent": False,
+            "mode_selected": False,
+            "auto_publish": True,
+            "publish_delay_days": 0,
+            "channel_flow": channel_flow,
+        },
+    )
     _send_bot_message_with_keyboard(
         chat_id,
         "Будем публиковать все новые посты на сайте или ты хочешь каждый новый пост "
@@ -212,11 +391,19 @@ def _send_setup_options(chat_id: int) -> None:
             ]
         },
     )
-    _send_bot_message(
-        chat_id,
-        "Под ваш канал на сайте будет создано одноименное сообщество. "
-        "Чтобы управлять им, зарегистрируйтесь на сайте Comuna.",
-    )
+    if channel_flow == CHANNEL_FLOW_EXISTING:
+        _send_bot_message(
+            chat_id,
+            "Если хотите привязать канал к существующему сообществу, получите код "
+            "подтверждения в настройках профиля на сайте, отправьте его в этот бот, "
+            "а затем выберите канал в настройках сообщества на сайте.",
+        )
+    else:
+        _send_bot_message(
+            chat_id,
+            "Под ваш канал на сайте будет создано одноименное сообщество. "
+            "Чтобы управлять им, зарегистрируйтесь на сайте Тамбур.",
+        )
     _send_bot_message_with_keyboard(
         chat_id,
         "Выберите задержку публикации:",
@@ -231,7 +418,9 @@ def _send_setup_options(chat_id: int) -> None:
     )
 
 
-def _send_setup_instructions(chat_id: int, auto_publish: bool, delay_days: int) -> None:
+def _send_setup_instructions(
+    chat_id: int, auto_publish: bool, delay_days: int, channel_flow: str
+) -> None:
     publish_line = (
         "Новые посты будут публиковаться автоматически."
         if auto_publish
@@ -243,17 +432,34 @@ def _send_setup_instructions(chat_id: int, auto_publish: bool, delay_days: int) 
         if delay_days
         else "Публикация без задержки."
     )
+    if channel_flow == CHANNEL_FLOW_EXISTING:
+        text = (
+            "Отлично! Теперь:\n"
+            "1) Получите код подтверждения в настройках профиля на сайте Тамбур.\n"
+            "2) Отправьте этот код в бот.\n"
+            "3) Добавьте бота в админы канала.\n"
+            "4) Дайте права на чтение - их достаточно для работы бота.\n"
+            "5) После подключения канала откройте настройки сообщества на сайте и "
+            "выберите этот Telegram-канал.\n"
+            "6) По желанию добавьте ссылку приглашения на канал.\n"
+            "7) Для старых постов - пересылайте их сюда, и они появятся на сайте.\n"
+            f"{publish_line}\n"
+            f"{delay_line}"
+        )
+    else:
+        text = (
+            "Отлично! Теперь:\n"
+            "1) Под ваш канал на сайте будет создано одноименное сообщество.\n"
+            "2) Чтобы управлять им, зарегистрируйтесь на сайте Тамбур.\n"
+            "3) Добавьте бота в админы канала.\n"
+            "4) Дайте права на чтение - их достаточно для работы бота.\n"
+            "5) По желанию добавьте ссылку приглашения на канал.\n"
+            "6) Для старых постов - пересылайте их сюда, и они появятся на сайте.\n"
+            f"{publish_line}\n"
+            f"{delay_line}"
+        )
     _send_bot_message(
-        chat_id,
-        "Отлично! Теперь:\n"
-        "1) Под ваш канал на сайте будет создано одноименное сообщество.\n"
-        "2) Чтобы управлять им, зарегистрируйтесь на сайте Comuna.\n"
-        "3) Добавьте бота в админы канала.\n"
-        "4) Дайте права на чтение - их достаточно для работы бота.\n"
-        "5) По желанию добавьте ссылку приглашения на канал.\n"
-        "6) Для старых постов — пересылайте их сюда, и они появятся на сайте.\n"
-        f"{publish_line}\n"
-        f"{delay_line}",
+        chat_id, text
     )
 
 
@@ -262,7 +468,12 @@ def _maybe_send_setup_instructions(chat_id: int) -> None:
     if not session or session.instructions_sent:
         return
     if session.mode_selected:
-        _send_setup_instructions(chat_id, session.auto_publish, session.publish_delay_days)
+        _send_setup_instructions(
+            chat_id,
+            session.auto_publish,
+            session.publish_delay_days,
+            session.channel_flow or CHANNEL_FLOW_CREATE,
+        )
         session.instructions_sent = True
         session.save(update_fields=["instructions_sent", "updated_at"])
 
@@ -299,6 +510,7 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
         if not _is_bot_admin(chat_id, token):
             return
         _refresh_author_from_telegram(author, chat_id, token)
+    community_service._ensure_telegram_channel_comun_for_author(author)
 
     raw_text = _fv()._extract_plain_text(message)
     explicit_tags = _fv()._extract_hashtags(raw_text)
@@ -327,17 +539,13 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
                     existing_group_post.media_group_id = media_group_id
 
             if existing_group_post:
-                raw_data = existing_group_post.raw_data or {}
+                raw_data = _merge_media_group_image(
+                    existing_group_post.raw_data or {},
+                    image_url=image_url,
+                    photo_file_id=photo_file_id,
+                    media_group_id=media_group_id,
+                )
                 existing_urls = list(raw_data.get("gallery_urls") or [])
-                if image_url and image_url not in existing_urls:
-                    existing_urls.append(image_url)
-                raw_data["gallery_urls"] = existing_urls
-                if photo_file_id:
-                    existing_file_ids = list(raw_data.get("gallery_file_ids") or [])
-                    if photo_file_id not in existing_file_ids:
-                        existing_file_ids.append(photo_file_id)
-                    raw_data["gallery_file_ids"] = existing_file_ids
-                raw_data["media_group_id"] = media_group_id
                 if not raw_data.get("formatted_text") and formatted_text:
                     raw_data["formatted_text"] = formatted_text
                 if embed_html and not raw_data.get("embed_html"):
@@ -415,7 +623,6 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
             "channel_url": channel_url,
             "raw_data": raw_data,
             "is_pending": requires_approval,
-            "rubric": author.rubric,
             "media_group_id": media_group_id,
             "publish_at": publish_at,
         },
@@ -458,6 +665,26 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
     _fv()._apply_post_tags(post, explicit_tags)
 
 
+def _attach_verified_user_to_author(chat_id: int, author: Author) -> None:
+    session = BotSession.objects.filter(telegram_user_id=chat_id).first()
+    verified_user_id = getattr(session, "verified_user_id", None) if session else None
+    if not verified_user_id:
+        return
+
+    now = timezone.now()
+    link, _ = AuthorAdmin.objects.get_or_create(user_id=verified_user_id, author=author)
+    update_fields: list[str] = []
+    if link.telegram_user_id != chat_id:
+        link.telegram_user_id = chat_id
+        update_fields.append("telegram_user_id")
+    if link.verified_at is None:
+        link.verified_at = now
+        update_fields.append("verified_at")
+    if update_fields:
+        link.save(update_fields=update_fields)
+    community_service._attach_pending_comuns_for_author(author)
+
+
 def _handle_verification_code(chat_id: int, code: str) -> None:
     record = (
         AuthorVerificationCode.objects.select_related("user")
@@ -468,15 +695,12 @@ def _handle_verification_code(chat_id: int, code: str) -> None:
         _send_bot_message(chat_id, "Код не найден или уже использован.")
         return
 
-    authors = Author.objects.filter(admin_chat_id=chat_id, is_blocked=False).order_by("-updated_at")
-    if not authors:
-        _send_bot_message(
-            chat_id,
-            "Сначала подключите канал в боте, затем отправьте код повторно.",
-        )
-        return
-
     now = timezone.now()
+    session, _ = BotSession.objects.get_or_create(telegram_user_id=chat_id)
+    session.verified_user_id = record.user_id
+    session.save(update_fields=["verified_user_id", "updated_at"])
+
+    authors = Author.objects.filter(admin_chat_id=chat_id, is_blocked=False).order_by("-updated_at")
     linked = []
     for author in authors:
         link, _ = AuthorAdmin.objects.get_or_create(user=record.user, author=author)
@@ -489,7 +713,21 @@ def _handle_verification_code(chat_id: int, code: str) -> None:
     record.used_at = now
     record.save(update_fields=["used_at"])
 
-    _send_bot_message(chat_id, "Канал подтверждён: " + ", ".join(linked))
+    if linked:
+        linked_message = "Канал подтверждён: " + ", ".join(linked)
+        if session.channel_flow == CHANNEL_FLOW_EXISTING:
+            linked_message += (
+                ". Теперь откройте настройки нужного сообщества на сайте и выберите "
+                "этот Telegram-канал."
+            )
+        _send_bot_message(chat_id, linked_message)
+        return
+
+    _send_bot_message(
+        chat_id,
+        "Код подтверждения принят. Теперь добавьте бота в канал или перешлите сюда пост из "
+        "канала. После подключения канал можно будет привязать к сообществу на сайте.",
+    )
 
 
 def _handle_private_message(message: dict) -> None:
@@ -507,29 +745,22 @@ def _handle_private_message(message: dict) -> None:
         command = text.split(" ", 1)[0].lower()
 
     if command in {"/start", "/start@comuna_tg_bot"}:
-        _send_bot_message_with_keyboard(
-            chat_id,
-            "Привет! Это бот Comuna.ru он публикует твои посты на сайте, они "
-            "собирают аудиторию из поисковых систем и ведут ее к тебе в канал. "
-            "Чтобы запустить бота добавь его администратором к себе в канал и "
-            "настрой режим публикации ниже",
-            {"keyboard": [["Помощь", "Настройка"]], "resize_keyboard": True},
-        )
-        _send_setup_options(chat_id)
+        _send_main_menu(chat_id)
         return
 
     if command in {"/help", "/help@comuna_tg_bot"} or text.lower() == "помощь":
         _send_bot_message(
             chat_id,
-            "Как подключить канал:\n"
-            "1) Выберите режим публикации в настройке.\n"
-            "2) Добавьте бота админом в канал.\n"
-            "3) Дайте права на чтение - их достаточно для работы бота.\n"
-            "4) Под ваш канал на сайте будет создано одноименное сообщество.\n"
-            "5) Чтобы управлять им, зарегистрируйтесь на сайте Comuna.\n"
-            "6) По желанию добавьте ссылку приглашения на канал.\n"
-            "7) Для старых постов — пересылайте их сюда.\n"
-            "Сайт: https://comuna.ru/authors",
+            "Как пользоваться ботом:\n"
+            "1) В разделе \"Управление оповещениями\" можно посмотреть и изменить "
+            "Telegram-оповещения из сайта.\n"
+            "2) В разделе \"Управление каналами\" можно либо создать сообщество под "
+            "канал, либо привязать канал к уже существующему сообществу.\n"
+            "3) Для работы с каналом добавьте бота админом и дайте права на чтение - "
+            "этого достаточно.\n"
+            "4) Если канал нужно привязать к существующему сообществу, получите код "
+            "подтверждения в настройках профиля на сайте и отправьте его сюда.\n"
+            "Сайт: https://tambur.pub/settings",
         )
         return
 
@@ -537,16 +768,19 @@ def _handle_private_message(message: dict) -> None:
         _handle_verification_code(chat_id, text.strip())
         return
 
+    if text.lower() == "управление оповещениями":
+        _send_notification_settings_menu(chat_id)
+        return
+
+    if text.lower() in {"управление каналами", "настройка"}:
+        _send_channel_management_menu(chat_id)
+        return
+
     if (
         command in {"/settings", "/settings@comuna_tg_bot", "/menu", "/menu@comuna_tg_bot"}
-        or text.lower().startswith("настрой")
+        or text.lower().startswith("меню")
     ):
-        _send_bot_message_with_keyboard(
-            chat_id,
-            "Открываю меню настроек.",
-            {"keyboard": [["Помощь", "Настройка"]], "resize_keyboard": True},
-        )
-        _send_setup_options(chat_id)
+        _send_main_menu(chat_id)
         return
 
     if text == "Ссылка для подписки":
@@ -639,8 +873,19 @@ def _handle_private_message(message: dict) -> None:
                         "updated_at",
                     ]
                 )
+                _attach_verified_user_to_author(chat_id, author)
                 if session.selected_author is None:
-                    session.delete()
+                    session.invite_waiting = False
+                    session.pending_update_post_id = None
+                    session.pending_update_message = None
+                    session.save(
+                        update_fields=[
+                            "invite_waiting",
+                            "pending_update_post_id",
+                            "pending_update_message",
+                            "updated_at",
+                        ]
+                    )
 
         existing_post = Post.objects.filter(
             author__username__iexact=forward_chat.get("username"),
@@ -674,8 +919,8 @@ def _handle_private_message(message: dict) -> None:
 
     _send_bot_message_with_keyboard(
         chat_id,
-        "Перешлите пост из канала, чтобы добавить его на сайт. Для помощи — /help.",
-        {"keyboard": [["Помощь", "Настройка"]], "resize_keyboard": True},
+        "Выберите раздел: управление оповещениями или управление каналами.",
+        _main_reply_keyboard(),
     )
 
 
@@ -732,16 +977,32 @@ def _handle_my_chat_member(update: dict) -> None:
             update_fields.append("publish_delay_days")
 
     author.save(update_fields=update_fields)
+    _attach_verified_user_to_author(admin_chat_id, author)
 
     token = settings.TELEGRAM_BOT_TOKEN
     if token:
         _refresh_author_from_telegram(author, f"@{username}", token)
+    community_service._ensure_telegram_channel_comun_for_author(author)
 
-    _send_bot_message(
-        admin_chat_id,
-        f"Канал @{author.username} подключён. Для него на сайте будет создано одноименное "
-        "сообщество. Чтобы управлять им, зарегистрируйтесь на сайте Comuna.",
-    )
+    channel_flow = session.channel_flow if session else ""
+    if channel_flow == CHANNEL_FLOW_EXISTING:
+        if session and session.verified_user_id:
+            text = (
+                f"Канал @{author.username} подключён. Теперь откройте настройки нужного "
+                "сообщества на сайте и выберите этот Telegram-канал."
+            )
+        else:
+            text = (
+                f"Канал @{author.username} подключён. Теперь получите код подтверждения "
+                "в настройках профиля на сайте, отправьте его в бот, а затем выберите "
+                "этот Telegram-канал в настройках сообщества."
+            )
+    else:
+        text = (
+            f"Канал @{author.username} подключён. Для него на сайте будет создано "
+            "одноименное сообщество. Чтобы управлять им, зарегистрируйтесь на сайте Тамбур."
+        )
+    _send_bot_message(admin_chat_id, text)
 
 
 def _handle_callback_query(callback_query: dict) -> None:
@@ -750,6 +1011,7 @@ def _handle_callback_query(callback_query: dict) -> None:
     message = callback_query.get("message", {})
     chat = message.get("chat", {})
     chat_id = chat.get("id")
+    message_id = message.get("message_id")
     session = None
     if chat_id:
         session = (
@@ -757,6 +1019,53 @@ def _handle_callback_query(callback_query: dict) -> None:
             .select_related("selected_author")
             .first()
         )
+
+    if data == "menu:channels" and chat_id:
+        _answer_callback_query(callback_id)
+        _send_channel_management_menu(chat_id, message_id)
+        return
+
+    if data == "channel_flow:create" and chat_id:
+        _answer_callback_query(callback_id, "Открываю настройку канала")
+        _send_setup_options(chat_id, channel_flow=CHANNEL_FLOW_CREATE)
+        return
+
+    if data == "channel_flow:existing" and chat_id:
+        _answer_callback_query(callback_id, "Открываю настройку канала")
+        _send_setup_options(chat_id, channel_flow=CHANNEL_FLOW_EXISTING)
+        return
+
+    if data == "channel_flow:settings" and chat_id:
+        _answer_callback_query(callback_id, "Выберите канал")
+        _send_channel_picker(chat_id, "Выберите канал для настройки")
+        return
+
+    if data.startswith("notiftoggle:") and chat_id:
+        event_key = data.split(":", 1)[1].strip()
+        account, payload = _notification_settings_for_chat(chat_id)
+        if not account or not payload:
+            _answer_callback_query(callback_id, "Сначала привяжите Telegram к сайту")
+            _send_notification_settings_menu(chat_id, message_id)
+            return
+        event = next(
+            (item for item in payload.get("events") or [] if str(item.get("key") or "").strip() == event_key),
+            None,
+        )
+        if not event:
+            _answer_callback_query(callback_id, "Оповещение не найдено")
+            return
+        updated = _notification_service().update_notification_settings_for_user(
+            account.user,
+            [{"key": event_key, "telegram_enabled": not bool(event.get("telegram_enabled"))}],
+        )
+        _answer_callback_query(callback_id, "Подписка обновлена")
+        _edit_bot_message_with_keyboard(
+            chat_id,
+            message_id,
+            _notification_menu_text(updated),
+            _notification_menu_keyboard(updated),
+        )
+        return
 
     if data.startswith("mode:") and chat_id:
         mode = data.split(":", 1)[1]
@@ -773,11 +1082,6 @@ def _handle_callback_query(callback_query: dict) -> None:
             defaults={"auto_publish": auto_publish, "mode_selected": True},
         )
         _answer_callback_query(callback_id, "Настройка сохранена")
-        _maybe_send_setup_instructions(chat_id)
-        return
-
-    if data.startswith("rubric:") and chat_id:
-        _answer_callback_query(callback_id, "Тематика больше не настраивается в боте")
         _maybe_send_setup_instructions(chat_id)
         return
 
@@ -871,9 +1175,6 @@ def _handle_callback_query(callback_query: dict) -> None:
                     ]
                 },
             )
-            return
-        if action == "rubric":
-            _answer_callback_query(callback_id, "Тематика больше не настраивается в боте")
             return
         if action == "delay":
             _answer_callback_query(callback_id, "Выберите задержку")

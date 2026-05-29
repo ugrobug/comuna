@@ -12,4 +12,4 @@
 <div
   class="bg-primary-900 dark:bg-primary-100 h-1 rounded-full"
   style="width: {$tween * 100}%;"
-/>
+></div>

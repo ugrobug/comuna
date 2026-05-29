@@ -302,7 +302,6 @@
     }
 
     private renderPreviewCard(snapshot: PostLinkSnapshot, announcement: string): string {
-      const rubricLabel = snapshot.rubric || ''
       const authorLabel = snapshot.author_title || snapshot.author_username || ''
       const previewText = snapshot.preview_text || ''
       const previewImage = snapshot.preview_image_url || ''
@@ -316,18 +315,12 @@
             <img src="${this.escapeHtml(previewImage)}" alt="${this.escapeHtml(snapshot.title || 'Превью поста')}" loading="lazy">
           </div>`
         : ''
-      const rubricIconHtml = snapshot.rubric_icon_url
-        ? `<img class="post-link-tool-preview__rubric-icon" src="${this.escapeHtml(snapshot.rubric_icon_url)}" alt="" loading="lazy">`
-        : ''
-      const rubricHtml = rubricLabel
-        ? `<span class="post-link-tool-preview__rubric">${rubricIconHtml}${this.escapeHtml(rubricLabel)}</span>`
-        : ''
       const authorHtml = authorLabel
         ? `<span class="post-link-tool-preview__author">${this.escapeHtml(authorLabel)}</span>`
         : ''
       const metaHtml =
-        rubricHtml || authorHtml
-          ? `<div class="post-link-tool-preview__meta">${rubricHtml}${authorHtml}</div>`
+        authorHtml
+          ? `<div class="post-link-tool-preview__meta">${authorHtml}</div>`
           : ''
 
       return `${announcementHtml}<div class="post-link-tool-preview__card${previewImage ? '' : ' post-link-tool-preview__card--no-image'}">
@@ -357,7 +350,7 @@
       }
 
       this.preview.innerHTML = ''
-      this.updateStatus('Поддерживаются только внутренние материалы Comuna.', 'muted')
+      this.updateStatus('Поддерживаются только внутренние материалы Тамбур.', 'muted')
     }
 
     private applySnapshot(snapshot: PostLinkSnapshot) {
@@ -409,7 +402,6 @@
         button.innerHTML = `
           <div class="post-link-tool-results__item-title">${this.escapeHtml(item.title || 'Пост')}</div>
           <div class="post-link-tool-results__item-meta">
-            <span>${this.escapeHtml(item.rubric || 'Без рубрики')}</span>
             <span>${this.escapeHtml(item.author_title || item.author_username || 'Автор')}</span>
           </div>
           ${
@@ -420,8 +412,8 @@
         `
         button.addEventListener('click', () => {
           this.applySnapshot(item)
-          if (this.searchInput) {
-            this.searchInput.value = item.title || ''
+          if (this.referenceInput) {
+            this.referenceInput.value = item.title || ''
           }
           this.results && (this.results.innerHTML = '')
         })
@@ -1953,6 +1945,15 @@
     }
   }
 
+  class TweetMediaTool extends GalleryTool {
+    static get toolbox() {
+      return {
+        title: 'Медиа',
+        icon: `<img src="${icons.image}" width="16" height="16" />`
+      }
+    }
+  }
+
   // Кастомный плагин для изображений
   class CustomImageTool {
     private api: any;
@@ -1970,13 +1971,14 @@
 
     constructor({ data, config, api }: { data?: { file: { url: string; alt: string; title: string }; caption: string }, config?: any, api?: any }) {
       this.api = api
+      const caption = data?.caption || data?.file?.alt || data?.file?.title || ''
       this.data = {
         file: {
           url: data?.file?.url || '',
-          alt: data?.file?.alt || '',
+          alt: caption,
           title: data?.file?.title || ''
         },
-        caption: data?.caption || ''
+        caption
       }
       this.config = config || {}
       this.shouldAutoOpenPicker = !Boolean(data?.file?.url)
@@ -2044,30 +2046,13 @@
       
       const caption = document.createElement('textarea')
       caption.classList.add('image-tool__caption')
-      caption.placeholder = 'Введите подпись к изображению...'
+      caption.setAttribute('aria-label', 'Подпись изображения')
+      caption.placeholder = 'Подпись изображения'
       caption.value = this.data.caption
-      caption.onchange = () => {
+      caption.oninput = () => {
         this.data.caption = caption.value
-      }
-      
-      const altInput = document.createElement('input')
-      altInput.type = 'text'
-      altInput.classList.add('image-tool__alt')
-      altInput.placeholder = 'Описание изображения для поисковиков (ALT)'
-      altInput.value = this.data.file.alt
-      altInput.onchange = () => {
-        this.data.file.alt = altInput.value
-        image.alt = altInput.value
-      }
-      
-      const titleInput = document.createElement('input')
-      titleInput.type = 'text'
-      titleInput.classList.add('image-tool__title')
-      titleInput.placeholder = 'Подпись к изображению'
-      titleInput.value = this.data.file.title
-      titleInput.onchange = () => {
-        this.data.file.title = titleInput.value
-        image.title = titleInput.value
+        this.data.file.alt = caption.value
+        image.alt = caption.value
       }
       
       const input = document.createElement('input')
@@ -2148,8 +2133,6 @@
       wrapper.appendChild(input)
       
       wrapper.appendChild(caption)
-      wrapper.appendChild(altInput)
-      wrapper.appendChild(titleInput)
 
       // When a new image block is added from the toolbox, immediately open
       // the file picker to avoid an extra click on the upload button.
@@ -4273,7 +4256,7 @@
     editor = new EditorJS({
       holder: element,
       placeholder: placeholder,
-      tools: {
+      tools: ({
         ...(enabledTemplateBlockTypes.has('header')
           ? {
               header: {
@@ -4309,7 +4292,7 @@
               table: TableTool,
             }
           : {}),
-        ...(enabledTemplateBlockTypes.has('image')
+        ...(enabledTemplateBlockTypes.has('image') && postTemplateType !== 'tweet'
           ? {
               image: CustomImageTool,
             }
@@ -4375,7 +4358,7 @@
           : {}),
         ...(enabledTemplateBlockTypes.has('gallery')
           ? {
-              gallery: GalleryTool,
+              gallery: postTemplateType === 'tweet' ? TweetMediaTool : GalleryTool,
             }
           : {}),
         ...(enabledTemplateBlockTypes.has('map')
@@ -4599,8 +4582,8 @@
         },
       }
       : {}),
-      },
-      tunes: ["anchorInput"],
+	      } as any),
+	      tunes: ["anchorInput"],
       inlineToolbar: inlineTextToolbar,
       i18n: {
         messages: {
@@ -4830,7 +4813,7 @@
   <div
     class="min-h-[400px] p-3 rounded-lg focus-within:ring-2 focus-within:ring-blue-500 transition-all duration-200 editor-content bg-white dark:bg-slate-800 border dark:border-slate-700"
     bind:this={element}
-  />
+  ></div>
 
   {#if showPostSettings}
     <!-- Информационный блок об обложке поста -->
@@ -6261,7 +6244,6 @@
     align-items: center;
   }
 
-  :global(.post-link-tool-preview__rubric),
   :global(.post-link-tool-preview__author) {
     display: inline-flex;
     align-items: center;
@@ -6273,22 +6255,9 @@
     background: rgba(15, 23, 42, 0.42);
   }
 
-  :global(.post-link-tool-preview__rubric) {
-    color: #fde68a;
-    font-weight: 700;
-    border: 1px solid rgba(251, 191, 36, 0.38);
-  }
-
   :global(.post-link-tool-preview__author) {
     color: #cbd5e1;
     border: 1px solid rgba(255, 255, 255, 0.14);
-  }
-
-  :global(.post-link-tool-preview__rubric-icon) {
-    width: 0.95rem;
-    height: 0.95rem;
-    border-radius: 9999px;
-    object-fit: cover;
   }
 
   :global(.post-link-tool-preview__title) {

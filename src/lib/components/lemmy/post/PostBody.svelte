@@ -1,7 +1,7 @@
 <script lang="ts">
   import Markdown from '$lib/components/markdown/Markdown.svelte'
   import type { View } from '$lib/settings'
-  import { Button, toast } from 'mono-svelte'
+  import { toast } from 'mono-svelte'
   import { ChevronDown, Icon } from 'svelte-hero-icons'
   import { browser } from '$app/environment'
   import { afterUpdate, createEventDispatcher, onMount, tick } from 'svelte'
@@ -40,6 +40,7 @@
   import { showImage } from '$lib/components/ui/ExpandableImage.svelte'
   import { buildAuthorPublicPath, normalizeAuthorBlockData } from '$lib/authorBlocks'
   import { renderQuoteBlockHtml } from '$lib/quoteBlock'
+  import { sanitizePostHtml as sanitizePostHtmlUniversal } from '$lib/security/html'
   
   let DOMPurify: any
   let purifyConfigured = false
@@ -103,16 +104,26 @@
   export let clickThrough = false
   export let showFullBody = false
   export let collapsible = false
+  export let externalPreviewImageUrl: string | null | undefined = null
+  export let ratingVoteUrl: string | null = null
+  $: void view
+  $: void clickThrough
   
   let htmlElement = 'div'
 
   export { htmlElement as element }
 
-  const dispatch = createEventDispatcher<{ expand: void }>()
+  const dispatch = createEventDispatcher<{ expand: void; rating: BackendPostRating }>()
 
   let expanded = false
   let hasOverflow = false
   let hadOverflow = false
+  let previewCanExpand = false
+  let previewWasTrimmed = false
+  let fullBody: string | null = null
+  let fullBodyLoading = false
+  let fullBodyLoadFailed = false
+  let bodySourceKey = ''
   let element: Element
   let isFirstImage = true;
   let firstImageUrl: string | null = null;
@@ -429,6 +440,68 @@
     return html
   }
 
+  const normalizePreviewImageUrl = (url: string | null | undefined): string => {
+    const raw = (url || '').trim()
+    if (!raw) return ''
+    try {
+      const parsed = new URL(raw, browser ? window.location.origin : 'https://tambur.local')
+      return decodeURIComponent(parsed.pathname)
+        .replace(/-\d+\.webp$/i, '')
+        .replace(/\.[a-z0-9]+$/i, '')
+        .toLowerCase()
+    } catch {
+      return raw
+        .split(/[?#]/, 1)[0]
+        .replace(/-\d+\.webp$/i, '')
+        .replace(/\.[a-z0-9]+$/i, '')
+        .toLowerCase()
+    }
+  }
+
+  const isSamePreviewImage = (left: string | null | undefined, right: string | null | undefined) => {
+    const leftKey = normalizePreviewImageUrl(left)
+    const rightKey = normalizePreviewImageUrl(right)
+    return Boolean(leftKey && rightKey && leftKey === rightKey)
+  }
+
+  const removeDuplicateLeadingPreviewImage = (html: string): string => {
+    if (!externalPreviewImageUrl || showFullBody) return html
+
+    if (browser) {
+      const wrapper = document.createElement('div')
+      wrapper.innerHTML = html
+      const firstImage = wrapper.querySelector('img')
+      const imageUrl = firstImage?.getAttribute('data-expandable-src') || firstImage?.getAttribute('src')
+      if (!firstImage || !isSamePreviewImage(imageUrl, externalPreviewImageUrl)) return html
+
+      const parent = firstImage.parentElement
+      const nextElement = firstImage.nextElementSibling
+      firstImage.remove()
+      if (nextElement?.classList.contains('image-alt-text')) {
+        nextElement.remove()
+      }
+      if (parent?.tagName.toLowerCase() === 'figure' && !parent.textContent?.trim()) {
+        parent.remove()
+      }
+      return wrapper.innerHTML
+    }
+
+    const firstImageMatch = html.match(/<img\b[^>]*>/i)
+    if (!firstImageMatch) return html
+    const tag = firstImageMatch[0]
+    const srcMatch = tag.match(/\s(?:data-expandable-src|src)=["']([^"']+)["']/i)
+    if (!isSamePreviewImage(srcMatch?.[1], externalPreviewImageUrl)) return html
+    return html
+      .replace(tag, '')
+      .replace(/^\s*<div\b[^>]*class=["'][^"']*\bimage-alt-text\b[^"']*["'][^>]*>[\s\S]*?<\/div>/i, '')
+  }
+
+  const shouldRenderInlinePreviewImage = (url: string | null | undefined): boolean => {
+    const value = (url || '').trim()
+    if (!value) return false
+    return !externalPreviewImageUrl
+  }
+
   const setupGalleries = () => {
     if (!browser || !element) return;
     const galleries = element.querySelectorAll('.post-gallery');
@@ -644,10 +717,46 @@
     showImage(src, image.getAttribute('alt') || image.getAttribute('title') || '')
   }
 
+  const loadFullBodyForExpand = async (): Promise<boolean> => {
+    if (!browser || showFullBody || !collapsible || !postId || fullBody !== null) return true
+    if (fullBodyLoading) return false
+
+    fullBodyLoading = true
+    fullBodyLoadFailed = false
+    try {
+      const token = $siteToken
+      const response = await fetch(buildPostDetailUrl(postId), {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      const payload = await response.json().catch(() => null)
+      const nextBody = typeof payload?.post?.content === 'string' ? payload.post.content : ''
+      if (!response.ok || !nextBody) {
+        throw new Error(payload?.error || 'Failed to load post body')
+      }
+      fullBody = nextBody
+      if (payload?.post?.poll && typeof payload.post.poll === 'object') {
+        applyLocalPollState(payload.post.poll as BackendPoll)
+      }
+      if (payload?.post?.post_ratings && typeof payload.post.post_ratings === 'object') {
+        localPostRatings = normalizePostRatingsMap(payload.post.post_ratings)
+      }
+      return true
+    } catch (error) {
+      console.error('Failed to load full post body:', error)
+      fullBodyLoadFailed = true
+      toast({ content: 'Не удалось загрузить полный текст поста', type: 'error' })
+      return false
+    } finally {
+      fullBodyLoading = false
+    }
+  }
+
   const expand = async (event?: Event) => {
     event?.preventDefault()
     event?.stopPropagation()
-    if (expanded) return
+    if (expanded || fullBodyLoading) return
+    const loaded = await loadFullBodyForExpand()
+    if (!loaded) return
     expanded = true
     hasOverflow = false
     dispatch('expand')
@@ -796,8 +905,9 @@
 
     postRatingsVoting = true
     try {
-      const response = await fetch(buildPostRatingVoteUrl(postId), {
+      const response = await fetch(ratingVoteUrl || buildPostRatingVoteUrl(postId), {
         method: 'POST',
+        credentials: 'include',
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -818,6 +928,7 @@
           ...localPostRatings,
           [nextBlockId]: { ...(payload.post_rating as BackendPostRating) },
         }
+        dispatch('rating', payload.post_rating as BackendPostRating)
       }
     } catch (error) {
       toast({
@@ -967,7 +1078,7 @@
 
       const ogTitle = readMeta('meta[property="og:title"]')
       const rawTitle = ogTitle || doc.querySelector('h1')?.textContent?.trim() || ''
-      const title = rawTitle.replace(/\s+—\s+Comuna\s*$/i, '').trim()
+      const title = rawTitle.replace(/\s+—\s+(?:Comuna|Тамбур)\s*$/i, '').trim()
 
       const previewText =
         readMeta('meta[property="og:description"]') ||
@@ -1253,13 +1364,11 @@
       )
       const announcement = escapeHtml(normalized.announcement || '')
       const titleText = escapeHtml(
-        snapshot?.title || (resolvedPostId ? `Материал #${resolvedPostId}` : 'Материал Comuna')
+        snapshot?.title || (resolvedPostId ? `Материал #${resolvedPostId}` : 'Материал Тамбур')
       )
       const authorText = escapeHtml(snapshot?.author_title || snapshot?.author_username || '')
-      const rubricText = escapeHtml(snapshot?.rubric || '')
       const previewText = escapeHtml(snapshot?.preview_text || '')
       const previewImage = escapeHtml(snapshot?.preview_image_url || '')
-      const rubricIcon = escapeHtml(snapshot?.rubric_icon_url || '')
       const needsHydration = !snapshot?.title || !snapshot?.preview_text || !snapshot?.preview_image_url
 
       if (!resolvedPostId) return ''
@@ -1274,18 +1383,12 @@
             <img src="${previewImage}" alt="${titleText}" loading="lazy" />
           </div>`
         : ''
-      const rubricIconHtml = rubricIcon
-        ? `<img class="post-linked-material__rubric-icon" src="${rubricIcon}" alt="" loading="lazy" />`
-        : ''
-      const rubricHtml = rubricText
-        ? `<span class="post-linked-material__rubric">${rubricIconHtml}${rubricText}</span>`
-        : ''
       const authorHtml = authorText
         ? `<span class="post-linked-material__author">${authorText}</span>`
         : ''
       const metaHtml =
-        rubricHtml || authorHtml
-          ? `<div class="post-linked-material__meta">${rubricHtml}${authorHtml}</div>`
+        authorHtml
+          ? `<div class="post-linked-material__meta">${authorHtml}</div>`
           : ''
       const previewTextHtml = previewText
         ? `<p class="post-linked-material__text" data-post-link-text>${previewText}</p>`
@@ -1881,7 +1984,7 @@
       const bodyRows = withHeadings ? rows.slice(1) : rows
 
       const headHtml = headRow?.length
-        ? `<thead><tr>${headRow.map((cell) => `<th>${cell || '&nbsp;'}</th>`).join('')}</tr></thead>`
+        ? `<thead><tr>${headRow.map((cell: string) => `<th>${cell || '&nbsp;'}</th>`).join('')}</tr></thead>`
         : ''
       const bodyHtml = bodyRows.length
         ? `<tbody>${bodyRows
@@ -1936,6 +2039,20 @@
       case 'image':
         return processImage(block.data.file.url, '', block.data.file.alt || '', block.data.file.title || '', block.data.file.caption || '');
       case 'gallery':
+        if (
+          template?.type === 'tweet' &&
+          Array.isArray(block.data?.images) &&
+          block.data.images.length === 1
+        ) {
+          const firstImage = block.data.images[0]
+          return processImage(
+            firstImage?.url || '',
+            '',
+            firstImage?.alt || '',
+            firstImage?.title || '',
+            ''
+          )
+        }
         return `<div class="post-gallery">
           ${block.data.images.map((img: any) => 
             `<img src="${img.url}" alt="${img.alt || ''}" title="${img.title || ''}">`
@@ -2122,12 +2239,15 @@
       // (min-width: 641px) - планшеты и десктопы
       const sizesAttr = '(max-width: 640px) 240px, (min-width: 641px) 480px';
       
-      // Определяем атрибуты загрузки в зависимости от позиции изображения
-      let loadingAttrs = '';
+      // In feed cards all inline images are lazy, including images loaded after expand.
+      const forceLazyImages = collapsible && !showFullBody;
+      let loadingAttrs = 'decoding="async"';
       
-      if (isFirstImage) {
+      if (forceLazyImages) {
+        loadingAttrs = 'loading="lazy" decoding="async"';
+      } else if (isFirstImage) {
         // Первое изображение загружаем с высоким приоритетом и без ленивой загрузки
-        loadingAttrs = 'fetchpriority="high"';
+        loadingAttrs = 'fetchpriority="high" decoding="async"';
         firstImageUrl = minImageUrl;
         firstImageSrcset = srcset;
       } else {
@@ -2135,7 +2255,7 @@
         // Но только если они не в первых 1000 символах контента
         const imagePosition = content.indexOf(imgUrl);
         if (imagePosition > 1000) {
-          loadingAttrs = 'loading="lazy"';
+          loadingAttrs = 'loading="lazy" decoding="async"';
         }
       }
       
@@ -2161,7 +2281,10 @@
 
       return imgHtml;
     }
-    return `<img src="${imgUrl}" data-expandable-image="1" data-expandable-src="${imgUrl}" ${alt ? `alt="${alt}"` : 'alt="Post image"'} ${title ? `title="${title}"` : ''} class="w-full h-auto">`;
+    const loadingAttrs = collapsible && !showFullBody
+      ? 'loading="lazy" decoding="async"'
+      : 'decoding="async"';
+    return `<img src="${imgUrl}" data-expandable-image="1" data-expandable-src="${imgUrl}" ${loadingAttrs} ${alt ? `alt="${alt}"` : 'alt="Post image"'} ${title ? `title="${title}"` : ''} class="w-full h-auto">`;
   }
 
   // Добавляем функцию для определения, находится ли изображение выше сгиба
@@ -2193,15 +2316,66 @@
       return { text: '', trimmed: false };
     }
     if (paragraphText.length > maxPreviewLength) {
+      previewWasTrimmed = true;
       return { text: `${paragraphText.slice(0, maxPreviewLength).trim()}...`, trimmed: true };
     }
     return { text: paragraphText, trimmed: false };
   }
 
+  function removeTitlePrefixFromText(rawText: string): string {
+    let text = rawText.trim();
+    if (!text || !title) return text;
+    const titleText = title.trim();
+    if (!titleText || !text.toLowerCase().startsWith(titleText.toLowerCase())) return text;
+    return text
+      .slice(titleText.length)
+      .replace(/^[:\-–—.!?\s]+/, '')
+      .trim();
+  }
+
+  function normalizePreviewCompareText(rawText: string): string {
+    return removeTitlePrefixFromText(stripHtmlTags(rawText))
+      .replace(/\.\.\.$/, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function looksTrimmedPreview(rawText: string): boolean {
+    return /(?:\.{3}|…)\s*(?:<\/p>)?\s*$/i.test((rawText || '').trim());
+  }
+
+  function collectEditorText(value: any): string {
+    if (!value) return '';
+    if (typeof value === 'string') return stripHtmlTags(value);
+    if (Array.isArray(value)) return value.map(collectEditorText).filter(Boolean).join(' ');
+    if (typeof value !== 'object') return '';
+
+    const chunks: string[] = [];
+    for (const key of ['text', 'caption', 'title', 'description', 'quote', 'message']) {
+      if (typeof value[key] === 'string') chunks.push(stripHtmlTags(value[key]));
+    }
+    for (const key of ['items', 'content', 'rows']) {
+      if (Array.isArray(value[key])) chunks.push(collectEditorText(value[key]));
+    }
+    return chunks.filter(Boolean).join(' ');
+  }
+
+  function extractSourcePlainText(rawContent: string): string {
+    const editorContent = parseSerializedEditorModel(rawContent);
+    if (editorContent) {
+      return normalizePreviewCompareText(collectEditorText(editorContent.blocks ?? []));
+    }
+    return normalizePreviewCompareText(
+      rawContent
+        .replace(/<preview-image>.*?<\/preview-image>/gis, '')
+        .replace(/<preview-description>.*?<\/preview-description>/gis, '')
+    );
+  }
+
   function buildPreviewParagraphFromText(rawText: string): string {
     const { text } = trimPreviewText(rawText);
     if (!text) return '';
-    return `<p>${escapeHtml(text)}</p>`;
+    return `<p>${escapeHtml(text).replace(/\r\n|\r|\n/g, '<br>')}</p>`;
   }
 
   function buildPreviewParagraphFromHtml(paragraphHtml: string, paragraphText: string): string {
@@ -2219,8 +2393,9 @@
       tempDiv.innerHTML = html;
       const paragraphs = Array.from(tempDiv.querySelectorAll('p'));
       for (const paragraph of paragraphs) {
-        if (!paragraph.textContent) continue;
-        const preview = buildPreviewParagraphFromHtml(paragraph.innerHTML, paragraph.textContent);
+        const paragraphText = stripHtmlTags(paragraph.innerHTML);
+        if (!paragraphText.trim()) continue;
+        const preview = buildPreviewParagraphFromHtml(paragraph.innerHTML, paragraphText);
         if (preview) {
           return preview;
         }
@@ -2333,73 +2508,120 @@
     return '';
   }
 
-  function extractPreviewContent(html: string) {
-    if (showFullBody || collapsible) {
-      if (isJsonContent(html)) {
-        return stripLeadingTitleFromHtml(convertJsonToHtml(html));
+  function buildJsonCardPreview(content: any): string {
+    let previewContent = ''
+    const previewMovieCard = extractPreviewMovieCardFromJson(content)
+    const previewPostLink = extractPreviewPostLinkFromJson(content)
+    const previewParagraph = extractPreviewParagraphFromJson(content)
+    let previewText = ''
+    let previewImageUrl = content?.additional?.previewImage?.trim() || ''
+    let previewImageAlt = 'Preview image'
+    let previewImageTitle = ''
+
+    if (previewMovieCard) {
+      previewContent += previewMovieCard
+    }
+
+    if (!previewContent && previewPostLink) {
+      previewContent += previewPostLink
+    }
+
+    if (!previewMovieCard && !previewPostLink && !previewImageUrl) {
+      const fallbackImage = extractPreviewImageFromJson(content)
+      if (fallbackImage?.url) {
+        previewImageUrl = fallbackImage.url
+        previewImageAlt = fallbackImage.alt || previewImageAlt
+        previewImageTitle = fallbackImage.title || ''
       }
-      return stripLeadingTitleFromHtml(html);
+    }
+
+    if (!previewMovieCard && !previewPostLink && shouldRenderInlinePreviewImage(previewImageUrl)) {
+      previewContent += processImage(previewImageUrl, '', previewImageAlt, previewImageTitle)
+    }
+
+    if (content?.additional?.previewDescription?.trim()) {
+      previewText = buildPreviewParagraphFromText(content.additional.previewDescription.trim())
+    }
+    if (!previewText && previewParagraph) {
+      previewText = previewParagraph
+    }
+    if (previewText) {
+      previewContent += previewText
+    }
+
+    hasPreview = Boolean(previewContent)
+    return previewContent
+  }
+
+  function buildHtmlCardPreview(html: string): string {
+    const imageRegex = /<preview-image>(.*?)<\/preview-image>/is
+    const descriptionRegex = /<preview-description>(.*?)<\/preview-description>/is
+    const imageMatch = html.match(imageRegex)
+    const descriptionMatch = html.match(descriptionRegex)
+
+    let content = ''
+    let previewText = ''
+    let previewImageUrl = ''
+    let previewImageAlt = ''
+    let previewImageTitle = ''
+
+    if (imageMatch && imageMatch[1].trim()) {
+      previewImageUrl = imageMatch[1].trim()
+    } else {
+      const fallbackImage = extractFirstImageFromHtml(html)
+      if (fallbackImage?.url) {
+        previewImageUrl = fallbackImage.url
+        previewImageAlt = fallbackImage.alt || ''
+        previewImageTitle = fallbackImage.title || ''
+      }
+    }
+
+    if (shouldRenderInlinePreviewImage(previewImageUrl)) {
+      content += processImage(previewImageUrl, html, previewImageAlt, previewImageTitle)
+    }
+
+    if (descriptionMatch && descriptionMatch[1].trim()) {
+      previewText = buildPreviewParagraphFromText(descriptionMatch[1].trim())
+    }
+    if (!previewText) {
+      previewText = extractPreviewParagraphFromHtml(html)
+    }
+    if (previewText) {
+      content += previewText
+    }
+
+    hasPreview = Boolean(content)
+    return content
+  }
+
+  function extractPreviewContent(html: string) {
+    if (showFullBody || (collapsible && expanded)) {
+      const editorContent = parseSerializedEditorModel(html)
+      const fullHtml = editorContent ? convertJsonToHtml(html) : html
+      const contentHtml = stripLeadingTitleFromHtml(fullHtml)
+      return contentHtml
+    }
+
+    if (collapsible) {
+      const editorContent = parseSerializedEditorModel(html)
+      if (!editorContent && looksLikeSerializedEditorModel(html)) return ''
+      const previewHtml = editorContent ? buildJsonCardPreview(editorContent) : buildHtmlCardPreview(html)
+      if (previewHtml) return removeDuplicateLeadingPreviewImage(stripLeadingTitleFromHtml(previewHtml))
+      return ''
     }
     // Проверяем, является ли контент JSON или base64
     if (isJsonContent(html)) {
       try {
         const content = parseSerializedEditorModel(html)
         if (!content) return ''
-        
-        let previewContent = '';
-        const previewParagraph = extractPreviewParagraphFromJson(content);
-        const previewMovieCard = extractPreviewMovieCardFromJson(content)
-        const previewPostLink = extractPreviewPostLinkFromJson(content)
-        let previewText = '';
-        let previewImageUrl = content?.additional?.previewImage?.trim() || '';
-        let previewImageAlt = 'Preview image';
-        let previewImageTitle = '';
-
-        if (previewMovieCard) {
-          previewContent += previewMovieCard
-        }
-
-        if (!previewContent && previewPostLink) {
-          previewContent += previewPostLink
-        }
-
-        // Сначала добавляем изображение превью, если оно есть
-        if (!previewMovieCard && !previewPostLink && !previewImageUrl) {
-          const fallbackImage = extractPreviewImageFromJson(content);
-          if (fallbackImage?.url) {
-            previewImageUrl = fallbackImage.url;
-            previewImageAlt = fallbackImage.alt || previewImageAlt;
-            previewImageTitle = fallbackImage.title || '';
-          }
-        }
-
-        if (!previewMovieCard && !previewPostLink && previewImageUrl) {
-          previewContent += processImage(
-            previewImageUrl,
-            '',
-            previewImageAlt,
-            previewImageTitle
-          );
-        }
-
-        // Затем добавляем описание превью или первый абзац
-        if (content?.additional?.previewDescription?.trim()) {
-          previewText = buildPreviewParagraphFromText(content.additional.previewDescription.trim());
-        }
-        if (!previewText && previewParagraph) {
-          previewText = previewParagraph;
-        }
-        if (previewText) {
-          previewContent += previewText;
-        }
+        const previewContent = buildJsonCardPreview(content)
 
         if (previewContent) {
-          hasPreview = true;
           return previewContent;
         }
 
         hasPreview = false;
-        return previewParagraph || convertJsonToHtml(html);
+        return extractPreviewParagraphFromJson(content) || convertJsonToHtml(html);
       } catch (error) {
         console.error('Error processing JSON content:', error);
         return looksLikeSerializedEditorModel(html) ? '' : html;
@@ -2506,6 +2728,7 @@
           'em',
           'strong',
           'a',
+          'button',
           'br',
           'ul',
           'ol',
@@ -2574,14 +2797,14 @@
           'role',
           'tabindex',
           'aria-expanded',
+          'aria-pressed',
           'hidden',
           'id',
           'aria-label',
         ],
       });
     }
-    // Если мы на сервере или DOMPurify еще не загружен, возвращаем исходный HTML
-    return withCompactLinks;
+    return sanitizePostHtmlUniversal(withCompactLinks);
   }
 
   function escapeHtml(value: string): string {
@@ -2597,9 +2820,10 @@
     if (browser) {
       const temp = document.createElement('div');
       temp.innerHTML = value;
+      temp.querySelectorAll('br').forEach((br) => br.replaceWith('\n'));
       return temp.textContent || '';
     }
-    return value.replace(/<[^>]*>/g, '');
+    return value.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>/g, '');
   }
 
   function slugifyHeadingText(value: string): string {
@@ -2754,9 +2978,24 @@
     firstImageUrl = null;
     firstImageSrcset = null;
     hasPreview = false;
-    processedBody = extractPreviewContent(body);
+    previewWasTrimmed = false;
+    const renderBody = !showFullBody && collapsible && expanded && fullBody ? fullBody : body;
+    processedBody = extractPreviewContent(renderBody);
+    if (!showFullBody && collapsible && !expanded) {
+      const previewText = normalizePreviewCompareText(processedBody);
+      const sourceText = extractSourcePlainText(body);
+      previewCanExpand =
+        previewWasTrimmed ||
+        Boolean(postId && looksTrimmedPreview(processedBody)) ||
+        Boolean(sourceText && sourceText.length > previewText.length + 8);
+    } else {
+      previewCanExpand = false;
+    }
+    void externalPreviewImageUrl
     void pollRenderState
     void postRatingsRenderState
+    void expanded
+    void fullBody
   }
 
   $: if (browser && allowPollVoting && postId && $siteToken) {
@@ -2765,18 +3004,25 @@
 
   // Сбрасываем состояние превью только при смене исходного контента/режима отображения
   $: {
-    void body
+    const nextBodySourceKey = `${postId ?? ''}:${body}`
+    if (nextBodySourceKey !== bodySourceKey) {
+      bodySourceKey = nextBodySourceKey
+      fullBody = null
+      fullBodyLoading = false
+      fullBodyLoadFailed = false
+      if (!showFullBody && collapsible) {
+        expanded = false
+        hasOverflow = false
+        hadOverflow = false
+      } else {
+        expanded = true
+        hasOverflow = false
+        hadOverflow = false
+      }
+    }
     void showFullBody
     void collapsible
-    if (!showFullBody && collapsible) {
-      expanded = false
-      hasOverflow = false
-      hadOverflow = false
-    } else {
-      expanded = true
-      hasOverflow = false
-      hadOverflow = false
-    }
+    void externalPreviewImageUrl
   }
 
   onMount(() => {
@@ -2814,15 +3060,16 @@
       }
       void handlePollClick(event)
     }
-    const keydownHandler = (event: KeyboardEvent) => {
-      if (event.key !== 'Enter' && event.key !== ' ') return
-      const target = event.target as HTMLElement | null
+    const keydownHandler: EventListener = (event) => {
+      const keyboardEvent = event as KeyboardEvent
+      if (keyboardEvent.key !== 'Enter' && keyboardEvent.key !== ' ') return
+      const target = keyboardEvent.target as HTMLElement | null
       const spoilerTrigger = target?.closest('.post-spoiler__trigger') as HTMLElement | null
       if (!spoilerTrigger || !element?.contains(spoilerTrigger)) return
       const spoilerElement = spoilerTrigger.closest('.post-spoiler') as HTMLElement | null
       if (!spoilerElement || !element?.contains(spoilerElement)) return
-      event.preventDefault()
-      event.stopPropagation()
+      keyboardEvent.preventDefault()
+      keyboardEvent.stopPropagation()
       toggleSpoilerBlock(spoilerElement)
     }
     element?.addEventListener('click', clickHandler)
@@ -2841,7 +3088,7 @@
       if (hasOverflow) {
         hadOverflow = true
       }
-      if (!hasOverflow) {
+      if (!hasOverflow && !previewCanExpand) {
         expanded = true
       }
     }, 50)
@@ -2873,7 +3120,7 @@
       if (hasOverflow) {
         hadOverflow = true
       }
-      if (!hasOverflow) {
+      if (!hasOverflow && !previewCanExpand) {
         expanded = true
       }
     }, 0)
@@ -2925,16 +3172,23 @@
     </button>
   {/if}
 
-  {#if collapsible && !showFullBody && !expanded && hasOverflow}
+  {#if collapsible && !showFullBody && !expanded && (hasOverflow || previewCanExpand || fullBodyLoadFailed)}
     <div class="post-expand-overlay pointer-events-none absolute inset-x-0 bottom-0 flex justify-center pt-16">
       <div class="pointer-events-auto flex justify-center w-full bg-gradient-to-b from-transparent to-white dark:to-zinc-900 pb-3">
         <button
           type="button"
           data-post-action-toggle-expand
-          class="mt-6 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white/95 dark:bg-zinc-900/95 px-4 py-2 text-sm font-medium text-slate-700 dark:text-zinc-200 shadow-sm hover:shadow-md transition"
+          class="post-expand-button mt-6"
           on:click={toggleExpand}
+          disabled={fullBodyLoading}
+          aria-busy={fullBodyLoading}
+          aria-label={fullBodyLoading ? 'Загружаем полный текст' : 'Показать полностью'}
         >
-          Показать полностью
+          {#if fullBodyLoading}
+            <span class="post-expand-spinner" aria-hidden="true"></span>
+          {:else}
+            <Icon src={ChevronDown} size="20" mini />
+          {/if}
         </button>
       </div>
     </div>
@@ -2945,6 +3199,57 @@
   .post-collapsed {
     max-height: 600px;
     overflow: hidden;
+  }
+
+  .post-expand-button {
+    display: inline-flex;
+    width: 2.25rem;
+    height: 2.25rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    border: 1px solid rgb(226 232 240);
+    background: rgb(255 255 255 / 0.96);
+    color: rgb(51 65 85);
+    box-shadow: 0 6px 18px rgb(15 23 42 / 0.12);
+    transition:
+      transform 0.15s ease,
+      box-shadow 0.15s ease,
+      border-color 0.15s ease;
+  }
+
+  .post-expand-button:hover {
+    transform: translateY(1px);
+    border-color: rgb(203 213 225);
+    box-shadow: 0 8px 24px rgb(15 23 42 / 0.16);
+  }
+
+  .post-expand-button:disabled {
+    cursor: wait;
+    opacity: 0.78;
+    transform: none;
+  }
+
+  .post-expand-spinner {
+    width: 1rem;
+    height: 1rem;
+    border-radius: 999px;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    animation: post-expand-spin 0.7s linear infinite;
+  }
+
+  @keyframes post-expand-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  :global(.dark) .post-expand-button {
+    border-color: rgb(63 63 70);
+    background: rgb(24 24 27 / 0.96);
+    color: rgb(228 228 231);
+    box-shadow: 0 6px 18px rgb(0 0 0 / 0.3);
   }
   
   .custom-gradient {
@@ -3863,7 +4168,6 @@
     align-items: center;
   }
 
-  :global(.post-content .post-linked-material__rubric),
   :global(.post-content .post-linked-material__author) {
     display: inline-flex;
     align-items: center;
@@ -3875,22 +4179,9 @@
     background: rgba(15, 23, 42, 0.42);
   }
 
-  :global(.post-content .post-linked-material__rubric) {
-    color: #fde68a;
-    font-weight: 700;
-    border: 1px solid rgba(251, 191, 36, 0.38);
-  }
-
   :global(.post-content .post-linked-material__author) {
     color: #cbd5e1;
     border: 1px solid rgba(255, 255, 255, 0.14);
-  }
-
-  :global(.post-content .post-linked-material__rubric-icon) {
-    width: 0.98rem;
-    height: 0.98rem;
-    border-radius: 9999px;
-    object-fit: cover;
   }
 
   :global(.post-content .post-linked-material__title) {
@@ -4545,11 +4836,16 @@
   }
 
   :global(.post-content ul) {
-    @apply list-disc list-outside pl-6 my-4 space-y-2;
+    @apply list-disc list-outside pl-6 my-4;
   }
 
   :global(.post-content ol) {
-    @apply list-decimal list-outside pl-6 my-4 space-y-2;
+    @apply list-decimal list-outside pl-6 my-4;
+  }
+
+  :global(.post-content ul li + li),
+  :global(.post-content ol li + li) {
+    margin-top: 0.5rem;
   }
 
   :global(.post-content ul.checklist) {

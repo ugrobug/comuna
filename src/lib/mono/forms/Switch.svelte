@@ -18,7 +18,7 @@
 			class="box-border w-5 h-full bg-white peer-checked:dark:bg-black rounded-full shadow-sm
 		group-active:w-6 transition peer-checked:translate-x-5 group-active:peer-checked:translate-x-4
 		rtl:peer-checked:-translate-x-5 rtl:group-active:peer-checked:-translate-x-4"
-		/>
+		></div>
 	</div>
 	<div class="flex flex-col {$$props.labelClass}">
 		<slot />

@@ -1,81 +1,14 @@
 <script lang="ts">
-  import { site } from '$lib/lemmy.js'
-  import { Button, Note, TextInput, toast } from 'mono-svelte'
-  import { MINIMUM_VERSION } from '$lib/version'
-  import { mayBeIncompatible } from '$lib/lemmy'
-  import { profile, profileData, type Profile } from '$lib/auth'
-  import { DEFAULT_INSTANCE_URL } from '$lib/instance'
-  import { goto } from '$app/navigation'
-  import { t } from '$lib/translations'
-  import Header from '$lib/components/ui/layout/pages/Header.svelte'
-
-  export let ref: string = '/'
-
-  let form = {
-    instance: DEFAULT_INSTANCE_URL,
-    username: `${$t('account.guest')} ${$profileData.profiles.filter((p) => p.jwt == undefined).length + 1}`,
-    loading: false,
-  }
-
-  async function addGuest() {
-    form.loading = true
-    profileData.update((pd) => {
-      // too lazy to make a decent system
-      const id = Math.floor(Math.random() * 100000)
-
-      const newProfile: Profile = {
-        id: id,
-        instance: form.instance,
-        username: form.username,
-      }
-
-      return {
-        profile: id,
-        profiles: [...pd.profiles, newProfile],
-      }
-    })
-
-    toast({ content: $t('toast.addAccount'), type: 'success' })
-
-    goto(ref)
-
-    form.loading = false
-  }
+  import { Button } from 'mono-svelte'
 </script>
 
-<div class="max-w-xl w-full mx-auto h-max my-auto">
-  <form on:submit|preventDefault={addGuest} class="flex flex-col gap-5">
-    <div class="flex flex-col gap-2">
-      <slot />
-      <Header>{$t('account.addGuest')}</Header>
-      {#if $site && mayBeIncompatible(MINIMUM_VERSION, $site.version.replace('v', ''))}
-        <Note>
-          {$t('account.versionGate', {
-            //@ts-ignore
-            version: `v${MINIMUM_VERSION}`,
-          })}
-        </Note>
-      {/if}
-    </div>
-    <div class="inline-flex items-center gap-2">
-      <TextInput
-        required
-        label={$t('form.name')}
-        bind:value={form.username}
-        placeholder="Guest 2"
-        minlength={1}
-        class="flex-1"
-      ></TextInput>
-    </div>
-    <Button
-      submit
-      class="w-full"
-      color="primary"
-      size="lg"
-      loading={form.loading}
-      disabled={form.loading}
-    >
-      {$t('form.submit')}
-    </Button>
-  </form>
+<div class="mx-auto my-auto flex w-full max-w-xl flex-col items-center gap-4 px-4 py-10 text-center">
+  <slot />
+  <h1 class="text-2xl font-roboto font-medium text-slate-950 dark:text-zinc-50">
+    Гостевой вход отключен
+  </h1>
+  <p class="text-sm text-slate-600 dark:text-zinc-400">
+    На Тамбуре можно работать только через авторизованный аккаунт.
+  </p>
+  <Button href="/login" color="primary" size="lg">Войти</Button>
 </div>

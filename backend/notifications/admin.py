@@ -5,8 +5,22 @@ from notifications.models import MobilePushDevice, SiteNotification, SiteNotific
 
 @admin.register(SiteNotificationPreference)
 class SiteNotificationPreferenceAdmin(admin.ModelAdmin):
-    list_display = ("user", "event_key", "site_enabled", "telegram_enabled", "push_enabled", "updated_at")
-    list_filter = ("event_key", "site_enabled", "telegram_enabled", "push_enabled")
+    list_display = (
+        "user",
+        "event_key",
+        "site_enabled",
+        "telegram_enabled",
+        "push_enabled",
+        "grouping_period",
+        "updated_at",
+    )
+    list_filter = (
+        "event_key",
+        "site_enabled",
+        "telegram_enabled",
+        "push_enabled",
+        "grouping_period",
+    )
     search_fields = ("user__username", "event_key")
     raw_id_fields = ("user",)
 
@@ -18,6 +32,8 @@ class SiteNotificationAdmin(admin.ModelAdmin):
         "user",
         "event_key",
         "title",
+        "group_key",
+        "group_count",
         "is_site",
         "is_telegram",
         "is_push",
@@ -26,7 +42,7 @@ class SiteNotificationAdmin(admin.ModelAdmin):
         "push_sent_at",
         "created_at",
     )
-    list_filter = ("event_key", "is_site", "is_telegram", "is_push")
+    list_filter = ("event_key", "is_site", "is_telegram", "is_push", "group_key")
     search_fields = ("user__username", "title", "message", "event_key")
     raw_id_fields = ("user",)
 

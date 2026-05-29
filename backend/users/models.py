@@ -41,6 +41,8 @@ class VkAccount(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="vk_account")
     vk_id = models.BigIntegerField(unique=True)
     username = models.CharField(blank=True, max_length=255)
+    email = models.EmailField(blank=True, max_length=254)
+    phone = models.CharField(blank=True, max_length=32)
     first_name = models.CharField(blank=True, max_length=255)
     last_name = models.CharField(blank=True, max_length=255)
     avatar_url = models.URLField(blank=True, max_length=500)
@@ -49,6 +51,10 @@ class VkAccount(models.Model):
 
     class Meta:
         app_label = "feeds"
+        indexes = [
+            models.Index(fields=("email",), name="feeds_vkacc_email_255939_idx"),
+            models.Index(fields=("phone",), name="feeds_vkacc_phone_c5f49a_idx"),
+        ]
 
     def __str__(self) -> str:
         return f"vk:{self.vk_id}"
@@ -57,7 +63,11 @@ class VkAccount(models.Model):
 class SiteUserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="site_profile")
     display_name = models.CharField(max_length=120, blank=True)
+    phone = models.CharField(max_length=32, blank=True)
     avatar_url = models.URLField(max_length=500, blank=True)
+    email_verified_at = models.DateTimeField(null=True, blank=True)
+    registration_source = models.CharField(max_length=80, blank=True)
+    registration_path = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -65,14 +75,40 @@ class SiteUserProfile(models.Model):
         app_label = "feeds"
         verbose_name = "Профиль пользователя сайта"
         verbose_name_plural = "Профили пользователей сайта"
+        indexes = [
+            models.Index(fields=("phone",), name="feeds_siteu_phone_43c849_idx"),
+            models.Index(fields=("registration_source",), name="feeds_siteu_regsrc_8f2c4d_idx"),
+        ]
 
     def __str__(self) -> str:
         return f"site-profile:{self.user_id}"
 
 
+class SiteAuthToken(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="site_auth_tokens")
+    token_hash = models.CharField(max_length=64, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField()
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    user_agent = models.CharField(max_length=255, blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+
+    class Meta:
+        app_label = "feeds"
+        indexes = [
+            models.Index(fields=("user", "expires_at"), name="feeds_sitea_user_id_5f8a21_idx"),
+            models.Index(fields=("revoked_at", "expires_at"), name="feeds_sitea_revoked_8b2e0c_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"site-auth-token:{self.user_id}:{self.id}"
+
+
 __all__ = [
     "AuthorAdmin",
     "AuthorVerificationCode",
+    "SiteAuthToken",
     "SiteUserProfile",
     "TelegramAccount",
     "VkAccount",

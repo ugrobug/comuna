@@ -2,23 +2,28 @@
   import { env } from '$env/dynamic/public'
   import { browser } from '$app/environment'
   import { page } from '$app/stores'
-  import Header from '$lib/components/ui/layout/pages/Header.svelte'
+  import { onMount } from 'svelte'
   import Post from '$lib/components/lemmy/post/Post.svelte'
   import PostComments from '$lib/components/site/PostComments.svelte'
   import {
     backendPostCommunityPath,
     backendPostToPostView,
     buildBackendPostPath,
+    buildPostDetailUrl,
     buildPostReadUrl,
     buildPostViewUrl,
+    isSpecialProjectPost,
   } from '$lib/api/backend'
-  import { siteToken } from '$lib/siteAuth'
+  import { refreshSiteUser, siteToken } from '$lib/siteAuth'
   import { parseSerializedEditorModel, looksLikeSerializedEditorModel } from '$lib/util'
 
   export let data
 
-  let postView: any = backendPostToPostView(data.post)
+  let postData = data.post
+  let lastRoutePost = data.post
+  let postView: any = backendPostToPostView(postData, undefined, { includePreviewMedia: false })
   let lastVisitedPostId: number | null = null
+  let lastAuthenticatedPostKey = ''
 
   const stripHtml = (value: string) =>
     value.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
@@ -117,49 +122,53 @@
   $: siteBaseUrl = (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '')
   $: canonicalPath = data.canonicalId ? `/b/post/${data.canonicalId}` : $page.url.pathname
   $: canonicalUrl = `${siteBaseUrl}${canonicalPath}`
-  $: postView = backendPostToPostView(data.post)
-  $: authorName = data.post?.author?.title || data.post?.author?.username || 'Автор'
-  $: authorUrl = data.post?.author?.username
-    ? `${siteBaseUrl}/${data.post.author.username}`
+  $: if (data.post !== lastRoutePost) {
+    lastRoutePost = data.post
+    postData = data.post
+    lastAuthenticatedPostKey = ''
+  }
+  $: postView = backendPostToPostView(postData, undefined, { includePreviewMedia: false })
+  $: authorName = postData?.author?.title || postData?.author?.username || 'Автор'
+  $: authorUrl = postData?.author?.username
+    ? `${siteBaseUrl}/${postData.author.username}`
     : undefined
   $: templatePoster =
-    data.post?.template?.type === 'movie_review'
-      ? (data.post?.template?.data?.poster_url ?? '')
-      : data.post?.template?.type === 'music_release'
-        ? (data.post?.template?.data?.cover_image_url ?? '')
+    postData?.template?.type === 'movie_review'
+      ? (postData?.template?.data?.poster_url ?? '')
+      : postData?.template?.type === 'music_release'
+        ? (postData?.template?.data?.cover_image_url ?? '')
         : ''
-  $: firstImage = extractFirstImage(data.post?.content || '')
+  $: firstImage = extractFirstImage(postData?.content || '')
   $: firstImageAbsolute = ensureAbsoluteUrl(templatePoster || firstImage || '', siteBaseUrl)
   $: ogImage = isPreviewImageCandidate(firstImageAbsolute) ? firstImageAbsolute : ''
   $: ogImageType = imageMimeByExtension(ogImage)
-  $: postDescription = buildDescription(data.post?.content || '')
-  $: metaDescription = postDescription || (env.PUBLIC_SITE_DESCRIPTION || 'Публикация на Comuna')
-  $: postTitle = data.post?.title || ''
-  $: siteTitle = env.PUBLIC_SITE_TITLE || 'Comuna'
+  $: postDescription = buildDescription(postData?.content || '')
+  $: metaDescription = postDescription || (env.PUBLIC_SITE_DESCRIPTION || 'Публикация на Тамбур')
+  $: postTitle = postData?.title || ''
+  $: siteTitle = env.PUBLIC_SITE_TITLE || 'Тамбур'
   $: metaTitle = postTitle ? `${postTitle} — ${siteTitle}` : siteTitle
   $: articleSchema =
-    data.post
+    postData
       ? toJsonLd({
           '@context': 'https://schema.org',
           '@type': 'BlogPosting',
-          headline: data.post.title,
-          name: data.post.title,
+          headline: postData.title,
+          name: postData.title,
           description: postDescription || undefined,
           url: canonicalUrl,
           mainEntityOfPage: { '@type': 'WebPage', '@id': canonicalUrl },
-          datePublished: data.post.created_at,
-          dateModified: data.post.created_at,
+          datePublished: postData.created_at,
+          dateModified: postData.created_at,
           inLanguage: 'ru-RU',
-          articleSection: data.post.rubric || undefined,
           author: {
             '@type': 'Person',
             name: authorName,
             url: authorUrl,
-            sameAs: data.post.author?.channel_url || undefined,
+            sameAs: postData.author?.channel_url || undefined,
           },
           publisher: {
             '@type': 'Organization',
-            name: env.PUBLIC_SITE_TITLE || 'Comuna',
+            name: env.PUBLIC_SITE_TITLE || 'Тамбур',
             url: siteBaseUrl,
             logo: {
               '@type': 'ImageObject',
@@ -171,6 +180,27 @@
       : ''
   $: articleSchemaTag = buildJsonLdTag(articleSchema)
 
+  const refreshPostForCurrentUser = async () => {
+    if (!browser || !postData?.id) return
+    const token = $siteToken
+    if (!token) return
+    const refreshKey = `${postData.id}:${token}`
+    if (refreshKey === lastAuthenticatedPostKey) return
+    lastAuthenticatedPostKey = refreshKey
+    try {
+      const response = await fetch(buildPostDetailUrl(postData.id), {
+        credentials: 'include',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      const payload = await response.json().catch(() => null)
+      if (response.ok && payload?.post?.id === postData.id) {
+        postData = payload.post
+      }
+    } catch (error) {
+      console.error('Failed to refresh post for current user:', error)
+    }
+  }
+
   const trackPostVisit = async (postId: number) => {
     try {
       const sessionKey = `comuna:post-view:${postId}`
@@ -180,7 +210,7 @@
         const viewResponse = await fetch(buildPostViewUrl(postId), { method: 'POST' })
         if (viewResponse.ok) {
           const payload = await viewResponse.json()
-          if (typeof payload?.views_count === 'number' && data?.post?.id === postId) {
+          if (typeof payload?.views_count === 'number' && postData?.id === postId) {
             postView = {
               ...postView,
               counts: {
@@ -209,9 +239,26 @@
     }
   }
 
-  $: if (browser && data?.post?.id && data.post.id !== lastVisitedPostId) {
-    lastVisitedPostId = data.post.id
-    void trackPostVisit(data.post.id)
+  const schedulePostVisitTracking = (postId: number) => {
+    const run = () => void trackPostVisit(postId)
+    if ('requestIdleCallback' in window) {
+      window.requestIdleCallback(run, { timeout: 2500 })
+      return
+    }
+    globalThis.setTimeout(run, 1000)
+  }
+
+  $: if (browser && postData?.id && $siteToken) {
+    void refreshPostForCurrentUser()
+  }
+
+  onMount(() => {
+    refreshSiteUser().then(() => refreshPostForCurrentUser()).catch(() => refreshPostForCurrentUser())
+  })
+
+  $: if (browser && postData?.id && postData.id !== lastVisitedPostId) {
+    lastVisitedPostId = postData.id
+    schedulePostVisitTracking(postData.id)
   }
 </script>
 
@@ -237,11 +284,8 @@
       <meta property="og:image:type" content={ogImageType} />
     {/if}
   {/if}
-  {#if data.post?.created_at}
-    <meta property="article:published_time" content={data.post.created_at} />
-  {/if}
-  {#if data.post?.rubric}
-    <meta property="article:section" content={data.post.rubric} />
+  {#if postData?.created_at}
+    <meta property="article:published_time" content={postData.created_at} />
   {/if}
 
   <meta name="twitter:card" content={ogImage ? 'summary_large_image' : 'summary'} />
@@ -257,24 +301,28 @@
 </svelte:head>
 
 <div class="flex flex-col gap-6 max-w-3xl">
-  <Header pageHeader>
-    <h1 class="text-2xl font-bold">Публикация</h1>
-  </Header>
-
   <div class="rounded-xl border border-slate-200 border-b-slate-300 bg-white p-4 dark:border-zinc-800 dark:border-t-zinc-700 dark:bg-zinc-900 sm:p-6">
     <Post
+      class="post-detail-post-compact-top"
       post={postView}
       view="cozy"
       actions={true}
       showReadMore={false}
       showFullBody={true}
-      linkOverride={buildBackendPostPath(data.post)}
-      userUrlOverride={data.post.author?.username ? `/${data.post.author.username}` : undefined}
-      communityUrlOverride={backendPostCommunityPath(data.post)}
-      subscribeUrl={data.post.channel_url ?? data.post.author?.channel_url}
+      linkOverride={buildBackendPostPath(postData)}
+      userUrlOverride={postData.author?.username ? `/${postData.author.username}` : undefined}
+      communityUrlOverride={backendPostCommunityPath(postData)}
+      subscribeUrl={postData.channel_url ?? postData.author?.channel_url}
       subscribeLabel="Подписаться"
+      hideSubscribe={isSpecialProjectPost(postData)}
     />
   </div>
 
-  <PostComments postId={data.post.id} postAuthor={data.post.author?.username ?? null} />
+  <PostComments postId={postData.id} postAuthor={postData.author?.username ?? null} />
 </div>
+
+<style>
+  :global(.post.post-detail-post-compact-top) {
+    padding-top: 0;
+  }
+</style>

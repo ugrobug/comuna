@@ -10,8 +10,8 @@
 
   let siteOpen: boolean = false
 
-  const title = `Правовая информация — ${env.PUBLIC_SITE_TITLE || 'Comuna'}`
-  const description = 'Юридическая информация и документы проекта Comuna.'
+  const title = `Правовая информация — ${env.PUBLIC_SITE_TITLE || 'Тамбур'}`
+  const description = 'Юридическая информация и документы проекта Тамбур.'
   $: canonicalUrl = new URL(
     $page.url.pathname,
     (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '') + '/'

@@ -6,10 +6,11 @@
     templateEditorDraggedItem,
     templateEditorDropRequest,
     type TemplateEditorDragPaletteItem,
+    type TemplateEditorFieldType,
     type TemplateEditorDropZone,
   } from '$lib/components/comuns/templateEditorDnd'
 
-  export let fieldOptions: Array<{ value: string; label: string }> = []
+  export let fieldOptions: Array<{ value: TemplateEditorFieldType; label: string }> = []
   export let blockOptions: Array<{ value: string; label: string }> = []
 
   const DRAG_TYPE = 'application/x-comuna-template-palette'

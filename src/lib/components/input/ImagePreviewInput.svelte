@@ -43,7 +43,7 @@
         class="w-full max-w-sm h-full rounded-lg"
       />
     {:else if url}
-      <img src={url} />
+      <img src={url} alt="" />
     {:else}
       <Icon src={DocumentPlus} class="opacity-50" size="36" />
       <p class="text-sm opacity-50">Attach a file</p>

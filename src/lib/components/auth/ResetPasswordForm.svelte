@@ -1,16 +1,12 @@
 <script lang="ts">
-  import { getClient } from '$lib/lemmy.js'
   import { Button, TextInput } from 'mono-svelte'
   import { t } from '$lib/translations'
-  import { errorMessage } from '$lib/lemmy/error'
   import ErrorContainer, { clearErrorScope, pushError } from '$lib/components/error/ErrorContainer.svelte'
   import { page } from '$app/stores'
-  import { DEFAULT_INSTANCE_URL } from '$lib/instance.js'
+  import { requestPasswordReset } from '$lib/siteAuth'
   import { toast } from 'mono-svelte'
 
   export let onBack: () => void
-
-  const instanceURL = DEFAULT_INSTANCE_URL
 
   let resetData = {
     email: '',
@@ -22,15 +18,13 @@
     clearErrorScope($page.route.id)
 
     try {
-      await getClient(instanceURL).passwordReset({
-        email: resetData.email.trim(),
-      })
+      await requestPasswordReset(resetData.email.trim())
 
-      toast({ content: $t('toast.resetLink'), type: 'success' })
+      toast({ content: 'Если аккаунт найден, письмо для восстановления отправлено.', type: 'success' })
       onBack()
     } catch (error) {
       pushError({
-        message: errorMessage(error),
+        message: (error as Error)?.message ?? 'Не удалось отправить письмо',
         scope: $page.route.id!,
       })
     }

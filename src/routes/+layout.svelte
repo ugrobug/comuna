@@ -67,17 +67,19 @@
 
   $: isLandingRoute =
     $page.url.pathname === '/lp' || $page.url.pathname.startsWith('/lp/')
+  $: isSpecialProjectRoute = $page.url.pathname.startsWith('/s/')
+  $: isFullBleedRoute = isLandingRoute || isSpecialProjectRoute
   // Получаем текущий URL для канонической ссылки
   $: siteBaseUrl = (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '')
   $: canonicalUrl = (() => {
-    if ($page.url.pathname === '/' || $page.url.pathname === '') {
+    if ($page.url.pathname === '/') {
       return siteBaseUrl
     }
     const path = $page.url.pathname
     const cleanPath = path.replace(/\/+$/, '')
     return `${siteBaseUrl}${cleanPath}`
   })()
-  $: defaultTitle = env.PUBLIC_SITE_TITLE || 'Comuna'
+  $: defaultTitle = env.PUBLIC_SITE_TITLE || 'Тамбур'
   $: defaultDescription = env.PUBLIC_SITE_DESCRIPTION || 'Публикуем лучшие посты из Telegram-каналов.'
   $: siteTitle = $site?.site_view?.site?.name || defaultTitle
   $: siteDescription = $site?.site_view?.site?.description || defaultDescription
@@ -86,7 +88,6 @@
     '/',
     '/about',
     '/[username]',
-    '/rubrics/[slug]/posts',
     '/tags/[tag]',
     '/c/[name]',
     '/post/[slug]',
@@ -143,10 +144,6 @@
       }
       document.body.querySelector('.loader')?.classList.add('hidden')
       document.body.setAttribute('style', themeVars)
-      userSettings.subscribe((settings) => {
-        console.log('Current font settings:', settings.font);
-        console.log('Adding font class:', settings.font === 'roboto' ? 'font-roboto' : 'font-sans');
-      })
     }
   })
 </script>
@@ -178,7 +175,7 @@
   
   <!-- Добавляем специальные мета-теги для HTTP версии -->
   {#if !$page.url.protocol.includes('https')}
-    <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
+    <meta http-equiv="content-security-policy" content="upgrade-insecure-requests">
   {/if}
   
   <!-- Добавляем alternate для языковых версий, если они есть -->
@@ -199,7 +196,7 @@
   dir={$locale == 'he' && $userSettings.useRtl ? 'rtl' : 'ltr'}
   class="min-h-screen "
   route={$page.route}
-  fullBleed={isLandingRoute}
+  fullBleed={isFullBleedRoute}
 >
   <Moderation />
   <ToastContainer />
@@ -207,7 +204,7 @@
   <ModalContainer />
 
   <svelte:fragment slot="sidebar" let:style={s} let:class={c}>
-    {#if !isLandingRoute}
+    {#if !isFullBleedRoute}
       {#await import('$lib/components/ui/sidebar/Sidebar.svelte') then { default: Sidebar }}
         <Sidebar
           route={$page.route.id ?? ''}
@@ -221,7 +218,7 @@
     slot="main"
     let:style={s}
     let:class={c}
-    class="{isLandingRoute
+    class="{isFullBleedRoute
       ? 'min-w-0 w-full flex flex-col h-full relative xl:pt-0 pt-20'
       : 'p-4 sm:p-6 min-w-0 w-full flex flex-col h-full relative xl:pt-0 pt-20'} {c}"
     style={s}
@@ -232,7 +229,7 @@
   <Navbar slot="navbar" let:style={s} let:class={c} class={c} style={s} />
   
   <svelte:fragment slot="suffix" let:class={c} let:style={s}>
-    {#if !isLandingRoute && !$page.data.hideSidebar}
+    {#if !isFullBleedRoute && !$page.data.hideSidebar}
       <div 
         class={c}
         style={s}

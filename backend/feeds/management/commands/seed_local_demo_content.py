@@ -18,7 +18,6 @@ from feeds.models import (
     PostFavorite,
     PostLike,
     PostRead,
-    Rubric,
     Tag,
 )
 from ratings.models import AuthorRatingEvent
@@ -30,12 +29,6 @@ DEMO_PASSWORD = "demo12345"
 DEMO_USERNAMES = [f"demo_user_{index:02d}" for index in range(1, 11)]
 DEMO_AUTHOR_USERNAMES = [f"demo_channel_{index:02d}" for index in range(1, 11)]
 DEMO_COMUN_SLUG_PREFIX = "demo-"
-DEMO_RUBRIC_SLUGS = (
-    "demo-tech",
-    "demo-media",
-    "demo-growth",
-    "demo-lifestyle",
-)
 DEMO_TAG_NAMES = (
     "AI Lab",
     "Game Design",
@@ -66,7 +59,6 @@ class DemoTopicSpec:
     community_name: str
     community_slug: str
     tag_name: str
-    rubric_slug: str
     category_name: str
     glossary_term: str
     glossary_definition: str
@@ -92,7 +84,6 @@ DEMO_TOPICS: tuple[DemoTopicSpec, ...] = (
         community_name="Демо: AI Lab",
         community_slug="demo-ai-lab",
         tag_name="AI Lab",
-        rubric_slug="demo-tech",
         category_name="Разборы",
         glossary_term="RAG",
         glossary_definition="Подход, где модель опирается на внешнюю базу знаний перед ответом.",
@@ -107,7 +98,6 @@ DEMO_TOPICS: tuple[DemoTopicSpec, ...] = (
         community_name="Демо: Game Design Circle",
         community_slug="demo-game-design",
         tag_name="Game Design",
-        rubric_slug="demo-media",
         category_name="Механики",
         glossary_term="Core Loop",
         glossary_definition="Короткий повторяемый цикл действия, который удерживает игрока в продукте.",
@@ -121,7 +111,6 @@ DEMO_TOPICS: tuple[DemoTopicSpec, ...] = (
         community_name="Демо: Product Sense",
         community_slug="demo-product-sense",
         tag_name="Product Sense",
-        rubric_slug="demo-growth",
         category_name="Гипотезы",
         glossary_term="North Star",
         glossary_definition="Метрика, которая лучше всего отражает долгосрочную пользу продукта для пользователя.",
@@ -135,7 +124,6 @@ DEMO_TOPICS: tuple[DemoTopicSpec, ...] = (
         community_name="Демо: Frontend Craft",
         community_slug="demo-frontend-craft",
         tag_name="Frontend Craft",
-        rubric_slug="demo-tech",
         category_name="Интерфейсы",
         glossary_term="Hydration",
         glossary_definition="Связывание серверно отрендеренного HTML с клиентским приложением в браузере.",
@@ -149,7 +137,6 @@ DEMO_TOPICS: tuple[DemoTopicSpec, ...] = (
         community_name="Демо: Backend Ops",
         community_slug="demo-backend-ops",
         tag_name="Backend Ops",
-        rubric_slug="demo-tech",
         category_name="Инциденты",
         glossary_term="Idempotency",
         glossary_definition="Свойство операции давать один и тот же результат при повторном выполнении.",
@@ -163,7 +150,6 @@ DEMO_TOPICS: tuple[DemoTopicSpec, ...] = (
         community_name="Демо: Data Stories",
         community_slug="demo-data-stories",
         tag_name="Data Stories",
-        rubric_slug="demo-growth",
         category_name="Метрики",
         glossary_term="Cohort",
         glossary_definition="Группа пользователей, объединенная общим моментом или сценарием входа в продукт.",
@@ -177,7 +163,6 @@ DEMO_TOPICS: tuple[DemoTopicSpec, ...] = (
         community_name="Демо: Cinema Club",
         community_slug="demo-cinema-club",
         tag_name="Cinema Club",
-        rubric_slug="demo-media",
         category_name="Обсуждение",
         glossary_term="Cold Open",
         glossary_definition="Сцена до титров, которая быстро задает тон и интригу истории.",
@@ -191,7 +176,6 @@ DEMO_TOPICS: tuple[DemoTopicSpec, ...] = (
         community_name="Демо: Music Lab",
         community_slug="demo-music-lab",
         tag_name="Music Lab",
-        rubric_slug="demo-media",
         category_name="Релизы",
         glossary_term="Hook",
         glossary_definition="Самый запоминающийся музыкальный фрагмент, который удерживает внимание слушателя.",
@@ -205,7 +189,6 @@ DEMO_TOPICS: tuple[DemoTopicSpec, ...] = (
         community_name="Демо: Travel Notes",
         community_slug="demo-travel-notes",
         tag_name="Travel Notes",
-        rubric_slug="demo-lifestyle",
         category_name="Маршруты",
         glossary_term="Slow Travel",
         glossary_definition="Подход к поездкам, где ставка делается на глубину опыта, а не на максимальное число точек.",
@@ -219,7 +202,6 @@ DEMO_TOPICS: tuple[DemoTopicSpec, ...] = (
         community_name="Демо: Startup Weekly",
         community_slug="demo-startup-weekly",
         tag_name="Startup Weekly",
-        rubric_slug="demo-growth",
         category_name="Разбор недели",
         glossary_term="PMF",
         glossary_definition="Состояние, когда продукт устойчиво решает понятную проблему для заметной группы людей.",
@@ -241,14 +223,13 @@ class Command(BaseCommand):
 
         with transaction.atomic():
             self._clear_previous_demo_data()
-            rubrics = self._create_rubrics()
             tags = self._create_tags()
             users = self._create_users()
-            authors = self._create_authors(users, rubrics, now)
-            posts = self._create_posts(authors, rubrics, tags, now, rng)
+            authors = self._create_authors(users, now)
+            posts = self._create_posts(authors, tags, now, rng)
             self._create_comments(posts, users, now)
             self._create_post_feedback(posts, users, now)
-            self._create_comuns(posts, users, rubrics, tags, now)
+            self._create_comuns(posts, users, tags, now)
 
         self.stdout.write(self.style.SUCCESS("Demo content created successfully."))
         self.stdout.write(f"Users: {User.objects.filter(username__in=DEMO_USERNAMES).count()}")
@@ -263,32 +244,9 @@ class Command(BaseCommand):
 
     def _clear_previous_demo_data(self) -> None:
         Comun.objects.filter(slug__startswith=DEMO_COMUN_SLUG_PREFIX).delete()
-        Rubric.objects.filter(slug__in=DEMO_RUBRIC_SLUGS).delete()
         Tag.objects.filter(name__in=DEMO_TAG_NAMES).delete()
         Author.objects.filter(username__in=DEMO_AUTHOR_USERNAMES).delete()
         User.objects.filter(username__in=DEMO_USERNAMES).delete()
-
-    def _create_rubrics(self) -> dict[str, Rubric]:
-        rubric_specs = (
-            ("demo-tech", "Технологии", "Разработка, инфраструктура и инженерные процессы.", 1),
-            ("demo-media", "Медиа", "Кино, музыка, игры и культурные разборы.", 2),
-            ("demo-growth", "Рост", "Продукт, аналитика и запуск новых направлений.", 3),
-            ("demo-lifestyle", "Лайфстайл", "Поездки, наблюдения и спокойные форматы.", 4),
-        )
-        rubrics: dict[str, Rubric] = {}
-        for slug, name, description, sort_order in rubric_specs:
-            rubrics[slug], _created = Rubric.objects.get_or_create(
-                slug=slug,
-                defaults={
-                    "name": name,
-                    "description": description,
-                    "sort_order": sort_order,
-                    "home_limit": 12,
-                    "is_active": True,
-                    "is_hidden": False,
-                },
-            )
-        return rubrics
 
     def _create_tags(self) -> dict[str, Tag]:
         mood_cycle = [
@@ -326,11 +284,9 @@ class Command(BaseCommand):
     def _create_authors(
         self,
         users: dict[str, User],
-        rubrics: dict[str, Rubric],
         now,
     ) -> dict[str, Author]:
         authors: dict[str, Author] = {}
-        rubric_cycle = list(rubrics.values())
         for index, spec in enumerate(DEMO_USERS):
             user = users[spec.username]
             author = Author.objects.create(
@@ -343,7 +299,6 @@ class Command(BaseCommand):
                     f"Авторская лента {spec.display_name}. Короткие наблюдения, разборы и ссылки без лишнего шума."
                 ),
                 subscribers_count=850 + index * 137,
-                rubric=rubric_cycle[index % len(rubric_cycle)],
                 auto_publish=True,
                 notify_comments=False,
                 rating_total=0,
@@ -358,7 +313,6 @@ class Command(BaseCommand):
     def _create_posts(
         self,
         authors: dict[str, Author],
-        rubrics: dict[str, Rubric],
         tags: dict[str, Tag],
         now,
         rng: Random,
@@ -374,7 +328,6 @@ class Command(BaseCommand):
                 author=author,
                 message_id=1000 + index,
                 title=topic.post_title,
-                rubric=rubrics[topic.rubric_slug],
                 content=topic.post_html,
                 rating=0,
                 comments_count=0,
@@ -484,7 +437,6 @@ class Command(BaseCommand):
         self,
         posts: dict[str, Post],
         users: dict[str, User],
-        rubrics: dict[str, Rubric],
         tags: dict[str, Tag],
         now,
     ) -> None:
@@ -495,7 +447,6 @@ class Command(BaseCommand):
                 name=topic.community_name,
                 slug=topic.community_slug,
                 creator=creator,
-                product_tag=tags[topic.tag_name],
                 website_url=f"https://example.com/{topic.community_slug}",
                 logo_url=f"https://api.dicebear.com/8.x/shapes/svg?seed={topic.community_slug}",
                 product_description=(
@@ -512,12 +463,10 @@ class Command(BaseCommand):
                 votes_up=0,
                 votes_down=0,
                 hide_from_home=False,
-                hide_from_fresh=False,
                 allowed_post_templates=["basic"],
                 is_active=True,
                 sort_order=index + 1,
             )
-            comun.source_tags.add(tags[topic.tag_name])
             comun.tags.add(tags[topic.tag_name], tags["Дискуссия"])
             comun.moderators.add(creator, moderator)
             Comun.objects.filter(id=comun.id).update(

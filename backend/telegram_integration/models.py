@@ -9,6 +9,7 @@ User = get_user_model()
 class TelegramAccount(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="telegram_account")
     telegram_id = models.BigIntegerField(unique=True)
+    oidc_sub = models.CharField(max_length=64, unique=True, null=True, blank=True)
     username = models.CharField(max_length=255, blank=True)
     first_name = models.CharField(max_length=255, blank=True)
     last_name = models.CharField(max_length=255, blank=True)
@@ -27,9 +28,8 @@ class BotSession(models.Model):
     telegram_user_id = models.BigIntegerField(unique=True)
     auto_publish = models.BooleanField(default=True)
     publish_delay_days = models.PositiveSmallIntegerField(default=0)
-    rubric = models.ForeignKey(
-        "feeds.Rubric", on_delete=models.SET_NULL, null=True, blank=True, related_name="bot_sessions"
-    )
+    verified_user_id = models.IntegerField(null=True, blank=True)
+    channel_flow = models.CharField(max_length=32, blank=True)
     selected_author = models.ForeignKey(
         "feeds.Author", on_delete=models.SET_NULL, null=True, blank=True, related_name="bot_sessions"
     )
@@ -50,4 +50,3 @@ class BotSession(models.Model):
 
 
 __all__ = ["BotSession", "TelegramAccount"]
-

@@ -11,9 +11,12 @@ def _serialize_site_notification_item(item: SiteNotification) -> dict:
         "message": item.message,
         "link_url": item.link_url or None,
         "payload": item.payload if isinstance(item.payload, dict) else {},
+        "group_key": item.group_key or "",
+        "group_count": int(item.group_count or 1),
         "is_read": bool(item.read_at),
         "read_at": item.read_at.isoformat() if item.read_at else None,
         "created_at": item.created_at.isoformat(),
+        "updated_at": item.updated_at.isoformat(),
     }
 
 

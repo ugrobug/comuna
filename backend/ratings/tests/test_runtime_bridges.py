@@ -11,9 +11,14 @@ class RatingsRuntimeBridgeTests(SimpleTestCase):
             ratings_views._serialize_top_author_item,
             ratings_serializers.serialize_top_author_item,
         )
+        self.assertIs(
+            ratings_views._serialize_top_comun_item,
+            ratings_serializers.serialize_top_comun_item,
+        )
 
     def test_views_use_ratings_service(self):
         self.assertIs(ratings_views._list_top_authors, ratings_service.list_top_authors)
+        self.assertIs(ratings_views._list_top_comuns, ratings_service.list_top_comuns)
         self.assertIs(
             ratings_views._normalize_top_authors_period,
             ratings_service.normalize_top_authors_period,

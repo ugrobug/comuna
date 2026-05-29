@@ -40,7 +40,6 @@ import {
   ArrowTrendingDown,
   ChatBubbleOvalLeftEllipsis,
   ChatBubbleLeftRight,
-  Plus,
 } from 'svelte-hero-icons'
 import { get } from 'svelte/store'
 
@@ -262,11 +261,6 @@ export function getGroups(
               icon: ArrowRightOnRectangle,
             },
             {
-              href: '/login/guest',
-              name: t.get('account.addGuest'),
-              icon: Plus,
-            },
-            {
               href: '/accounts',
               name: t.get('account.accounts'),
               icon: UserGroup,
@@ -279,11 +273,6 @@ export function getGroups(
               icon: ArrowRightOnRectangle,
             },
             {
-              href: '/login/guest',
-              name: t.get('account.addGuest'),
-              icon: Plus,
-            },
-            {
               href: '/accounts',
               name: t.get('account.accounts'),
               icon: UserGroup,
@@ -293,7 +282,7 @@ export function getGroups(
     {
       name: t.get('account.accounts'),
       actions: profiles.map((p) => ({
-        name: p.username ?? t.get('account.guest'),
+        name: p.username ?? t.get('account.accounts'),
         icon: p.avatar ?? UserCircle,
         detail: p.instance,
         handle: async () => {

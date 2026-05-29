@@ -11,6 +11,7 @@ import type {
   PostVotePollTemplateItem,
   SitePostTemplate,
 } from '$lib/postTemplates'
+import { loadBackendFeedSettings, resetBackendFeedSettingsSync } from '$lib/settings'
 import { writable, get } from 'svelte/store'
 
 export type SiteAuthorLink = {
@@ -19,8 +20,6 @@ export type SiteAuthorLink = {
   title?: string | null
   channel_url?: string | null
   avatar_url?: string | null
-  rubric?: string | null
-  rubric_slug?: string | null
   auto_publish?: boolean
   publish_delay_days?: number
   notify_comments?: boolean
@@ -35,6 +34,11 @@ export type SiteUser = {
   username: string
   display_name?: string | null
   email?: string | null
+  email_verified?: boolean
+  telegram_linked?: boolean
+  telegram_username?: string | null
+  vk_linked?: boolean
+  vk_username?: string | null
   avatar_url?: string | null
   is_staff?: boolean
   is_author: boolean
@@ -58,9 +62,6 @@ export type SiteUserPost = {
   is_draft?: boolean
   draft_share_token?: string | null
   publish_at?: string | null
-  rubric?: string | null
-  rubric_slug?: string | null
-  rubric_icon_url?: string | null
   comun_slug?: string | null
   comun?: {
     id?: number
@@ -88,9 +89,12 @@ export type SiteNotificationItem = {
   message: string
   link_url?: string | null
   payload?: Record<string, unknown>
+  group_key?: string
+  group_count?: number
   is_read: boolean
   read_at?: string | null
   created_at: string
+  updated_at?: string | null
 }
 
 export type SiteNotificationEventSetting = {
@@ -100,6 +104,10 @@ export type SiteNotificationEventSetting = {
   site_enabled: boolean
   telegram_enabled: boolean
   push_enabled: boolean
+  supports_grouping: boolean
+  grouping_period: 'none' | 'day' | 'week'
+  default_grouping_period: 'none' | 'day' | 'week'
+  grouping_options: Array<{ value: 'none' | 'day' | 'week'; label: string }>
   default_site_enabled: boolean
   default_telegram_enabled: boolean
   default_push_enabled: boolean
@@ -134,13 +142,19 @@ export type SiteStaticPageContent = {
 export type VotePollPostCandidate = PostVotePollTemplateItem
 
 const TOKEN_KEY = 'comuna.site.token'
+const COOKIE_AUTH_SENTINEL = '__cookie__'
 
-const initialToken = browser ? localStorage.getItem(TOKEN_KEY) : null
+const initialToken: string | null = null
 
 export const siteToken = writable<string | null>(initialToken)
 export const siteUser = writable<SiteUser | null>(null)
 
 const buildUrl = (path: string) => `${getBackendBaseUrl()}${path}`
+
+const normalizeNotificationGroupingPeriod = (value: any): 'none' | 'day' | 'week' => {
+  const text = String(value || '').trim()
+  return text === 'day' || text === 'week' ? text : 'none'
+}
 
 const normalizeSiteNotificationEventSetting = (value: any): SiteNotificationEventSetting => ({
   key: String(value?.key || ''),
@@ -152,6 +166,17 @@ const normalizeSiteNotificationEventSetting = (value: any): SiteNotificationEven
     typeof value?.push_enabled === 'boolean'
       ? value.push_enabled
       : Boolean(value?.default_push_enabled),
+  supports_grouping: Boolean(value?.supports_grouping),
+  grouping_period: normalizeNotificationGroupingPeriod(value?.grouping_period),
+  default_grouping_period: normalizeNotificationGroupingPeriod(value?.default_grouping_period),
+  grouping_options: Array.isArray(value?.grouping_options)
+    ? value.grouping_options
+        .map((option: any) => ({
+          value: normalizeNotificationGroupingPeriod(option?.value),
+          label: String(option?.label || ''),
+        }))
+        .filter((option: { value: 'none' | 'day' | 'week'; label: string }) => option.label)
+    : [],
   default_site_enabled: Boolean(value?.default_site_enabled),
   default_telegram_enabled: Boolean(value?.default_telegram_enabled),
   default_push_enabled:
@@ -168,6 +193,15 @@ const normalizeSiteAuthError = (message?: string | null, fallback = 'Не уда
   }
   if (value === 'username and password are required') {
     return 'Введите email или имя пользователя и пароль.'
+  }
+  if (value === 'username, email and password are required') {
+    return 'Введите имя пользователя, email и пароль.'
+  }
+  if (value === 'email already exists') {
+    return 'Аккаунт с такой почтой уже существует.'
+  }
+  if (value === 'username already exists') {
+    return 'Имя пользователя уже занято.'
   }
   return message as string
 }
@@ -188,28 +222,20 @@ const parseApiResponse = async (response: Response) => {
 
 const saveToken = (token: string | null) => {
   if (!browser) return
-  if (token) {
-    localStorage.setItem(TOKEN_KEY, token)
-  } else {
-    localStorage.removeItem(TOKEN_KEY)
-  }
+  localStorage.removeItem(TOKEN_KEY)
 }
 
 export const refreshSiteUser = async () => {
   const token = get(siteToken)
-  if (!token) {
-    siteUser.set(null)
-    return null
-  }
 
   const response = await fetch(buildUrl('/api/auth/me/'), {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
+    credentials: 'include',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
   })
 
   if (!response.ok) {
     saveToken(null)
+    resetBackendFeedSettingsSync()
     siteToken.set(null)
     siteUser.set(null)
     return null
@@ -217,15 +243,42 @@ export const refreshSiteUser = async () => {
 
   const data = await parseApiResponse(response)
   if (data?.user) {
+    if (!token) {
+      siteToken.set(COOKIE_AUTH_SENTINEL)
+    }
     siteUser.set(data.user)
+    loadBackendFeedSettings(token || COOKIE_AUTH_SENTINEL).catch((error) => {
+      console.error('Failed to load feed settings:', error)
+    })
     return data.user as SiteUser
   }
   return null
 }
 
+let refreshSiteUserScheduled = false
+
+export const scheduleRefreshSiteUser = () => {
+  if (!browser || refreshSiteUserScheduled) return
+  refreshSiteUserScheduled = true
+
+  const run = () => {
+    refreshSiteUser().catch((error) => {
+      console.error('Failed to refresh site user:', error)
+    })
+  }
+
+  if ('requestIdleCallback' in window) {
+    window.requestIdleCallback(run, { timeout: 3000 })
+    return
+  }
+
+  globalThis.setTimeout(run, 1500)
+}
+
 export const updateSiteProfile = async (payload: {
   display_name?: string
   avatar_url?: string | null
+  email?: string | null
 }) => {
   const token = get(siteToken)
   if (!token) {
@@ -234,6 +287,7 @@ export const updateSiteProfile = async (payload: {
 
   const response = await fetch(buildUrl('/api/auth/me/'), {
     method: 'PATCH',
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
@@ -247,12 +301,16 @@ export const updateSiteProfile = async (payload: {
   }
 
   siteUser.set(data.user)
-  return data.user as SiteUser
+  return {
+    user: data.user as SiteUser,
+    emailVerificationSent: Boolean(data?.email_verification_sent),
+  }
 }
 
 export const fetchStaticPageContent = async (slug: string) => {
   const response = await fetch(buildUrl(`/api/content-pages/${encodeURIComponent(slug)}/`), {
     cache: 'no-store',
+    credentials: 'include',
   })
   const data = await parseApiResponse(response)
   if (!response.ok || !data?.page) {
@@ -272,6 +330,7 @@ export const updateStaticPageContent = async (slug: string, payload: {
 
   const response = await fetch(buildUrl(`/api/content-pages/${encodeURIComponent(slug)}/`), {
     method: 'PATCH',
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
@@ -289,6 +348,7 @@ export const updateStaticPageContent = async (slug: string, payload: {
 export const login = async (username: string, password: string) => {
   const response = await fetch(buildUrl('/api/auth/login/'), {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),
   })
@@ -301,17 +361,23 @@ export const login = async (username: string, password: string) => {
   saveToken(data.token)
   siteToken.set(data.token)
   siteUser.set(data.user)
+  loadBackendFeedSettings(data.token).catch((error) => {
+    console.error('Failed to load feed settings:', error)
+  })
   return data.user as SiteUser
 }
 
 export const register = async (payload: {
   username: string
-  email?: string
+  email: string
   password: string
   privacy_accepted?: boolean
+  registration_source?: string
+  registration_path?: string
 }) => {
   const response = await fetch(buildUrl('/api/auth/register/'), {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   })
@@ -324,24 +390,97 @@ export const register = async (payload: {
   saveToken(data.token)
   siteToken.set(data.token)
   siteUser.set(data.user)
+  loadBackendFeedSettings(data.token).catch((error) => {
+    console.error('Failed to load feed settings:', error)
+  })
+  return data.user as SiteUser
+}
+
+export const requestPasswordReset = async (email: string) => {
+  const response = await fetch(buildUrl('/api/auth/password-reset/'), {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  })
+
+  const data = await parseApiResponse(response)
+  if (!response.ok || !data?.ok) {
+    throw new Error(normalizeSiteAuthError(data?.error, 'Не удалось отправить письмо'))
+  }
+
+  return true
+}
+
+export const verifyEmail = async (token: string, fetcher: typeof fetch = fetch) => {
+  const response = await fetcher(`${buildUrl('/api/auth/verify-email/')}?token=${encodeURIComponent(token)}`, {
+    method: 'GET',
+    credentials: 'include',
+  })
+
+  const data = await parseApiResponse(response)
+  if (!response.ok || !data?.ok) {
+    throw new Error(normalizeSiteAuthError(data?.error, 'Не удалось подтвердить почту'))
+  }
+
+  if (data.user) {
+    siteUser.set(data.user)
+  }
+  return data.user as SiteUser | undefined
+}
+
+export const confirmPasswordReset = async (payload: {
+  uid: string
+  token: string
+  password: string
+}) => {
+  const response = await fetch(buildUrl('/api/auth/password-reset/confirm/'), {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+
+  const data = await parseApiResponse(response)
+  if (!response.ok || !data?.token) {
+    throw new Error(normalizeSiteAuthError(data?.error, 'Не удалось обновить пароль'))
+  }
+
+  saveToken(data.token)
+  siteToken.set(data.token)
+  siteUser.set(data.user)
+  loadBackendFeedSettings(data.token).catch((error) => {
+    console.error('Failed to load feed settings:', error)
+  })
   return data.user as SiteUser
 }
 
 export type TelegramAuthPayload = {
-  id: number
+  auth_intent?: 'login' | 'signup'
+  id_token?: string
+  id?: number
   first_name?: string
   last_name?: string
   username?: string
   photo_url?: string
-  auth_date: number
-  hash: string
+  auth_date?: number
+  hash?: string
+  phone?: string
+  phone_number?: string
   privacy_accepted?: boolean
+  registration_source?: string
+  registration_path?: string
 }
 
 export const loginTelegram = async (payload: TelegramAuthPayload) => {
+  const token = get(siteToken)
   const response = await fetch(buildUrl('/api/auth/telegram/'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify(payload),
   })
 
@@ -353,21 +492,34 @@ export const loginTelegram = async (payload: TelegramAuthPayload) => {
   saveToken(data.token)
   siteToken.set(data.token)
   siteUser.set(data.user)
+  loadBackendFeedSettings(data.token).catch((error) => {
+    console.error('Failed to load feed settings:', error)
+  })
   return data.user as SiteUser
 }
 
 export type VkAuthPayload = {
+  auth_intent?: 'login' | 'signup'
   access_token: string
   expires_in?: number
   user_id?: number
   id_token?: string
+  email?: string
+  phone?: string
   privacy_accepted?: boolean
+  registration_source?: string
+  registration_path?: string
 }
 
 export const loginVK = async (payload: VkAuthPayload) => {
+  const token = get(siteToken)
   const response = await fetch(buildUrl('/api/auth/vk/'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify(payload),
   })
 
@@ -379,11 +531,23 @@ export const loginVK = async (payload: VkAuthPayload) => {
   saveToken(data.token)
   siteToken.set(data.token)
   siteUser.set(data.user)
+  loadBackendFeedSettings(data.token).catch((error) => {
+    console.error('Failed to load feed settings:', error)
+  })
   return data.user as SiteUser
 }
 
 export const logout = () => {
+  const token = get(siteToken)
+  fetch(buildUrl('/api/auth/logout/'), {
+    method: 'POST',
+    credentials: 'include',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  }).catch((error) => {
+    console.error('Failed to revoke auth token:', error)
+  })
   saveToken(null)
+  resetBackendFeedSettingsSync()
   siteToken.set(null)
   siteUser.set(null)
 }
@@ -396,6 +560,7 @@ export const fetchVerificationCode = async () => {
 
   const response = await fetch(buildUrl('/api/auth/verification-code/'), {
     method: 'POST',
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
@@ -422,6 +587,7 @@ export const fetchUserPosts = async (limit = 20, offset = 0) => {
   })
 
   const response = await fetch(buildUrl(`/api/auth/posts/?${params.toString()}`), {
+    credentials: 'include',
     headers: {
       Authorization: `Bearer ${token}`,
     },
@@ -445,6 +611,7 @@ export const fetchUserPost = async (postId: number) => {
   }
 
   const response = await fetch(buildUrl(`/api/auth/posts/${postId}/`), {
+    credentials: 'include',
     headers: {
       Authorization: `Bearer ${token}`,
     },
@@ -465,7 +632,6 @@ export const updateUserPost = async (
     content?: string
     author_source?: 'site'
     author_username?: string
-    rubric_slug?: string
     comun_slug?: string
     comun_category_id?: number | null
     is_draft?: boolean
@@ -483,6 +649,7 @@ export const updateUserPost = async (
 
   const response = await fetch(buildUrl(`/api/auth/posts/${postId}/`), {
     method: 'PATCH',
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
@@ -507,6 +674,7 @@ export const deleteUserPost = async (postId: number) => {
 
   const response = await fetch(buildUrl(`/api/auth/posts/${postId}/`), {
     method: 'DELETE',
+    credentials: 'include',
     headers: {
       Authorization: `Bearer ${token}`,
     },
@@ -525,7 +693,6 @@ export const createUserPost = async (payload: {
   content?: string
   author_source?: 'site'
   author_username?: string
-  rubric_slug?: string
   comun_slug?: string
   comun_category_id?: number | null
   is_draft?: boolean
@@ -541,6 +708,7 @@ export const createUserPost = async (payload: {
 
   const response = await fetch(buildUrl('/api/auth/posts/'), {
     method: 'POST',
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
@@ -566,6 +734,7 @@ export const fetchSharedDraft = async (shareToken: string) => {
   const response = await fetch(
     buildUrl(`/api/auth/drafts/shared/${encodeURIComponent(shareToken)}/`),
     {
+      credentials: 'include',
       headers: {
         Authorization: `Bearer ${token}`,
       },
@@ -601,6 +770,7 @@ export const createComunPost = async (
     buildUrl(`/api/comuns/${encodeURIComponent(comunSlug)}/posts/`),
     {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
@@ -635,6 +805,7 @@ export const uploadSiteImage = async (image: File) => {
 
   const response = await fetch(buildUrl('/api/auth/uploads/'), {
     method: 'POST',
+    credentials: 'include',
     headers: {
       Authorization: `Bearer ${token}`,
     },
@@ -683,6 +854,7 @@ export const autofillMovieReviewTemplateByImdb = async (imdbUrl: string) => {
   }
   const response = await fetch(buildUrl('/api/auth/post-templates/movie-review/autofill/'), {
     method: 'POST',
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
@@ -741,6 +913,7 @@ export const resolveVotePollPostByReference = async (
     throw new Error('Некорректная ссылка на пост')
   }
   const response = await fetch(buildPostDetailUrl(postId), {
+    credentials: 'include',
     headers: {
       ...(get(siteToken) ? { Authorization: `Bearer ${get(siteToken)}` } : {}),
     },
@@ -765,6 +938,7 @@ export const searchPostsForVotePoll = async (
 
   const safeLimit = Math.min(Math.max(limit, 1), 20)
   const response = await fetch(buildSearchUrl(normalizedQuery, 1, safeLimit, 'Posts', 'New'), {
+    credentials: 'include',
     headers: {
       ...(get(siteToken) ? { Authorization: `Bearer ${get(siteToken)}` } : {}),
     },
@@ -806,6 +980,7 @@ export const fetchSiteNotifications = async (
   }
 
   const response = await fetch(buildUrl(`/api/auth/notifications/?${params.toString()}`), {
+    credentials: 'include',
     headers: {
       Authorization: `Bearer ${token}`,
     },
@@ -831,6 +1006,7 @@ export const markSiteNotificationRead = async (notificationId: number) => {
 
   const response = await fetch(buildUrl(`/api/auth/notifications/${notificationId}/read/`), {
     method: 'POST',
+    credentials: 'include',
     headers: {
       Authorization: `Bearer ${token}`,
     },
@@ -855,6 +1031,7 @@ export const markAllSiteNotificationsRead = async () => {
 
   const response = await fetch(buildUrl('/api/auth/notifications/read-all/'), {
     method: 'POST',
+    credentials: 'include',
     headers: {
       Authorization: `Bearer ${token}`,
     },
@@ -878,6 +1055,7 @@ export const fetchSiteNotificationSettings = async (): Promise<SiteNotificationS
   }
 
   const response = await fetch(buildUrl('/api/auth/notifications/settings/'), {
+    credentials: 'include',
     headers: {
       Authorization: `Bearer ${token}`,
     },
@@ -913,6 +1091,7 @@ export const updateSiteNotificationSettings = async (
     site_enabled: boolean
     telegram_enabled: boolean
     push_enabled: boolean
+    grouping_period?: 'none' | 'day' | 'week'
   }>
 ): Promise<SiteNotificationSettingsResponse> => {
   const token = get(siteToken)
@@ -922,6 +1101,7 @@ export const updateSiteNotificationSettings = async (
 
   const response = await fetch(buildUrl('/api/auth/notifications/settings/'), {
     method: 'PATCH',
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
@@ -953,6 +1133,7 @@ export const updateSiteNotificationSettings = async (
   }
 }
 
-if (browser && initialToken) {
-  refreshSiteUser()
+if (browser) {
+  saveToken(null)
+  scheduleRefreshSiteUser()
 }

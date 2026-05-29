@@ -32,12 +32,14 @@
   export let autoFocus: boolean = false
   export let showFooter: boolean = true
   export let helperText: string | undefined = undefined
+  export let imageUploadHandler: ((image: File) => Promise<string | undefined>) | null = null
 
   export let beforePreview: (input: string) => string = (input) => input
 
   const dispatcher = createEventDispatcher<{ confirm: string }>()
 
   let textArea: HTMLTextAreaElement
+  let imageInput: HTMLInputElement | null = null
 
   function replaceTextAtIndices(
     str: string,
@@ -70,7 +72,8 @@
   }
 
   let uploadingImage = false
-  let image: any
+  let uploadingInlineImage = false
+  let image: FileList | null = null
 
   export let previewing = false
 
@@ -93,6 +96,79 @@
       textArea.style.height = 'auto' // Reset height to auto to calculate new height
       textArea.style.height = `${textArea.scrollHeight}px` // Set height to the scrollHeight
     }
+  }
+
+  async function insertMarkdownAt(
+    markdown: string,
+    startIndex = textArea?.selectionStart ?? value.length,
+    endIndex = textArea?.selectionEnd ?? value.length
+  ) {
+    const currentValue = textArea?.value ?? value
+    value = replaceTextAtIndices(currentValue, startIndex, endIndex, markdown)
+    await tick()
+    if (!textArea) return
+    textArea.focus()
+    const nextCursor = startIndex + markdown.length
+    textArea.selectionStart = nextCursor
+    textArea.selectionEnd = nextCursor
+    await adjustHeight()
+  }
+
+  const imageFilesFromList = (files: FileList | File[]) =>
+    Array.from(files).filter((file) => String(file?.type || '').startsWith('image/'))
+
+  async function uploadAndInsertImages(files: File[], startIndex?: number, endIndex?: number) {
+    if (!imageUploadHandler || !files.length || uploadingInlineImage) return
+    uploadingInlineImage = true
+    try {
+      const urls = (
+        await Promise.all(files.map((file) => imageUploadHandler?.(file)))
+      ).filter((url): url is string => Boolean(url))
+      if (!urls.length) return
+      const markdown = `${urls.map((url) => `![](${url})`).join('\n\n')}\n\n`
+      await insertMarkdownAt(markdown, startIndex, endIndex)
+    } catch (err) {
+      toast({
+        content: (err as Error)?.message || 'Не удалось загрузить изображение',
+        type: 'error',
+      })
+    } finally {
+      uploadingInlineImage = false
+    }
+  }
+
+  function openImageUpload() {
+    if (disabled || uploadingInlineImage) return
+    if (imageUploadHandler) {
+      imageInput?.click()
+      return
+    }
+    uploadingImage = !uploadingImage
+  }
+
+  function handleImageInputChange(event: Event) {
+    const input = event.currentTarget as HTMLInputElement | null
+    const files = input?.files ? imageFilesFromList(input.files) : []
+    const startIndex = textArea?.selectionStart ?? value.length
+    const endIndex = textArea?.selectionEnd ?? value.length
+    if (input) input.value = ''
+    void uploadAndInsertImages(files, startIndex, endIndex)
+  }
+
+  function handlePaste(event: ClipboardEvent) {
+    const clipboardFiles = event.clipboardData?.files
+    if (!clipboardFiles?.length) return
+    const files = imageFilesFromList(clipboardFiles)
+    if (!files.length) return
+    if (imageUploadHandler) {
+      event.preventDefault()
+      const startIndex = textArea?.selectionStart ?? value.length
+      const endIndex = textArea?.selectionEnd ?? value.length
+      void uploadAndInsertImages(files, startIndex, endIndex)
+      return
+    }
+    image = clipboardFiles
+    uploadingImage = true
   }
 
   $: if (!previewing && value) adjustHeight()
@@ -242,14 +318,26 @@ overflow-hidden transition-colors {$$props.class}"
           </Button>
           {#if images}
             <Button
-              on:click={() => (uploadingImage = !uploadingImage)}
-              title="Image"
+              on:click={openImageUpload}
+              title="Изображение"
               size="square-md"
+              loading={uploadingInlineImage}
+              disabled={disabled || uploadingInlineImage}
             >
               <Icon src={Photo} size="16" micro />
             </Button>
           {/if}
         </div>
+      {/if}
+      {#if images && imageUploadHandler}
+        <input
+          bind:this={imageInput}
+          type="file"
+          accept="image/*"
+          multiple
+          class="hidden"
+          on:change={handleImageInputChange}
+        />
       {/if}
       <!--Actual text area-->
       <TextArea
@@ -269,14 +357,7 @@ overflow-hidden transition-colors {$$props.class}"
         }}
         on:input={adjustHeight}
         on:focus
-        on:paste={(e) => {
-          if (!e.clipboardData?.files) return
-          const files = Array.from(e.clipboardData.files)
-          if (files[0]?.type.startsWith('image/')) {
-            image = e.clipboardData.files[0]
-            uploadingImage = true
-          }
-        }}
+        on:paste={handlePaste}
         {rows}
         {...$$restProps}
       />

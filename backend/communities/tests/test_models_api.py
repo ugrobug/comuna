@@ -34,3 +34,8 @@ class CommunitiesModelsApiTests(SimpleTestCase):
         self.assertIs(ComunGlossaryTerm, FeedsComunGlossaryTerm)
         self.assertIs(ComunPostCategoryAssignment, FeedsComunPostCategoryAssignment)
         self.assertIs(ComunVote, FeedsComunVote)
+
+    def test_roadmap_is_disabled_by_default(self):
+        field = Comun._meta.get_field("roadmap_enabled")
+
+        self.assertFalse(field.default)

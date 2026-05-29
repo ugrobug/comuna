@@ -1,18 +1,10 @@
 <script lang="ts">
   import { Button } from 'mono-svelte'
-  import LoginPage from '../../../login/guest/+page.svelte'
-  import { ArrowLeft, Icon } from 'svelte-hero-icons'
-  import { t } from '$lib/translations'
 </script>
 
-<LoginPage ref="/accounts">
-  <Button
-    size="custom"
-    color="none"
-    class="w-max hover:underline text-slate-600 dark:text-zinc-400"
-    on:click={() => history?.back()}
-  >
-    <Icon src={ArrowLeft} size="16" micro />
-    {$t('account.accounts')}
-  </Button>
-</LoginPage>
+<div class="mx-auto my-auto flex w-full max-w-xl flex-col items-center gap-4 px-4 py-10 text-center">
+  <h1 class="text-2xl font-roboto font-medium text-slate-950 dark:text-zinc-50">
+    Гостевые аккаунты отключены
+  </h1>
+  <Button href="/accounts/login" color="primary" size="lg">Войти</Button>
+</div>

@@ -6,13 +6,21 @@
   import VkLoginButton from './VkLoginButton.svelte'
   import { login } from '$lib/siteAuth'
   import type { ComponentType } from 'svelte'
+  import SignupForm from './SignupForm.svelte'
+  import ResetPasswordForm from './ResetPasswordForm.svelte'
+  import { Envelope, Icon } from 'svelte-hero-icons'
+  import { createEventDispatcher } from 'svelte'
 
   export let open = false
   export let initialMode: 'login' | 'signup' = 'login'
-  let authMode: 'login' | 'signup' = initialMode
+  export let registrationSource = ''
+  export let registrationPath = ''
+  const dispatch = createEventDispatcher<{ success: void }>()
+  let authMode: 'login' | 'signup' | 'reset' = initialMode
   let wasOpen = false
   let telegramButtonModulePromise: Promise<{ default: ComponentType }> | null = null
   let signupPrivacyAccepted = false
+  let signupMethod: 'options' | 'email' = 'options'
 
   let loginData = {
     username: '',
@@ -22,12 +30,14 @@
 
   function handleSuccessfulAuth() {
     open = false
+    dispatch('success')
     loginData = {
       username: '',
       password: '',
       loading: false,
     }
     signupPrivacyAccepted = false
+    signupMethod = 'options'
   }
 
   async function handleLogin() {
@@ -57,16 +67,34 @@
       loading: false,
     }
     signupPrivacyAccepted = false
+    signupMethod = 'options'
   }
 
   $: if (open && !wasOpen) {
     authMode = initialMode
+    signupMethod = 'options'
     wasOpen = true
     telegramButtonModulePromise ??= import('$lib/components/telegram/TelegramLoginButton.svelte')
   }
 
   $: if (!open && wasOpen) {
     wasOpen = false
+  }
+
+  $: if (authMode !== 'signup' && signupMethod !== 'options') {
+    signupMethod = 'options'
+  }
+
+  const requireSignupPrivacyAcceptance = (onAccepted: () => void) => {
+    if (signupPrivacyAccepted) {
+      onAccepted()
+      return
+    }
+
+    toast({
+      content: 'Сначала примите политику обработки персональных данных.',
+      type: 'info',
+    })
   }
 </script>
 
@@ -76,7 +104,7 @@
       Вход и регистрация
     </h2>
     <p class="mt-1 text-center text-sm text-slate-500 dark:text-zinc-400">
-      Войдите в существующий аккаунт или зарегистрируйтесь через Telegram / VK
+      Войдите в существующий аккаунт или зарегистрируйтесь удобным способом
     </p>
 
     <div class="mt-4 grid grid-cols-2 rounded-xl bg-slate-100 p-1 dark:bg-zinc-900">
@@ -87,7 +115,10 @@
             ? 'bg-white text-slate-900 shadow-sm dark:bg-zinc-800 dark:text-zinc-100'
             : 'text-slate-500 dark:text-zinc-400'
         }`}
-        on:click={() => (authMode = 'login')}
+        on:click={() => {
+          authMode = 'login'
+          signupMethod = 'options'
+        }}
       >
         Авторизация
       </button>
@@ -98,38 +129,45 @@
             ? 'bg-white text-slate-900 shadow-sm dark:bg-zinc-800 dark:text-zinc-100'
             : 'text-slate-500 dark:text-zinc-400'
         }`}
-        on:click={() => (authMode = 'signup')}
+        on:click={() => {
+          authMode = 'signup'
+          signupMethod = 'options'
+        }}
       >
         Регистрация
       </button>
     </div>
 
-    <div class="mt-4 flex flex-col gap-3">
-      {#if telegramButtonModulePromise}
-        {#await telegramButtonModulePromise then module}
-          <svelte:component
-            this={module.default}
-            onSuccess={handleSuccessfulAuth}
-            active={open}
-            disabled={authMode === 'signup' && !signupPrivacyAccepted}
-            privacyAccepted={signupPrivacyAccepted}
-            label={authMode === 'signup' ? 'Зарегистрироваться через Telegram' : 'Войти через Telegram'}
-          />
-        {/await}
-      {/if}
-      <VkLoginButton
-        onSuccess={handleSuccessfulAuth}
-        disabled={authMode === 'signup' && !signupPrivacyAccepted}
-        privacyAccepted={signupPrivacyAccepted}
-        label={authMode === 'signup' ? 'Зарегистрироваться через VK' : 'Войти через VK'}
-      />
-    </div>
-
     {#if authMode === 'login'}
+      <div class="mt-4 flex flex-col gap-3">
+        {#if telegramButtonModulePromise}
+          {#await telegramButtonModulePromise then module}
+            <svelte:component
+              this={module.default}
+              onSuccess={handleSuccessfulAuth}
+              active={open}
+              authIntent="login"
+              privacyAccepted={false}
+              registrationSource=""
+              registrationPath=""
+              label="Войти через Telegram"
+            />
+          {/await}
+        {/if}
+        <VkLoginButton
+          onSuccess={handleSuccessfulAuth}
+          authIntent="login"
+          privacyAccepted={false}
+          registrationSource=""
+          registrationPath=""
+          label="Войти через VK"
+        />
+      </div>
+
       <div class="flex items-center gap-3 text-xs text-slate-400 dark:text-zinc-500 mt-4">
-        <span class="h-px flex-1 bg-slate-200 dark:bg-zinc-800" />
+        <span class="h-px flex-1 bg-slate-200 dark:bg-zinc-800"></span>
         или по почте
-        <span class="h-px flex-1 bg-slate-200 dark:bg-zinc-800" />
+        <span class="h-px flex-1 bg-slate-200 dark:bg-zinc-800"></span>
       </div>
 
       <form on:submit|preventDefault={handleLogin} class="flex flex-col gap-5 mt-3">
@@ -163,10 +201,20 @@
         >
           Войти
         </Button>
+        <button
+          type="button"
+          class="text-sm text-blue-600 hover:underline dark:text-blue-400"
+          on:click={() => (authMode = 'reset')}
+        >
+          Забыли пароль?
+        </button>
       </form>
+    {:else if authMode === 'reset'}
+      <div class="mt-4">
+        <ResetPasswordForm onBack={() => (authMode = 'login')} />
+      </div>
     {:else}
-      <div class="mt-4 flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300">
-        <p>Регистрация по email отключена. Используйте Telegram или VK.</p>
+      <div class="mt-3 flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300">
         <label class="flex items-start gap-3">
           <input
             bind:checked={signupPrivacyAccepted}
@@ -186,6 +234,67 @@
           </span>
         </label>
       </div>
+
+      {#if signupMethod === 'email'}
+        <div class="mt-4 flex flex-col gap-3">
+          <button
+            type="button"
+            class="w-fit text-sm text-slate-500 transition hover:text-slate-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+            on:click={() => (signupMethod = 'options')}
+          >
+            ← Назад к способам регистрации
+          </button>
+
+          <SignupForm
+            onSuccess={handleSuccessfulAuth}
+            externalPrivacyAccepted={signupPrivacyAccepted}
+            registrationSource={registrationSource}
+            registrationPath={registrationPath}
+          />
+        </div>
+      {:else}
+        <div class="mt-4 flex flex-col gap-3">
+          <button
+            type="button"
+            class="inline-flex w-full items-center justify-start gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left text-sm font-medium text-slate-900 transition dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100"
+            class:opacity-60={!signupPrivacyAccepted}
+            class:hover:border-slate-300={signupPrivacyAccepted}
+            class:hover:bg-slate-50={signupPrivacyAccepted}
+            class:dark:hover:border-zinc-700={signupPrivacyAccepted}
+            class:dark:hover:bg-zinc-900={signupPrivacyAccepted}
+            on:click={() => requireSignupPrivacyAcceptance(() => (signupMethod = 'email'))}
+          >
+            <span class="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-zinc-200">
+              <Icon src={Envelope} size="18" solid />
+            </span>
+            <span>Зарегистрироваться через почту</span>
+          </button>
+          {#if telegramButtonModulePromise}
+            {#await telegramButtonModulePromise then module}
+              <svelte:component
+                this={module.default}
+                onSuccess={handleSuccessfulAuth}
+                active={open}
+                authIntent="signup"
+                disabled={!signupPrivacyAccepted}
+                privacyAccepted={signupPrivacyAccepted}
+                registrationSource={registrationSource}
+                registrationPath={registrationPath}
+                label="Зарегистрироваться через Telegram"
+              />
+            {/await}
+          {/if}
+          <VkLoginButton
+            onSuccess={handleSuccessfulAuth}
+            authIntent="signup"
+            disabled={!signupPrivacyAccepted}
+            privacyAccepted={signupPrivacyAccepted}
+            registrationSource={registrationSource}
+            registrationPath={registrationPath}
+            label="Зарегистрироваться через VK"
+          />
+        </div>
+      {/if}
     {/if}
   </div>
 </Modal>

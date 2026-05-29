@@ -30,6 +30,7 @@
   export let navigate: boolean = true
   export let changeDefault: boolean = false
   export let showLabel: boolean = false
+  $: void showLabel
 
   let sort: string = selected?.startsWith('Top') ? 'TopAll' : selected
   $: if (selected) {

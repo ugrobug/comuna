@@ -1,4 +1,11 @@
-export type BuiltinPostTemplateType = 'movie_review' | 'post_vote_poll' | 'music_release'
+import { deserializeEditorModel } from '$lib/util'
+
+export type BuiltinPostTemplateType =
+  | 'movie_review'
+  | 'post_vote_poll'
+  | 'music_release'
+  | 'bug_report'
+  | 'tweet'
 export type PostTemplateType = BuiltinPostTemplateType | string
 export type PostTemplateCode = 'basic' | PostTemplateType
 
@@ -90,6 +97,28 @@ export type MusicReleaseTemplate = {
   data: MusicReleaseTemplateData
 }
 
+export type BugReportStatus = 'review' | 'in_progress' | 'resolved' | 'rejected'
+
+export type BugReportTemplateData = {
+  status?: BugReportStatus
+  platforms?: string[]
+  browsers?: string[]
+  error_code?: string
+  screenshot_url?: string
+}
+
+export type BugReportTemplate = {
+  type: 'bug_report'
+  version: 1
+  data: BugReportTemplateData
+}
+
+export type TweetTemplate = {
+  type: 'tweet'
+  version: 1
+  data: Record<string, never>
+}
+
 export type CustomPostTemplate = {
   type: string
   version: 1
@@ -100,11 +129,14 @@ export type SitePostTemplate =
   | MovieReviewTemplate
   | PostVotePollTemplate
   | MusicReleaseTemplate
+  | BugReportTemplate
+  | TweetTemplate
   | CustomPostTemplate
 
 export type PostTemplateTypeOption = {
   value: '' | PostTemplateType
   label: string
+  description?: string
 }
 
 export const POST_TEMPLATE_TYPE_OPTIONS: PostTemplateTypeOption[] = [
@@ -112,6 +144,8 @@ export const POST_TEMPLATE_TYPE_OPTIONS: PostTemplateTypeOption[] = [
   { value: 'movie_review', label: 'Кинообзор' },
   { value: 'post_vote_poll', label: 'Голосование за посты' },
   { value: 'music_release', label: 'Музыкальный релиз' },
+  { value: 'bug_report', label: 'Баг-репорт', description: 'Платформа, браузер, код ошибки и скриншот.' },
+  { value: 'tweet', label: 'Твит', description: 'До 280 символов и один медиаблок с изображениями.' },
 ]
 
 const POST_TEMPLATE_CODE_RE = /^[a-z0-9][a-z0-9_-]{0,159}$/
@@ -175,7 +209,36 @@ const TEMPLATE_EDITOR_BLOCKS_BY_TEMPLATE: Record<string, TemplateEditorBlockOpti
   movie_review: ALL_TEMPLATE_EDITOR_BLOCK_OPTIONS,
   post_vote_poll: BLOCKS_WITHOUT_MOVIE_CARD,
   music_release: BLOCKS_WITHOUT_MOVIE_CARD,
+  bug_report: BLOCKS_WITHOUT_MOVIE_CARD,
+  tweet: ALL_TEMPLATE_EDITOR_BLOCK_OPTIONS.filter((option) => option.type === 'gallery'),
 }
+
+export const TWEET_TEMPLATE_MAX_LENGTH = 280
+export const BUG_REPORT_STATUS_OPTIONS: Array<{ value: BugReportStatus; label: string }> = [
+  { value: 'review', label: 'Рассмотрение' },
+  { value: 'in_progress', label: 'В работе' },
+  { value: 'resolved', label: 'Решена' },
+  { value: 'rejected', label: 'Отклонена' },
+]
+export const BUG_REPORT_PLATFORM_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'web', label: 'Web' },
+  { value: 'windows', label: 'Windows' },
+  { value: 'macos', label: 'macOS' },
+  { value: 'linux', label: 'Linux' },
+  { value: 'android', label: 'Android' },
+  { value: 'ios', label: 'iOS' },
+]
+export const BUG_REPORT_BROWSER_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'chrome', label: 'Chrome' },
+  { value: 'safari', label: 'Safari' },
+  { value: 'firefox', label: 'Firefox' },
+  { value: 'edge', label: 'Edge' },
+  { value: 'opera', label: 'Opera' },
+  { value: 'yandex_browser', label: 'Яндекс Браузер' },
+  { value: 'samsung_internet', label: 'Samsung Internet' },
+  { value: 'arc', label: 'Arc' },
+  { value: 'other', label: 'Другое' },
+]
 
 const normalizeTemplateCode = (value: unknown): PostTemplateCode | '' => {
   const code = typeof value === 'string' ? value.trim().toLowerCase() : ''
@@ -190,14 +253,17 @@ export const normalizePostTemplateTypeOptions = (value: unknown): PostTemplateTy
   const normalized: PostTemplateTypeOption[] = []
   const seen = new Set<string>()
   for (const item of source) {
-    const rawCode = normalizeTemplateCode((item as any)?.value)
+    const rawValue = (item as any)?.value
+    const rawCode = rawValue === '' ? 'basic' : normalizeTemplateCode(rawValue)
     const label = typeof (item as any)?.label === 'string' ? (item as any).label.trim() : ''
+    const description =
+      typeof (item as any)?.description === 'string' ? (item as any).description.trim() : ''
     if (!rawCode || !label) continue
     const optionValue = rawCode === 'basic' ? '' : rawCode
     const key = templateOptionKey(optionValue)
     if (seen.has(key)) continue
     seen.add(key)
-    normalized.push({ value: optionValue, label })
+    normalized.push({ value: optionValue, label, ...(description ? { description } : {}) })
   }
   return normalized.length ? normalized : POST_TEMPLATE_TYPE_OPTIONS
 }
@@ -229,6 +295,15 @@ export const normalizeAllowedPostTemplateTypeOverrides = (value: unknown): PostT
   }
   return normalized
 }
+
+export const isRecognizedPostTemplateType = (value: unknown): value is PostTemplateType => {
+  const code = normalizeTemplateCode(value)
+  return Boolean(code && code !== 'basic')
+}
+
+export const isTweetTemplateType = (
+  value: '' | PostTemplateType | null | undefined
+): value is 'tweet' => normalizeTemplateCode(value) === 'tweet'
 
 export const resolveTemplateCode = (
   templateType: '' | PostTemplateType | null | undefined
@@ -396,6 +471,18 @@ const musicReleaseStyleLabelByValue = new Map(
   MUSIC_RELEASE_STYLE_OPTIONS.map((option) => [option.value, option.label])
 )
 
+const bugReportStatusLabelByValue = new Map(
+  BUG_REPORT_STATUS_OPTIONS.map((option) => [option.value, option.label])
+)
+
+const bugReportPlatformLabelByValue = new Map(
+  BUG_REPORT_PLATFORM_OPTIONS.map((option) => [option.value, option.label])
+)
+
+const bugReportBrowserLabelByValue = new Map(
+  BUG_REPORT_BROWSER_OPTIONS.map((option) => [option.value, option.label])
+)
+
 const movieReviewGenreAliases: Record<string, string> = {
   action: 'action',
   боевик: 'action',
@@ -550,6 +637,56 @@ const musicReleaseStyleAliases: Record<string, string> = {
   саундтрек: 'soundtrack',
 }
 
+const bugReportStatusAliases: Record<string, BugReportStatus> = {
+  review: 'review',
+  рассмотрение: 'review',
+  in_progress: 'in_progress',
+  'в работе': 'in_progress',
+  resolved: 'resolved',
+  решена: 'resolved',
+  rejected: 'rejected',
+  отклонена: 'rejected',
+}
+
+const bugReportPlatformAliases: Record<string, string> = {
+  web: 'web',
+  веб: 'web',
+  браузер: 'web',
+  windows: 'windows',
+  win: 'windows',
+  виндовс: 'windows',
+  macos: 'macos',
+  'mac os': 'macos',
+  mac: 'macos',
+  linux: 'linux',
+  линукс: 'linux',
+  android: 'android',
+  андроид: 'android',
+  ios: 'ios',
+  айос: 'ios',
+  iphone: 'ios',
+  ipad: 'ios',
+}
+
+const bugReportBrowserAliases: Record<string, string> = {
+  chrome: 'chrome',
+  'google chrome': 'chrome',
+  safari: 'safari',
+  firefox: 'firefox',
+  'mozilla firefox': 'firefox',
+  edge: 'edge',
+  'microsoft edge': 'edge',
+  opera: 'opera',
+  yandex_browser: 'yandex_browser',
+  'yandex browser': 'yandex_browser',
+  'яндекс браузер': 'yandex_browser',
+  samsung_internet: 'samsung_internet',
+  'samsung internet': 'samsung_internet',
+  arc: 'arc',
+  other: 'other',
+  другое: 'other',
+}
+
 const trimOrEmpty = (value: unknown): string => (typeof value === 'string' ? value.trim() : '')
 
 export const createEmptyMovieReviewTemplateData = (): MovieReviewTemplateData => ({
@@ -580,6 +717,14 @@ export const createEmptyMusicReleaseTemplateData = (): MusicReleaseTemplateData 
   country: '',
   city: '',
   style: '',
+})
+
+export const createEmptyBugReportTemplateData = (): BugReportTemplateData => ({
+  status: 'review',
+  platforms: [],
+  browsers: [],
+  error_code: '',
+  screenshot_url: '',
 })
 
 const normalizeMovieReviewGenre = (value: unknown): string => {
@@ -635,6 +780,37 @@ const normalizeMusicReleaseStyle = (value: unknown): string => {
   const raw = trimOrEmpty(value)
   if (!raw) return ''
   return musicReleaseStyleAliases[raw.toLowerCase()] ?? raw
+}
+
+const normalizeBugReportStatus = (value: unknown): BugReportStatus => {
+  const raw = trimOrEmpty(value).toLowerCase()
+  return bugReportStatusAliases[raw] ?? 'review'
+}
+
+const normalizeBugReportMultiValue = (
+  value: unknown,
+  aliases: Record<string, string>,
+  allowedValues: Set<string>
+): string[] => {
+  const source = Array.isArray(value)
+    ? value
+    : trimOrEmpty(value)
+      ? trimOrEmpty(value)
+          .split(/[;,]/)
+          .map((item) => item.trim())
+      : []
+
+  const normalized: string[] = []
+  const seen = new Set<string>()
+  for (const rawItem of source) {
+    const item = trimOrEmpty(rawItem)
+    if (!item) continue
+    const normalizedValue = aliases[item.toLowerCase()] ?? item.toLowerCase()
+    if (!allowedValues.has(normalizedValue) || seen.has(normalizedValue)) continue
+    seen.add(normalizedValue)
+    normalized.push(normalizedValue)
+  }
+  return normalized
 }
 
 export const normalizeMovieReviewTemplateData = (
@@ -725,11 +901,32 @@ export const normalizeMusicReleaseTemplateData = (
   }
 }
 
+export const normalizeBugReportTemplateData = (
+  value: Partial<BugReportTemplateData> | null | undefined
+): BugReportTemplateData => {
+  return {
+    status: normalizeBugReportStatus(value?.status),
+    platforms: normalizeBugReportMultiValue(
+      value?.platforms ?? (value as any)?.platform,
+      bugReportPlatformAliases,
+      new Set(BUG_REPORT_PLATFORM_OPTIONS.map((option) => option.value))
+    ),
+    browsers: normalizeBugReportMultiValue(
+      value?.browsers ?? (value as any)?.browser,
+      bugReportBrowserAliases,
+      new Set(BUG_REPORT_BROWSER_OPTIONS.map((option) => option.value))
+    ),
+    error_code: trimOrEmpty(value?.error_code).slice(0, 4000),
+    screenshot_url: trimOrEmpty(value?.screenshot_url),
+  }
+}
+
 export const buildPostTemplatePayload = (
   templateType: '' | PostTemplateType,
   movieReviewData: Partial<MovieReviewTemplateData> | null | undefined,
   postVotePollData?: Partial<PostVotePollTemplateData> | null | undefined,
-  musicReleaseData?: Partial<MusicReleaseTemplateData> | null | undefined
+  musicReleaseData?: Partial<MusicReleaseTemplateData> | null | undefined,
+  bugReportData?: Partial<BugReportTemplateData> | null | undefined
 ): SitePostTemplate | null => {
   if (templateType === 'movie_review') {
     const normalized = normalizeMovieReviewTemplateData(movieReviewData)
@@ -780,6 +977,22 @@ export const buildPostTemplatePayload = (
     }
   }
 
+  if (templateType === 'bug_report') {
+    return {
+      type: 'bug_report',
+      version: 1,
+      data: normalizeBugReportTemplateData(bugReportData),
+    }
+  }
+
+  if (templateType === 'tweet') {
+    return {
+      type: 'tweet',
+      version: 1,
+      data: {},
+    }
+  }
+
   const customTemplateType = normalizeTemplateCode(templateType)
   if (customTemplateType && customTemplateType !== 'basic') {
     return {
@@ -808,6 +1021,70 @@ export const isMusicReleaseTemplate = (
   template: SitePostTemplate | null | undefined
 ): template is MusicReleaseTemplate => {
   return template?.type === 'music_release' && typeof template.data === 'object'
+}
+
+export const isBugReportTemplate = (
+  template: SitePostTemplate | null | undefined
+): template is BugReportTemplate => {
+  return template?.type === 'bug_report' && typeof template.data === 'object'
+}
+
+export const isTweetTemplate = (
+  template: SitePostTemplate | null | undefined
+): template is TweetTemplate => {
+  return template?.type === 'tweet' && typeof template.data === 'object'
+}
+
+const stripHtmlTags = (value: string): string =>
+  value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+
+const tweetTextFromBlock = (block: any): string => {
+  const blockType = typeof block?.type === 'string' ? block.type.trim().toLowerCase() : ''
+  if (blockType !== 'paragraph') return ''
+  return stripHtmlTags(String(block?.data?.text || ''))
+}
+
+const tweetEditorBlocks = (content: string): any[] => {
+  const raw = typeof content === 'string' ? content.trim() : ''
+  if (!raw) return []
+  try {
+    const parsed = deserializeEditorModel(raw)
+    return Array.isArray(parsed?.blocks) ? parsed.blocks : []
+  } catch {
+    return []
+  }
+}
+
+export const tweetTemplateCharacterCount = (content: string): number => {
+  const blocks = tweetEditorBlocks(content)
+  if (!blocks.length) {
+    return stripHtmlTags(content || '').length
+  }
+  const text = blocks
+    .map((block) => tweetTextFromBlock(block))
+    .filter(Boolean)
+    .join('\n')
+    .trim()
+  return text.length
+}
+
+export const tweetTemplateMediaBlockCount = (content: string): number => {
+  return tweetEditorBlocks(content).filter((block) => {
+    const blockType = typeof block?.type === 'string' ? block.type.trim().toLowerCase() : ''
+    return blockType === 'image' || blockType === 'gallery'
+  }).length
+}
+
+export const validateTweetTemplateContent = (content: string): string => {
+  const characters = tweetTemplateCharacterCount(content)
+  if (characters > TWEET_TEMPLATE_MAX_LENGTH) {
+    return `Твит не может быть длиннее ${TWEET_TEMPLATE_MAX_LENGTH} символов.`
+  }
+  const mediaBlocks = tweetTemplateMediaBlockCount(content)
+  if (mediaBlocks > 1) {
+    return 'В шаблоне «Твит» можно использовать только один медиаблок.'
+  }
+  return ''
 }
 
 export const movieReviewKindLabel = (kind: string | null | undefined): string => {
@@ -860,6 +1137,48 @@ export const musicReleaseStyleLabel = (style: string | null | undefined): string
   const normalized = normalizeMusicReleaseStyle(style)
   return musicReleaseStyleLabelByValue.get(normalized) ?? style
 }
+
+export const bugReportStatusLabel = (status: string | null | undefined): string => {
+  if (!status) return bugReportStatusLabelByValue.get('review') ?? 'Рассмотрение'
+  const normalized = normalizeBugReportStatus(status)
+  return bugReportStatusLabelByValue.get(normalized) ?? status
+}
+
+export const bugReportStatusTone = (
+  status: string | null | undefined
+): 'amber' | 'blue' | 'green' | 'red' => {
+  const normalized = normalizeBugReportStatus(status)
+  if (normalized === 'resolved') return 'green'
+  if (normalized === 'rejected') return 'red'
+  if (normalized === 'in_progress') return 'blue'
+  return 'amber'
+}
+
+export const bugReportPlatformLabel = (platform: string | null | undefined): string => {
+  if (!platform) return ''
+  const normalized = bugReportPlatformAliases[platform.toLowerCase()] ?? platform
+  return bugReportPlatformLabelByValue.get(normalized) ?? platform
+}
+
+export const bugReportBrowserLabel = (browser: string | null | undefined): string => {
+  if (!browser) return ''
+  const normalized = bugReportBrowserAliases[browser.toLowerCase()] ?? browser
+  return bugReportBrowserLabelByValue.get(normalized) ?? browser
+}
+
+export const bugReportPlatformLabels = (platforms: unknown): string[] =>
+  normalizeBugReportMultiValue(
+    platforms,
+    bugReportPlatformAliases,
+    new Set(BUG_REPORT_PLATFORM_OPTIONS.map((option) => option.value))
+  ).map((platform) => bugReportPlatformLabel(platform))
+
+export const bugReportBrowserLabels = (browsers: unknown): string[] =>
+  normalizeBugReportMultiValue(
+    browsers,
+    bugReportBrowserAliases,
+    new Set(BUG_REPORT_BROWSER_OPTIONS.map((option) => option.value))
+  ).map((browser) => bugReportBrowserLabel(browser))
 
 export const formatMovieReviewReleaseDate = (value: string | null | undefined): string => {
   if (!value) return ''

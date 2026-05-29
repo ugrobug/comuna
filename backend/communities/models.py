@@ -30,7 +30,12 @@ class ComunCategory(models.Model):
     only_moderators_can_post = models.BooleanField(
         default=False,
         verbose_name="Публикация только для создателя и модераторов",
-        help_text="Если включено, писать в эту категорию смогут только создатель сообщества, модераторы и администраторы сайта.",
+        help_text="Если включено, писать в эту категорию смогут только создатель сообщества и модераторы.",
+    )
+    hide_from_home = models.BooleanField(
+        default=False,
+        verbose_name="Не показывать в горячем",
+        help_text="Посты этой категории не будут попадать в Горячее.",
     )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -39,6 +44,10 @@ class ComunCategory(models.Model):
     class Meta:
         app_label = "feeds"
         ordering = ["sort_order", "name"]
+        indexes = [
+            models.Index(fields=["hide_from_home"], name="comcat_hide_home_idx"),
+            models.Index(fields=["comun", "is_active", "sort_order"], name="comcat_active_sort_idx"),
+        ]
         constraints = [
             models.UniqueConstraint(
                 fields=["comun", "slug"],
@@ -96,18 +105,11 @@ class Comun(models.Model):
     slug = models.SlugField(max_length=160, unique=True)
     creator = models.ForeignKey(
         User,
-        on_delete=models.CASCADE,
-        related_name="created_comuns",
-        verbose_name="Создатель",
-    )
-    source_rubric = models.OneToOneField(
-        "feeds.Rubric",
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name="source_comun",
-        verbose_name="Исходная рубрика",
-        help_text="Если указана, посты этой рубрики отображаются в сообществе.",
+        related_name="created_comuns",
+        verbose_name="Создатель",
     )
     telegram_source_author = models.OneToOneField(
         "feeds.Author",
@@ -137,22 +139,6 @@ class Comun(models.Model):
         related_name="excluded_from_comuns",
         verbose_name="Исключенные авторы",
         help_text="Авторы, чьи посты не будут попадать в это сообщество.",
-    )
-    product_tag = models.ForeignKey(
-        "feeds.Tag",
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="comuns",
-        verbose_name="Тег продукта",
-        help_text="Все посты с этим тегом попадут в коммуну.",
-    )
-    source_tags = models.ManyToManyField(
-        "feeds.Tag",
-        blank=True,
-        related_name="comuns_source",
-        verbose_name="Теги сообщества",
-        help_text="Посты с этими тегами будут попадать в сообщество.",
     )
     welcome_post = models.ForeignKey(
         "feeds.Post",
@@ -193,9 +179,14 @@ class Comun(models.Model):
         help_text="Если включено, в сообществе будет доступна публичная страница глоссария и вставка терминов в публикации.",
     )
     roadmap_enabled = models.BooleanField(
-        default=True,
+        default=False,
         verbose_name="Включить дорожную карту",
         help_text="Если включено, в сообществе будет доступна публичная дорожная карта.",
+    )
+    knowledge_base_enabled = models.BooleanField(
+        default=False,
+        verbose_name="Включить базу знаний",
+        help_text="Если включено, в сообществе будет доступна публичная база знаний из отмеченных постов.",
     )
     roadmap_category_ids = models.JSONField(
         default=list,
@@ -213,25 +204,27 @@ class Comun(models.Model):
     only_moderators_can_post = models.BooleanField(
         default=False,
         verbose_name="Публикация только для создателя и модераторов",
-        help_text="Если включено, писать в коммуну смогут только ее создатель, модераторы и администраторы сайта.",
+        help_text="Если включено, писать в коммуну смогут только ее создатель и модераторы.",
     )
     forbid_external_links = models.BooleanField(
         default=False,
         verbose_name="Запретить внешние ссылки",
         help_text="Если включено, посты с внешними ссылками не будут попадать в сообщество, а новые публикации с такими ссылками будут отклоняться.",
     )
-    rating_score = models.IntegerField(default=0, verbose_name="Рейтинг")
+    rating_score = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0,
+        verbose_name="Рейтинг",
+    )
     votes_up = models.PositiveIntegerField(default=0, verbose_name="Буду использовать")
     votes_down = models.PositiveIntegerField(default=0, verbose_name="Не нравится")
+    subscribers_count = models.PositiveIntegerField(default=0, verbose_name="Подписчиков")
+    authors_count = models.PositiveIntegerField(default=0, verbose_name="Авторов")
     hide_from_home = models.BooleanField(
         default=False,
         verbose_name="Не показывать на главной",
         help_text="Посты, созданные внутри этой комуны, не будут попадать в Горячее.",
-    )
-    hide_from_fresh = models.BooleanField(
-        default=False,
-        verbose_name="Не показывать в свежем",
-        help_text="Посты, созданные внутри этой комуны, не будут попадать в ленту Свежее.",
     )
     allowed_post_templates = models.JSONField(
         default=default_allowed_post_templates,
@@ -247,6 +240,10 @@ class Comun(models.Model):
     class Meta:
         app_label = "feeds"
         ordering = ["sort_order", "name"]
+        indexes = [
+            models.Index(fields=["is_active", "-rating_score", "sort_order"], name="comun_active_rating_idx"),
+            models.Index(fields=["hide_from_home"], name="comun_hide_home_idx"),
+        ]
         verbose_name = "Комуна"
         verbose_name_plural = "Комуны"
 
@@ -302,6 +299,10 @@ class ComunPostCategoryAssignment(models.Model):
     class Meta:
         app_label = "feeds"
         unique_together = ("comun", "post")
+        indexes = [
+            models.Index(fields=["category", "post"], name="compost_cat_post_idx"),
+            models.Index(fields=["post", "comun"], name="compost_post_comun_idx"),
+        ]
         verbose_name = "Категория поста в комуне"
         verbose_name_plural = "Категории постов в коммунах"
 
@@ -309,10 +310,73 @@ class ComunPostCategoryAssignment(models.Model):
         return f"{self.comun_id}:{self.post_id}:{self.category_id or 0}"
 
 
+class ComunKnowledgeBaseItem(models.Model):
+    TYPE_GROUP = "group"
+    TYPE_POST = "post"
+    TYPE_CHOICES = (
+        (TYPE_GROUP, "Группа"),
+        (TYPE_POST, "Пост"),
+    )
+
+    comun = models.ForeignKey(
+        "feeds.Comun",
+        on_delete=models.CASCADE,
+        related_name="knowledge_base_items",
+    )
+    post = models.ForeignKey(
+        "feeds.Post",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="knowledge_base_items",
+    )
+    parent = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="children",
+    )
+    item_type = models.CharField(max_length=16, choices=TYPE_CHOICES, default=TYPE_POST)
+    title = models.CharField(max_length=255, blank=True)
+    sort_order = models.IntegerField(default=0)
+    created_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="created_comun_knowledge_base_items",
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = "feeds"
+        ordering = ["sort_order", "title", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["comun", "post"],
+                condition=models.Q(post__isnull=False),
+                name="comun_kb_unique_post",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["comun", "parent", "sort_order"], name="comun_kb_tree_idx"),
+            models.Index(fields=["post"], name="comun_kb_post_idx"),
+        ]
+        verbose_name = "Элемент базы знаний"
+        verbose_name_plural = "База знаний сообществ"
+
+    def __str__(self) -> str:
+        return self.title or f"{self.comun_id}:{self.post_id or self.item_type}"
+
+
 __all__ = [
     "Comun",
     "ComunCategory",
     "ComunGlossaryTerm",
+    "ComunKnowledgeBaseItem",
     "ComunPostCategoryAssignment",
     "ComunVote",
 ]

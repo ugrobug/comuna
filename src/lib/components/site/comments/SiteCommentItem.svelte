@@ -15,6 +15,7 @@
   export let postId: number
   export let postAuthor: string | null = null
   export let commentMasks: SiteCommentMask[] = []
+  export let submitUrl: string | null = null
 
   const dispatch = createEventDispatcher<{
     reply: SiteComment
@@ -58,6 +59,14 @@
 
   const setComment = (comment: SiteComment) => {
     node = { ...node, comment }
+  }
+
+  function toggleReply() {
+    if (!$siteToken) {
+      showLoginModal = true
+      return
+    }
+    replying = !replying
   }
 
   async function toggleLike() {
@@ -159,6 +168,7 @@
           <SiteCommentForm
             {postId}
             {commentMasks}
+            {submitUrl}
             commentId={node.comment.id}
             initialBody={node.comment.body}
             submitLabel="Сохранить"
@@ -187,7 +197,7 @@
           <button
             type="button"
             class="flex items-center gap-1 hover:text-slate-700 dark:hover:text-zinc-200 transition"
-            on:click={() => (replying = !replying)}
+            on:click={toggleReply}
             disabled={isDeleted}
           >
             <Icon src={ChatBubbleOvalLeft} size="14" mini />
@@ -232,6 +242,7 @@
           <SiteCommentForm
             {postId}
             {commentMasks}
+            {submitUrl}
             parentId={node.comment.id}
             placeholder="Ответить..."
             submitLabel="Ответить"
@@ -257,6 +268,7 @@
           {postId}
           {postAuthor}
           {commentMasks}
+          {submitUrl}
           on:reply={(event) => dispatch('reply', event.detail)}
           on:update={(event) => dispatch('update', event.detail)}
           on:remove={(event) => dispatch('remove', event.detail)}

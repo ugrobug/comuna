@@ -46,6 +46,9 @@ from communities.models import (
     ComunPostCategoryAssignment,
     ComunVote,
 )
+from rabotaem_backend.cache import anonymous_cache, has_auth_context
+from rabotaem_backend.rate_limit import is_rate_limited
+from telegram_integration.media import safe_public_url
 from editor.models import (
     POST_TEMPLATE_TYPE_BASIC as MODEL_POST_TEMPLATE_TYPE_BASIC,
     POST_TEMPLATE_TYPE_CHOICES as MODEL_POST_TEMPLATE_TYPE_CHOICES,
@@ -63,18 +66,19 @@ from editor.models import (
 )
 from editor.serializers import (
     _content_with_live_poll,
+    _serialize_bug_report_confirmation,
     _serialize_enabled_template_editor_blocks,
     _serialize_post_for_user,
     _serialize_post_rating,
     _serialize_post_rating_block,
     _serialize_post_ratings,
     _serialize_post_template,
+    _user_can_manage_bug_report_status,
 )
 from editor.service import (
     _allowed_template_overrides_for_comun_category,
     _allowed_templates_for_comun,
     _allowed_templates_for_comun_category,
-    _allowed_templates_for_rubric,
     _build_post_vote_poll_raw_poll,
     _decode_editor_payload,
     _extract_editor_payload_title,
@@ -94,7 +98,6 @@ from editor.service import (
     _post_draft_share_token,
     _requested_template_type,
     _resolve_manual_post_author,
-    _resolve_manual_post_rubric,
     _resolve_site_post_author_context,
     _serialize_post_template_type_options,
     _serialize_template_editor_block_options_by_template,
@@ -114,15 +117,26 @@ from .models import (
     PostFavorite,
     PostLike,
     PostRead,
-    Rubric,
+    PublicFeedItem,
     StaticPageContent,
     Tag,
 )
-from notifications.service import create_user_notification
+from .preview import build_post_preview
+from notifications.service import (
+    create_grouped_user_notification,
+    create_user_notification,
+    notification_grouping_period_for_user,
+)
+from my_feed import service as my_feed_service
+from my_feed.models import UserFeedSettings
 from ratings.service import (
     apply_author_rating_delta as _apply_author_rating_delta,
-    author_rating_value as _author_rating_value,
+    calculate_author_rating as _calculate_author_rating,
+    calculate_author_ratings as _calculate_author_ratings,
+    calculate_post_total_rating as _calculate_post_total_rating,
     format_rating_value as _format_rating_value,
+    get_rating_settings as _get_rating_settings,
+    home_feed_community_day_key as _home_feed_community_day_key,
     user_max_author_rating as _user_max_author_rating,
 )
 from telegram_integration.media import download_telegram_file_by_path
@@ -135,6 +149,11 @@ from users.models import (
 User = get_user_model()
 
 _FAKE_VIEWS_RAMP_SECONDS = 48 * 60 * 60
+_IMAGE_VARIANT_WIDTHS = (320, 640, 960, 1280, 1920)
+_POST_PREVIEW_IMAGE_WIDTH = 1280
+_POST_THUMBNAIL_IMAGE_WIDTH = 640
+_LOCAL_WEBP_VARIANT_RE = re.compile(r"-(320|640|960|1280|1920)\.webp$", re.IGNORECASE)
+_IMAGE_URL_PATH_RE = re.compile(r"\.(?:jpe?g|png|webp|gif|avif)$", re.IGNORECASE)
 _COMUN_CREATION_MIN_AUTHOR_RATING = 0.0
 _COMUN_ACTIVITY_POINTS = {
     "post": 10,
@@ -170,7 +189,14 @@ _POST_TEMPLATE_TYPE_OPTIONS = tuple(
 )
 _POST_TEMPLATE_TYPES = {value for value, _label in _POST_TEMPLATE_TYPE_OPTIONS}
 _EXTERNAL_URL_RE = re.compile(r"""https?://[^\s<>"')\]]+|www\.[^\s<>"')\]]+""", re.IGNORECASE)
-_INTERNAL_COMUNA_HOSTS = {"comuna.ru", "www.comuna.ru", "localhost", "127.0.0.1"}
+_INTERNAL_COMUNA_HOSTS = {
+    "comuna.ru",
+    "www.comuna.ru",
+    "tambur.pub",
+    "www.tambur.pub",
+    "localhost",
+    "127.0.0.1",
+}
 _COMUN_EXTERNAL_LINKS_FORBIDDEN_ERROR = (
     "В этом сообществе запрещены внешние ссылки. Удалите ссылки из текста и шаблона публикации."
 )
@@ -181,12 +207,6 @@ _EDITABLE_STATIC_PAGE_TITLES = {
     "privacy": "Политика обработки персональных данных",
     "rules": "Правила",
 }
-
-def _is_comuna_rubric(rubric: Rubric | None) -> bool:
-    if not rubric or not rubric.slug:
-        return False
-    return rubric.slug.strip().lower() == "comuna"
-
 
 def _site_user_display_name(user: User) -> str:
     display_name = (
@@ -236,13 +256,10 @@ def _site_user_for_personal_author(
 def _author_display_fields(
     request: HttpRequest | None,
     author: Author,
-    rubric: Rubric | None,
     post_channel_url: str | None = None,
 ) -> tuple[str | None, str]:
     channel_url = author.invite_url or author.channel_url
     title = author.title or author.username
-    if _is_comuna_rubric(rubric):
-        return "", "Admin"
     if not channel_url:
         channel_url = post_channel_url
     site_user = _site_user_for_personal_author(request, author)
@@ -253,13 +270,10 @@ def _author_display_fields(
     return channel_url, title
 
 
-def _author_avatar_for_rubric(
+def _author_avatar_for_display(
     request: HttpRequest | None,
     author: Author,
-    rubric: Rubric | None,
 ) -> str | None:
-    if _is_comuna_rubric(rubric):
-        return None
     site_user = _site_user_for_personal_author(request, author)
     if site_user:
         site_avatar = _site_user_avatar_url(request, site_user)
@@ -271,9 +285,8 @@ def _author_avatar_for_rubric(
 def _author_admin_fields_for_user(
     user: User | None,
     author: Author,
-    rubric: Rubric | None = None,
 ) -> dict[str, bool]:
-    if not user or not user.is_staff or _is_comuna_rubric(rubric):
+    if not user or not user.is_staff:
         return {}
     return {"notify_comments_enabled": bool(author.notify_comments)}
 
@@ -358,12 +371,10 @@ def _maybe_notify_new_author(author: Author, post: Post) -> None:
     site_base = settings.SITE_BASE_URL.rstrip("/")
     author_url = f"{site_base}/{author.username}"
     post_url = f"{site_base}/b/post/{post.id}"
-    rubric = author.rubric.name if author.rubric else "—"
     telegram_bot._send_bot_message(
         int(admin_chat),
         "Новый автор опубликовал первый пост.\n"
         f"Канал: @{author.username}\n"
-        f"Рубрика: {rubric}\n"
         f"Автор: {author_url}\n"
         f"Пост: {post_url}",
     )
@@ -463,7 +474,11 @@ def _ensure_comment_persona_user(persona: dict | None) -> User | None:
 def _serialize_comment_user(comment: PostComment) -> dict:
     persona = _comment_persona_by_username(getattr(comment, "persona_username", ""))
     if persona:
-        persona_user = _ensure_comment_persona_user(persona)
+        persona_user = (
+            User.objects.filter(username=str(persona.get("username") or "").strip())
+            .select_related("site_profile")
+            .first()
+        )
         persona_user_id = getattr(persona_user, "id", None)
         return {
             "id": persona_user_id,
@@ -542,11 +557,12 @@ def _maybe_notify_author_comment(post: Post, comment: PostComment) -> None:
         return
 
     site_base = (getattr(settings, "SITE_BASE_URL", "") or "").rstrip("/")
-    post_link = f"{site_base}/b/post/{post.id}#comments" if site_base else ""
+    comment_link = _site_comment_link(post, comment)
+    post_link = f"{site_base}{comment_link}" if site_base and comment_link else comment_link
     commenter_name = _comment_display_username(comment)
     commenter = f"@{commenter_name}" if commenter_name else "Пользователь"
     text = (
-        "Новый комментарий к вашему посту на Comuna.\n"
+        "Новый комментарий к вашему посту на Тамбур.\n"
         f"Пост: {_post_display_title(post)}\n"
         f"Пользователь: {commenter}\n"
         f"Комментарий: {_comment_preview(comment.body)}"
@@ -562,6 +578,14 @@ def _site_comment_link(post: Post, comment: PostComment | None = None) -> str:
     if comment and getattr(comment, "id", None):
         return f"{base_path}#site-comment-{comment.id}"
     return f"{base_path}#comments"
+
+
+def _special_project_redirect_path(post: Post) -> str:
+    raw_data = post.raw_data if isinstance(getattr(post, "raw_data", None), dict) else {}
+    project = raw_data.get("special_project") if isinstance(raw_data.get("special_project"), dict) else {}
+    if project.get("slug") == "book":
+        return "/s/book#comments"
+    return ""
 
 
 def _author_owner_users_for_notifications(author: Author) -> list[User]:
@@ -581,7 +605,12 @@ def _author_owner_users_for_notifications(author: Author) -> list[User]:
     return list(User.objects.filter(id__in=user_ids))
 
 
-def _maybe_notify_post_comment(post: Post, comment: PostComment) -> None:
+def _maybe_notify_post_comment(
+    post: Post,
+    comment: PostComment,
+    *,
+    parent: PostComment | None = None,
+) -> None:
     recipients = _author_owner_users_for_notifications(post.author)
     if not recipients:
         return
@@ -605,6 +634,13 @@ def _maybe_notify_post_comment(post: Post, comment: PostComment) -> None:
 
     for recipient in recipients:
         if recipient.id == comment.user_id:
+            continue
+        if (
+            parent
+            and not parent.is_deleted
+            and not getattr(parent, "persona_key", "")
+            and parent.user_id == recipient.id
+        ):
             continue
         create_user_notification(
             user=recipient,
@@ -721,6 +757,159 @@ def _maybe_notify_post_added_to_voting(
         )
 
 
+def _post_comun_category_for_notifications(
+    post: Post,
+    comun: Comun,
+    explicit_category: ComunCategory | None = None,
+) -> ComunCategory | None:
+    if explicit_category is not None:
+        return explicit_category
+    assignment = (
+        ComunPostCategoryAssignment.objects.select_related("category")
+        .filter(post=post, comun=comun)
+        .first()
+    )
+    if assignment and assignment.category_id:
+        return assignment.category
+    raw_data = post.raw_data if isinstance(getattr(post, "raw_data", None), dict) else {}
+    category_id = _parse_post_reference_to_id(raw_data.get("comun_category_id"))
+    if category_id:
+        return ComunCategory.objects.filter(id=category_id, comun=comun, is_active=True).first()
+    return None
+
+
+def _feed_settings_subscribed_to_comun_post(
+    settings: UserFeedSettings,
+    *,
+    comun: Comun,
+    category: ComunCategory | None,
+) -> bool:
+    serialized = my_feed_service._serialize_user_feed_settings(settings)
+    comun_slug = (comun.slug or "").strip()
+    if not comun_slug:
+        return False
+    if comun_slug in set(serialized.get("my_feed_comuns", []) or []):
+        return True
+    category_selection = serialized.get("my_feed_comun_categories", {}) or {}
+    selected_category_slugs = set(category_selection.get(comun_slug, []) or [])
+    if not selected_category_slugs:
+        return False
+    return bool(category and (category.slug or "").strip() in selected_category_slugs)
+
+
+def _post_published_group_key(period: str, *, now=None) -> str:
+    now = timezone.localtime(now or timezone.now())
+    local_date = now.date()
+    if period == "day":
+        return f"post_published:day:{local_date.isoformat()}"
+    if period == "week":
+        iso_year, iso_week, _weekday = local_date.isocalendar()
+        return f"post_published:week:{iso_year}-W{iso_week:02d}"
+    return ""
+
+
+def _maybe_notify_post_published_to_subscribers(
+    post: Post,
+    *,
+    actor: User | None = None,
+    comun: Comun | None = None,
+    category: ComunCategory | None = None,
+) -> None:
+    if post.is_pending or post.is_blocked:
+        return
+    comun = comun or community_service._post_comun(post)
+    if not comun:
+        return
+    category = _post_comun_category_for_notifications(post, comun, category)
+
+    author_owner_ids = {
+        user.id for user in _author_owner_users_for_notifications(post.author)
+    }
+    if actor:
+        author_owner_ids.add(actor.id)
+
+    post_title = _post_display_title(post)
+    comun_title = (comun.name or comun.slug or "").strip() or "сообществе"
+    category_title = (category.name or category.slug or "").strip() if category else ""
+    link_url = _post_public_path(post)
+    payload = {
+        "post_id": post.id,
+        "post_title": post_title,
+        "comun_id": comun.id,
+        "comun_slug": comun.slug,
+        "comun_name": comun_title,
+        "category_id": category.id if category else None,
+        "category_slug": category.slug if category else "",
+        "category_name": category_title,
+    }
+    item_payload = {
+        "id": post.id,
+        "title": post_title,
+        "link_url": link_url,
+        "comun_slug": comun.slug,
+        "comun_name": comun_title,
+        "category_slug": category.slug if category else "",
+        "category_name": category_title,
+        "published_at": timezone.now().isoformat(),
+    }
+
+    settings_qs = (
+        UserFeedSettings.objects.select_related("user")
+        .filter(user__is_active=True)
+        .order_by("user_id")
+    )
+    if author_owner_ids:
+        settings_qs = settings_qs.exclude(user_id__in=author_owner_ids)
+
+    notified_user_ids: set[int] = set()
+    for feed_settings in settings_qs.iterator(chunk_size=500):
+        recipient = feed_settings.user
+        if not recipient or recipient.id in notified_user_ids:
+            continue
+        if not _feed_settings_subscribed_to_comun_post(
+            feed_settings,
+            comun=comun,
+            category=category,
+        ):
+            continue
+        notified_user_ids.add(recipient.id)
+
+        grouping_period = notification_grouping_period_for_user(recipient, "post_published")
+        if grouping_period in {"day", "week"}:
+            group_key = _post_published_group_key(grouping_period)
+            group_label = "сегодня" if grouping_period == "day" else "за неделю"
+            create_grouped_user_notification(
+                user=recipient,
+                event_key="post_published",
+                title=f"Новые посты {group_label}",
+                message=(
+                    "В сообществах, на которые вы подписаны, появились новые публикации. "
+                    f"Последний пост: «{post_title}» в «{comun_title}»."
+                ),
+                link_url=link_url,
+                payload={
+                    "grouping_period": grouping_period,
+                    "group_label": group_label,
+                    "latest": payload,
+                },
+                group_key=group_key,
+                group_item=item_payload,
+            )
+            continue
+
+        create_user_notification(
+            user=recipient,
+            event_key="post_published",
+            title="Пост опубликован",
+            message=(
+                f"Опубликован пост в сообществе «{comun_title}», "
+                f"на которое вы подписаны: «{post_title}»."
+            ),
+            link_url=link_url,
+            payload=payload,
+        )
+
+
 def _media_url(request: HttpRequest | None, field) -> str | None:
     if not field:
         return None
@@ -738,8 +927,264 @@ def _media_url(request: HttpRequest | None, field) -> str | None:
         return None
 
 
+def _site_absolute_url(request: HttpRequest | None, path: str) -> str | None:
+    path = str(path or "").strip()
+    if not path:
+        return None
+    site_base = getattr(settings, "SITE_BASE_URL", "").rstrip("/")
+    if site_base:
+        return f"{site_base}/{path.lstrip('/')}"
+    if request is None:
+        return None
+    try:
+        return request.build_absolute_uri(path if path.startswith("/") else f"/{path}")
+    except Exception:
+        return None
+
+
+def _media_storage_path_from_url(url: str) -> str | None:
+    parsed = urllib.parse.urlparse(url)
+    media_url = str(getattr(settings, "MEDIA_URL", "/media/") or "/media/")
+    if not media_url.startswith("/"):
+        media_url = f"/{media_url}"
+    if not media_url.endswith("/"):
+        media_url = f"{media_url}/"
+    if not parsed.path.startswith(media_url):
+        return None
+    return urllib.parse.unquote(parsed.path[len(media_url) :]).lstrip("/")
+
+
+def _closest_existing_or_declared_variant_width(current_width: int | None, target_width: int) -> int:
+    widths = [width for width in _IMAGE_VARIANT_WIDTHS if not current_width or width <= current_width]
+    if not widths:
+        widths = [min(_IMAGE_VARIANT_WIDTHS)]
+    target_width = max(int(target_width or 0), min(_IMAGE_VARIANT_WIDTHS))
+    return min(widths, key=lambda width: (abs(width - target_width), width))
+
+
+def _local_webp_variant_url(
+    request: HttpRequest | None,
+    url: str,
+    *,
+    target_width: int,
+) -> str:
+    value = str(url or "").strip()
+    if not value:
+        return ""
+
+    parsed = urllib.parse.urlparse(value)
+    if parsed.scheme and parsed.scheme not in {"http", "https"}:
+        return ""
+    if not parsed.path:
+        return value
+
+    match = _LOCAL_WEBP_VARIANT_RE.search(parsed.path)
+    if match:
+        current_width = int(match.group(1))
+        width = _closest_existing_or_declared_variant_width(current_width, target_width)
+        next_path = _LOCAL_WEBP_VARIANT_RE.sub(f"-{width}.webp", parsed.path)
+        return urllib.parse.urlunparse(parsed._replace(path=next_path, query="", fragment=""))
+
+    storage_path = _media_storage_path_from_url(value)
+    if not storage_path:
+        return value
+
+    root, ext = os.path.splitext(storage_path)
+    if ext.lower() == ".gif":
+        return value
+
+    candidate_widths = sorted(
+        _IMAGE_VARIANT_WIDTHS,
+        key=lambda width: (abs(width - target_width), -width),
+    )
+    media_url = str(getattr(settings, "MEDIA_URL", "/media/") or "/media/")
+    if not media_url.endswith("/"):
+        media_url = f"{media_url}/"
+    for width in candidate_widths:
+        candidate_path = f"{root}-{width}.webp"
+        try:
+            if not default_storage.exists(candidate_path):
+                continue
+        except Exception:
+            continue
+        absolute = _site_absolute_url(request, f"{media_url.lstrip('/')}{candidate_path}")
+        return absolute or value
+
+    return value
+
+
+def _normalize_public_image_url(request: HttpRequest | None, url: object) -> str | None:
+    value = unescape(str(url or "").strip())
+    if not value:
+        return None
+    safe_value = safe_public_url(value)
+    if not safe_value:
+        return None
+    value = safe_value.strip()
+    if value.startswith("//"):
+        value = f"https:{value}"
+    elif value.startswith("/"):
+        value = _site_absolute_url(request, value) or ""
+    if not value:
+        return None
+
+    parsed = urllib.parse.urlparse(value)
+    if parsed.scheme not in {"http", "https"}:
+        return None
+    if not _IMAGE_URL_PATH_RE.search(parsed.path):
+        return None
+    return urllib.parse.urlunparse(parsed._replace(fragment=""))
+
+
+def _editor_block_image_candidates(payload: dict | None) -> list[object]:
+    if not isinstance(payload, dict):
+        return []
+
+    candidates: list[object] = []
+    additional = payload.get("additional")
+    if isinstance(additional, dict):
+        candidates.extend(
+            [
+                additional.get("previewImage"),
+                additional.get("preview_image_url"),
+                additional.get("cover_image_url"),
+            ]
+        )
+
+    blocks = payload.get("blocks")
+    if not isinstance(blocks, list):
+        return candidates
+
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        block_type = str(block.get("type") or "").strip().lower()
+        data = block.get("data")
+        if not isinstance(data, dict):
+            continue
+        if block_type == "image":
+            file_payload = data.get("file")
+            if isinstance(file_payload, dict):
+                candidates.append(file_payload.get("url"))
+            candidates.append(data.get("url"))
+        elif block_type == "gallery":
+            images = data.get("images")
+            if isinstance(images, list) and images:
+                first_image = images[0]
+                if isinstance(first_image, dict):
+                    candidates.append(first_image.get("url"))
+                    file_payload = first_image.get("file")
+                    if isinstance(file_payload, dict):
+                        candidates.append(file_payload.get("url"))
+        elif block_type in {"imagecompare", "compare"}:
+            for key in ("before", "after"):
+                value = data.get(key)
+                if isinstance(value, dict):
+                    candidates.append(value.get("url"))
+    return candidates
+
+
+def _template_image_candidates(template_payload: dict | None) -> list[object]:
+    if not isinstance(template_payload, dict):
+        return []
+    data = template_payload.get("data")
+    if not isinstance(data, dict):
+        return []
+    template_type = str(template_payload.get("type") or "").strip()
+    if template_type == "movie_review":
+        return [data.get("poster_url"), data.get("cover_image_url")]
+    if template_type == "music_release":
+        return [data.get("cover_image_url"), data.get("poster_url")]
+    return [data.get("cover_image_url"), data.get("preview_image_url")]
+
+
+def _content_image_candidates(content: str) -> list[object]:
+    raw = str(content or "").strip()
+    if not raw:
+        return []
+
+    candidates = _editor_block_image_candidates(_decode_editor_payload(raw))
+    candidates.extend(
+        match.group(1)
+        for match in re.finditer(r"<img\b[^>]*\bsrc=[\"']([^\"']+)[\"']", raw, re.IGNORECASE)
+    )
+    return candidates
+
+
+def _raw_data_image_candidates(raw_data: object) -> list[object]:
+    if not isinstance(raw_data, dict):
+        return []
+    candidates: list[object] = []
+    gallery_urls = raw_data.get("gallery_urls")
+    if isinstance(gallery_urls, list):
+        candidates.extend(gallery_urls)
+    for key in ("image_url", "photo_url", "preview_image_url"):
+        candidates.append(raw_data.get(key))
+    return candidates
+
+
+def _extract_post_preview_image_urls(
+    request: HttpRequest | None,
+    post: Post,
+    template_payload: dict | None = None,
+) -> tuple[str | None, str | None]:
+    if (
+        isinstance(template_payload, dict)
+        and str(template_payload.get("type") or "").strip() == "bug_report"
+    ):
+        return None, None
+    candidates: list[object] = []
+    stored_preview_image_url = str(getattr(post, "preview_image_url", "") or "").strip()
+    if stored_preview_image_url:
+        candidates.append(stored_preview_image_url)
+    else:
+        candidates.extend(_template_image_candidates(template_payload))
+        candidates.extend(_content_image_candidates(post.content or ""))
+        candidates.extend(_raw_data_image_candidates(post.raw_data))
+
+    for candidate in candidates:
+        image_url = _normalize_public_image_url(request, candidate)
+        if not image_url:
+            continue
+        preview_url = _local_webp_variant_url(
+            request,
+            image_url,
+            target_width=_POST_PREVIEW_IMAGE_WIDTH,
+        )
+        thumbnail_url = _local_webp_variant_url(
+            request,
+            image_url,
+            target_width=_POST_THUMBNAIL_IMAGE_WIDTH,
+        )
+        return preview_url or image_url, thumbnail_url or preview_url or image_url
+    return None, None
+
+
+def _post_card_preview_content(post: Post) -> str:
+    preview_content = str(getattr(post, "preview_content", "") or "").strip()
+    if preview_content:
+        return preview_content
+    return build_post_preview(post.content or "", post.raw_data).get("preview_content", "")
+
+
+def _serialize_post_preview_image_fields(
+    request: HttpRequest | None,
+    post: Post,
+    template_payload: dict | None = None,
+) -> dict[str, str | None]:
+    preview_image_url, thumbnail_url = _extract_post_preview_image_urls(
+        request,
+        post,
+        template_payload=template_payload,
+    )
+    return {
+        "preview_image_url": preview_image_url,
+        "thumbnail_url": thumbnail_url,
+    }
+
+
 def _author_avatar_url(request: HttpRequest | None, author: Author) -> str | None:
-    return _media_url(request, author.avatar_image) or author.avatar_url
+    return _media_url(request, author.avatar_image) or safe_public_url(author.avatar_url)
 
 
 def _stable_unit_float(*parts: object) -> float:
@@ -800,9 +1245,25 @@ def _post_fake_views_current(post: Post, now=None) -> int:
     return min(max(fake_views, 0), target)
 
 
+_post_display_views_current = _post_fake_views_current
+
+
 def _post_total_views(post: Post, now=None) -> int:
     real_views = max(int(getattr(post, "real_views_count", 0) or 0), 0)
     return real_views + _post_fake_views_current(post, now=now)
+
+
+def _post_rating_score(post: Post, *, author_rating=None, base_rating=None) -> float:
+    return round(
+        float(
+            _calculate_post_total_rating(
+                post,
+                author_rating=author_rating,
+                base_rating=base_rating,
+            )
+        ),
+        2,
+    )
 
 
 def _author_posts_rating_filter(now) -> Q:
@@ -810,12 +1271,6 @@ def _author_posts_rating_filter(now) -> Q:
         Q(posts__is_blocked=False, posts__is_pending=False)
         & (Q(posts__publish_at__isnull=True) | Q(posts__publish_at__lte=now))
     )
-
-
-def _rubric_icon_url(request: HttpRequest | None, rubric: Rubric | None) -> str | None:
-    if not rubric:
-        return None
-    return _media_url(request, rubric.icon_thumb) or _media_url(request, rubric.icon_url)
 
 
 def _format_lastmod(value) -> str | None:
@@ -985,7 +1440,7 @@ def _http_json_request(
 ) -> dict | list | None:
     request_headers = {
         "Accept": "application/json",
-        "User-Agent": "ComunaBot/1.0 (+https://comuna.ru)",
+        "User-Agent": "TamburBot/1.0 (+https://tambur.pub)",
     }
     if headers:
         request_headers.update(headers)
@@ -1193,9 +1648,12 @@ def _apply_post_tags(post: Post, explicit_tags: list[str] | None = None) -> None
         for tag in existing_tags.values():
             if not tag.is_active or tag.id in seen_ids:
                 continue
-            count = _count_tag_occurrences(text, tag.name.lower())
+            tag_name = tag.name.strip()
+            if len(tag_name) < 2:
+                continue
+            count = _count_tag_occurrences(text, tag_name.lower())
             if count:
-                candidates.append((count, len(tag.name), tag.name.lower(), tag))
+                candidates.append((count, len(tag_name), tag_name.lower(), tag))
         candidates.sort(key=lambda item: (-item[0], -item[1], item[2]))
         for _, __, ___, tag in candidates:
             selected_tags.append(tag)
@@ -1467,6 +1925,7 @@ def _build_content_with_images(
     embed_html: str = "",
     poll_html: str = "",
 ) -> str:
+    image_urls = list(dict.fromkeys(str(url or "").strip() for url in image_urls if str(url or "").strip()))
     parts: list[str] = []
     if image_urls:
         if len(image_urls) == 1:
@@ -1942,6 +2401,8 @@ def content_page_manage(request: HttpRequest, slug: str) -> HttpResponse:
 
 
 def _post_public_path(post: Post) -> str:
+    if _special_project_redirect_path(post):
+        return "/s/book"
     post_title = _post_display_title(post)
     post_slug = _slugify_title(post_title)
     return f"/b/post/{post.id}-{post_slug}" if post_slug else f"/b/post/{post.id}"
@@ -2028,6 +2489,7 @@ def _favorite_post_ids_for_user(posts: list[Post], user: User | None) -> set[int
 
 
 @csrf_exempt
+@anonymous_cache(prefix="post-comments", seconds=60)
 def post_comments(request: HttpRequest, post_id: int) -> HttpResponse:
     try:
         now = timezone.now()
@@ -2044,7 +2506,7 @@ def post_comments(request: HttpRequest, post_id: int) -> HttpResponse:
         user = _get_user_from_request(request)
         comments = (
             PostComment.objects.filter(post=post)
-            .select_related("user")
+            .select_related("user", "user__site_profile")
             .annotate(likes_count=Count("likes", distinct=True))
             .order_by("created_at")
         )
@@ -2122,7 +2584,8 @@ def post_comments(request: HttpRequest, post_id: int) -> HttpResponse:
     )
     Post.objects.filter(id=post.id).update(comments_count=F("comments_count") + 1)
     post.refresh_from_db(fields=["comments_count"])
-    _maybe_notify_post_comment(post, comment)
+    community_service._recalculate_comun_ratings_for_post(post)
+    _maybe_notify_post_comment(post, comment, parent=parent)
     _maybe_notify_comment_reply(post, parent, comment)
     _maybe_notify_author_comment(post, comment)
 
@@ -2194,6 +2657,7 @@ def comment_detail(request: HttpRequest, comment_id: int) -> HttpResponse:
     Post.objects.filter(id=comment.post_id, comments_count__gt=0).update(
         comments_count=F("comments_count") - 1
     )
+    community_service._recalculate_comun_ratings_for_post(comment.post_id)
 
     return JsonResponse({"ok": True, "comment_id": comment.id})
 
@@ -2208,21 +2672,24 @@ def comment_like(request: HttpRequest, comment_id: int) -> HttpResponse:
         return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
 
     try:
-        now = timezone.now()
-        comment = (
-            PostComment.objects.select_related("post", "post__author")
-            .filter(
-                id=comment_id,
-                is_deleted=False,
-                post__is_blocked=False,
-                post__is_pending=False,
-                post__author__is_blocked=False,
-            )
-            .filter(Q(post__publish_at__isnull=True) | Q(post__publish_at__lte=now))
-            .get()
+        comment = PostComment.objects.select_related("post", "post__author").get(
+            id=comment_id,
+            is_deleted=False,
+            post__is_blocked=False,
+            post__author__is_blocked=False,
         )
     except PostComment.DoesNotExist:
         return JsonResponse({"ok": False, "error": "comment not found"}, status=404)
+
+    now = timezone.now()
+    is_public_post = (not comment.post.is_pending) and (
+        comment.post.publish_at is None or comment.post.publish_at <= now
+    )
+    if not is_public_post:
+        from special_projects import film_journey
+
+        if not film_journey.special_project_post_filter(comment.post):
+            return JsonResponse({"ok": False, "error": "comment not found"}, status=404)
 
     existing = PostCommentLike.objects.filter(comment=comment, user=user).first()
     delta = 0
@@ -2236,14 +2703,7 @@ def comment_like(request: HttpRequest, comment_id: int) -> HttpResponse:
         delta = 1
 
     if delta:
-        _apply_author_rating_delta(
-            author_id=comment.post.author_id,
-            delta=delta,
-            event_type=AuthorRatingEvent.EVENT_TYPE_COMMENT_LIKE,
-            actor_id=user.id,
-            post_id=comment.post_id,
-            comment_id=comment.id,
-        )
+        community_service._recalculate_comun_ratings_for_post(comment.post_id)
 
     likes_count = PostCommentLike.objects.filter(comment=comment).count()
 
@@ -2310,6 +2770,7 @@ def post_like(request: HttpRequest, post_id: int) -> HttpResponse:
             actor_id=user.id,
             post_id=post.id,
         )
+        community_service._recalculate_comun_ratings_for_post(post.id)
 
     liked = new_vote == 1
 
@@ -2377,6 +2838,7 @@ def post_favorite(request: HttpRequest, post_id: int) -> HttpResponse:
     )
 
 
+@anonymous_cache(prefix="recent-comments", seconds=30)
 def recent_comments(request: HttpRequest) -> HttpResponse:
     limit_raw = request.GET.get("limit", "5")
     try:
@@ -2393,7 +2855,7 @@ def recent_comments(request: HttpRequest) -> HttpResponse:
             post__author__is_blocked=False,
         )
         .filter(Q(post__publish_at__isnull=True) | Q(post__publish_at__lte=now))
-        .select_related("user", "post")
+        .select_related("user", "user__site_profile", "post", "post__author")
         .order_by("-created_at")[:limit]
     )
 
@@ -2404,6 +2866,7 @@ def recent_comments(request: HttpRequest) -> HttpResponse:
             "created_at": comment.created_at.isoformat(),
             "user": _serialize_comment_user(comment),
             "post": {"id": comment.post_id, "title": _post_display_title(comment.post)},
+            "link_url": _site_comment_link(comment.post, comment),
         }
         for comment in comments
     ]
@@ -2411,6 +2874,7 @@ def recent_comments(request: HttpRequest) -> HttpResponse:
     return JsonResponse({"ok": True, "comments": serialized})
 
 
+@anonymous_cache(prefix="author-posts", seconds=45)
 def author_posts(request: HttpRequest, username: str) -> HttpResponse:
     try:
         author = Author.objects.get(username__iexact=username)
@@ -2436,7 +2900,6 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
     posts = list(
         Post.objects.filter(author=author, is_blocked=False, is_pending=False)
         .filter(_publish_ready_filter(now))
-        .filter(Q(rubric__isnull=True) | Q(rubric__is_hidden=False))
         .prefetch_related("tags")
         .order_by("-created_at")
         .all()[offset : offset + limit]
@@ -2446,7 +2909,6 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
     posts_count = (
         Post.objects.filter(author=author, is_blocked=False, is_pending=False)
         .filter(_publish_ready_filter(now))
-        .filter(Q(rubric__isnull=True) | Q(rubric__is_hidden=False))
         .count()
     )
     linked_comun = community_views._author_telegram_source_comun(author)
@@ -2454,22 +2916,22 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
     author_channel_url = author.invite_url or author.channel_url
     serialized = []
     for post in posts:
-        rubric = post.rubric
-        content, poll_payload = _content_with_live_poll(post, current_user)
+        _content, poll_payload = _content_with_live_poll(post, current_user)
+        template_payload = _serialize_post_template(post)
         author_channel_url, author_title = _author_display_fields(
-            request, author, rubric, post.channel_url
+            request, author, post.channel_url
         )
         serialized.append(
             {
                 "id": post.id,
                 "title": _post_display_title(post),
-                "template": _serialize_post_template(post),
-                "rubric": rubric.name if rubric else None,
-                "rubric_slug": rubric.slug if rubric else None,
-                "rubric_icon_url": _rubric_icon_url(request, rubric),
-                "comun": community_service._serialize_post_comun(request, post),
-                "content": content,
+                "template": template_payload,
+                "can_manage_bug_report_status": _user_can_manage_bug_report_status(current_user, post),
+                "bug_report_confirmation": _serialize_bug_report_confirmation(post, current_user),
+                "comun": community_service._serialize_post_comun(request, post, current_user),
+                "content": _post_card_preview_content(post),
                 "poll": poll_payload,
+                **_serialize_post_preview_image_fields(request, post, template_payload),
                 "source_url": post.source_url,
                 "channel_url": author_channel_url,
                 "created_at": post.created_at.isoformat(),
@@ -2482,10 +2944,10 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
                     "username": author.username,
                     "title": author_title,
                     "channel_url": author_channel_url,
-                    "avatar_url": _author_avatar_for_rubric(request, author, rubric),
+                    "avatar_url": _author_avatar_for_display(request, author),
                     "description": author.description,
                     "subscribers_count": author.subscribers_count,
-                    **_author_admin_fields_for_user(current_user, author, rubric),
+                    **_author_admin_fields_for_user(current_user, author),
                 },
             }
         )
@@ -2501,132 +2963,10 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
                 "description": author.description,
                 "subscribers_count": author.subscribers_count,
                 "posts_count": posts_count,
-                "author_rating": _author_rating_value(author.rating_total),
+                "author_rating": round(float(_calculate_author_rating(author)), 2),
                 "site_user_id": site_user_id,
                 "linked_comun_slug": linked_comun.slug if linked_comun and linked_comun.is_active else None,
                 "linked_comun_name": linked_comun.name if linked_comun and linked_comun.is_active else None,
-            },
-            "posts": serialized,
-        }
-    )
-
-
-def rubrics_list(request: HttpRequest) -> HttpResponse:
-    include_hidden = request.GET.get("include_hidden") in ("1", "true", "yes")
-    rubrics = Rubric.objects.filter(is_active=True)
-    if include_hidden:
-        user = _get_user_from_request(request)
-        if not user or not user.is_staff:
-            rubrics = rubrics.filter(is_hidden=False)
-    else:
-        rubrics = rubrics.filter(is_hidden=False)
-    rubrics = rubrics.order_by("sort_order", "name")
-    serialized = [
-        {
-            "id": rubric.id,
-            "name": rubric.name,
-            "slug": rubric.slug,
-            "icon_url": _media_url(request, rubric.icon_url),
-            "icon_thumb_url": _media_url(request, rubric.icon_thumb),
-            "cover_image_url": _media_url(request, rubric.cover_image_url),
-            "description": rubric.description,
-            "subscribe_url": rubric.subscribe_url,
-            "allowed_template_types": _allowed_templates_for_rubric(rubric),
-        }
-        for rubric in rubrics
-    ]
-    return JsonResponse(
-        {
-            "ok": True,
-            "rubrics": serialized,
-            "template_type_options": _serialize_post_template_type_options(),
-            "template_editor_block_options_by_template": (
-                _serialize_template_editor_block_options_by_template()
-            ),
-            "template_editor_blocks_by_template": _template_editor_blocks_by_template(),
-        }
-    )
-
-
-def rubric_posts(request: HttpRequest, slug: str) -> HttpResponse:
-    try:
-        rubric = Rubric.objects.get(slug=slug, is_active=True)
-    except Rubric.DoesNotExist:
-        return JsonResponse({"ok": False, "error": "rubric not found"}, status=404)
-
-    limit_raw = request.GET.get("limit", "10")
-    try:
-        limit = min(max(int(limit_raw), 1), 50)
-    except ValueError:
-        limit = 10
-    offset_raw = request.GET.get("offset", "0")
-    try:
-        offset = max(int(offset_raw), 0)
-    except ValueError:
-        offset = 0
-    current_user = _get_user_from_request(request)
-
-    now = timezone.now()
-    posts = list(
-        Post.objects.filter(
-            rubric=rubric,
-            is_blocked=False,
-            is_pending=False,
-            author__is_blocked=False,
-        )
-        .filter(_publish_ready_filter(now))
-        .prefetch_related("tags")
-        .order_by("-created_at")
-        .all()[offset : offset + limit]
-    )
-    favorite_post_ids = _favorite_post_ids_for_user(posts, current_user)
-
-    serialized = []
-    for post in posts:
-        content, poll_payload = _content_with_live_poll(post, current_user)
-        author_channel_url, author_title = _author_display_fields(
-            request, post.author, rubric, post.channel_url
-        )
-        serialized.append(
-            {
-                "id": post.id,
-                "title": _post_display_title(post),
-                "template": _serialize_post_template(post),
-                "rubric": rubric.name,
-                "rubric_slug": rubric.slug,
-                "rubric_icon_url": _rubric_icon_url(request, rubric),
-                "comun": community_service._serialize_post_comun(request, post),
-                "content": content,
-                "poll": poll_payload,
-                "source_url": post.source_url,
-                "channel_url": author_channel_url,
-                "created_at": post.created_at.isoformat(),
-                "comments_count": post.comments_count,
-                "likes_count": post.rating,
-                "views_count": _post_total_views(post, now),
-                "tags": _serialize_tags(post.tags.all()),
-                "is_favorite": post.id in favorite_post_ids,
-                "author": {
-                    "username": post.author.username,
-                    "title": author_title,
-                    "channel_url": author_channel_url,
-                    "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
-                    **_author_admin_fields_for_user(current_user, post.author, rubric),
-                },
-            }
-        )
-
-    return JsonResponse(
-        {
-            "ok": True,
-            "rubric": {
-                "name": rubric.name,
-                "slug": rubric.slug,
-                "icon_url": _media_url(request, rubric.icon_url),
-                "icon_thumb_url": _media_url(request, rubric.icon_thumb),
-                "cover_image_url": _media_url(request, rubric.cover_image_url),
-                "description": rubric.description,
-                "subscribe_url": rubric.subscribe_url,
             },
             "posts": serialized,
         }
@@ -2696,6 +3036,7 @@ def tags_ensure(request: HttpRequest) -> HttpResponse:
     )
 
 
+@anonymous_cache(prefix="tag-posts", seconds=45)
 def tag_posts(request: HttpRequest, tag: str) -> HttpResponse:
     if not tag:
         return JsonResponse({"ok": False, "error": "tag not found"}, status=404)
@@ -2735,7 +3076,7 @@ def tag_posts(request: HttpRequest, tag: str) -> HttpResponse:
         )
         .filter(_publish_ready_filter(now))
         .prefetch_related("tags")
-        .select_related("rubric", "author")
+        .select_related("author")
         .order_by("-created_at")
         .all()[offset : offset + limit]
     )
@@ -2743,24 +3084,22 @@ def tag_posts(request: HttpRequest, tag: str) -> HttpResponse:
 
     serialized = []
     for post in posts:
-        rubric = post.rubric
-        content, poll_payload = _content_with_live_poll(post, current_user)
+        _content, poll_payload = _content_with_live_poll(post, current_user)
+        template_payload = _serialize_post_template(post)
         author_channel_url, author_title = _author_display_fields(
-            request, post.author, rubric, post.channel_url
+            request, post.author, post.channel_url
         )
         serialized.append(
             {
                 "id": post.id,
                 "title": _post_display_title(post),
-                "template": _serialize_post_template(post),
-                "rubric": rubric.name if rubric else None,
-                "rubric_slug": rubric.slug if rubric else None,
-                "rubric_icon_url": _rubric_icon_url(request, rubric)
-                if rubric
-                else None,
-                "comun": community_service._serialize_post_comun(request, post),
-                "content": content,
+                "template": template_payload,
+                "can_manage_bug_report_status": _user_can_manage_bug_report_status(current_user, post),
+                "bug_report_confirmation": _serialize_bug_report_confirmation(post, current_user),
+                "comun": community_service._serialize_post_comun(request, post, current_user),
+                "content": _post_card_preview_content(post),
                 "poll": poll_payload,
+                **_serialize_post_preview_image_fields(request, post, template_payload),
                 "source_url": post.source_url,
                 "channel_url": author_channel_url,
                 "created_at": post.created_at.isoformat(),
@@ -2773,10 +3112,8 @@ def tag_posts(request: HttpRequest, tag: str) -> HttpResponse:
                     "username": post.author.username,
                     "title": author_title,
                     "channel_url": author_channel_url,
-                    "avatar_url": _author_avatar_for_rubric(
-                        request, post.author, rubric
-                    ),
-                    **_author_admin_fields_for_user(current_user, post.author, rubric),
+                    "avatar_url": _author_avatar_for_display(request, post.author),
+                    **_author_admin_fields_for_user(current_user, post.author),
                 },
             }
         )
@@ -2793,11 +3130,12 @@ def tag_posts(request: HttpRequest, tag: str) -> HttpResponse:
     )
 
 
+@anonymous_cache(prefix="post-detail", seconds=120)
 def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
     try:
         now = timezone.now()
         post = (
-            Post.objects.select_related("author", "rubric")
+            Post.objects.select_related("author")
             .prefetch_related("tags")
             .filter(is_blocked=False, is_pending=False, author__is_blocked=False)
             .filter(_publish_ready_filter(now))
@@ -2805,12 +3143,21 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
         )
     except Post.DoesNotExist:
         return JsonResponse({"ok": False, "error": "post not found"}, status=404)
-
-    rubric = post.rubric
+    special_project_redirect = _special_project_redirect_path(post)
+    if special_project_redirect:
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": "special project discussion post",
+                "redirect_url": special_project_redirect,
+            },
+            status=410,
+        )
     current_user = _get_user_from_request(request)
     content, poll_payload = _content_with_live_poll(post, current_user)
+    template_payload = _serialize_post_template(post)
     author_channel_url, author_title = _author_display_fields(
-        request, post.author, rubric, post.channel_url
+        request, post.author, post.channel_url
     )
     return JsonResponse(
         {
@@ -2818,14 +3165,17 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
             "post": {
                 "id": post.id,
                 "title": _post_display_title(post),
-                "template": _serialize_post_template(post),
+                "template": template_payload,
+                "enabled_template_editor_blocks": _serialize_enabled_template_editor_blocks(template_payload),
+                "can_manage_bug_report_status": _user_can_manage_bug_report_status(current_user, post),
+                "bug_report_confirmation": _serialize_bug_report_confirmation(post, current_user),
                 "vote_poll_participations": _serialize_post_vote_poll_participations(post),
-                "rubric": rubric.name if rubric else None,
-                "rubric_slug": rubric.slug if rubric else None,
-                "rubric_icon_url": _rubric_icon_url(request, rubric),
-                "comun": community_service._serialize_post_comun(request, post),
+                "comun": community_service._serialize_post_comun(request, post, current_user),
                 "content": content,
                 "poll": poll_payload,
+                "post_ratings": _serialize_post_ratings(post, current_user),
+                "post_rating": _serialize_post_rating(post, current_user, template_payload=template_payload),
+                **_serialize_post_preview_image_fields(request, post, template_payload),
                 "source_url": post.source_url,
                 "channel_url": author_channel_url,
                 "created_at": post.created_at.isoformat(),
@@ -2842,8 +3192,8 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
                     "username": post.author.username,
                     "title": author_title,
                     "channel_url": author_channel_url,
-                    "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
-                    **_author_admin_fields_for_user(current_user, post.author, rubric),
+                    "avatar_url": _author_avatar_for_display(request, post.author),
+                    **_author_admin_fields_for_user(current_user, post.author),
                 },
             },
         }
@@ -2879,11 +3229,26 @@ def post_view(request: HttpRequest, post_id: int) -> HttpResponse:
     except Post.DoesNotExist:
         return JsonResponse({"ok": False, "error": "post not found"}, status=404)
 
+    if is_rate_limited(
+        request,
+        scope="post_view_global",
+        limit=120,
+        window_seconds=60,
+    ) or is_rate_limited(
+        request,
+        scope="post_view",
+        limit=3,
+        window_seconds=60,
+        identifiers=(post.id,),
+    ):
+        return JsonResponse({"ok": True, "views_count": _post_total_views(post, now)})
+
     Post.objects.filter(id=post.id).update(real_views_count=F("real_views_count") + 1)
     post.real_views_count = (post.real_views_count or 0) + 1
     return JsonResponse({"ok": True, "views_count": _post_total_views(post, now)})
 
 
+@anonymous_cache(prefix="home-feed", seconds=45)
 def home_feed(request: HttpRequest) -> HttpResponse:
     limit_raw = request.GET.get("limit", "10")
     try:
@@ -2898,7 +3263,18 @@ def home_feed(request: HttpRequest) -> HttpResponse:
 
     hide_read = request.GET.get("hide_read") in {"1", "true", "True"}
     only_read = request.GET.get("only_read") in {"1", "true", "True"}
+    card_mode = request.GET.get("card") in {"1", "true", "True"}
     now = timezone.now()
+    if card_mode and not hide_read and not only_read and not has_auth_context(request):
+        materialized_response = _materialized_home_feed_response(
+            request,
+            limit=limit,
+            offset=offset,
+            now=now,
+        )
+        if materialized_response is not None:
+            return materialized_response
+
     read_user = (
         _get_user_from_request(request) if (hide_read or only_read) else None
     )
@@ -2907,9 +3283,6 @@ def home_feed(request: HttpRequest) -> HttpResponse:
         return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
     target_count = limit + offset
     fetch_size = max(target_count * 5, limit * 5)
-    combined_scaled = Cast(F("rating"), IntegerField()) * Value(20) + Cast(
-        F("author__rating_total"), IntegerField()
-    )
     hidden_home_tag_qs = Tag.objects.filter(
         posts__id=OuterRef("pk"),
         hide_from_home=True,
@@ -2917,6 +3290,9 @@ def home_feed(request: HttpRequest) -> HttpResponse:
     hidden_home_comun_slugs = list(
         Comun.objects.filter(hide_from_home=True).values_list("slug", flat=True)
     )
+    hidden_home_comun_category_post_ids = ComunPostCategoryAssignment.objects.filter(
+        category__hide_from_home=True,
+    ).values("post_id")
     base_query = (
         Post.objects.filter(
             is_blocked=False,
@@ -2925,78 +3301,68 @@ def home_feed(request: HttpRequest) -> HttpResponse:
         )
         .filter(_publish_ready_filter(now))
         .filter(Q(author__shadow_banned=False) | Q(author__force_home=True))
-        .filter(Q(rubric__isnull=True) | Q(rubric__is_hidden=False))
-        .filter(Q(rubric__isnull=True) | Q(rubric__hide_from_home=False))
-        .annotate(combined_scaled=combined_scaled)
         .annotate(has_hidden_home_tag=Exists(hidden_home_tag_qs))
         .filter(has_hidden_home_tag=False)
-        .filter(combined_scaled__gte=0)
+        .exclude(id__in=hidden_home_comun_category_post_ids)
     )
     if hidden_home_comun_slugs:
         hidden_home_comun_post_ids = Post.objects.filter(
             raw_data__source="manual_comun",
             raw_data__comun_slug__in=hidden_home_comun_slugs,
+        ).exclude(
+            comun_category_assignments__category_id__isnull=False,
         ).values("id")
         base_query = base_query.exclude(id__in=hidden_home_comun_post_ids)
-    hidden_read_count = 0
-    if hide_read and read_user:
-        hidden_read_count = base_query.filter(reads__user=read_user).count()
+    if only_read and not read_user:
+        return JsonResponse({"ok": True, "posts": []})
+    if read_user and (only_read or hide_read):
+        recent_read_marker = PostRead.objects.filter(
+            post_id=OuterRef("pk"),
+            user=read_user,
+            read_at__gte=now - timedelta(days=14),
+        )
+        base_query = base_query.annotate(recently_read=Exists(recent_read_marker))
 
     if only_read:
         posts_page = list(
-            base_query.filter(reads__user=read_user)
-            .select_related("author", "rubric")
+            base_query.filter(recently_read=True)
+            .select_related("author")
             .prefetch_related("tags")
             .order_by("-created_at")[offset : offset + limit]
         )
         favorite_post_ids = _favorite_post_ids_for_user(posts_page, current_user)
         serialized = []
         for post in posts_page:
-            rubric = post.rubric
-            author_rating = _author_rating_value(post.author.rating_total)
-            content, poll_payload = _content_with_live_poll(post, current_user)
-            author_channel_url, author_title = _author_display_fields(
-                request, post.author, rubric, post.channel_url
-            )
+            author_rating = round(float(_calculate_author_rating(post.author)), 2)
+            if card_mode:
+                serialized.append(
+                    _serialize_lightweight_post_card(
+                        request,
+                        post,
+                        current_user,
+                        now=now,
+                        is_favorite=post.id in favorite_post_ids,
+                        author_rating=author_rating,
+                    )
+                )
+                continue
             serialized.append(
-                {
-                    "id": post.id,
-                    "title": _post_display_title(post),
-                    "template": _serialize_post_template(post),
-                    "rubric": rubric.name if rubric else None,
-                    "rubric_slug": rubric.slug if rubric else None,
-                    "rubric_icon_url": _rubric_icon_url(request, rubric),
-                    "comun": community_service._serialize_post_comun(request, post),
-                    "content": content,
-                    "poll": poll_payload,
-                    "source_url": post.source_url,
-                    "channel_url": author_channel_url,
-                    "created_at": post.created_at.isoformat(),
-                    "author": {
-                        "username": post.author.username,
-                        "title": author_title,
-                        "channel_url": author_channel_url,
-                        "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
-                        **_author_admin_fields_for_user(current_user, post.author, rubric),
-                    },
-                    "tags": _serialize_tags(post.tags.all()),
-                    "is_favorite": post.id in favorite_post_ids,
-                    "score": post.rating + post.comments_count * 5 + author_rating,
-                    "rating": post.rating,
-                    "comments_count": post.comments_count,
-                    "likes_count": post.rating,
-                "views_count": _post_total_views(post, now),
-                }
+                _serialize_backend_post_card(
+                    request,
+                    post,
+                    current_user,
+                    now=now,
+                    is_favorite=post.id in favorite_post_ids,
+                    author_rating=author_rating,
+                )
             )
-        return JsonResponse(
-            {"ok": True, "posts": serialized, "hidden_read_count": hidden_read_count}
-        )
+        return JsonResponse({"ok": True, "posts": serialized})
 
     posts_query = base_query
     if hide_read and read_user:
-        posts_query = posts_query.exclude(reads__user=read_user)
+        posts_query = posts_query.filter(recently_read=False)
     posts = list(
-        posts_query.select_related("author", "rubric")
+        posts_query.select_related("author")
         .prefetch_related("tags")
         .order_by("-created_at")[:fetch_size]
     )
@@ -3004,18 +3370,21 @@ def home_feed(request: HttpRequest) -> HttpResponse:
     author_ids = {post.author_id for post in posts}
     author_rating_map = {}
     if author_ids:
+        authors_for_rating = list(Author.objects.filter(id__in=author_ids))
         author_rating_map = {
-            row["id"]: _author_rating_value(row["rating_total"])
-            for row in Author.objects.filter(id__in=author_ids).values(
-                "id", "rating_total"
-            )
+            author_id: round(float(value), 2)
+            for author_id, value in _calculate_author_ratings(authors_for_rating).items()
         }
+    rating_settings = _get_rating_settings()
+    home_posts_per_community_per_day = max(
+        int(getattr(rating_settings, "home_posts_per_community_per_day", 3) or 3),
+        1,
+    )
+    community_day_counts: dict[tuple[int, object], int] = {}
 
     serialized_posts = []
     remaining = posts[:]
     last_author_id = None
-    rubric_daily_counts = {}
-    forced_daily_counts = {}
 
     while remaining and len(serialized_posts) < target_count:
         next_index = None
@@ -3026,169 +3395,45 @@ def home_feed(request: HttpRequest) -> HttpResponse:
         if next_index is None:
             next_index = 0
         post = remaining.pop(next_index)
-        rubric = post.rubric
         author_rating = author_rating_map.get(post.author_id, 0)
-        content, poll_payload = _content_with_live_poll(post, current_user)
-        combined_rating = post.rating + author_rating
+        combined_rating = _post_rating_score(post, author_rating=author_rating)
         if combined_rating < 0:
             continue
-        day_key = timezone.localtime(post.created_at).date()
-        rubric_limit = rubric.home_limit if rubric else None
-        rubric_key = (rubric.id, day_key) if rubric else None
-        rubric_count = rubric_daily_counts.get(rubric_key, 0) if rubric_key else 0
-        allow_by_rubric = True
-        if rubric_key is not None and rubric_limit is not None:
-            allow_by_rubric = rubric_count < rubric_limit
-        forced_key = (post.author_id, day_key)
-        forced_used = forced_daily_counts.get(forced_key, 0)
-        force_slot_available = post.author.force_home and forced_used < 1
-        if not (allow_by_rubric or force_slot_available):
-            continue
-        if allow_by_rubric and rubric_key is not None:
-            rubric_daily_counts[rubric_key] = rubric_count + 1
-        elif force_slot_available:
-            forced_daily_counts[forced_key] = forced_used + 1
-        author_channel_url, author_title = _author_display_fields(
-            request, post.author, rubric, post.channel_url
-        )
-        serialized_posts.append(
-            {
-                "id": post.id,
-                "title": _post_display_title(post),
-                "template": _serialize_post_template(post),
-                "rubric": rubric.name if rubric else None,
-                "rubric_slug": rubric.slug if rubric else None,
-                "rubric_icon_url": _rubric_icon_url(request, rubric),
-                "comun": community_service._serialize_post_comun(request, post),
-                "content": content,
-                "poll": poll_payload,
-                "source_url": post.source_url,
-                "channel_url": author_channel_url,
-                "created_at": post.created_at.isoformat(),
-                "author": {
-                    "username": post.author.username,
-                    "title": author_title,
-                    "channel_url": author_channel_url,
-                    "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
-                    **_author_admin_fields_for_user(current_user, post.author, rubric),
-                },
-                "tags": _serialize_tags(post.tags.all()),
-                "is_favorite": post.id in favorite_post_ids,
-                "score": post.rating + post.comments_count * 5 + author_rating,
-                "rating": post.rating,
-                "comments_count": post.comments_count,
-                "likes_count": post.rating,
-                "views_count": _post_total_views(post, now),
-            }
-        )
+        community_day_key = _home_feed_community_day_key(post)
+        if community_day_key is not None:
+            community_day_count = community_day_counts.get(community_day_key, 0)
+            if community_day_count >= home_posts_per_community_per_day:
+                continue
+            community_day_counts[community_day_key] = community_day_count + 1
+        if card_mode:
+            serialized_posts.append(
+                _serialize_lightweight_post_card(
+                    request,
+                    post,
+                    current_user,
+                    now=now,
+                    is_favorite=post.id in favorite_post_ids,
+                    author_rating=author_rating,
+                )
+            )
+        else:
+            serialized_posts.append(
+                _serialize_backend_post_card(
+                    request,
+                    post,
+                    current_user,
+                    now=now,
+                    is_favorite=post.id in favorite_post_ids,
+                    author_rating=author_rating,
+                )
+            )
         last_author_id = post.author_id
 
     return JsonResponse(
         {
             "ok": True,
             "posts": serialized_posts[offset : offset + limit],
-            "hidden_read_count": hidden_read_count,
         }
-    )
-
-
-def fresh_feed(request: HttpRequest) -> HttpResponse:
-    limit_raw = request.GET.get("limit", "10")
-    try:
-        limit = min(max(int(limit_raw), 1), 200)
-    except ValueError:
-        limit = 10
-    offset_raw = request.GET.get("offset", "0")
-    try:
-        offset = max(int(offset_raw), 0)
-    except ValueError:
-        offset = 0
-
-    now = timezone.now()
-    hide_read = request.GET.get("hide_read") in ("1", "true", "yes")
-    only_read = request.GET.get("only_read") in ("1", "true", "yes")
-    read_user = (
-        _get_user_from_request(request) if (hide_read or only_read) else None
-    )
-    current_user = read_user or _get_user_from_request(request)
-    if only_read and not read_user:
-        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
-    base_query = (
-        Post.objects.filter(
-            is_blocked=False,
-            is_pending=False,
-            author__is_blocked=False,
-        )
-        .filter(_publish_ready_filter(now))
-        .filter(Q(author__shadow_banned=False) | Q(author__force_home=True))
-        .filter(Q(rubric__isnull=True) | Q(rubric__is_hidden=False))
-    )
-    hidden_fresh_comun_slugs = list(
-        Comun.objects.filter(hide_from_fresh=True).values_list("slug", flat=True)
-    )
-    if hidden_fresh_comun_slugs:
-        hidden_fresh_comun_post_ids = Post.objects.filter(
-            raw_data__source="manual_comun",
-            raw_data__comun_slug__in=hidden_fresh_comun_slugs,
-        ).values("id")
-        base_query = base_query.exclude(id__in=hidden_fresh_comun_post_ids)
-
-    hidden_read_count = 0
-    if hide_read and read_user:
-        hidden_read_count = base_query.filter(reads__user=read_user).count()
-
-    posts_query = base_query
-    if only_read:
-        posts_query = posts_query.filter(reads__user=read_user)
-    elif hide_read and read_user:
-        posts_query = posts_query.exclude(reads__user=read_user)
-    posts = list(
-        posts_query.select_related("author", "rubric")
-        .prefetch_related("tags")
-        .order_by("-created_at")[offset : offset + limit]
-    )
-    favorite_post_ids = _favorite_post_ids_for_user(posts, current_user)
-
-    serialized = []
-    for post in posts:
-        rubric = post.rubric
-        content, poll_payload = _content_with_live_poll(post, current_user)
-        author_channel_url, author_title = _author_display_fields(
-            request, post.author, rubric, post.channel_url
-        )
-        serialized.append(
-            {
-                "id": post.id,
-                "title": _post_display_title(post),
-                "template": _serialize_post_template(post),
-                "rubric": rubric.name if rubric else None,
-                "rubric_slug": rubric.slug if rubric else None,
-                "rubric_icon_url": _rubric_icon_url(request, rubric),
-                "comun": community_service._serialize_post_comun(request, post),
-                "content": content,
-                "poll": poll_payload,
-                "source_url": post.source_url,
-                "channel_url": author_channel_url,
-                "created_at": post.created_at.isoformat(),
-                "author": {
-                    "username": post.author.username,
-                    "title": author_title,
-                    "channel_url": author_channel_url,
-                    "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
-                    **_author_admin_fields_for_user(current_user, post.author, rubric),
-                },
-                "tags": _serialize_tags(post.tags.all()),
-                "is_favorite": post.id in favorite_post_ids,
-                "score": post.rating + post.comments_count * 5,
-                "rating": post.rating,
-                "comments_count": post.comments_count,
-                "likes_count": post.rating,
-                "views_count": _post_total_views(post, now),
-            }
-        )
-
-    return JsonResponse(
-        {"ok": True, "posts": serialized, "hidden_read_count": hidden_read_count}
     )
 
 
@@ -3221,14 +3466,11 @@ def favorites_feed(request: HttpRequest) -> HttpResponse:
         )
         .filter(Q(post__publish_at__isnull=True) | Q(post__publish_at__lte=now))
         .filter(Q(post__author__shadow_banned=False) | Q(post__author__force_home=True))
-        .filter(Q(post__rubric__isnull=True) | Q(post__rubric__is_hidden=False))
-        .select_related("post__author", "post__rubric")
+        .select_related("post__author")
         .prefetch_related("post__tags")
         .order_by("-created_at")
     )
 
-    # "Favorites" always shows all favorited posts, regardless of read-status filters.
-    hidden_read_count = 0
     filtered_favorites = favorites_qs
 
     favorite_rows = list(filtered_favorites[offset : offset + limit])
@@ -3237,22 +3479,21 @@ def favorites_feed(request: HttpRequest) -> HttpResponse:
 
     serialized = []
     for post in posts:
-        rubric = post.rubric
-        content, poll_payload = _content_with_live_poll(post, user)
+        _content, poll_payload = _content_with_live_poll(post, user)
+        template_payload = _serialize_post_template(post)
         author_channel_url, author_title = _author_display_fields(
-            request, post.author, rubric, post.channel_url
+            request, post.author, post.channel_url
         )
         serialized.append(
             {
                 "id": post.id,
                 "title": _post_display_title(post),
-                "template": _serialize_post_template(post),
-                "rubric": rubric.name if rubric else None,
-                "rubric_slug": rubric.slug if rubric else None,
-                "rubric_icon_url": _rubric_icon_url(request, rubric),
-                "comun": community_service._serialize_post_comun(request, post),
-                "content": content,
+                "template": template_payload,
+                "bug_report_confirmation": _serialize_bug_report_confirmation(post, user),
+                "comun": community_service._serialize_post_comun(request, post, user),
+                "content": _post_card_preview_content(post),
                 "poll": poll_payload,
+                **_serialize_post_preview_image_fields(request, post, template_payload),
                 "source_url": post.source_url,
                 "channel_url": author_channel_url,
                 "created_at": post.created_at.isoformat(),
@@ -3260,12 +3501,12 @@ def favorites_feed(request: HttpRequest) -> HttpResponse:
                     "username": post.author.username,
                     "title": author_title,
                     "channel_url": author_channel_url,
-                    "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
-                    **_author_admin_fields_for_user(user, post.author, rubric),
+                    "avatar_url": _author_avatar_for_display(request, post.author),
+                    **_author_admin_fields_for_user(user, post.author),
                 },
                 "tags": _serialize_tags(post.tags.all()),
                 "is_favorite": post.id in favorite_post_ids,
-                "score": post.rating + post.comments_count * 5,
+                "score": _post_rating_score(post),
                 "rating": post.rating,
                 "comments_count": post.comments_count,
                 "likes_count": post.rating,
@@ -3273,9 +3514,7 @@ def favorites_feed(request: HttpRequest) -> HttpResponse:
             }
         )
 
-    return JsonResponse(
-        {"ok": True, "posts": serialized, "hidden_read_count": hidden_read_count}
-    )
+    return JsonResponse({"ok": True, "posts": serialized})
 
 
 def _serialize_backend_post_card(
@@ -3285,27 +3524,27 @@ def _serialize_backend_post_card(
     *,
     now=None,
     is_favorite: bool = False,
+    author_rating: int | float = 0,
 ) -> dict:
     now = now or timezone.now()
-    rubric = post.rubric
-    content, poll_payload = _content_with_live_poll(post, current_user)
+    _content, poll_payload = _content_with_live_poll(post, current_user)
     template_payload = _serialize_post_template(post)
     author_channel_url, author_title = _author_display_fields(
-        request, post.author, rubric, post.channel_url
+        request, post.author, post.channel_url
     )
     return {
         "id": post.id,
         "title": _post_display_title(post),
         "template": template_payload,
         "enabled_template_editor_blocks": _serialize_enabled_template_editor_blocks(template_payload),
-        "rubric": rubric.name if rubric else None,
-        "rubric_slug": rubric.slug if rubric else None,
-        "rubric_icon_url": _rubric_icon_url(request, rubric),
-        "comun": community_service._serialize_post_comun(request, post),
-        "content": content,
+        "can_manage_bug_report_status": _user_can_manage_bug_report_status(current_user, post),
+        "bug_report_confirmation": _serialize_bug_report_confirmation(post, current_user),
+        "comun": community_service._serialize_post_comun(request, post, current_user),
+        "content": _post_card_preview_content(post),
         "poll": poll_payload,
         "post_ratings": _serialize_post_ratings(post, current_user),
         "post_rating": _serialize_post_rating(post, current_user, template_payload=template_payload),
+        **_serialize_post_preview_image_fields(request, post, template_payload),
         "source_url": post.source_url,
         "channel_url": author_channel_url,
         "created_at": post.created_at.isoformat(),
@@ -3313,12 +3552,12 @@ def _serialize_backend_post_card(
             "username": post.author.username,
             "title": author_title,
             "channel_url": author_channel_url,
-            "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
-            **_author_admin_fields_for_user(current_user, post.author, rubric),
+            "avatar_url": _author_avatar_for_display(request, post.author),
+            **_author_admin_fields_for_user(current_user, post.author),
         },
         "tags": _serialize_tags(post.tags.all()),
         "is_favorite": is_favorite,
-        "score": post.rating + post.comments_count * 5,
+        "score": _post_rating_score(post, author_rating=author_rating),
         "rating": post.rating,
         "comments_count": post.comments_count,
         "likes_count": post.rating,
@@ -3326,20 +3565,131 @@ def _serialize_backend_post_card(
     }
 
 
+def _serialize_lightweight_post_card(
+    request: HttpRequest,
+    post: Post,
+    current_user: User | None,
+    *,
+    now=None,
+    is_favorite: bool = False,
+    author_rating: int | float = 0,
+    score_override: int | float | None = None,
+) -> dict:
+    now = now or timezone.now()
+    _content, poll_payload = _content_with_live_poll(post, current_user)
+    template_payload = _serialize_post_template(post)
+    author_channel_url, author_title = _author_display_fields(
+        request, post.author, post.channel_url
+    )
+    return {
+        "id": post.id,
+        "title": _post_display_title(post),
+        "template": template_payload,
+        "enabled_template_editor_blocks": _serialize_enabled_template_editor_blocks(template_payload),
+        "can_manage_bug_report_status": _user_can_manage_bug_report_status(current_user, post),
+        "bug_report_confirmation": _serialize_bug_report_confirmation(post, current_user),
+        "comun": community_service._serialize_post_comun(request, post, current_user),
+        "content": _post_card_preview_content(post),
+        "poll": poll_payload,
+        "post_ratings": _serialize_post_ratings(post, current_user),
+        "post_rating": _serialize_post_rating(post, current_user, template_payload=template_payload),
+        **_serialize_post_preview_image_fields(request, post, template_payload),
+        "source_url": post.source_url,
+        "channel_url": author_channel_url,
+        "created_at": post.created_at.isoformat(),
+        "author": {
+            "username": post.author.username,
+            "title": author_title,
+            "channel_url": author_channel_url,
+            "avatar_url": _author_avatar_for_display(request, post.author),
+            **_author_admin_fields_for_user(current_user, post.author),
+        },
+        "tags": _serialize_tags(post.tags.all()),
+        "is_favorite": is_favorite,
+        "score": score_override if score_override is not None else _post_rating_score(post, author_rating=author_rating),
+        "rating": post.rating,
+        "comments_count": post.comments_count,
+        "likes_count": post.rating,
+        "views_count": _post_total_views(post, now),
+    }
+
+
+def _materialized_home_feed_response(
+    request: HttpRequest,
+    *,
+    limit: int,
+    offset: int,
+    now=None,
+) -> HttpResponse | None:
+    items = list(
+        PublicFeedItem.objects.filter(feed=PublicFeedItem.FEED_HOME)
+        .select_related("post", "post__author")
+        .prefetch_related("post__tags")
+        .order_by("rank")
+    )
+    if not items:
+        return None
+
+    rating_settings = _get_rating_settings()
+    home_posts_per_community_per_day = max(
+        int(getattr(rating_settings, "home_posts_per_community_per_day", 3) or 3),
+        1,
+    )
+    author_rating_map = {
+        author_id: round(float(value), 2)
+        for author_id, value in _calculate_author_ratings(
+            Author.objects.filter(id__in={item.post.author_id for item in items})
+        ).items()
+    }
+    visible_items = []
+    community_day_counts: dict[tuple[int, object], int] = {}
+    for item in items:
+        author_rating = author_rating_map.get(item.post.author_id, 0)
+        score = _post_rating_score(item.post, author_rating=author_rating)
+        if score < 0:
+            continue
+        community_day_key = _home_feed_community_day_key(item.post)
+        if community_day_key is not None:
+            community_day_count = community_day_counts.get(community_day_key, 0)
+            if community_day_count >= home_posts_per_community_per_day:
+                continue
+            community_day_counts[community_day_key] = community_day_count + 1
+        visible_items.append((item, score))
+        if len(visible_items) >= offset + limit:
+            break
+
+    serialized = [
+        _serialize_lightweight_post_card(
+            request,
+            item.post,
+            None,
+            now=now,
+            score_override=score,
+        )
+        for item, score in visible_items[offset : offset + limit]
+    ]
+    return JsonResponse(
+        {
+            "ok": True,
+            "posts": serialized,
+            "materialized": True,
+        }
+    )
+
+
 def _serialize_search_author_result(
     request: HttpRequest,
     author: Author,
 ) -> dict:
-    rubric = author.rubric
-    author_channel_url, author_title = _author_display_fields(request, author, rubric)
+    author_channel_url, author_title = _author_display_fields(request, author)
     return {
         "username": author.username,
         "title": author_title,
-        "avatar_url": _author_avatar_for_rubric(request, author, rubric),
+        "avatar_url": _author_avatar_for_display(request, author),
         "description": author.description,
         "channel_url": author_channel_url or "",
         "subscribers_count": author.subscribers_count,
-        "author_rating": _author_rating_value(author.rating_total),
+        "author_rating": round(float(_calculate_author_rating(author)), 2),
     }
 
 
@@ -3355,6 +3705,27 @@ def _serialize_search_site_user_result(
         "channel_url": "",
         "subscribers_count": 0,
         "author_rating": None,
+    }
+
+
+def _serialize_search_comun_result(
+    request: HttpRequest,
+    comun: Comun,
+) -> dict:
+    rating_value = getattr(comun, "rating_score", 0) or 0
+    try:
+        rating_score = float(rating_value)
+    except (TypeError, ValueError):
+        rating_score = 0.0
+    return {
+        "id": comun.id,
+        "name": comun.name,
+        "slug": comun.slug,
+        "logo_url": community_service._comun_logo_url(request, comun),
+        "product_description": comun.product_description,
+        "target_audience": comun.target_audience,
+        "website_url": comun.website_url,
+        "rating_score": rating_score,
     }
 
 
@@ -3379,6 +3750,35 @@ def _search_author_result_rank(item: dict, query: str) -> tuple[int, str]:
     return (6, username)
 
 
+def _search_comun_result_rank(item: dict, query: str) -> tuple[int, float, str]:
+    normalized_query = (query or "").strip().lower()
+    name = str(item.get("name") or "").strip().lower()
+    slug = str(item.get("slug") or "").strip().lower()
+    product_description = str(item.get("product_description") or "").strip().lower()
+    target_audience = str(item.get("target_audience") or "").strip().lower()
+    rating_score = float(item.get("rating_score") or 0)
+    if not normalized_query:
+        return (10, -rating_score, name)
+    if name == normalized_query:
+        return (0, -rating_score, name)
+    if slug == normalized_query:
+        return (1, -rating_score, name)
+    if name.startswith(normalized_query):
+        return (2, -rating_score, name)
+    if slug.startswith(normalized_query):
+        return (3, -rating_score, name)
+    if normalized_query in name:
+        return (4, -rating_score, name)
+    if normalized_query in slug:
+        return (5, -rating_score, name)
+    if normalized_query in product_description:
+        return (6, -rating_score, name)
+    if normalized_query in target_audience:
+        return (7, -rating_score, name)
+    return (8, -rating_score, name)
+
+
+@anonymous_cache(prefix="search", seconds=30)
 def search_content(request: HttpRequest) -> HttpResponse:
     query = (request.GET.get("q") or "").strip()
     if not query:
@@ -3390,8 +3790,10 @@ def search_content(request: HttpRequest) -> HttpResponse:
                 "limit": 0,
                 "posts": [],
                 "authors": [],
+                "communities": [],
                 "total_posts": 0,
                 "total_authors": 0,
+                "total_communities": 0,
             }
         )
 
@@ -3414,8 +3816,26 @@ def search_content(request: HttpRequest) -> HttpResponse:
 
     posts: list[dict] = []
     authors: list[dict] = []
+    communities: list[dict] = []
     total_posts = 0
     total_authors = 0
+    total_communities = 0
+
+    if type_filter in ("all", "communities"):
+        comun_query = (
+            Q(name__icontains=query)
+            | Q(slug__icontains=query)
+            | Q(product_description__icontains=query)
+            | Q(target_audience__icontains=query)
+        )
+        comun_qs = Comun.objects.filter(is_active=True).filter(comun_query).order_by("name")
+        serialized_comuns = [
+            _serialize_search_comun_result(request, comun)
+            for comun in comun_qs
+        ]
+        serialized_comuns.sort(key=lambda item: _search_comun_result_rank(item, query))
+        total_communities = len(serialized_comuns)
+        communities.extend(serialized_comuns[offset : offset + limit])
 
     if type_filter in ("all", "posts"):
         post_query = Q(title__icontains=query) | Q(content__icontains=query)
@@ -3431,7 +3851,7 @@ def search_content(request: HttpRequest) -> HttpResponse:
                 author__is_blocked=False,
             )
             .filter(_publish_ready_filter(now))
-            .select_related("author", "rubric")
+            .select_related("author")
             .prefetch_related("tags")
             .order_by("-created_at" if sort == "new" else "-created_at")
         )
@@ -3439,40 +3859,38 @@ def search_content(request: HttpRequest) -> HttpResponse:
         posts_page = list(posts_qs[offset : offset + limit])
         favorite_post_ids = _favorite_post_ids_for_user(posts_page, current_user)
         for post in posts_page:
-            rubric = post.rubric
-            content, poll_payload = _content_with_live_poll(post, current_user)
+            _content, poll_payload = _content_with_live_poll(post, current_user)
+            template_payload = _serialize_post_template(post)
             author_channel_url, author_title = _author_display_fields(
-                request, post.author, rubric, post.channel_url
+                request, post.author, post.channel_url
             )
             posts.append(
                 {
                     "id": post.id,
                     "title": _post_display_title(post),
-                    "template": _serialize_post_template(post),
-                    "rubric": rubric.name if rubric else None,
-                    "rubric_slug": rubric.slug if rubric else None,
-                    "rubric_icon_url": _rubric_icon_url(request, rubric)
-                    if rubric
-                    else None,
-                    "comun": community_service._serialize_post_comun(request, post),
-                    "content": content,
+                    "template": template_payload,
+                    "can_manage_bug_report_status": _user_can_manage_bug_report_status(current_user, post),
+                    "bug_report_confirmation": _serialize_bug_report_confirmation(post, current_user),
+                    "comun": community_service._serialize_post_comun(request, post, current_user),
+                    "content": _post_card_preview_content(post),
                     "poll": poll_payload,
+                    **_serialize_post_preview_image_fields(request, post, template_payload),
                     "source_url": post.source_url,
                     "channel_url": author_channel_url,
                     "created_at": post.created_at.isoformat(),
                     "comments_count": post.comments_count,
                     "likes_count": post.rating,
-                "views_count": _post_total_views(post, now),
+                    "views_count": _post_total_views(post, now),
                     "tags": _serialize_tags(post.tags.all()),
                     "is_favorite": post.id in favorite_post_ids,
                     "author": {
                         "username": post.author.username,
                         "title": author_title,
                         "channel_url": author_channel_url,
-                        "avatar_url": _author_avatar_for_rubric(request, post.author, rubric),
+                        "avatar_url": _author_avatar_for_display(request, post.author),
                         "description": post.author.description,
                         "subscribers_count": post.author.subscribers_count,
-                        **_author_admin_fields_for_user(current_user, post.author, rubric),
+                        **_author_admin_fields_for_user(current_user, post.author),
                     },
                 }
             )
@@ -3485,7 +3903,7 @@ def search_content(request: HttpRequest) -> HttpResponse:
                 | Q(title__icontains=query)
                 | Q(description__icontains=query)
             )
-            .select_related("rubric")
+
             .order_by("username")
         )
         combined_author_results: list[dict] = []
@@ -3535,8 +3953,10 @@ def search_content(request: HttpRequest) -> HttpResponse:
             "limit": limit,
             "posts": posts,
             "authors": authors,
+            "communities": communities,
             "total_posts": total_posts,
             "total_authors": total_authors,
+            "total_communities": total_communities,
         }
     )
 
@@ -3585,12 +4005,6 @@ def sitemap_xml(request: HttpRequest) -> HttpResponse:
     def full(path: str) -> str:
         return f"{base_url}{path}"
 
-    rubrics_lastmod = (
-        Rubric.objects.filter(is_hidden=False)
-        .order_by("-updated_at")
-        .values_list("updated_at", flat=True)
-        .first()
-    )
     authors_lastmod = Author.objects.order_by("-updated_at").values_list("updated_at", flat=True).first()
     posts_lastmod = (
         Post.objects.filter(is_blocked=False, is_pending=False, author__is_blocked=False)
@@ -3608,7 +4022,6 @@ def sitemap_xml(request: HttpRequest) -> HttpResponse:
 
     entries: list[tuple[str, str | None]] = [
         (full("/sitemap-static.xml"), None),
-        (full("/sitemap-rubrics.xml"), _format_lastmod(rubrics_lastmod) if rubrics_lastmod else None),
         (full("/sitemap-authors.xml"), _format_lastmod(authors_lastmod) if authors_lastmod else None),
     ]
 
@@ -3628,24 +4041,12 @@ def sitemap_static_xml(request: HttpRequest) -> HttpResponse:
     static_paths = [
         "/",
         "/authors",
-        "/rubrics",
         "/about",
-        "/faq",
         "/advertisement",
         "/privacy",
         "/rules",
     ]
     entries = [(f"{base_url}{path}", None) for path in static_paths]
-    return _sitemap_urlset(entries)
-
-
-def sitemap_rubrics_xml(request: HttpRequest) -> HttpResponse:
-    base_url = _sitemap_base_url(request)
-    rubrics = Rubric.objects.filter(is_active=True, is_hidden=False).order_by("slug")
-    entries = [
-        (f"{base_url}/rubrics/{rubric.slug}/posts", _format_lastmod(rubric.updated_at))
-        for rubric in rubrics
-    ]
     return _sitemap_urlset(entries)
 
 
@@ -3727,8 +4128,6 @@ _comun_categories_count = community_service._comun_categories_count
 _recalculate_comun_rating = community_service._recalculate_comun_rating
 _serialize_comun_rating = community_serializers._serialize_comun_rating
 _serialize_comun = community_serializers._serialize_comun
-_comun_product_tag_filter = community_service._comun_product_tag_filter
-_comun_source_tags_list = community_service._comun_source_tags_list
 _comun_source_filter = community_service._comun_source_filter
 _is_internal_comuna_url = community_service._is_internal_comuna_url
 _text_contains_external_links = community_service._text_contains_external_links

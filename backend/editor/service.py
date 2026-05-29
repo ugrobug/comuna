@@ -12,6 +12,7 @@ from datetime import datetime as dt_datetime, timedelta, timezone as dt_timezone
 
 from communities.models import Comun, ComunCategory, ComunPostCategoryAssignment
 from django.contrib.auth import get_user_model
+from django.db import OperationalError, ProgrammingError
 from django.db.models import Avg, Count
 from django.http import HttpRequest
 from django.utils import timezone
@@ -35,6 +36,8 @@ from editor.models import (
     POST_TEMPLATE_TYPE_MOVIE_REVIEW,
     POST_TEMPLATE_TYPE_MUSIC_RELEASE,
     POST_TEMPLATE_TYPE_POST_VOTE_POLL,
+    POST_TEMPLATE_TYPE_TWEET,
+    POST_TEMPLATE_TYPE_BUG_REPORT,
     ComunCustomPostTemplate,
     ComunCustomPostTemplateBlock,
     ComunCustomPostTemplateField,
@@ -50,7 +53,7 @@ from editor.models import (
     post_template_type_choices,
     template_editor_block_choices_for_template,
 )
-from feeds.models import Author, Post, PostFavorite, Rubric
+from feeds.models import Author, Post, PostFavorite
 from users.models import AuthorAdmin
 
 User = get_user_model()
@@ -285,7 +288,69 @@ _POST_TEMPLATE_MUSIC_STYLE_ALIASES = {
 _IMDB_ID_RE = re.compile(r"(tt\d{5,12})", flags=re.IGNORECASE)
 _TEMPLATE_POLL_SOURCE_POST_VOTE = "template_post_vote_poll"
 _CONTENT_POLL_SOURCE_INLINE = "content_inline_poll"
+_TWEET_TEMPLATE_MAX_LENGTH = 280
+_TWEET_ALLOWED_EDITOR_BLOCK_TYPES = {"paragraph", "image", "gallery"}
 _JUSTWATCH_PROVIDER_CACHE: dict[str, tuple[float, dict[int, str]]] = {}
+_BUG_REPORT_STATUSES = {"review", "in_progress", "resolved", "rejected"}
+_BUG_REPORT_STATUS_ALIASES = {
+    "review": "review",
+    "рассмотрение": "review",
+    "in_progress": "in_progress",
+    "в работе": "in_progress",
+    "resolved": "resolved",
+    "решена": "resolved",
+    "rejected": "rejected",
+    "отклонена": "rejected",
+}
+_BUG_REPORT_PLATFORMS = {"web", "windows", "macos", "linux", "android", "ios"}
+_BUG_REPORT_PLATFORM_ALIASES = {
+    "web": "web",
+    "веб": "web",
+    "браузер": "web",
+    "windows": "windows",
+    "виндовс": "windows",
+    "win": "windows",
+    "macos": "macos",
+    "mac os": "macos",
+    "mac": "macos",
+    "linux": "linux",
+    "линукс": "linux",
+    "android": "android",
+    "андроид": "android",
+    "ios": "ios",
+    "айос": "ios",
+    "iphone": "ios",
+    "ipad": "ios",
+}
+_BUG_REPORT_BROWSERS = {
+    "chrome",
+    "safari",
+    "firefox",
+    "edge",
+    "opera",
+    "yandex_browser",
+    "samsung_internet",
+    "arc",
+    "other",
+}
+_BUG_REPORT_BROWSER_ALIASES = {
+    "chrome": "chrome",
+    "google chrome": "chrome",
+    "safari": "safari",
+    "firefox": "firefox",
+    "mozilla firefox": "firefox",
+    "edge": "edge",
+    "microsoft edge": "edge",
+    "opera": "opera",
+    "yandex browser": "yandex_browser",
+    "яндекс браузер": "yandex_browser",
+    "yandex_browser": "yandex_browser",
+    "samsung internet": "samsung_internet",
+    "samsung_internet": "samsung_internet",
+    "arc": "arc",
+    "other": "other",
+    "другое": "other",
+}
 
 
 def _fv():
@@ -358,6 +423,60 @@ def _extract_editor_payload_title(raw_content: str) -> str:
     return ""
 
 
+def _tweet_template_text_from_block(raw_block: object) -> str:
+    if not isinstance(raw_block, dict):
+        return ""
+    block_type = str(raw_block.get("type") or "").strip().lower()
+    if block_type != "paragraph":
+        return ""
+    block_data = raw_block.get("data")
+    if not isinstance(block_data, dict):
+        return ""
+    return _fv()._strip_html(str(block_data.get("text") or "")).strip()
+
+
+def _tweet_template_character_count(raw_content: str) -> int:
+    payload = _decode_editor_payload(raw_content)
+    if not payload:
+        normalized = re.sub(r"\s+", " ", _fv()._strip_html(str(raw_content or ""))).strip()
+        return len(normalized)
+
+    normalized_parts = [
+        part
+        for part in (_tweet_template_text_from_block(block) for block in payload.get("blocks") or [])
+        if part
+    ]
+    return len("\n".join(normalized_parts).strip())
+
+
+def _validate_template_content_constraints(
+    template_payload: dict | None,
+    raw_content: str,
+) -> str | None:
+    if _template_type_from_payload(template_payload) != POST_TEMPLATE_TYPE_TWEET:
+        return None
+
+    payload = _decode_editor_payload(raw_content)
+    media_blocks_count = 0
+    if payload:
+        for raw_block in payload.get("blocks") or []:
+            if not isinstance(raw_block, dict):
+                continue
+            block_type = str(raw_block.get("type") or "").strip().lower()
+            if not block_type:
+                continue
+            if block_type not in _TWEET_ALLOWED_EDITOR_BLOCK_TYPES:
+                return "Шаблон «Твит» поддерживает только текст и изображения."
+            if block_type in {"image", "gallery"}:
+                media_blocks_count += 1
+    if media_blocks_count > 1:
+        return "В шаблоне «Твит» можно использовать только один медиаблок."
+
+    if _tweet_template_character_count(raw_content) > _TWEET_TEMPLATE_MAX_LENGTH:
+        return f"Твит не может быть длиннее {_TWEET_TEMPLATE_MAX_LENGTH} символов."
+    return None
+
+
 def _http_json_request(
     url: str,
     *,
@@ -368,7 +487,7 @@ def _http_json_request(
 ) -> dict | list | None:
     request_headers = {
         "Accept": "application/json",
-        "User-Agent": "ComunaBot/1.0 (+https://comuna.ru)",
+        "User-Agent": "TamburBot/1.0 (+https://tambur.pub)",
     }
     if headers:
         request_headers.update(headers)
@@ -709,6 +828,52 @@ def _movie_review_autofill_from_justwatch(
     return {"watch_where": collected[:10]}
 
 
+def movie_review_autofill_template_from_imdb(imdb_input: object) -> tuple[dict | None, str | None, list[str], list[str], str]:
+    imdb_id = _extract_imdb_id(imdb_input)
+    if not imdb_id:
+        return None, "invalid imdb url", [], [], ""
+
+    autofill_data: dict[str, object] = {"imdb_url": _canonical_imdb_url(imdb_id)}
+    sources: list[str] = []
+    warnings: list[str] = []
+
+    cinemeta_data = _movie_review_autofill_from_cinemeta(imdb_id)
+    if cinemeta_data:
+        sources.append("cinemeta")
+        for key, value in cinemeta_data.items():
+            if isinstance(value, str) and value.strip():
+                autofill_data[key] = value.strip()
+
+    wikidata_data = _movie_review_autofill_from_wikidata(imdb_id)
+    if wikidata_data:
+        sources.append("wikidata")
+        for key in ("title", "original_title", "genre", "release_date", "content_kind", "poster_url"):
+            value = wikidata_data.get(key)
+            if isinstance(value, str) and value.strip() and not autofill_data.get(key):
+                autofill_data[key] = value.strip()
+
+    justwatch_data = _movie_review_autofill_from_justwatch(
+        imdb_id,
+        title=str(autofill_data.get("title") or ""),
+        original_title=str(autofill_data.get("original_title") or ""),
+        content_kind=str(autofill_data.get("content_kind") or ""),
+    )
+    if justwatch_data:
+        sources.append("justwatch")
+        watch_where = justwatch_data.get("watch_where")
+        if isinstance(watch_where, list) and watch_where:
+            autofill_data["watch_where"] = watch_where
+    else:
+        warnings.append("Не удалось определить площадки для просмотра")
+
+    normalized_data, template_error = _normalize_movie_review_template_data(autofill_data)
+    if template_error:
+        return None, template_error, sources, warnings, imdb_id
+    if not normalized_data:
+        return None, "could not fetch movie data", sources, warnings, imdb_id
+    return normalized_data, None, sources, warnings, imdb_id
+
+
 def _normalize_template_text(value: object, max_length: int) -> tuple[str, str | None]:
     text = str(value or "").strip()
     if len(text) > max_length:
@@ -963,6 +1128,61 @@ def _normalize_music_release_template_data(raw_data: object) -> tuple[dict | Non
     if not cleaned_data:
         return None, None
     return cleaned_data, None
+
+
+def _normalize_bug_report_status(value: object) -> str:
+    raw = str(value or "").strip().lower()
+    if not raw:
+        return "review"
+    return _BUG_REPORT_STATUS_ALIASES.get(raw, "review")
+
+
+def _normalize_bug_report_multi_value(
+    value: object,
+    *,
+    aliases: dict[str, str],
+    allowed_values: set[str],
+) -> list[str]:
+    if isinstance(value, str):
+        source = re.split(r"[\n,;]+", value)
+    elif isinstance(value, (list, tuple, set)):
+        source = list(value)
+    else:
+        source = []
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in source:
+        raw = str(item or "").strip()
+        if not raw:
+            continue
+        normalized_value = aliases.get(raw.lower(), raw.lower())
+        if normalized_value not in allowed_values or normalized_value in seen:
+            continue
+        seen.add(normalized_value)
+        normalized.append(normalized_value)
+    return normalized
+
+
+def _normalize_bug_report_template_data(raw_data: object) -> tuple[dict, str | None]:
+    source = raw_data if isinstance(raw_data, dict) else {}
+    return {
+        "status": _normalize_bug_report_status(source.get("status")),
+        "platforms": _normalize_bug_report_multi_value(
+            source.get("platforms") or source.get("platform"),
+            aliases=_BUG_REPORT_PLATFORM_ALIASES,
+            allowed_values=_BUG_REPORT_PLATFORMS,
+        ),
+        "browsers": _normalize_bug_report_multi_value(
+            source.get("browsers") or source.get("browser"),
+            aliases=_BUG_REPORT_BROWSER_ALIASES,
+            allowed_values=_BUG_REPORT_BROWSERS,
+        ),
+        "error_code": str(source.get("error_code") or source.get("error") or "").strip()[:4000],
+        "screenshot_url": str(
+            source.get("screenshot_url") or source.get("photo_url") or source.get("image_url") or ""
+        ).strip()[:2000],
+    }, None
 
 
 def _normalize_template_datetime(value: object) -> tuple[str, str | None]:
@@ -1270,10 +1490,29 @@ def _sync_template_derived_raw_data(
 
 
 def _serialize_post_template_type_options() -> list[dict]:
-    return [
-        {"value": value, "label": label}
-        for value, label in post_template_type_choices()
-    ]
+    descriptions_by_type: dict[str, str] = {
+        POST_TEMPLATE_TYPE_TWEET: "До 280 символов и один медиаблок с изображениями.",
+        POST_TEMPLATE_TYPE_BUG_REPORT: "Платформа, браузер, код ошибки и скриншот.",
+    }
+    try:
+        for template_type, description in PostTemplateConfig.objects.filter(
+            is_active=True
+        ).values_list("template_type", "description"):
+            code = normalize_post_template_type_code(template_type)
+            normalized_description = re.sub(r"\s+", " ", str(description or "").strip())[:500]
+            if code and normalized_description:
+                descriptions_by_type[code] = normalized_description
+    except (OperationalError, ProgrammingError):
+        pass
+
+    options: list[dict] = []
+    for value, label in post_template_type_choices():
+        option = {"value": value, "label": label}
+        description = descriptions_by_type.get(normalize_post_template_type_code(value), "")
+        if description:
+            option["description"] = description
+        options.append(option)
+    return options
 
 
 def _serialize_template_editor_block_options_by_template() -> dict[str, list[dict]]:
@@ -1528,10 +1767,15 @@ def _serialize_comun_custom_post_template(template: ComunCustomPostTemplate) -> 
 def _serialize_comun_custom_post_templates(comun: Comun) -> list[dict]:
     templates = (
         ComunCustomPostTemplate.objects.filter(comun=comun)
+        .select_related("post_template_config")
         .prefetch_related("block_rules", "fields")
         .order_by("sort_order", "name", "id")
     )
-    return [_serialize_comun_custom_post_template(template) for template in templates]
+    return [
+        _serialize_comun_custom_post_template(template)
+        for template in templates
+        if getattr(getattr(template, "post_template_config", None), "is_active", True)
+    ]
 
 
 def _custom_post_template_config_type(template: ComunCustomPostTemplate) -> str:
@@ -1562,6 +1806,7 @@ def _sync_post_template_config_for_custom_template(
     config.label = template.name
     config.custom_template = template
     config.enabled_editor_blocks = _enabled_editor_blocks_for_custom_template(blocks)
+    config.is_active = True
     config.save()
     return template_type
 
@@ -1634,9 +1879,11 @@ def _sync_comun_custom_post_templates(
 def _template_editor_blocks_by_template() -> dict[str, list[str]]:
     payload: dict[str, list[str]] = {
         template_type: default_enabled_template_editor_blocks(template_type)
-        for template_type, _template_label in _POST_TEMPLATE_TYPE_OPTIONS
+        for template_type, _template_label in post_template_type_choices()
     }
-    for item in PostTemplateConfig.objects.values("template_type", "enabled_editor_blocks"):
+    for item in PostTemplateConfig.objects.filter(is_active=True).values(
+        "template_type", "enabled_editor_blocks"
+    ):
         template_type = normalize_post_template_type_code(item.get("template_type"))
         if not template_type:
             continue
@@ -1644,12 +1891,6 @@ def _template_editor_blocks_by_template() -> dict[str, list[str]]:
             template_type, item.get("enabled_editor_blocks")
         )
     return payload
-
-
-def _allowed_templates_for_rubric(rubric: Rubric | None) -> list[str]:
-    if not rubric:
-        return normalize_allowed_post_templates(None)
-    return normalize_allowed_post_templates(rubric.allowed_post_templates)
 
 
 def _allowed_templates_for_comun(comun: Comun | None) -> list[str]:
@@ -1710,6 +1951,8 @@ def _normalize_post_template_payload(
         return None, None
     if template_type == POST_TEMPLATE_TYPE_BASIC:
         return None, None
+    if not is_post_template_type_configured(template_type):
+        return None, "unsupported template type"
     if template_type == POST_TEMPLATE_TYPE_MOVIE_REVIEW:
         template_data_input = raw_template.get("data")
         if template_data_input is None:
@@ -1812,14 +2055,39 @@ def _normalize_post_template_payload(
             "data": normalized_data,
         }, None
 
-    if is_post_template_type_configured(template_type):
+    if template_type == POST_TEMPLATE_TYPE_BUG_REPORT:
+        template_data_input = raw_template.get("data")
+        if template_data_input is None:
+            template_data_input = {
+                key: raw_template.get(key)
+                for key in (
+                    "status",
+                    "platforms",
+                    "platform",
+                    "browsers",
+                    "browser",
+                    "error_code",
+                    "error",
+                    "screenshot_url",
+                    "photo_url",
+                    "image_url",
+                )
+                if raw_template.get(key) is not None
+            }
+        normalized_data, template_error = _normalize_bug_report_template_data(template_data_input)
+        if template_error:
+            return None, template_error
         return {
-            "type": template_type,
+            "type": POST_TEMPLATE_TYPE_BUG_REPORT,
             "version": 1,
-            "data": {},
+            "data": normalized_data,
         }, None
 
-    return None, "unsupported template type"
+    return {
+        "type": template_type,
+        "version": 1,
+        "data": {},
+    }, None
 
 
 def _serialize_post_template(post: Post) -> dict | None:
@@ -1836,11 +2104,9 @@ def _content_with_live_poll(post: Post, user: User | None = None) -> tuple[str, 
         return content, None
 
     raw_data = post.raw_data if isinstance(post.raw_data, dict) else {}
-    template_payload = raw_data.get("template") if isinstance(raw_data, dict) else None
+    template_payload = _serialize_post_template(post)
     template_type = (
-        str(template_payload.get("type") or "").strip().lower()
-        if isinstance(template_payload, dict)
-        else ""
+        str(template_payload.get("type") or "").strip().lower() if isinstance(template_payload, dict) else ""
     )
     if template_type == POST_TEMPLATE_TYPE_POST_VOTE_POLL:
         return content, live_poll["poll"]
@@ -1996,7 +2262,7 @@ def _serialize_enabled_template_editor_blocks(
 ) -> list[str]:
     template_type = _template_type_from_payload(template_payload)
     config = (
-        PostTemplateConfig.objects.filter(template_type=template_type)
+        PostTemplateConfig.objects.filter(template_type=template_type, is_active=True)
         .values("enabled_editor_blocks")
         .first()
     )
@@ -2008,9 +2274,8 @@ def _serialize_enabled_template_editor_blocks(
 
 
 def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None = None) -> dict:
-    rubric = post.rubric
     author_channel_url, author_title = _fv()._author_display_fields(
-        request, post.author, rubric, post.channel_url
+        request, post.author, post.channel_url
     )
     content, poll_payload = _content_with_live_poll(post, user)
     template_payload = _serialize_post_template(post)
@@ -2030,9 +2295,6 @@ def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None
         "is_pending": post.is_pending,
         "is_draft": is_draft,
         "publish_at": post.publish_at.isoformat() if post.publish_at else None,
-        "rubric": rubric.name if rubric else None,
-        "rubric_slug": rubric.slug if rubric else None,
-        "rubric_icon_url": _fv()._rubric_icon_url(request, rubric),
         "comments_count": post.comments_count,
         "likes_count": post.rating,
         "views_count": _fv()._post_total_views(post),
@@ -2043,8 +2305,8 @@ def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None
             "username": post.author.username,
             "title": author_title,
             "channel_url": author_channel_url,
-            "avatar_url": _fv()._author_avatar_for_rubric(request, post.author, rubric),
-            **_fv()._author_admin_fields_for_user(user, post.author, rubric),
+            "avatar_url": _fv()._author_avatar_for_display(request, post.author),
+            **_fv()._author_admin_fields_for_user(user, post.author),
         },
     }
     if is_draft and _user_can_manage_site_post(user, post):
@@ -2131,31 +2393,6 @@ def _resolve_manual_post_author(
     return None, "author required"
 
 
-def _resolve_manual_post_rubric(
-    user: User,
-    *,
-    author: Author | None,
-    rubric_slug: str,
-    allow_empty: bool,
-) -> tuple[Rubric | None, str | None]:
-    rubric = None
-    if rubric_slug:
-        rubric = Rubric.objects.filter(slug__iexact=rubric_slug, is_active=True).first()
-        if not rubric:
-            return None, "rubric not found"
-    if not rubric:
-        rubric = author.rubric if author else None
-    if not rubric:
-        if allow_empty:
-            return None, None
-        return None, "rubric required"
-    if rubric.is_hidden and not user.is_staff:
-        if allow_empty:
-            return rubric, None
-        return None, "rubric not allowed"
-    return rubric, None
-
-
 def _user_can_manage_site_post(user: User | None, post: Post) -> bool:
     if not user:
         return False
@@ -2213,7 +2450,6 @@ __all__ = [
     "_allowed_template_overrides_for_comun_category",
     "_allowed_templates_for_comun",
     "_allowed_templates_for_comun_category",
-    "_allowed_templates_for_rubric",
     "_build_post_vote_poll_raw_poll",
     "_canonical_imdb_url",
     "_content_with_live_poll",
@@ -2224,6 +2460,7 @@ __all__ = [
     "_get_or_create_personal_author",
     "_get_personal_author_for_user",
     "_is_post_draft",
+    "movie_review_autofill_template_from_imdb",
     "_normalize_editor_block_identifier",
     "_normalize_movie_review_template_data",
     "_normalize_comun_custom_templates",
@@ -2237,7 +2474,6 @@ __all__ = [
     "_post_draft_share_token",
     "_requested_template_type",
     "_resolve_manual_post_author",
-    "_resolve_manual_post_rubric",
     "_resolve_site_post_author_context",
     "_serialize_enabled_template_editor_blocks",
     "_serialize_comun_custom_post_templates",
@@ -2255,5 +2491,6 @@ __all__ = [
     "_template_editor_blocks_by_template",
     "_template_not_allowed_error",
     "_template_type_from_payload",
+    "_validate_template_content_constraints",
     "_user_can_manage_site_post",
 ]

@@ -1,6 +1,5 @@
 <script>
   import { page } from '$app/stores'
-  import { t } from '$lib/translations'
   import { XMark, Icon } from 'svelte-hero-icons'
 </script>
 
@@ -11,8 +10,8 @@
     <Icon src={XMark} size="32" mini />
   </div>
   <h1 class="text-red-800 dark:text-red-300 text-2xl font-semibold">
-    {$t('message.error')}
+    Не удалось подтвердить почту
   </h1>
-  <p class="text-red-800 dark:text-red-300">{$t('routes.verifyEmail.error')}</p>
+  <p class="text-red-800 dark:text-red-300">Ссылка недействительна или устарела.</p>
   <code>{$page.error?.message}</code>
 </div>

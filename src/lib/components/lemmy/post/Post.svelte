@@ -28,10 +28,20 @@
   import PostBody from './PostBody.svelte'
   import { profile } from '$lib/auth'
   import { getTagKey, getTagName, normalizeTag, type TagItem } from '$lib/tags'
-  import { buildPostReadUrl, type BackendPoll, type BackendPostRating } from '$lib/api/backend'
+  import {
+    buildPostReadUrl,
+    type BackendComunCategory,
+    type BackendBugReportConfirmation,
+    type BackendPoll,
+    type BackendPostRating,
+  } from '$lib/api/backend'
   import { siteToken } from '$lib/siteAuth'
   import PostTemplateHeader from '$lib/components/site/post-templates/PostTemplateHeader.svelte'
-  import { type SitePostTemplate } from '$lib/postTemplates'
+  import {
+    isMovieReviewTemplate,
+    type BugReportTemplate,
+    type SitePostTemplate,
+  } from '$lib/postTemplates'
 
   export let post: PostView
   export let actions: boolean = true
@@ -43,9 +53,11 @@
   export let showFullBody: boolean = false
   export let communityUrlOverride: string | undefined = undefined
   export let userUrlOverride: string | undefined = undefined
-  export let subscribeUrl: string | undefined = undefined
+  export let subscribeUrl: string | null | undefined = undefined
   export let subscribeLabel: string = 'Подписаться'
+  export let hideSubscribe: boolean = false
   export let disableUserLink: boolean | undefined = undefined
+  export let comunCategories: BackendComunCategory[] = []
 
   $: postUrl = linkOverride ?? postLink(post.post)
   $: isBackendPost = Boolean(linkOverride)
@@ -70,6 +82,12 @@
   }
   $: backendTags = (post.post as { tags?: TagItem[] }).tags ?? []
   $: backendTemplate = (post.post as { template?: SitePostTemplate | null }).template ?? null
+  $: canManageBugReportStatus = Boolean(
+    (post.post as { can_manage_bug_report_status?: boolean }).can_manage_bug_report_status
+  )
+  $: bugReportConfirmation = (
+    post.post as { bug_report_confirmation?: BackendBugReportConfirmation | null }
+  ).bug_report_confirmation ?? null
   $: backendPoll = (post.post as { poll?: BackendPoll | null }).poll ?? null
   $: backendPostRatings = (
     post.post as { post_ratings?: Record<string, BackendPostRating> | null }
@@ -83,7 +101,14 @@
   $: showTemplateHeaderPreview = Boolean(
     isBackendPost &&
       !showFullBody &&
-      (backendTemplate?.type === 'post_vote_poll' || backendTemplate?.type === 'movie_review')
+      (
+        backendTemplate?.type === 'post_vote_poll' ||
+        backendTemplate?.type === 'movie_review' ||
+        backendTemplate?.type === 'bug_report'
+      )
+  )
+  $: hideBodyForTemplatePreview = Boolean(
+    isBackendPost && !showFullBody && backendTemplate?.type === 'bug_report'
   )
   $: backendViewsValue = ((post.counts as { views?: number }).views ?? 0)
   $: backendAuthorNotifyCommentsEnabled = (
@@ -104,6 +129,32 @@
   let postElement: HTMLDivElement | null = null
   let visibilityObserver: IntersectionObserver | null = null
   let readTimer: ReturnType<typeof setTimeout> | null = null
+  let backendPreviewExpanded = false
+  let renderedPostId = post.post.id
+
+  $: if (renderedPostId !== post.post.id) {
+    renderedPostId = post.post.id
+    backendPreviewExpanded = false
+  }
+
+  $: hideBackendPreviewChrome = isBackendPost && !showFullBody && backendPreviewExpanded
+  $: hasMovieReviewCardPreview = Boolean(
+    isBackendPost &&
+      !showFullBody &&
+      isMovieReviewTemplate(backendTemplate) &&
+      (
+        backendTemplate.data.poster_url ||
+        backendTemplate.data.genre ||
+        backendTemplate.data.content_kind ||
+        backendTemplate.data.author_rating ||
+        backendTemplate.data.title ||
+        backendTemplate.data.original_title ||
+        backendTemplate.data.release_date ||
+        backendTemplate.data.imdb_url ||
+        backendTemplate.data.watch_where?.length
+      )
+  )
+  $: hideBackendPreviewMedia = hideBackendPreviewChrome || hasMovieReviewCardPreview
 
   const READ_VISIBILITY_DELAY_MS = 2000
   const READ_VISIBILITY_THRESHOLD = 0.6
@@ -132,6 +183,7 @@
 
   const queueVisibleRead = () => {
     if (!isBackendPost) return
+    if (!$siteToken || !$userSettings.markPostsAsRead) return
     if (readOverride ?? post.read) return
     if (readTimer) return
     readTimer = setTimeout(async () => {
@@ -142,6 +194,7 @@
 
   onMount(() => {
     if (typeof IntersectionObserver === 'undefined') return
+    if (!isBackendPost || !$siteToken || !$userSettings.markPostsAsRead) return
     if (!postElement) return
     visibilityObserver = new IntersectionObserver(
       ([entry]) => {
@@ -177,6 +230,26 @@
     })
 
     return rule
+  }
+
+  function handleBugReportStatusChange(event: CustomEvent<{ template: BugReportTemplate }>) {
+    if (!event.detail?.template) return
+    ;(post.post as { template?: SitePostTemplate | null }).template = event.detail.template
+    post = post
+  }
+
+  function handleBugReportConfirmationChange(
+    event: CustomEvent<{ confirmation: BackendBugReportConfirmation }>
+  ) {
+    if (!event.detail?.confirmation) return
+    ;(post.post as { bug_report_confirmation?: BackendBugReportConfirmation | null }).bug_report_confirmation =
+      event.detail.confirmation
+    post = post
+  }
+
+  function handleBackendPreviewExpand() {
+    backendPreviewExpanded = true
+    void markBackendPostRead()
   }
 </script>
 
@@ -229,8 +302,9 @@
     {communityUrlOverride}
     {userUrlOverride}
     disableUserLink={autoDisableUserLink}
-    {subscribeUrl}
+    subscribeUrl={subscribeUrl ?? undefined}
     {subscribeLabel}
+    {hideSubscribe}
     authorNotifyCommentsEnabled={isBackendPost ? backendAuthorNotifyCommentsEnabled : undefined}
   >
     <slot name="badges" slot="badges" />
@@ -255,7 +329,7 @@
       style="grid-area:embed;"
       class={view == 'list' || view == 'compact' ? '' : 'contents'}
     >
-      {#if rule != 'hide'}
+      {#if rule != 'hide' && !hideBackendPreviewMedia}
         <PostMedia
           post={post.post}
           blur={rule == 'blur' ? true : undefined}
@@ -265,7 +339,7 @@
         />
       {/if}
     </div>
-    {#if view == 'list' || view == 'compact'}
+    {#if (view == 'list' || view == 'compact') && !hideBackendPreviewMedia}
       <PostMediaCompact
         post={post.post}
         {type}
@@ -306,6 +380,12 @@
               poll={backendPoll}
               pollPostId={post.post.id}
               allowPollVoting={isBackendPost}
+              postId={isBackendPost ? post.post.id : null}
+              {canManageBugReportStatus}
+              bugReportConfirmation={bugReportConfirmation}
+              compact={false}
+              on:confirmationchange={handleBugReportConfirmationChange}
+              on:statuschange={handleBugReportStatusChange}
             />
           </div>
         {/if}
@@ -336,7 +416,7 @@
             {/each}
           </div>
         {/if}
-        {#if subscribeUrl}
+        {#if subscribeUrl && !hideSubscribe}
           <div class="mt-4">
             <Button
               size="sm"
@@ -372,30 +452,39 @@
           {#if showTemplateHeaderPreview}
             <div class="mb-3">
               <PostTemplateHeader
-                template={backendTemplate}
-                fallbackTitle={post.post.name}
-                poll={backendPoll}
-                pollPostId={post.post.id}
-                allowPollVoting={isBackendPost}
-              />
-            </div>
+              template={backendTemplate}
+              fallbackTitle={post.post.name}
+              poll={backendPoll}
+              pollPostId={post.post.id}
+              allowPollVoting={isBackendPost}
+              postId={isBackendPost ? post.post.id : null}
+              {canManageBugReportStatus}
+              bugReportConfirmation={bugReportConfirmation}
+              compact={backendTemplate?.type === 'bug_report'}
+              on:confirmationchange={handleBugReportConfirmationChange}
+              on:statuschange={handleBugReportStatusChange}
+            />
+          </div>
           {/if}
-          <PostBody
-            element="section"
-            body={post.post.body}
-            template={backendTemplate}
-            poll={backendPoll}
-            postRatings={backendPostRatings}
-            postId={isBackendPost ? post.post.id : null}
-            allowPollVoting={isBackendPost}
-            title={post.post.name}
-            {view}
-            clickThrough={false}
-            {showFullBody}
-            collapsible={true}
-            class="relative text-slate-600 dark:text-zinc-400"
-            on:expand={markBackendPostRead}
-          />
+          {#if !hideBodyForTemplatePreview}
+            <PostBody
+              element="section"
+              body={post.post.body}
+              template={backendTemplate}
+              poll={backendPoll}
+              postRatings={backendPostRatings}
+              postId={isBackendPost ? post.post.id : null}
+              allowPollVoting={isBackendPost}
+              title={post.post.name}
+              {view}
+              clickThrough={false}
+              {showFullBody}
+              collapsible={true}
+              externalPreviewImageUrl={post.post.url}
+              class="relative text-slate-600 dark:text-zinc-400"
+              on:expand={handleBackendPreviewExpand}
+            />
+          {/if}
         </div>
       {:else}
         <a
@@ -416,6 +505,7 @@
             {view}
             clickThrough={false}
             {showFullBody}
+            externalPreviewImageUrl={post.post.url}
             class="relative text-slate-600 dark:text-zinc-400"
           />
         </a>
@@ -439,6 +529,7 @@
     <PostActions
       on:hide
       on:deleted={() => (removedByAdmin = true)}
+      on:categorychange
       {post}
       style="grid-area: actions;"
       {view}
@@ -449,6 +540,7 @@
       backendViews={isBackendPost ? backendViewsValue : null}
       {userUrlOverride}
       {communityUrlOverride}
+      {comunCategories}
     />
   {:else if view == 'compact'}
     <div class="flex flex-row items-center gap-2 text-sm">
@@ -463,7 +555,7 @@
     </div>
   {/if}
 
-  <div class="absolute overflow-hidden inset-0 sm:rounded-xl opacity-0 -z-50 no-list-margin" />
+  <div class="absolute overflow-hidden inset-0 sm:rounded-xl opacity-0 -z-50 no-list-margin"></div>
 </div>
 
 <style lang="postcss">

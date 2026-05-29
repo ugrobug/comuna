@@ -6,7 +6,9 @@ from django.http import HttpRequest
 
 from editor import service as editor_service
 from editor.models import (
+    POST_TEMPLATE_TYPE_BUG_REPORT,
     POST_TEMPLATE_TYPE_POST_VOTE_POLL,
+    PostBugReportConfirmation,
     PostRatingVote,
     PostTemplateConfig,
     default_enabled_template_editor_blocks,
@@ -40,11 +42,9 @@ def _content_with_live_poll(post: Post, user: User | None = None) -> tuple[str, 
         return content, None
 
     raw_data = post.raw_data if isinstance(post.raw_data, dict) else {}
-    template_payload = raw_data.get("template") if isinstance(raw_data, dict) else None
+    template_payload = _serialize_post_template(post)
     template_type = (
-        str(template_payload.get("type") or "").strip().lower()
-        if isinstance(template_payload, dict)
-        else ""
+        str(template_payload.get("type") or "").strip().lower() if isinstance(template_payload, dict) else ""
     )
     if template_type == POST_TEMPLATE_TYPE_POST_VOTE_POLL:
         return content, live_poll["poll"]
@@ -149,7 +149,7 @@ def _serialize_enabled_template_editor_blocks(
 ) -> list[str]:
     template_type = editor_service._template_type_from_payload(template_payload)
     config = (
-        PostTemplateConfig.objects.filter(template_type=template_type)
+        PostTemplateConfig.objects.filter(template_type=template_type, is_active=True)
         .values("enabled_editor_blocks")
         .first()
     )
@@ -160,10 +160,40 @@ def _serialize_enabled_template_editor_blocks(
     )
 
 
+def _user_can_manage_bug_report_status(user: User | None, post: Post) -> bool:
+    if not user:
+        return False
+    template_payload = _serialize_post_template(post)
+    if (
+        not isinstance(template_payload, dict)
+        or str(template_payload.get("type") or "").strip() != POST_TEMPLATE_TYPE_BUG_REPORT
+    ):
+        return False
+    if bool(getattr(user, "is_staff", False)):
+        return True
+    comun = _fv().community_service._post_comun(post)
+    if not comun:
+        return False
+    return _fv().community_service._comun_is_moderator(user, comun)
+
+
+def _serialize_bug_report_confirmation(post: Post, user: User | None) -> dict | None:
+    template_payload = _serialize_post_template(post)
+    if (
+        not isinstance(template_payload, dict)
+        or str(template_payload.get("type") or "").strip() != POST_TEMPLATE_TYPE_BUG_REPORT
+    ):
+        return None
+    confirmations = PostBugReportConfirmation.objects.filter(post=post)
+    return {
+        "count": confirmations.count(),
+        "confirmed": confirmations.filter(user=user).exists() if user else False,
+    }
+
+
 def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None = None) -> dict:
-    rubric = post.rubric
     author_channel_url, author_title = _fv()._author_display_fields(
-        request, post.author, rubric, post.channel_url
+        request, post.author, post.channel_url
     )
     content, poll_payload = _content_with_live_poll(post, user)
     template_payload = _serialize_post_template(post)
@@ -199,14 +229,12 @@ def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None
         "poll": poll_payload,
         "post_ratings": _serialize_post_ratings(post, user),
         "post_rating": _serialize_post_rating(post, user, template_payload=template_payload),
+        **_fv()._serialize_post_preview_image_fields(request, post, template_payload),
         "created_at": post.created_at.isoformat(),
         "updated_at": post.updated_at.isoformat(),
         "is_pending": post.is_pending,
         "is_draft": is_draft,
         "publish_at": post.publish_at.isoformat() if post.publish_at else None,
-        "rubric": rubric.name if rubric else None,
-        "rubric_slug": rubric.slug if rubric else None,
-        "rubric_icon_url": _fv()._rubric_icon_url(request, rubric),
         "comun_slug": comun_slug or None,
         "comun": (
             {
@@ -234,12 +262,14 @@ def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None
         "tags": _fv()._serialize_tags(post.tags.all()),
         "is_favorite": is_favorite,
         "can_manage": editor_service._user_can_manage_site_post(user, post),
+        "can_manage_bug_report_status": _user_can_manage_bug_report_status(user, post),
+        "bug_report_confirmation": _serialize_bug_report_confirmation(post, user),
         "author": {
             "username": post.author.username,
             "title": author_title,
             "channel_url": author_channel_url,
-            "avatar_url": _fv()._author_avatar_for_rubric(request, post.author, rubric),
-            **_fv()._author_admin_fields_for_user(user, post.author, rubric),
+            "avatar_url": _fv()._author_avatar_for_display(request, post.author),
+            **_fv()._author_admin_fields_for_user(user, post.author),
         },
     }
     if is_draft and editor_service._user_can_manage_site_post(user, post):
@@ -251,8 +281,10 @@ __all__ = [
     "_content_with_live_poll",
     "_serialize_enabled_template_editor_blocks",
     "_serialize_post_for_user",
+    "_serialize_bug_report_confirmation",
     "_serialize_post_rating",
     "_serialize_post_rating_block",
     "_serialize_post_ratings",
     "_serialize_post_template",
+    "_user_can_manage_bug_report_status",
 ]

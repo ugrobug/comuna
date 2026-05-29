@@ -11,7 +11,7 @@
   import EditableList from '$lib/components/ui/list/EditableList.svelte'
   import { Menu, MenuButton, Modal } from 'mono-svelte'
   import DebugObject from '$lib/components/util/debug/DebugObject.svelte'
-  import { DEFAULT_INSTANCE_URL, LINKED_INSTANCE_URL } from '$lib/instance.js'
+  import { LINKED_INSTANCE_URL } from '$lib/instance.js'
   import ProfileAvatar from '$lib/lemmy/ProfileAvatar.svelte'
   import { userSettings } from '$lib/settings.js'
   import { Button, TextInput } from 'mono-svelte'
@@ -28,7 +28,6 @@
     Icon,
     Identification,
     PaintBrush,
-    Plus,
   } from 'svelte-hero-icons'
   import { flip } from 'svelte/animate'
   import { expoOut } from 'svelte/easing'
@@ -136,12 +135,6 @@
             <Icon slot="prefix" src={ArrowLeftOnRectangle} size="16" mini />
             {$t('account.login')}
           </Button>
-          {#if !LINKED_INSTANCE_URL}
-            <Button href="/accounts/login/guest" size="lg">
-              <Icon slot="prefix" src={Plus} size="16" micro />
-              {$t('account.addGuest')}
-            </Button>
-          {/if}
         </div>
       </div>
     </Header>
@@ -211,7 +204,7 @@
                 </span>
               </div>
             </div>
-            <div class="ml-auto" />
+            <div class="ml-auto"></div>
             <Menu placement="bottom-end">
               <Button size="square-md" slot="target">
                 <Icon src={EllipsisHorizontal} mini size="16" slot="prefix" />

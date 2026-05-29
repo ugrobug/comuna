@@ -41,7 +41,7 @@
 
   type Result = PostView | CommentView | PersonView | CommunityView
 
-  export let data
+  export let data: any
 
   let query = data.query || ''
   let searchElement: HTMLInputElement
@@ -102,9 +102,9 @@
   >
     <option value="All">{$t('content.all')}</option>
     <option value="Posts">{$t('content.posts')}</option>
+    <option value="Communities">{$t('content.communities')}</option>
     {#if !data.backend}
       <option value="Comments">{$t('content.comments')}</option>
-      <option value="Communities">{$t('content.communities')}</option>
     {/if}
     <option value="Users">{$t('content.users')}</option>
   </Select>
@@ -134,7 +134,7 @@
   </div>
 {/if}
 {#if data.backend}
-  {#if !data.results?.posts?.length && !data.results?.authors?.length}
+  {#if !data.results?.communities?.length && !data.results?.posts?.length && !data.results?.authors?.length}
     <Placeholder
       icon={MagnifyingGlass}
       title={$t('routes.search.noResults.title')}
@@ -144,22 +144,27 @@
       class="pt-4"
     />
   {:else}
-    {#if data.results?.authors?.length && (data.type === 'All' || data.type === 'Users')}
-      <div class="mt-4 mb-2 text-sm uppercase tracking-wide text-slate-500">Авторы</div>
+    {#if data.results?.communities?.length && (data.type === 'All' || data.type === 'Communities')}
+      <div class="mt-4 mb-2 text-sm uppercase tracking-wide text-slate-500">Сообщества</div>
       <div class="flex flex-col gap-3">
-        {#each data.results.authors as author}
+        {#each data.results.communities as comun}
           <a
-            class="flex items-center gap-3 rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors"
-            href={`/${author.username}`}
+            class="flex items-start gap-3 rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors"
+            href={`/comuns/${comun.slug}`}
           >
-            <Avatar url={author.avatar_url} width={48} alt={author.title ?? author.username} />
-            <div class="flex flex-col gap-1">
+            <Avatar url={comun.logo_url} width={48} alt={comun.name} />
+            <div class="flex min-w-0 flex-1 flex-col gap-1">
               <div class="text-base font-semibold text-slate-900 dark:text-zinc-100">
-                {author.title ?? author.username}
+                {comun.name}
               </div>
-              {#if author.description}
+              {#if comun.product_description}
                 <div class="text-sm text-slate-600 dark:text-zinc-400 line-clamp-2">
-                  {author.description}
+                  {comun.product_description}
+                </div>
+              {/if}
+              {#if comun.target_audience}
+                <div class="text-xs text-slate-500 dark:text-zinc-500 line-clamp-2">
+                  Для кого: {comun.target_audience}
                 </div>
               {/if}
             </div>
@@ -179,6 +184,30 @@
             communityUrlOverride={item.communityUrl}
             subscribeUrl={item.channelUrl}
           />
+        {/each}
+      </div>
+    {/if}
+
+    {#if data.results?.authors?.length && (data.type === 'All' || data.type === 'Users')}
+      <div class="mt-6 mb-2 text-sm uppercase tracking-wide text-slate-500">Авторы</div>
+      <div class="flex flex-col gap-3">
+        {#each data.results.authors as author}
+          <a
+            class="flex items-center gap-3 rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors"
+            href={`/${author.username}`}
+          >
+            <Avatar url={author.avatar_url} width={48} alt={author.title ?? author.username} />
+            <div class="flex flex-col gap-1">
+              <div class="text-base font-semibold text-slate-900 dark:text-zinc-100">
+                {author.title ?? author.username}
+              </div>
+              {#if author.description}
+                <div class="text-sm text-slate-600 dark:text-zinc-400 line-clamp-2">
+                  {author.description}
+                </div>
+              {/if}
+            </div>
+          </a>
         {/each}
       </div>
     {/if}
@@ -252,7 +281,7 @@
       {/if}
     {/each}
   </div>
-  <div class="mt-4" />
+  <div class="mt-4"></div>
   {#if data.results.length > 0}
     <Pageination
       bind:page={pageNum}

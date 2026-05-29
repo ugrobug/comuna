@@ -70,7 +70,13 @@
     formatRelativeDate,
   } from '$lib/components/util/RelativeDate.svelte'
   import { deleteUserPost, siteToken, siteUser } from '$lib/siteAuth'
-  import { buildPostFavoriteUrl, buildPostLikeUrl } from '$lib/api/backend'
+  import {
+    buildComunPostCategoryUrl,
+    buildComunKnowledgeBaseUrl,
+    buildPostFavoriteUrl,
+    buildPostLikeUrl,
+    type BackendComunCategory,
+  } from '$lib/api/backend'
 
   export let post: PostView
   export let view: View = 'cozy'
@@ -82,11 +88,17 @@
   export let backendViews: number | null = null
   export let userUrlOverride: string | undefined = undefined
   export let communityUrlOverride: string | undefined = undefined
+  export let comunCategories: BackendComunCategory[] = []
 
   const dispatcher = createEventDispatcher<{
     edit: PostView
     hide: boolean
     deleted: { postId: number }
+    categorychange: {
+      postId: number
+      category: BackendComunCategory | null
+      categoryId: number | null
+    }
   }>()
 
   let editing = false
@@ -103,6 +115,10 @@
   let backendViewsCount = backendViews ?? 0
   let backendFavoriteSaving = false
   let backendFavorited = false
+  let knowledgeBaseSaving = false
+  let categoryMenuOpen = false
+  let categorySaving = false
+  let currentBackendCategoryId: number | null = null
 
   $: buttonHeight = view == 'compact' ? 'h-7' : 'h-8'
   $: buttonSquare = view == 'compact' ? 'w-7 h-7' : 'w-8 h-8'
@@ -134,6 +150,28 @@
   $: canManageBackendPost = Boolean(isBackendPost && (canEditBackendPost || canEditViaLegacyProfile))
   $: canDeleteBackendPost =
     canManageBackendPost || Boolean(isBackendPost && $siteUser?.is_staff)
+  $: backendComunSlug = String((post.post as any)?.comun_slug ?? '').trim()
+  $: canAddToKnowledgeBase = Boolean(
+    isBackendPost &&
+      backendPostId &&
+      $siteToken &&
+      backendComunSlug &&
+      (post.post as any)?.comun_knowledge_base_enabled &&
+      (post.post as any)?.comun_can_moderate
+  )
+  $: backendComunCategoryId =
+    typeof (post.post as any)?.comun_category_id === 'number'
+      ? Number((post.post as any).comun_category_id)
+      : null
+  $: if (!categorySaving) currentBackendCategoryId = backendComunCategoryId
+  $: canChangeComunCategory = Boolean(
+    isBackendPost &&
+      backendPostId &&
+      $siteToken &&
+      backendComunSlug &&
+      (post.post as any)?.comun_can_moderate &&
+      comunCategories.length > 0
+  )
   $: if (backendLikes !== null && backendLikes !== undefined) backendLikesCount = backendLikes
   $: if (backendComments !== null && backendComments !== undefined)
     backendCommentsCount = backendComments
@@ -321,6 +359,81 @@
       deletingBackendPost = false
     }
   }
+
+  const addToKnowledgeBase = async () => {
+    if (!backendPostId || !backendComunSlug || !$siteToken || knowledgeBaseSaving) return
+    knowledgeBaseSaving = true
+    try {
+      const response = await fetch(buildComunKnowledgeBaseUrl(backendComunSlug), {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${$siteToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ post_id: backendPostId }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(data?.error || 'Не удалось добавить пост в базу знаний')
+      }
+      toast({ content: 'Пост добавлен в базу знаний', type: 'success' })
+    } catch (error) {
+      toast({
+        content:
+          error instanceof Error ? error.message : 'Не удалось добавить пост в базу знаний',
+        type: 'error',
+      })
+    } finally {
+      knowledgeBaseSaving = false
+    }
+  }
+
+  const changeComunCategory = async (category: BackendComunCategory | null) => {
+    if (!backendPostId || !backendComunSlug || !$siteToken || categorySaving) return
+    const nextCategoryId = category?.id ?? null
+    if (nextCategoryId === currentBackendCategoryId) {
+      categoryMenuOpen = false
+      return
+    }
+    categorySaving = true
+    try {
+      const response = await fetch(buildComunPostCategoryUrl(backendComunSlug, backendPostId), {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${$siteToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ category_id: nextCategoryId }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(data?.error || 'Не удалось изменить категорию')
+      }
+      const assignedCategory = data?.assignment?.category ?? category
+      const assignedCategoryId =
+        typeof data?.assignment?.category_id === 'number' ? data.assignment.category_id : nextCategoryId
+      ;(post.post as any).comun_category_id = assignedCategoryId
+      ;(post.post as any).comun_category = assignedCategory
+      currentBackendCategoryId = assignedCategoryId
+      categoryMenuOpen = false
+      dispatcher('categorychange', {
+        postId: backendPostId,
+        category: assignedCategory,
+        categoryId: assignedCategoryId,
+      })
+      toast({
+        content: assignedCategory ? `Пост перенесен в «${assignedCategory.name}»` : 'Пост убран из категории',
+        type: 'success',
+      })
+    } catch (error) {
+      toast({
+        content: error instanceof Error ? error.message : 'Не удалось изменить категорию',
+        type: 'error',
+      })
+    } finally {
+      categorySaving = false
+    }
+  }
 </script>
 
 {#if editing}
@@ -470,7 +583,7 @@
       </span>
     </div>
   {/if}
-  <div class="flex-1" />
+  <div class="flex-1"></div>
 
   {#if isBackendPost}
     <div
@@ -610,6 +723,42 @@
         {deletingBackendPost ? 'Удаление...' : 'Удалить пост'}
       </MenuButton>
     {/if}
+    {#if canAddToKnowledgeBase}
+      <MenuButton on:click={addToKnowledgeBase} disabled={knowledgeBaseSaving}>
+        <Icon src={Bookmark} size="16" micro slot="prefix" />
+        {knowledgeBaseSaving ? 'Добавляем...' : 'Добавить в базу знаний'}
+      </MenuButton>
+    {/if}
+    {#if canChangeComunCategory}
+      <MenuButton on:click={() => (categoryMenuOpen = !categoryMenuOpen)} disabled={categorySaving}>
+        <Icon src={ArrowsUpDown} size="16" micro slot="prefix" />
+        {categorySaving ? 'Переносим...' : 'Изменить категорию'}
+      </MenuButton>
+      {#if categoryMenuOpen}
+        <div class="mx-2 my-1 rounded-lg border border-slate-200 bg-white p-1 dark:border-zinc-700 dark:bg-zinc-900">
+          <button
+            type="button"
+            class="category-option"
+            class:is-selected={currentBackendCategoryId === null}
+            disabled={categorySaving}
+            on:click={() => changeComunCategory(null)}
+          >
+            Без категории
+          </button>
+          {#each comunCategories as category (category.id)}
+            <button
+              type="button"
+              class="category-option"
+              class:is-selected={currentBackendCategoryId === category.id}
+              disabled={categorySaving}
+              on:click={() => changeComunCategory(category)}
+            >
+              {category.name}
+            </button>
+          {/each}
+        </div>
+      {/if}
+    {/if}
     {#if $profile?.jwt}
       <MenuButton
         on:click={async () => {
@@ -626,7 +775,7 @@
     <MenuButton on:click={sharePost} class="flex-1 !py-0">
       <Icon src={Share} size="16" micro slot="prefix" />
       {$t('post.actions.more.share')}
-      <div class="flex-1" />
+      <div class="flex-1"></div>
       {#if !post.post.local && !backendPostUrl}
         <div class="flex">
           <Button
@@ -738,3 +887,13 @@
     {/if}
   </Menu>
 </footer>
+
+<style lang="postcss">
+  .category-option {
+    @apply flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100 disabled:cursor-wait disabled:opacity-60 dark:text-zinc-200 dark:hover:bg-zinc-800;
+  }
+
+  .category-option.is-selected {
+    @apply bg-slate-100 font-medium text-slate-950 dark:bg-zinc-800 dark:text-zinc-50;
+  }
+</style>

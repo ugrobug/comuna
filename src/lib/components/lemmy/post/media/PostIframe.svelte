@@ -113,7 +113,7 @@
       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
       allowfullscreen
       class="aspect-video rounded-xl dark:bg-zinc-900 {$$props.class ?? ''}"
-    />
+    ></iframe>
   {/if}
 {:else}
   <button
@@ -129,7 +129,7 @@
     {:else}
       <div
         class="absolute blur-3xl -z-10 top-0 left-0 w-full h-full bg-gradient-to-br from-green-800 via-blue-900 via-20% to-red-700"
-      />
+      ></div>
     {/if}
     <Icon src={data.icon} solid size="48" />
     <h1 class="font-bold text-xl">{data.text}</h1>

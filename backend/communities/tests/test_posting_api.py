@@ -8,6 +8,7 @@ from django.utils import timezone
 from communities import service as community_service
 from communities.models import Comun, ComunCategory, ComunPostCategoryAssignment
 from feeds.models import Author, Post
+from my_feed.models import UserFeedSettings
 from users.models import AuthorAdmin
 
 
@@ -54,7 +55,54 @@ class ComunPostingApiTests(TestCase):
 
         assignment = ComunPostCategoryAssignment.objects.get(comun=self.comun, post=post)
         self.assertEqual(assignment.category_id, self.category.id)
-        self.assertIsNone(post.rubric_id)
+        self.comun.refresh_from_db()
+        self.assertEqual(self.comun.authors_count, 1)
+
+    def test_comun_authors_count_increments_once_per_author(self):
+        for index in range(2):
+            response = self.client.post(
+                reverse("auth-posts"),
+                data=json.dumps(
+                    {
+                        "title": f"Пост автора {index}",
+                        "content": "{\"time\":1772104218738,\"blocks\":[{\"type\":\"paragraph\",\"data\":{\"text\":\"Текст\"}}]}",
+                        "author_source": "site",
+                        "comun_slug": self.comun.slug,
+                        "comun_category_id": self.category.id,
+                    }
+                ),
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, 200, response.content.decode())
+
+        self.comun.refresh_from_db()
+        self.assertEqual(self.comun.authors_count, 1)
+
+    def test_comun_authors_count_ignores_channel_posts(self):
+        channel_author = Author.objects.create(
+            username="channel-author",
+            title="Channel Author",
+            channel_id=12345,
+            channel_url="https://t.me/channel-author",
+        )
+        post = Post.objects.create(
+            author=channel_author,
+            message_id=12345,
+            title="Пост канала",
+            content="{}",
+            raw_data={"source": "manual_comun", "comun_slug": self.comun.slug},
+            is_pending=False,
+            is_blocked=False,
+        )
+
+        incremented = community_service._maybe_increment_comun_author_count_for_post(
+            post,
+            comun=self.comun,
+        )
+
+        self.assertFalse(incremented)
+        self.comun.refresh_from_db()
+        self.assertEqual(self.comun.authors_count, 0)
 
     def test_auth_posts_require_comun_for_published_post(self):
         response = self.client.post(
@@ -72,7 +120,7 @@ class ComunPostingApiTests(TestCase):
         self.assertEqual(response.status_code, 400, response.content.decode())
         self.assertEqual(response.json().get("error"), "community required")
 
-    def test_auth_posts_can_publish_to_comun_category_without_rubric(self):
+    def test_auth_posts_can_publish_to_comun_category(self):
         response = self.client.post(
             reverse("auth-posts"),
             data=json.dumps(
@@ -92,7 +140,6 @@ class ComunPostingApiTests(TestCase):
         self.assertTrue(payload.get("ok"))
 
         post = Post.objects.get(id=payload["post"]["id"])
-        self.assertIsNone(post.rubric_id)
         self.assertEqual(post.raw_data.get("source"), "manual_comun")
         self.assertEqual(post.raw_data.get("comun_slug"), self.comun.slug)
         self.assertEqual(payload["post"].get("comun_slug"), self.comun.slug)
@@ -140,7 +187,6 @@ class ComunPostingApiTests(TestCase):
 
         post = Post.objects.get(id=draft_id)
         self.assertFalse(post.is_pending)
-        self.assertIsNone(post.rubric_id)
         self.assertEqual(post.raw_data.get("source"), "manual_comun")
         self.assertEqual(post.raw_data.get("comun_slug"), self.comun.slug)
 
@@ -202,6 +248,147 @@ class ComunPostingApiTests(TestCase):
         self.assertEqual(payload.get("total_count"), 1)
         self.assertEqual(payload["posts"][0]["id"], post.id)
 
+    def test_verified_channel_owner_claims_unowned_linked_comun(self):
+        telegram_author = Author.objects.create(
+            username="unit-channel",
+            title="Unit Channel",
+            channel_id=777,
+            channel_url="https://t.me/unit-channel",
+            avatar_image="authors/avatars/unit-channel.jpg",
+        )
+        comun = Comun.objects.create(
+            name="Unit Channel",
+            slug="unit-channel-comun",
+            creator=None,
+            telegram_source_author=telegram_author,
+            telegram_channel_username="unit-channel",
+        )
+        AuthorAdmin.objects.create(
+            user=self.user,
+            author=telegram_author,
+            verified_at=timezone.now(),
+        )
+
+        community_service._attach_pending_comuns_for_author(telegram_author)
+
+        comun.refresh_from_db()
+        self.assertEqual(comun.creator_id, self.user.id)
+        self.assertEqual(comun.logo_url, "/media/authors/avatars/unit-channel.jpg")
+        self.assertTrue(comun.moderators.filter(id=self.user.id).exists())
+
+    def test_verified_channel_owner_claims_pending_channel_comun(self):
+        telegram_author = Author.objects.create(
+            username="pending-channel",
+            title="Pending Channel",
+            channel_id=778,
+            channel_url="https://t.me/pending-channel",
+            avatar_url="https://example.com/pending-channel.jpg",
+        )
+        comun = Comun.objects.create(
+            name="Pending Channel",
+            slug="pending-channel-comun",
+            creator=None,
+            telegram_channel_username="pending-channel",
+        )
+        AuthorAdmin.objects.create(
+            user=self.user,
+            author=telegram_author,
+            verified_at=timezone.now(),
+        )
+
+        community_service._attach_pending_comuns_for_author(telegram_author)
+
+        comun.refresh_from_db()
+        self.assertEqual(comun.creator_id, self.user.id)
+        self.assertEqual(comun.telegram_source_author_id, telegram_author.id)
+        self.assertEqual(comun.logo_url, "https://example.com/pending-channel.jpg")
+        self.assertTrue(comun.moderators.filter(id=self.user.id).exists())
+
+    def test_telegram_author_without_owner_gets_unowned_comun(self):
+        telegram_author = Author.objects.create(
+            username="orphan-channel",
+            title="Orphan Channel",
+            channel_id=779,
+            channel_url="https://t.me/orphan-channel",
+            avatar_url="https://example.com/orphan-channel.jpg",
+        )
+
+        comun = community_service._ensure_telegram_channel_comun_for_author(telegram_author)
+
+        self.assertIsNotNone(comun)
+        self.assertIsNone(comun.creator_id)
+        self.assertEqual(comun.logo_url, "https://example.com/orphan-channel.jpg")
+        self.assertEqual(comun.telegram_source_author_id, telegram_author.id)
+        self.assertTrue(comun.only_moderators_can_post)
+
+    def test_create_from_telegram_channel_defaults_to_moderator_only(self):
+        telegram_author = Author.objects.create(
+            username="managed-channel",
+            title="Managed Channel",
+            channel_id=780,
+            channel_url="https://t.me/managed-channel",
+        )
+        AuthorAdmin.objects.create(
+            user=self.user,
+            author=telegram_author,
+            verified_at=timezone.now(),
+        )
+
+        response = self.client.post(
+            reverse("comun-create-from-telegram-channel"),
+            data=json.dumps({"author_id": telegram_author.id}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        payload = response.json()
+        self.assertTrue(payload.get("ok"))
+        self.assertTrue(payload.get("created"))
+        self.assertTrue(payload["comun"]["only_moderators_can_post"])
+
+        comun = Comun.objects.get(telegram_source_author=telegram_author)
+        self.assertTrue(comun.only_moderators_can_post)
+        self.assertTrue(comun.moderators.filter(id=self.user.id).exists())
+
+    def test_interface_created_comun_remains_open_by_default(self):
+        response = self.client.post(
+            reverse("comuns-list-create"),
+            data=json.dumps({"name": "Open Product Community"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        payload = response.json()
+        self.assertTrue(payload.get("ok"))
+        self.assertFalse(payload["comun"]["only_moderators_can_post"])
+
+        comun = Comun.objects.get(slug=payload["comun"]["slug"])
+        self.assertFalse(comun.only_moderators_can_post)
+
+    def test_site_admin_is_not_implicit_moderator_for_restricted_comun(self):
+        site_admin = User.objects.create_user(username="site-admin", password="secret", is_staff=True)
+        telegram_author = Author.objects.create(
+            username="restricted-channel",
+            title="Restricted Channel",
+            channel_id=781,
+            channel_url="https://t.me/restricted-channel",
+        )
+        comun = Comun.objects.create(
+            name="Restricted Channel",
+            slug="restricted-channel",
+            creator=self.user,
+            telegram_source_author=telegram_author,
+            telegram_channel_username=telegram_author.username,
+            only_moderators_can_post=True,
+        )
+
+        can_post, _minimum_rating, _author_rating = community_service._comun_post_access_state(
+            site_admin,
+            comun,
+        )
+
+        self.assertFalse(can_post)
+
     def test_comun_access_uses_personal_site_author_rating(self):
         personal_author_id = editor_personal_author_id(self.user)
         personal_author = Author.objects.get(id=personal_author_id)
@@ -232,6 +419,88 @@ class ComunPostingApiTests(TestCase):
         self.assertFalse(can_post)
         self.assertEqual(minimum_rating, 50)
         self.assertEqual(author_rating, 0)
+
+    def test_comuns_list_marks_subscribed_and_writable_targets_for_composer(self):
+        viewer = User.objects.create_user(username="subscriber", password="secret")
+        self.client.force_login(viewer)
+
+        subscribed_comun = Comun.objects.create(
+            name="Subscribed Open",
+            slug="subscribed-open",
+            creator=self.user,
+        )
+        subscribed_category = ComunCategory.objects.create(
+            comun=subscribed_comun,
+            name="Отзывы",
+            slug="otzyvy",
+        )
+        subscribed_comun.categories.add(subscribed_category)
+
+        unsubscribed_comun = Comun.objects.create(
+            name="Unsubscribed Open",
+            slug="unsubscribed-open",
+            creator=self.user,
+        )
+        unsubscribed_category = ComunCategory.objects.create(
+            comun=unsubscribed_comun,
+            name="Новости",
+            slug="novosti",
+        )
+        unsubscribed_comun.categories.add(unsubscribed_category)
+
+        restricted_comun = Comun.objects.create(
+            name="Subscribed Restricted",
+            slug="subscribed-restricted",
+            creator=self.user,
+            only_moderators_can_post=True,
+        )
+        restricted_category = ComunCategory.objects.create(
+            comun=restricted_comun,
+            name="Модераторская",
+            slug="moderatorskaya",
+            only_moderators_can_post=True,
+        )
+        restricted_comun.categories.add(restricted_category)
+
+        moderated_comun = Comun.objects.create(
+            name="Moderated Restricted",
+            slug="moderated-restricted",
+            creator=self.user,
+            only_moderators_can_post=True,
+        )
+        moderated_comun.moderators.add(viewer)
+
+        UserFeedSettings.objects.create(
+            user=viewer,
+            my_feed_comuns=[subscribed_comun.slug, restricted_comun.slug],
+        )
+
+        response = self.client.get(reverse("comuns-list-create"))
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        payload = response.json()
+        comuns_by_slug = {comun["slug"]: comun for comun in payload["comuns"]}
+
+        subscribed_payload = comuns_by_slug[subscribed_comun.slug]
+        self.assertTrue(subscribed_payload["is_subscribed"])
+        self.assertTrue(subscribed_payload["can_start_post"])
+        self.assertIn(subscribed_category.id, subscribed_payload["can_post_category_ids"])
+        self.assertTrue(subscribed_payload["categories"][0]["can_post"])
+
+        unsubscribed_payload = comuns_by_slug[unsubscribed_comun.slug]
+        self.assertFalse(unsubscribed_payload["is_subscribed"])
+        self.assertTrue(unsubscribed_payload["can_start_post"])
+
+        restricted_payload = comuns_by_slug[restricted_comun.slug]
+        self.assertTrue(restricted_payload["is_subscribed"])
+        self.assertFalse(restricted_payload["can_start_post"])
+        self.assertFalse(restricted_payload["can_post_without_category"])
+        self.assertFalse(restricted_payload["categories"][0]["can_post"])
+
+        moderated_payload = comuns_by_slug[moderated_comun.slug]
+        self.assertFalse(moderated_payload["is_subscribed"])
+        self.assertTrue(moderated_payload["can_moderate"])
+        self.assertTrue(moderated_payload["can_start_post"])
 
 
 def editor_personal_author_id(user):

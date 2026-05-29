@@ -4,8 +4,10 @@ from typing import Any
 
 from django.conf import settings
 from django.http import HttpRequest
+from django.db.models import Sum
 
 from ratings.service import author_rating_value
+from telegram_integration.media import safe_public_url
 
 
 def _author_avatar_url(request: HttpRequest | None, author: Any) -> str | None:
@@ -20,7 +22,7 @@ def _author_avatar_url(request: HttpRequest | None, author: Any) -> str | None:
             return avatar_image.url
         except Exception:
             pass
-    return getattr(author, "avatar_url", None) or None
+    return safe_public_url(getattr(author, "avatar_url", None))
 
 
 def serialize_top_author_item(
@@ -29,8 +31,11 @@ def serialize_top_author_item(
     request: HttpRequest | None = None,
     period: str = "month",
 ) -> dict[str, Any]:
-    rating_total = getattr(author, "period_rating_total", 0) or 0
-    rating_value = author_rating_value(rating_total)
+    if hasattr(author, "period_rating_score"):
+        rating_value = round(float(getattr(author, "period_rating_score", 0) or 0), 2)
+    else:
+        rating_total = getattr(author, "period_rating_total", 0) or 0
+        rating_value = author_rating_value(rating_total)
     posts_count = getattr(author, "posts_count", 0) or 0
     item: dict[str, Any] = {
         "username": author.username,
@@ -40,7 +45,7 @@ def serialize_top_author_item(
         "rating": rating_value,
         "score": rating_value,
         "posts_count": posts_count,
-        "author_rating": author_rating_value(getattr(author, "rating_total", 0)),
+        "author_rating": round(float(getattr(author, "rating_score", rating_value) or 0), 2),
         "period": period,
     }
     if period == "month":
@@ -58,6 +63,44 @@ def serialize_top_author_item(
     return item
 
 
+def serialize_top_comun_item(
+    comun: Any,
+    *,
+    request: HttpRequest | None = None,
+) -> dict[str, Any]:
+    from communities import service as community_service
+
+    posts_count = 0
+    comments_count = 0
+    try:
+        base_posts = community_service._comun_posts_base_queryset(comun)
+        posts_count = base_posts.count()
+        comments_count = int(
+            base_posts.aggregate(total=Sum("comments_count")).get("total")
+            or 0
+        )
+    except Exception:
+        posts_count = 0
+        comments_count = 0
+    try:
+        rating_value = round(float(getattr(comun, "rating_score", 0) or 0), 2)
+    except (TypeError, ValueError):
+        rating_value = 0.0
+    return {
+        "id": getattr(comun, "id", None),
+        "slug": getattr(comun, "slug", ""),
+        "name": getattr(comun, "name", ""),
+        "title": getattr(comun, "name", ""),
+        "logo_url": community_service._comun_logo_url(request, comun),
+        "avatar_url": community_service._comun_logo_url(request, comun),
+        "rating": rating_value,
+        "score": rating_value,
+        "posts_count": posts_count,
+        "comments_count": comments_count,
+    }
+
+
 __all__ = [
+    "serialize_top_comun_item",
     "serialize_top_author_item",
 ]

@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from ratings.models import AuthorRatingEvent
+from ratings.models import AuthorRatingEvent, RatingSettings
 
 
 @admin.register(AuthorRatingEvent)
@@ -10,3 +10,7 @@ class AuthorRatingEventAdmin(admin.ModelAdmin):
     search_fields = ("author__username", "actor__username", "post__title", "comment__body")
     raw_id_fields = ("author", "actor", "post", "comment")
 
+
+@admin.register(RatingSettings)
+class RatingSettingsAdmin(admin.ModelAdmin):
+    list_display = ("id", "home_posts_per_community_per_day", "updated_at")

@@ -7,6 +7,7 @@ from django.contrib.auth import get_user_model
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
+from rabotaem_backend.rate_limit import is_rate_limited
 from telegram_integration import serializers as telegram_serializers
 from telegram_integration.bot import (
     _handle_callback_query,
@@ -16,11 +17,12 @@ from telegram_integration.bot import (
 )
 from telegram_integration.service import (
     build_telegram_login_redirect_html,
+    telegram_login_will_create_new_user,
+    telegram_payload_from_oidc_claims,
     upsert_telegram_account,
     validate_telegram_login,
+    validate_telegram_oidc_token,
 )
-from telegram_integration.models import TelegramAccount
-
 User = get_user_model()
 _PRIVACY_CONSENT_ERROR = "Для регистрации нужно согласиться с политикой обработки персональных данных."
 
@@ -42,8 +44,23 @@ def _is_privacy_accepted(value) -> bool:
     return False
 
 
+def _is_registration_intent(payload: dict) -> bool:
+    raw_intent = payload.get("auth_intent") or payload.get("intent") or payload.get("mode")
+    intent = str(raw_intent or "").strip().lower()
+    if intent in {"signup", "register", "registration"}:
+        return True
+    if intent in {"login", "auth", "signin", "sign_in"}:
+        return False
+    return _is_privacy_accepted(payload.get("privacy_accepted"))
+
+
 @csrf_exempt
 def telegram_auth(request: HttpRequest) -> HttpResponse:
+    if is_rate_limited(request, scope="auth_telegram", limit=20, window_seconds=300):
+        return JsonResponse(
+            {"ok": False, "error": "Слишком много попыток. Попробуйте позже."},
+            status=429,
+        )
     if request.method == "GET":
         payload = dict(request.GET.items())
     elif request.method == "POST":
@@ -55,21 +72,51 @@ def telegram_auth(request: HttpRequest) -> HttpResponse:
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
 
     try:
-        validate_telegram_login(payload)
-        telegram_id = payload.get("id")
-        account_exists = TelegramAccount.objects.filter(telegram_id=telegram_id).exists()
-        if not account_exists and not _is_privacy_accepted(payload.get("privacy_accepted")):
+        if payload.get("id_token"):
+            registration_source = payload.get("registration_source")
+            registration_path = payload.get("registration_path")
+            claims = validate_telegram_oidc_token(payload.get("id_token"))
+            payload = {
+                **telegram_payload_from_oidc_claims(claims),
+                "auth_intent": payload.get("auth_intent"),
+                "privacy_accepted": payload.get("privacy_accepted"),
+                "registration_source": registration_source,
+                "registration_path": registration_path,
+            }
+        else:
+            validate_telegram_login(payload)
+        user_service = _user_service()
+        current_user = user_service._get_user_from_request(request)
+        creates_new_user = (
+            telegram_login_will_create_new_user(payload)
+            and not current_user
+            and _is_registration_intent(payload)
+        )
+        if (
+            creates_new_user
+            and not _is_privacy_accepted(payload.get("privacy_accepted"))
+        ):
             return JsonResponse({"ok": False, "error": _PRIVACY_CONSENT_ERROR}, status=400)
-        user = upsert_telegram_account(payload)
+        user = upsert_telegram_account(payload, link_user=current_user)
+        if creates_new_user:
+            user_service._remember_registration_source(
+                user,
+                payload.get("registration_source"),
+                payload.get("registration_path"),
+            )
     except ValueError as exc:
         return JsonResponse({"ok": False, "error": str(exc)}, status=400)
 
-    token = _user_service()._issue_token(user)
+    token = user_service._issue_token(user, request)
     if request.method == "GET":
         next_url = request.GET.get("next") or "/"
         html = build_telegram_login_redirect_html(token, next_url)
-        return HttpResponse(html, content_type="text/html")
-    return JsonResponse(telegram_serializers._serialize_telegram_auth_response(user, token))
+        response = HttpResponse(html, content_type="text/html")
+        user_service._set_auth_cookie(response, token)
+        return response
+    response = JsonResponse(telegram_serializers._serialize_telegram_auth_response(user, token))
+    user_service._set_auth_cookie(response, token)
+    return response
 
 
 @csrf_exempt

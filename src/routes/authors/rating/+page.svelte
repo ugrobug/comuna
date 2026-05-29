@@ -12,7 +12,7 @@
     totalAuthors: number
   }
 
-  $: pageTitle = `Рейтинг авторов ${topAuthorPeriodTitleMap[data.period]} - ${env.PUBLIC_SITE_TITLE || 'Comuna'}`
+  $: pageTitle = `Рейтинг авторов ${topAuthorPeriodTitleMap[data.period]} - ${env.PUBLIC_SITE_TITLE || 'Тамбур'}`
   $: pageDescription = `Полный рейтинг авторов сайта ${topAuthorPeriodTitleMap[data.period]}.`
   $: topThree = data.authors.slice(0, 3)
   $: remainingAuthors = data.authors.slice(3)

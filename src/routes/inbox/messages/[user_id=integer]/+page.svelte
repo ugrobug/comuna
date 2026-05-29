@@ -85,7 +85,7 @@
 >
   <div class="h-full overflow-auto" bind:this={chatWindow}>
     <ul id="chat-window" class="flex flex-col gap-1 flex-1 px-4 py-4">
-      <div class="mt-auto" />
+      <div class="mt-auto"></div>
       {#each data.message.private_messages.toReversed() as private_message, index (private_message.private_message.id)}
         <div
           class={private_message.creator.id == data.creator

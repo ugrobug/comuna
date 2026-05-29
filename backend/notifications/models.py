@@ -10,6 +10,12 @@ PUSH_PLATFORM_CHOICES = (
     ("android", "Android"),
 )
 
+NOTIFICATION_GROUPING_PERIOD_CHOICES = (
+    ("none", "Не группировать"),
+    ("day", "За день"),
+    ("week", "За неделю"),
+)
+
 
 class SiteNotificationPreference(models.Model):
     user = models.ForeignKey(
@@ -19,6 +25,11 @@ class SiteNotificationPreference(models.Model):
     site_enabled = models.BooleanField(default=True)
     telegram_enabled = models.BooleanField(default=False)
     push_enabled = models.BooleanField(default=True)
+    grouping_period = models.CharField(
+        max_length=20,
+        choices=NOTIFICATION_GROUPING_PERIOD_CHOICES,
+        default="none",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -42,6 +53,8 @@ class SiteNotification(models.Model):
     message = models.TextField(blank=True)
     link_url = models.CharField(max_length=500, blank=True)
     payload = models.JSONField(default=dict, blank=True)
+    group_key = models.CharField(max_length=160, blank=True)
+    group_count = models.PositiveIntegerField(default=1)
     is_site = models.BooleanField(default=True)
     is_telegram = models.BooleanField(default=False)
     is_push = models.BooleanField(default=False)
@@ -63,6 +76,7 @@ class SiteNotification(models.Model):
             models.Index(fields=("user", "read_at")),
             models.Index(fields=("user", "is_site")),
             models.Index(fields=("user", "is_push")),
+            models.Index(fields=("user", "event_key", "group_key")),
         ]
 
     def __str__(self) -> str:
@@ -100,6 +114,7 @@ class MobilePushDevice(models.Model):
 
 __all__ = [
     "MobilePushDevice",
+    "NOTIFICATION_GROUPING_PERIOD_CHOICES",
     "PUSH_PLATFORM_CHOICES",
     "SiteNotification",
     "SiteNotificationPreference",

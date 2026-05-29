@@ -10,3 +10,6 @@ docker-compose.yml
 public
 .svelte-kit
 build
+backend/secrets/
+deploy/secrets/
+*firebase-adminsdk*.json

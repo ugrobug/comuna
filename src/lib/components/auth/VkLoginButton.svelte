@@ -10,15 +10,25 @@
   export let helperText = ''
   export let disabled = false
   export let privacyAccepted = false
+  export let authIntent: 'login' | 'signup' = 'login'
+  export let registrationSource = ''
+  export let registrationPath = ''
 
   let container: HTMLDivElement | null = null
   let loading = false
   let scriptLoaded = false
+  let vkidSdk: typeof import('@vkid/sdk') | null = null
   const appId = env.PUBLIC_VK_APP_ID
+  const disabledMessage = 'Сначала примите политику обработки персональных данных.'
+
+  const handleDisabledClick = () => {
+    if (!disabled || loading) return
+    toast({ content: disabledMessage, type: 'info' })
+  }
 
   const renderWidget = () => {
     if (!browser || !container || !appId || disabled) return
-    const VKID = (window as any).VKIDSDK
+    const VKID = vkidSdk
     if (!VKID) return
 
     VKID.Config.init({
@@ -26,7 +36,7 @@
       redirectUrl: env.PUBLIC_VK_REDIRECT_URL || window.location.origin,
       responseMode: VKID.ConfigResponseMode.Callback,
       source: VKID.ConfigSource.LOWCODE,
-      scope: '',
+      scope: 'email phone',
     })
 
     const oneTap = new VKID.OneTap()
@@ -50,18 +60,23 @@
         VKID.Auth.exchangeCode(code, deviceId)
           .then(async (data: any) => {
             await loginVK({
+              auth_intent: authIntent,
               access_token: data.access_token,
               expires_in: data.expires_in,
               user_id: data.user_id,
               id_token: data.id_token,
+              email: data.email,
+              phone: data.phone || data.phone_number,
               privacy_accepted: privacyAccepted,
+              registration_source: registrationSource,
+              registration_path: registrationPath,
             })
             toast({ content: 'Вы успешно вошли через VK', type: 'success' })
             onSuccess?.()
           })
           .catch((error: any) => {
             console.error('VKID exchange error', error)
-            toast({ content: 'Не удалось войти через VK', type: 'error' })
+            toast({ content: error?.message || 'Не удалось войти через VK', type: 'error' })
           })
           .finally(() => {
             loading = false
@@ -72,23 +87,16 @@
   onMount(() => {
     if (!browser || !container || !appId || disabled) return
 
-    if ((window as any).VKIDSDK) {
-      scriptLoaded = true
-      renderWidget()
-      return
-    }
-
-    const script = document.createElement('script')
-    script.async = true
-    script.src = 'https://unpkg.com/@vkid/sdk@<3.0.0/dist-sdk/umd/index.js'
-    script.onload = () => {
-      scriptLoaded = true
-      renderWidget()
-    }
-    script.onerror = () => {
-      toast({ content: 'Не удалось загрузить VK виджет', type: 'error' })
-    }
-    document.head.appendChild(script)
+    import('@vkid/sdk')
+      .then((module) => {
+        vkidSdk = module
+        scriptLoaded = true
+        renderWidget()
+      })
+      .catch((error) => {
+        console.error('Failed to load VKID SDK', error)
+        toast({ content: 'Не удалось загрузить VK виджет', type: 'error' })
+      })
   })
 
 </script>
@@ -119,6 +127,7 @@
         class:dark:hover:bg-zinc-800={!disabled}
         title={label}
         aria-hidden="true"
+        on:click={handleDisabledClick}
       >
         <span class="flex items-center gap-3">
           <span class="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100 text-blue-700 font-semibold dark:bg-blue-900/40 dark:text-blue-300">
@@ -139,15 +148,11 @@
         class:is-loading={!scriptLoaded || loading}
         class:is-disabled={disabled}
         aria-label={label}
-      />
+      ></div>
     </div>
 
     {#if loading}
       <p class="text-xs text-slate-500 dark:text-zinc-400">Вход через VK…</p>
-    {:else if disabled}
-      <p class="text-xs text-slate-500 dark:text-zinc-400">
-        Сначала примите политику обработки персональных данных.
-      </p>
     {:else if !scriptLoaded}
       <p class="text-xs text-slate-500 dark:text-zinc-400">Загрузка VK виджета…</p>
     {/if}

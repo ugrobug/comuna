@@ -28,7 +28,6 @@ import {
 import { MINIMUM_VERSION, versionIsSupported } from '$lib/version.js'
 import { browser } from '$app/environment'
 import { env } from '$env/dynamic/public'
-import { t } from './translations'
 
 const getDefaultProfile = (): Profile => ({
   id: -1,
@@ -80,6 +79,19 @@ interface Notifications {
   applications: number
 }
 
+const normalizeProfileData = (value?: ProfileData): ProfileData => {
+  const profiles = (value?.profiles ?? []).filter((profile) => Boolean(profile.jwt))
+  const selectedProfile = profiles.some((profile) => profile.id === value?.profile)
+    ? value!.profile
+    : profiles[0]?.id ?? -1
+
+  return {
+    ...value,
+    profiles,
+    profile: selectedProfile,
+  }
+}
+
 const getCookie = (key: string): string | undefined => {
   if (!browser) return undefined
 
@@ -93,17 +105,10 @@ const getCookie = (key: string): string | undefined => {
 }
 
 export let profileData = writable<ProfileData>(
-  getFromStorage<ProfileData>('profileData') ?? {
-    profiles: [
-      {
-        id: 1,
-        instance: DEFAULT_INSTANCE_URL,
-        username: 'Guest',
-        color: '#505050',
-      },
-    ],
-    profile: 1,
-  }
+  normalizeProfileData(getFromStorage<ProfileData>('profileData') ?? {
+    profiles: [],
+    profile: -1,
+  })
 )
 
 let fetchUser = {
@@ -205,28 +210,24 @@ export let notifications = writable<Notifications>({
 })
 
 profileData.subscribe(async (pd) => {
+  const normalized = normalizeProfileData(pd)
+  if (
+    normalized.profile !== pd.profile ||
+    normalized.profiles.length !== pd.profiles.length
+  ) {
+    profileData.set(normalized)
+    return
+  }
+
   const serialized: ProfileData = {
-    ...pd,
-    profiles: pd.profiles.map((p) => serializeUser(p)),
+    ...normalized,
+    profiles: normalized.profiles.map((p) => serializeUser(p)),
   }
 
   setFromStorage('profileData', serialized)
 
   if (serialized.profile == -1) {
     instance?.set(get(profileData).defaultInstance ?? DEFAULT_INSTANCE_URL)
-  }
-  if (serialized.profiles.length == 0) {
-    profileData.update((pd) => ({
-      ...pd,
-      profiles: [
-        {
-          id: 1,
-          instance: DEFAULT_INSTANCE_URL,
-          username: t.get('account.guest') || 'Guest',
-        },
-      ],
-      profile: 1,
-    }))
   }
 })
 
@@ -279,7 +280,7 @@ export async function setUser(jwt: string, inst: string, username?: string) {
   instance.set(inst)
 
   profileData.update((pd) => {
-    const id = Math.max(...pd.profiles.map((p) => p.id)) + 1
+    const id = Math.max(0, ...pd.profiles.map((p) => p.id)) + 1
 
     const newProfile: Profile = {
       id: id,

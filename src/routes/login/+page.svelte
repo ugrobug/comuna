@@ -1,145 +1,44 @@
 <script lang="ts">
   import { goto } from '$app/navigation'
-  import { setUser } from '$lib/auth.js'
-  import { Note, toast } from 'mono-svelte'
-  import { DEFAULT_INSTANCE_URL } from '$lib/instance.js'
-  import { getClient, mayBeIncompatible, site } from '$lib/lemmy.js'
-  import { Button, TextInput } from 'mono-svelte'
-  import {
-    Icon,
-    Identification,
-    QuestionMarkCircle,
-    UserCircle,
-  } from 'svelte-hero-icons'
-  import { MINIMUM_VERSION } from '$lib/version.js'
-  import { t } from '$lib/translations'
-  import Header from '$lib/components/ui/layout/pages/Header.svelte'
-  import { errorMessage } from '$lib/lemmy/error'
-  import ErrorContainer, {
-    clearErrorScope,
-    pushError,
-  } from '$lib/components/error/ErrorContainer.svelte'
   import { page } from '$app/stores'
+  import LoginModal from '$lib/components/auth/LoginModal.svelte'
+  import { Button } from 'mono-svelte'
 
   export let ref: string = '/'
 
-  const instanceURL = DEFAULT_INSTANCE_URL
+  let loginOpen = true
 
-  let data = {
-    username: '',
-    password: '',
-    loading: false,
-    attempts: 0,
-  }
+  $: returnTo =
+    $page.url.searchParams.get('next') ||
+    $page.url.searchParams.get('redirect') ||
+    ref ||
+    '/'
 
-  async function logIn() {
-    data.loading = true
-    clearErrorScope($page.route.id)
-
-    try {
-      const response = await getClient(instanceURL).login({
-        username_or_email: data.username.trim(),
-        password: data.password,
-      })
-
-      if (response?.jwt) {
-        const result = await setUser(response.jwt, instanceURL, data.username)
-
-        if (result) {
-          toast({ content: $t('toast.logIn'), type: 'success' })
-          goto(ref)
-        }
-      } else {
-        throw new Error('Invalid credentials')
-      }
-    } catch (error) {
-      pushError({
-        message:
-          JSON.parse((error as any)?.body?.message ?? '{}')?.error ==
-          'incorrect_login'
-            ? errorMessage(
-                'incorrect_login' +
-                  (data.attempts == 0 || data.attempts >= 12
-                    ? ''
-                    : `_${data.attempts + 1}`)
-              )
-            : errorMessage(error),
-        scope: $page.route.id!,
-      })
-      data.attempts++
-    }
-    data.loading = false
+  function handleSuccess() {
+    goto(returnTo)
   }
 </script>
 
 <svelte:head>
-  <title>{$t('account.login')}</title>
+  <title>Вход</title>
 </svelte:head>
 
-<div class="max-w-xl w-full mx-auto h-max my-auto">
-  <form on:submit|preventDefault={logIn} class="flex flex-col gap-5">
-    <div class="flex flex-col">
-      {#if $site?.site_view?.site?.icon}
-        <div class="flex justify-center mb-4">
-          <img 
-            src={$site.site_view.site.icon} 
-            alt="Site icon" 
-            class="w-24 h-24 rounded-xl"
-          />
-        </div>
-      {/if}
-      <slot />
-      <Header>{$t('account.login')}</Header>
-      {#if $site && mayBeIncompatible(MINIMUM_VERSION, $site.version.replace('v', ''))}
-        <Note>
-          {$t('account.versionGate', {
-            //@ts-ignore
-            version: `v${MINIMUM_VERSION}`,
-          })}
-        </Note>
-      {/if}
-      <ErrorContainer class="pt-2" scope={$page.route.id} />
-    </div>
-    <div class="flex flex-row w-full items-center gap-2">
-      <TextInput
-        id="username"
-        bind:value={data.username}
-        label={$t('form.username')}
-        class="flex-1"
-        required
-      />
-    </div>
-    <div class="flex flex-row gap-2">
-      <TextInput
-        id="password"
-        bind:value={data.password}
-        label={$t('form.password')}
-        type="password"
-        minlength={10}
-        maxlength={60}
-        required
-        class="w-full"
-      />
-    </div>
-    <Button
-      loading={data.loading}
-      disabled={data.loading}
-      color="primary"
-      size="lg"
-      submit
-    >
-      {$t('account.login')}
-    </Button>
-    <hr class="border-slate-200 dark:border-zinc-800" />
-    <div class="flex flex-row items-center gap-2 overflow-auto *:flex-shrink-0">
-      <Button rounding="pill" color="ghost" href="/login_reset">
-        <Icon src={QuestionMarkCircle} mini size="16" />
-        {$t('form.forgotpassword')}
-      </Button>
-      <Button rounding="pill" color="ghost" href="/login/guest">
-        <Icon src={UserCircle} mini size="16" />
-        {$t('account.guest')}
-      </Button>
-    </div>
-  </form>
+<div class="mx-auto my-auto flex w-full max-w-xl flex-col items-center gap-5 px-4 py-10 text-center">
+  <slot />
+  <div class="flex flex-col gap-2">
+    <p class="text-sm font-medium uppercase tracking-wide text-slate-500 dark:text-zinc-400">
+      Тамбур
+    </p>
+    <h1 class="text-3xl font-roboto font-medium text-slate-950 dark:text-zinc-50">
+      Вход в аккаунт
+    </h1>
+    <p class="text-sm text-slate-600 dark:text-zinc-400">
+      Войдите через стандартную форму сайта.
+    </p>
+  </div>
+  <Button color="primary" size="lg" on:click={() => (loginOpen = true)}>
+    Войти
+  </Button>
 </div>
+
+<LoginModal bind:open={loginOpen} initialMode="login" on:success={handleSuccess} />

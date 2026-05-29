@@ -17,17 +17,16 @@
     Newspaper,
     Bars3,
     Fire,
-    Clock,
     Inbox,
     UserGroup,
     ArrowPath,
     DocumentText,
     InformationCircle,
-    QuestionMarkCircle,
     Megaphone,
     ClipboardDocumentList,
     ChevronDown,
-    Bookmark
+    Bookmark,
+    ChartBar
   } from 'svelte-hero-icons'
   import Profile from './Profile.svelte'
   import NavButton from './NavButton.svelte'
@@ -40,27 +39,20 @@
   import { page } from '$app/stores'
   import { env } from '$env/dynamic/public';
   import SidebarButton from '$lib/components/ui/sidebar/SidebarButton.svelte'
-  import { userSettings } from '$lib/settings'
+  import { feedSettingsHydrated, userSettings } from '$lib/settings'
   import { Badge } from 'mono-svelte'
   import { onMount } from 'svelte';
-  import { siteUser, logout as siteLogout } from '$lib/siteAuth'
+  import { siteToken, siteUser, logout as siteLogout } from '$lib/siteAuth'
   
-  import { buildComunsUrl, type BackendComun, buildThematicFeedsListUrl } from '$lib/api/backend';
+  import { buildComunsSidebarUrl, type BackendComun } from '$lib/api/backend';
+  import { cachedJson } from '$lib/api/publicCache'
+  import { selectSidebarComuns } from '$lib/communitySidebar'
   import { getRandomTaglineFromSite, hasTaglines } from '$lib/taglineUtils.js';
   import Markdown from '$lib/components/markdown/Markdown.svelte';
 
   let comuns: BackendComun[] = [];
-  let visibleComuns: BackendComun[] = [];
   let sidebarComuns: BackendComun[] = [];
-  let thematicFeeds: Array<{
-    name: string
-    slug: string
-    description?: string | null
-    authors_count?: number
-    tags_count?: number
-    blocked_tags_count?: number
-  }> = [];
-  let thematicFeedsOpen = false;
+  let sidebarComunsTotal = 0;
 
   const PUBLIC_TELEGRAM_URL = env.PUBLIC_TELEGRAM_URL;
 
@@ -69,37 +61,25 @@
     env.PUBLIC_PROJECT_ADVRTISEMENT || '/advertisement';
   const PUBLIC_PROJECT_AUTHORS = env.PUBLIC_PROJECT_AUTHORS || '/authors';
   const PUBLIC_PROJECT_RULES = env.PUBLIC_PROJECT_RULES || '/rules';
-  const PUBLIC_PROJECT_FAQ = env.PUBLIC_PROJECT_FAQ || '/faq';
-  const SHOW_FOLDERS = false;
   
   // Переменная для случайного слогана
   let randomTagline = '';
 
   async function loadComuns() {
     try {
-      const response = await fetch(buildComunsUrl());
-      if (!response.ok) return;
-      const data = await response.json();
+      const data = await cachedJson<{ comuns?: BackendComun[] }>(
+        'public:sidebar-comuns',
+        buildComunsSidebarUrl(),
+        { ttlMs: 21_600_000 }
+      );
       comuns = data.comuns ?? [];
     } catch (e) {
       comuns = [];
     }
   }
 
-  async function loadThematicFeeds() {
-    try {
-      const response = await fetch(buildThematicFeedsListUrl());
-      if (!response.ok) return;
-      const data = await response.json();
-      thematicFeeds = data.folders ?? data.feeds ?? [];
-    } catch (e) {
-      thematicFeeds = [];
-    }
-  }
-
   onMount(() => {
     loadComuns();
-    loadThematicFeeds();
     
     // Добавляем обработчик клавиши Escape
     document.addEventListener('keydown', handleKeydown);
@@ -114,7 +94,6 @@
   let sidebarOpen = false;
   function toggleSidebar() {
     sidebarOpen = !sidebarOpen;
-    console.log('sidebarOpen:', sidebarOpen);
   }
 
 
@@ -156,12 +135,13 @@
   }
 
   $: currentFeed = $page.url.searchParams.get('feed') ?? ($userSettings.homeFeed ?? 'hot')
-  $: currentThematicSlug = $page.url.searchParams.get('theme') ?? ''
-  $: visibleComuns = comuns.filter((comun) => comun.slug !== 'faq')
-  $: sidebarComuns = visibleComuns.slice(0, 10)
-  $: if (currentFeed === 'thematic') {
-    thematicFeedsOpen = true
-  }
+  $: sidebarComunsSelection = selectSidebarComuns(
+    comuns,
+    $userSettings.myFeedComuns,
+    !$siteToken || $feedSettingsHydrated
+  )
+  $: sidebarComuns = sidebarComunsSelection.items
+  $: sidebarComunsTotal = sidebarComunsSelection.total
 
   // Принудительное обновление при монтировании компонента
   onMount(() => {
@@ -202,7 +182,7 @@
           on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && goToHome()}
         >
           <span class="text-xl font-medium tracking-tight font-roboto text-slate-900 dark:text-white">
-            Comuna
+            Тамбур
           </span>
         </div>
       </div>
@@ -217,7 +197,7 @@
             isSelectedFilter={(path) => path.startsWith('/admin')}
           >
             {#if ($notifications.applications ?? 0) > 0}
-              <div class="rounded-full w-2 h-2 bg-red-500 absolute -top-1 -left-1"/>
+              <div class="rounded-full w-2 h-2 bg-red-500 absolute -top-1 -left-1"></div>
             {/if}
           </NavButton>
         {/if}
@@ -228,7 +208,7 @@
             class="relative"
           >
             {#if ($notifications.reports ?? 0) > 0}
-              <div class="rounded-full w-2 h-2 bg-red-500 absolute -top-1 -left-1"/>
+              <div class="rounded-full w-2 h-2 bg-red-500 absolute -top-1 -left-1"></div>
             {/if}
             <ShieldIcon
               let:size
@@ -238,6 +218,15 @@
               width={size}
             />
           </NavButton>
+        {/if}
+        {#if $siteUser?.is_staff}
+          <NavButton
+            href="/moderator"
+            label="Модераторская"
+            icon={ChartBar}
+            class="relative"
+            isSelectedFilter={(path) => path.startsWith('/moderator')}
+          />
         {/if}
         {#if randomTagline}
           <div class="w-full flex items-center justify-center gap-2 hidden md:flex">
@@ -268,8 +257,8 @@
         {#if $profile?.jwt}
           <Menu placement="bottom-end">
             <Button
-              color="none"
-              class="!rounded-full bg-orange-600 hover:bg-orange-700 text-white font-normal py-2 px-4 !text-base md:py-2 md:px-4"
+              color="primary"
+              class="!rounded-full font-normal py-2 px-4 !text-base md:py-2 md:px-4 dark:!bg-primary-900 dark:!text-white dark:!border-transparent dark:hover:!brightness-110"
               slot="target"
               title={$t('nav.create.label')}
             >
@@ -298,9 +287,9 @@
         {:else}
           {#if $siteUser}
             <Button
-              color="none"
-              class="!rounded-full bg-orange-600 hover:bg-orange-700 text-white font-normal py-2 px-4 !text-base md:py-2 md:px-4"
-              href="/account/new-post?fresh=1"
+              color="primary"
+              class="!rounded-full font-normal py-2 px-4 !text-base md:py-2 md:px-4 dark:!bg-primary-900 dark:!text-white dark:!border-transparent dark:hover:!brightness-110"
+              href="/account/new-post?new=1"
             >
               Написать
             </Button>
@@ -335,8 +324,8 @@
             </Menu>
           {:else}
             <Button
-              color="none"
-              class="!rounded-full bg-orange-600 hover:bg-orange-700 text-white font-normal py-2 px-4 !text-base md:py-2 md:px-4"
+              color="primary"
+              class="!rounded-full font-normal py-2 px-4 !text-base md:py-2 md:px-4 dark:!bg-primary-900 dark:!text-white dark:!border-transparent dark:hover:!brightness-110"
               title={$t('account.login')}
               on:click={() => (loginModalOpen = true)}
             >
@@ -365,6 +354,7 @@
     on:click={toggleSidebar}
     aria-label="Закрыть меню"
   >
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
     <aside
       class="absolute left-0 top-0 bottom-0 w-3/4 h-full bg-white dark:bg-zinc-900 shadow-lg flex flex-col items-start justify-start overflow-y-auto p-4 gap-2 transform transition-transform duration-300"
       class:translate-x-0={sidebarOpen}
@@ -384,14 +374,6 @@
           <span slot="label">Горячее</span>
         </SidebarButton>
         <SidebarButton
-          icon={Clock}
-          href="/?feed=fresh"
-          active={currentFeed === 'fresh'}
-          on:click={() => { sidebarOpen = false; }}
-        >
-          <span slot="label">Свежее</span>
-        </SidebarButton>
-        <SidebarButton
           icon={UserGroup}
           href="/?feed=mine"
           active={currentFeed === 'mine'}
@@ -407,73 +389,6 @@
         >
           <span slot="label">Избранное</span>
         </SidebarButton>
-        {#if SHOW_FOLDERS}
-          <SidebarButton
-            icon={ClipboardDocumentList}
-            href="javascript:void(0)"
-            active={currentFeed === 'thematic'}
-            on:click={(e) => {
-              e.preventDefault();
-              thematicFeedsOpen = !thematicFeedsOpen;
-            }}
-          >
-            <div slot="label" class="flex items-center gap-2 w-full">
-              <span class="truncate">Папки</span>
-              <span
-                class="ml-auto transition-transform duration-150"
-                class:rotate-180={thematicFeedsOpen}
-                aria-hidden="true"
-              >
-                <Icon src={ChevronDown} size="16" mini />
-              </span>
-            </div>
-          </SidebarButton>
-          {#if thematicFeedsOpen && (thematicFeeds.length || $siteUser)}
-            <div class="ml-6 flex flex-col gap-1">
-              {#if $siteUser?.is_staff}
-                <SidebarButton
-                  href="/folders?create=1"
-                  isExpandable={true}
-                  class="h-auto py-2"
-                  on:click={() => { sidebarOpen = false; }}
-                >
-                  <div slot="label" class="flex flex-col min-w-0 leading-tight">
-                    <span class="truncate text-sm">Создать папку</span>
-                  </div>
-                </SidebarButton>
-              {/if}
-              {#if $siteUser}
-                <SidebarButton
-                  href="/folders"
-                  isExpandable={true}
-                  class="h-auto py-2"
-                  on:click={() => { sidebarOpen = false; }}
-                >
-                  <div slot="label" class="flex flex-col min-w-0 leading-tight">
-                    <span class="truncate text-sm">Управление папками</span>
-                  </div>
-                </SidebarButton>
-              {/if}
-              {#each thematicFeeds as feed}
-                <SidebarButton
-                  href={`/?feed=thematic&theme=${encodeURIComponent(feed.slug)}`}
-                  active={currentFeed === 'thematic' && currentThematicSlug === feed.slug}
-                  isExpandable={true}
-                  class="h-auto py-2"
-                  title={feed.description || feed.name}
-                  on:click={() => { sidebarOpen = false; }}
-                >
-                  <div slot="label" class="flex flex-col min-w-0 leading-tight">
-                    <span class="truncate text-sm">{feed.name}</span>
-                    <span class="truncate text-xs text-slate-500 dark:text-zinc-400">
-                      {feed.authors_count ?? 0} авторов · {feed.tags_count ?? 0} тегов
-                    </span>
-                  </div>
-                </SidebarButton>
-              {/each}
-            </div>
-          {/if}
-        {/if}
       </div>
 
       {#if $profile?.jwt}
@@ -494,6 +409,18 @@
                 </Badge>
               {/if}
             </span>
+          </SidebarButton>
+        </div>
+      {/if}
+
+      {#if $siteUser?.is_staff}
+        <div class="flex flex-col gap-1">
+          <SidebarButton
+            icon={ChartBar}
+            href="/moderator"
+            on:click={() => { sidebarOpen = false; }}
+          >
+            <span slot="label">Модераторская</span>
           </SidebarButton>
         </div>
       {/if}
@@ -519,11 +446,9 @@
               <span slot="label">{comun.name}</span>
             </SidebarButton>
           {/each}
-          {#if visibleComuns.length > 10}
-            <SidebarButton href="/comuns" icon={ChevronDown} on:click={() => { sidebarOpen = false; }}>
-              <span slot="label">Все сообщества</span>
-            </SidebarButton>
-          {/if}
+          <SidebarButton href="/comuns" icon={ChevronDown} on:click={() => { sidebarOpen = false; }}>
+            <span slot="label">Все сообщества</span>
+          </SidebarButton>
       </div>
 
       <div class="flex flex-col gap-2">
@@ -550,9 +475,6 @@
           <SidebarButton href={PUBLIC_PROJECT_ABOUT} icon={InformationCircle} on:click={() => { sidebarOpen = false; }}>
             <span slot="label">О Проекте</span>
           </SidebarButton>
-          <SidebarButton href={PUBLIC_PROJECT_FAQ} icon={QuestionMarkCircle} on:click={() => { sidebarOpen = false; }}>
-            <span slot="label">FAQ</span>
-          </SidebarButton>
           <SidebarButton href={PUBLIC_PROJECT_ADVRTISEMENT} icon={Megaphone} on:click={() => { sidebarOpen = false; }}>
             <span slot="label">Реклама</span>
           </SidebarButton>
@@ -565,7 +487,8 @@
         </div>
       </div>
 
-      </aside>
+	      </div>
+	      </aside>
     </button>
 {/if}
 

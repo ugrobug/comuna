@@ -1,5 +1,6 @@
 <script lang="ts">
   import { photonify } from './plugins'
+  import { getSafeUrl } from '$lib/security/url'
 
   export let href = ''
   export let title = undefined
@@ -13,12 +14,23 @@
   }
 
   $: photonified = photonify(href)
+  $: safeHref = getSafeUrl(photonified ?? href, {
+    allowedProtocols: ['http:', 'https:', 'mailto:'],
+    allowRelative: true,
+  })
 </script>
 
-<a
-  href={photonified ?? href}
-  {title}
-  class="hover:underline text-sky-600 dark:text-sky-500 no-underline"
->
-  <slot />
-</a>
+{#if safeHref}
+  <a
+    href={safeHref}
+    {title}
+    rel="nofollow ugc noopener noreferrer"
+    class="hover:underline text-sky-600 dark:text-sky-500 no-underline"
+  >
+    <slot />
+  </a>
+{:else}
+  <span class="text-slate-700 dark:text-zinc-300">
+    <slot />
+  </span>
+{/if}

@@ -8,7 +8,7 @@
   export let data
 
   const meta = EDITABLE_STATIC_PAGE_META.about
-  const title = `${meta.heading} — ${env.PUBLIC_SITE_TITLE || 'Comuna'}`
+  const title = `${meta.heading} — ${env.PUBLIC_SITE_TITLE || 'Тамбур'}`
   $: canonicalUrl = new URL(
     $page.url.pathname,
     (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '') + '/'

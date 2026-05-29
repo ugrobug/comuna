@@ -32,7 +32,7 @@
   } from '$lib/lemmy/postfeed'
   import { t } from '$lib/translations'
   import InfiniteScroll from 'svelte-infinite-scroll'
-  import type { Readable } from 'svelte/motion'
+  import type { Readable } from 'svelte/store'
   import EndPlaceholder from '$lib/components/ui/EndPlaceholder.svelte'
   import { isLimitedTopSort, getNextTopSort } from '$lib/util/sortProgression'
 

@@ -5,8 +5,8 @@
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import EditorAutosaveNotice from '$lib/components/editor/EditorAutosaveNotice.svelte'
   import { Button, Spinner, TextInput, toast } from 'mono-svelte'
-  import TipTapEditor from '$lib/components/editor/TipTapEditor.svelte'
   import EditorJS from '$lib/components/editor/EditorJS.svelte'
+  import { normalizeEditorJsContent } from '$lib/editorJsContent'
   import PostTemplateFields from '$lib/components/site/post-templates/PostTemplateFields.svelte'
   import { buildBackendPostPath, buildComunsUrl, type BackendComun } from '$lib/api/backend'
   import {
@@ -19,21 +19,30 @@
   } from '$lib/siteAuth'
   import {
     POST_TEMPLATE_TYPE_OPTIONS,
+    TWEET_TEMPLATE_MAX_LENGTH,
     buildPostTemplatePayload,
+    createEmptyBugReportTemplateData,
     createEmptyMusicReleaseTemplateData,
     createEmptyMovieReviewTemplateData,
     createEmptyPostVotePollTemplateData,
+    isBugReportTemplate,
+    isRecognizedPostTemplateType,
     isMovieReviewTemplate,
     isMusicReleaseTemplate,
     isPostVotePollTemplate,
+    isTweetTemplateType,
     normalizeAllowedPostTemplateTypeOverrides,
     normalizeAllowedPostTemplateTypes,
+    normalizeBugReportTemplateData,
     normalizePostTemplateTypeOptions,
     normalizeMusicReleaseTemplateData,
     normalizeMovieReviewTemplateData,
     normalizePostVotePollTemplateData,
     normalizeTemplateEditorBlockSettings,
     resolveEnabledTemplateEditorBlockTypes,
+    tweetTemplateCharacterCount,
+    validateTweetTemplateContent,
+    type BugReportTemplateData,
     type MusicReleaseTemplateData,
     type MovieReviewTemplateData,
     type PostTemplateType,
@@ -64,9 +73,9 @@
   let post: SiteUserPost | null = null
   let comunsLoading = false
   let comuns: BackendComun[] = []
-  let rubricMenuOpen = false
-  let rubricSearchQuery = ''
-  let rubricMenuRef: HTMLDivElement | null = null
+  let comunMenuOpen = false
+  let comunSearchQuery = ''
+  let comunMenuRef: HTMLDivElement | null = null
   let filteredComuns: BackendComun[] = []
   let identityMenuOpen = false
   let identityMenuRef: HTMLDivElement | null = null
@@ -87,11 +96,11 @@
   let editAuthor = ''
   let editComunSlug = ''
   let editComunCategoryId = ''
-  let isJsonContent = true
   let editTemplateType: '' | PostTemplateType = ''
   let editMovieReviewData: MovieReviewTemplateData = createEmptyMovieReviewTemplateData()
   let editPostVotePollData: PostVotePollTemplateData = createEmptyPostVotePollTemplateData()
   let editMusicReleaseData: MusicReleaseTemplateData = createEmptyMusicReleaseTemplateData()
+  let editBugReportData: BugReportTemplateData = createEmptyBugReportTemplateData()
   let allowedTemplateTypes: string[] = ['basic']
 
   let saving = false
@@ -108,12 +117,13 @@
   let draftSavedNoticeHideTimer: ReturnType<typeof setTimeout> | null = null
   let firstDraftChangeAt: number | null = null
   let firstDraftAutosaveCompleted = false
+  let tweetCharacterCountValue = 0
 
   $: selectedComun = comuns.find((comun) => comun.slug === editComunSlug)
   $: selectedComunCategory =
     selectedComun?.categories?.find((category) => String(category.id) === editComunCategoryId) ?? null
   $: filteredComuns = (() => {
-    const query = rubricSearchQuery.trim().toLowerCase()
+    const query = comunSearchQuery.trim().toLowerCase()
     if (!query) return comuns
     return comuns.filter((comun) => {
       const name = (comun.name || '').toLowerCase()
@@ -142,6 +152,9 @@
     templateEditorBlockSettings
   )
   $: editorTemplateBlocksKey = `${editTemplateType || 'basic'}:${editorEnabledTemplateBlockTypes.join(',')}`
+  $: tweetCharacterCountValue = isTweetTemplateType(editTemplateType)
+    ? tweetTemplateCharacterCount(editContent)
+    : 0
   $: allowedTemplateTypes = (() => {
     const values = new Set<string>(['basic'])
     for (const item of normalizeAllowedPostTemplateTypes(
@@ -175,30 +188,6 @@
   $: draftShareUrl = draftSharePath ? `${$page.url.origin}${draftSharePath}` : ''
   $: profileDraftsPath = $siteUser?.id ? `/id${$siteUser.id}` : '/settings'
 
-  const detectContentType = (content: string): boolean => {
-    if (!content || content.trim() === '') {
-      return true
-    }
-    if (content.trim().startsWith('<') && content.trim().endsWith('>')) {
-      return false
-    }
-    try {
-      const parsed = JSON.parse(content)
-      return parsed && typeof parsed === 'object' && 'blocks' in parsed
-    } catch {
-      try {
-        const isBase64 = /^[A-Za-z0-9+/]*={0,2}$/.test(content)
-        if (!isBase64) {
-          return false
-        }
-        const decoded = deserializeEditorModel(content)
-        return decoded && typeof decoded === 'object' && 'blocks' in decoded
-      } catch {
-        return false
-      }
-    }
-  }
-
   const stripHtml = (value: string) =>
     value.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim()
 
@@ -223,7 +212,8 @@
       editTemplateType,
       editMovieReviewData,
       editPostVotePollData,
-      editMusicReleaseData
+      editMusicReleaseData,
+      editBugReportData
     )
 
   const buildEditPayload = () => {
@@ -316,35 +306,33 @@
 
   const fillForm = (currentPost: SiteUserPost) => {
     editTitle = currentPost.title || ''
-    editContent = currentPost.content || ''
+    editContent = normalizeEditorJsContent(currentPost.content || '')
     editComunSlug =
       currentPost.comun_slug ||
       currentPost.comun?.slug ||
-      comuns.find((comun) => comun.source_rubric?.slug === currentPost.rubric_slug)?.slug ||
       ''
     editComunCategoryId = currentPost.comun_category_id ? String(currentPost.comun_category_id) : ''
     editAuthor = resolveAuthorValue(currentPost)
     editMovieReviewData = createEmptyMovieReviewTemplateData()
     editPostVotePollData = createEmptyPostVotePollTemplateData()
     editMusicReleaseData = createEmptyMusicReleaseTemplateData()
-    editTemplateType =
-      currentPost.template?.type === 'movie_review' ||
-      currentPost.template?.type === 'post_vote_poll' ||
-      currentPost.template?.type === 'music_release'
-        ? currentPost.template.type
-        : ''
+    editBugReportData = createEmptyBugReportTemplateData()
+    editTemplateType = isRecognizedPostTemplateType(currentPost.template?.type)
+      ? currentPost.template.type
+      : ''
     if (isMovieReviewTemplate(currentPost.template)) {
       editMovieReviewData = normalizeMovieReviewTemplateData(currentPost.template.data)
     } else if (isPostVotePollTemplate(currentPost.template)) {
       editPostVotePollData = normalizePostVotePollTemplateData(currentPost.template.data)
     } else if (isMusicReleaseTemplate(currentPost.template)) {
       editMusicReleaseData = normalizeMusicReleaseTemplateData(currentPost.template.data)
+    } else if (isBugReportTemplate(currentPost.template)) {
+      editBugReportData = normalizeBugReportTemplateData(currentPost.template.data)
     }
     const tagNames = (currentPost.tags ?? []).map((tag) =>
       typeof tag === 'string' ? tag : tag.name
     )
     editTags = tagNames.join(', ')
-    isJsonContent = detectContentType(editContent)
     const snapshot = JSON.stringify(buildEditPayload())
     lastObservedEditSnapshot = snapshot
     lastSavedEditSnapshot = snapshot
@@ -480,18 +468,20 @@
       return false
     }
     const trimmedContent = editContent.trim()
-    if (isJsonContent) {
-      if (!trimmedContent) {
-        saveError = 'Текст поста не может быть пустым'
-        return false
-      }
-    } else if (stripHtml(trimmedContent).length === 0) {
+    if (!trimmedContent || isEditorContentEmpty(trimmedContent)) {
       saveError = 'Текст поста не может быть пустым'
       return false
     }
     if (!editComunSlug) {
       saveError = 'Выберите сообщество'
       return false
+    }
+    if (isTweetTemplateType(editTemplateType)) {
+      const tweetValidationError = validateTweetTemplateContent(editContent)
+      if (tweetValidationError) {
+        saveError = tweetValidationError
+        return false
+      }
     }
     return true
   }
@@ -559,8 +549,8 @@
   const selectComun = (slug: string) => {
     editComunSlug = slug
     editComunCategoryId = ''
-    rubricMenuOpen = false
-    rubricSearchQuery = ''
+    comunMenuOpen = false
+    comunSearchQuery = ''
   }
 
   const selectIdentity = (value: string) => {
@@ -588,9 +578,9 @@
 
     const closeOnOutsideClick = (event: MouseEvent) => {
       const target = event.target as Node | null
-      if (rubricMenuOpen && rubricMenuRef && target && !rubricMenuRef.contains(target)) {
-        rubricMenuOpen = false
-        rubricSearchQuery = ''
+      if (comunMenuOpen && comunMenuRef && target && !comunMenuRef.contains(target)) {
+        comunMenuOpen = false
+        comunSearchQuery = ''
       }
       if (identityMenuOpen && identityMenuRef && target && !identityMenuRef.contains(target)) {
         identityMenuOpen = false
@@ -737,16 +727,16 @@
                   Загрузка сообществ...
                 </div>
               {:else}
-                <div class="relative mt-3" bind:this={rubricMenuRef}>
+                <div class="relative mt-3" bind:this={comunMenuRef}>
                   <button
                     type="button"
                     class="flex max-w-full items-center gap-2 text-left text-sm font-medium leading-tight text-slate-800 dark:text-zinc-200"
                     aria-haspopup="listbox"
-                    aria-expanded={rubricMenuOpen}
+                    aria-expanded={comunMenuOpen}
                     on:click={() => {
-                      const nextState = !rubricMenuOpen
-                      rubricMenuOpen = nextState
-                      if (!nextState) rubricSearchQuery = ''
+                      const nextState = !comunMenuOpen
+                      comunMenuOpen = nextState
+                      if (!nextState) comunSearchQuery = ''
                     }}
                   >
                     <span class="truncate">{selectedComun?.name || 'Выберите сообщество'}</span>
@@ -764,7 +754,7 @@
                     </svg>
                   </button>
 
-                  {#if rubricMenuOpen}
+                  {#if comunMenuOpen}
                     <div
                       class="absolute z-20 mt-3 w-full min-w-[18rem] max-w-xl overflow-auto rounded-2xl border border-slate-200 bg-white p-1 shadow-lg dark:border-zinc-800 dark:bg-zinc-900"
                       role="listbox"
@@ -772,7 +762,7 @@
                       <div class="sticky top-0 z-10 border-b border-slate-200 bg-white px-2 py-2 dark:border-zinc-800 dark:bg-zinc-900">
                         <input
                           type="text"
-                          bind:value={rubricSearchQuery}
+                          bind:value={comunSearchQuery}
                           placeholder="Поиск сообщества"
                           class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
                         />
@@ -879,9 +869,14 @@
                             on:click={() => selectTemplateType(templateOption.value)}
                           >
                             <div class="min-w-0 flex-1">
-                              <div class="truncate text-sm font-medium text-slate-900 dark:text-zinc-100">
+                              <div class="text-sm font-medium text-slate-900 dark:text-zinc-100">
                                 {templateOption.label}
                               </div>
+                              {#if templateOption.description}
+                                <div class="mt-1 text-xs leading-snug text-slate-500 dark:text-zinc-400">
+                                  {templateOption.description}
+                                </div>
+                              {/if}
                             </div>
                           </button>
                         {/each}
@@ -900,34 +895,38 @@
           bind:movieReviewData={editMovieReviewData}
           bind:postVotePollData={editPostVotePollData}
           bind:musicReleaseData={editMusicReleaseData}
+          bind:bugReportData={editBugReportData}
           {allowedTemplateTypes}
           {templateTypeOptions}
           showTypeSelector={false}
         />
 
         <div class="flex flex-col gap-2">
-          {#if isJsonContent}
-            {#key `edit-editor-template-${editorTemplateBlocksKey}`}
-              <EditorJS
-                bind:value={editContent}
-                placeholder="Текст поста"
-                postTemplateType={editTemplateType}
-                enabledTemplateEditorBlockTypes={editorEnabledTemplateBlockTypes}
-                glossaryTerms={
-                  selectedComun?.glossary_enabled ? selectedComun?.glossary_terms ?? [] : []
-                }
-                enableAutosave={false}
-                postId={post.id}
-                showPostSettings={false}
-              />
-            {/key}
-          {:else}
-            <TipTapEditor
+          {#key `edit-editor-template-${editorTemplateBlocksKey}`}
+            <EditorJS
               bind:value={editContent}
               placeholder="Текст поста"
-              includeMetaTags={false}
-              allowMedia={false}
+              postTemplateType={editTemplateType}
+              enabledTemplateEditorBlockTypes={editorEnabledTemplateBlockTypes}
+              glossaryTerms={
+                selectedComun?.glossary_enabled ? selectedComun?.glossary_terms ?? [] : []
+              }
+              enableAutosave={false}
+              postId={post.id}
+              showPostSettings={false}
             />
+          {/key}
+          {#if isTweetTemplateType(editTemplateType)}
+            <div class={`rounded-xl border px-3 py-2 text-sm ${
+              tweetCharacterCountValue > TWEET_TEMPLATE_MAX_LENGTH
+                ? 'border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-900/40 dark:bg-rose-950/20 dark:text-rose-300'
+                : 'border-slate-200 bg-slate-50 text-slate-600 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-300'
+            }`}>
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <span>Текст твита: {tweetCharacterCountValue} / {TWEET_TEMPLATE_MAX_LENGTH}</span>
+                <span>Разрешен один медиаблок с изображениями</span>
+              </div>
+            </div>
           {/if}
         </div>
 

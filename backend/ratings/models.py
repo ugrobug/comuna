@@ -57,5 +57,25 @@ class AuthorRatingEvent(models.Model):
         return f"{self.author_id}:{self.event_type}:{self.delta}"
 
 
-__all__ = ["AuthorRatingEvent"]
+class RatingSettings(models.Model):
+    post_vote_weight = models.DecimalField(max_digits=8, decimal_places=3, default=1)
+    post_comment_weight = models.DecimalField(max_digits=8, decimal_places=3, default=1)
+    post_comment_like_weight = models.DecimalField(max_digits=8, decimal_places=3, default="0.5")
+    post_community_rating_weight = models.DecimalField(max_digits=8, decimal_places=3, default=1)
+    post_author_rating_weight = models.DecimalField(max_digits=8, decimal_places=3, default=1)
+    community_post_rating_weight = models.DecimalField(max_digits=8, decimal_places=3, default="0.1")
+    community_post_rating_days = models.PositiveSmallIntegerField(default=7)
+    home_posts_per_community_per_day = models.PositiveSmallIntegerField(default=3)
+    author_post_rating_weight = models.DecimalField(max_digits=8, decimal_places=3, default=1)
+    author_comment_like_weight = models.DecimalField(max_digits=8, decimal_places=3, default="0.5")
+    updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        verbose_name = "Настройки рейтинга"
+        verbose_name_plural = "Настройки рейтинга"
+
+    def __str__(self) -> str:
+        return "Настройки рейтинга"
+
+
+__all__ = ["AuthorRatingEvent", "RatingSettings"]

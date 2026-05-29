@@ -25,12 +25,13 @@
   let loggedIn = false
 
   $: draftPostView = draft ? siteUserPostToPostView(draft) : null
+  $: draftAuthorUsername = draft?.author?.username
   $: isDraftOwner = Boolean(
     $siteUser &&
-      draft &&
+      draftAuthorUsername &&
       (
-        draft.author?.username === $siteUser.username ||
-        ($siteUser.authors ?? []).some((author) => author.username === draft.author?.username)
+        draftAuthorUsername === $siteUser.username ||
+        ($siteUser.authors ?? []).some((author) => author.username === draftAuthorUsername)
       )
   )
   $: editPath = draft ? `/account/edit-post/${draft.id}` : '/account/new-post'

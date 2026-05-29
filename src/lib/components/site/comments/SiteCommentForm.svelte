@@ -5,7 +5,7 @@
   import MarkdownEditor from '$lib/components/markdown/MarkdownEditor.svelte'
   import LoginModal from '$lib/components/auth/LoginModal.svelte'
   import { buildCommentDetailUrl, buildPostCommentsUrl } from '$lib/api/backend'
-  import { siteToken, siteUser } from '$lib/siteAuth'
+  import { siteToken, siteUser, uploadSiteImage } from '$lib/siteAuth'
   import type { SiteComment, SiteCommentMask } from './types'
 
   export let postId: number
@@ -17,6 +17,7 @@
   export let autoFocus = false
   export let showCancel = false
   export let commentMasks: SiteCommentMask[] = []
+  export let submitUrl: string | null = null
 
   const dispatch = createEventDispatcher<{
     comment: SiteComment
@@ -30,6 +31,8 @@
   let lastCommentId = commentId
   let selectedMaskKey = ''
   let masksInitialized = false
+  let loginPromptedForDraft = false
+  let lastObservedValue = value
   const COMMENT_MASK_STORAGE_KEY = 'comuna.admin.comment.mask'
 
   $: canChooseMask = Boolean($siteUser?.is_staff && !commentId && commentMasks.length > 0)
@@ -55,6 +58,18 @@
     masksInitialized = false
   }
 
+  $: if (value !== lastObservedValue) {
+    lastObservedValue = value
+    if (!$siteToken && value.trim() && !loginPromptedForDraft) {
+      showLoginModal = true
+      loginPromptedForDraft = true
+    }
+  }
+
+  $: if ($siteToken || !value.trim()) {
+    loginPromptedForDraft = false
+  }
+
   function updateMaskSelection(nextKey: string) {
     selectedMaskKey = nextKey
     if (!browser) return
@@ -68,6 +83,14 @@
   function handleMaskChange(event: Event) {
     const target = event.currentTarget as HTMLSelectElement | null
     updateMaskSelection(target?.value || '')
+  }
+
+  async function uploadCommentImage(image: File) {
+    if (!$siteToken) {
+      showLoginModal = true
+      throw new Error('Войдите, чтобы загрузить изображение')
+    }
+    return uploadSiteImage(image)
   }
 
   async function submit() {
@@ -95,7 +118,7 @@
       }
 
       const response = await fetch(
-        commentId ? buildCommentDetailUrl(commentId) : buildPostCommentsUrl(postId),
+        commentId ? buildCommentDetailUrl(commentId) : submitUrl || buildPostCommentsUrl(postId),
         {
           method: commentId ? 'PATCH' : 'POST',
           headers: {
@@ -157,7 +180,8 @@
     {autoFocus}
     tools={true}
     previewButton={false}
-    images={false}
+    images={true}
+    imageUploadHandler={uploadCommentImage}
   />
   {#if error}
     <p class="text-sm text-red-600">{error}</p>

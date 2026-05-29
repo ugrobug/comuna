@@ -40,7 +40,7 @@
   let settingsError = ''
   let lastAuthRefreshToken: string | null = null
 
-  let settingsTagSearch = ''
+  let settingsSearchTagSearch = ''
   let settingsBlockedTagSearch = ''
   let settingsCategorySearch = ''
   let settingsUserSearch = ''
@@ -61,8 +61,8 @@
     channel_url?: string | null
     avatar_url?: string | null
   }
-  type TemplateTypeOption = { value: PostTemplateCode; label: string }
-  type ComunSettingsTabKey = 'description' | 'availability' | 'moderation' | 'categories' | 'rules'
+  type TemplateTypeOption = { value: PostTemplateCode; label: string; description?: string }
+  type ComunSettingsTabKey = 'description' | 'moderation' | 'categories' | 'rules'
   type CustomTemplateBlockOption = { value: string; label: string }
   type CustomTemplatePlacement = '' | 'available' | 'header' | 'footer'
   type CustomTemplateFieldType = 'text' | 'file' | 'select' | 'checkbox'
@@ -72,6 +72,8 @@
     { value: 'movie_review', label: 'Кинообзор' },
     { value: 'post_vote_poll', label: 'Голосование за посты' },
     { value: 'music_release', label: 'Музыкальный релиз' },
+    { value: 'bug_report', label: 'Баг-репорт' },
+    { value: 'tweet', label: 'Твит' },
   ]
   const fallbackCustomTemplateBlockPlacementOptions = [
     { value: 'available', label: 'Доступен в шаблоне' },
@@ -91,7 +93,6 @@
   ]
   const comunSettingsTabs: Array<{ value: ComunSettingsTabKey; label: string }> = [
     { value: 'description', label: 'Описание' },
-    { value: 'availability', label: 'Доступность' },
     { value: 'moderation', label: 'Модерирование' },
     { value: 'categories', label: 'Категории и шаблоны' },
     { value: 'rules', label: 'Правила' },
@@ -104,6 +105,11 @@
   let settingsTelegramChannelOptions: ComunTelegramChannelOption[] = []
   let settingsLogoInput: HTMLInputElement | null = null
   let settingsTab: ComunSettingsTabKey = 'description'
+
+  const patchSettingsDraft = (patch: Partial<BackendComun>) => {
+    if (!settingsDraft) return
+    settingsDraft = { ...settingsDraft, ...patch }
+  }
 
   const cloneComun = (value: BackendComun | null): BackendComun | null =>
     value ? JSON.parse(JSON.stringify(value)) : null
@@ -142,10 +148,10 @@
         (value?.blocked_tags ?? value?.excluded_tags ?? []).map((tag) => tag.id ?? 0)) as number[]
     )
 
-  const comunSourceTagIds = (value: BackendComun | null) =>
+  const comunSearchTagIds = (value: BackendComun | null) =>
     normalizeIds(
-      ((value?.source_tag_ids as number[] | undefined) ??
-        (value?.source_tags ?? (value?.product_tag ? [value.product_tag] : [])).map((tag) => tag.id ?? 0)) as number[]
+      ((value?.tag_ids as number[] | undefined) ??
+        (value?.tags ?? []).map((tag) => tag.id ?? 0)) as number[]
     )
 
   const comunAllowedTemplateTypes = (value: BackendComun | null) =>
@@ -171,6 +177,13 @@
         .map((category) => category.id ?? 0)
     )
 
+  const comunCategoryHideFromHomeIds = (value: BackendComun | null) =>
+    normalizeIds(
+      (value?.categories ?? [])
+        .filter((category) => Boolean(category?.hide_from_home))
+        .map((category) => category.id ?? 0)
+    )
+
   const normalizeTemplateTypeOptions = (value: unknown): TemplateTypeOption[] => {
     const source = Array.isArray(value) ? value : []
     const normalized: TemplateTypeOption[] = []
@@ -180,12 +193,17 @@
         .trim()
         .toLowerCase()
       const templateLabel = String((item as any)?.label ?? '').trim()
+      const templateDescription = String((item as any)?.description ?? '').trim()
       const templateValue = templateCodePattern.test(templateValueRaw)
         ? (templateValueRaw as PostTemplateCode)
         : null
       if (!templateValue || !templateLabel || seen.has(templateValue)) continue
       seen.add(templateValue)
-      normalized.push({ value: templateValue, label: templateLabel })
+      normalized.push({
+        value: templateValue,
+        label: templateLabel,
+        ...(templateDescription ? { description: templateDescription } : {}),
+      })
     }
     return normalized.length ? normalized : fallbackTemplateTypeOptions
   }
@@ -241,7 +259,8 @@
       rules_text: (value?.rules_text ?? '').trim(),
       target_audience: (value?.target_audience ?? '').trim(),
       glossary_enabled: Boolean(value?.glossary_enabled),
-      roadmap_enabled: Boolean(value?.roadmap_enabled ?? true),
+      roadmap_enabled: Boolean(value?.roadmap_enabled ?? false),
+      knowledge_base_enabled: Boolean(value?.knowledge_base_enabled ?? false),
       minimum_author_rating_to_post: Math.max(
         Number(value?.minimum_author_rating_to_post ?? 0) || 0,
         0
@@ -249,11 +268,11 @@
       only_moderators_can_post: Boolean(value?.only_moderators_can_post),
       forbid_external_links: Boolean(value?.forbid_external_links),
       hide_from_home: Boolean(value?.hide_from_home),
-      hide_from_fresh: Boolean(value?.hide_from_fresh),
-      source_tag_ids: comunSourceTagIds(value),
+      tag_ids: comunSearchTagIds(value),
       allowed_template_types: comunAllowedTemplateTypes(value),
       category_template_types_by_id: comunCategoryTemplateTypesById(value),
       category_only_moderators_can_post_ids: comunCategoryOnlyModeratorIds(value),
+      category_hide_from_home_ids: comunCategoryHideFromHomeIds(value),
       category_ids: comunCategoryIds(value),
       moderator_ids: comunModeratorIds(value),
       excluded_author_ids: comunExcludedAuthorIds(value),
@@ -372,6 +391,26 @@
     if (current.has(categoryId)) current.delete(categoryId)
     else current.add(categoryId)
     setDraftCategoryOnlyModeratorIds(Array.from(current))
+  }
+
+  const setDraftCategoryHideFromHomeIds = (ids: number[]) => {
+    if (!settingsDraft) return
+    const hiddenIds = new Set(normalizeIds(ids))
+    settingsDraft = {
+      ...settingsDraft,
+      categories: (settingsDraft.categories ?? []).map((category) => ({
+        ...category,
+        hide_from_home: hiddenIds.has(Number(category.id)),
+      })),
+    }
+  }
+
+  const toggleDraftCategoryHideFromHome = (categoryId: number) => {
+    if (!settingsDraft) return
+    const current = new Set(comunCategoryHideFromHomeIds(settingsDraft))
+    if (current.has(categoryId)) current.delete(categoryId)
+    else current.add(categoryId)
+    setDraftCategoryHideFromHomeIds(Array.from(current))
   }
 
   const setDraftTelegramChannel = (
@@ -502,12 +541,12 @@
     setDraftBlockedTagIds(comunBlockedTagIds(settingsDraft).filter((id) => id !== tagId))
   }
 
-  const setDraftSourceTagIds = (ids: number[]) => {
+  const setDraftSearchTagIds = (ids: number[]) => {
     if (!settingsDraft) return
     const normalizedIds = normalizeIds(ids).slice(0, 5)
     const byId = new Map<number, ComunTagOption>()
     for (const tag of settingsTagOptions) byId.set(tag.id, tag)
-    for (const tag of settingsDraft.source_tags ?? (settingsDraft.product_tag ? [settingsDraft.product_tag] : [])) {
+    for (const tag of settingsDraft.tags ?? []) {
       byId.set(tag.id, tag)
     }
     const selectedTags = normalizedIds
@@ -516,21 +555,19 @@
       .map((tag) => ({ id: tag!.id, name: tag!.name, lemma: tag!.lemma ?? null }))
     settingsDraft = {
       ...settingsDraft,
-      source_tag_ids: normalizedIds,
-      source_tags: selectedTags,
-      product_tag_id: selectedTags[0]?.id ?? null,
-      product_tag: selectedTags[0] ?? null,
+      tag_ids: normalizedIds,
+      tags: selectedTags,
     }
   }
 
-  const addDraftSourceTag = (tagId: number) => {
+  const addDraftSearchTag = (tagId: number) => {
     if (!settingsDraft) return
-    setDraftSourceTagIds([...comunSourceTagIds(settingsDraft), tagId])
+    setDraftSearchTagIds([...comunSearchTagIds(settingsDraft), tagId])
   }
 
-  const removeDraftSourceTag = (tagId: number) => {
+  const removeDraftSearchTag = (tagId: number) => {
     if (!settingsDraft) return
-    setDraftSourceTagIds(comunSourceTagIds(settingsDraft).filter((id) => id !== tagId))
+    setDraftSearchTagIds(comunSearchTagIds(settingsDraft).filter((id) => id !== tagId))
   }
 
   const setDraftAllowedTemplateTypes = (values: PostTemplateCode[]) => {
@@ -599,22 +636,6 @@
     settingsDraft = { ...settingsDraft, logo_url: '' }
   }
 
-  const toggleDraftHideFromHome = () => {
-    if (!settingsDraft) return
-    settingsDraft = {
-      ...settingsDraft,
-      hide_from_home: !Boolean(settingsDraft.hide_from_home),
-    }
-  }
-
-  const toggleDraftHideFromFresh = () => {
-    if (!settingsDraft) return
-    settingsDraft = {
-      ...settingsDraft,
-      hide_from_fresh: !Boolean(settingsDraft.hide_from_fresh),
-    }
-  }
-
   const normalizeTagInput = (value: string) =>
     value.trim().replace(/^#+/, '').replace(/\s+/g, ' ').trim()
 
@@ -629,36 +650,28 @@
     }).format(normalized)
   }
 
-  $: normalizedTagSearch = settingsTagSearch.trim().toLowerCase()
-  $: sourceTagIdSet = new Set<number>(comunSourceTagIds(settingsDraft))
-  $: normalizedTagCreateValue = normalizeTagInput(settingsTagSearch)
-  $: hasExactTagMatch = (settingsTagOptions ?? []).some((tag) => {
-    const needle = normalizedTagCreateValue.toLowerCase()
+  $: normalizedSearchTagSearch = settingsSearchTagSearch.trim().toLowerCase()
+  $: searchTagIdSet = new Set<number>(comunSearchTagIds(settingsDraft))
+  $: normalizedSearchTagCreateValue = normalizeTagInput(settingsSearchTagSearch)
+  $: hasExactSearchTagMatch = (settingsTagOptions ?? []).some((tag) => {
+    const needle = normalizedSearchTagCreateValue.toLowerCase()
     if (!needle) return false
     return [tag.name, tag.lemma ?? '']
       .map((value) => normalizeTagInput(value).toLowerCase())
       .some((value) => value === needle)
   })
-  $: normalizedCategorySearch = settingsCategorySearch.trim().toLowerCase()
   $: normalizedCategoryCreateValue = normalizeCategoryInput(settingsCategorySearch)
   $: hasExactCategoryMatch = (settingsCategoryOptions ?? []).some((category) => {
     const needle = normalizedCategoryCreateValue.toLowerCase()
     if (!needle) return false
     return normalizeCategoryInput(category.name).toLowerCase() === needle
   })
-  $: filteredCategoryOptions = (settingsCategoryOptions ?? [])
-    .filter((category) => {
-      if (!normalizedCategorySearch) return true
-      return [category.name, category.description ?? ''].some((value) =>
-        value.toLowerCase().includes(normalizedCategorySearch)
-      )
-    })
-    .slice(0, 40)
-  $: filteredTagOptions = (settingsTagOptions ?? [])
+  $: visibleCategoryOptions = settingsDraft?.categories ?? settingsCategoryOptions ?? []
+  $: filteredSearchTagOptions = (settingsTagOptions ?? [])
     .filter((tag) => {
-      if (!normalizedTagSearch) return false
+      if (!normalizedSearchTagSearch) return false
       return [tag.name, tag.lemma ?? ''].some((value) =>
-        value.toLowerCase().includes(normalizedTagSearch)
+        value.toLowerCase().includes(normalizedSearchTagSearch)
       )
     })
     .slice(0, 30)
@@ -703,8 +716,7 @@
       display_name: fromDraft?.display_name ?? null,
     }
   })
-  $: selectedSourceTags =
-    (settingsDraft?.source_tags?.length ? settingsDraft.source_tags : settingsDraft?.product_tag ? [settingsDraft.product_tag] : []) ?? []
+  $: selectedSearchTags = settingsDraft?.tags ?? []
   $: selectedBlockedTags =
     (settingsDraft?.blocked_tags?.length ? settingsDraft.blocked_tags : settingsDraft?.excluded_tags) ?? []
   $: selectedExcludedAuthors = comunExcludedAuthorIds(settingsDraft).map((id) => {
@@ -734,8 +746,8 @@
       ? normalizedTelegramChannelUsername
       : ''
 
-  const createTagAndChooseDraft = async () => {
-    const tagName = normalizeTagInput(settingsTagSearch)
+  const createSearchTagAndChooseDraft = async () => {
+    const tagName = normalizeTagInput(settingsSearchTagSearch)
     if (!tagName || settingsTagCreating) return
     settingsTagCreating = true
     try {
@@ -758,10 +770,10 @@
       if (existingIndex >= 0) nextOptions[existingIndex] = nextTag
       else nextOptions.push(nextTag)
       settingsTagOptions = nextOptions.sort((a, b) => a.name.localeCompare(b.name, 'ru'))
-      addDraftSourceTag(nextTag.id)
-      settingsTagSearch = ''
+      addDraftSearchTag(nextTag.id)
+      settingsSearchTagSearch = ''
       toast({
-        content: payload.created ? 'Тег добавлен в сообщество' : 'Тег добавлен в сообщество',
+        content: 'Тег добавлен для поиска сообщества',
         type: 'success',
       })
     } catch (error) {
@@ -840,21 +852,22 @@
           rules_text: settingsDraft.rules_text ?? '',
           target_audience: settingsDraft.target_audience ?? '',
           glossary_enabled: Boolean(settingsDraft.glossary_enabled),
-          roadmap_enabled: Boolean(settingsDraft.roadmap_enabled ?? true),
+          roadmap_enabled: Boolean(settingsDraft.roadmap_enabled ?? false),
+          knowledge_base_enabled: Boolean(settingsDraft.knowledge_base_enabled ?? false),
           minimum_author_rating_to_post: Math.max(
             Number(settingsDraft.minimum_author_rating_to_post ?? 0) || 0,
             0
           ),
           only_moderators_can_post: Boolean(settingsDraft.only_moderators_can_post),
           forbid_external_links: Boolean(settingsDraft.forbid_external_links),
+          tag_ids: comunSearchTagIds(settingsDraft),
           allowed_template_types: comunAllowedTemplateTypes(settingsDraft),
           category_template_types_by_id: comunCategoryTemplateTypesById(settingsDraft),
           category_only_moderators_can_post_ids: comunCategoryOnlyModeratorIds(settingsDraft),
+          category_hide_from_home_ids: canManageComunModerators() ? comunCategoryHideFromHomeIds(settingsDraft) : undefined,
           hide_from_home: canManageComunModerators() ? Boolean(settingsDraft.hide_from_home) : undefined,
-          hide_from_fresh: canManageComunModerators() ? Boolean(settingsDraft.hide_from_fresh) : undefined,
           moderator_ids: canManageComunModerators() ? comunModeratorIds(settingsDraft) : undefined,
           excluded_author_ids: comunExcludedAuthorIds(settingsDraft),
-          source_tag_ids: comunSourceTagIds(settingsDraft),
           blocked_tag_ids: comunBlockedTagIds(settingsDraft),
           telegram_source_author_id:
             Number(
@@ -976,7 +989,7 @@
     void refreshComunManage()
   })
 
-  $: siteTitle = env.PUBLIC_SITE_TITLE || 'Comuna'
+  $: siteTitle = env.PUBLIC_SITE_TITLE || 'Тамбур'
   $: pageTitle = comun?.name
     ? `Настройки сообщества ${comun.name} — ${siteTitle}`
     : `Настройки сообщества — ${siteTitle}`
@@ -1120,6 +1133,90 @@
             ></textarea>
           </label>
 
+          <div class="flex flex-col gap-2">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <div class="text-sm text-slate-700 dark:text-zinc-300">Теги для поиска</div>
+                <div class="text-xs text-slate-500 dark:text-zinc-400">
+                  До 5 тегов для поиска и сортировки сообщества.
+                </div>
+              </div>
+              <div class="text-xs text-slate-500 dark:text-zinc-400">
+                {selectedSearchTags.length}/5
+              </div>
+            </div>
+            <input
+              bind:value={settingsSearchTagSearch}
+              placeholder="Например: saas, дизайн, аналитика"
+              class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"
+              disabled={settingsTagCreating || selectedSearchTags.length >= 5}
+            />
+            <div class="flex flex-wrap items-center gap-2">
+              {#if selectedSearchTags.length}
+                {#each selectedSearchTags as tag}
+                  <span class="inline-flex items-center gap-2 rounded-full bg-slate-100 dark:bg-zinc-800 px-3 py-1 text-sm">
+                    #{tag.name}
+                    <button
+                      type="button"
+                      class="text-slate-500 hover:text-slate-900 dark:hover:text-white"
+                      on:click={() => removeDraftSearchTag(tag.id)}
+                    >
+                      ×
+                    </button>
+                  </span>
+                {/each}
+              {:else}
+                <span class="text-sm text-slate-500 dark:text-zinc-400">Теги пока не выбраны</span>
+              {/if}
+            </div>
+            <div class="max-h-48 overflow-auto rounded-xl border border-slate-200 dark:border-zinc-800 divide-y divide-slate-100 dark:divide-zinc-800">
+              {#if normalizedSearchTagCreateValue && !hasExactSearchTagMatch && selectedSearchTags.length < 5}
+                <div class="flex items-center justify-between gap-2 px-3 py-2 bg-slate-50 dark:bg-zinc-900/60">
+                  <div class="min-w-0 text-sm">
+                    <div class="font-medium text-slate-900 dark:text-zinc-100 truncate">
+                      Добавить тег #{normalizedSearchTagCreateValue}
+                    </div>
+                    <div class="text-xs text-slate-500 dark:text-zinc-400">
+                      Создаст тег в системе и добавит его в поиск сообщества
+                    </div>
+                  </div>
+                  <Button size="sm" on:click={createSearchTagAndChooseDraft} disabled={settingsTagCreating || settingsSaving}>
+                    {settingsTagCreating ? '...' : 'Добавить'}
+                  </Button>
+                </div>
+              {/if}
+              {#if filteredSearchTagOptions.length && selectedSearchTags.length < 5}
+                {#each filteredSearchTagOptions as tag}
+                  <div class="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+                    <div class="min-w-0">
+                      <div class="font-medium text-slate-900 dark:text-zinc-100 truncate">{tag.name}</div>
+                      {#if tag.lemma}
+                        <div class="text-xs text-slate-500 dark:text-zinc-400 truncate">{tag.lemma}</div>
+                      {/if}
+                    </div>
+                    <Button size="sm" on:click={() => addDraftSearchTag(tag.id)} disabled={settingsTagCreating || settingsSaving || searchTagIdSet.has(tag.id)}>
+                      {searchTagIdSet.has(tag.id) ? 'Добавлен' : 'Добавить'}
+                    </Button>
+                  </div>
+                {/each}
+              {:else}
+                {#if normalizedSearchTagCreateValue && !hasExactSearchTagMatch && selectedSearchTags.length < 5}
+                  <div class="px-3 py-2 text-sm text-slate-500 dark:text-zinc-400">
+                    Можно добавить новый тег выше
+                  </div>
+                {:else if normalizedSearchTagSearch && selectedSearchTags.length < 5}
+                  <div class="px-3 py-2 text-sm text-slate-500 dark:text-zinc-400">
+                    Ничего не найдено
+                  </div>
+                {:else if selectedSearchTags.length >= 5}
+                  <div class="px-3 py-2 text-sm text-slate-500 dark:text-zinc-400">
+                    Можно выбрать максимум 5 тегов
+                  </div>
+                {/if}
+              {/if}
+            </div>
+          </div>
+
           <label class="flex flex-col gap-1">
             <span class="text-sm text-slate-700 dark:text-zinc-300">Приветственный пост (ID или ссылка на пост)</span>
             <input
@@ -1128,104 +1225,62 @@
               class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"
             />
           </label>
-        {:else if settingsTab === 'availability'}
-          <label class="flex flex-col gap-1">
-            <span class="text-sm text-slate-700 dark:text-zinc-300">
-              Минимальный рейтинг автора для публикации
-            </span>
-            <input
-              bind:value={settingsDraft.minimum_author_rating_to_post}
-              type="number"
-              min="0"
-              step="0.5"
-              class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"
-            />
-            <span class="text-xs text-slate-500 dark:text-zinc-400">
-              `0` означает, что писать в сообщество может любой автор. Сейчас установлен порог от
-              {formatRatingValue(settingsDraft.minimum_author_rating_to_post)}.
-            </span>
-          </label>
-
-          {#if !(settingsDraft.categories ?? []).length}
-            <label class="flex items-start gap-2 cursor-pointer rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-3">
-              <input
-                type="checkbox"
-                class="mt-0.5"
-                checked={Boolean(settingsDraft.only_moderators_can_post)}
-                on:change={() =>
-                  (settingsDraft = {
-                    ...settingsDraft,
-                    only_moderators_can_post: !Boolean(settingsDraft.only_moderators_can_post),
-                  })}
-              />
-              <span class="min-w-0">
-                <span class="block text-sm text-slate-900 dark:text-zinc-100">
-                  Писать в сообщество могут только администраторы и модераторы
-                </span>
-              </span>
-            </label>
-          {/if}
-
-          {#if (settingsDraft.categories ?? []).length}
-            <div class="flex flex-col gap-2 rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-3">
-              <div class="text-sm font-medium text-slate-900 dark:text-zinc-100">
-                Категории, где писать могут только администраторы и модераторы
-              </div>
-              {#each settingsDraft.categories ?? [] as category (category.id)}
-                <label class="flex items-start gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    class="mt-0.5"
-                    checked={Boolean(category.only_moderators_can_post)}
-                    on:change={() => toggleDraftCategoryOnlyModerators(category.id)}
-                  />
-                  <span class="min-w-0">
-                    <span class="block text-sm text-slate-900 dark:text-zinc-100">
-                      {category.name}
-                    </span>
-                  </span>
-                </label>
-              {/each}
-            </div>
-          {/if}
-
-          {#if canManageComunModerators()}
-            <div class="flex flex-col gap-2 rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-3">
-              <div class="text-sm font-medium text-slate-900 dark:text-zinc-100">
-                Видимость постов сообщества в общих лентах
-              </div>
-              <label class="flex items-start gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  class="mt-0.5"
-                  checked={!settingsDraft.hide_from_home}
-                  on:change={toggleDraftHideFromHome}
-                />
-                <span class="min-w-0">
-                  <span class="block text-sm text-slate-900 dark:text-zinc-100">Показывать в Горячем</span>
-                </span>
-              </label>
-              <label class="flex items-start gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  class="mt-0.5"
-                  checked={!settingsDraft.hide_from_fresh}
-                  on:change={toggleDraftHideFromFresh}
-                />
-                <span class="min-w-0">
-                  <span class="block text-sm text-slate-900 dark:text-zinc-100">Показывать в Свежее</span>
-                </span>
-              </label>
-            </div>
-          {/if}
-
         {:else if settingsTab === 'moderation'}
-          <div class="flex flex-col gap-3 rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-3">
-            <div class="text-sm font-medium text-slate-900 dark:text-zinc-100">
+          <div class="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/40">
+            <div class="mb-4">
+              <div class="text-base font-semibold text-slate-950 dark:text-zinc-50">
+                Доступ к публикации
+              </div>
+              <div class="mt-1 text-sm text-slate-500 dark:text-zinc-400">
+                Общие ограничения для новых постов в сообществе.
+              </div>
+            </div>
+
+            <div class="grid gap-4 md:grid-cols-2">
+              <label class="flex flex-col gap-1">
+                <span class="text-sm font-medium text-slate-700 dark:text-zinc-300">
+                  Минимальный рейтинг автора
+                </span>
+                <input
+                  bind:value={settingsDraft.minimum_author_rating_to_post}
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  class="rounded-xl border border-slate-300 bg-white px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900"
+                />
+                <span class="text-xs text-slate-500 dark:text-zinc-400">
+                  0 - писать может любой автор. Сейчас: от {formatRatingValue(settingsDraft.minimum_author_rating_to_post)}.
+                </span>
+              </label>
+
+              <label class="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900/60">
+                <input
+                  type="checkbox"
+                  class="mt-0.5"
+                  checked={Boolean(settingsDraft.forbid_external_links)}
+                  on:change={() =>
+                    patchSettingsDraft({
+                      forbid_external_links: !Boolean(settingsDraft?.forbid_external_links),
+                    })}
+                />
+                <span class="min-w-0">
+                  <span class="block text-sm font-medium text-slate-900 dark:text-zinc-100">
+                    Запретить внешние ссылки
+                  </span>
+                  <span class="mt-1 block text-xs text-slate-500 dark:text-zinc-400">
+                    Посты с внешними ссылками не будут попадать в это сообщество, а новые публикации будут отклоняться.
+                  </span>
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/40">
+            <div class="text-base font-semibold text-slate-950 dark:text-zinc-50">
               Telegram-канал сообщества
             </div>
-            <div class="text-xs text-slate-500 dark:text-zinc-400">
-              Укажите публичный `@username` канала. Если канал уже подтвержден у вас на сайте, его можно выбрать сразу. Если нет, сохраните username здесь и завершите подключение в боте.
+            <div class="text-sm text-slate-500 dark:text-zinc-400">
+              Укажите публичный @username канала или выберите уже подтвержденный канал.
             </div>
             <input
               value={settingsDraft.telegram_channel_username ?? ''}
@@ -1271,96 +1326,14 @@
             {/if}
           </div>
 
-          <div class="flex flex-col gap-2">
-            <div class="text-sm text-slate-700 dark:text-zinc-300">Теги сообщества</div>
-            <div class="text-xs text-slate-500 dark:text-zinc-400">
-              Посты с этими тегами автоматически попадают в сообщество, если не отфильтрованы правилами ниже.
-            </div>
-            <input
-              bind:value={settingsTagSearch}
-              placeholder="Поиск тега для добавления..."
-              class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"
-            />
-            <div class="flex flex-wrap items-center gap-2">
-              {#if selectedSourceTags.length}
-                {#each selectedSourceTags as tag}
-                  <span class="inline-flex items-center gap-2 rounded-full bg-slate-100 dark:bg-zinc-800 px-3 py-1 text-sm">
-                    #{tag.name}
-                    <button type="button" class="text-slate-500 hover:text-slate-900 dark:hover:text-white" on:click={() => removeDraftSourceTag(tag.id)}>×</button>
-                  </span>
-                {/each}
-              {:else}
-                <span class="text-sm text-slate-500 dark:text-zinc-400">Теги пока не выбраны</span>
-              {/if}
-            </div>
-            <div class="max-h-48 overflow-auto rounded-xl border border-slate-200 dark:border-zinc-800 divide-y divide-slate-100 dark:divide-zinc-800">
-              {#if normalizedTagCreateValue && !hasExactTagMatch}
-                <div class="flex items-center justify-between gap-2 px-3 py-2 bg-slate-50 dark:bg-zinc-900/60">
-                  <div class="min-w-0 text-sm">
-                    <div class="font-medium text-slate-900 dark:text-zinc-100 truncate">
-                      Добавить тег #{normalizedTagCreateValue}
-                    </div>
-                    <div class="text-xs text-slate-500 dark:text-zinc-400">
-                      Создаст тег в системе и добавит его в теги сообщества
-                    </div>
-                  </div>
-                  <Button size="sm" on:click={createTagAndChooseDraft} disabled={settingsTagCreating || settingsSaving}>
-                    {settingsTagCreating ? '...' : 'Добавить'}
-                  </Button>
-                </div>
-              {/if}
-              {#if filteredTagOptions.length}
-                {#each filteredTagOptions as tag}
-                  <div class="flex items-center justify-between gap-2 px-3 py-2 text-sm">
-                    <div class="min-w-0">
-                      <div class="font-medium text-slate-900 dark:text-zinc-100 truncate">{tag.name}</div>
-                      {#if tag.lemma}
-                        <div class="text-xs text-slate-500 dark:text-zinc-400 truncate">{tag.lemma}</div>
-                      {/if}
-                    </div>
-                    <Button size="sm" on:click={() => addDraftSourceTag(tag.id)} disabled={settingsTagCreating || settingsSaving || sourceTagIdSet.has(tag.id)}>
-                      {sourceTagIdSet.has(tag.id) ? 'Добавлен' : 'Добавить'}
-                    </Button>
-                  </div>
-                {/each}
-              {:else}
-                {#if normalizedTagCreateValue && !hasExactTagMatch}
-                  <div class="px-3 py-2 text-sm text-slate-500 dark:text-zinc-400">
-                    Можно добавить новый тег выше
-                  </div>
-                {:else if normalizedTagSearch}
-                  <div class="px-3 py-2 text-sm text-slate-500 dark:text-zinc-400">
-                    Ничего не найдено
-                  </div>
-                {/if}
-              {/if}
-            </div>
-          </div>
-
-          <label class="flex items-start gap-2 cursor-pointer rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-3">
-            <input
-              type="checkbox"
-              class="mt-0.5"
-              checked={Boolean(settingsDraft.forbid_external_links)}
-              on:change={() =>
-                (settingsDraft = {
-                  ...settingsDraft,
-                  forbid_external_links: !Boolean(settingsDraft.forbid_external_links),
-                })}
-            />
-            <span class="min-w-0">
-              <span class="block text-sm text-slate-900 dark:text-zinc-100">
-                Запретить внешние ссылки
-              </span>
-              <span class="block text-xs text-slate-500 dark:text-zinc-400">
-                Посты с внешними ссылками не будут попадать в это сообщество, а новые публикации с такими ссылками будут отклоняться.
-              </span>
-            </span>
-          </label>
-
           {#if canManageComunModerators()}
-            <div class="flex flex-col gap-2">
-              <div class="text-sm text-slate-700 dark:text-zinc-300">Модераторы сообщества</div>
+            <div class="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/40">
+              <div>
+                <div class="text-base font-semibold text-slate-950 dark:text-zinc-50">Модераторы сообщества</div>
+                <div class="mt-1 text-sm text-slate-500 dark:text-zinc-400">
+                  Найдите пользователя и добавьте его в команду модерации.
+                </div>
+              </div>
               <input
                 bind:value={settingsUserSearch}
                 placeholder="Поиск пользователя по имени или логину..."
@@ -1416,8 +1389,13 @@
             </div>
           {/if}
 
-          <div class="flex flex-col gap-2">
-            <div class="text-sm text-slate-700 dark:text-zinc-300">Черный список авторов</div>
+          <div class="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/40">
+            <div>
+              <div class="text-base font-semibold text-slate-950 dark:text-zinc-50">Черный список авторов</div>
+              <div class="mt-1 text-sm text-slate-500 dark:text-zinc-400">
+                Посты выбранных авторов будут исключаться из сообщества.
+              </div>
+            </div>
             <input
               bind:value={settingsAuthorSearch}
               placeholder="Поиск автора по логину или названию..."
@@ -1472,10 +1450,12 @@
             </div>
           </div>
 
-          <div class="flex flex-col gap-2">
-            <div class="text-sm text-slate-700 dark:text-zinc-300">Черный список тегов</div>
-            <div class="text-xs text-slate-500 dark:text-zinc-400">
-              Посты с этими тегами будут исключаться из сообщества.
+          <div class="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/40">
+            <div>
+              <div class="text-base font-semibold text-slate-950 dark:text-zinc-50">Черный список тегов</div>
+              <div class="mt-1 text-sm text-slate-500 dark:text-zinc-400">
+                Посты с этими тегами будут исключаться из сообщества.
+              </div>
             </div>
             <input
               bind:value={settingsBlockedTagSearch}
@@ -1525,9 +1505,8 @@
                 class="mt-0.5"
                 checked={Boolean(settingsDraft.glossary_enabled)}
                 on:change={() =>
-                  (settingsDraft = {
-                    ...settingsDraft,
-                    glossary_enabled: !Boolean(settingsDraft.glossary_enabled),
+                  patchSettingsDraft({
+                    glossary_enabled: !Boolean(settingsDraft?.glossary_enabled),
                   })}
               />
               <span class="min-w-0">
@@ -1538,11 +1517,26 @@
               <input
                 type="checkbox"
                 class="mt-0.5"
-                checked={Boolean(settingsDraft.roadmap_enabled ?? true)}
+                checked={Boolean(settingsDraft.knowledge_base_enabled ?? false)}
                 on:change={() =>
-                  (settingsDraft = {
-                    ...settingsDraft,
-                    roadmap_enabled: !Boolean(settingsDraft.roadmap_enabled ?? true),
+                  patchSettingsDraft({
+                    knowledge_base_enabled: !Boolean(
+                      settingsDraft?.knowledge_base_enabled ?? false
+                    ),
+                  })}
+              />
+              <span class="min-w-0">
+                <span class="block text-sm text-slate-900 dark:text-zinc-100">База знаний</span>
+              </span>
+            </label>
+            <label class="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                class="mt-0.5"
+                checked={Boolean(settingsDraft.roadmap_enabled ?? false)}
+                on:change={() =>
+                  patchSettingsDraft({
+                    roadmap_enabled: !Boolean(settingsDraft?.roadmap_enabled ?? false),
                   })}
               />
               <span class="min-w-0">
@@ -1552,44 +1546,64 @@
           </div>
 
           <div class="flex flex-col gap-2">
-            <div class="text-sm text-slate-700 dark:text-zinc-300">Доступные шаблоны публикаций</div>
-            <TemplateTypeDropdown
-              options={settingsTemplateTypeOptions}
-              selectedValues={comunAllowedTemplateTypes(settingsDraft)}
-              disabled={settingsSaving}
-              actionLabel={canManageComunModerators() ? 'Создать шаблон' : ''}
-              customItems={canManageComunModerators() ? customTemplateManagementItems(settingsDraft) : []}
-              customItemsTitle="Пользовательские шаблоны"
-              on:change={(event) => setDraftAllowedTemplateTypes(event.detail)}
-              on:action={openCreateCustomTemplateEditor}
-              on:customitemclick={(event) => openEditCustomTemplateEditor(Number(event.detail))}
-            />
-          </div>
-
-          <div class="flex flex-col gap-2">
             <div class="text-sm text-slate-700 dark:text-zinc-300">Внутренние категории</div>
-            <div class="flex gap-2">
-              <input
-                bind:value={settingsCategorySearch}
-                placeholder="Например: Релизы, Баги, Исследования"
-                class="flex-1 rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"
-              />
-              <Button
-                size="sm"
-                on:click={createCategoryAndSelectDraft}
-                disabled={settingsCategoryCreating || !normalizedCategoryCreateValue}
-              >
-                {settingsCategoryCreating ? '...' : 'Добавить'}
-              </Button>
-            </div>
-            {#if normalizedCategoryCreateValue && !hasExactCategoryMatch}
-              <div class="rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900/60 px-3 py-2 text-sm text-slate-700 dark:text-zinc-300">
-                Новой категории пока нет. Нажмите `Добавить`, чтобы создать ее только для этого сообщества и сразу подключить.
+            <div class="flex flex-col gap-2">
+              <div class="rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-3 flex flex-col gap-3">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <div class="block text-sm font-medium text-slate-900 dark:text-zinc-100">Без категории</div>
+                  </div>
+                </div>
+                <TemplateTypeDropdown
+                  options={settingsTemplateTypeOptions}
+                  selectedValues={comunAllowedTemplateTypes(settingsDraft)}
+                  disabled={settingsSaving}
+                  actionLabel={canManageComunModerators() ? 'Создать шаблон' : ''}
+                  customItems={canManageComunModerators() ? customTemplateManagementItems(settingsDraft) : []}
+                  customItemsTitle="Пользовательские шаблоны"
+                  on:change={(event) => setDraftAllowedTemplateTypes(event.detail)}
+                  on:action={openCreateCustomTemplateEditor}
+                  on:customitemclick={(event) => openEditCustomTemplateEditor(String(event.detail))}
+                />
+                <div class="flex flex-col gap-2 rounded-xl bg-slate-50 dark:bg-zinc-900/60 px-3 py-3">
+                  <label class="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      class="mt-0.5"
+                      checked={Boolean(settingsDraft.only_moderators_can_post)}
+                      on:change={() =>
+                        patchSettingsDraft({
+                          only_moderators_can_post: !Boolean(settingsDraft?.only_moderators_can_post),
+                        })}
+                    />
+                    <span class="min-w-0">
+                      <span class="block text-sm text-slate-900 dark:text-zinc-100">
+                        Писать могут только администраторы и модераторы
+                      </span>
+                    </span>
+                  </label>
+                  {#if canManageComunModerators()}
+                    <label class="flex items-start gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        class="mt-0.5"
+                        checked={!settingsDraft.hide_from_home}
+                        on:change={() =>
+                          patchSettingsDraft({
+                            hide_from_home: !Boolean(settingsDraft?.hide_from_home),
+                          })}
+                      />
+                      <span class="min-w-0">
+                        <span class="block text-sm text-slate-900 dark:text-zinc-100">
+                          Показывать в Горячем
+                        </span>
+                      </span>
+                    </label>
+                  {/if}
+                </div>
               </div>
-            {/if}
-            <div class="grid gap-2 sm:grid-cols-2">
-              {#if filteredCategoryOptions.length}
-                {#each filteredCategoryOptions as category}
+              {#if visibleCategoryOptions.length}
+                {#each visibleCategoryOptions as category}
                   <div class="rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-3 flex flex-col gap-3">
                     <div class="flex items-start justify-between gap-3">
                       <div class="min-w-0">
@@ -1611,23 +1625,72 @@
                         </svg>
                       </button>
                     </div>
-                    <div class="flex flex-col gap-2">
-                      <TemplateTypeDropdown
-                        options={settingsTemplateTypeOptions}
-                        selectedValues={comunCategoryTemplateTypes(category)}
-                        disabled={settingsSaving}
-                        allowEmpty={true}
-                        placeholder="Шаблоны категории"
-                        on:change={(event) => setDraftCategoryTemplateTypes(category.id, event.detail)}
-                      />
+                    <TemplateTypeDropdown
+                      options={settingsTemplateTypeOptions}
+                      selectedValues={comunCategoryTemplateTypes(category)}
+                      disabled={settingsSaving}
+                      allowEmpty={true}
+                      placeholder="Шаблоны категории"
+                      on:change={(event) => setDraftCategoryTemplateTypes(category.id, event.detail)}
+                    />
+                    <div class="flex flex-col gap-2 rounded-xl bg-slate-50 dark:bg-zinc-900/60 px-3 py-3">
+                      <label class="flex items-start gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          class="mt-0.5"
+                          checked={Boolean(category.only_moderators_can_post)}
+                          on:change={() => toggleDraftCategoryOnlyModerators(category.id)}
+                        />
+                        <span class="min-w-0">
+                          <span class="block text-sm text-slate-900 dark:text-zinc-100">
+                            Писать могут только администраторы и модераторы
+                          </span>
+                        </span>
+                      </label>
+                      {#if canManageComunModerators()}
+                        <label class="flex items-start gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            class="mt-0.5"
+                            checked={!category.hide_from_home}
+                            on:change={() => toggleDraftCategoryHideFromHome(category.id)}
+                          />
+                          <span class="min-w-0">
+                            <span class="block text-sm text-slate-900 dark:text-zinc-100">
+                              Показывать в Горячем
+                            </span>
+                          </span>
+                        </label>
+                      {/if}
                     </div>
                   </div>
                 {/each}
               {:else}
-                <div class="rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-2 text-sm text-slate-500 dark:text-zinc-400 sm:col-span-2">
-                  {normalizedCategorySearch ? 'Категории не найдены' : 'Категории пока не добавлены'}
+                <div class="rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-2 text-sm text-slate-500 dark:text-zinc-400">
+                  Категории пока не добавлены
                 </div>
               {/if}
+            </div>
+            <div class="flex flex-col gap-2 pt-2">
+              <input
+                bind:value={settingsCategorySearch}
+                placeholder="Название новой категории"
+                class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"
+              />
+              {#if normalizedCategoryCreateValue && !hasExactCategoryMatch}
+                <div class="rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900/60 px-3 py-2 text-sm text-slate-700 dark:text-zinc-300">
+                  Новой категории пока нет. Нажмите `Добавить категорию`, чтобы создать ее только для этого сообщества и сразу подключить.
+                </div>
+              {/if}
+              <div>
+                <Button
+                  size="sm"
+                  on:click={createCategoryAndSelectDraft}
+                  disabled={settingsCategoryCreating || !normalizedCategoryCreateValue || hasExactCategoryMatch}
+                >
+                  {settingsCategoryCreating ? '...' : 'Добавить категорию'}
+                </Button>
+              </div>
             </div>
           </div>
         {:else}

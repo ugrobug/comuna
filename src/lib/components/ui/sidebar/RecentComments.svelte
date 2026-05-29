@@ -4,6 +4,7 @@
   import RelativeDate from '$lib/components/util/RelativeDate.svelte'
   import { ChatBubbleLeftEllipsis, Icon } from 'svelte-hero-icons'
   import { buildBackendPostPath, buildRecentCommentsUrl } from '$lib/api/backend'
+  import { cachedJson } from '$lib/api/publicCache'
 
   type RecentComment = {
     id: number
@@ -20,6 +21,7 @@
       id: number
       title: string
     }
+    link_url?: string | null
   }
 
   let comments: RecentComment[] = []
@@ -27,7 +29,7 @@
   let error: string | null = null
 
   const buildPostLink = (comment: RecentComment) =>
-    `${buildBackendPostPath(comment.post)}#comments`
+    comment.link_url || `${buildBackendPostPath(comment.post)}#comments`
 
   const previewBody = (body: string) => {
     const normalized = body.replace(/\s+/g, ' ').trim()
@@ -40,11 +42,11 @@
 
   async function fetchRecentComments() {
     try {
-      const response = await fetch(buildRecentCommentsUrl(5))
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
-      }
-      const data = await response.json()
+      const data = await cachedJson<{ comments?: RecentComment[] }>(
+        'public:recent-comments:5',
+        buildRecentCommentsUrl(5),
+        { ttlMs: 30_000 }
+      )
       comments = data.comments ?? []
     } catch (e: unknown) {
       error = e instanceof Error ? e.message : 'Неизвестная ошибка'

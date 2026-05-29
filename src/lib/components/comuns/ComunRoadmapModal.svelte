@@ -222,17 +222,8 @@
     color: rgb(15 23 42);
   }
 
-  .roadmap-subtitle {
-    color: rgb(71 85 105);
-    line-height: 1.5;
-  }
-
   :global(.dark) .roadmap-title {
     color: rgb(244 244 245);
-  }
-
-  :global(.dark) .roadmap-subtitle {
-    color: rgb(161 161 170);
   }
 
   .roadmap-stat-card {
@@ -346,6 +337,7 @@
 
   .roadmap-mini-snippet {
     display: -webkit-box;
+    line-clamp: 3;
     -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;

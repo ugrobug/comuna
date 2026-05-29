@@ -12,6 +12,7 @@
     backendPostToPostView,
     buildBackendPostPath,
     buildTagPostsUrl,
+    isSpecialProjectPost,
   } from '$lib/api/backend'
   import { userSettings } from '$lib/settings'
   import { normalizeTag } from '$lib/tags'
@@ -42,7 +43,7 @@
   $: tagKey = tagLemma
   $: isBlacklisted = Boolean(tagKey && $userSettings.tagRules?.[tagKey] === 'hide')
 
-  $: siteTitle = env.PUBLIC_SITE_TITLE || 'Comuna'
+  $: siteTitle = env.PUBLIC_SITE_TITLE || 'Тамбур'
   $: title = `Посты по тегу «${tagName}» — ${siteTitle}`
   $: description = `Посты по тегу «${tagName}» на ${siteTitle}.`
   $: canonicalUrl = new URL(
@@ -63,7 +64,7 @@
 
   const buildPageUrl = (offset: number) => {
     if (!tagName) return ''
-    const url = new URL(buildTagPostsUrl(tagLemma || tagName))
+    const url = new URL(buildTagPostsUrl(tagLemma || tagName), $page.url.origin)
     url.searchParams.set('limit', String(pageSize))
     url.searchParams.set('offset', String(offset))
     return url.toString()
@@ -128,15 +129,33 @@
     }
   })
 
-  const addToBlacklist = () => {
+  const toggleBlacklist = () => {
     if (!tagKey) return
-    userSettings.update((settings) => {
-      const next = { ...settings, tagRules: { ...settings.tagRules } }
-      next.tagRules[tagKey] = 'hide'
-      return next
-    })
+    if (isBlacklisted) {
+      userSettings.update((settings) => {
+        const nextRules = { ...(settings.tagRules ?? {}) }
+        delete nextRules[tagKey]
+        return {
+          ...settings,
+          tagRules: nextRules,
+        }
+      })
+      toast({
+        content: 'Посты с этим тегом снова будут отображаться',
+        type: 'success',
+      })
+      return
+    }
+
+    userSettings.update((settings) => ({
+      ...settings,
+      tagRules: {
+        ...(settings.tagRules ?? {}),
+        [tagKey]: 'hide',
+      },
+    }))
     toast({
-      content: `Тег #${tagName} добавлен в черный список`,
+      content: 'Посты с этим тегом больше не будут отображаться',
       type: 'success',
     })
   }
@@ -151,10 +170,9 @@
     <Button
       size="sm"
       color="secondary"
-      on:click={addToBlacklist}
-      disabled={isBlacklisted}
+      on:click={toggleBlacklist}
     >
-      {isBlacklisted ? 'Тег уже в черном списке' : 'Добавить тег в черный список'}
+      {isBlacklisted ? 'Убрать из черного списка' : 'Добавить тег в черный список'}
     </Button>
   </div>
 
@@ -174,6 +192,7 @@
           communityUrlOverride={backendPostCommunityPath(backendPost)}
           subscribeUrl={backendPost.channel_url ?? backendPost.author?.channel_url}
           subscribeLabel="Подписаться"
+          hideSubscribe={isSpecialProjectPost(backendPost)}
         />
       {/each}
     </div>

@@ -65,7 +65,7 @@
 		{$$props.class || ''}"
       class:rounded-b-none={$$slots.suffix}
       class:border-b-0={$$slots.suffix}
-    />
+    ></textarea>
     {#if $$slots.suffix}
       <div
         class="{borderClass} {sizeClass[

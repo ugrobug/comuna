@@ -5,6 +5,7 @@
     backendPostCommunityPath,
     backendPostToPostView,
     buildBackendPostPath,
+    isSpecialProjectPost,
     type BackendPost,
   } from '$lib/api/backend'
 
@@ -28,6 +29,7 @@
         communityUrlOverride={backendPostCommunityPath(backendPost)}
         subscribeUrl={backendPost.channel_url ?? backendPost.author?.channel_url}
         subscribeLabel="Подписаться"
+        hideSubscribe={isSpecialProjectPost(backendPost)}
       />
     {/each}
   </div>

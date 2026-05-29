@@ -12,11 +12,15 @@ POST_TEMPLATE_TYPE_BASIC = "basic"
 POST_TEMPLATE_TYPE_MOVIE_REVIEW = "movie_review"
 POST_TEMPLATE_TYPE_POST_VOTE_POLL = "post_vote_poll"
 POST_TEMPLATE_TYPE_MUSIC_RELEASE = "music_release"
+POST_TEMPLATE_TYPE_TWEET = "tweet"
+POST_TEMPLATE_TYPE_BUG_REPORT = "bug_report"
 POST_TEMPLATE_TYPE_CHOICES = (
     (POST_TEMPLATE_TYPE_BASIC, "Пост"),
     (POST_TEMPLATE_TYPE_MOVIE_REVIEW, "Кинообзор"),
     (POST_TEMPLATE_TYPE_POST_VOTE_POLL, "Голосование за посты"),
     (POST_TEMPLATE_TYPE_MUSIC_RELEASE, "Музыкальный релиз"),
+    (POST_TEMPLATE_TYPE_TWEET, "Твит"),
+    (POST_TEMPLATE_TYPE_BUG_REPORT, "Баг-репорт"),
 )
 POST_TEMPLATE_TYPE_VALUES = {value for value, _label in POST_TEMPLATE_TYPE_CHOICES}
 POST_TEMPLATE_TYPE_LABELS = dict(POST_TEMPLATE_TYPE_CHOICES)
@@ -87,6 +91,8 @@ POST_TEMPLATE_EDITOR_BLOCKS_BY_TEMPLATE = {
     POST_TEMPLATE_TYPE_MOVIE_REVIEW: POST_TEMPLATE_EDITOR_BLOCK_ALL_VALUES,
     POST_TEMPLATE_TYPE_POST_VOTE_POLL: POST_TEMPLATE_EDITOR_BLOCK_BASIC_VALUES,
     POST_TEMPLATE_TYPE_MUSIC_RELEASE: POST_TEMPLATE_EDITOR_BLOCK_BASIC_VALUES,
+    POST_TEMPLATE_TYPE_TWEET: (POST_TEMPLATE_EDITOR_BLOCK_GALLERY,),
+    POST_TEMPLATE_TYPE_BUG_REPORT: POST_TEMPLATE_EDITOR_BLOCK_BASIC_VALUES,
 }
 
 COMUN_CUSTOM_TEMPLATE_BLOCK_PLACEMENT_AVAILABLE = "available"
@@ -141,6 +147,18 @@ COMUN_CUSTOM_TEMPLATE_FIELD_PLACEMENT_OPTION_ITEMS = [
 
 
 def default_allowed_post_templates() -> list[str]:
+    try:
+        active_values = configured_post_template_type_values()
+        if POST_TEMPLATE_TYPE_BASIC in active_values:
+            return [POST_TEMPLATE_TYPE_BASIC]
+        if active_values:
+            for template_type, _label in post_template_type_choices():
+                if template_type in active_values:
+                    return [template_type]
+        if PostTemplateConfig.objects.exists():
+            return []
+    except (OperationalError, ProgrammingError):
+        pass
     return [POST_TEMPLATE_TYPE_BASIC]
 
 
@@ -152,19 +170,24 @@ def normalize_post_template_type_code(value: object) -> str:
 
 
 def configured_post_template_type_values() -> set[str]:
-    values = set(POST_TEMPLATE_TYPE_VALUES)
     try:
-        values.update(
+        values = {
             code
             for code in (
                 normalize_post_template_type_code(item)
-                for item in PostTemplateConfig.objects.values_list("template_type", flat=True)
+                for item in PostTemplateConfig.objects.filter(is_active=True).values_list(
+                    "template_type", flat=True
+                )
             )
             if code
-        )
+        }
+        if values:
+            return values
+        if PostTemplateConfig.objects.exists():
+            return set()
     except (OperationalError, ProgrammingError):
-        return values
-    return values
+        return set(POST_TEMPLATE_TYPE_VALUES)
+    return set(POST_TEMPLATE_TYPE_VALUES)
 
 
 def is_post_template_type_configured(value: object) -> bool:
@@ -176,41 +199,54 @@ def post_template_type_label(template_type: object) -> str:
     code = normalize_post_template_type_code(template_type)
     if not code:
         return ""
-    if code in POST_TEMPLATE_TYPE_LABELS:
-        return POST_TEMPLATE_TYPE_LABELS[code]
     try:
-        config = (
-            PostTemplateConfig.objects.select_related("custom_template")
-            .filter(template_type=code)
-            .first()
+        configs = list(
+            PostTemplateConfig.objects.select_related("custom_template").filter(template_type=code)[:2]
         )
     except (OperationalError, ProgrammingError):
-        config = None
-    if config:
-        return config.display_label
+        return POST_TEMPLATE_TYPE_LABELS.get(code, code)
+    active_config = next((item for item in configs if item.is_active), None)
+    if active_config:
+        return active_config.display_label
+    if configs:
+        return code
+    if code in POST_TEMPLATE_TYPE_LABELS:
+        return POST_TEMPLATE_TYPE_LABELS[code]
     return code
 
 
 def post_template_type_choices() -> tuple[tuple[str, str], ...]:
-    choices: list[tuple[str, str]] = [
-        (str(value), str(label)) for value, label in POST_TEMPLATE_TYPE_CHOICES
-    ]
-    seen = {value for value, _label in choices}
     try:
-        configs = (
+        configs = list(
             PostTemplateConfig.objects.select_related("custom_template")
-            .all()
+            .filter(is_active=True)
             .order_by("template_type")
         )
-        for config in configs:
-            code = normalize_post_template_type_code(config.template_type)
-            if not code or code in seen:
-                continue
-            seen.add(code)
-            choices.append((code, config.display_label))
+        if configs:
+            configs_by_code = {
+                normalize_post_template_type_code(config.template_type): config for config in configs
+            }
+            choices: list[tuple[str, str]] = []
+            seen: set[str] = set()
+            for value, _label in POST_TEMPLATE_TYPE_CHOICES:
+                code = normalize_post_template_type_code(value)
+                config = configs_by_code.get(code)
+                if not code or not config:
+                    continue
+                seen.add(code)
+                choices.append((code, config.display_label))
+            for config in configs:
+                code = normalize_post_template_type_code(config.template_type)
+                if not code or code in seen:
+                    continue
+                seen.add(code)
+                choices.append((code, config.display_label))
+            return tuple(choices)
+        if PostTemplateConfig.objects.exists():
+            return ()
     except (OperationalError, ProgrammingError):
-        pass
-    return tuple(choices)
+        return tuple((str(value), str(label)) for value, label in POST_TEMPLATE_TYPE_CHOICES)
+    return tuple((str(value), str(label)) for value, label in POST_TEMPLATE_TYPE_CHOICES)
 
 
 def normalize_allowed_post_templates(raw_value: object) -> list[str]:
@@ -320,6 +356,11 @@ class PostTemplateConfig(models.Model):
         verbose_name="Название шаблона",
         help_text="Название, которое пользователи видят в выборе типа публикации.",
     )
+    description = models.TextField(
+        blank=True,
+        verbose_name="Описание шаблона",
+        help_text="Короткая подсказка для пользователей в списке выбора типа публикации.",
+    )
     custom_template = models.OneToOneField(
         "feeds.ComunCustomPostTemplate",
         null=True,
@@ -333,6 +374,11 @@ class PostTemplateConfig(models.Model):
         blank=True,
         verbose_name="Доступные блоки редактора",
         help_text="Блоки редактора, которые можно использовать внутри шаблона.",
+    )
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name="Активен",
+        help_text="Неактивный шаблон скрыт из выбора и не применяется к постам.",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -389,6 +435,7 @@ class PostTemplateConfig(models.Model):
                 str(getattr(custom_template, "name", "") or "").strip()
                 or POST_TEMPLATE_TYPE_LABELS.get(template_type, template_type)
             )[:120]
+        self.description = re.sub(r"\s+", " ", str(self.description or "").strip())[:500]
         self.enabled_editor_blocks = normalize_template_editor_blocks_for_template(
             template_type, self.enabled_editor_blocks
         )
@@ -525,6 +572,30 @@ class PostRatingVote(models.Model):
         return f"{self.post_id}:{self.user_id}:{self.block_id}:{self.value}"
 
 
+class PostBugReportConfirmation(models.Model):
+    post = models.ForeignKey(
+        "feeds.Post",
+        on_delete=models.CASCADE,
+        related_name="bug_report_confirmations",
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="bug_report_confirmations",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = "feeds"
+        unique_together = ("post", "user")
+        verbose_name = "Подтверждение баг-репорта"
+        verbose_name_plural = "Подтверждения баг-репортов"
+
+    def __str__(self) -> str:
+        return f"{self.post_id}:{self.user_id}"
+
+
 __all__ = [
     "COMUN_CUSTOM_TEMPLATE_BLOCK_PLACEMENT_AVAILABLE",
     "COMUN_CUSTOM_TEMPLATE_BLOCK_PLACEMENT_HEADER",
@@ -549,6 +620,7 @@ __all__ = [
     "POST_TEMPLATE_TYPE_MOVIE_REVIEW",
     "POST_TEMPLATE_TYPE_POST_VOTE_POLL",
     "POST_TEMPLATE_TYPE_MUSIC_RELEASE",
+    "POST_TEMPLATE_TYPE_TWEET",
     "POST_TEMPLATE_TYPE_CHOICES",
     "POST_TEMPLATE_TYPE_VALUES",
     "POST_TEMPLATE_TYPE_LABELS",
@@ -564,6 +636,7 @@ __all__ = [
     "PostTemplateConfig",
     "PostPollVote",
     "PostRatingVote",
+    "PostBugReportConfirmation",
     "default_allowed_post_templates",
     "configured_post_template_type_values",
     "is_post_template_type_configured",

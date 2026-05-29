@@ -50,6 +50,7 @@
     try {
       const response = await fetch(buildPostRatingVoteUrl(postId), {
         method: 'POST',
+        credentials: 'include',
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',

@@ -78,14 +78,13 @@
       <VirtualFeed
         posts={data.posts?.posts || []}
         community={true}
-        loading={$navigating}
         feedId="community"
         feedData={{
           posts: data.posts || { posts: [] },
           cursor: { next: data.cursor?.next || undefined },
           community_name: data.community_name,
           limit: data.limit || 20,
-          sort: data.sort || "Hot"
+          sort: (data.sort || 'Hot') as SortType
         }}
       />
     {/if}

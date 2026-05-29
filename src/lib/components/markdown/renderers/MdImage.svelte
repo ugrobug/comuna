@@ -6,37 +6,41 @@
     optimizeImageURL,
   } from '$lib/components/lemmy/post/helpers'
   import PostIframe from '$lib/components/lemmy/post/media/PostIframe.svelte'
+  import { getSafeUrl } from '$lib/security/url'
 
   export let href: string
   export let title: string | undefined = undefined
   export let text: string = ''
 
-  $: type = mediaType(href, 'cozy')
+  $: safeHref = getSafeUrl(href, { allowRelative: true })
+  $: type = safeHref ? mediaType(safeHref, 'cozy') : null
 </script>
 
-<div
-  class="w-auto h-auto max-h-96 rounded-2xl p-2 border border-slate-200 dark:border-zinc-800
-  inline-block flex justify-center"
->
-  {#if type == 'video' || type == 'embed' || type == 'iframe'}
-    <PostIframe
-      type={iframeType(href)}
-      url={href}
-      opened={true}
-      autoplay={false}
-      class="w-auto h-auto max-h-80 inline-block rounded-lg"
-    />
-  {:else}
-    <button
-      class="inline"
-      on:click={() => showImage(optimizeImageURL(href, -1), text)}
-    >
-      <img
-        src={optimizeImageURL(href, 1024)}
-        {title}
-        alt={text}
-        class="object-contain w-auto h-auto max-h-80 inline rounded-lg"
+{#if safeHref}
+  <div
+    class="w-auto h-auto max-h-96 rounded-2xl p-2 border border-slate-200 dark:border-zinc-800
+    inline-block flex justify-center"
+  >
+    {#if type == 'video' || type == 'embed' || type == 'iframe'}
+      <PostIframe
+        type={iframeType(safeHref)}
+        url={safeHref}
+        opened={true}
+        autoplay={false}
+        class="w-auto h-auto max-h-80 inline-block rounded-lg"
       />
-    </button>
-  {/if}
-</div>
+    {:else}
+      <button
+        class="inline"
+        on:click={() => showImage(optimizeImageURL(safeHref, -1), text)}
+      >
+        <img
+          src={optimizeImageURL(safeHref, 1024)}
+          {title}
+          alt={text}
+          class="object-contain w-auto h-auto max-h-80 inline rounded-lg"
+        />
+      </button>
+    {/if}
+  </div>
+{/if}

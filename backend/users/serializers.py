@@ -4,7 +4,8 @@ from django.contrib.auth import get_user_model
 from django.http import HttpRequest
 
 from communities import service as community_service
-from ratings.service import author_rating_value
+from ratings.service import calculate_author_rating
+from telegram_integration.media import safe_public_url
 from users.models import AuthorAdmin
 
 User = get_user_model()
@@ -24,7 +25,7 @@ def _serialize_user(user: User) -> dict:
         site_profile = None
 
     author_links = (
-        AuthorAdmin.objects.select_related("author", "author__rubric")
+        AuthorAdmin.objects.select_related("author")
         .filter(user=user, verified_at__isnull=False)
         .order_by("author__username")
     )
@@ -42,13 +43,11 @@ def _serialize_user(user: User) -> dict:
                 "title": author.title,
                 "channel_url": author.invite_url or author.channel_url,
                 "avatar_url": _fv()._author_avatar_url(None, author),
-                "rubric": author.rubric.name if author.rubric else None,
-                "rubric_slug": author.rubric.slug if author.rubric else None,
                 "auto_publish": author.auto_publish,
                 "publish_delay_days": author.publish_delay_days,
                 "notify_comments": author.notify_comments,
                 "invite_url": author.invite_url,
-                "author_rating": author_rating_value(author.rating_total),
+                "author_rating": round(float(calculate_author_rating(author)), 2),
                 "linked_comun_slug": linked_comun.slug if linked_comun and linked_comun.is_active else None,
                 "linked_comun_name": linked_comun.name if linked_comun and linked_comun.is_active else None,
             }
@@ -60,8 +59,23 @@ def _serialize_user(user: User) -> dict:
         "id": user.id,
         "username": user.username,
         "email": user.email,
+        "email_verified": bool(
+            getattr(site_profile, "email_verified_at", None) if site_profile else None
+        ),
+        "telegram_linked": hasattr(user, "telegram_account"),
+        "telegram_username": (
+            getattr(getattr(user, "telegram_account", None), "username", "") or None
+            if hasattr(user, "telegram_account")
+            else None
+        ),
+        "vk_linked": hasattr(user, "vk_account"),
+        "vk_username": (
+            getattr(getattr(user, "vk_account", None), "username", "") or None
+            if hasattr(user, "vk_account")
+            else None
+        ),
         "display_name": (site_profile.display_name if site_profile else "") or None,
-        "avatar_url": (site_profile.avatar_url if site_profile else "") or avatar_url,
+        "avatar_url": safe_public_url(site_profile.avatar_url if site_profile else "") or avatar_url,
         "is_staff": user.is_staff,
         "is_author": bool(authors),
         "authors": authors,
@@ -106,7 +120,6 @@ def _serialize_public_site_user_profile(
 
 def _serialize_public_site_user_author_card(request: HttpRequest, link: AuthorAdmin) -> dict:
     author = link.author
-    rubric = author.rubric
     return {
         "id": author.id,
         "username": author.username,
@@ -114,8 +127,6 @@ def _serialize_public_site_user_author_card(request: HttpRequest, link: AuthorAd
         "channel_url": (author.invite_url or author.channel_url or "").strip() or None,
         "avatar_url": _fv()._author_avatar_url(request, author),
         "description": (author.description or "").strip() or None,
-        "rubric": rubric.name if rubric else None,
-        "rubric_slug": rubric.slug if rubric else None,
     }
 
 

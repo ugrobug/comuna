@@ -1,7 +1,4 @@
-from django import forms
 from django.contrib import admin
-
-from editor.models import post_template_type_choices
 
 from .models import (
     Author,
@@ -9,37 +6,11 @@ from .models import (
     PostComment,
     PostCommentLike,
     PostLike,
-    Rubric,
     StaticPageContent,
     Tag,
     TagRelation,
     TagRelationType,
-    normalize_allowed_post_templates,
 )
-
-
-class RubricAdminForm(forms.ModelForm):
-    allowed_post_templates = forms.MultipleChoiceField(
-        label="Доступные шаблоны поста",
-        choices=(),
-        required=False,
-        widget=forms.CheckboxSelectMultiple,
-        help_text="Разрешенные шаблоны для публикации в рубрике.",
-    )
-
-    class Meta:
-        model = Rubric
-        fields = "__all__"
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fields["allowed_post_templates"].choices = post_template_type_choices()
-        self.fields["allowed_post_templates"].initial = normalize_allowed_post_templates(
-            getattr(self.instance, "allowed_post_templates", None)
-        )
-
-    def clean_allowed_post_templates(self):
-        return normalize_allowed_post_templates(self.cleaned_data.get("allowed_post_templates"))
 
 
 @admin.register(Author)
@@ -47,7 +18,6 @@ class AuthorAdmin(admin.ModelAdmin):
     list_display = (
         "username",
         "title",
-        "rubric",
         "auto_publish",
         "publish_delay_days",
         "notify_comments",
@@ -58,7 +28,6 @@ class AuthorAdmin(admin.ModelAdmin):
         "created_at",
     )
     list_filter = (
-        "rubric",
         "auto_publish",
         "notify_comments",
         "shadow_banned",
@@ -74,19 +43,17 @@ class PostAdmin(admin.ModelAdmin):
     list_display = (
         "title",
         "author",
-        "rubric",
         "message_id",
         "is_pending",
         "is_blocked",
         "publish_at",
         "created_at",
     )
-    list_filter = ("is_pending", "is_blocked", "author", "rubric")
+    list_filter = ("is_pending", "is_blocked", "author")
     search_fields = ("title", "content", "author__username")
-    raw_id_fields = ("author", "rubric")
+    raw_id_fields = ("author",)
     fields = (
         "author",
-        "rubric",
         "tags",
         "message_id",
         "title",
@@ -130,37 +97,6 @@ class TagRelationAdmin(admin.ModelAdmin):
 class TagRelationTypeAdmin(admin.ModelAdmin):
     list_display = ("name", "is_bidirectional", "created_at")
     search_fields = ("name",)
-
-
-@admin.register(Rubric)
-class RubricAdmin(admin.ModelAdmin):
-    form = RubricAdminForm
-    list_display = (
-        "name",
-        "slug",
-        "hide_from_home",
-        "allow_for_telegram_channel",
-        "is_active",
-        "is_hidden",
-        "sort_order",
-    )
-    list_filter = ("hide_from_home", "allow_for_telegram_channel", "is_active", "is_hidden")
-    search_fields = ("name", "slug")
-    fields = (
-        "name",
-        "slug",
-        "description",
-        "icon_url",
-        "cover_image_url",
-        "subscribe_url",
-        "home_limit",
-        "hide_from_home",
-        "allow_for_telegram_channel",
-        "allowed_post_templates",
-        "sort_order",
-        "is_active",
-        "is_hidden",
-    )
 
 
 @admin.register(StaticPageContent)

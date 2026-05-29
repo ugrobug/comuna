@@ -19,20 +19,28 @@
   } from '$lib/siteAuth'
   import {
     buildComunsUrl,
+    buildTagsListUrl,
     type BackendComun,
   } from '$lib/api/backend'
   import PostTemplateFields from '$lib/components/site/post-templates/PostTemplateFields.svelte'
   import {
     POST_TEMPLATE_TYPE_OPTIONS,
+    TWEET_TEMPLATE_MAX_LENGTH,
     buildPostTemplatePayload,
+    createEmptyBugReportTemplateData,
     createEmptyMusicReleaseTemplateData,
     createEmptyMovieReviewTemplateData,
     createEmptyPostVotePollTemplateData,
+    isRecognizedPostTemplateType,
+    isTweetTemplateType,
     normalizeAllowedPostTemplateTypeOverrides,
     normalizeAllowedPostTemplateTypes,
     normalizePostTemplateTypeOptions,
     normalizeTemplateEditorBlockSettings,
     resolveEnabledTemplateEditorBlockTypes,
+    tweetTemplateCharacterCount,
+    validateTweetTemplateContent,
+    type BugReportTemplateData,
     type MusicReleaseTemplateData,
     type MovieReviewTemplateData,
     type PostVotePollTemplateData,
@@ -61,9 +69,9 @@
   let lastObservedFormSnapshot = ''
   let currentFormSnapshot = ''
   let autosaveTimeout: ReturnType<typeof setTimeout> | null = null
-  let rubricMenuOpen = false
-  let rubricSearchQuery = ''
-  let rubricMenuRef: HTMLDivElement | null = null
+  let comunMenuOpen = false
+  let comunSearchQuery = ''
+  let comunMenuRef: HTMLDivElement | null = null
   let filteredComuns: BackendComun[] = []
   let identityMenuOpen = false
   let identityMenuRef: HTMLDivElement | null = null
@@ -82,6 +90,7 @@
   let createMovieReviewData: MovieReviewTemplateData = createEmptyMovieReviewTemplateData()
   let createPostVotePollData: PostVotePollTemplateData = createEmptyPostVotePollTemplateData()
   let createMusicReleaseData: MusicReleaseTemplateData = createEmptyMusicReleaseTemplateData()
+  let createBugReportData: BugReportTemplateData = createEmptyBugReportTemplateData()
   let templateEditorBlockSettings: TemplateEditorBlockSettings = {}
   let firstDraftChangeAt: number | null = null
   let firstDraftAutosaveCompleted = false
@@ -89,11 +98,20 @@
   let draftSavedNoticeTimer: ReturnType<typeof setTimeout> | null = null
   let draftSavedNoticeHideTimer: ReturnType<typeof setTimeout> | null = null
   let comuns: BackendComun[] = []
+  let tweetCharacterCountValue = 0
+  let tagOptions: TagSuggestion[] = []
+  let tagsLoading = false
+  let tagInputFocused = false
+  let tagInputRef: HTMLInputElement | null = null
+  let parsedCreateTags: string[] = []
+  let selectedTagKeySet = new Set<string>()
+  let currentTagQuery = ''
+  let tagSuggestions: TagSuggestion[] = []
 
   const DRAFT_NOTICE_DELAY_MS = 10_000
   const DRAFT_NOTICE_VISIBLE_MS = 5_000
   $: requestedComunSlug = String($page.url.searchParams.get('comun') || '').trim()
-  $: requestedFresh = $page.url.searchParams.get('fresh') === '1'
+  $: requestedNewPost = $page.url.searchParams.get('new') === '1'
 
   type PublishIdentityOption = {
     value: string
@@ -104,9 +122,41 @@
     avatar_url?: string | null
   }
 
-  $: availableComuns = comuns.filter((comun) => Boolean(comun.can_post))
+  type TagSuggestion = {
+    name: string
+    lemma?: string | null
+  }
+
+  const canPostWithoutCategory = (comun: BackendComun | undefined) =>
+    Boolean(comun?.can_post_without_category ?? comun?.can_post)
+
+  const categoryCanPost = (comun: BackendComun, category: NonNullable<BackendComun['categories']>[number]) => {
+    if (typeof category.can_post === 'boolean') return category.can_post
+    if (comun.can_moderate) return true
+    return !category.only_moderators_can_post
+  }
+
+  const writableCategoriesForComun = (comun: BackendComun | undefined) => {
+    if (!comun) return [] as NonNullable<BackendComun['categories']>
+    return (comun.categories ?? []).filter((category) => categoryCanPost(comun, category))
+  }
+
+  const canUseComunInComposer = (comun: BackendComun) => {
+    if (comun.can_moderate) return true
+    if (!comun.is_subscribed) return false
+    return Boolean(comun.can_start_post || canPostWithoutCategory(comun) || writableCategoriesForComun(comun).length)
+  }
+
+  const defaultCategoryIdForComun = (comun: BackendComun | undefined) => {
+    if (!comun || canPostWithoutCategory(comun)) return ''
+    const firstCategory = writableCategoriesForComun(comun)[0]
+    return firstCategory ? String(firstCategory.id) : ''
+  }
+
+  $: availableComuns = comuns.filter(canUseComunInComposer)
   $: selectedComun = availableComuns.find((comun) => comun.slug === createComunSlug)
-  $: selectedComunCategories = selectedComun?.categories ?? []
+  $: selectedComunCategories = writableCategoriesForComun(selectedComun)
+  $: selectedComunCanPostWithoutCategory = canPostWithoutCategory(selectedComun)
   $: selectedTargetLabel = selectedComun?.name || 'Выберите сообщество'
   $: selectedComunCategory =
     selectedComunCategories.find((category) => String(category.id) === createComunCategoryId) ?? null
@@ -127,7 +177,7 @@
         : selectedComun?.allowed_template_types ?? selectedComun?.allowed_post_templates)
   )
   $: filteredComuns = (() => {
-    const query = rubricSearchQuery.trim().toLowerCase()
+    const query = comunSearchQuery.trim().toLowerCase()
     if (!query) return availableComuns
     return availableComuns.filter((comun) => {
       const name = (comun.name || '').toLowerCase()
@@ -173,6 +223,13 @@
     templateEditorBlockSettings
   )
   $: editorTemplateBlocksKey = `${createTemplateType || 'basic'}:${editorEnabledTemplateBlockTypes.join(',')}`
+  $: tweetCharacterCountValue = isTweetTemplateType(createTemplateType)
+    ? tweetTemplateCharacterCount(createContent)
+    : 0
+  $: parsedCreateTags = buildTags()
+  $: selectedTagKeySet = new Set(parsedCreateTags.map((tag) => normalizeTagToken(tag)))
+  $: currentTagQuery = getCurrentTagQuery(createTags)
+  $: tagSuggestions = buildTagSuggestions()
 
   const isEditorContentEmpty = (value: string) => {
     if (!value || value.trim() === '') return true
@@ -184,18 +241,87 @@
     }
   }
 
-  const buildTags = () =>
-    createTags
-      .split(',')
-      .map((tag) => tag.trim())
-      .filter((tag) => tag.length > 0)
+  const cleanTagValue = (value: string) =>
+    value
+      .replace(/^#+/, '')
+      .trim()
+      .replace(/\s+/g, ' ')
+
+  const normalizeTagToken = (value: string) => cleanTagValue(value).toLowerCase()
+
+  const getCurrentTagQuery = (value: string) => {
+    const parts = value.split(',')
+    return normalizeTagToken(parts[parts.length - 1] ?? '')
+  }
+
+  const buildTags = () => {
+    const seen = new Set<string>()
+    const tags: string[] = []
+    for (const rawTag of createTags.split(',')) {
+      const tag = cleanTagValue(rawTag)
+      const key = normalizeTagToken(tag)
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      tags.push(tag)
+      if (tags.length >= 5) break
+    }
+    return tags
+  }
+
+  const buildTagSuggestions = () => {
+    if (!currentTagQuery) return [] as TagSuggestion[]
+    const seen = new Set<string>()
+    const suggestions: TagSuggestion[] = []
+    for (const tag of tagOptions) {
+      const name = cleanTagValue(tag.name)
+      if (!name) continue
+      const nameKey = normalizeTagToken(name)
+      const lemmaKey = normalizeTagToken(tag.lemma || name)
+      if (selectedTagKeySet.has(nameKey) || selectedTagKeySet.has(lemmaKey)) continue
+      if (seen.has(lemmaKey)) continue
+      if (!nameKey.includes(currentTagQuery) && !lemmaKey.includes(currentTagQuery)) continue
+      seen.add(lemmaKey)
+      suggestions.push({ name, lemma: tag.lemma ?? null })
+      if (suggestions.length >= 8) break
+    }
+    return suggestions
+  }
+
+  const insertTagSuggestion = async (tag: TagSuggestion) => {
+    const tagName = cleanTagValue(tag.name)
+    if (!tagName) return
+    const parts = createTags.split(',')
+    parts[parts.length - 1] = tagName
+
+    const seen = new Set<string>()
+    const nextTags: string[] = []
+    for (const rawTag of parts) {
+      const value = cleanTagValue(rawTag)
+      const key = normalizeTagToken(value)
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      nextTags.push(value)
+      if (nextTags.length >= 5) break
+    }
+    createTags = nextTags.join(', ')
+    tagInputFocused = true
+    await tick()
+    tagInputRef?.focus()
+  }
+
+  const onTagInputKeydown = (event: KeyboardEvent) => {
+    if ((event.key !== 'Enter' && event.key !== 'Tab') || !tagSuggestions.length) return
+    event.preventDefault()
+    void insertTagSuggestion(tagSuggestions[0])
+  }
 
   const buildTemplate = () =>
     buildPostTemplatePayload(
       createTemplateType,
       createMovieReviewData,
       createPostVotePollData,
-      createMusicReleaseData
+      createMusicReleaseData,
+      createBugReportData
     )
 
   const buildDraftPayload = () => {
@@ -223,6 +349,7 @@
     movieReviewData: createMovieReviewData,
     postVotePollData: createPostVotePollData,
     musicReleaseData: createMusicReleaseData,
+    bugReportData: createBugReportData,
   })
 
   const localDraftStorageKey = () =>
@@ -273,17 +400,13 @@
       createAuthor = authorExists ? nextAuthor : createAuthor
       createComunSlug = comunExists ? nextComunSlug : ''
       createComunCategoryId = comunExists ? nextComunCategoryId : ''
-      createTemplateType =
-        nextTemplateType === 'movie_review' ||
-        nextTemplateType === 'post_vote_poll' ||
-        nextTemplateType === 'music_release'
-          ? nextTemplateType
-          : ''
+      createTemplateType = isRecognizedPostTemplateType(nextTemplateType) ? nextTemplateType : ''
       createMovieReviewData = parsed?.movieReviewData ?? createEmptyMovieReviewTemplateData()
       createPostVotePollData =
         parsed?.postVotePollData ?? createEmptyPostVotePollTemplateData()
       createMusicReleaseData =
         parsed?.musicReleaseData ?? createEmptyMusicReleaseTemplateData()
+      createBugReportData = parsed?.bugReportData ?? createEmptyBugReportTemplateData()
       draftId = Number.isFinite(nextDraftId) && nextDraftId > 0 ? nextDraftId : null
       firstDraftChangeAt =
         Number.isFinite(nextFirstChangeAt) && nextFirstChangeAt > 0 ? nextFirstChangeAt : null
@@ -446,6 +569,27 @@
     }
   }
 
+  const loadTagOptions = async () => {
+    if (tagsLoading || tagOptions.length) return
+    tagsLoading = true
+    try {
+      const response = await fetch(buildTagsListUrl(), { cache: 'no-store' })
+      const data = await response.json().catch(() => ({}))
+      tagOptions = Array.isArray(data?.tags)
+        ? data.tags
+            .map((tag: TagSuggestion) => ({
+              name: cleanTagValue(String(tag?.name || '')),
+              lemma: tag?.lemma ? cleanTagValue(String(tag.lemma)) : null,
+            }))
+            .filter((tag: TagSuggestion) => Boolean(tag.name))
+        : []
+    } catch {
+      tagOptions = []
+    } finally {
+      tagsLoading = false
+    }
+  }
+
   const queueDraftSave = () => {
     if (!autosavePrimed || !$siteUser || creating || draftCreating) return
     if (currentFormSnapshot === lastSavedFormSnapshot) return
@@ -483,6 +627,7 @@
     createMovieReviewData = createEmptyMovieReviewTemplateData()
     createPostVotePollData = createEmptyPostVotePollTemplateData()
     createMusicReleaseData = createEmptyMusicReleaseTemplateData()
+    createBugReportData = createEmptyBugReportTemplateData()
     createError = ''
     draftError = ''
     clearLocalDraftBuffer()
@@ -499,20 +644,21 @@
         await refreshSiteUser()
         if ($siteUser) {
           await loadComuns()
+          void loadTagOptions()
           await tick()
           initialFormSnapshot = JSON.stringify(buildLocalDraftState())
           lastSavedFormSnapshot = initialFormSnapshot
-          if (requestedFresh) {
+          if (requestedNewPost) {
             clearLocalDraftBuffer()
           }
-          const restored = requestedFresh ? false : restoreLocalDraftBuffer()
+          const restored = requestedNewPost ? false : restoreLocalDraftBuffer()
           if (requestedComunSlug) {
             const requestedComun = comuns.find(
-              (comun) => comun.slug === requestedComunSlug && Boolean(comun.can_post)
+              (comun) => comun.slug === requestedComunSlug && canUseComunInComposer(comun)
             )
             if (requestedComun) {
               createComunSlug = requestedComun.slug
-              createComunCategoryId = ''
+              createComunCategoryId = defaultCategoryIdForComun(requestedComun)
             }
           }
           if (restored) {
@@ -543,9 +689,9 @@
 
     const closeOnOutsideClick = (event: MouseEvent) => {
       const target = event.target as Node | null
-      if (rubricMenuOpen && rubricMenuRef && target && !rubricMenuRef.contains(target)) {
-        rubricMenuOpen = false
-        rubricSearchQuery = ''
+      if (comunMenuOpen && comunMenuRef && target && !comunMenuRef.contains(target)) {
+        comunMenuOpen = false
+        comunSearchQuery = ''
       }
       if (identityMenuOpen && identityMenuRef && target && !identityMenuRef.contains(target)) {
         identityMenuOpen = false
@@ -578,6 +724,14 @@
     !selectedComunCategories.some((category) => String(category.id) === createComunCategoryId)
   ) {
     createComunCategoryId = ''
+  }
+  $: if (
+    selectedComun &&
+    !createComunCategoryId &&
+    !selectedComunCanPostWithoutCategory &&
+    selectedComunCategories.length
+  ) {
+    createComunCategoryId = String(selectedComunCategories[0].id)
   }
   $: if (createTemplateType && !selectedAllowedTemplateTypes.includes(createTemplateType)) {
     createTemplateType = availableTemplateTypeOptions[0]?.value ?? ''
@@ -617,8 +771,19 @@
       createError = 'Текст поста не может быть пустым.'
       return
     }
+    if (isTweetTemplateType(createTemplateType)) {
+      const tweetValidationError = validateTweetTemplateContent(createContent)
+      if (tweetValidationError) {
+        createError = tweetValidationError
+        return
+      }
+    }
     if (!createComunSlug) {
       createError = 'Выберите сообщество для публикации.'
+      return
+    }
+    if (!createComunCategoryId && !selectedComunCanPostWithoutCategory) {
+      createError = 'Выберите раздел сообщества для публикации.'
       return
     }
     if (selectedCategoryRestrictedForCurrentUser) {
@@ -640,11 +805,13 @@
     }
     creating = true
     try {
+      const tags = buildTags()
       await createComunPost(createComunSlug, {
         title: createTitle.trim(),
         content: createContent.trim(),
         author_source: 'site' as const,
         comun_category_id: createComunCategoryId ? Number(createComunCategoryId) : null,
+        tags: tags.length ? tags : undefined,
         template: template ?? undefined,
       })
       clearLocalDraftBuffer()
@@ -665,10 +832,11 @@
   }
 
   const selectComun = (slug: string) => {
-    createComunSlug = slug
-    createComunCategoryId = ''
-    rubricMenuOpen = false
-    rubricSearchQuery = ''
+    const comun = availableComuns.find((item) => item.slug === slug)
+    createComunSlug = comun?.slug ?? slug
+    createComunCategoryId = defaultCategoryIdForComun(comun)
+    comunMenuOpen = false
+    comunSearchQuery = ''
   }
 
   const selectIdentity = (value: string) => {
@@ -804,16 +972,16 @@
                   Загрузка сообществ...
                 </div>
               {:else}
-                <div class="relative mt-3" bind:this={rubricMenuRef}>
+                <div class="relative mt-3" bind:this={comunMenuRef}>
                   <button
                     type="button"
                     class="flex max-w-full items-center gap-2 text-left text-sm font-medium leading-tight text-slate-800 dark:text-zinc-200"
                     aria-haspopup="listbox"
-                    aria-expanded={rubricMenuOpen}
+                    aria-expanded={comunMenuOpen}
                     on:click={() => {
-                      const nextState = !rubricMenuOpen
-                      rubricMenuOpen = nextState
-                      if (!nextState) rubricSearchQuery = ''
+                      const nextState = !comunMenuOpen
+                      comunMenuOpen = nextState
+                      if (!nextState) comunSearchQuery = ''
                     }}
                   >
                     <span class="truncate">{selectedTargetLabel}</span>
@@ -831,7 +999,7 @@
                     </svg>
                   </button>
 
-                  {#if rubricMenuOpen}
+                  {#if comunMenuOpen}
                     <div
                       class="absolute z-20 mt-3 w-full min-w-[18rem] max-w-xl overflow-auto rounded-2xl border border-slate-200 bg-white p-1 shadow-lg dark:border-zinc-800 dark:bg-zinc-900"
                       role="listbox"
@@ -839,7 +1007,7 @@
                       <div class="sticky top-0 z-10 border-b border-slate-200 bg-white px-2 py-2 dark:border-zinc-800 dark:bg-zinc-900">
                         <input
                           type="text"
-                          bind:value={rubricSearchQuery}
+                          bind:value={comunSearchQuery}
                           placeholder="Поиск сообщества"
                           class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
                         />
@@ -884,7 +1052,7 @@
                       {/if}
                       {#if !filteredComuns.length}
                         <div class="px-3 py-3 text-sm text-slate-500 dark:text-zinc-400">
-                          Ничего не найдено
+                          Нет доступных сообществ для публикации
                         </div>
                       {/if}
                     </div>
@@ -904,7 +1072,9 @@
                       bind:value={createComunCategoryId}
                       class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
                     >
-                      <option value="">Без раздела</option>
+                      {#if selectedComunCanPostWithoutCategory}
+                        <option value="">Без раздела</option>
+                      {/if}
                       {#each selectedComunCategories as category}
                         <option value={String(category.id)}>{category.name}</option>
                       {/each}
@@ -919,14 +1089,28 @@
                 {/if}
 
                 {#if selectedComun?.rules_text}
-                  <div class="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm dark:border-zinc-800 dark:bg-zinc-900/80">
-                    <div class="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-zinc-500">
-                      Правила сообщества
-                    </div>
-                    <div class="mt-2 whitespace-pre-line leading-relaxed text-slate-700 dark:text-zinc-300">
-                      {selectedComun.rules_text}
-                    </div>
-                  </div>
+                  {#key selectedComun.slug}
+                    <details class="group mt-3 rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm dark:border-zinc-800 dark:bg-zinc-900/80">
+                      <summary class="flex cursor-pointer list-none items-center justify-between gap-3 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-zinc-500 [&::-webkit-details-marker]:hidden">
+                        <span>Правила сообщества</span>
+                        <svg
+                          class="h-4 w-4 shrink-0 transition-transform group-open:rotate-180"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                          aria-hidden="true"
+                        >
+                          <path
+                            fill-rule="evenodd"
+                            d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.24 4.5a.75.75 0 01-1.08 0l-4.24-4.5a.75.75 0 01.02-1.06z"
+                            clip-rule="evenodd"
+                          />
+                        </svg>
+                      </summary>
+                      <div class="mt-2 whitespace-pre-line leading-relaxed text-slate-700 dark:text-zinc-300">
+                        {selectedComun.rules_text}
+                      </div>
+                    </details>
+                  {/key}
                 {/if}
 
                 {#if hasTemplateTypeChoice}
@@ -969,9 +1153,14 @@
                             on:click={() => selectTemplateType(templateOption.value)}
                           >
                             <div class="min-w-0 flex-1">
-                              <div class="truncate text-sm font-medium text-slate-900 dark:text-zinc-100">
+                              <div class="text-sm font-medium text-slate-900 dark:text-zinc-100">
                                 {templateOption.label}
                               </div>
+                              {#if templateOption.description}
+                                <div class="mt-1 text-xs leading-snug text-slate-500 dark:text-zinc-400">
+                                  {templateOption.description}
+                                </div>
+                              {/if}
                             </div>
                           </button>
                         {/each}
@@ -989,6 +1178,7 @@
           bind:movieReviewData={createMovieReviewData}
           bind:postVotePollData={createPostVotePollData}
           bind:musicReleaseData={createMusicReleaseData}
+          bind:bugReportData={createBugReportData}
           allowedTemplateTypes={selectedAllowedTemplateTypes}
           {templateTypeOptions}
           showTypeSelector={false}
@@ -1007,7 +1197,83 @@
             showPostSettings={false}
           />
         {/key}
-        <TextInput label="Теги (через запятую)" bind:value={createTags} />
+        {#if isTweetTemplateType(createTemplateType)}
+          <div class={`rounded-xl border px-3 py-2 text-sm ${
+            tweetCharacterCountValue > TWEET_TEMPLATE_MAX_LENGTH
+              ? 'border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-900/40 dark:bg-rose-950/20 dark:text-rose-300'
+              : 'border-slate-200 bg-slate-50 text-slate-600 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-300'
+          }`}>
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <span>Текст твита: {tweetCharacterCountValue} / {TWEET_TEMPLATE_MAX_LENGTH}</span>
+              <span>Разрешен один медиаблок с изображениями</span>
+            </div>
+          </div>
+        {/if}
+        <div class="relative">
+          <label
+            for="new-post-tags"
+            class="mb-1 block text-sm font-medium text-slate-700 dark:text-zinc-300"
+          >
+            Теги
+          </label>
+          <input
+            id="new-post-tags"
+            bind:this={tagInputRef}
+            bind:value={createTags}
+            type="text"
+            autocomplete="off"
+            placeholder="Например: кино, автомобили, зарубежные фильмы"
+            class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
+            on:focus={() => {
+              tagInputFocused = true
+              void loadTagOptions()
+            }}
+            on:blur={() => {
+              tagInputFocused = false
+            }}
+            on:keydown={onTagInputKeydown}
+          />
+          <div class="mt-1 text-xs text-slate-500 dark:text-zinc-400">
+            Вводите через запятую. Сохраняются первые 5 тегов.
+          </div>
+
+          {#if parsedCreateTags.length}
+            <div class="mt-2 flex flex-wrap gap-2">
+              {#each parsedCreateTags as tag}
+                <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700 dark:bg-zinc-800 dark:text-zinc-200">
+                  #{tag}
+                </span>
+              {/each}
+            </div>
+          {/if}
+
+          {#if tagInputFocused && currentTagQuery}
+            <div class="absolute z-30 mt-2 w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg dark:border-zinc-800 dark:bg-zinc-900">
+              {#if tagsLoading}
+                <div class="px-3 py-3 text-sm text-slate-500 dark:text-zinc-400">
+                  Ищем теги...
+                </div>
+              {:else if tagSuggestions.length}
+                {#each tagSuggestions as tag}
+                  <button
+                    type="button"
+                    class="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm hover:bg-slate-50 dark:hover:bg-zinc-800"
+                    on:mousedown|preventDefault={() => void insertTagSuggestion(tag)}
+                  >
+                    <span class="font-medium text-slate-800 dark:text-zinc-100">#{tag.name}</span>
+                    {#if tag.lemma && tag.lemma !== tag.name}
+                      <span class="text-xs text-slate-500 dark:text-zinc-400">{tag.lemma}</span>
+                    {/if}
+                  </button>
+                {/each}
+              {:else}
+                <div class="px-3 py-3 text-sm text-slate-500 dark:text-zinc-400">
+                  Совпадений нет. Новый тег будет создан при публикации.
+                </div>
+              {/if}
+            </div>
+          {/if}
+        </div>
         {#if createError}
           <p class="text-sm text-red-600">{createError}</p>
         {/if}

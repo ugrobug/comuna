@@ -13,11 +13,10 @@
     buildBackendPostPath,
     buildComunPostsUrl,
     buildComunUrl,
-    buildTagsEnsureUrl,
+    isSpecialProjectPost,
     type BackendComun,
     type BackendComunCategory,
     type BackendPost,
-    type BackendTag,
   } from '$lib/api/backend'
   import { refreshSiteUser, siteToken, siteUser, uploadSiteImage } from '$lib/siteAuth'
   import { env } from '$env/dynamic/public'
@@ -44,8 +43,6 @@
   let deleteComunOpen = false
   let deleteComunSaving = false
   let settingsError = ''
-  let settingsTagSearch = ''
-  let settingsTagCreating = false
   let settingsUserSearch = ''
   let settingsDraft: BackendComun | null = null
   let settingsLogoInput: HTMLInputElement | null = null
@@ -53,13 +50,16 @@
   let autoSettingsOpenHandled = false
   let wantsSettingsOpenFromUrl = false
   let settingsCategoryOptions: BackendComunCategory[] = []
-  type ComunTagOption = BackendTag & { id: number }
   type ComunUserOption = { id: number; username: string; display_name?: string | null }
-  let settingsTagOptions: ComunTagOption[] = []
   let settingsUserOptions: ComunUserOption[] = []
   const COMUN_SUGGESTIONS_CATEGORY_SLUGS = new Set(['feature-ideas', 'suggestions'])
   const ROADMAP_PREVIEW_LIMIT = 4
   const ROADMAP_PREVIEW_FETCH_LIMIT = 8
+
+  const patchSettingsDraft = (patch: Partial<BackendComun>) => {
+    if (!settingsDraft) return
+    settingsDraft = { ...settingsDraft, ...patch }
+  }
 
   type ComunCategoryCount = {
     category_id?: number | null
@@ -197,11 +197,51 @@
   $: visiblePosts = posts.filter(isAuthorVisible)
 
   const isModerator = () => Boolean(comun?.can_moderate && $siteToken)
-  const canPostInComun = () => Boolean(comun?.can_post && $siteToken)
   const canManageComunModerators = () => Boolean(comun?.can_manage_moderators && $siteToken)
   const canDeleteComun = () => Boolean(comun?.can_manage_moderators && $siteToken)
   const isComunCreator = () =>
     Boolean($siteToken && $siteUser?.id && comun?.creator?.id && $siteUser.id === comun.creator.id)
+  const applyPostCategory = (
+    post: BackendPost,
+    category: BackendComunCategory | null,
+    categoryId: number | null
+  ): BackendPost => ({
+    ...post,
+    comun_category: category,
+    comun_category_id: categoryId,
+  })
+  const withCurrentComunContext = (post: BackendPost): BackendPost => ({
+    ...post,
+    comun_slug: post.comun_slug ?? comun?.slug ?? null,
+    comun: {
+      ...(post.comun ?? {
+        id: comun?.id ?? 0,
+        name: comun?.name ?? '',
+        slug: comun?.slug ?? '',
+        logo_url: comun?.logo_url ?? null,
+      }),
+      knowledge_base_enabled: Boolean(comun?.knowledge_base_enabled),
+      can_moderate: Boolean(comun?.can_moderate),
+    },
+  })
+  const handlePostCategoryChange = (
+    event: CustomEvent<{
+      postId: number
+      category: BackendComunCategory | null
+      categoryId: number | null
+    }>
+  ) => {
+    const { postId, category, categoryId } = event.detail
+    posts = posts
+      .map((post) => (post.id === postId ? applyPostCategory(post, category, categoryId) : post))
+      .filter((post) => !selectedCategorySlug || post.comun_category?.slug === selectedCategorySlug)
+    if (comun?.welcome_post?.id === postId) {
+      comun = {
+        ...comun,
+        welcome_post: applyPostCategory(comun.welcome_post, category, categoryId),
+      }
+    }
+  }
   const formatRatingValue = (value?: number | null) => {
     const normalized = Math.max(Number(value ?? 0) || 0, 0)
     return new Intl.NumberFormat('ru-RU', {
@@ -210,18 +250,32 @@
     }).format(normalized)
   }
 
-  $: siteTitle = env.PUBLIC_SITE_TITLE || 'Comuna'
+  const formatComunCount = (value?: number | null) =>
+    new Intl.NumberFormat('ru-RU').format(Math.max(Number(value ?? 0) || 0, 0))
+
+  $: siteTitle = env.PUBLIC_SITE_TITLE || 'Тамбур'
   $: comunName = comun?.name || 'Сообщество'
-  $: welcomePostView = comun?.welcome_post ? backendPostToPostView(comun.welcome_post) : null
-  $: comunTopMembers = comun?.activity?.top_members ?? []
-  $: comunParticipantsCount = comun?.activity?.participants_count ?? comunTopMembers.length
+  $: welcomePostView = comun?.welcome_post ? backendPostToPostView(withCurrentComunContext(comun.welcome_post)) : null
   $: minimumAuthorRatingToPost = Math.max(Number(comun?.minimum_author_rating_to_post ?? 0) || 0, 0)
   $: comunCategories = comun?.categories ?? []
   $: hasComunCategories = comunCategories.length > 0
+  $: hasUserWritableComunCategory = comunCategories.some(
+    (category) => !Boolean(category.only_moderators_can_post)
+  )
+  $: canShowComunPostButton = Boolean(comun?.slug && hasUserWritableComunCategory)
   $: myFeedComunSlugs = ($userSettings.myFeedComuns ?? []).map((slug) => slug.trim()).filter(Boolean)
   $: myFeedComunCategoryMap = $userSettings.myFeedComunCategories ?? {}
   $: currentComunSlug = (comun?.slug ?? '').trim()
   $: isSubscribedToComun = !!currentComunSlug && myFeedComunSlugs.includes(currentComunSlug)
+  $: initialComunSubscribed = Boolean(comun?.is_subscribed)
+  $: baseComunSubscribersCount = Math.max(Number(comun?.subscribers_count ?? 0) || 0, 0)
+  $: comunSubscribersCount = Math.max(
+    0,
+    baseComunSubscribersCount +
+      (isSubscribedToComun && !initialComunSubscribed ? 1 : 0) -
+      (!isSubscribedToComun && initialComunSubscribed ? 1 : 0)
+  )
+  $: comunAuthorsCount = Math.max(Number(comun?.authors_count ?? 0) || 0, 0)
   $: comunCategorySlugs = comunCategories.map((category) => category.slug).filter(Boolean)
   $: hasExplicitComunCategorySelection =
     !!currentComunSlug && Object.prototype.hasOwnProperty.call(myFeedComunCategoryMap, currentComunSlug)
@@ -242,7 +296,7 @@
     $page.url.pathname + (selectedCategorySlug ? `?category=${encodeURIComponent(selectedCategorySlug)}` : ''),
     (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '') + '/'
   ).toString()
-  $: roadmapEnabled = Boolean(comun?.roadmap_enabled ?? true)
+  $: roadmapEnabled = Boolean(comun?.roadmap_enabled ?? false)
   $: if (browser) {
     if (publicRoadmapModalOpen) {
       if (publicRoadmapBodyOverflowBeforeOpen === null) {
@@ -321,8 +375,6 @@
       ),
       only_moderators_can_post: Boolean(value?.only_moderators_can_post),
       hide_from_home: Boolean(value?.hide_from_home),
-      hide_from_fresh: Boolean(value?.hide_from_fresh),
-      product_tag_id: value?.product_tag_id ?? value?.product_tag?.id ?? null,
       category_ids: comunCategoryIds(value),
       moderator_ids: comunModeratorIds(value),
       welcome_post_ref: String(value?.welcome_post_ref ?? value?.welcome_post_id ?? '').trim(),
@@ -330,9 +382,6 @@
 
   const comunWelcomePostRef = (value: BackendComun | null) =>
     String(value?.welcome_post_ref ?? value?.welcome_post_id ?? '').trim()
-
-  const userInitials = (username?: string | null) =>
-    (username || '?').trim().slice(0, 1).toUpperCase() || '?'
 
   const userDisplayName = (user?: { username?: string | null; display_name?: string | null } | null) => {
     const displayName = (user?.display_name ?? '').trim()
@@ -406,8 +455,8 @@
     return nextStages
   }
 
-  const roadmapStageStyleVars = (stageKey: RoadmapStageKey) => {
-    switch (stageKey) {
+  const roadmapStageStyleVars = (stageKey: string) => {
+    switch (stageKey as RoadmapStageKey) {
       case 'suggestions':
         return '--roadmap-stage-h: 201; --roadmap-stage-s: 88%; --roadmap-stage-l: 47%;'
       case 'backlog':
@@ -542,8 +591,8 @@
     return new Intl.NumberFormat('ru-RU').format(normalized)
   }
 
-  const getRoadmapPreviewState = (stageKey: RoadmapStageKey): RoadmapPreviewState =>
-    roadmapPreviewStates[stageKey] ?? { loading: false, error: null, posts: [] }
+  const getRoadmapPreviewState = (stageKey: string): RoadmapPreviewState =>
+    roadmapPreviewStates[stageKey as RoadmapStageKey] ?? { loading: false, error: null, posts: [] }
 
   const openRoadmapSubmitFlow = () => {
     if (!comun?.slug) return
@@ -584,7 +633,10 @@
       const headers = $siteToken ? { Authorization: `Bearer ${$siteToken}` } : undefined
       const results = await Promise.all(
         stagesSnapshot.map(async (stage) => {
-          const url = new URL(buildComunPostsUrl(slug, { categorySlug: stage.category.slug }))
+          const url = new URL(
+            buildComunPostsUrl(slug, { categorySlug: stage.category.slug }),
+            $page.url.origin
+          )
           url.searchParams.set('limit', String(ROADMAP_PREVIEW_FETCH_LIMIT))
           url.searchParams.set('offset', '0')
           const response = await fetch(url.toString(), headers ? { headers } : undefined)
@@ -686,9 +738,6 @@
     const next = new Set<string>(myFeedComunSlugs)
     next.add(slug)
     const nextCategoryMap = { ...($userSettings.myFeedComunCategories ?? {}) }
-    if (comunCategorySlugs.length) {
-      nextCategoryMap[slug] = [...comunCategorySlugs]
-    }
     $userSettings = {
       ...$userSettings,
       myFeedComuns: Array.from(next),
@@ -734,7 +783,10 @@
 
   const buildPostsUrl = (offset: number) => {
     if (!comun?.slug) return ''
-    const url = new URL(buildComunPostsUrl(comun.slug, { categorySlug: selectedCategorySlug || undefined }))
+    const url = new URL(
+      buildComunPostsUrl(comun.slug, { categorySlug: selectedCategorySlug || undefined }),
+      $page.url.origin
+    )
     url.searchParams.set('limit', String(pageSize))
     url.searchParams.set('offset', String(offset))
     return url.toString()
@@ -759,7 +811,10 @@
     } else if (nextPosts.length) {
       posts = [...posts, ...nextPosts]
     }
-    hasMore = nextPosts.length === pageSize
+    hasMore =
+      typeof totalPostsCount === 'number'
+        ? posts.length < totalPostsCount
+        : nextPosts.length === pageSize
   }
 
   const loadPosts = async (reset = false) => {
@@ -784,6 +839,9 @@
     } finally {
       loadingMore = false
       loadingCategory = false
+      if (browser && hasMore) {
+        window.requestAnimationFrame(maybeLoadMore)
+      }
     }
   }
 
@@ -832,7 +890,6 @@
         comun = payload.comun
         settingsDraft = cloneComun(payload.comun)
         settingsCategoryOptions = payload.comun?.options?.categories ?? []
-        settingsTagOptions = payload.comun?.options?.tags ?? []
         settingsUserOptions = payload.comun?.options?.users ?? []
       }
     } catch (error) {
@@ -848,7 +905,6 @@
       goto(`/account?next=${encodeURIComponent(next)}`)
       return
     }
-    settingsTagSearch = ''
     settingsUserSearch = ''
     settingsDraft = cloneComun(comun)
     await refreshComunManage()
@@ -906,45 +962,15 @@
     setDraftModeratorIds(comunModeratorIds(settingsDraft).filter((id) => id !== userId))
   }
 
-  const chooseDraftTag = (tag: ComunTagOption) => {
-    if (!settingsDraft) return
-    settingsDraft = {
-      ...settingsDraft,
-      product_tag_id: tag.id,
-      product_tag: { id: tag.id, name: tag.name, lemma: tag.lemma ?? null },
-    }
-  }
-
-  const clearDraftTag = () => {
-    if (!settingsDraft) return
-    settingsDraft = { ...settingsDraft, product_tag_id: null, product_tag: null }
-  }
-
-  const normalizeTagInput = (value: string) =>
-    value.trim().replace(/^#+/, '').replace(/\s+/g, ' ').trim()
-
-  $: normalizedTagSearch = settingsTagSearch.trim().toLowerCase()
-  $: normalizedTagCreateValue = normalizeTagInput(settingsTagSearch)
-  $: hasExactTagMatch = (settingsTagOptions ?? []).some((tag) => {
-    const needle = normalizedTagCreateValue.toLowerCase()
-    if (!needle) return false
-    return [tag.name, tag.lemma ?? '']
-      .map((value) => normalizeTagInput(value).toLowerCase())
-      .some((value) => value === needle)
-  })
   $: draftCategoryIdSet = new Set<number>(
     ((settingsDraft?.category_ids as number[] | undefined) ??
       (settingsDraft?.categories ?? []).map((item) => item.id)) as number[]
   )
-  $: filteredTagOptions = (settingsTagOptions ?? []).filter((tag) => {
-    if (!normalizedTagSearch) return false
-    return [tag.name, tag.lemma ?? ''].some((value) => value.toLowerCase().includes(normalizedTagSearch))
-  }).slice(0, 30)
   $: normalizedUserSearch = settingsUserSearch.trim().toLowerCase()
   $: draftModeratorIdSet = new Set<number>(comunModeratorIds(settingsDraft))
   $: settingsHasChanges = settingsComparable(settingsDraft) !== settingsComparable(comun)
   $: settingsCanDismiss =
-    !settingsHasChanges && !settingsSaving && !settingsLogoUploading && !settingsTagCreating
+    !settingsHasChanges && !settingsSaving && !settingsLogoUploading
   $: filteredUserOptions = (settingsUserOptions ?? [])
     .filter((user) => {
       if (!normalizedUserSearch) return false
@@ -962,48 +988,6 @@
       display_name: fromDraft?.display_name ?? null,
     }
   })
-  $: selectedProductTag = settingsDraft?.product_tag ?? null
-
-  const createTagAndChooseDraft = async () => {
-    const tagName = normalizeTagInput(settingsTagSearch)
-    if (!tagName || settingsTagCreating) return
-    settingsTagCreating = true
-    try {
-      const response = await fetch(buildTagsEnsureUrl(), {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({ name: tagName }),
-      })
-      const payload = await response.json().catch(() => ({}))
-      if (!response.ok || !payload?.tag?.id) {
-        throw new Error(payload?.error || 'Не удалось добавить тег')
-      }
-      const nextTag: ComunTagOption = {
-        id: Number(payload.tag.id),
-        name: String(payload.tag.name ?? tagName),
-        lemma: payload.tag.lemma ? String(payload.tag.lemma) : null,
-      }
-      const nextOptions = [...(settingsTagOptions ?? [])]
-      const existingIndex = nextOptions.findIndex((tag) => tag.id === nextTag.id)
-      if (existingIndex >= 0) {
-        nextOptions[existingIndex] = nextTag
-      } else {
-        nextOptions.push(nextTag)
-      }
-      settingsTagOptions = nextOptions.sort((a, b) => a.name.localeCompare(b.name, 'ru'))
-      chooseDraftTag(nextTag)
-      settingsTagSearch = nextTag.name
-      toast({
-        content: payload.created ? 'Тег добавлен и выбран' : 'Тег найден и выбран',
-        type: 'success',
-      })
-    } catch (error) {
-      toast({ content: error instanceof Error ? error.message : 'Не удалось добавить тег', type: 'error' })
-    } finally {
-      settingsTagCreating = false
-    }
-  }
-
   const saveSettings = async () => {
     if (!comun?.slug || !settingsDraft) return
     settingsSaving = true
@@ -1027,9 +1011,7 @@
           ),
           only_moderators_can_post: Boolean(settingsDraft.only_moderators_can_post),
           hide_from_home: canManageComunModerators() ? Boolean(settingsDraft.hide_from_home) : undefined,
-          hide_from_fresh: canManageComunModerators() ? Boolean(settingsDraft.hide_from_fresh) : undefined,
           moderator_ids: canManageComunModerators() ? comunModeratorIds(settingsDraft) : undefined,
-          product_tag_id: settingsDraft.product_tag_id ?? null,
           category_ids: settingsDraft.category_ids ?? (settingsDraft.categories ?? []).map((category) => category.id),
           welcome_post_ref:
             welcomePostRef !== currentWelcomePostRef ? welcomePostRef : undefined,
@@ -1198,21 +1180,31 @@
             <h1 class="text-2xl font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
               {comun?.name ?? 'Сообщество'}
             </h1>
+            <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-600 dark:text-zinc-400">
+              <span>Подписчиков: {formatComunCount(comunSubscribersCount)}</span>
+              <span>Авторов: {formatComunCount(comunAuthorsCount)}</span>
+            </div>
           </div>
         </div>
         <div class="flex flex-wrap items-center gap-2">
+          {#if canShowComunPostButton}
+            <Button size="sm" on:click={openComunPostEditor}>
+              <span slot="prefix" class="text-base leading-none">+</span>
+              Добавить пост
+            </Button>
+          {/if}
           <div class="relative">
             <Button
               color={isSubscribedToComun ? 'ghost' : undefined}
               on:click={toggleComunInMyFeed}
-              title={isSubscribedToComun ? 'Настроить рубрики в Моей ленте' : 'Добавить сообщество в Мою ленту'}
+              title={isSubscribedToComun ? 'Настроить категории в Моей ленте' : 'Добавить сообщество в Мою ленту'}
             >
               {isSubscribedToComun ? 'Вы подписаны' : 'Подписаться'}
             </Button>
             {#if subscriptionCategoriesOpen && isSubscribedToComun && hasComunCategories}
               <div class="absolute right-0 top-full z-30 mt-2 w-72 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl dark:border-zinc-800 dark:bg-zinc-950">
                 <div class="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-zinc-400">
-                  Рубрики в моей ленте
+                  Категории в моей ленте
                 </div>
                 <div class="flex max-h-72 flex-col gap-2 overflow-y-auto pr-1">
                   {#each comunCategories as category}
@@ -1240,21 +1232,11 @@
               </div>
             {/if}
           </div>
-          {#if comun?.website_url}
-            <a
-              href={comun.website_url}
-              target="_blank"
-              rel="nofollow noopener"
-              class="inline-flex items-center rounded-xl border border-slate-200 dark:border-zinc-800 px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-zinc-800/60"
-            >
-              Сайт
-            </a>
-          {/if}
           {#if $siteToken && comun?.slug}
             <button
               type="button"
               class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 text-slate-700 transition hover:bg-slate-50 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-800/60"
-              on:click={() => goto(`/comuns/${comun.slug}/settings`)}
+              on:click={() => comun?.slug && goto(`/comuns/${comun.slug}/settings`)}
               title="Настройки сообщества"
               aria-label="Настройки сообщества"
             >
@@ -1277,42 +1259,6 @@
         <div class="text-sm text-slate-600 dark:text-zinc-400 whitespace-pre-line">
           <span class="font-medium text-slate-800 dark:text-zinc-200">Для кого:</span>
           {comun.target_audience}
-        </div>
-      {/if}
-
-      {#if comunTopMembers.length}
-        <div class="flex flex-col gap-2 pt-1">
-          <div class="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-zinc-400">
-            <span class="uppercase tracking-wide">Рейтинг активности</span>
-            <span>•</span>
-            <span>{comunParticipantsCount} участников</span>
-          </div>
-          <div class="flex flex-wrap items-end justify-between gap-3">
-            <div class="flex flex-wrap items-center gap-2">
-              {#each comunTopMembers as member}
-                <a
-                  href={`/id${member.user_id}`}
-                  class="inline-flex items-center justify-center h-9 w-9 rounded-full overflow-hidden border border-slate-200 dark:border-zinc-800 bg-slate-100 dark:bg-zinc-800 text-xs font-semibold text-slate-700 dark:text-zinc-200 hover:ring-2 hover:ring-blue-300/70 dark:hover:ring-blue-700/70 focus:outline-none focus:ring-2 focus:ring-blue-400/80 dark:focus:ring-blue-600/80 transition-shadow"
-                  title={`#${member.rank} @${member.username} — ${member.points} баллов`}
-                  aria-label={`#${member.rank} ${member.username}, ${member.points} баллов`}
-                >
-                  {#if member.avatar_url}
-                    <img
-                      src={member.avatar_url}
-                      alt={`Аватар @${member.username}`}
-                      class="h-full w-full object-cover"
-                      loading="lazy"
-                    />
-                  {:else}
-                    {userInitials(member.username)}
-                  {/if}
-                </a>
-              {/each}
-            </div>
-            {#if comun?.slug}
-              <Button size="sm" class="self-end" on:click={openComunPostEditor}>Написать</Button>
-            {/if}
-          </div>
         </div>
       {/if}
 
@@ -1358,7 +1304,7 @@
     onSubmit={openRoadmapSubmitFlow}
   />
 
-  {#if comun?.welcome_post}
+  {#if comun?.welcome_post && welcomePostView}
     <section class="rounded-2xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/60 dark:bg-blue-950/20 p-4 sm:p-5">
       <div class="mb-3 text-sm font-semibold text-blue-800 dark:text-blue-300">
         Приветственный пост
@@ -1370,11 +1316,15 @@
         actions={true}
         showReadMore={false}
         showFullBody={false}
+        hideCommunity={true}
+        {comunCategories}
         linkOverride={buildBackendPostPath(comun.welcome_post)}
         userUrlOverride={comun.welcome_post.author?.username ? `/${comun.welcome_post.author.username}` : undefined}
         communityUrlOverride={backendPostCommunityPath(comun.welcome_post)}
         subscribeUrl={comun.welcome_post.channel_url ?? comun.welcome_post.author?.channel_url}
         subscribeLabel="Подписаться"
+        hideSubscribe={isSpecialProjectPost(comun.welcome_post)}
+        on:categorychange={handlePostCategoryChange}
       />
     </section>
   {/if}
@@ -1384,17 +1334,21 @@
       {#each visiblePosts as backendPost (backendPost.id)}
         <div class="flex flex-col gap-3">
           <Post
-            post={backendPostToPostView(backendPost)}
+            post={backendPostToPostView(withCurrentComunContext(backendPost))}
             class="feed-shortcut-post rounded-2xl border border-slate-200/80 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 shadow-sm px-4 sm:px-5"
             view="cozy"
             actions={true}
             showReadMore={false}
             showFullBody={false}
+            hideCommunity={true}
+            {comunCategories}
             linkOverride={buildBackendPostPath(backendPost)}
             userUrlOverride={backendPost.author?.username ? `/${backendPost.author.username}` : undefined}
             communityUrlOverride={backendPostCommunityPath(backendPost)}
             subscribeUrl={backendPost.channel_url ?? backendPost.author?.channel_url}
             subscribeLabel="Подписаться"
+            hideSubscribe={isSpecialProjectPost(backendPost)}
+            on:categorychange={handlePostCategoryChange}
           />
         </div>
       {/each}
@@ -1404,22 +1358,9 @@
     {/if}
   {:else}
     <div class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-6 text-slate-600 dark:text-zinc-400">
-      {#if comun?.source_tags?.length}
-        В этом сообществе пока нет публикаций по тегам {comun.source_tags.map((tag) => `#${tag.name}`).join(', ')}.
-      {:else if comun?.product_tag}
-        В этом сообществе пока нет публикаций по тегу #{comun.product_tag.name}.
-      {:else if comun?.source_rubric}
-        В этом сообществе пока нет публикаций из рубрики {comun.source_rubric.name}.
-      {:else}
-        <div class="flex flex-col gap-4">
-          <div>В этом сообществе пока нет публикаций.</div>
-          {#if comun?.slug && canPostInComun()}
-            <div>
-              <Button size="sm" on:click={openComunPostEditor}>Написать</Button>
-            </div>
-          {/if}
-        </div>
-      {/if}
+      <div class="flex flex-col gap-4">
+        <div>В этом сообществе пока нет публикаций.</div>
+      </div>
     </div>
   {/if}
 </div>
@@ -1493,7 +1434,7 @@
                 <Button
                   color="ghost"
                   size="sm"
-                  on:click={() => (settingsDraft = { ...settingsDraft, logo_url: '' })}
+                  on:click={() => patchSettingsDraft({ logo_url: '' })}
                   disabled={settingsSaving || settingsLogoUploading}
                 >
                   Убрать
@@ -1545,18 +1486,17 @@
             type="checkbox"
             checked={Boolean(settingsDraft.only_moderators_can_post)}
             on:change={() =>
-              (settingsDraft = {
-                ...settingsDraft,
-                only_moderators_can_post: !Boolean(settingsDraft.only_moderators_can_post),
+              patchSettingsDraft({
+                only_moderators_can_post: !Boolean(settingsDraft?.only_moderators_can_post),
               })}
             class="mt-0.5"
           />
           <span class="min-w-0">
             <span class="block text-sm text-slate-900 dark:text-zinc-100">
-              Писать в сообщество могут только администраторы и модераторы
+              Писать в сообщество могут только создатель и модераторы
             </span>
             <span class="block text-xs text-slate-500 dark:text-zinc-400">
-              Если включить, новые записи смогут создавать только создатель сообщества, его модераторы и администраторы сайта.
+              Если включить, новые записи смогут создавать только создатель сообщества и его модераторы.
             </span>
           </span>
         </label>
@@ -1569,9 +1509,8 @@
                 type="checkbox"
                 checked={!settingsDraft.hide_from_home}
                 on:change={() =>
-                  (settingsDraft = {
-                    ...settingsDraft,
-                    hide_from_home: !Boolean(settingsDraft.hide_from_home),
+                  patchSettingsDraft({
+                    hide_from_home: !Boolean(settingsDraft?.hide_from_home),
                   })}
                 class="mt-0.5"
               />
@@ -1579,24 +1518,6 @@
                 <span class="block text-sm text-slate-900 dark:text-zinc-100">Показывать в Горячем</span>
                 <span class="block text-xs text-slate-500 dark:text-zinc-400">
                   Если выключить, посты, созданные в этом сообществе, не попадут на главную.
-                </span>
-              </span>
-            </label>
-            <label class="flex items-start gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={!settingsDraft.hide_from_fresh}
-                on:change={() =>
-                  (settingsDraft = {
-                    ...settingsDraft,
-                    hide_from_fresh: !Boolean(settingsDraft.hide_from_fresh),
-                  })}
-                class="mt-0.5"
-              />
-              <span class="min-w-0">
-                <span class="block text-sm text-slate-900 dark:text-zinc-100">Показывать в Свежее</span>
-                <span class="block text-xs text-slate-500 dark:text-zinc-400">
-                  Если выключить, посты, созданные в этом сообществе, останутся только в ленте сообщества и персональных лентах.
                 </span>
               </span>
             </label>
@@ -1667,69 +1588,6 @@
             </div>
           </div>
         {/if}
-
-        <div class="flex flex-col gap-2">
-          <div class="text-sm text-slate-700 dark:text-zinc-300">Тег продукта (посты с этим тегом попадут в сообщество)</div>
-          <input
-            bind:value={settingsTagSearch}
-            placeholder="Поиск тега..."
-            class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"
-          />
-          <div class="flex flex-wrap items-center gap-2">
-            {#if selectedProductTag}
-              <span class="rounded-full bg-slate-100 dark:bg-zinc-800 px-3 py-1 text-sm">
-                #{selectedProductTag.name}
-              </span>
-              <Button color="ghost" size="sm" on:click={clearDraftTag}>Сбросить</Button>
-            {:else}
-              <span class="text-sm text-slate-500 dark:text-zinc-400">Тег не выбран</span>
-            {/if}
-          </div>
-          <div class="max-h-48 overflow-auto rounded-xl border border-slate-200 dark:border-zinc-800 divide-y divide-slate-100 dark:divide-zinc-800">
-            {#if normalizedTagCreateValue && !hasExactTagMatch}
-              <div class="flex items-center justify-between gap-2 px-3 py-2 bg-slate-50 dark:bg-zinc-900/60">
-                <div class="min-w-0 text-sm">
-                  <div class="font-medium text-slate-900 dark:text-zinc-100 truncate">
-                    Добавить тег #{normalizedTagCreateValue}
-                  </div>
-                  <div class="text-xs text-slate-500 dark:text-zinc-400">
-                    Создаст тег в системе и выберет его для сообщества
-                  </div>
-                </div>
-                <Button
-                  size="sm"
-                  on:click={createTagAndChooseDraft}
-                  disabled={settingsTagCreating || settingsSaving}
-                >
-                  {settingsTagCreating ? '...' : 'Добавить'}
-                </Button>
-              </div>
-            {/if}
-            {#if filteredTagOptions.length}
-              {#each filteredTagOptions as tag}
-                <div class="flex items-center justify-between gap-2 px-3 py-2 text-sm">
-                  <div class="min-w-0">
-                    <div class="font-medium text-slate-900 dark:text-zinc-100 truncate">{tag.name}</div>
-                    {#if tag.lemma}
-                      <div class="text-xs text-slate-500 dark:text-zinc-400 truncate">{tag.lemma}</div>
-                    {/if}
-                  </div>
-                  <Button size="sm" on:click={() => chooseDraftTag(tag)} disabled={settingsTagCreating || settingsSaving}>Выбрать</Button>
-                </div>
-              {/each}
-            {:else}
-              {#if normalizedTagCreateValue && !hasExactTagMatch}
-                <div class="px-3 py-2 text-sm text-slate-500 dark:text-zinc-400">
-                  Можно добавить новый тег выше
-                </div>
-              {:else if normalizedTagSearch}
-                <div class="px-3 py-2 text-sm text-slate-500 dark:text-zinc-400">
-                  Ничего не найдено
-                </div>
-              {/if}
-            {/if}
-          </div>
-        </div>
 
         <div class="flex flex-col gap-2">
           <div class="text-sm text-slate-700 dark:text-zinc-300">Внутренние категории</div>

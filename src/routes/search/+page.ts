@@ -1,6 +1,8 @@
 import { env } from '$env/dynamic/public'
 import { profile } from '$lib/auth.js'
 import {
+  type BackendComun,
+  type BackendPost,
   backendPostCommunityPath,
   buildBackendPostPath,
   buildSearchUrl,
@@ -19,7 +21,7 @@ import type {
 } from 'lemmy-js-client'
 import { get } from 'svelte/store'
 
-export async function load({ url, fetch }) {
+export async function load({ url, fetch }): Promise<any> {
   const query = url.searchParams.get('q')
   const page = Number(url.searchParams.get('page')) || 1
   const community = Number(url.searchParams.get('community')) || undefined
@@ -40,9 +42,17 @@ export async function load({ url, fetch }) {
         results: { posts: [], authors: [] },
       }
     }
-    const payload = await response.json()
+    const payload: {
+      posts?: BackendPost[]
+      authors?: unknown[]
+      communities?: BackendComun[]
+      total_posts?: number
+      total_authors?: number
+      total_communities?: number
+      limit?: number
+    } = await response.json()
 
-    const posts = (payload.posts ?? []).map((backendPost) => ({
+    const posts = (payload.posts ?? []).map((backendPost: BackendPost) => ({
       post: backendPostToPostView(backendPost, backendPost.author),
       linkOverride: buildBackendPostPath(backendPost),
       authorUsername: backendPost.author?.username,
@@ -51,6 +61,7 @@ export async function load({ url, fetch }) {
     }))
 
     const authors = payload.authors ?? []
+    const communities = payload.communities ?? []
 
     return {
       backend: true,
@@ -59,8 +70,10 @@ export async function load({ url, fetch }) {
       type: type,
       query: query,
       results: {
+        communities,
         posts,
         authors,
+        total_communities: payload.total_communities ?? communities.length,
         total_posts: payload.total_posts ?? posts.length,
         total_authors: payload.total_authors ?? authors.length,
         limit: payload.limit ?? 20,
