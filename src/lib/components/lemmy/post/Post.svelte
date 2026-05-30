@@ -305,6 +305,7 @@
     subscribeUrl={subscribeUrl ?? undefined}
     {subscribeLabel}
     {hideSubscribe}
+    backendPostMeta={isBackendPost}
     authorNotifyCommentsEnabled={isBackendPost ? backendAuthorNotifyCommentsEnabled : undefined}
   >
     <slot name="badges" slot="badges" />
