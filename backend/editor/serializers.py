@@ -16,6 +16,7 @@ from editor.models import (
 )
 from feeds.models import Post, PostFavorite
 from communities.models import Comun, ComunPostCategoryAssignment
+from rabotaem_backend.media_urls import rewrite_public_media_payload, rewrite_public_media_urls
 
 User = get_user_model()
 
@@ -31,7 +32,7 @@ def _serialize_post_template(post: Post) -> dict | None:
     normalized_template, _template_error = editor_service._normalize_post_template_payload(
         raw_data.get("template")
     )
-    return normalized_template
+    return rewrite_public_media_payload(normalized_template)
 
 
 def _content_with_live_poll(post: Post, user: User | None = None) -> tuple[str, dict | None]:
@@ -39,7 +40,7 @@ def _content_with_live_poll(post: Post, user: User | None = None) -> tuple[str, 
     content = _fv()._replace_legacy_audio_embed(post, content)
     live_poll = _fv()._live_poll_for_post(post, user)
     if not live_poll:
-        return content, None
+        return rewrite_public_media_urls(content), None
 
     raw_data = post.raw_data if isinstance(post.raw_data, dict) else {}
     template_payload = _serialize_post_template(post)
@@ -47,20 +48,20 @@ def _content_with_live_poll(post: Post, user: User | None = None) -> tuple[str, 
         str(template_payload.get("type") or "").strip().lower() if isinstance(template_payload, dict) else ""
     )
     if template_type == POST_TEMPLATE_TYPE_POST_VOTE_POLL:
-        return content, live_poll["poll"]
+        return rewrite_public_media_urls(content), live_poll["poll"]
 
     if _fv()._content_contains_inline_poll(content):
-        return content, live_poll["poll"]
+        return rewrite_public_media_urls(content), live_poll["poll"]
 
     poll_html = live_poll["html"]
     stored_poll_html = raw_data.get("poll_html")
     if isinstance(stored_poll_html, str) and stored_poll_html and stored_poll_html in content:
-        return content.replace(stored_poll_html, poll_html, 1), live_poll["poll"]
+        return rewrite_public_media_urls(content.replace(stored_poll_html, poll_html, 1)), live_poll["poll"]
     if not content:
-        return poll_html, live_poll["poll"]
+        return rewrite_public_media_urls(poll_html), live_poll["poll"]
     if '<div class="post-poll"' not in content and poll_html not in content:
-        return f"{content}<br><br>{poll_html}", live_poll["poll"]
-    return content, live_poll["poll"]
+        return rewrite_public_media_urls(f"{content}<br><br>{poll_html}"), live_poll["poll"]
+    return rewrite_public_media_urls(content), live_poll["poll"]
 
 
 def _serialize_post_rating_block(

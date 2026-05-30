@@ -1,18 +1,15 @@
 from __future__ import annotations
 
-from django.conf import settings
 from django.http import HttpRequest
 
 from landing_pages.models import LandingPage, LandingPageImage
+from rabotaem_backend.media_urls import public_url
 
 
 def absolute_url(request: HttpRequest, url: str) -> str:
     if not url:
         return ""
-    if url.startswith(("http://", "https://")):
-        return url
-    site_base = (getattr(settings, "SITE_BASE_URL", "") or "").rstrip("/")
-    return f"{site_base}{url}" if site_base else request.build_absolute_uri(url)
+    return public_url(url, request=request)
 
 
 def serialize_image(request: HttpRequest, image: LandingPageImage) -> dict:

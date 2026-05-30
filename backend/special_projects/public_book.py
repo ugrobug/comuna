@@ -12,6 +12,7 @@ from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
 
+from rabotaem_backend.media_urls import public_url
 from special_projects.models import (
     PublicBookBlockedWord,
     PublicBookFinalNotificationSubscription,
@@ -154,9 +155,7 @@ def _site_url(path: str) -> str:
 def _file_url(path: str) -> str:
     if not path:
         return ""
-    if path.startswith(("http://", "https://")):
-        return path
-    return _site_url(path)
+    return public_url(path)
 
 
 def project_settings() -> PublicBookProjectSettings:

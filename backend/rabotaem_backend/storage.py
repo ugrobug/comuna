@@ -5,6 +5,8 @@ from django.core.files.storage import FileSystemStorage, Storage
 from django.utils.functional import cached_property
 from django.utils.module_loading import import_string
 
+from rabotaem_backend.media_urls import public_media_urls_prefer_s3
+
 
 class S3MediaStorage(Storage):
     """Store new media in S3 while still serving legacy local files."""
@@ -50,6 +52,8 @@ class S3MediaStorage(Storage):
         return self.s3_storage.size(name)
 
     def url(self, name: str) -> str:
+        if public_media_urls_prefer_s3():
+            return self.s3_storage.url(name)
         if self.local_storage.exists(name):
             return self.local_storage.url(name)
         return self.s3_storage.url(name)

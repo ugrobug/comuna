@@ -14,6 +14,7 @@ from django.http import HttpRequest
 from django.utils import timezone
 
 from notifications.service import create_user_notification
+from rabotaem_backend.media_urls import public_url
 from special_projects.models import (
     FilmJourneyEntry,
     FilmJourneyFilm,
@@ -90,11 +91,12 @@ def active_films_count() -> int:
 
 
 def serialize_landing_image_slot(slot: str, image: SpecialProjectLetterImage | None = None) -> dict[str, Any]:
+    image_url = public_url(image.image_url) if image and image.image_url else ""
     return {
         "id": image.id if image else None,
         "slot": slot,
         "title": image.title if image else f"Кадр {slot}",
-        "image_url": image.image_url if image else "",
+        "image_url": image_url,
         "source_url": image.source_url if image else "",
         "is_active": image.is_active if image else False,
     }

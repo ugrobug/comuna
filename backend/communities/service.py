@@ -41,6 +41,7 @@ from feeds.models import (
     PostRead,
     Tag,
 )
+from rabotaem_backend.media_urls import public_url
 from ratings.service import (
     calculate_author_rating,
     calculate_community_rating_for_posts,
@@ -93,16 +94,8 @@ def _feeds_views():
 def _media_url(request: HttpRequest | None, field) -> str | None:
     if not field:
         return None
-    site_base = getattr(settings, "SITE_BASE_URL", "").rstrip("/")
-    if site_base:
-        try:
-            return f"{site_base}{field.url}"
-        except Exception:
-            pass
-    if request is None:
-        return None
     try:
-        return request.build_absolute_uri(field.url)
+        return public_url(field.url, request=request)
     except Exception:
         return None
 
@@ -116,10 +109,21 @@ def _author_avatar_logo_url(author: Author | None) -> str:
         return ""
     avatar_image = getattr(author, "avatar_image", None)
     if avatar_image:
-        try:
-            image_url = avatar_image.url
-        except Exception:
-            image_url = ""
+        image_name = str(getattr(avatar_image, "name", "") or "").strip()
+        if image_name:
+            media_url = str(
+                getattr(settings, "MEDIA_LEGACY_URL", "")
+                or getattr(settings, "MEDIA_URL", "/media/")
+                or "/media/"
+            )
+            if not media_url.endswith("/"):
+                media_url = f"{media_url}/"
+            image_url = f"{media_url}{image_name.lstrip('/')}"
+        else:
+            try:
+                image_url = avatar_image.url
+            except Exception:
+                image_url = ""
         if image_url:
             site_base = getattr(settings, "SITE_BASE_URL", "").rstrip("/")
             if site_base and image_url.startswith("/"):

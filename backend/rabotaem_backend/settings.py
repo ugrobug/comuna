@@ -142,6 +142,9 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = os.environ.get("MEDIA_URL", "/media/")
 MEDIA_ROOT = BASE_DIR / "media"
 MEDIA_LEGACY_URL = os.environ.get("MEDIA_LEGACY_URL", "/media/")
+MEDIA_PUBLIC_URL_MODE = os.environ.get("MEDIA_PUBLIC_URL_MODE", "legacy").strip().lower()
+MEDIA_PUBLIC_BASE_URL = os.environ.get("MEDIA_PUBLIC_BASE_URL", "").strip()
+MEDIA_S3_PUBLIC_BASE_URL = os.environ.get("MEDIA_S3_PUBLIC_BASE_URL", "").strip()
 
 MEDIA_STORAGE_BACKEND = os.environ.get("MEDIA_STORAGE_BACKEND", "local").strip().lower()
 if MEDIA_STORAGE_BACKEND in {"s3", "beget_s3"}:

@@ -14,6 +14,7 @@ from django.utils.text import get_valid_filename
 from django.views.decorators.csrf import csrf_exempt
 from PIL import Image, ImageDraw, ImageFont, UnidentifiedImageError
 
+from rabotaem_backend.media_urls import public_url
 from special_projects import film_journey, public_book
 from special_projects.models import (
     FilmJourneyEntry,
@@ -791,8 +792,7 @@ def _save_letter_upload(request: HttpRequest, upload, *, folder: str = "landname
     filename = f"special-projects/{folder}/{base_name}-{secrets.token_hex(8)}{ext}"
     saved_path = default_storage.save(filename, upload)
     relative_url = default_storage.url(saved_path)
-    site_base = (getattr(settings, "SITE_BASE_URL", "") or "").rstrip("/")
-    return f"{site_base}{relative_url}" if site_base else request.build_absolute_uri(relative_url)
+    return public_url(relative_url, request=request)
 
 
 def _require_staff(request: HttpRequest):
