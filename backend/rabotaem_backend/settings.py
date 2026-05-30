@@ -145,6 +145,8 @@ MEDIA_LEGACY_URL = os.environ.get("MEDIA_LEGACY_URL", "/media/")
 
 MEDIA_STORAGE_BACKEND = os.environ.get("MEDIA_STORAGE_BACKEND", "local").strip().lower()
 if MEDIA_STORAGE_BACKEND in {"s3", "beget_s3"}:
+    from botocore.config import Config
+
     INSTALLED_APPS.append("storages")
 
     AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID", "")
@@ -153,7 +155,7 @@ if MEDIA_STORAGE_BACKEND in {"s3", "beget_s3"}:
     AWS_S3_ENDPOINT_URL = os.environ.get("AWS_S3_ENDPOINT_URL", "")
     AWS_S3_REGION_NAME = os.environ.get("AWS_S3_REGION_NAME", "ru1")
     AWS_S3_CUSTOM_DOMAIN = _domain_env("AWS_S3_CUSTOM_DOMAIN")
-    AWS_S3_ADDRESSING_STYLE = os.environ.get("AWS_S3_ADDRESSING_STYLE", "virtual")
+    AWS_S3_ADDRESSING_STYLE = os.environ.get("AWS_S3_ADDRESSING_STYLE", "path")
     AWS_S3_SIGNATURE_VERSION = os.environ.get("AWS_S3_SIGNATURE_VERSION", "s3v4")
     AWS_QUERYSTRING_AUTH = os.environ.get("AWS_QUERYSTRING_AUTH", "0") == "1"
     AWS_DEFAULT_ACL = os.environ.get("AWS_DEFAULT_ACL", "public-read") or None
@@ -165,6 +167,20 @@ if MEDIA_STORAGE_BACKEND in {"s3", "beget_s3"}:
             "public, max-age=31536000, immutable",
         )
     }
+    AWS_S3_CLIENT_CONFIG = Config(
+        signature_version=AWS_S3_SIGNATURE_VERSION,
+        request_checksum_calculation=os.environ.get(
+            "AWS_REQUEST_CHECKSUM_CALCULATION",
+            "when_required",
+        ),
+        response_checksum_validation=os.environ.get(
+            "AWS_RESPONSE_CHECKSUM_VALIDATION",
+            "when_required",
+        ),
+        s3={
+            "addressing_style": AWS_S3_ADDRESSING_STYLE,
+        },
+    )
 
     missing_s3_settings = [
         name
