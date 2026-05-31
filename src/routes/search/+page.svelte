@@ -1,8 +1,8 @@
 <script lang="ts">
+  import { goto } from '$app/navigation'
   import { navigating, page } from '$app/stores'
   import { profile } from '$lib/auth.js'
   import ObjectAutocomplete from '$lib/components/lemmy/ObjectAutocomplete.svelte'
-  import Sort from '$lib/components/lemmy/dropdowns/Sort.svelte'
   import CommentItem from '$lib/components/lemmy/comment/CommentItem.svelte'
   import CommunityItem from '$lib/components/lemmy/community/CommunityItem.svelte'
   import Post from '$lib/components/lemmy/post/Post.svelte'
@@ -18,28 +18,14 @@
   import { userSettings } from '$lib/settings.js'
   import { searchParam } from '$lib/util.js'
   import Avatar from '$lib/components/ui/Avatar.svelte'
-  import type {
-    CommentView,
-    CommunityView,
-    PersonView,
-    PostView,
-  } from 'lemmy-js-client'
-  import { Button, Disclosure, Select, Spinner, TextInput } from 'mono-svelte'
-  import {
-    AdjustmentsHorizontal,
-    Bars3BottomRight,
-    ChevronDown,
-    Icon,
-    MagnifyingGlass,
-  } from 'svelte-hero-icons'
+  import { Button, Select, Spinner, TextInput } from 'mono-svelte'
+  import { ChevronDown, Icon, MagnifyingGlass } from 'svelte-hero-icons'
   import { expoOut } from 'svelte/easing'
   import { slide } from 'svelte/transition'
   import { t } from '$lib/translations.js'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import Tabs from '$lib/components/ui/layout/pages/Tabs.svelte'
   import { contentPadding } from '$lib/components/ui/layout/Shell.svelte'
-
-  type Result = PostView | CommentView | PersonView | CommunityView
 
   export let data: any
 
@@ -49,6 +35,21 @@
   let pageNum = data.page
 
   let moreOptions = false
+
+  function submitSearch() {
+    const next = new URL($page.url)
+    const normalizedQuery = query.trim()
+
+    next.searchParams.delete('page')
+    next.searchParams.delete('sort')
+    if (normalizedQuery) {
+      next.searchParams.set('q', normalizedQuery)
+    } else {
+      next.searchParams.delete('q')
+    }
+
+    goto(next, { invalidateAll: true })
+  }
 </script>
 
 <svelte:window
@@ -70,8 +71,7 @@
 >
   <Tabs routes={[]} class="p-2 dark:bg-zinc-925/70">
     <form
-      on:submit|preventDefault={() =>
-        searchParam($page.url, 'q', query, 'page')}
+      on:submit|preventDefault={submitSearch}
       class="flex gap-2 flex-row items-center w-full text-base h-10"
     >
       <TextInput
@@ -98,7 +98,7 @@
 <div class="flex flex-row flex-wrap items-center gap-4 mt-4">
   <Select
     bind:value={data.type}
-    on:change={() => searchParam($page.url, 'type', data.type ?? 'All', 'page')}
+    on:change={() => searchParam($page.url, 'type', data.type ?? 'All', 'page', 'sort')}
   >
     <option value="All">{$t('content.all')}</option>
     <option value="Posts">{$t('content.posts')}</option>
@@ -108,9 +108,6 @@
     {/if}
     <option value="Users">{$t('content.users')}</option>
   </Select>
-  {#if !data.backend}
-    <Sort navigate bind:selected={data.sort} />
-  {/if}
   <Button
     slot="summary"
     size="square-lg"
@@ -212,16 +209,7 @@
       </div>
     {/if}
   {/if}
-{:else if !data.results}
-  <Placeholder
-    icon={MagnifyingGlass}
-    title={$t('routes.search.noResults.title')}
-    description={query == ''
-      ? $t('routes.search.noResults.alt')
-      : $t('routes.search.noResults.description')}
-    class="pt-4"
-  />
-{:else}
+{:else if data.hasQuery && data.results}
   {#await data.streamed.object}
     <div
       class="flex gap-2 items-center mt-4"
