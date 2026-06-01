@@ -80,8 +80,12 @@ export const buildBugReportConfirmationUrl = (id: number | string): string => {
   return `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/bug-report-confirmation/`
 }
 
-export const buildTagsListUrl = (): string => {
-  return `${getBackendBaseUrl()}/api/tags/`
+export const buildTagsListUrl = (params?: { q?: string; limit?: number }): string => {
+  const searchParams = new URLSearchParams()
+  if (params?.q) searchParams.set('q', params.q)
+  if (params?.limit) searchParams.set('limit', String(params.limit))
+  const queryString = searchParams.toString()
+  return `${getBackendBaseUrl()}/api/tags/${queryString ? `?${queryString}` : ''}`
 }
 
 export const buildTagsEnsureUrl = (): string => {
@@ -90,6 +94,10 @@ export const buildTagsEnsureUrl = (): string => {
 
 export const buildComunsUrl = (): string => {
   return `${getBackendBaseUrl()}/api/comuns/`
+}
+
+export const buildComunsComposerUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/comuns/composer/`
 }
 
 export const buildComunsSidebarUrl = (): string => {

@@ -11,6 +11,7 @@ from communities.views import (
     comun_post_category_update,
     comun_posts,
     comun_vote,
+    comuns_composer,
     comuns_list_create,
     comuns_sidebar,
 )
@@ -156,6 +157,7 @@ urlpatterns = [
     path("api/home/favorites/", favorites_feed, name="favorites-feed"),
     path("api/home/my/", my_feed, name="my-feed"),
     path("api/comuns/", comuns_list_create, name="comuns-list-create"),
+    path("api/comuns/composer/", comuns_composer, name="comuns-composer"),
     path("api/comuns/sidebar/", comuns_sidebar, name="comuns-sidebar"),
     path(
         "api/comuns/from-telegram-channel/",

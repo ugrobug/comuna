@@ -2955,7 +2955,29 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
 
 
 def tags_list(request: HttpRequest) -> HttpResponse:
-    tags = Tag.objects.filter(is_active=True).order_by("name")
+    query = re.sub(r"\s+", " ", (request.GET.get("q") or "").lstrip("#").strip())[:64]
+    try:
+        limit = min(max(int(request.GET.get("limit", "20")), 1), 50)
+    except (TypeError, ValueError):
+        limit = 20
+
+    tags_queryset = Tag.objects.filter(is_active=True)
+    if query:
+        if len(query) < 2:
+            tags = []
+        else:
+            prefix_query = Q(name__istartswith=query) | Q(lemma__istartswith=query)
+            contains_query = Q(name__icontains=query) | Q(lemma__icontains=query)
+            tags = list(tags_queryset.filter(prefix_query).order_by("name")[:limit])
+            if len(tags) < limit:
+                seen_ids = [tag.id for tag in tags]
+                tags.extend(
+                    tags_queryset.filter(contains_query)
+                    .exclude(id__in=seen_ids)
+                    .order_by("name")[: limit - len(tags)]
+                )
+    else:
+        tags = list(tags_queryset.order_by("name"))
     return JsonResponse(
         {
             "ok": True,

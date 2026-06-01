@@ -9,7 +9,7 @@ from collections import defaultdict
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Count, Prefetch, Q
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils import timezone
 from django.utils.text import slugify
@@ -27,8 +27,10 @@ from communities.models import (
 )
 from editor.models import (
     PostPollVote,
+    POST_TEMPLATE_TYPE_BASIC,
     normalize_allowed_post_templates,
     normalize_allowed_post_templates_override,
+    normalize_post_template_type_code,
 )
 from editor import service as editor_service
 from feeds.models import (
@@ -1471,6 +1473,238 @@ def comuns_list_create(request: HttpRequest) -> HttpResponse:
     )
 
 
+def _normalize_composer_allowed_templates(
+    raw_value: object,
+    available_values: list[str],
+    *,
+    fallback_to_default: bool,
+) -> list[str]:
+    if isinstance(raw_value, str):
+        candidates = [raw_value]
+    elif isinstance(raw_value, (list, tuple, set)):
+        candidates = list(raw_value)
+    else:
+        candidates = []
+
+    available_set = set(available_values)
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        value = normalize_post_template_type_code(candidate)
+        if not value or value not in available_set or value in seen:
+            continue
+        seen.add(value)
+        normalized.append(value)
+
+    if normalized or not fallback_to_default:
+        return normalized
+    if POST_TEMPLATE_TYPE_BASIC in available_set:
+        return [POST_TEMPLATE_TYPE_BASIC]
+    return available_values[:1]
+
+
+def _composer_prefetched_user_is_moderator(user: User, comun: Comun) -> bool:
+    if comun.creator_id == user.id:
+        return True
+    moderators = getattr(comun, "_prefetched_objects_cache", {}).get("moderators")
+    if moderators is None:
+        return comun.moderators.filter(id=user.id).exists()
+    return any(moderator.id == user.id for moderator in moderators)
+
+
+@csrf_exempt
+def comuns_composer(request: HttpRequest) -> HttpResponse:
+    current_user = user_views._get_user_from_request(request)
+    if request.method != "GET":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    if not current_user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+
+    template_type_options = editor_service._serialize_post_template_type_options()
+    template_editor_blocks_by_template = editor_service._template_editor_blocks_by_template()
+    available_template_values = [
+        normalize_post_template_type_code(option.get("value"))
+        for option in template_type_options
+        if normalize_post_template_type_code(option.get("value"))
+    ]
+    subscribed_comun_slugs = community_serializers._subscribed_comun_slugs_for_user(current_user)
+    personal_author_rating_loaded = False
+    personal_author_rating = 0.0
+
+    def current_author_rating() -> float:
+        nonlocal personal_author_rating_loaded, personal_author_rating
+        if personal_author_rating_loaded:
+            return personal_author_rating
+        personal_author_rating_loaded = True
+        personal_author = community_service._personal_user_author(current_user)
+        if not personal_author:
+            return personal_author_rating
+        personal_author_rating = round(float(calculate_author_rating(personal_author)), 2)
+        return personal_author_rating
+
+    def can_post_to(
+        comun: Comun,
+        *,
+        category: ComunCategory | None = None,
+        can_moderate: bool,
+    ) -> bool:
+        if can_moderate:
+            return True
+        if category is None and bool(getattr(comun, "only_moderators_can_post", False)):
+            return False
+        if category is not None and bool(getattr(category, "only_moderators_can_post", False)):
+            return False
+        minimum_rating = _comun_minimum_author_rating_value(comun)
+        if minimum_rating <= 0:
+            return True
+        return current_author_rating() >= minimum_rating
+
+    def serialize_category(
+        comun: Comun,
+        category: ComunCategory,
+        comun_allowed_template_types: list[str],
+        *,
+        can_post: bool,
+    ) -> dict:
+        category_allowed_template_types = _normalize_composer_allowed_templates(
+            getattr(category, "allowed_post_templates", []),
+            available_template_values,
+            fallback_to_default=False,
+        )
+        return {
+            "id": category.id,
+            "name": category.name,
+            "slug": category.slug,
+            "description": category.description,
+            "sort_order": category.sort_order,
+            "only_moderators_can_post": bool(getattr(category, "only_moderators_can_post", False)),
+            "hide_from_home": bool(getattr(category, "hide_from_home", False)),
+            "category_allowed_template_types": category_allowed_template_types,
+            "allowed_template_types": category_allowed_template_types or comun_allowed_template_types,
+            "inherits_comun_template_types": not bool(category_allowed_template_types),
+            "can_post": bool(can_post),
+        }
+
+    composer_scope_filter = (
+        Q(slug__in=subscribed_comun_slugs)
+        | Q(creator_id=current_user.id)
+        | Q(moderators__id=current_user.id)
+    )
+    queryset = (
+        Comun.objects.filter(is_active=True)
+        .exclude(slug__iexact="faq")
+        .filter(composer_scope_filter)
+        .only(
+            "id",
+            "name",
+            "slug",
+            "creator_id",
+            "logo_url",
+            "product_description",
+            "rules_text",
+            "glossary_enabled",
+            "minimum_author_rating_to_post",
+            "only_moderators_can_post",
+            "forbid_external_links",
+            "allowed_post_templates",
+            "rating_score",
+            "sort_order",
+            "is_active",
+        )
+        .prefetch_related(
+            Prefetch("moderators", queryset=User.objects.only("id")),
+            Prefetch(
+                "owned_categories",
+                queryset=ComunCategory.objects.filter(is_active=True).order_by("sort_order", "name"),
+            ),
+        )
+        .distinct()
+        .order_by("-rating_score", "sort_order", "name")
+    )
+
+    payload: list[dict] = []
+    glossary_comun_ids: list[int] = []
+    for comun in queryset:
+        can_moderate = _composer_prefetched_user_is_moderator(current_user, comun)
+        is_subscribed = comun.slug in subscribed_comun_slugs
+        comun_allowed_template_types = _normalize_composer_allowed_templates(
+            getattr(comun, "allowed_post_templates", []),
+            available_template_values,
+            fallback_to_default=True,
+        )
+        categories = _comun_categories_list(comun)
+        can_post_without_category = can_post_to(comun, can_moderate=can_moderate)
+        category_can_post_by_id = {
+            category.id: can_post_to(comun, category=category, can_moderate=can_moderate)
+            for category in categories
+        }
+        can_post_category_ids = [
+            category.id for category in categories if category_can_post_by_id.get(category.id)
+        ]
+        can_start_post = bool(can_post_without_category or can_post_category_ids)
+        if not can_moderate and (not is_subscribed or not can_start_post):
+            continue
+
+        if getattr(comun, "glossary_enabled", False):
+            glossary_comun_ids.append(comun.id)
+
+        payload.append(
+            {
+                "id": comun.id,
+                "name": comun.name,
+                "slug": comun.slug,
+                "logo_url": _comun_logo_url(request, comun),
+                "product_description": comun.product_description,
+                "rules_text": comun.rules_text,
+                "glossary_enabled": bool(getattr(comun, "glossary_enabled", False)),
+                "glossary_terms": [],
+                "glossary_terms_count": 0,
+                "minimum_author_rating_to_post": _comun_minimum_author_rating_value(comun),
+                "only_moderators_can_post": bool(getattr(comun, "only_moderators_can_post", False)),
+                "forbid_external_links": bool(getattr(comun, "forbid_external_links", False)),
+                "allowed_template_types": comun_allowed_template_types,
+                "is_subscribed": is_subscribed,
+                "can_moderate": can_moderate,
+                "can_post": can_post_without_category,
+                "can_post_without_category": can_post_without_category,
+                "can_post_category_ids": can_post_category_ids,
+                "can_start_post": can_start_post,
+                "categories": [
+                    serialize_category(
+                        comun,
+                        category,
+                        comun_allowed_template_types,
+                        can_post=category_can_post_by_id.get(category.id, False),
+                    )
+                    for category in categories
+                ],
+                "categories_count": len(categories),
+            }
+        )
+
+    if glossary_comun_ids:
+        glossary_terms_by_comun_id: dict[int, list[dict]] = defaultdict(list)
+        for term in (
+            ComunGlossaryTerm.objects.filter(comun_id__in=glossary_comun_ids, is_active=True)
+            .order_by("comun_id", "sort_order", "term")
+        ):
+            glossary_terms_by_comun_id[term.comun_id].append(_serialize_comun_glossary_term(term))
+        for item in payload:
+            glossary_terms = glossary_terms_by_comun_id.get(item["id"], [])
+            if glossary_terms:
+                item["glossary_terms"] = glossary_terms
+                item["glossary_terms_count"] = len(glossary_terms)
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "comuns": payload,
+            "template_type_options": template_type_options,
+            "template_editor_blocks_by_template": template_editor_blocks_by_template,
+        }
+    )
+
+
 @csrf_exempt
 def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
     current_user = user_views._get_user_from_request(request)
@@ -2456,5 +2690,6 @@ __all__ = [
     "comun_post_category_update",
     "comun_posts",
     "comun_vote",
+    "comuns_composer",
     "comuns_list_create",
 ]

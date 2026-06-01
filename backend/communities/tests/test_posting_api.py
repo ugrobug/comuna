@@ -9,6 +9,7 @@ from communities import service as community_service
 from communities.models import Comun, ComunCategory, ComunPostCategoryAssignment
 from feeds.models import Author, Post
 from my_feed.models import UserFeedSettings
+from users import service as user_service
 from users.models import AuthorAdmin
 
 
@@ -475,7 +476,10 @@ class ComunPostingApiTests(TestCase):
             my_feed_comuns=[subscribed_comun.slug, restricted_comun.slug],
         )
 
-        response = self.client.get(reverse("comuns-list-create"))
+        response = self.client.get(
+            reverse("comuns-list-create"),
+            HTTP_AUTHORIZATION=f"Bearer {user_service._issue_token(viewer)}",
+        )
 
         self.assertEqual(response.status_code, 200, response.content.decode())
         payload = response.json()
@@ -496,6 +500,86 @@ class ComunPostingApiTests(TestCase):
         self.assertFalse(restricted_payload["can_start_post"])
         self.assertFalse(restricted_payload["can_post_without_category"])
         self.assertFalse(restricted_payload["categories"][0]["can_post"])
+
+        moderated_payload = comuns_by_slug[moderated_comun.slug]
+        self.assertFalse(moderated_payload["is_subscribed"])
+        self.assertTrue(moderated_payload["can_moderate"])
+        self.assertTrue(moderated_payload["can_start_post"])
+
+    def test_comuns_composer_returns_only_available_targets(self):
+        viewer = User.objects.create_user(username="composer-subscriber", password="secret")
+
+        subscribed_comun = Comun.objects.create(
+            name="Composer Subscribed",
+            slug="composer-subscribed",
+            creator=self.user,
+            product_description="Можно писать",
+            rules_text="Без спама",
+        )
+        subscribed_category = ComunCategory.objects.create(
+            comun=subscribed_comun,
+            name="Отзывы",
+            slug="otzyvy",
+        )
+        subscribed_comun.categories.add(subscribed_category)
+
+        unsubscribed_comun = Comun.objects.create(
+            name="Composer Unsubscribed",
+            slug="composer-unsubscribed",
+            creator=self.user,
+        )
+
+        restricted_comun = Comun.objects.create(
+            name="Composer Restricted",
+            slug="composer-restricted",
+            creator=self.user,
+            only_moderators_can_post=True,
+        )
+        restricted_category = ComunCategory.objects.create(
+            comun=restricted_comun,
+            name="Модераторская",
+            slug="moderatorskaya",
+            only_moderators_can_post=True,
+        )
+        restricted_comun.categories.add(restricted_category)
+
+        moderated_comun = Comun.objects.create(
+            name="Composer Moderated",
+            slug="composer-moderated",
+            creator=self.user,
+            only_moderators_can_post=True,
+        )
+        moderated_comun.moderators.add(viewer)
+
+        UserFeedSettings.objects.create(
+            user=viewer,
+            my_feed_comuns=[subscribed_comun.slug, restricted_comun.slug],
+        )
+
+        response = self.client.get(
+            reverse("comuns-composer"),
+            HTTP_AUTHORIZATION=f"Bearer {user_service._issue_token(viewer)}",
+        )
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        payload = response.json()
+        comuns_by_slug = {comun["slug"]: comun for comun in payload["comuns"]}
+
+        self.assertIn(subscribed_comun.slug, comuns_by_slug)
+        self.assertNotIn(unsubscribed_comun.slug, comuns_by_slug)
+        self.assertNotIn(restricted_comun.slug, comuns_by_slug)
+        self.assertIn(moderated_comun.slug, comuns_by_slug)
+        self.assertIn("template_type_options", payload)
+        self.assertIn("template_editor_blocks_by_template", payload)
+
+        subscribed_payload = comuns_by_slug[subscribed_comun.slug]
+        self.assertTrue(subscribed_payload["is_subscribed"])
+        self.assertTrue(subscribed_payload["can_start_post"])
+        self.assertEqual(subscribed_payload["rules_text"], "Без спама")
+        self.assertIn(subscribed_category.id, subscribed_payload["can_post_category_ids"])
+        self.assertTrue(subscribed_payload["categories"][0]["can_post"])
+        self.assertNotIn("moderators", subscribed_payload)
+        self.assertNotIn("rating", subscribed_payload)
 
         moderated_payload = comuns_by_slug[moderated_comun.slug]
         self.assertFalse(moderated_payload["is_subscribed"])

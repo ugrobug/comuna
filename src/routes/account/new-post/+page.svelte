@@ -18,7 +18,7 @@
     updateUserPost,
   } from '$lib/siteAuth'
   import {
-    buildComunsUrl,
+    buildComunsComposerUrl,
     buildTagsListUrl,
     type BackendComun,
   } from '$lib/api/backend'
@@ -63,6 +63,7 @@
   let draftId: number | null = null
   let draftShareToken = ''
   let comunsLoading = false
+  let composerDataLoaded = false
   let autosavePrimed = false
   let initialFormSnapshot = ''
   let lastSavedFormSnapshot = ''
@@ -99,10 +100,13 @@
   let draftSavedNoticeHideTimer: ReturnType<typeof setTimeout> | null = null
   let comuns: BackendComun[] = []
   let tweetCharacterCountValue = 0
-  let tagOptions: TagSuggestion[] = []
   let tagsLoading = false
   let tagInputFocused = false
   let tagInputRef: HTMLInputElement | null = null
+  let tagSuggestionTimeout: ReturnType<typeof setTimeout> | null = null
+  let tagSuggestionAbortController: AbortController | null = null
+  let tagSuggestionRequestId = 0
+  let lastTagSuggestionQuery = ''
   let parsedCreateTags: string[] = []
   let selectedTagKeySet = new Set<string>()
   let currentTagQuery = ''
@@ -110,6 +114,9 @@
 
   const DRAFT_NOTICE_DELAY_MS = 10_000
   const DRAFT_NOTICE_VISIBLE_MS = 5_000
+  const TAG_SUGGESTION_MIN_QUERY_LENGTH = 2
+  const TAG_SUGGESTION_LIMIT = 8
+  const TAG_SUGGESTION_DEBOUNCE_MS = 250
   $: requestedComunSlug = String($page.url.searchParams.get('comun') || '').trim()
   $: requestedNewPost = $page.url.searchParams.get('new') === '1'
 
@@ -229,7 +236,9 @@
   $: parsedCreateTags = buildTags()
   $: selectedTagKeySet = new Set(parsedCreateTags.map((tag) => normalizeTagToken(tag)))
   $: currentTagQuery = getCurrentTagQuery(createTags)
-  $: tagSuggestions = buildTagSuggestions()
+  $: if (tagInputFocused) {
+    scheduleTagSuggestionFetch(currentTagQuery)
+  }
 
   const isEditorContentEmpty = (value: string) => {
     if (!value || value.trim() === '') return true
@@ -268,21 +277,19 @@
     return tags
   }
 
-  const buildTagSuggestions = () => {
-    if (!currentTagQuery) return [] as TagSuggestion[]
+  const filterTagSuggestions = (items: TagSuggestion[]) => {
     const seen = new Set<string>()
     const suggestions: TagSuggestion[] = []
-    for (const tag of tagOptions) {
+    for (const tag of items) {
       const name = cleanTagValue(tag.name)
       if (!name) continue
       const nameKey = normalizeTagToken(name)
       const lemmaKey = normalizeTagToken(tag.lemma || name)
       if (selectedTagKeySet.has(nameKey) || selectedTagKeySet.has(lemmaKey)) continue
       if (seen.has(lemmaKey)) continue
-      if (!nameKey.includes(currentTagQuery) && !lemmaKey.includes(currentTagQuery)) continue
       seen.add(lemmaKey)
       suggestions.push({ name, lemma: tag.lemma ?? null })
-      if (suggestions.length >= 8) break
+      if (suggestions.length >= TAG_SUGGESTION_LIMIT) break
     }
     return suggestions
   }
@@ -304,6 +311,8 @@
       if (nextTags.length >= 5) break
     }
     createTags = nextTags.join(', ')
+    tagSuggestions = []
+    lastTagSuggestionQuery = ''
     tagInputFocused = true
     await tick()
     tagInputRef?.focus()
@@ -393,13 +402,12 @@
       const nextFirstChangeAt = Number(parsed?.first_change_at ?? 0)
       const authorExists =
         !nextAuthor || publishIdentityOptions.some((item) => item.value === nextAuthor)
-      const comunExists = !nextComunSlug || availableComuns.some((item) => item.slug === nextComunSlug)
       createTitle = String(parsed?.title || '')
       createContent = String(parsed?.content || '')
       createTags = String(parsed?.tags || '')
       createAuthor = authorExists ? nextAuthor : createAuthor
-      createComunSlug = comunExists ? nextComunSlug : ''
-      createComunCategoryId = comunExists ? nextComunCategoryId : ''
+      createComunSlug = nextComunSlug
+      createComunCategoryId = nextComunCategoryId
       createTemplateType = isRecognizedPostTemplateType(nextTemplateType) ? nextTemplateType : ''
       createMovieReviewData = parsed?.movieReviewData ?? createEmptyMovieReviewTemplateData()
       createPostVotePollData =
@@ -543,10 +551,11 @@
       headers.Authorization = `Bearer ${$siteToken}`
     }
     try {
-      const response = await fetch(buildComunsUrl(), {
+      const response = await fetch(buildComunsComposerUrl(), {
         headers,
         cache: 'no-store',
       })
+      if (!response.ok) throw new Error('Failed to load composer communities')
       const data = await response.json().catch(() => ({}))
       comuns = Array.isArray(data?.comuns)
         ? data.comuns.map((comun: BackendComun) => ({
@@ -562,6 +571,7 @@
       templateTypeOptions = normalizePostTemplateTypeOptions(
         data?.template_type_options ?? data?.template_types
       )
+      composerDataLoaded = true
     } catch {
       comuns = []
     } finally {
@@ -569,25 +579,117 @@
     }
   }
 
-  const loadTagOptions = async () => {
-    if (tagsLoading || tagOptions.length) return
+  const applyRequestedComunSelection = () => {
+    if (!requestedComunSlug) return
+    const requestedComun = availableComuns.find(
+      (comun) => comun.slug === requestedComunSlug && canUseComunInComposer(comun)
+    )
+    if (!requestedComun) return
+    createComunSlug = requestedComun.slug
+    createComunCategoryId = defaultCategoryIdForComun(requestedComun)
+  }
+
+  const validateSelectedComunAccess = () => {
+    if (!composerDataLoaded || !createComunSlug) return
+    const selected = availableComuns.find((comun) => comun.slug === createComunSlug)
+    if (!selected) {
+      createComunSlug = ''
+      createComunCategoryId = ''
+      return
+    }
+    const selectedCategories = writableCategoriesForComun(selected)
+    if (
+      createComunCategoryId &&
+      !selectedCategories.some((category) => String(category.id) === createComunCategoryId)
+    ) {
+      createComunCategoryId = ''
+    }
+    if (!createComunCategoryId && !canPostWithoutCategory(selected) && selectedCategories.length) {
+      createComunCategoryId = String(selectedCategories[0].id)
+    }
+  }
+
+  const hydrateComposerData = async (restored: boolean) => {
+    await loadComuns()
+    applyRequestedComunSelection()
+    validateSelectedComunAccess()
+    if (restored) {
+      await validateRestoredDraftId()
+    }
+  }
+
+  const clearTagSuggestionTimeout = () => {
+    if (!tagSuggestionTimeout) return
+    clearTimeout(tagSuggestionTimeout)
+    tagSuggestionTimeout = null
+  }
+
+  const abortTagSuggestionRequest = () => {
+    tagSuggestionAbortController?.abort()
+    tagSuggestionAbortController = null
+  }
+
+  const resetTagSuggestions = () => {
+    clearTagSuggestionTimeout()
+    abortTagSuggestionRequest()
+    tagSuggestionRequestId += 1
+    lastTagSuggestionQuery = ''
+    tagsLoading = false
+    tagSuggestions = []
+  }
+
+  const loadTagSuggestions = async (query: string) => {
+    abortTagSuggestionRequest()
+    const requestId = tagSuggestionRequestId + 1
+    tagSuggestionRequestId = requestId
+    const abortController = new AbortController()
+    tagSuggestionAbortController = abortController
     tagsLoading = true
     try {
-      const response = await fetch(buildTagsListUrl(), { cache: 'no-store' })
+      const response = await fetch(buildTagsListUrl({ q: query, limit: TAG_SUGGESTION_LIMIT }), {
+        cache: 'no-store',
+        signal: abortController.signal,
+      })
+      if (!response.ok) throw new Error('Failed to load tag suggestions')
       const data = await response.json().catch(() => ({}))
-      tagOptions = Array.isArray(data?.tags)
-        ? data.tags
-            .map((tag: TagSuggestion) => ({
-              name: cleanTagValue(String(tag?.name || '')),
-              lemma: tag?.lemma ? cleanTagValue(String(tag.lemma)) : null,
-            }))
-            .filter((tag: TagSuggestion) => Boolean(tag.name))
+      if (requestId !== tagSuggestionRequestId || normalizeTagToken(currentTagQuery) !== query) return
+      tagSuggestions = Array.isArray(data?.tags)
+        ? filterTagSuggestions(
+            data.tags
+              .map((tag: TagSuggestion) => ({
+                name: cleanTagValue(String(tag?.name || '')),
+                lemma: tag?.lemma ? cleanTagValue(String(tag.lemma)) : null,
+              }))
+              .filter((tag: TagSuggestion) => Boolean(tag.name))
+          )
         : []
-    } catch {
-      tagOptions = []
+    } catch (error) {
+      if ((error as Error)?.name !== 'AbortError' && requestId === tagSuggestionRequestId) {
+        tagSuggestions = []
+      }
     } finally {
-      tagsLoading = false
+      if (requestId === tagSuggestionRequestId) {
+        tagsLoading = false
+        tagSuggestionAbortController = null
+      }
     }
+  }
+
+  const scheduleTagSuggestionFetch = (query: string) => {
+    if (!browser || !tagInputFocused) return
+    const normalizedQuery = normalizeTagToken(query)
+    if (normalizedQuery.length < TAG_SUGGESTION_MIN_QUERY_LENGTH) {
+      resetTagSuggestions()
+      return
+    }
+    if (normalizedQuery === lastTagSuggestionQuery) return
+    lastTagSuggestionQuery = normalizedQuery
+    tagSuggestions = []
+    clearTagSuggestionTimeout()
+    tagSuggestionTimeout = setTimeout(() => {
+      tagSuggestionTimeout = null
+      void loadTagSuggestions(normalizedQuery)
+    }, TAG_SUGGESTION_DEBOUNCE_MS)
   }
 
   const queueDraftSave = () => {
@@ -640,30 +742,17 @@
 
   onMount(() => {
     const initializeForm = async () => {
+      let restored = false
       try {
         await refreshSiteUser()
         if ($siteUser) {
-          await loadComuns()
-          void loadTagOptions()
           await tick()
           initialFormSnapshot = JSON.stringify(buildLocalDraftState())
           lastSavedFormSnapshot = initialFormSnapshot
           if (requestedNewPost) {
             clearLocalDraftBuffer()
           }
-          const restored = requestedNewPost ? false : restoreLocalDraftBuffer()
-          if (requestedComunSlug) {
-            const requestedComun = comuns.find(
-              (comun) => comun.slug === requestedComunSlug && canUseComunInComposer(comun)
-            )
-            if (requestedComun) {
-              createComunSlug = requestedComun.slug
-              createComunCategoryId = defaultCategoryIdForComun(requestedComun)
-            }
-          }
-          if (restored) {
-            await validateRestoredDraftId()
-          }
+          restored = requestedNewPost ? false : restoreLocalDraftBuffer()
           await tick()
           lastObservedFormSnapshot = JSON.stringify(buildLocalDraftState())
           autosavePrimed = true
@@ -673,6 +762,10 @@
         }
       } finally {
         loadingUser = false
+      }
+      if ($siteUser) {
+        await tick()
+        void hydrateComposerData(restored)
       }
     }
     initializeForm()
@@ -713,12 +806,14 @@
   onDestroy(() => {
     clearAutosaveTimeout()
     clearDraftSavedNotice()
+    resetTagSuggestions()
   })
 
   $: if ($siteUser && !createAuthor) {
     createAuthor = SITE_AUTHOR_CHOICE
   }
   $: if (
+    composerDataLoaded &&
     createComunSlug &&
     createComunCategoryId &&
     !selectedComunCategories.some((category) => String(category.id) === createComunCategoryId)
@@ -726,6 +821,7 @@
     createComunCategoryId = ''
   }
   $: if (
+    composerDataLoaded &&
     selectedComun &&
     !createComunCategoryId &&
     !selectedComunCanPostWithoutCategory &&
@@ -1226,10 +1322,10 @@
             class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
             on:focus={() => {
               tagInputFocused = true
-              void loadTagOptions()
             }}
             on:blur={() => {
               tagInputFocused = false
+              resetTagSuggestions()
             }}
             on:keydown={onTagInputKeydown}
           />
@@ -1247,7 +1343,7 @@
             </div>
           {/if}
 
-          {#if tagInputFocused && currentTagQuery}
+          {#if tagInputFocused && currentTagQuery.length >= TAG_SUGGESTION_MIN_QUERY_LENGTH}
             <div class="absolute z-30 mt-2 w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg dark:border-zinc-800 dark:bg-zinc-900">
               {#if tagsLoading}
                 <div class="px-3 py-3 text-sm text-slate-500 dark:text-zinc-400">
