@@ -9,7 +9,7 @@ from feeds.preview import build_post_preview
 from feeds.views import _extract_post_preview_image_urls
 
 
-@override_settings(SITE_BASE_URL="https://tambur.pub", MEDIA_URL="/media/")
+@override_settings(SITE_BASE_URL="https://tambur.pub", MEDIA_URL="/media/", MEDIA_PUBLIC_URL_MODE="legacy")
 class PostPreviewImageTests(SimpleTestCase):
     def test_extracts_local_webp_variants_from_html_image(self) -> None:
         post = Post(
@@ -20,6 +20,17 @@ class PostPreviewImageTests(SimpleTestCase):
 
         self.assertEqual(preview_url, "https://tambur.pub/media/uploads/post/foo-1280.webp")
         self.assertEqual(thumbnail_url, "https://tambur.pub/media/uploads/post/foo-640.webp")
+
+    @override_settings(MEDIA_PUBLIC_URL_MODE="s3", AWS_S3_CUSTOM_DOMAIN="media.tambur.pub")
+    def test_extracts_s3_webp_variants_when_public_media_mode_is_s3(self) -> None:
+        post = Post(
+            content='<p>Текст</p><img src="https://tambur.pub/media/uploads/post/foo-1920.webp" alt="">'
+        )
+
+        preview_url, thumbnail_url = _extract_post_preview_image_urls(None, post)
+
+        self.assertEqual(preview_url, "https://media.tambur.pub/uploads/post/foo-1280.webp")
+        self.assertEqual(thumbnail_url, "https://media.tambur.pub/uploads/post/foo-640.webp")
 
     def test_extracts_editor_gallery_relative_image(self) -> None:
         post = Post(

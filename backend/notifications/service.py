@@ -17,6 +17,15 @@ from telegram_integration.service import send_site_notification_to_telegram
 User = get_user_model()
 
 
+SPECIAL_PROJECT_NOTIFICATION_KEY = "special_project_notifications"
+SPECIAL_PROJECT_NOTIFICATION_EVENT_KEYS = {
+    "film_journey_daily",
+    "film_journey_reminder",
+    "public_book_reminder",
+    "public_book_final_pdf",
+}
+
+
 NOTIFICATION_EVENT_DEFINITIONS: list[dict[str, Any]] = [
     {
         "key": "post_comment",
@@ -64,6 +73,16 @@ NOTIFICATION_EVENT_DEFINITIONS: list[dict[str, Any]] = [
         "default_site_enabled": True,
         "default_telegram_enabled": True,
         "default_push_enabled": True,
+        "settings_hidden": True,
+    },
+    {
+        "key": SPECIAL_PROJECT_NOTIFICATION_KEY,
+        "title": "Оповещения спецпроектов",
+        "description": "Новые материалы, напоминания и финальные уведомления по спецпроектам.",
+        "default_site_enabled": True,
+        "default_telegram_enabled": True,
+        "default_push_enabled": True,
+        "settings_only": True,
     },
     {
         "key": "film_journey_daily",
@@ -72,6 +91,7 @@ NOTIFICATION_EVENT_DEFINITIONS: list[dict[str, Any]] = [
         "default_site_enabled": True,
         "default_telegram_enabled": True,
         "default_push_enabled": True,
+        "settings_group": SPECIAL_PROJECT_NOTIFICATION_KEY,
     },
     {
         "key": "film_journey_reminder",
@@ -80,6 +100,7 @@ NOTIFICATION_EVENT_DEFINITIONS: list[dict[str, Any]] = [
         "default_site_enabled": True,
         "default_telegram_enabled": True,
         "default_push_enabled": True,
+        "settings_group": SPECIAL_PROJECT_NOTIFICATION_KEY,
     },
     {
         "key": "public_book_reminder",
@@ -91,6 +112,7 @@ NOTIFICATION_EVENT_DEFINITIONS: list[dict[str, Any]] = [
         "default_site_enabled": False,
         "default_telegram_enabled": True,
         "default_push_enabled": False,
+        "settings_group": SPECIAL_PROJECT_NOTIFICATION_KEY,
     },
     {
         "key": "public_book_final_pdf",
@@ -99,6 +121,7 @@ NOTIFICATION_EVENT_DEFINITIONS: list[dict[str, Any]] = [
         "default_site_enabled": True,
         "default_telegram_enabled": True,
         "default_push_enabled": True,
+        "settings_group": SPECIAL_PROJECT_NOTIFICATION_KEY,
     },
 ]
 
@@ -119,8 +142,21 @@ def _default_grouping_period(definition: dict[str, Any]) -> str:
     return _normalize_grouping_period(definition.get("default_grouping_period"), default="none")
 
 
+def _settings_event_definitions() -> list[dict[str, Any]]:
+    return [
+        item
+        for item in NOTIFICATION_EVENT_DEFINITIONS
+        if not item.get("settings_group") and not item.get("settings_hidden")
+    ]
+
+
+def _notification_preference_key(event_key: str) -> str:
+    key = str(event_key or "").strip()
+    return SPECIAL_PROJECT_NOTIFICATION_KEY if key in SPECIAL_PROJECT_NOTIFICATION_EVENT_KEYS else key
+
+
 def get_notification_event_catalog() -> list[dict[str, Any]]:
-    return [dict(item) for item in NOTIFICATION_EVENT_DEFINITIONS]
+    return [dict(item) for item in _settings_event_definitions()]
 
 
 def get_notification_event_definition(event_key: str) -> dict[str, Any] | None:
@@ -133,7 +169,7 @@ def _ensure_user_notification_preferences(user: User) -> dict[str, SiteNotificat
         for item in SiteNotificationPreference.objects.filter(user=user)
     }
     missing: list[SiteNotificationPreference] = []
-    for definition in NOTIFICATION_EVENT_DEFINITIONS:
+    for definition in _settings_event_definitions():
         key = str(definition["key"])
         if key in existing:
             continue
@@ -160,7 +196,7 @@ def serialize_notification_settings_for_user(user: User) -> dict[str, Any]:
     preferences = _ensure_user_notification_preferences(user)
 
     events: list[dict[str, Any]] = []
-    for definition in NOTIFICATION_EVENT_DEFINITIONS:
+    for definition in _settings_event_definitions():
         key = str(definition["key"])
         pref = preferences.get(key)
         default_site_enabled = bool(definition.get("default_site_enabled", True))
@@ -226,6 +262,7 @@ def update_notification_settings_for_user(
             key = str(item.get("key") or "").strip()
             if not key or key not in valid_keys:
                 raise ValueError(f"unknown event key: {key or 'empty'}")
+            key = _notification_preference_key(key)
             if key in seen_keys:
                 continue
             seen_keys.add(key)
@@ -320,10 +357,11 @@ def create_user_notification(
     if user is None:
         return None
 
-    definition = get_notification_event_definition(event_key) or {}
+    preference_key = _notification_preference_key(event_key)
+    definition = get_notification_event_definition(preference_key) or get_notification_event_definition(event_key) or {}
     preferences = _ensure_user_notification_preferences(user)
 
-    pref = preferences.get(event_key)
+    pref = preferences.get(preference_key)
     is_site = bool(force_site) if force_site is not None else bool(
         pref.site_enabled if pref else definition.get("default_site_enabled", True)
     )
@@ -383,9 +421,10 @@ def create_grouped_user_notification(
             force_push=force_push,
         )
 
-    definition = get_notification_event_definition(event_key) or {}
+    preference_key = _notification_preference_key(event_key)
+    definition = get_notification_event_definition(preference_key) or get_notification_event_definition(event_key) or {}
     preferences = _ensure_user_notification_preferences(user)
-    pref = preferences.get(event_key)
+    pref = preferences.get(preference_key)
     is_site = bool(force_site) if force_site is not None else bool(
         pref.site_enabled if pref else definition.get("default_site_enabled", True)
     )

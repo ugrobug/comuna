@@ -6,6 +6,7 @@ from decimal import Decimal, InvalidOperation
 
 from django.http import HttpRequest
 
+from rabotaem_backend.media_urls import public_url
 from special_projects.models import SpecialProjectLetterImage
 
 LANDNAME_PROJECT_SLUG = "landname"
@@ -136,12 +137,13 @@ def _serialize_default_letter(request: HttpRequest, letter: str) -> dict:
 
 
 def serialize_letter_image(request: HttpRequest, image: SpecialProjectLetterImage) -> dict:
+    image_url = image.image_url or tile_url_for_letter(request, image.letter)
     return {
         "id": image.id,
         "letter": image.letter,
         "title": image.title,
         "location_name": image.location_name,
-        "image_url": image.image_url or tile_url_for_letter(request, image.letter),
+        "image_url": public_url(image_url, request=request),
         "map_url": image.map_url or (
             map_url_for_coordinates(image.latitude, image.longitude)
             if image.latitude is not None and image.longitude is not None

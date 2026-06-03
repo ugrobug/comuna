@@ -11,30 +11,28 @@ import {
 import { client, getClient } from '$lib/lemmy.js'
 import { getItemPublished } from '$lib/lemmy/item.js'
 import type {
-  CommentView,
-  CommunityView,
   ListingType,
-  PersonView,
-  PostView,
   SearchType,
   SortType,
 } from 'lemmy-js-client'
 import { get } from 'svelte/store'
 
 export async function load({ url, fetch }): Promise<any> {
-  const query = url.searchParams.get('q')
+  const query = (url.searchParams.get('q') || '').trim()
+  const hasQuery = query.length > 0
   const page = Number(url.searchParams.get('page')) || 1
   const community = Number(url.searchParams.get('community')) || undefined
-  const sort = url.searchParams.get('sort') || 'New'
+  const sort: SortType = 'New'
   const type = url.searchParams.get('type') || 'All'
   const listing_type =
     (url.searchParams.get('listing_type') as ListingType) || 'All'
 
-  if (env.PUBLIC_BACKEND_URL && query) {
-    const response = await fetch(buildSearchUrl(query, page, 20, type, sort))
+  if (env.PUBLIC_BACKEND_URL && hasQuery) {
+    const response = await fetch(buildSearchUrl(query, page, 20, type))
     if (!response.ok) {
       return {
         backend: true,
+        hasQuery,
         page: page,
         sort: sort,
         type: type,
@@ -65,6 +63,7 @@ export async function load({ url, fetch }): Promise<any> {
 
     return {
       backend: true,
+      hasQuery,
       page: page,
       sort: sort,
       type: type,
@@ -81,7 +80,7 @@ export async function load({ url, fetch }): Promise<any> {
     }
   }
 
-  if (query) {
+  if (hasQuery) {
     const results = await client({ func: fetch }).search({
       q: query,
       community_id: community ?? undefined,
@@ -110,6 +109,7 @@ export async function load({ url, fetch }): Promise<any> {
     }
 
     return {
+      hasQuery,
       type: type,
       sort: sort,
       page: page,
@@ -126,6 +126,7 @@ export async function load({ url, fetch }): Promise<any> {
   }
 
   return {
+    hasQuery,
     page: 1,
     sort: sort,
     type: type,

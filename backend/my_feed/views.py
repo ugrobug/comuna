@@ -4,6 +4,7 @@ import json
 from datetime import timedelta
 
 from django.db.models import Exists, OuterRef, Q
+from django.db.utils import OperationalError, ProgrammingError
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -13,6 +14,7 @@ from communities import views as community_views
 from feeds.models import Author, Post, PostRead
 from my_feed import serializers as my_feed_serializers
 from my_feed import service as my_feed_service
+from my_feed.models import FeedSourcePost
 from rabotaem_backend.cache import bump_public_cache_prefix
 
 def _fv():
@@ -83,6 +85,165 @@ def _my_feed_comun_post_membership_filter(
         has_source = True
 
     return combined_filter if has_source else None
+
+
+def _hidden_author_filter(usernames: list[str], *, prefix: str = "") -> Q:
+    hidden_author_filter = Q()
+    for username in usernames[:200]:
+        field_name = f"{prefix}author__username__iexact"
+        hidden_author_filter |= Q(**{field_name: username})
+    return hidden_author_filter
+
+
+def _hidden_tag_filter(values: list[str], *, prefix: str = "") -> Q:
+    hidden_tag_filter = Q()
+    for raw_tag in values[:200]:
+        normalized = _fv()._normalize_tag_value(raw_tag)
+        if not normalized:
+            continue
+        lemma = _fv()._lemmatize_tag(normalized) or normalized
+        hidden_tag_filter |= Q(**{f"{prefix}tags__name__iexact": normalized}) | Q(
+            **{f"{prefix}tags__lemma__iexact": lemma}
+        )
+    return hidden_tag_filter
+
+
+def _source_candidate_queryset(
+    *,
+    source_type: str,
+    source_ids: list[int],
+    now,
+    hide_negative: bool,
+    hidden_author_usernames: list[str],
+    hidden_tag_values: list[str],
+    read_user,
+    only_read: bool,
+    hide_read: bool,
+):
+    if not source_ids:
+        return None
+    qs = (
+        FeedSourcePost.objects.filter(source_type=source_type, source_id__in=source_ids)
+        .filter(
+            post__is_blocked=False,
+            post__is_pending=False,
+            post__author__is_blocked=False,
+        )
+        .filter(Q(post__publish_at__isnull=True) | Q(post__publish_at__lte=now))
+        .filter(Q(post__author__shadow_banned=False) | Q(post__author__force_home=True))
+    )
+    if hide_negative:
+        qs = qs.filter(post__rating__gte=0)
+
+    hidden_author_q = _hidden_author_filter(hidden_author_usernames, prefix="post__")
+    if hidden_author_q:
+        qs = qs.exclude(hidden_author_q)
+
+    hidden_tag_q = _hidden_tag_filter(hidden_tag_values, prefix="post__")
+    if hidden_tag_q:
+        qs = qs.exclude(hidden_tag_q)
+
+    if read_user and (only_read or hide_read):
+        recent_read_marker = PostRead.objects.filter(
+            post_id=OuterRef("post_id"),
+            user=read_user,
+            read_at__gte=now - timedelta(days=_READ_FILTER_LOOKBACK_DAYS),
+        )
+        qs = qs.annotate(recently_read=Exists(recent_read_marker))
+        if only_read:
+            qs = qs.filter(recently_read=True)
+        elif hide_read:
+            qs = qs.filter(recently_read=False)
+
+    return qs.values("post_id", "post_created_at").distinct()
+
+
+def _my_feed_posts_from_source_index(
+    *,
+    author_ids: list[int],
+    comun_ids: list[int],
+    comun_category_ids: list[int],
+    has_tag_selection: bool,
+    now,
+    hide_negative: bool,
+    hidden_author_usernames: list[str],
+    hidden_tag_values: list[str],
+    read_user,
+    only_read: bool,
+    hide_read: bool,
+    offset: int,
+    limit: int,
+) -> list[Post] | None:
+    if has_tag_selection:
+        return None
+
+    candidate_querysets = [
+        queryset
+        for queryset in (
+            _source_candidate_queryset(
+                source_type=FeedSourcePost.SOURCE_AUTHOR,
+                source_ids=author_ids,
+                now=now,
+                hide_negative=hide_negative,
+                hidden_author_usernames=hidden_author_usernames,
+                hidden_tag_values=hidden_tag_values,
+                read_user=read_user,
+                only_read=only_read,
+                hide_read=hide_read,
+            ),
+            _source_candidate_queryset(
+                source_type=FeedSourcePost.SOURCE_COMUN,
+                source_ids=comun_ids,
+                now=now,
+                hide_negative=hide_negative,
+                hidden_author_usernames=hidden_author_usernames,
+                hidden_tag_values=hidden_tag_values,
+                read_user=read_user,
+                only_read=only_read,
+                hide_read=hide_read,
+            ),
+            _source_candidate_queryset(
+                source_type=FeedSourcePost.SOURCE_COMUN_CATEGORY,
+                source_ids=comun_category_ids,
+                now=now,
+                hide_negative=hide_negative,
+                hidden_author_usernames=hidden_author_usernames,
+                hidden_tag_values=hidden_tag_values,
+                read_user=read_user,
+                only_read=only_read,
+                hide_read=hide_read,
+            ),
+        )
+        if queryset is not None
+    ]
+    if not candidate_querysets:
+        return []
+
+    combined_queryset = candidate_querysets[0]
+    if len(candidate_querysets) > 1:
+        combined_queryset = combined_queryset.union(*candidate_querysets[1:])
+
+    try:
+        rows = list(
+            combined_queryset.order_by("-post_created_at", "-post_id")[
+                offset : offset + limit
+            ]
+        )
+        if not rows and not FeedSourcePost.objects.exists():
+            return None
+    except (OperationalError, ProgrammingError):
+        return None
+    post_ids = [int(row["post_id"]) for row in rows]
+    if not post_ids:
+        return []
+
+    posts_by_id = {
+        post.id: post
+        for post in Post.objects.filter(id__in=post_ids)
+        .select_related("author")
+        .prefetch_related("tags")
+    }
+    return [posts_by_id[post_id] for post_id in post_ids if post_id in posts_by_id]
 
 
 @csrf_exempt
@@ -178,7 +339,10 @@ def my_feed(request: HttpRequest) -> HttpResponse:
             username_filter |= Q(username__iexact=username)
         if username_filter:
             author_ids = list(
-                Author.objects.filter(username_filter, is_blocked=False).values_list("id", flat=True)
+                Author.objects.filter(username_filter, is_blocked=False).values_list(
+                    "id",
+                    flat=True,
+                )
             )
 
     tag_selection_q = Q()
@@ -193,6 +357,8 @@ def my_feed(request: HttpRequest) -> HttpResponse:
 
     comun_tag_selection_q = Q()
     has_comun_selection = False
+    index_comun_ids: list[int] = []
+    index_comun_category_ids: list[int] = []
     if comun_slugs:
         comuns = list(
             community_views.Comun.objects.filter(is_active=True, slug__in=comun_slugs)
@@ -223,13 +389,18 @@ def my_feed(request: HttpRequest) -> HttpResponse:
                     continue
                 if active_category_ids and set(selected_category_ids) == active_category_ids:
                     comun_filter = _my_feed_comun_post_membership_filter(comun)
+                    index_comun_ids.append(int(comun.id))
                 else:
                     comun_filter = _my_feed_comun_post_membership_filter(
                         comun,
                         selected_category_ids=selected_category_ids,
                     )
+                    index_comun_category_ids.extend(
+                        int(category_id) for category_id in selected_category_ids
+                    )
             else:
                 comun_filter = _my_feed_comun_post_membership_filter(comun)
+                index_comun_ids.append(int(comun.id))
             if comun_filter is None:
                 continue
             comun_tag_selection_q |= comun_filter
@@ -271,12 +442,12 @@ def my_feed(request: HttpRequest) -> HttpResponse:
         base_query = base_query.filter(rating__gte=0)
     if has_tag_selection or has_comun_selection:
         base_query = base_query.distinct()
+    hidden_author_usernames: list[str] = []
+    hidden_tag_values: list[str] = []
     if saved_feed_settings:
         hidden_author_usernames = saved_feed_settings.get("hidden_authors") or []
         if hidden_author_usernames:
-            hidden_author_filter = Q()
-            for username in hidden_author_usernames[:200]:
-                hidden_author_filter |= Q(author__username__iexact=username)
+            hidden_author_filter = _hidden_author_filter(hidden_author_usernames)
             if hidden_author_filter:
                 base_query = base_query.exclude(hidden_author_filter)
         hidden_tag_values = [
@@ -285,13 +456,7 @@ def my_feed(request: HttpRequest) -> HttpResponse:
             if rule == "hide"
         ]
         if hidden_tag_values:
-            hidden_tag_filter = Q()
-            for raw_tag in hidden_tag_values[:200]:
-                normalized = _fv()._normalize_tag_value(raw_tag)
-                if not normalized:
-                    continue
-                lemma = _fv()._lemmatize_tag(normalized) or normalized
-                hidden_tag_filter |= Q(tags__name__iexact=normalized) | Q(tags__lemma__iexact=lemma)
+            hidden_tag_filter = _hidden_tag_filter(hidden_tag_values)
             if hidden_tag_filter:
                 base_query = base_query.exclude(hidden_tag_filter).distinct()
 
@@ -308,11 +473,29 @@ def my_feed(request: HttpRequest) -> HttpResponse:
         elif hide_read:
             posts_query = posts_query.filter(recently_read=False)
 
-    posts = list(
-        posts_query.select_related("author")
-        .prefetch_related("tags")
-        .order_by("-created_at")[offset : offset + limit]
+    index_posts = _my_feed_posts_from_source_index(
+        author_ids=sorted(set(author_ids)),
+        comun_ids=sorted(set(index_comun_ids)),
+        comun_category_ids=sorted(set(index_comun_category_ids)),
+        has_tag_selection=has_tag_selection,
+        now=now,
+        hide_negative=hide_negative,
+        hidden_author_usernames=hidden_author_usernames,
+        hidden_tag_values=hidden_tag_values,
+        read_user=read_user,
+        only_read=only_read,
+        hide_read=hide_read,
+        offset=offset,
+        limit=limit,
     )
+    if index_posts is None:
+        posts = list(
+            posts_query.select_related("author")
+            .prefetch_related("tags")
+            .order_by("-created_at")[offset : offset + limit]
+        )
+    else:
+        posts = index_posts
     favorite_post_ids = _fv()._favorite_post_ids_for_user(posts, current_user)
 
     serialized = [

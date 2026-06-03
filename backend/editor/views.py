@@ -48,18 +48,12 @@ from editor.service import (
 from editor import service as editor_service
 from feeds.models import Post
 from notifications.service import create_user_notification
+from rabotaem_backend.media_urls import public_url
 from users.models import AuthorAdmin
 
 
 def _absolute_storage_url(request: HttpRequest, relative_url: str) -> str:
-    site_base = (getattr(settings, "SITE_BASE_URL", "") or "").rstrip("/")
-    if site_base and relative_url.startswith("/"):
-        return f"{site_base}{relative_url}"
-    if site_base and not relative_url.startswith(("http://", "https://")):
-        return f"{site_base}/{relative_url.lstrip('/')}"
-    if relative_url.startswith(("http://", "https://")):
-        return relative_url
-    return request.build_absolute_uri(relative_url)
+    return public_url(relative_url, request=request)
 
 
 def _fv():

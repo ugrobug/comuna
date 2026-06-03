@@ -54,6 +54,7 @@
   export let hideSubscribe: boolean = false
   export let disableUserLink: boolean = false
   export let authorNotifyCommentsEnabled: boolean | undefined = undefined
+  export let backendPostMeta: boolean = false
 
   // Badges
   export let badges = {
@@ -83,6 +84,43 @@
   $: notifyCommentsLabel = authorNotifyCommentsEnabled
     ? 'Оповещения о комментариях автору в Telegram включены'
     : 'Оповещения о комментариях автору в Telegram выключены'
+  $: authorDisplayName = (user?.display_name || user?.name || '').trim()
+  $: communityDisplayName = (community?.title || community?.name || '').trim()
+  $: authorAvatarUrl = (user?.avatar || '').trim()
+  $: communityAvatarUrl = (community?.icon || '').trim()
+
+  const normalizeIdentityText = (value: string | undefined) =>
+    String(value || '').trim().replace(/\s+/g, ' ').toLowerCase()
+
+  const normalizeMediaIdentityUrl = (value: string | undefined) => {
+    const trimmed = String(value || '').trim()
+    if (!trimmed) return ''
+    try {
+      const parsed = new URL(trimmed, 'https://tambur.pub')
+      const path = parsed.pathname.replace(/\/+$/, '').toLowerCase()
+      if (!/^https?:\/\//i.test(trimmed) || parsed.hostname === 'tambur.pub') {
+        return path
+      }
+      return `${parsed.protocol}//${parsed.hostname}${path}`
+    } catch {
+      return trimmed.replace(/\/+$/, '').toLowerCase()
+    }
+  }
+
+  $: sameBackendIdentityName = Boolean(
+    normalizeIdentityText(authorDisplayName) &&
+      normalizeIdentityText(authorDisplayName) === normalizeIdentityText(communityDisplayName)
+  )
+  $: sameBackendIdentityAvatar = Boolean(
+    normalizeMediaIdentityUrl(authorAvatarUrl) &&
+      normalizeMediaIdentityUrl(authorAvatarUrl) === normalizeMediaIdentityUrl(communityAvatarUrl)
+  )
+  $: collapseBackendIdentity = Boolean(
+    backendPostMeta &&
+      community &&
+      sameBackendIdentityName &&
+      sameBackendIdentityAvatar
+  )
 
   // Функция для безопасного получения hostname
   function getInstanceFromActorId(actorId: string | undefined, isLocal: boolean | undefined): string {
@@ -251,15 +289,29 @@
   class:compact={view == 'compact'}
   style={$$props.style ?? ''}
 >
-  <div class="flex gap-4">
+  <div class="flex min-w-0 gap-4">
     <!-- Аватары -->
-    <div class="relative flex-shrink-0">
-      {#if disableUserLink}
+    <div class="relative h-12 w-12 flex-shrink-0">
+      {#if collapseBackendIdentity && community}
+        <a
+          href={resolvedCommunityLink}
+          class="block cursor-pointer"
+          data-sveltekit-preload-data="tap"
+        >
+          <Avatar
+            url={communityAvatarUrl || undefined}
+            width={48}
+            alt={communityDisplayName}
+            circle={true}
+            class_="!rounded-full hover:ring-2 transition-all ring-offset-0 ring-primary-900 dark:ring-primary-100"
+          />
+        </a>
+      {:else if disableUserLink}
         <div class="block">
           <Avatar
-            url={user?.avatar}
+            url={authorAvatarUrl || undefined}
             width={48}
-            alt={user?.name}
+            alt={authorDisplayName}
             circle={true}
             class_="!rounded-full"
           />
@@ -271,11 +323,27 @@
           data-sveltekit-preload-data="tap"
         >
           <Avatar
-            url={user?.avatar}
+            url={authorAvatarUrl || undefined}
             width={48}
-            alt={user?.name}
+            alt={authorDisplayName}
             circle={true}
             class_="!rounded-full hover:ring-2 transition-all ring-offset-0 ring-primary-900 dark:ring-primary-100"
+          />
+        </a>
+      {/if}
+      {#if backendPostMeta && community && !collapseBackendIdentity}
+        <a
+          href={resolvedCommunityLink}
+          class="absolute -bottom-1 -right-1 block rounded-full bg-white dark:bg-zinc-950"
+          data-sveltekit-preload-data="tap"
+          title={communityDisplayName}
+        >
+          <Avatar
+            url={communityAvatarUrl || undefined}
+            width={22}
+            alt={communityDisplayName}
+            circle={true}
+            class_="!rounded-full !border-2 !border-white dark:!border-zinc-950"
           />
         </a>
       {/if}
@@ -284,9 +352,17 @@
     <!-- Информация -->
     <div class="flex flex-col min-w-0 justify-center">
       <div class="flex items-center gap-1">
-        {#if disableUserLink}
+        {#if collapseBackendIdentity && community}
+          <a
+            href={resolvedCommunityLink}
+            class="text-base font-normal hover:underline !text-black dark:!text-white block max-w-full break-words line-clamp-2 sm:line-clamp-1"
+            data-sveltekit-preload-data="tap"
+          >
+            {communityDisplayName}
+          </a>
+        {:else if disableUserLink}
           <span class="text-base font-normal !text-black dark:!text-white block max-w-full break-words line-clamp-2 sm:line-clamp-1">
-            {user?.display_name || user?.name}
+            {authorDisplayName}
           </span>
         {:else}
           <a 
@@ -294,7 +370,7 @@
             class="text-base font-normal hover:underline !text-black dark:!text-white block max-w-full break-words line-clamp-2 sm:line-clamp-1"
             data-sveltekit-preload-data="tap"
           >
-            {user?.display_name || user?.name}
+            {authorDisplayName}
           </a>
         {/if}
         
@@ -309,13 +385,13 @@
       </div>
       
       <div class="flex items-center gap-1 !text-slate-400 dark:!text-zinc-500">
-        {#if community}
+        {#if community && !collapseBackendIdentity}
           <a
             href={resolvedCommunityLink}
             class="!text-black dark:!text-white font-normal hover:underline"
             data-sveltekit-preload-data="tap"
           >
-            {community.title}
+            {communityDisplayName}
           </a>
         {/if}
         {#if published}

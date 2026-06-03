@@ -47,6 +47,13 @@ from communities.models import (
     ComunVote,
 )
 from rabotaem_backend.cache import anonymous_cache, has_auth_context
+from rabotaem_backend.media_urls import (
+    media_storage_path_from_url,
+    public_media_url,
+    public_url,
+    rewrite_public_media_urls,
+    site_absolute_url,
+)
 from rabotaem_backend.rate_limit import is_rate_limited
 from telegram_integration.media import safe_public_url
 from editor.models import (
@@ -327,7 +334,7 @@ def _serialize_static_page_content(page: StaticPageContent | None, slug: str) ->
     return {
         "slug": page.slug,
         "title": page.title or fallback_title,
-        "content": page.content or "",
+        "content": rewrite_public_media_urls(page.content or ""),
         "exists": True,
         "updated_at": page.updated_at.isoformat() if page.updated_at else None,
         "updated_by": (
@@ -913,45 +920,18 @@ def _maybe_notify_post_published_to_subscribers(
 def _media_url(request: HttpRequest | None, field) -> str | None:
     if not field:
         return None
-    site_base = getattr(settings, "SITE_BASE_URL", "").rstrip("/")
-    if site_base:
-        try:
-            return f"{site_base}{field.url}"
-        except Exception:
-            pass
-    if request is None:
-        return None
     try:
-        return request.build_absolute_uri(field.url)
+        return public_url(field.url, request=request)
     except Exception:
         return None
 
 
 def _site_absolute_url(request: HttpRequest | None, path: str) -> str | None:
-    path = str(path or "").strip()
-    if not path:
-        return None
-    site_base = getattr(settings, "SITE_BASE_URL", "").rstrip("/")
-    if site_base:
-        return f"{site_base}/{path.lstrip('/')}"
-    if request is None:
-        return None
-    try:
-        return request.build_absolute_uri(path if path.startswith("/") else f"/{path}")
-    except Exception:
-        return None
+    return site_absolute_url(path, request=request) or None
 
 
 def _media_storage_path_from_url(url: str) -> str | None:
-    parsed = urllib.parse.urlparse(url)
-    media_url = str(getattr(settings, "MEDIA_URL", "/media/") or "/media/")
-    if not media_url.startswith("/"):
-        media_url = f"/{media_url}"
-    if not media_url.endswith("/"):
-        media_url = f"{media_url}/"
-    if not parsed.path.startswith(media_url):
-        return None
-    return urllib.parse.unquote(parsed.path[len(media_url) :]).lstrip("/")
+    return media_storage_path_from_url(url)
 
 
 def _closest_existing_or_declared_variant_width(current_width: int | None, target_width: int) -> int:
@@ -983,7 +963,10 @@ def _local_webp_variant_url(
         current_width = int(match.group(1))
         width = _closest_existing_or_declared_variant_width(current_width, target_width)
         next_path = _LOCAL_WEBP_VARIANT_RE.sub(f"-{width}.webp", parsed.path)
-        return urllib.parse.urlunparse(parsed._replace(path=next_path, query="", fragment=""))
+        return public_url(
+            urllib.parse.urlunparse(parsed._replace(path=next_path, query="", fragment="")),
+            request=request,
+        )
 
     storage_path = _media_storage_path_from_url(value)
     if not storage_path:
@@ -997,9 +980,6 @@ def _local_webp_variant_url(
         _IMAGE_VARIANT_WIDTHS,
         key=lambda width: (abs(width - target_width), -width),
     )
-    media_url = str(getattr(settings, "MEDIA_URL", "/media/") or "/media/")
-    if not media_url.endswith("/"):
-        media_url = f"{media_url}/"
     for width in candidate_widths:
         candidate_path = f"{root}-{width}.webp"
         try:
@@ -1007,8 +987,7 @@ def _local_webp_variant_url(
                 continue
         except Exception:
             continue
-        absolute = _site_absolute_url(request, f"{media_url.lstrip('/')}{candidate_path}")
-        return absolute or value
+        return public_media_url(candidate_path, request=request) or value
 
     return value
 
@@ -1024,7 +1003,7 @@ def _normalize_public_image_url(request: HttpRequest | None, url: object) -> str
     if value.startswith("//"):
         value = f"https:{value}"
     elif value.startswith("/"):
-        value = _site_absolute_url(request, value) or ""
+        value = public_url(value, request=request) or ""
     if not value:
         return None
 
@@ -1033,7 +1012,7 @@ def _normalize_public_image_url(request: HttpRequest | None, url: object) -> str
         return None
     if not _IMAGE_URL_PATH_RE.search(parsed.path):
         return None
-    return urllib.parse.urlunparse(parsed._replace(fragment=""))
+    return public_url(urllib.parse.urlunparse(parsed._replace(fragment="")), request=request)
 
 
 def _editor_block_image_candidates(payload: dict | None) -> list[object]:
@@ -1163,8 +1142,10 @@ def _extract_post_preview_image_urls(
 def _post_card_preview_content(post: Post) -> str:
     preview_content = str(getattr(post, "preview_content", "") or "").strip()
     if preview_content:
-        return preview_content
-    return build_post_preview(post.content or "", post.raw_data).get("preview_content", "")
+        return rewrite_public_media_urls(preview_content)
+    return rewrite_public_media_urls(
+        build_post_preview(post.content or "", post.raw_data).get("preview_content", "")
+    )
 
 
 def _serialize_post_preview_image_fields(
@@ -2974,7 +2955,29 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
 
 
 def tags_list(request: HttpRequest) -> HttpResponse:
-    tags = Tag.objects.filter(is_active=True).order_by("name")
+    query = re.sub(r"\s+", " ", (request.GET.get("q") or "").lstrip("#").strip())[:64]
+    try:
+        limit = min(max(int(request.GET.get("limit", "20")), 1), 50)
+    except (TypeError, ValueError):
+        limit = 20
+
+    tags_queryset = Tag.objects.filter(is_active=True)
+    if query:
+        if len(query) < 2:
+            tags = []
+        else:
+            prefix_query = Q(name__istartswith=query) | Q(lemma__istartswith=query)
+            contains_query = Q(name__icontains=query) | Q(lemma__icontains=query)
+            tags = list(tags_queryset.filter(prefix_query).order_by("name")[:limit])
+            if len(tags) < limit:
+                seen_ids = [tag.id for tag in tags]
+                tags.extend(
+                    tags_queryset.filter(contains_query)
+                    .exclude(id__in=seen_ids)
+                    .order_by("name")[: limit - len(tags)]
+                )
+    else:
+        tags = list(tags_queryset.order_by("name"))
     return JsonResponse(
         {
             "ok": True,

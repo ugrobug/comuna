@@ -13,6 +13,11 @@ def _csv_env(name: str, default: str = "") -> list[str]:
         if value.strip()
     ]
 
+
+def _domain_env(name: str, default: str = "") -> str:
+    value = os.environ.get(name, default).strip()
+    return value.removeprefix("https://").removeprefix("http://").strip("/")
+
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "")
 DEBUG = os.environ.get("DJANGO_DEBUG", "0") == "1"
 
@@ -50,6 +55,7 @@ INSTALLED_APPS = [
     "editor.apps.EditorConfig",
     "telegram_integration.apps.TelegramIntegrationConfig",
     "special_projects.apps.SpecialProjectsConfig",
+    "landing_pages.apps.LandingPagesConfig",
 ]
 
 MIDDLEWARE = [
@@ -133,8 +139,76 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
-MEDIA_URL = "/media/"
+MEDIA_URL = os.environ.get("MEDIA_URL", "/media/")
 MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_LEGACY_URL = os.environ.get("MEDIA_LEGACY_URL", "/media/")
+MEDIA_PUBLIC_URL_MODE = os.environ.get("MEDIA_PUBLIC_URL_MODE", "legacy").strip().lower()
+MEDIA_PUBLIC_BASE_URL = os.environ.get("MEDIA_PUBLIC_BASE_URL", "").strip()
+MEDIA_S3_PUBLIC_BASE_URL = os.environ.get("MEDIA_S3_PUBLIC_BASE_URL", "").strip()
+
+MEDIA_STORAGE_BACKEND = os.environ.get("MEDIA_STORAGE_BACKEND", "local").strip().lower()
+if MEDIA_STORAGE_BACKEND in {"s3", "beget_s3"}:
+    from botocore.config import Config
+
+    INSTALLED_APPS.append("storages")
+
+    AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID", "")
+    AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
+    AWS_STORAGE_BUCKET_NAME = os.environ.get("AWS_STORAGE_BUCKET_NAME", "")
+    AWS_S3_ENDPOINT_URL = os.environ.get("AWS_S3_ENDPOINT_URL", "")
+    AWS_S3_REGION_NAME = os.environ.get("AWS_S3_REGION_NAME", "ru1")
+    AWS_S3_CUSTOM_DOMAIN = _domain_env("AWS_S3_CUSTOM_DOMAIN")
+    AWS_S3_ADDRESSING_STYLE = os.environ.get("AWS_S3_ADDRESSING_STYLE", "path")
+    AWS_S3_SIGNATURE_VERSION = os.environ.get("AWS_S3_SIGNATURE_VERSION", "s3v4")
+    AWS_QUERYSTRING_AUTH = os.environ.get("AWS_QUERYSTRING_AUTH", "0") == "1"
+    AWS_DEFAULT_ACL = os.environ.get("AWS_DEFAULT_ACL", "public-read") or None
+    AWS_S3_FILE_OVERWRITE = os.environ.get("AWS_S3_FILE_OVERWRITE", "0") == "1"
+    AWS_LOCATION = os.environ.get("AWS_LOCATION", "")
+    AWS_S3_OBJECT_PARAMETERS = {
+        "CacheControl": os.environ.get(
+            "AWS_S3_CACHE_CONTROL",
+            "public, max-age=31536000, immutable",
+        )
+    }
+    AWS_S3_CLIENT_CONFIG = Config(
+        signature_version=AWS_S3_SIGNATURE_VERSION,
+        request_checksum_calculation=os.environ.get(
+            "AWS_REQUEST_CHECKSUM_CALCULATION",
+            "when_required",
+        ),
+        response_checksum_validation=os.environ.get(
+            "AWS_RESPONSE_CHECKSUM_VALIDATION",
+            "when_required",
+        ),
+        s3={
+            "addressing_style": AWS_S3_ADDRESSING_STYLE,
+        },
+    )
+
+    missing_s3_settings = [
+        name
+        for name, value in {
+            "AWS_ACCESS_KEY_ID": AWS_ACCESS_KEY_ID,
+            "AWS_SECRET_ACCESS_KEY": AWS_SECRET_ACCESS_KEY,
+            "AWS_STORAGE_BUCKET_NAME": AWS_STORAGE_BUCKET_NAME,
+            "AWS_S3_ENDPOINT_URL": AWS_S3_ENDPOINT_URL,
+        }.items()
+        if not value
+    ]
+    if missing_s3_settings:
+        raise ValueError(
+            "MEDIA_STORAGE_BACKEND=s3 requires "
+            + ", ".join(missing_s3_settings)
+        )
+
+    STORAGES = {
+        "default": {
+            "BACKEND": "rabotaem_backend.storage.S3MediaStorage",
+        },
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        },
+    }
 
 USER_UPLOAD_MAX_BYTES = int(os.environ.get("USER_UPLOAD_MAX_BYTES", str(10 * 1024 * 1024)))
 DATA_UPLOAD_MAX_MEMORY_SIZE = int(

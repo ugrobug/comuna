@@ -12,7 +12,7 @@ from my_feed.views import (
 )
 from communities.models import Comun, ComunCategory, ComunPostCategoryAssignment
 from feeds.models import Author, Post, PostRead
-from my_feed.models import UserFeedSettings
+from my_feed.models import FeedSourcePost, UserFeedSettings
 from users.service import _issue_token
 
 User = get_user_model()
@@ -81,6 +81,22 @@ class MyFeedComunCategoryTests(TestCase):
         post_ids = {post["id"] for post in response.json()["posts"]}
         self.assertEqual(post_ids, {self.record_post.id, self.news_post.id})
 
+    def test_feed_source_index_tracks_comun_and_category_membership(self):
+        self.assertTrue(
+            FeedSourcePost.objects.filter(
+                source_type=FeedSourcePost.SOURCE_COMUN,
+                source_id=self.comun.id,
+                post=self.record_post,
+            ).exists()
+        )
+        self.assertTrue(
+            FeedSourcePost.objects.filter(
+                source_type=FeedSourcePost.SOURCE_COMUN_CATEGORY,
+                source_id=self.records.id,
+                post=self.record_post,
+            ).exists()
+        )
+
     def test_my_feed_comun_category_selection_filters_selected_categories(self):
         response = self.client.get(
             reverse("my-feed"),
@@ -143,8 +159,16 @@ class MyFeedComunCategoryTests(TestCase):
 class UserFeedSettingsApiTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="feed-user", password="secret")
-        self.comun = Comun.objects.create(name="Subscribed Comun", slug="subscribed", creator=self.user)
-        self.other_comun = Comun.objects.create(name="Other Comun", slug="other", creator=self.user)
+        self.comun = Comun.objects.create(
+            name="Subscribed Comun",
+            slug="subscribed",
+            creator=self.user,
+        )
+        self.other_comun = Comun.objects.create(
+            name="Other Comun",
+            slug="other",
+            creator=self.user,
+        )
         self.author = Author.objects.create(username="chosen-author", title="Chosen Author")
         self.post = Post.objects.create(
             author=self.author,

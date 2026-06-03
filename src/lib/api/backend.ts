@@ -80,8 +80,12 @@ export const buildBugReportConfirmationUrl = (id: number | string): string => {
   return `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/bug-report-confirmation/`
 }
 
-export const buildTagsListUrl = (): string => {
-  return `${getBackendBaseUrl()}/api/tags/`
+export const buildTagsListUrl = (params?: { q?: string; limit?: number }): string => {
+  const searchParams = new URLSearchParams()
+  if (params?.q) searchParams.set('q', params.q)
+  if (params?.limit) searchParams.set('limit', String(params.limit))
+  const queryString = searchParams.toString()
+  return `${getBackendBaseUrl()}/api/tags/${queryString ? `?${queryString}` : ''}`
 }
 
 export const buildTagsEnsureUrl = (): string => {
@@ -90,6 +94,10 @@ export const buildTagsEnsureUrl = (): string => {
 
 export const buildComunsUrl = (): string => {
   return `${getBackendBaseUrl()}/api/comuns/`
+}
+
+export const buildComunsComposerUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/comuns/composer/`
 }
 
 export const buildComunsSidebarUrl = (): string => {
@@ -382,6 +390,30 @@ export const buildSpecial1001FilmsAdminLandingImagesUrl = (): string => {
 
 export const buildSpecial1001FilmsAdminFilmUrl = (id: number | string): string => {
   return `${getBackendBaseUrl()}/api/special-projects/365-films/admin/films/${encodeURIComponent(id)}/`
+}
+
+export const buildLandingPageUrl = (slug: string): string => {
+  return `${getBackendBaseUrl()}/api/landing-pages/${encodeURIComponent(slug)}/`
+}
+
+export const buildLandingPageLeadsUrl = (slug: string): string => {
+  return `${getBackendBaseUrl()}/api/landing-pages/${encodeURIComponent(slug)}/leads/`
+}
+
+export const buildLandingPagesAdminUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/landing-pages/admin/pages/`
+}
+
+export const buildLandingPageAdminUrl = (slug: string): string => {
+  return `${getBackendBaseUrl()}/api/landing-pages/admin/pages/${encodeURIComponent(slug)}/`
+}
+
+export const buildLandingPageAdminImagesUrl = (slug: string): string => {
+  return `${getBackendBaseUrl()}/api/landing-pages/admin/pages/${encodeURIComponent(slug)}/images/`
+}
+
+export const buildLandingPageAdminImageUrl = (id: number | string): string => {
+  return `${getBackendBaseUrl()}/api/landing-pages/admin/images/${encodeURIComponent(id)}/`
 }
 
 export const buildBackendPostPath = (post: { id: number; title: string }): string => {

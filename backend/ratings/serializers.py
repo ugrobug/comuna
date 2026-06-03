@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from django.conf import settings
 from django.http import HttpRequest
 from django.db.models import Sum
 
+from rabotaem_backend.media_urls import public_url
 from ratings.service import author_rating_value
 from telegram_integration.media import safe_public_url
 
@@ -14,12 +14,7 @@ def _author_avatar_url(request: HttpRequest | None, author: Any) -> str | None:
     avatar_image = getattr(author, "avatar_image", None)
     if avatar_image:
         try:
-            site_base = (getattr(settings, "SITE_BASE_URL", "") or "").rstrip("/")
-            if site_base:
-                return f"{site_base}{avatar_image.url}"
-            if request is not None:
-                return request.build_absolute_uri(avatar_image.url)
-            return avatar_image.url
+            return public_url(avatar_image.url, request=request)
         except Exception:
             pass
     return safe_public_url(getattr(author, "avatar_url", None))

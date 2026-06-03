@@ -42,4 +42,47 @@ class UserFeedSettings(models.Model):
         return f"Feed settings for {self.user}"
 
 
-__all__ = ["UserFeedSettings", "default_feed_tag_rules"]
+class FeedSourcePost(models.Model):
+    SOURCE_AUTHOR = "author"
+    SOURCE_COMUN = "comun"
+    SOURCE_COMUN_CATEGORY = "comun_category"
+    SOURCE_TAG = "tag"
+    SOURCE_CHOICES = (
+        (SOURCE_AUTHOR, "Автор"),
+        (SOURCE_COMUN, "Комуна"),
+        (SOURCE_COMUN_CATEGORY, "Категория комуны"),
+        (SOURCE_TAG, "Тег"),
+    )
+
+    source_type = models.CharField(max_length=32, choices=SOURCE_CHOICES)
+    source_id = models.BigIntegerField()
+    post = models.ForeignKey(
+        "feeds.Post",
+        on_delete=models.CASCADE,
+        related_name="feed_source_links",
+    )
+    post_created_at = models.DateTimeField()
+
+    class Meta:
+        app_label = "feeds"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["source_type", "source_id", "post"],
+                name="feeds_feedsourcepost_unique",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["source_type", "source_id", "-post_created_at", "post"],
+                name="feedsrc_source_created_idx",
+            ),
+            models.Index(fields=["post", "source_type"], name="feedsrc_post_type_idx"),
+        ]
+        verbose_name = "Пост в источнике ленты"
+        verbose_name_plural = "Посты в источниках ленты"
+
+    def __str__(self) -> str:
+        return f"{self.source_type}:{self.source_id}:{self.post_id}"
+
+
+__all__ = ["UserFeedSettings", "FeedSourcePost", "default_feed_tag_rules"]

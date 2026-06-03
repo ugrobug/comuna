@@ -8,31 +8,21 @@ import urllib.parse
 import urllib.request
 from urllib.error import URLError
 
-from django.conf import settings
-
 from rabotaem_backend.images import save_image_with_variants
+from rabotaem_backend.media_urls import public_media_url, public_url
 
 _TELEGRAM_FILE_RE = re.compile(r"https?://api\.telegram\.org/file/bot[^/\s<>'\"]+/(.+)")
 
 
 def build_public_media_url(path: str) -> str:
-    base = settings.SITE_BASE_URL.rstrip("/")
-    media_url = settings.MEDIA_URL
-    if not media_url.endswith("/"):
-        media_url = f"{media_url}/"
-    return f"{base}{media_url}{path.lstrip('/')}"
+    return public_media_url(path)
 
 
 def build_public_storage_url(url_or_path: str) -> str:
     value = str(url_or_path or "").strip()
     if not value:
         return ""
-    if value.startswith(("http://", "https://")):
-        return value
-    base = settings.SITE_BASE_URL.rstrip("/")
-    if value.startswith("/"):
-        return f"{base}{value}"
-    return build_public_media_url(value)
+    return public_media_url(value)
 
 
 def extract_telegram_file_path(url: str) -> str | None:
@@ -52,7 +42,7 @@ def safe_public_url(url: str | None) -> str | None:
         return None
     if is_private_telegram_file_url(value):
         return None
-    return value
+    return public_url(value)
 
 
 def download_telegram_file_by_path(file_path: str, token: str) -> str | None:

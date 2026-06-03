@@ -66,7 +66,10 @@
   }
 
   $: isLandingRoute =
-    $page.url.pathname === '/lp' || $page.url.pathname.startsWith('/lp/')
+    $page.url.pathname === '/lp' ||
+    $page.url.pathname.startsWith('/lp/') ||
+    $page.url.pathname === '/l' ||
+    $page.url.pathname.startsWith('/l/')
   $: isSpecialProjectRoute = $page.url.pathname.startsWith('/s/')
   $: isFullBleedRoute = isLandingRoute || isSpecialProjectRoute
   // Получаем текущий URL для канонической ссылки
