@@ -1,94 +1,56 @@
 # Маппинг Comuna ↔ Послетитров
 
-Таблица в CSV: [post_field_mapping.csv](post_field_mapping.csv) (колонки: раздел, Comuna, Послетитров, Комментарий).
+**Таблица сопоставления полей:** [post_field_mapping.csv](post_field_mapping.csv)  
+Только пары «куда на Comuna» ↔ «откуда на ПТ» и строки с пометкой **нужно сопоставить**.
 
-Статья на ПТ: `WpPosts` где `post_type=post`, `post_status=publish` (`legacy_posts.articles_queryset()`).
+Как импортировать (команды, prod): [PROD_RUNBOOK.md](PROD_RUNBOOK.md).  
+ТЗ и этапы: [tz_migration.md](tz_migration.md).
 
-## Post
+## Что считается «статьёй» на ПТ
 
-| Comuna | Послетитров |
-|--------|-------------|
-| `Post.title` | `WpPosts.post_title` |
-| `Post.content` | `WpPosts.post_content` *(конвертер HTML/Gutenberg → JSON `blocks` + `additional`)* |
-| `Post.content.additional.previewDescription` | `WpPosts.post_excerpt` *(врезка)* |
-| `Post.publish_at` | `WpPosts.post_date` |
-| `Post.created_at` | `WpPosts.post_date` *(выставить вручную при импорте)* |
-| `Post.author_id` | `WpPosts.post_author` → `WpUsers.ID` |
-| `Post.source_url` | `WpPosts.guid` *(или URL из slug)* |
-| `Post.comments_count` | `WpPosts.comment_count` *(сверить с `wp_comments`)* |
-| `Post.raw_data.legacy_wp_id` | `WpPosts.ID` *(предположение: ключ в JSON)* |
-| `Post.raw_data.legacy_slug` | `WpPosts.post_name` *(предположение: редиректы)* |
-| `Post.raw_data.source` | — *(предположение: `"wordpress"`)* |
-| `Post.message_id` | — *(синтетический, не WP ID)* |
-| `/b/post/{Post.id}` | `/articles/{WpPosts.post_name}/` |
+`wp_posts`: `post_type = post`, `post_status = publish` (см. `legacy_posts.articles_queryset()`).
 
-## Обложка, шаблон
+## Кратко по смыслу
 
-| Comuna | Послетитров |
-|--------|-------------|
-| `Post.content` / `Post.raw_data.template` → `cover_image_url` *(предположение)* | `WpPostmeta` `meta_key=_thumbnail_id` → `WpPosts` attachment |
-| `Post.title` (дубль заголовка обложки) | заголовок в разметке обложки ПТ *(как на карточке)* |
+1. **Post** — заголовок, даты, автор, JSON-контент из `post_content`, врезка из `post_excerpt`, обложка из `_thumbnail_id`. **`message_id`** — ID сообщения Telegram (уникальность с `author`); у переноса с ПТ подставляется синтетический отрицательный ID, связь с WP — `raw_data.legacy_wp_id` / `LegacyWpPostMap`.
+2. **URL** — у нас `/b/post/{id}`, на ПТ `/articles/…/{slug}/`; связь slug ↔ id в `LegacyWpPostMap`.
+3. **Картинки** — те же пути `uploads/YYYY/MM`, но хост и каталог Comuna: `/media/legacy-wp/uploads/…`.
+4. **Блоки** — большинство типов WP Gutenberg уже сопоставлены в таблице; **post_link**, **author**, **теги** — ещё нужно довести; **раздел Tambur** — см. ниже (поле `Post.rubric` на Comuna снято, вместо него **Comun** + теги).
 
-## Теги
+5. **Комментарии и лайки** — см. раздел ниже и строки **Комментарий** в CSV; просмотры поста — `wp_post_views`.
 
-| Comuna | Послетитров |
-|--------|-------------|
-| `Post.tags` → `Tag.name` | `wp_term_relationships` + `wp_term_taxonomy.taxonomy=post_tag` + `wp_terms.name` |
+## Разделы Tambur (ПТ → три блока)
 
-## Автор поста
+Редакционное решение (из ТЗ, [tz_migration.md](tz_migration.md)):
 
-| Comuna | Послетитров |
-|--------|-------------|
-| `Author.username` | `WpUsers.user_nicename` *(предположение)* |
-| `Author.title` | `WpUsers.display_name` |
-| `Author.description` | `wp_usermeta` *(предположение: biography)* |
-| блок `author` в `Post.content` | ссылки `/author/{slug}/` в `post_content` |
+| Comuna (коммуна) | Откуда на ПТ |
+|------------------|--------------|
+| **Фильмы** | `/articles/movies/…`, `/news/movie-news/`, `/books/`, `/podborki/` |
+| **Сериалы** | `/articles/tv-series/…`, `/news/tv-news/` |
+| **Анимация** | аниме и мультфильмы — часть материалов вручную; правила по URL/тегам WP допишем при импорте |
 
-## Блоки в теле
+**Спорные случаи (ещё не автоматизированы в коде, зафиксированы в маппинге):**
 
-| Comuna (`content.blocks[].type`) | Послетитров |
-|----------------------------------|-------------|
-| `quote` | цитата |
-| `link` | внешняя ссылка |
-| `post_link` | внутренняя ссылка на материал |
-| `header` | заголовок |
-| `divider` | разделитель |
-| `toc` | оглавление (галочка в редакторе) |
-| `image` | изображение + подпись |
-| `table` | таблица |
-| `author` | вставка автора |
-| `embed` | iframe VK / YouTube |
+- **`/articles/interview/`** — и про фильмы, и про сериалы: один пост в **одной** коммуне, не дублировать; тип — тег `interview`, уточнение film/series — отдельными тегами или ручная правка.
+- **Квизы и прочие нестандартные ветки** — тег по типу (например `quiz`); комuna по умолчанию **Фильмы**, если в `legacy_url` нет `tv-series`.
+- **Корень `/articles/{slug}/`** без `movies` / `tv-series` в path — на импорте **Фильмы** + теги; после массового переноса — выборочно переразложить.
 
-## Комментарии, реакции (этап 3)
+Черновое правило массового импорта: **всё неоднозначное → «Фильмы»**, навигация через **теги** (в т.ч. бывший подраздел ПТ) и при необходимости `ComunPostCategoryAssignment`. Источник path: `LegacyWpPostMap.legacy_url` / guid → желательно также `Post.raw_data.legacy_pt_path` при доработке импорта.
 
-| Comuna | Послетитров |
-|--------|-------------|
-| `PostComment.body` | `wp_comments.comment_content` |
-| `PostComment.created_at` | `wp_comments.comment_date` |
-| `PostComment.user_id` | `wp_comments.user_id` → `wp_users` |
-| `PostLike` | — *(предположение: meta / плагин)* |
-| `Post.real_views_count` | — *(предположение: meta просмотров)* |
+Подробные строки: раздел **Раздел Tambur** в [post_field_mapping.csv](post_field_mapping.csv).
 
----
+## Комментарии
 
-## Без пары
+Подробные строки в CSV (раздел **Комментарий**): фильтры WP, гости vs зарегистрированные, дерево `comment_parent`, лайки `wp_ulike_comments`, таблица `LegacyWpCommentMap`.
 
-| Comuna | Послетитров |
-|--------|-------------|
-| `Post.rubric` | — |
-| `Post.rating` | — |
-| `Post.fake_views_target` | — |
-| `Post.channel_url` | — |
-| `Post.media_group_id` | — |
-| `Post.is_pending` | `WpPosts.post_status` ≠ publish |
-| `Post.is_blocked` | — |
-| `Post.updated_at` | `WpPosts.post_modified` *(можно выставить, не в ТЗ)* |
-| — | `WpPosts.post_password` |
-| — | `WpPosts.ping_status` |
-| — | `WpPosts.comment_status` |
-| — | `WpPosts.post_parent` |
-| — | `WpPosts.menu_order` |
-| — | `WpPosts.post_mime_type` |
-| — | `WpPosts.post_content_filtered` |
-| — | `rp4wp_link` и прочие `post_type` |
-| — | `wp_404_to_301`, служебные таблицы плагинов |
+Кратко:
+
+- Источник текста: `wp_comments`, не отдельный API AnyComment.
+- Переносим только `comment_approved = 1`, без pingback/trackback/spam.
+- `user_id = 0` — гость (имя из `comment_author`); иначе связь с `wp_users` → `User`.
+- Лайки к комментариям: `wp_ulike_comments` → `PostCommentLike` (те же анонимные `user_id`, что в `wp_ulike`).
+- После импорта `Post.comments_count` = фактическое число `PostComment` на посте.
+
+6. **User** — полный перенос аккаунтов и паролей WP в таблице отмечен как «нужно сопоставить»; строки **Пользователь** в CSV.
+
+Подробные примеры контента: [CONTENT_EXAMPLES.md](CONTENT_EXAMPLES.md).
