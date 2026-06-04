@@ -31,7 +31,7 @@ def _strip_html(html: str) -> str:
     return re.sub(r"\s+", " ", unescape(text)).strip()
 
 
-def _post_public_path(post: Post) -> str:
+def post_public_path(post: Post) -> str:
     title = (post.title or "").strip()
     slug = slugify(title)[:80] if title else ""
     return f"/b/post/{post.id}-{slug}" if slug else f"/b/post/{post.id}"
@@ -62,7 +62,7 @@ def _build_post_link_block(target: Post, *, announcement: str = "") -> dict[str,
     author = target.author
     snapshot = {
         "post_id": int(target.id),
-        "path": _post_public_path(target),
+        "path": post_public_path(target),
         "title": (target.title or "").strip()[:255] or f"Материал #{target.id}",
         "author_title": (author.title or author.username or "").strip() if author else "",
         "author_username": (author.username or "").strip() if author else "",
@@ -135,7 +135,7 @@ def _replace_article_urls_in_text(text: str, cache: dict[str, str]) -> str:
         key = path.rstrip("/")
         if key not in cache:
             post = _resolve_post_by_article_path(path)
-            cache[key] = _post_public_path(post) if post else ""
+            cache[key] = post_public_path(post) if post else ""
         if cache[key]:
             return f'href="{cache[key]}"'
         return match.group(0)
