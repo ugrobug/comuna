@@ -1332,8 +1332,8 @@ def _comun_posts_base_queryset(comun: Comun, now=None):
         if blocked_tag_lemmas:
             blocked_tags_filter |= Q(tags__lemma__in=blocked_tag_lemmas)
         base_query = base_query.exclude(blocked_tags_filter).distinct()
+    blocked_post_ids: list[int] = []
     if bool(getattr(comun, "forbid_external_links", False)):
-        blocked_post_ids: list[int] = []
         for row in base_query.values("id", "title", "content", "raw_data").iterator(chunk_size=200):
             raw_data = row.get("raw_data") if isinstance(row, dict) else {}
             template_payload, _template_error = editor_service._normalize_post_template_payload(
@@ -1345,9 +1345,22 @@ def _comun_posts_base_queryset(comun: Comun, now=None):
                 template_payload=template_payload,
             ):
                 blocked_post_ids.append(int(row["id"]))
-        if blocked_post_ids:
-            base_query = base_query.exclude(id__in=blocked_post_ids)
+    if blocked_post_ids:
+        base_query = base_query.exclude(id__in=blocked_post_ids)
     return base_query
+
+
+def _post_belongs_to_comun(comun: Comun, post_or_id: Post | int | None, now=None) -> bool:
+    if not comun or not post_or_id:
+        return False
+    post_id = getattr(post_or_id, "id", post_or_id)
+    try:
+        post_id = int(post_id)
+    except (TypeError, ValueError):
+        return False
+    if post_id <= 0:
+        return False
+    return _comun_posts_base_queryset(comun, now=now).filter(id=post_id).exists()
 
 
 def _generate_manual_message_id(author: Author) -> int:
@@ -1474,6 +1487,7 @@ __all__ = [
     "_parse_post_reference_to_id",
     "_parse_tag_payload",
     "_payload_contains_external_links",
+    "_post_belongs_to_comun",
     "_post_comun",
     "_post_comun_slug",
     "_public_user_author_ids",

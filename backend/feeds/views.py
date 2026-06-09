@@ -389,8 +389,65 @@ def _maybe_notify_new_author(author: Author, post: Post) -> None:
     author.save(update_fields=["first_post_notified", "updated_at"])
 
 
+_COMMENT_IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif")
+_COMMENT_MARKDOWN_IMAGE_LINE_RE = re.compile(
+    r"^\s*!\[[^\]]*\]\(\s*(?P<url><[^>]+>|[^\s)]+)(?:\s+[\"'][^\"']*[\"'])?\s*\)\s*$",
+    re.IGNORECASE,
+)
+_COMMENT_BARE_IMAGE_URL_LINE_RE = re.compile(
+    r"^\s*(?P<url>https?://[^\s<>()]+|/[^\s<>()]+)\s*$",
+    re.IGNORECASE,
+)
+
+
+def _normalize_comment_url_token(value: str) -> str:
+    value = (value or "").strip()
+    if value.startswith("<") and value.endswith(">"):
+        return value[1:-1].strip()
+    return value
+
+
+def _is_comment_image_url(value: str) -> bool:
+    value = _normalize_comment_url_token(value)
+    if not re.match(r"^(https?://|/)", value, re.IGNORECASE):
+        return False
+    path = urllib.parse.urlsplit(value).path.lower()
+    return path.endswith(_COMMENT_IMAGE_EXTENSIONS)
+
+
+def _comment_markdown_image_url_from_line(line: str) -> str:
+    match = _COMMENT_MARKDOWN_IMAGE_LINE_RE.match(line or "")
+    if not match:
+        return ""
+    url = _normalize_comment_url_token(match.group("url") or "")
+    return url if _is_comment_image_url(url) else ""
+
+
+def _comment_bare_image_url_from_line(line: str) -> str:
+    match = _COMMENT_BARE_IMAGE_URL_LINE_RE.match(line or "")
+    if not match:
+        return ""
+    url = _normalize_comment_url_token(match.group("url") or "")
+    return url if _is_comment_image_url(url) else ""
+
+
+def _normalize_comment_body_images(body: str) -> str:
+    normalized_lines: list[str] = []
+    for line in (body or "").splitlines():
+        if _comment_markdown_image_url_from_line(line):
+            normalized_lines.append(line.strip())
+            continue
+        bare_image_url = _comment_bare_image_url_from_line(line)
+        if bare_image_url:
+            normalized_lines.append(f"![]({bare_image_url})")
+            continue
+        normalized_lines.append(line)
+    return "\n".join(normalized_lines).strip()
+
+
 def _comment_preview(text: str, max_length: int = 220) -> str:
-    preview = re.sub(r"\s+", " ", text or "").strip()
+    preview_source = re.sub(r"!\[[^\]]*\]\([^)]+\)", "[изображение]", text or "")
+    preview = re.sub(r"\s+", " ", preview_source).strip()
     if len(preview) <= max_length:
         return preview
     return preview[: max_length - 1].rstrip() + "…"
@@ -517,7 +574,7 @@ def _serialize_comment_user(comment: PostComment) -> dict:
 def _serialize_site_comment(comment: PostComment, *, liked_by_me: bool = False, likes_count: int = 0, can_edit: bool = False) -> dict:
     return {
         "id": comment.id,
-        "body": "" if comment.is_deleted else comment.body,
+        "body": "" if comment.is_deleted else _normalize_comment_body_images(comment.body),
         "created_at": comment.created_at.isoformat(),
         "updated_at": comment.updated_at.isoformat(),
         "parent_id": comment.parent_id,
@@ -2532,7 +2589,7 @@ def post_comments(request: HttpRequest, post_id: int) -> HttpResponse:
     except json.JSONDecodeError:
         return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
 
-    body = (payload.get("body") or "").strip()
+    body = _normalize_comment_body_images((payload.get("body") or "").strip())
     parent_id = payload.get("parent_id")
     mask_key = str(payload.get("mask_key") or "").strip()
     if not body:
@@ -2619,7 +2676,7 @@ def comment_detail(request: HttpRequest, comment_id: int) -> HttpResponse:
         except json.JSONDecodeError:
             return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
 
-        body = (payload.get("body") or "").strip()
+        body = _normalize_comment_body_images((payload.get("body") or "").strip())
         if not body:
             return JsonResponse({"ok": False, "error": "comment is empty"}, status=400)
         if len(body) > 2000:

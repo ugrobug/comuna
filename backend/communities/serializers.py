@@ -332,7 +332,7 @@ def _serialize_comun(
             .filter(id=comun.welcome_post_id, is_blocked=False, author__is_blocked=False)
             .first()
         )
-        if welcome_post:
+        if welcome_post and community_service._post_belongs_to_comun(comun, welcome_post):
             welcome_post_payload = editor_service._serialize_post_for_user(request, welcome_post, current_user)
 
     payload = {
@@ -440,7 +440,7 @@ def _serialize_comun(
             }
             for author in excluded_authors
         ],
-        "welcome_post_id": comun.welcome_post_id,
+        "welcome_post_id": welcome_post_payload["id"] if welcome_post_payload else None,
         "welcome_post": welcome_post_payload,
         "is_subscribed": is_subscribed,
         "can_moderate": can_moderate,
@@ -464,7 +464,7 @@ def _serialize_comun(
         payload["blocked_tag_ids"] = [tag.id for tag in blocked_tags]
         payload["excluded_tag_ids"] = [tag.id for tag in blocked_tags]
         payload["telegram_source_author_id"] = comun.telegram_source_author_id
-        payload["welcome_post_ref"] = str(comun.welcome_post_id or "")
+        payload["welcome_post_ref"] = str(welcome_post_payload["id"] if welcome_post_payload else "")
     if include_options:
         verified_telegram_authors = community_service._current_user_verified_telegram_authors(current_user)
         payload["options"] = {

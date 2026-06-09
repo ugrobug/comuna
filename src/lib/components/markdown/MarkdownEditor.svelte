@@ -33,10 +33,11 @@
   export let showFooter: boolean = true
   export let helperText: string | undefined = undefined
   export let imageUploadHandler: ((image: File) => Promise<string | undefined>) | null = null
+  export let imageInsertMode: 'markdown' | 'event' = 'markdown'
 
   export let beforePreview: (input: string) => string = (input) => input
 
-  const dispatcher = createEventDispatcher<{ confirm: string }>()
+  const dispatcher = createEventDispatcher<{ confirm: string; images: string[] }>()
 
   let textArea: HTMLTextAreaElement
   let imageInput: HTMLInputElement | null = null
@@ -125,6 +126,10 @@
         await Promise.all(files.map((file) => imageUploadHandler?.(file)))
       ).filter((url): url is string => Boolean(url))
       if (!urls.length) return
+      if (imageInsertMode === 'event') {
+        dispatcher('images', urls)
+        return
+      }
       const markdown = `${urls.map((url) => `![](${url})`).join('\n\n')}\n\n`
       await insertMarkdownAt(markdown, startIndex, endIndex)
     } catch (err) {

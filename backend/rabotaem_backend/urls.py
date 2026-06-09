@@ -10,6 +10,7 @@ from communities.views import (
     comun_knowledge_base_item,
     comun_post_category_update,
     comun_posts,
+    comun_welcome_post_options,
     comun_vote,
     comuns_composer,
     comuns_catalog,
@@ -180,6 +181,11 @@ urlpatterns = [
     ),
     path("api/comuns/<slug:slug>/", comun_detail_manage, name="comun-detail-manage"),
     path("api/comuns/<slug:slug>/vote/", comun_vote, name="comun-vote"),
+    path(
+        "api/comuns/<slug:slug>/welcome-post-options/",
+        comun_welcome_post_options,
+        name="comun-welcome-post-options",
+    ),
     path("api/comuns/<slug:slug>/posts/", comun_posts, name="comun-posts"),
     path(
         "api/comuns/<slug:slug>/posts/<int:post_id>/category/",

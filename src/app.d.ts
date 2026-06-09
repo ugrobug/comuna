@@ -22,7 +22,12 @@ declare global {
       }
     }
     interface PageState {
-      openImage: url
+      openImage?: string
+      openImageAlt?: string
+      openImageGallery?: Array<{
+        url: string
+        alt?: string | null
+      }>
     }
     // interface Platform {}
   }

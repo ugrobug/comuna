@@ -37,7 +37,10 @@
     normalizeInternalPostReference,
     type PostLinkSnapshot,
   } from '$lib/postLinkBlocks'
-  import { showImage } from '$lib/components/ui/ExpandableImage.svelte'
+  import {
+    showImage,
+    type ExpandableImageGalleryItem,
+  } from '$lib/components/ui/ExpandableImage.svelte'
   import { buildAuthorPublicPath, normalizeAuthorBlockData } from '$lib/authorBlocks'
   import { renderQuoteBlockHtml } from '$lib/quoteBlock'
   import { sanitizePostHtml as sanitizePostHtmlUniversal } from '$lib/security/html'
@@ -707,14 +710,46 @@
     return true
   }
 
+  const expandableImageUrl = (image: HTMLImageElement) =>
+    image.getAttribute('data-expandable-src') ||
+    image.getAttribute('src') ||
+    image.currentSrc ||
+    ''
+
+  const expandableImageItem = (image: HTMLImageElement): ExpandableImageGalleryItem | null => {
+    const url = expandableImageUrl(image)
+    if (!url) return null
+    return {
+      url,
+      alt: image.getAttribute('alt') || image.getAttribute('title') || '',
+    }
+  }
+
+  const galleryItemsForImage = (image: HTMLImageElement): ExpandableImageGalleryItem[] => {
+    const gallery = image.closest('.post-gallery')
+    const galleryImages = gallery?.classList.contains('featured-gallery')
+      ? Array.from(gallery.querySelectorAll('.featured-gallery-thumb img'))
+      : gallery
+        ? Array.from(gallery.querySelectorAll('img'))
+        : []
+    const sourceImages = galleryImages.length
+      ? galleryImages
+      : element
+        ? Array.from(element.querySelectorAll('img')).filter((candidate) =>
+            isExpandableImage(candidate as HTMLImageElement | null)
+          )
+        : [image]
+
+    return sourceImages
+      .filter((candidate): candidate is HTMLImageElement => candidate instanceof HTMLImageElement)
+      .map(expandableImageItem)
+      .filter((item): item is ExpandableImageGalleryItem => Boolean(item?.url))
+  }
+
   const openExpandedImage = (image: HTMLImageElement) => {
-    const src =
-      image.getAttribute('data-expandable-src') ||
-      image.currentSrc ||
-      image.getAttribute('src') ||
-      ''
+    const src = expandableImageUrl(image)
     if (!src) return
-    showImage(src, image.getAttribute('alt') || image.getAttribute('title') || '')
+    showImage(src, image.getAttribute('alt') || image.getAttribute('title') || '', galleryItemsForImage(image))
   }
 
   const loadFullBodyForExpand = async (): Promise<boolean> => {

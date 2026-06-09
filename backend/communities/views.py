@@ -807,7 +807,7 @@ def _serialize_comun(
             .filter(id=comun.welcome_post_id, is_blocked=False, author__is_blocked=False)
             .first()
         )
-        if welcome_post:
+        if welcome_post and community_service._post_belongs_to_comun(comun, welcome_post):
             welcome_post_payload = editor_service._serialize_post_for_user(request, welcome_post, current_user)
 
     payload = {
@@ -906,7 +906,7 @@ def _serialize_comun(
             }
             for author in excluded_authors
         ],
-        "welcome_post_id": comun.welcome_post_id,
+        "welcome_post_id": welcome_post_payload["id"] if welcome_post_payload else None,
         "welcome_post": welcome_post_payload,
         "can_moderate": _comun_is_moderator(current_user, comun),
         "can_manage_moderators": _comun_can_manage_moderators(current_user, comun),
@@ -923,7 +923,7 @@ def _serialize_comun(
         payload["blocked_tag_ids"] = [tag.id for tag in blocked_tags]
         payload["excluded_tag_ids"] = [tag.id for tag in blocked_tags]
         payload["telegram_source_author_id"] = comun.telegram_source_author_id
-        payload["welcome_post_ref"] = str(comun.welcome_post_id or "")
+        payload["welcome_post_ref"] = str(welcome_post_payload["id"] if welcome_post_payload else "")
     if include_options:
         verified_telegram_authors = _current_user_verified_telegram_authors(current_user)
         payload["options"] = {
@@ -1590,7 +1590,7 @@ def comuns_list_create(request: HttpRequest) -> HttpResponse:
         comun.tags.set(Tag.objects.filter(id__in=selected_tag_ids, is_active=True))
     if welcome_post_id:
         welcome_post = Post.objects.filter(id=welcome_post_id, is_blocked=False, author__is_blocked=False).first()
-        if welcome_post:
+        if welcome_post and community_service._post_belongs_to_comun(comun, welcome_post):
             comun.welcome_post = welcome_post
     comun.save()
     bump_public_cache_prefix("comuns-catalog")
@@ -2030,13 +2030,16 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
             body.get("welcome_post_id") if "welcome_post_id" in body else body.get("welcome_post_ref")
         )
         if welcome_post_id:
+            now = timezone.now()
             welcome_post = (
                 Post.objects.filter(id=welcome_post_id, is_blocked=False, author__is_blocked=False)
-                .filter(community_service._publish_ready_filter(timezone.now()))
+                .filter(community_service._publish_ready_filter(now))
                 .first()
             )
             if not welcome_post:
                 return JsonResponse({"ok": False, "error": "post not found"}, status=400)
+            if not community_service._post_belongs_to_comun(comun, welcome_post, now=now):
+                return JsonResponse({"ok": False, "error": "post does not belong to comun"}, status=400)
             comun.welcome_post = welcome_post
         else:
             comun.welcome_post = None
@@ -2169,6 +2172,49 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
             ),
         }
     )
+
+
+def comun_welcome_post_options(request: HttpRequest, slug: str) -> HttpResponse:
+    if request.method != "GET":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    current_user = user_views._get_user_from_request(request)
+    try:
+        comun = (
+            Comun.objects.filter(slug=slug)
+            .select_related("creator", "telegram_source_author")
+            .prefetch_related("moderators", "excluded_authors", "blocked_tags")
+            .get()
+        )
+    except Comun.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "comun not found"}, status=404)
+
+    if not _comun_is_moderator(current_user, comun):
+        return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+
+    limit_raw = request.GET.get("limit", "10")
+    try:
+        limit = min(max(int(limit_raw), 1), 10)
+    except (TypeError, ValueError):
+        limit = 10
+
+    query = str(request.GET.get("q") or "").strip()
+    posts_query = community_service._comun_posts_base_queryset(comun, timezone.now()).only(
+        "id",
+        "title",
+        "created_at",
+    )
+    if query:
+        posts_query = posts_query.filter(title__icontains=query)
+
+    posts = [
+        {
+            "id": post.id,
+            "title": post.title or f"Пост {post.id}",
+        }
+        for post in posts_query.order_by("-created_at", "-id")[:limit]
+    ]
+    return JsonResponse({"ok": True, "posts": posts})
 
 
 @csrf_exempt
@@ -2827,6 +2873,7 @@ __all__ = [
     "comun_detail_manage",
     "comun_post_category_update",
     "comun_posts",
+    "comun_welcome_post_options",
     "comun_vote",
     "comuns_catalog",
     "comuns_composer",

@@ -111,6 +111,38 @@ class ComunPostingApiTests(TestCase):
         self.comun.refresh_from_db()
         self.assertEqual(self.comun.authors_count, 0)
 
+    def test_foreign_welcome_post_is_not_serialized_or_accepted(self):
+        foreign_author = Author.objects.create(
+            username="foreign-channel",
+            title="Foreign Channel",
+            channel_id=67890,
+            channel_url="https://t.me/foreign-channel",
+        )
+        foreign_post = Post.objects.create(
+            author=foreign_author,
+            message_id=67890,
+            title="Чужой закреп",
+            content="{}",
+            is_pending=False,
+            is_blocked=False,
+        )
+        self.comun.welcome_post = foreign_post
+        self.comun.save(update_fields=["welcome_post"])
+
+        response = self.client.get(reverse("comun-posts", kwargs={"slug": self.comun.slug}))
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        payload = response.json()
+        self.assertIsNone(payload["comun"]["welcome_post_id"])
+        self.assertIsNone(payload["comun"]["welcome_post"])
+
+        update_response = self.client.patch(
+            reverse("comun-detail-manage", kwargs={"slug": self.comun.slug}),
+            data=json.dumps({"welcome_post_id": foreign_post.id}),
+            content_type="application/json",
+        )
+        self.assertEqual(update_response.status_code, 400, update_response.content.decode())
+        self.assertEqual(update_response.json()["error"], "post does not belong to comun")
+
     def test_comun_rating_post_delta_applies_only_in_first_rating_window(self):
         author = Author.objects.create(username="rating-author", title="Rating Author")
         post = Post.objects.create(

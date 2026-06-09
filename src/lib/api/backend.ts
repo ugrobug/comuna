@@ -165,6 +165,25 @@ export const buildComunVoteUrl = (slug: string): string => {
   return `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/vote/`
 }
 
+export const buildComunWelcomePostOptionsUrl = (
+  slug: string,
+  options?: {
+    q?: string
+    limit?: number
+  }
+): string => {
+  const base = `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/welcome-post-options/`
+  const params = new URLSearchParams()
+  if (options?.q) {
+    params.set('q', options.q)
+  }
+  if (typeof options?.limit === 'number') {
+    params.set('limit', String(options.limit))
+  }
+  const query = params.toString()
+  return query ? `${base}?${query}` : base
+}
+
 export const buildComunPostsUrl = (
   slug: string,
   options?: {
