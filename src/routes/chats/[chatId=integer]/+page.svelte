@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { goto } from '$app/navigation'
   import { page } from '$app/stores'
   import { onDestroy, onMount, tick } from 'svelte'
   import { Icon, PaperAirplane } from 'svelte-hero-icons'
@@ -6,6 +7,7 @@
   import Avatar from '$lib/components/ui/Avatar.svelte'
   import {
     fetchSiteChat,
+    reportAndBlockSiteChat,
     sendSiteChatMessage,
     siteToken,
     siteUser,
@@ -16,6 +18,7 @@
   let messages: BackendSiteChatMessage[] = []
   let loading = false
   let sending = false
+  let reporting = false
   let error = ''
   let body = ''
   let loginModalOpen = false
@@ -76,6 +79,24 @@
     }
   }
 
+  const reportAndBlock = async () => {
+    if (!$siteToken || reporting || !chatId) return
+    const confirmed = confirm(
+      'Пожаловаться на пользователя и заблокировать чат? Чат исчезнет из вашего списка.'
+    )
+    if (!confirmed) return
+    reporting = true
+    error = ''
+    try {
+      await reportAndBlockSiteChat(chatId)
+      await goto('/chats')
+    } catch (err) {
+      error = (err as Error)?.message ?? 'Не удалось заблокировать чат'
+    } finally {
+      reporting = false
+    }
+  }
+
   const onTextKeydown = (event: KeyboardEvent) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
@@ -125,6 +146,16 @@
         </a>
       {/if}
     </div>
+    {#if chat}
+      <button
+        type="button"
+        class="ml-auto rounded-full border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 transition hover:border-red-300 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-900/60 dark:text-red-300 dark:hover:bg-red-950/40"
+        disabled={reporting}
+        on:click={reportAndBlock}
+      >
+        {reporting ? 'Отправляем жалобу' : 'Пожаловаться и заблокировать'}
+      </button>
+    {/if}
   </div>
 
   {#if !$siteToken}

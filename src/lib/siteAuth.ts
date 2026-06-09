@@ -1,6 +1,7 @@
 import { browser } from '$app/environment'
 import {
   buildAuthChatMessagesUrl,
+  buildAuthChatReportBlockUrl,
   buildAuthChatsUrl,
   buildAuthChatUrl,
   buildBackendPostPath,
@@ -8,6 +9,7 @@ import {
   buildSearchUrl,
   type BackendSiteChat,
   type BackendSiteChatMessage,
+  type BackendSiteChatReport,
   type BackendPostRating,
   getBackendBaseUrl,
 } from '$lib/api/backend'
@@ -1158,6 +1160,30 @@ export const sendSiteChatMessage = async (
   return {
     chat: data.chat as BackendSiteChat,
     message: data.message as BackendSiteChatMessage,
+  }
+}
+
+export const reportAndBlockSiteChat = async (
+  chatId: number
+): Promise<{ blocked: boolean; report: BackendSiteChatReport }> => {
+  const token = get(siteToken)
+  if (!token) {
+    throw new Error('Нужна авторизация')
+  }
+  const response = await fetch(buildAuthChatReportBlockUrl(chatId), {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+  const data = await response.json()
+  if (!response.ok || !data?.report) {
+    throw new Error(data?.error || 'Не удалось заблокировать чат')
+  }
+  return {
+    blocked: Boolean(data?.blocked),
+    report: data.report as BackendSiteChatReport,
   }
 }
 

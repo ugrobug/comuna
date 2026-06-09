@@ -8,7 +8,7 @@ from django.utils import timezone
 from communities import service as community_service
 from notifications.models import SiteNotification
 from notifications.service import create_user_notification
-from users.models import SiteChat, SiteChatMessage
+from users.models import SiteChat, SiteChatMessage, SiteChatParticipantState, SiteChatReport
 
 User = get_user_model()
 
@@ -60,7 +60,13 @@ def _chat_other_user(chat: SiteChat, user: User) -> User:
 
 
 def _chat_queryset_for_user(user: User):
-    return SiteChat.objects.filter(Q(user_one=user) | Q(user_two=user)).select_related(
+    hidden_chat_ids = SiteChatParticipantState.objects.filter(
+        user=user,
+        hidden_at__isnull=False,
+    ).values("chat_id")
+    return SiteChat.objects.filter(Q(user_one=user) | Q(user_two=user)).exclude(
+        id__in=hidden_chat_ids
+    ).select_related(
         "user_one",
         "user_one__site_profile",
         "user_one__telegram_account",
@@ -77,9 +83,16 @@ def _chat_queryset_for_user(user: User):
     )
 
 
+def _chat_has_block(chat: SiteChat) -> bool:
+    return SiteChatParticipantState.objects.filter(chat=chat, is_blocked=True).exists()
+
+
 def get_or_create_chat_for_users(user: User, other_user: User) -> tuple[SiteChat, bool]:
     user_one, user_two = _chat_participants_for(user, other_user)
-    return SiteChat.objects.get_or_create(user_one=user_one, user_two=user_two)
+    chat, created = SiteChat.objects.get_or_create(user_one=user_one, user_two=user_two)
+    if not created and _chat_has_block(chat):
+        raise ValueError("chat is blocked")
+    return chat, created
 
 
 def get_or_create_chat_with_user_id(user: User, participant_id: int) -> tuple[SiteChat, bool]:
@@ -223,6 +236,8 @@ def create_chat_message(chat: SiteChat, sender: User, body: str) -> SiteChatMess
         raise ValueError("message is empty")
     if len(normalized_body) > CHAT_MESSAGE_MAX_LENGTH:
         raise ValueError("message is too long")
+    if _chat_has_block(chat):
+        raise ValueError("chat is blocked")
 
     recipient = _chat_other_user(chat, sender)
     sender_name = _site_user_display_name(sender)
@@ -261,6 +276,92 @@ def create_chat_message(chat: SiteChat, sender: User, body: str) -> SiteChatMess
     return message
 
 
+def _latest_reportable_message(chat: SiteChat, reported_user: User) -> SiteChatMessage | None:
+    return (
+        SiteChatMessage.objects.filter(chat=chat, sender=reported_user)
+        .select_related(
+            "sender",
+            "sender__site_profile",
+            "sender__telegram_account",
+            "sender__vk_account",
+        )
+        .order_by("-created_at", "-id")
+        .first()
+    )
+
+
+def report_and_block_chat(chat: SiteChat, user: User) -> SiteChatReport:
+    reported_user = _chat_other_user(chat, user)
+    reported_message = _latest_reportable_message(chat, reported_user)
+    message_snapshot = (reported_message.body if reported_message else "").strip()
+    now = timezone.now()
+
+    with transaction.atomic():
+        state, _created = SiteChatParticipantState.objects.select_for_update().get_or_create(
+            chat=chat,
+            user=user,
+            defaults={
+                "is_blocked": True,
+                "hidden_at": now,
+                "blocked_at": now,
+            },
+        )
+        state.is_blocked = True
+        state.hidden_at = state.hidden_at or now
+        state.blocked_at = state.blocked_at or now
+        state.save(update_fields=["is_blocked", "hidden_at", "blocked_at", "updated_at"])
+        mark_chat_read_for_user(chat, user)
+        mark_chat_notifications_read_for_user(chat, user)
+        report = SiteChatReport.objects.create(
+            chat=chat,
+            reporter=user,
+            reported_user=reported_user,
+            message=reported_message,
+            message_body_snapshot=message_snapshot,
+        )
+
+    return report
+
+
+def serialize_chat_report(report: SiteChatReport) -> dict:
+    message = report.message
+    body = (report.message_body_snapshot or (message.body if message else "") or "").strip()
+    return {
+        "id": report.id,
+        "chat_id": report.chat_id,
+        "status": report.status,
+        "status_label": report.get_status_display(),
+        "created_at": report.created_at.isoformat(),
+        "updated_at": report.updated_at.isoformat(),
+        "reviewed_at": report.reviewed_at.isoformat() if report.reviewed_at else None,
+        "reporter": _serialize_chat_user(report.reporter),
+        "reported_user": _serialize_chat_user(report.reported_user),
+        "reviewed_by": _serialize_chat_user(report.reviewed_by) if report.reviewed_by else None,
+        "message": {
+            "id": message.id if message else None,
+            "sender_id": message.sender_id if message else report.reported_user_id,
+            "body": body,
+            "created_at": message.created_at.isoformat() if message else None,
+        },
+    }
+
+
+def set_chat_report_status(report: SiteChatReport, moderator: User, status: str) -> SiteChatReport:
+    valid_statuses = {choice[0] for choice in SiteChatReport.STATUS_CHOICES}
+    if status not in valid_statuses:
+        raise ValueError("invalid status")
+
+    report.status = status
+    if status == SiteChatReport.STATUS_OPEN:
+        report.reviewed_at = None
+        report.reviewed_by = None
+    else:
+        report.reviewed_at = timezone.now()
+        report.reviewed_by = moderator
+    report.save(update_fields=["status", "reviewed_at", "reviewed_by", "updated_at"])
+    return report
+
+
 def serialize_chat_messages(messages: list[SiteChatMessage]) -> list[dict]:
     return [_serialize_chat_message(message) for message in messages]
 
@@ -273,6 +374,9 @@ __all__ = [
     "list_messages_for_chat",
     "mark_chat_notifications_read_for_user",
     "mark_chat_read_for_user",
+    "report_and_block_chat",
     "serialize_chat",
+    "serialize_chat_report",
     "serialize_chat_messages",
+    "set_chat_report_status",
 ]

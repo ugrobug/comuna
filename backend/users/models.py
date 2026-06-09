@@ -165,12 +165,89 @@ class SiteChatMessage(models.Model):
         return f"site-chat-message:{self.chat_id}:{self.id}"
 
 
+class SiteChatParticipantState(models.Model):
+    chat = models.ForeignKey(SiteChat, on_delete=models.CASCADE, related_name="participant_states")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="site_chat_participant_states")
+    is_blocked = models.BooleanField(default=False)
+    hidden_at = models.DateTimeField(null=True, blank=True)
+    blocked_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = "feeds"
+        verbose_name = "Состояние участника чата"
+        verbose_name_plural = "Состояния участников чатов"
+        unique_together = ("chat", "user")
+        indexes = [
+            models.Index(fields=("user", "hidden_at"), name="feeds_schatst_user_hid_idx"),
+            models.Index(fields=("chat", "user"), name="feeds_schatst_chat_usr_idx"),
+            models.Index(fields=("is_blocked", "updated_at"), name="feeds_schatst_block_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"site-chat-state:{self.chat_id}:{self.user_id}"
+
+
+class SiteChatReport(models.Model):
+    STATUS_OPEN = "open"
+    STATUS_REVIEWED = "reviewed"
+    STATUS_DISMISSED = "dismissed"
+    STATUS_CHOICES = (
+        (STATUS_OPEN, "Новая"),
+        (STATUS_REVIEWED, "Обработана"),
+        (STATUS_DISMISSED, "Отклонена"),
+    )
+
+    chat = models.ForeignKey(SiteChat, on_delete=models.CASCADE, related_name="reports")
+    reporter = models.ForeignKey(User, on_delete=models.CASCADE, related_name="site_chat_reports_made")
+    reported_user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="site_chat_reports_received",
+    )
+    message = models.ForeignKey(
+        SiteChatMessage,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="reports",
+    )
+    message_body_snapshot = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_OPEN)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="reviewed_site_chat_reports",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = "feeds"
+        verbose_name = "Жалоба на сообщение чата"
+        verbose_name_plural = "Жалобы на сообщения чатов"
+        indexes = [
+            models.Index(fields=("status", "created_at"), name="feeds_schatrep_status_idx"),
+            models.Index(fields=("reporter", "created_at"), name="feeds_schatrep_reporter_idx"),
+            models.Index(fields=("reported_user", "created_at"), name="feeds_schatrep_target_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"site-chat-report:{self.chat_id}:{self.id}"
+
+
 __all__ = [
     "AuthorAdmin",
     "AuthorVerificationCode",
     "SiteAuthToken",
     "SiteChat",
     "SiteChatMessage",
+    "SiteChatParticipantState",
+    "SiteChatReport",
     "SiteUserProfile",
     "TelegramAccount",
     "VkAccount",

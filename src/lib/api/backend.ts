@@ -244,6 +244,10 @@ export const buildAuthChatMessagesUrl = (chatId: number | string): string => {
   return `${getBackendBaseUrl()}/api/auth/chats/${encodeURIComponent(chatId)}/messages/`
 }
 
+export const buildAuthChatReportBlockUrl = (chatId: number | string): string => {
+  return `${getBackendBaseUrl()}/api/auth/chats/${encodeURIComponent(chatId)}/report-block/`
+}
+
 export const buildAuthFeedSettingsUrl = (): string => {
   return `${getBackendBaseUrl()}/api/auth/feed-settings/`
 }
@@ -290,6 +294,30 @@ export const buildModeratorRatingSettingsUrl = (): string => {
 
 export const buildModeratorRatingSettingsUpdateUrl = (): string => {
   return `${getBackendBaseUrl()}/api/moderator/rating-settings/update/`
+}
+
+export const buildModeratorChatReportsUrl = (options?: {
+  status?: string
+  limit?: number
+  offset?: number
+}): string => {
+  const base = `${getBackendBaseUrl()}/api/moderator/chat-reports/`
+  const params = new URLSearchParams()
+  if (options?.status) {
+    params.set('status', options.status)
+  }
+  if (typeof options?.limit === 'number') {
+    params.set('limit', String(options.limit))
+  }
+  if (typeof options?.offset === 'number') {
+    params.set('offset', String(options.offset))
+  }
+  const query = params.toString()
+  return query ? `${base}?${query}` : base
+}
+
+export const buildModeratorChatReportUrl = (id: number | string): string => {
+  return `${getBackendBaseUrl()}/api/moderator/chat-reports/${encodeURIComponent(id)}/`
 }
 
 export const buildSpecialLandnameUrl = (text: string = '', options?: { track?: boolean }): string => {
@@ -888,6 +916,27 @@ export type BackendSiteChat = {
   last_message_at?: string | null
   last_message?: BackendSiteChatMessage | null
   unread_count?: number
+}
+
+export type BackendSiteChatReportStatus = 'open' | 'reviewed' | 'dismissed'
+
+export type BackendSiteChatReport = {
+  id: number
+  chat_id: number
+  status: BackendSiteChatReportStatus
+  status_label?: string
+  created_at: string
+  updated_at?: string | null
+  reviewed_at?: string | null
+  reporter: BackendSiteChatUser
+  reported_user: BackendSiteChatUser
+  reviewed_by?: BackendSiteChatUser | null
+  message: {
+    id?: number | null
+    sender_id?: number | null
+    body: string
+    created_at?: string | null
+  }
 }
 
 export type BackendPublicSiteUserComun = {

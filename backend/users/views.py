@@ -402,6 +402,27 @@ def auth_chat_messages(request: HttpRequest, chat_id: int) -> HttpResponse:
 
 
 @csrf_exempt
+def auth_chat_report_block(request: HttpRequest, chat_id: int) -> HttpResponse:
+    user = _get_user_from_request(request)
+    if not user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    chat = chat_service.get_chat_for_user(user, chat_id)
+    if not chat:
+        return JsonResponse({"ok": False, "error": "chat not found"}, status=404)
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    report = chat_service.report_and_block_chat(chat, user)
+    return JsonResponse(
+        {
+            "ok": True,
+            "blocked": True,
+            "report": chat_service.serialize_chat_report(report),
+        }
+    )
+
+
+@csrf_exempt
 def author_verification_code(request: HttpRequest) -> HttpResponse:
     user = _get_user_from_request(request)
     if not user:
@@ -459,6 +480,7 @@ __all__ = [
     "_serialize_user",
     "auth_chat_detail",
     "auth_chat_messages",
+    "auth_chat_report_block",
     "auth_chats",
     "auth_me",
     "author_verification_code",

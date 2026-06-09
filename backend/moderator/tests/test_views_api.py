@@ -9,6 +9,8 @@ from django.utils import timezone
 
 from communities.models import Comun
 from feeds.models import Author, Post, PostComment, PostCommentLike, PostLike
+from users import chat_service
+from users.models import SiteChat, SiteChatMessage, SiteChatParticipantState, SiteChatReport
 from users.service import _issue_token
 
 User = get_user_model()
@@ -164,3 +166,74 @@ class ModeratorAnalyticsApiTests(TestCase):
         self.assertEqual(data["post"]["display_views_target"], 125)
         post.refresh_from_db()
         self.assertEqual(post.display_views_target, 125)
+
+    def test_chat_report_block_hides_chat_and_moderator_can_review_it(self):
+        reported_user = User.objects.create_user(
+            username="reported",
+            email="reported@example.com",
+            password="password",
+        )
+        reported_headers = {"HTTP_AUTHORIZATION": f"Bearer {_issue_token(reported_user)}"}
+        chat, _created = chat_service.get_or_create_chat_for_users(self.user, reported_user)
+        message = SiteChatMessage.objects.create(
+            chat=chat,
+            sender=reported_user,
+            body="spam message",
+        )
+        SiteChat.objects.filter(id=chat.id).update(
+            last_message=message,
+            last_message_at=message.created_at,
+            updated_at=message.created_at,
+        )
+
+        response = self.client.post(
+            reverse("auth-chat-report-block", args=[chat.id]),
+            **self.user_headers,
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["ok"])
+        self.assertTrue(data["blocked"])
+        self.assertEqual(data["report"]["message"]["body"], "spam message")
+
+        self.assertTrue(
+            SiteChatParticipantState.objects.filter(
+                chat=chat,
+                user=self.user,
+                is_blocked=True,
+                hidden_at__isnull=False,
+            ).exists()
+        )
+        self.assertEqual(SiteChatReport.objects.filter(chat=chat).count(), 1)
+
+        response = self.client.get(reverse("auth-chat-detail", args=[chat.id]), **self.user_headers)
+        self.assertEqual(response.status_code, 404)
+
+        response = self.client.post(
+            reverse("auth-chat-messages", args=[chat.id]),
+            data='{"body": "still here"}',
+            content_type="application/json",
+            **reported_headers,
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"], "chat is blocked")
+
+        response = self.client.get(reverse("moderator-chat-reports"), **self.staff_headers)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["open_count"], 1)
+        self.assertEqual(data["reports"][0]["message"]["body"], "spam message")
+
+        report_id = data["reports"][0]["id"]
+        response = self.client.patch(
+            reverse("moderator-chat-report-update", args=[report_id]),
+            data='{"status": "reviewed"}',
+            content_type="application/json",
+            **self.staff_headers,
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["report"]["status"], SiteChatReport.STATUS_REVIEWED)
+        self.assertEqual(data["open_count"], 0)
