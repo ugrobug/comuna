@@ -115,6 +115,9 @@ from special_projects.views import (
 )
 from telegram_integration.views import telegram_auth, telegram_webhook
 from users.views import (
+    auth_chat_detail,
+    auth_chat_messages,
+    auth_chats,
     auth_me,
     author_verification_code,
     login_user,
@@ -227,6 +230,9 @@ urlpatterns = [
     path("api/auth/telegram/", telegram_auth, name="auth-telegram"),
     path("api/auth/vk/", vk_auth, name="auth-vk"),
     path("api/auth/me/", auth_me, name="auth-me"),
+    path("api/auth/chats/", auth_chats, name="auth-chats"),
+    path("api/auth/chats/<int:chat_id>/", auth_chat_detail, name="auth-chat-detail"),
+    path("api/auth/chats/<int:chat_id>/messages/", auth_chat_messages, name="auth-chat-messages"),
     path("api/auth/feed-settings/", auth_feed_settings, name="auth-feed-settings"),
     path(
         "api/auth/post-templates/movie-review/autofill/",

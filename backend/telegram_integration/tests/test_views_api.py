@@ -162,6 +162,27 @@ class TelegramOidcAuthTests(TestCase):
         self.assertEqual(account.user_id, payload["user"]["id"])
         self.assertEqual(account.oidc_sub, "1234123412341234123")
 
+    def test_oidc_login_caches_external_avatar(self):
+        with patch(
+            "telegram_integration.views.validate_telegram_oidc_token",
+            return_value={
+                "id": 987654321,
+                "sub": "1234123412341234123",
+                "name": "Reader One",
+                "preferred_username": "reader_tg",
+                "picture": "https://example.test/avatar.jpg",
+            },
+        ), patch(
+            "users.avatar_media.cache_external_avatar_for_user",
+            return_value="https://media.tambur.pub/avatars/users/1/avatar-320.webp",
+        ) as cache_avatar:
+            response = self.post_json({"id_token": "token", "auth_intent": "login"})
+
+        self.assertEqual(response.status_code, 200)
+        cache_avatar.assert_called_once()
+        self.assertEqual(cache_avatar.call_args.args[1], "https://example.test/avatar.jpg")
+        self.assertEqual(cache_avatar.call_args.kwargs["source"], "telegram")
+
     def test_oidc_signup_new_account_requires_privacy_consent(self):
         with patch(
             "telegram_integration.views.validate_telegram_oidc_token",

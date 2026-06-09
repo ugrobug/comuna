@@ -51,6 +51,7 @@ from ratings.service import (
     user_max_author_rating,
 )
 from telegram_integration.media import safe_public_url
+from users.avatar_media import public_cached_avatar_url
 from users.models import AuthorAdmin
 
 User = get_user_model()
@@ -1000,19 +1001,25 @@ def _site_user_avatar_url(
     try:
         site_profile = user.site_profile
         if site_profile and site_profile.avatar_url:
-            return safe_public_url(site_profile.avatar_url)
+            cached_avatar_url = public_cached_avatar_url(site_profile.avatar_url)
+            if cached_avatar_url:
+                return cached_avatar_url
     except Exception:
         pass
     try:
         tg = user.telegram_account
         if tg and tg.avatar_url:
-            return safe_public_url(tg.avatar_url)
+            cached_avatar_url = public_cached_avatar_url(tg.avatar_url)
+            if cached_avatar_url:
+                return cached_avatar_url
     except Exception:
         pass
     try:
         vk = user.vk_account
         if vk and vk.avatar_url:
-            return safe_public_url(vk.avatar_url)
+            cached_avatar_url = public_cached_avatar_url(vk.avatar_url)
+            if cached_avatar_url:
+                return cached_avatar_url
     except Exception:
         pass
     if fallback_author_avatars and user.id in fallback_author_avatars:

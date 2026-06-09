@@ -31,6 +31,7 @@
     Swatch,
     UserCircle,
     UserGroup,
+    ChatBubbleLeftRight,
     ArrowLeftOnRectangle,
   } from 'svelte-hero-icons'
   import { colorScheme } from '$lib/ui/colors'
@@ -110,6 +111,10 @@
           {$notifications.inbox}
         </Badge>
       {/if}
+    </MenuButton>
+    <MenuButton link href="/chats" class="py-2.5">
+      <Icon src={ChatBubbleLeftRight} micro width={16} slot="prefix" />
+      Чаты
     </MenuButton>
     <MenuButton link href="/saved" class="py-2.5">
       <Icon src={Bookmark} micro width={16} slot="prefix" />

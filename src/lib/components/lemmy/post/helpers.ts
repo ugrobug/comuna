@@ -25,15 +25,23 @@ export const optimizeImageURL = (
   try {
     const cleanUrl = urlStr.replace(/^(https?:\/\/)+(https?\/\/)/, '$1')
     const url = new URL(cleanUrl)
-    const localVariantMatch = url.pathname.match(/-(320|640|960|1280|1920)\.webp$/)
-    if (url.pathname.startsWith('/media/') || url.pathname.includes('/media/')) {
+    const localVariantWidths = [32, 48, 64, 96, 128, 192, 256, 320, 640, 960, 1280, 1920]
+    const localVariantMatch = url.pathname.match(/-(32|48|64|96|128|192|256|320|640|960|1280|1920)\.webp$/)
+    if (
+      url.pathname.startsWith('/media/') ||
+      url.pathname.includes('/media/') ||
+      url.pathname.includes('/avatars/users/')
+    ) {
       if (localVariantMatch && width > 0) {
         const currentWidth = Number(localVariantMatch[1])
         const closest = Math.min(
-          findClosestNumber([320, 640, 960, 1280, 1920], width),
+          findClosestNumber(localVariantWidths, width),
           currentWidth
         )
-        url.pathname = url.pathname.replace(/-(320|640|960|1280|1920)\.webp$/, `-${closest}.webp`)
+        url.pathname = url.pathname.replace(
+          /-(32|48|64|96|128|192|256|320|640|960|1280|1920)\.webp$/,
+          `-${closest}.webp`
+        )
       }
       return url.toString()
     }

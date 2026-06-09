@@ -219,6 +219,31 @@ export const buildPublicUserProfileUrl = (
   return query ? `${base}?${query}` : base
 }
 
+export const buildAuthChatsUrl = (options?: { limit?: number; offset?: number }): string => {
+  const base = `${getBackendBaseUrl()}/api/auth/chats/`
+  const params = new URLSearchParams()
+  if (typeof options?.limit === 'number') params.set('limit', String(options.limit))
+  if (typeof options?.offset === 'number') params.set('offset', String(options.offset))
+  const query = params.toString()
+  return query ? `${base}?${query}` : base
+}
+
+export const buildAuthChatUrl = (
+  chatId: number | string,
+  options?: { limit?: number; beforeId?: number }
+): string => {
+  const base = `${getBackendBaseUrl()}/api/auth/chats/${encodeURIComponent(chatId)}/`
+  const params = new URLSearchParams()
+  if (typeof options?.limit === 'number') params.set('limit', String(options.limit))
+  if (typeof options?.beforeId === 'number') params.set('before_id', String(options.beforeId))
+  const query = params.toString()
+  return query ? `${base}?${query}` : base
+}
+
+export const buildAuthChatMessagesUrl = (chatId: number | string): string => {
+  return `${getBackendBaseUrl()}/api/auth/chats/${encodeURIComponent(chatId)}/messages/`
+}
+
 export const buildAuthFeedSettingsUrl = (): string => {
   return `${getBackendBaseUrl()}/api/auth/feed-settings/`
 }
@@ -834,6 +859,35 @@ export type BackendPublicSiteUser = {
   is_staff?: boolean
   first_name?: string | null
   last_name?: string | null
+}
+
+export type BackendSiteChatUser = {
+  id: number
+  username: string
+  display_name?: string | null
+  avatar_url?: string | null
+  profile_url?: string | null
+}
+
+export type BackendSiteChatMessage = {
+  id: number
+  chat_id: number
+  sender: BackendSiteChatUser
+  sender_id: number
+  body: string
+  read_at?: string | null
+  created_at: string
+  updated_at?: string | null
+}
+
+export type BackendSiteChat = {
+  id: number
+  participant: BackendSiteChatUser
+  created_at: string
+  updated_at?: string | null
+  last_message_at?: string | null
+  last_message?: BackendSiteChatMessage | null
+  unread_count?: number
 }
 
 export type BackendPublicSiteUserComun = {

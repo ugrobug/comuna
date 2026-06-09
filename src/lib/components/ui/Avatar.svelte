@@ -78,18 +78,26 @@
   $: fallbackInitials = getInitials(fallbackSeed)
   $: fallbackHue = hueFor(fallbackSeed || fallbackInitials)
   $: extraClasses = [class_, className].filter(Boolean).join(' ')
+  $: normalizedUrl = (url || '').trim() || undefined
+  let failedUrl: string | undefined = undefined
+  $: imageUrl = normalizedUrl && failedUrl !== normalizedUrl ? normalizedUrl : undefined
+
+  function handleImageError() {
+    failedUrl = imageUrl
+  }
 </script>
 
-{#if url}
+{#if imageUrl}
   <img
     loading="lazy"
-    srcset={generateSrcSet(url, width)}
-    src={optimizeImageURL(url, width)}
+    srcset={generateSrcSet(imageUrl, width)}
+    src={optimizeImageURL(imageUrl, width)}
     {alt}
     {width}
     title=""
     class="{baseClasses} {circle ? 'rounded-full' : 'rounded-lg'} {extraClasses}"
     style="width: {width}px; height: {width}px"
+    on:error={handleImageError}
   />
 {:else}
   <div

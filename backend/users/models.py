@@ -105,10 +105,72 @@ class SiteAuthToken(models.Model):
         return f"site-auth-token:{self.user_id}:{self.id}"
 
 
+class SiteChat(models.Model):
+    user_one = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="site_chats_as_user_one",
+    )
+    user_two = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="site_chats_as_user_two",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    last_message_at = models.DateTimeField(null=True, blank=True)
+    last_message = models.ForeignKey(
+        "SiteChatMessage",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+
+    class Meta:
+        app_label = "feeds"
+        verbose_name = "Чат пользователей"
+        verbose_name_plural = "Чаты пользователей"
+        unique_together = ("user_one", "user_two")
+        indexes = [
+            models.Index(fields=("user_one", "last_message_at"), name="feeds_sitec_userone_c5c20d_idx"),
+            models.Index(fields=("user_two", "last_message_at"), name="feeds_sitec_usertwo_2c8d87_idx"),
+            models.Index(fields=("last_message_at",), name="feeds_sitec_lastmsg_963d17_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"site-chat:{self.user_one_id}:{self.user_two_id}"
+
+
+class SiteChatMessage(models.Model):
+    chat = models.ForeignKey(SiteChat, on_delete=models.CASCADE, related_name="messages")
+    sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name="sent_site_chat_messages")
+    body = models.TextField()
+    read_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = "feeds"
+        verbose_name = "Сообщение чата"
+        verbose_name_plural = "Сообщения чатов"
+        ordering = ("created_at", "id")
+        indexes = [
+            models.Index(fields=("chat", "created_at"), name="feeds_sitec_chat_cr_358d84_idx"),
+            models.Index(fields=("chat", "sender", "read_at"), name="feeds_sitec_chat_se_241934_idx"),
+            models.Index(fields=("sender", "created_at"), name="feeds_sitec_sender__2862b3_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"site-chat-message:{self.chat_id}:{self.id}"
+
+
 __all__ = [
     "AuthorAdmin",
     "AuthorVerificationCode",
     "SiteAuthToken",
+    "SiteChat",
+    "SiteChatMessage",
     "SiteUserProfile",
     "TelegramAccount",
     "VkAccount",

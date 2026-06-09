@@ -699,6 +699,20 @@ def _update_site_profile(
             raise ValueError("invalid avatar_url")
         if len(next_avatar_url) > 500:
             raise ValueError("avatar_url too long")
+        if next_avatar_url:
+            from users.avatar_media import cache_external_avatar_for_user, public_cached_avatar_url
+
+            cached_avatar_url = public_cached_avatar_url(next_avatar_url)
+            if not cached_avatar_url:
+                cached_avatar_url = cache_external_avatar_for_user(
+                    user,
+                    next_avatar_url,
+                    source="profile",
+                    force=True,
+                )
+            if not cached_avatar_url:
+                raise ValueError("invalid avatar_url")
+            next_avatar_url = cached_avatar_url
         profile.avatar_url = next_avatar_url
 
     if email is not None:
@@ -1113,6 +1127,10 @@ def _upsert_vk_account(vk_user: dict, link_user: User | None = None) -> User:
     account.last_name = last_name
     account.avatar_url = avatar_url
     account.save(update_fields=["username", "email", "phone", "first_name", "last_name", "avatar_url", "updated_at"])
+    if avatar_url:
+        from users.avatar_media import cache_external_avatar_for_user
+
+        cache_external_avatar_for_user(user, avatar_url, source="vk")
     return user
 
 
