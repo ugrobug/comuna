@@ -32,7 +32,7 @@ def compute_comun_cached_counts(comun: Comun, *, now=None) -> dict[str, int]:
                 subscribers_count += 1
 
     site_authors_count = (
-        community_service._comun_site_user_posts_queryset(comun, now)
+        community_service._comun_site_user_posts_queryset(comun)
         .exclude(author_id__isnull=True)
         .values("author_id")
         .distinct()

@@ -5,7 +5,10 @@ from django.db import transaction
 
 from legacy_migration.models import LegacyWpUserMap, WpUsers
 from legacy_migration.wordpress_hasher import wp_password_hash_usable
-from legacy_migration.wp_import import upsert_django_user_for_wp_user
+from legacy_migration.wp_import import (
+    _find_existing_user_by_email,
+    upsert_django_user_for_wp_user,
+)
 
 
 def _parse_wp_ids(raw: str) -> list[int]:
@@ -69,6 +72,7 @@ class Command(BaseCommand):
         created = 0
         updated_password = 0
         skipped_password = 0
+        linked_existing = 0
         no_wp_hash = 0
         maps_linked = 0
         processed = 0
@@ -78,19 +82,28 @@ class Command(BaseCommand):
             wp_id = int(wp_user.id)
             usable = wp_password_hash_usable(wp_user.user_pass)
             if dry_run:
+                existing_user = _find_existing_user_by_email(wp_user.user_email)
+                link_note = (
+                    f" link=user:{existing_user.id}"
+                    if existing_user
+                    and not LegacyWpUserMap.objects.filter(wp_user_id=wp_id, user_id=existing_user.id).exists()
+                    else ""
+                )
                 self.stdout.write(
                     f"[dry-run] wp:{wp_id} login={wp_user.user_login!r} "
-                    f"email={wp_user.user_email!r} wp_pass={'yes' if usable else 'no'}"
+                    f"email={wp_user.user_email!r} wp_pass={'yes' if usable else 'no'}{link_note}"
                 )
                 continue
 
             with transaction.atomic():
-                user, user_created, password_updated = upsert_django_user_for_wp_user(
+                user, user_created, password_updated, linked_by_email = upsert_django_user_for_wp_user(
                     wp_user,
                     force_password=force_password,
                 )
             if user_created:
                 created += 1
+            if linked_by_email:
+                linked_existing += 1
             if password_updated:
                 updated_password += 1
             elif not usable:
@@ -100,9 +113,10 @@ class Command(BaseCommand):
             if LegacyWpUserMap.objects.filter(wp_user_id=wp_id, user_id=user.id).exists():
                 maps_linked += 1
 
+            link_tag = " linked-by-email" if linked_by_email else ""
             self.stdout.write(
                 f"wp:{wp_id} → user:{user.id} @{user.username} "
-                f"email={user.email or '-'} pass={'wp' if usable else 'unusable'}"
+                f"email={user.email or '-'}{link_tag}"
             )
 
         if dry_run:
@@ -112,6 +126,7 @@ class Command(BaseCommand):
         self.stdout.write(
             self.style.SUCCESS(
                 f"Обработано: {processed}; User создано: {created}; "
+                f"привязано по email (без смены пароля): {linked_existing}; "
                 f"пароль из WP: {updated_password}; пароль пропущен (уже был): {skipped_password}; "
                 f"без хеша WP: {no_wp_hash}; маппингов с user: {maps_linked}"
             )
