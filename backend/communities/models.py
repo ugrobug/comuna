@@ -310,6 +310,35 @@ class ComunPostCategoryAssignment(models.Model):
         return f"{self.comun_id}:{self.post_id}:{self.category_id or 0}"
 
 
+class ComunPostRatingContribution(models.Model):
+    comun = models.ForeignKey(
+        "feeds.Comun",
+        on_delete=models.CASCADE,
+        related_name="post_rating_contributions",
+    )
+    post = models.ForeignKey(
+        "feeds.Post",
+        on_delete=models.CASCADE,
+        related_name="comun_rating_contributions",
+    )
+    score = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = "feeds"
+        unique_together = ("comun", "post")
+        indexes = [
+            models.Index(fields=["comun", "-score"], name="comprc_comun_score_idx"),
+            models.Index(fields=["post", "comun"], name="comprc_post_comun_idx"),
+        ]
+        verbose_name = "Вклад поста в рейтинг комуны"
+        verbose_name_plural = "Вклады постов в рейтинг коммун"
+
+    def __str__(self) -> str:
+        return f"{self.comun_id}:{self.post_id}:{self.score}"
+
+
 class ComunKnowledgeBaseItem(models.Model):
     TYPE_GROUP = "group"
     TYPE_POST = "post"
@@ -378,5 +407,6 @@ __all__ = [
     "ComunGlossaryTerm",
     "ComunKnowledgeBaseItem",
     "ComunPostCategoryAssignment",
+    "ComunPostRatingContribution",
     "ComunVote",
 ]

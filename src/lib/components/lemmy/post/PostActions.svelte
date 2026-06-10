@@ -71,6 +71,7 @@
   } from '$lib/components/util/RelativeDate.svelte'
   import { deleteUserPost, siteToken, siteUser } from '$lib/siteAuth'
   import {
+    buildComunUrl,
     buildComunPostCategoryUrl,
     buildComunKnowledgeBaseUrl,
     buildPostFavoriteUrl,
@@ -94,6 +95,7 @@
     edit: PostView
     hide: boolean
     deleted: { postId: number }
+    pinned: { postId: number; comunSlug: string }
     categorychange: {
       postId: number
       category: BackendComunCategory | null
@@ -116,6 +118,8 @@
   let backendFavoriteSaving = false
   let backendFavorited = false
   let knowledgeBaseSaving = false
+  let welcomePostSaving = false
+  let actionsMenuOpen = false
   let categoryMenuOpen = false
   let categorySaving = false
   let currentBackendCategoryId: number | null = null
@@ -159,11 +163,19 @@
       (post.post as any)?.comun_knowledge_base_enabled &&
       (post.post as any)?.comun_can_moderate
   )
+  $: canPinWelcomePost = Boolean(
+    isBackendPost &&
+      backendPostId &&
+      $siteToken &&
+      backendComunSlug &&
+      (post.post as any)?.comun_can_moderate
+  )
   $: backendComunCategoryId =
     typeof (post.post as any)?.comun_category_id === 'number'
       ? Number((post.post as any).comun_category_id)
       : null
   $: if (!categorySaving) currentBackendCategoryId = backendComunCategoryId
+  $: if (!actionsMenuOpen && categoryMenuOpen) categoryMenuOpen = false
   $: canChangeComunCategory = Boolean(
     isBackendPost &&
       backendPostId &&
@@ -388,11 +400,41 @@
     }
   }
 
+  const pinWelcomePost = async () => {
+    if (!backendPostId || !backendComunSlug || !$siteToken || welcomePostSaving) return
+    welcomePostSaving = true
+    try {
+      const response = await fetch(buildComunUrl(backendComunSlug), {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${$siteToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ welcome_post_id: backendPostId }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(data?.error || 'Не удалось закрепить пост')
+      }
+      dispatcher('pinned', { postId: backendPostId, comunSlug: backendComunSlug })
+      actionsMenuOpen = false
+      toast({ content: 'Пост закреплен как приветственный', type: 'success' })
+    } catch (error) {
+      toast({
+        content: error instanceof Error ? error.message : 'Не удалось закрепить пост',
+        type: 'error',
+      })
+    } finally {
+      welcomePostSaving = false
+    }
+  }
+
   const changeComunCategory = async (category: BackendComunCategory | null) => {
     if (!backendPostId || !backendComunSlug || !$siteToken || categorySaving) return
     const nextCategoryId = category?.id ?? null
     if (nextCategoryId === currentBackendCategoryId) {
       categoryMenuOpen = false
+      actionsMenuOpen = false
       return
     }
     categorySaving = true
@@ -416,6 +458,7 @@
       ;(post.post as any).comun_category = assignedCategory
       currentBackendCategoryId = assignedCategoryId
       categoryMenuOpen = false
+      actionsMenuOpen = false
       dispatcher('categorychange', {
         postId: backendPostId,
         category: assignedCategory,
@@ -652,6 +695,7 @@
   {/if}
 
   <Menu
+    bind:open={actionsMenuOpen}
     placement="bottom"
     containerClass="overflow-auto max-h-[400px]"
     class="h-8"
@@ -729,11 +773,28 @@
         {knowledgeBaseSaving ? 'Добавляем...' : 'Добавить в базу знаний'}
       </MenuButton>
     {/if}
-    {#if canChangeComunCategory}
-      <MenuButton on:click={() => (categoryMenuOpen = !categoryMenuOpen)} disabled={categorySaving}>
-        <Icon src={ArrowsUpDown} size="16" micro slot="prefix" />
-        {categorySaving ? 'Переносим...' : 'Изменить категорию'}
+    {#if canPinWelcomePost}
+      <MenuButton on:click={pinWelcomePost} disabled={welcomePostSaving}>
+        <Icon src={Star} size="16" micro slot="prefix" />
+        {welcomePostSaving ? 'Закрепляем...' : 'Закрепить пост'}
       </MenuButton>
+    {/if}
+    {#if canChangeComunCategory}
+      <button
+        type="button"
+        class="category-toggle"
+        disabled={categorySaving}
+        aria-expanded={categoryMenuOpen}
+        on:click|stopPropagation={() => (categoryMenuOpen = !categoryMenuOpen)}
+      >
+        <span class="contents text-slate-600 dark:text-zinc-400 flex-shrink-0">
+          <Icon src={ArrowsUpDown} size="16" micro />
+        </span>
+        <span class="min-w-0 flex-1 truncate">
+          {categorySaving ? 'Переносим...' : 'Изменить категорию'}
+        </span>
+        <Icon src={categoryMenuOpen ? ChevronUp : ChevronDown} size="14" micro />
+      </button>
       {#if categoryMenuOpen}
         <div class="mx-2 my-1 rounded-lg border border-slate-200 bg-white p-1 dark:border-zinc-700 dark:bg-zinc-900">
           <button
@@ -741,7 +802,7 @@
             class="category-option"
             class:is-selected={currentBackendCategoryId === null}
             disabled={categorySaving}
-            on:click={() => changeComunCategory(null)}
+            on:click|stopPropagation={() => changeComunCategory(null)}
           >
             Без категории
           </button>
@@ -751,7 +812,7 @@
               class="category-option"
               class:is-selected={currentBackendCategoryId === category.id}
               disabled={categorySaving}
-              on:click={() => changeComunCategory(category)}
+              on:click|stopPropagation={() => changeComunCategory(category)}
             >
               {category.name}
             </button>
@@ -889,6 +950,10 @@
 </footer>
 
 <style lang="postcss">
+  .category-toggle {
+    @apply flex w-full min-h-[36px] items-center gap-1.5 rounded-lg px-2 text-left text-sm font-normal text-slate-900 transition duration-100 hover:bg-slate-100 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-70 dark:text-zinc-200 hover:dark:bg-zinc-800/70;
+  }
+
   .category-option {
     @apply flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-100 disabled:cursor-wait disabled:opacity-60 dark:text-zinc-200 dark:hover:bg-zinc-800;
   }

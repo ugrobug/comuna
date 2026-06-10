@@ -1,4 +1,5 @@
 import json
+from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -6,8 +7,13 @@ from django.urls import reverse
 from django.utils import timezone
 
 from communities import service as community_service
-from communities.models import Comun, ComunCategory, ComunPostCategoryAssignment
-from feeds.models import Author, Post
+from communities.models import (
+    Comun,
+    ComunCategory,
+    ComunPostCategoryAssignment,
+    ComunPostRatingContribution,
+)
+from feeds.models import Author, Post, Tag
 from my_feed.models import UserFeedSettings
 from users import service as user_service
 from users.models import AuthorAdmin
@@ -104,6 +110,190 @@ class ComunPostingApiTests(TestCase):
         self.assertFalse(incremented)
         self.comun.refresh_from_db()
         self.assertEqual(self.comun.authors_count, 0)
+
+    def test_foreign_welcome_post_is_not_serialized_or_accepted(self):
+        foreign_author = Author.objects.create(
+            username="foreign-channel",
+            title="Foreign Channel",
+            channel_id=67890,
+            channel_url="https://t.me/foreign-channel",
+        )
+        foreign_post = Post.objects.create(
+            author=foreign_author,
+            message_id=67890,
+            title="Чужой закреп",
+            content="{}",
+            is_pending=False,
+            is_blocked=False,
+        )
+        self.comun.welcome_post = foreign_post
+        self.comun.save(update_fields=["welcome_post"])
+
+        response = self.client.get(reverse("comun-posts", kwargs={"slug": self.comun.slug}))
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        payload = response.json()
+        self.assertIsNone(payload["comun"]["welcome_post_id"])
+        self.assertIsNone(payload["comun"]["welcome_post"])
+
+        update_response = self.client.patch(
+            reverse("comun-detail-manage", kwargs={"slug": self.comun.slug}),
+            data=json.dumps({"welcome_post_id": foreign_post.id}),
+            content_type="application/json",
+        )
+        self.assertEqual(update_response.status_code, 400, update_response.content.decode())
+        self.assertEqual(update_response.json()["error"], "post does not belong to comun")
+
+    def test_comun_rating_post_delta_applies_only_in_first_rating_window(self):
+        author = Author.objects.create(username="rating-author", title="Rating Author")
+        post = Post.objects.create(
+            author=author,
+            message_id=991,
+            title="Рейтинговый пост",
+            content="{}",
+            raw_data={"source": "manual_comun", "comun_slug": self.comun.slug},
+            is_pending=False,
+            is_blocked=False,
+        )
+        self.comun.rating_score = 247
+        self.comun.save(update_fields=["rating_score"])
+
+        community_service._apply_comun_rating_delta_for_post(
+            post,
+            value_delta=7,
+            event_type="post_vote",
+        )
+        self.comun.refresh_from_db()
+        self.assertEqual(float(self.comun.rating_score), 254.0)
+        contribution = ComunPostRatingContribution.objects.get(comun=self.comun, post=post)
+        self.assertEqual(float(contribution.score), 7.0)
+
+        Post.objects.filter(id=post.id).update(created_at=timezone.now() - timedelta(days=8))
+        community_service._apply_comun_rating_delta_for_post(
+            post.id,
+            value_delta=-5,
+            event_type="post_vote",
+        )
+        self.comun.refresh_from_db()
+        self.assertEqual(float(self.comun.rating_score), 254.0)
+        contribution.refresh_from_db()
+        self.assertEqual(float(contribution.score), 7.0)
+
+    def test_comun_rating_rebuild_uses_stored_post_contributions(self):
+        author = Author.objects.create(username="rating-rebuild-author", title="Rating Rebuild Author")
+        post = Post.objects.create(
+            author=author,
+            message_id=992,
+            title="Пост для rebuild",
+            content="{}",
+            rating=7,
+            comments_count=2,
+            raw_data={"source": "manual_comun", "comun_slug": self.comun.slug},
+            is_pending=False,
+            is_blocked=False,
+        )
+        ComunPostRatingContribution.objects.create(
+            comun=self.comun,
+            post=post,
+            score=7.2,
+        )
+
+        _votes_up, _votes_down, rating_score = community_service._recalculate_comun_rating(self.comun.id)
+
+        self.assertEqual(float(rating_score), 7.2)
+        self.comun.refresh_from_db()
+        self.assertEqual(float(self.comun.rating_score), 7.2)
+
+    def test_comuns_catalog_returns_paginated_lightweight_top(self):
+        catalog_tag = Tag.objects.create(name="Catalog", lemma="catalog")
+        self.comun.rating_score = 100
+        self.comun.product_description = "Top catalog community"
+        self.comun.save(update_fields=["rating_score", "product_description"])
+        self.comun.tags.add(catalog_tag)
+        for index in range(25):
+            Comun.objects.create(
+                name=f"Catalog Community {index}",
+                slug=f"catalog-community-{index}",
+                creator=self.user,
+                rating_score=index,
+            )
+
+        response = self.client.get(reverse("comuns-catalog"), {"limit": "20"})
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        payload = response.json()
+        self.assertTrue(payload.get("ok"))
+        self.assertEqual(payload["page"], 1)
+        self.assertEqual(payload["limit"], 20)
+        self.assertEqual(payload["total_comuns"], 26)
+        self.assertTrue(payload["has_next"])
+        self.assertEqual(len(payload["comuns"]), 20)
+        first_comun = payload["comuns"][0]
+        self.assertEqual(first_comun["slug"], self.comun.slug)
+        self.assertEqual(first_comun["rating"]["score"], 100.0)
+        self.assertEqual(first_comun["tags"][0]["name"], catalog_tag.name)
+        self.assertNotIn("template_type_options", first_comun)
+        self.assertNotIn("template_editor_blocks_by_template", first_comun)
+        self.assertNotIn("moderators", first_comun)
+        self.assertNotIn("can_post", first_comun)
+
+        second_page_response = self.client.get(reverse("comuns-catalog"), {"limit": "20", "page": "2"})
+        self.assertEqual(second_page_response.status_code, 200, second_page_response.content.decode())
+        second_page_payload = second_page_response.json()
+        self.assertEqual(second_page_payload["page"], 2)
+        self.assertFalse(second_page_payload["has_next"])
+        self.assertEqual(len(second_page_payload["comuns"]), 6)
+
+    def test_comuns_catalog_searches_on_backend(self):
+        Comun.objects.create(
+            name="Needle Community",
+            slug="needle-community",
+            creator=self.user,
+            product_description="Private search marker",
+            rating_score=10,
+        )
+        Comun.objects.create(
+            name="Another Community",
+            slug="another-community",
+            creator=self.user,
+            rating_score=20,
+        )
+
+        response = self.client.get(reverse("comuns-catalog"), {"q": "needle", "limit": "20"})
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        payload = response.json()
+        slugs = [item["slug"] for item in payload["comuns"]]
+        self.assertEqual(slugs, ["needle-community"])
+        self.assertEqual(payload["total_comuns"], 1)
+
+    def test_comuns_sidebar_returns_catalog_card_fields(self):
+        sidebar_tag = Tag.objects.create(name="Sidebar", lemma="sidebar")
+        self.comun.product_description = "Sidebar community description"
+        self.comun.subscribers_count = 12
+        self.comun.authors_count = 3
+        self.comun.rating_score = 42
+        self.comun.save(
+            update_fields=[
+                "product_description",
+                "subscribers_count",
+                "authors_count",
+                "rating_score",
+            ]
+        )
+        self.comun.tags.add(sidebar_tag)
+
+        response = self.client.get(reverse("comuns-sidebar"))
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        payload = response.json()
+        first_comun = payload["comuns"][0]
+        self.assertEqual(first_comun["slug"], self.comun.slug)
+        self.assertEqual(first_comun["product_description"], "Sidebar community description")
+        self.assertEqual(first_comun["subscribers_count"], 12)
+        self.assertEqual(first_comun["authors_count"], 3)
+        self.assertEqual(first_comun["rating"]["score"], 42.0)
+        self.assertEqual(first_comun["tags"][0]["name"], sidebar_tag.name)
+        self.assertTrue(first_comun["can_moderate"])
 
     def test_auth_posts_require_comun_for_published_post(self):
         response = self.client.post(

@@ -614,6 +614,7 @@ def film_journey_entry_comments(request: HttpRequest, access_token: str) -> Http
         _maybe_notify_author_comment,
         _maybe_notify_comment_reply,
         _maybe_notify_post_comment,
+        _normalize_comment_body_images,
         _serialize_site_comment,
     )
 
@@ -629,7 +630,7 @@ def film_journey_entry_comments(request: HttpRequest, access_token: str) -> Http
     except json.JSONDecodeError:
         return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
 
-    body = (payload.get("body") or "").strip()
+    body = _normalize_comment_body_images((payload.get("body") or "").strip())
     parent_id = payload.get("parent_id")
     mask_key = str(payload.get("mask_key") or "").strip()
     if not body:

@@ -368,6 +368,7 @@ from communities.models import (
     ComunCategory,
     ComunGlossaryTerm,
     ComunPostCategoryAssignment,
+    ComunPostRatingContribution,
     ComunVote,
 )
 

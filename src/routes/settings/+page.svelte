@@ -27,6 +27,7 @@
   } from '$lib/api/backend'
   import { normalizeTag } from '$lib/tags'
   import {
+    deleteSiteAccount,
     fetchVerificationCode,
     refreshSiteUser,
     siteToken,
@@ -45,6 +46,9 @@
   let siteProfileEmail = ''
   let siteProfileSaving = false
   let siteProfileAvatarUploading = false
+  let deleteProfileModalOpen = false
+  let deleteProfileConfirmed = false
+  let deleteProfileDeleting = false
   let lastSiteUserSnapshot: string | null = null
   let channelVerificationCode = ''
   let channelVerificationCodeLoading = false
@@ -188,6 +192,38 @@
     }
   }
 
+  const deleteProfileWarning =
+    'Я подтверждаю удаление всех персональных данных и учетной записи безвозвратно. Понимаю, что все неудаленные посты, сообщества и комментарии остаются на сайте без привязки к пользователю'
+
+  const openDeleteProfileModal = () => {
+    deleteProfileConfirmed = false
+    deleteProfileModalOpen = true
+  }
+
+  const closeDeleteProfileModal = () => {
+    if (deleteProfileDeleting) return
+    deleteProfileModalOpen = false
+    deleteProfileConfirmed = false
+  }
+
+  const deleteSiteProfile = async () => {
+    if (!deleteProfileConfirmed || deleteProfileDeleting) return
+    deleteProfileDeleting = true
+    try {
+      await deleteSiteAccount()
+      deleteProfileModalOpen = false
+      toast({ content: 'Профиль удален', type: 'success' })
+      await goto('/')
+    } catch (error) {
+      toast({
+        content: (error as Error)?.message ?? 'Не удалось удалить профиль',
+        type: 'error',
+      })
+    } finally {
+      deleteProfileDeleting = false
+    }
+  }
+
   const authHeaders = () => {
     if (!$siteToken) throw new Error('Нужна авторизация')
     return {
@@ -286,6 +322,50 @@
   </Modal>
 {/if}
 
+{#if deleteProfileModalOpen}
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 px-4 py-6">
+    <div class="w-full max-w-lg rounded-2xl border border-red-200 bg-white p-5 shadow-xl dark:border-red-900/50 dark:bg-zinc-900">
+      <div class="flex flex-col gap-4">
+        <div>
+          <h2 class="text-xl font-semibold text-slate-950 dark:text-zinc-50">
+            Удалить профиль
+          </h2>
+          <p class="mt-2 text-sm leading-6 text-slate-600 dark:text-zinc-300">
+            {deleteProfileWarning}
+          </p>
+        </div>
+        <label class="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 dark:border-zinc-800 dark:bg-zinc-950/40 dark:text-zinc-200">
+          <input
+            type="checkbox"
+            class="mt-1 h-4 w-4 rounded border-slate-300 text-red-600 focus:ring-red-500"
+            bind:checked={deleteProfileConfirmed}
+            disabled={deleteProfileDeleting}
+          />
+          <span>Я понимаю и подтверждаю.</span>
+        </label>
+        <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            class="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+            on:click={closeDeleteProfileModal}
+            disabled={deleteProfileDeleting}
+          >
+            Отмена
+          </button>
+          <button
+            type="button"
+            class="inline-flex items-center justify-center rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+            on:click={deleteSiteProfile}
+            disabled={!deleteProfileConfirmed || deleteProfileDeleting}
+          >
+            {deleteProfileDeleting ? 'Удаляем...' : 'Удалить'}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
 <Header pageHeader class="text-3xl font-bold flex justify-between">
   {$t('settings.title')}
   <div class="flex items-center">
@@ -377,6 +457,25 @@
         on:externalLinked={() => refreshSiteUser().catch(() => {})}
         on:save={saveSiteProfileSettings}
       />
+      <div class="mt-4 rounded-2xl border border-red-200 bg-red-50/60 p-4 dark:border-red-900/50 dark:bg-red-950/20">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div class="min-w-0">
+            <div class="text-sm font-semibold text-red-800 dark:text-red-200">
+              Удаление профиля
+            </div>
+            <div class="mt-1 text-sm leading-6 text-red-700/80 dark:text-red-200/80">
+              Персональные данные и вход будут удалены, публичный контент останется на сайте как от удаленного пользователя.
+            </div>
+          </div>
+          <button
+            type="button"
+            class="inline-flex shrink-0 items-center justify-center rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700"
+            on:click={openDeleteProfileModal}
+          >
+            Удалить профиль
+          </button>
+        </div>
+      </div>
     </Section>
   {/if}
   {#if $siteUser}

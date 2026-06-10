@@ -15,6 +15,8 @@ from ratings.service import (
     serialize_rating_settings,
     update_rating_settings,
 )
+from users import chat_service
+from users.models import SiteChatReport
 from users.service import _get_user_from_request
 
 _SITE_POST_SOURCES = {"manual", "manual_comun"}
@@ -295,8 +297,111 @@ def moderator_rating_settings_update(request: HttpRequest) -> HttpResponse:
     )
 
 
+def _chat_report_queryset():
+    return SiteChatReport.objects.select_related(
+        "chat",
+        "message",
+        "message__sender",
+        "message__sender__site_profile",
+        "message__sender__telegram_account",
+        "message__sender__vk_account",
+        "reporter",
+        "reporter__site_profile",
+        "reporter__telegram_account",
+        "reporter__vk_account",
+        "reported_user",
+        "reported_user__site_profile",
+        "reported_user__telegram_account",
+        "reported_user__vk_account",
+        "reviewed_by",
+        "reviewed_by__site_profile",
+        "reviewed_by__telegram_account",
+        "reviewed_by__vk_account",
+    )
+
+
+def moderator_chat_reports(request: HttpRequest) -> HttpResponse:
+    if request.method != "GET":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    _user, auth_response = _staff_user_or_response(request)
+    if auth_response is not None:
+        return auth_response
+
+    try:
+        limit = min(max(int(request.GET.get("limit", "50")), 1), 100)
+    except ValueError:
+        limit = 50
+    try:
+        offset = max(int(request.GET.get("offset", "0")), 0)
+    except ValueError:
+        offset = 0
+    status = (request.GET.get("status") or SiteChatReport.STATUS_OPEN).strip().lower()
+
+    reports = _chat_report_queryset()
+    if status != "all":
+        valid_statuses = {choice[0] for choice in SiteChatReport.STATUS_CHOICES}
+        if status not in valid_statuses:
+            return JsonResponse({"ok": False, "error": "invalid status"}, status=400)
+        reports = reports.filter(status=status)
+
+    reports = reports.order_by("-created_at", "-id")
+    total = reports.count()
+    items = list(reports[offset : offset + limit])
+    open_count = SiteChatReport.objects.filter(status=SiteChatReport.STATUS_OPEN).count()
+    return JsonResponse(
+        {
+            "ok": True,
+            "reports": [chat_service.serialize_chat_report(report) for report in items],
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "open_count": open_count,
+        }
+    )
+
+
+@csrf_exempt
+def moderator_chat_report_update(request: HttpRequest, report_id: int) -> HttpResponse:
+    if request.method not in {"PATCH", "POST"}:
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    user, auth_response = _staff_user_or_response(request)
+    if auth_response is not None:
+        return auth_response
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+
+    report = _chat_report_queryset().filter(id=report_id).first()
+    if not report:
+        return JsonResponse({"ok": False, "error": "report not found"}, status=404)
+
+    try:
+        report = chat_service.set_chat_report_status(
+            report,
+            user,
+            str(payload.get("status") or "").strip().lower(),
+        )
+    except ValueError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+
+    open_count = SiteChatReport.objects.filter(status=SiteChatReport.STATUS_OPEN).count()
+    return JsonResponse(
+        {
+            "ok": True,
+            "report": chat_service.serialize_chat_report(report),
+            "open_count": open_count,
+        }
+    )
+
+
 __all__ = [
     "moderator_analytics",
+    "moderator_chat_report_update",
+    "moderator_chat_reports",
     "moderator_post_view_settings",
     "moderator_post_view_setting_update",
     "moderator_rating_settings",

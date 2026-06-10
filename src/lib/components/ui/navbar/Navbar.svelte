@@ -26,7 +26,8 @@
     ClipboardDocumentList,
     ChevronDown,
     Bookmark,
-    ChartBar
+    ChartBar,
+    ChatBubbleLeftRight
   } from 'svelte-hero-icons'
   import Profile from './Profile.svelte'
   import NavButton from './NavButton.svelte'
@@ -314,6 +315,10 @@
               </MenuButton>
               <MenuButton link href={`/id${$siteUser.id}`} class="py-2.5">
                 Профиль
+              </MenuButton>
+              <MenuButton link href="/chats" class="py-2.5">
+                <Icon src={ChatBubbleLeftRight} size="16" micro slot="prefix" />
+                Чаты
               </MenuButton>
               <MenuButton
                 class="py-2.5 text-red-600 dark:text-red-400"

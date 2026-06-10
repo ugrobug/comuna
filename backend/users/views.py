@@ -9,6 +9,7 @@ from django.views.decorators.csrf import csrf_exempt
 
 from rabotaem_backend.rate_limit import is_rate_limited
 from telegram_integration import views as telegram_views
+from users import chat_service
 from users import serializers as user_serializers
 from users import service as user_service
 
@@ -197,6 +198,14 @@ def auth_me(request: HttpRequest) -> HttpResponse:
         return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
     if request.method == "GET":
         return JsonResponse({"ok": True, "user": _serialize_user(user)})
+    if request.method == "DELETE":
+        try:
+            user_service._delete_site_user_account(user)
+        except ValueError as exc:
+            return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+        response = JsonResponse({"ok": True, "deleted": True})
+        user_service._clear_auth_cookie(response)
+        return response
     if request.method not in ("PATCH", "POST"):
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
 
@@ -270,6 +279,158 @@ def public_user_profile(request: HttpRequest, user_id: int) -> HttpResponse:
 
 
 @csrf_exempt
+def auth_chats(request: HttpRequest) -> HttpResponse:
+    user = _get_user_from_request(request)
+    if not user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+
+    if request.method == "GET":
+        try:
+            limit = min(max(int(request.GET.get("limit", "50")), 1), chat_service.CHAT_LIST_LIMIT_MAX)
+        except ValueError:
+            limit = 50
+        try:
+            offset = max(int(request.GET.get("offset", "0")), 0)
+        except ValueError:
+            offset = 0
+        chats, meta = chat_service.list_chats_for_user(user, limit=limit, offset=offset)
+        last_messages = meta["last_messages"]
+        unread_counts = meta["unread_counts"]
+        return JsonResponse(
+            {
+                "ok": True,
+                "chats": [
+                    chat_service.serialize_chat(
+                        chat,
+                        user,
+                        last_message=last_messages.get(chat.id),
+                        unread_count=unread_counts.get(chat.id, 0),
+                    )
+                    for chat in chats
+                ],
+                "total": meta["total"],
+                "limit": meta["limit"],
+                "offset": meta["offset"],
+            }
+        )
+
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+
+    try:
+        chat, created = chat_service.get_or_create_chat_with_user_id(
+            user,
+            payload.get("participant_id") or payload.get("user_id"),
+        )
+    except ValueError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "created": created,
+            "chat": chat_service.serialize_chat(chat, user),
+        }
+    )
+
+
+@csrf_exempt
+def auth_chat_detail(request: HttpRequest, chat_id: int) -> HttpResponse:
+    user = _get_user_from_request(request)
+    if not user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    chat = chat_service.get_chat_for_user(user, chat_id)
+    if not chat:
+        return JsonResponse({"ok": False, "error": "chat not found"}, status=404)
+    if request.method != "GET":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    try:
+        limit = min(max(int(request.GET.get("limit", "50")), 1), chat_service.CHAT_MESSAGES_LIMIT_MAX)
+    except ValueError:
+        limit = 50
+    before_id = None
+    if request.GET.get("before_id"):
+        try:
+            before_id = max(int(request.GET.get("before_id", "0")), 1)
+        except ValueError:
+            before_id = None
+
+    messages = chat_service.list_messages_for_chat(chat, user, limit=limit, before_id=before_id)
+    chat_service.mark_chat_read_for_user(chat, user)
+    chat_service.mark_chat_notifications_read_for_user(chat, user)
+    return JsonResponse(
+        {
+            "ok": True,
+            "chat": chat_service.serialize_chat(
+                chat,
+                user,
+                last_message=messages[-1] if messages else None,
+                unread_count=0,
+            ),
+            "messages": chat_service.serialize_chat_messages(messages),
+        }
+    )
+
+
+@csrf_exempt
+def auth_chat_messages(request: HttpRequest, chat_id: int) -> HttpResponse:
+    user = _get_user_from_request(request)
+    if not user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    chat = chat_service.get_chat_for_user(user, chat_id)
+    if not chat:
+        return JsonResponse({"ok": False, "error": "chat not found"}, status=404)
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+    try:
+        message = chat_service.create_chat_message(chat, user, payload.get("body") or "")
+    except ValueError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+    chat.last_message = message
+    chat.last_message_at = message.created_at
+    chat.updated_at = message.created_at
+    return JsonResponse(
+        {
+            "ok": True,
+            "chat": chat_service.serialize_chat(chat, user, last_message=message),
+            "message": chat_service.serialize_chat_messages([message])[0],
+        }
+    )
+
+
+@csrf_exempt
+def auth_chat_report_block(request: HttpRequest, chat_id: int) -> HttpResponse:
+    user = _get_user_from_request(request)
+    if not user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    chat = chat_service.get_chat_for_user(user, chat_id)
+    if not chat:
+        return JsonResponse({"ok": False, "error": "chat not found"}, status=404)
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    report = chat_service.report_and_block_chat(chat, user)
+    return JsonResponse(
+        {
+            "ok": True,
+            "blocked": True,
+            "report": chat_service.serialize_chat_report(report),
+        }
+    )
+
+
+@csrf_exempt
 def author_verification_code(request: HttpRequest) -> HttpResponse:
     user = _get_user_from_request(request)
     if not user:
@@ -325,6 +486,10 @@ __all__ = [
     "_serialize_public_site_user_author_card",
     "_serialize_public_site_user_profile",
     "_serialize_user",
+    "auth_chat_detail",
+    "auth_chat_messages",
+    "auth_chat_report_block",
+    "auth_chats",
     "auth_me",
     "author_verification_code",
     "login_user",

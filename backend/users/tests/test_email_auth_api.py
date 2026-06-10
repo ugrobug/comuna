@@ -235,6 +235,32 @@ class EmailAuthApiTests(TestCase):
         self.assertEqual(User.objects.count(), 1)
         self.assertEqual(VkAccount.objects.get(vk_id=12345).user_id, payload["user"]["id"])
 
+    def test_vk_login_caches_external_avatar(self):
+        with patch(
+            "users.service._authenticate_vk_payload",
+            return_value={
+                "vk_id": 12345,
+                "screen_name": "reader_vk",
+                "email": "",
+                "phone": "",
+                "first_name": "Reader",
+                "last_name": "",
+                "avatar_url": "https://example.test/avatar.jpg",
+            },
+        ), patch(
+            "users.avatar_media.cache_external_avatar_for_user",
+            return_value="https://media.tambur.pub/avatars/users/1/avatar-320.webp",
+        ) as cache_avatar:
+            response = self.post_json(
+                "/api/auth/vk/",
+                {"access_token": "token", "auth_intent": "login"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        cache_avatar.assert_called_once()
+        self.assertEqual(cache_avatar.call_args.args[1], "https://example.test/avatar.jpg")
+        self.assertEqual(cache_avatar.call_args.kwargs["source"], "vk")
+
     def test_vk_signup_new_account_requires_privacy_consent(self):
         with patch(
             "users.service._authenticate_vk_payload",

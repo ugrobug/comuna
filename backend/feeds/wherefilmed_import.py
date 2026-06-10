@@ -531,7 +531,12 @@ def _import_payload(payload: dict[str, Any]) -> tuple[Post, bool]:
         post = Post.objects.get(author=author, message_id=message_id)
         created = False
 
-    community_service._recalculate_comun_rating(comun.id)
+    if created and post.rating:
+        community_service._apply_comun_rating_delta_for_post(
+            post,
+            value_delta=post.rating,
+            event_type="post_vote",
+        )
     return post, created
 
 

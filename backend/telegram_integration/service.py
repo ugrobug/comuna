@@ -327,6 +327,10 @@ def upsert_telegram_account(payload: dict, link_user: User | None = None):
     account.last_name = last_name
     account.avatar_url = avatar_url
     account.save(update_fields=update_fields)
+    if avatar_url:
+        from users.avatar_media import cache_external_avatar_for_user
+
+        cache_external_avatar_for_user(user, avatar_url, source="telegram")
     return user
 
 

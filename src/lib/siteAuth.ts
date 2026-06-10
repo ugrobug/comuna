@@ -1,8 +1,15 @@
 import { browser } from '$app/environment'
 import {
+  buildAuthChatMessagesUrl,
+  buildAuthChatReportBlockUrl,
+  buildAuthChatsUrl,
+  buildAuthChatUrl,
   buildBackendPostPath,
   buildPostDetailUrl,
   buildSearchUrl,
+  type BackendSiteChat,
+  type BackendSiteChatMessage,
+  type BackendSiteChatReport,
   type BackendPostRating,
   getBackendBaseUrl,
 } from '$lib/api/backend'
@@ -125,6 +132,18 @@ export type SiteNotificationSettingsResponse = {
     registered_devices_count: number
     active_platforms: string[]
   }
+}
+
+export type SiteChatListResponse = {
+  chats: BackendSiteChat[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export type SiteChatDetailResponse = {
+  chat: BackendSiteChat
+  messages: BackendSiteChatMessage[]
 }
 
 export type SiteStaticPageContent = {
@@ -550,6 +569,32 @@ export const logout = () => {
   resetBackendFeedSettingsSync()
   siteToken.set(null)
   siteUser.set(null)
+}
+
+export const deleteSiteAccount = async () => {
+  const token = get(siteToken)
+  if (!token) {
+    throw new Error('Нужна авторизация')
+  }
+
+  const response = await fetch(buildUrl('/api/auth/me/'), {
+    method: 'DELETE',
+    credentials: 'include',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+
+  const data = await parseApiResponse(response)
+  if (!response.ok || !data?.ok) {
+    throw new Error(data?.error || 'Не удалось удалить профиль')
+  }
+
+  saveToken(null)
+  resetBackendFeedSettingsSync()
+  siteToken.set(null)
+  siteUser.set(null)
+  return true
 }
 
 export const fetchVerificationCode = async () => {
@@ -1045,6 +1090,126 @@ export const markAllSiteNotificationsRead = async () => {
   return {
     updated: Number(data?.updated || 0),
     unread_count: Number(data?.unread_count || 0),
+  }
+}
+
+export const fetchSiteChats = async (limit = 50, offset = 0): Promise<SiteChatListResponse> => {
+  const token = get(siteToken)
+  if (!token) {
+    throw new Error('Нужна авторизация')
+  }
+  const response = await fetch(buildAuthChatsUrl({ limit, offset }), {
+    credentials: 'include',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+  const data = await response.json()
+  if (!response.ok) {
+    throw new Error(data?.error || 'Не удалось загрузить чаты')
+  }
+  return {
+    chats: (data?.chats || []) as BackendSiteChat[],
+    total: Number(data?.total || 0),
+    limit: Number(data?.limit || limit),
+    offset: Number(data?.offset || offset),
+  }
+}
+
+export const createSiteChat = async (participantId: number): Promise<BackendSiteChat> => {
+  const token = get(siteToken)
+  if (!token) {
+    throw new Error('Нужна авторизация')
+  }
+  const response = await fetch(buildAuthChatsUrl(), {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ participant_id: participantId }),
+  })
+  const data = await response.json()
+  if (!response.ok || !data?.chat) {
+    throw new Error(data?.error || 'Не удалось открыть чат')
+  }
+  return data.chat as BackendSiteChat
+}
+
+export const fetchSiteChat = async (
+  chatId: number,
+  limit = 50,
+  beforeId?: number
+): Promise<SiteChatDetailResponse> => {
+  const token = get(siteToken)
+  if (!token) {
+    throw new Error('Нужна авторизация')
+  }
+  const response = await fetch(buildAuthChatUrl(chatId, { limit, beforeId }), {
+    credentials: 'include',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+  const data = await response.json()
+  if (!response.ok || !data?.chat) {
+    throw new Error(data?.error || 'Не удалось загрузить чат')
+  }
+  return {
+    chat: data.chat as BackendSiteChat,
+    messages: (data?.messages || []) as BackendSiteChatMessage[],
+  }
+}
+
+export const sendSiteChatMessage = async (
+  chatId: number,
+  body: string
+): Promise<{ chat: BackendSiteChat; message: BackendSiteChatMessage }> => {
+  const token = get(siteToken)
+  if (!token) {
+    throw new Error('Нужна авторизация')
+  }
+  const response = await fetch(buildAuthChatMessagesUrl(chatId), {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ body }),
+  })
+  const data = await response.json()
+  if (!response.ok || !data?.message || !data?.chat) {
+    throw new Error(data?.error || 'Не удалось отправить сообщение')
+  }
+  return {
+    chat: data.chat as BackendSiteChat,
+    message: data.message as BackendSiteChatMessage,
+  }
+}
+
+export const reportAndBlockSiteChat = async (
+  chatId: number
+): Promise<{ blocked: boolean; report: BackendSiteChatReport }> => {
+  const token = get(siteToken)
+  if (!token) {
+    throw new Error('Нужна авторизация')
+  }
+  const response = await fetch(buildAuthChatReportBlockUrl(chatId), {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+  const data = await response.json()
+  if (!response.ok || !data?.report) {
+    throw new Error(data?.error || 'Не удалось заблокировать чат')
+  }
+  return {
+    blocked: Boolean(data?.blocked),
+    report: data.report as BackendSiteChatReport,
   }
 }
 

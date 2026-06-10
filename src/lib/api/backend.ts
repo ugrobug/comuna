@@ -96,6 +96,25 @@ export const buildComunsUrl = (): string => {
   return `${getBackendBaseUrl()}/api/comuns/`
 }
 
+export const buildComunsCatalogUrl = (options?: {
+  page?: number
+  limit?: number
+  q?: string
+}): string => {
+  const params = new URLSearchParams()
+  if (typeof options?.page === 'number') {
+    params.set('page', String(options.page))
+  }
+  if (typeof options?.limit === 'number') {
+    params.set('limit', String(options.limit))
+  }
+  if (options?.q) {
+    params.set('q', options.q)
+  }
+  const query = params.toString()
+  return `${getBackendBaseUrl()}/api/comuns/catalog/${query ? `?${query}` : ''}`
+}
+
 export const buildComunsComposerUrl = (): string => {
   return `${getBackendBaseUrl()}/api/comuns/composer/`
 }
@@ -146,6 +165,25 @@ export const buildComunVoteUrl = (slug: string): string => {
   return `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/vote/`
 }
 
+export const buildComunWelcomePostOptionsUrl = (
+  slug: string,
+  options?: {
+    q?: string
+    limit?: number
+  }
+): string => {
+  const base = `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/welcome-post-options/`
+  const params = new URLSearchParams()
+  if (options?.q) {
+    params.set('q', options.q)
+  }
+  if (typeof options?.limit === 'number') {
+    params.set('limit', String(options.limit))
+  }
+  const query = params.toString()
+  return query ? `${base}?${query}` : base
+}
+
 export const buildComunPostsUrl = (
   slug: string,
   options?: {
@@ -179,6 +217,35 @@ export const buildPublicUserProfileUrl = (
   }
   const query = params.toString()
   return query ? `${base}?${query}` : base
+}
+
+export const buildAuthChatsUrl = (options?: { limit?: number; offset?: number }): string => {
+  const base = `${getBackendBaseUrl()}/api/auth/chats/`
+  const params = new URLSearchParams()
+  if (typeof options?.limit === 'number') params.set('limit', String(options.limit))
+  if (typeof options?.offset === 'number') params.set('offset', String(options.offset))
+  const query = params.toString()
+  return query ? `${base}?${query}` : base
+}
+
+export const buildAuthChatUrl = (
+  chatId: number | string,
+  options?: { limit?: number; beforeId?: number }
+): string => {
+  const base = `${getBackendBaseUrl()}/api/auth/chats/${encodeURIComponent(chatId)}/`
+  const params = new URLSearchParams()
+  if (typeof options?.limit === 'number') params.set('limit', String(options.limit))
+  if (typeof options?.beforeId === 'number') params.set('before_id', String(options.beforeId))
+  const query = params.toString()
+  return query ? `${base}?${query}` : base
+}
+
+export const buildAuthChatMessagesUrl = (chatId: number | string): string => {
+  return `${getBackendBaseUrl()}/api/auth/chats/${encodeURIComponent(chatId)}/messages/`
+}
+
+export const buildAuthChatReportBlockUrl = (chatId: number | string): string => {
+  return `${getBackendBaseUrl()}/api/auth/chats/${encodeURIComponent(chatId)}/report-block/`
 }
 
 export const buildAuthFeedSettingsUrl = (): string => {
@@ -227,6 +294,30 @@ export const buildModeratorRatingSettingsUrl = (): string => {
 
 export const buildModeratorRatingSettingsUpdateUrl = (): string => {
   return `${getBackendBaseUrl()}/api/moderator/rating-settings/update/`
+}
+
+export const buildModeratorChatReportsUrl = (options?: {
+  status?: string
+  limit?: number
+  offset?: number
+}): string => {
+  const base = `${getBackendBaseUrl()}/api/moderator/chat-reports/`
+  const params = new URLSearchParams()
+  if (options?.status) {
+    params.set('status', options.status)
+  }
+  if (typeof options?.limit === 'number') {
+    params.set('limit', String(options.limit))
+  }
+  if (typeof options?.offset === 'number') {
+    params.set('offset', String(options.offset))
+  }
+  const query = params.toString()
+  return query ? `${base}?${query}` : base
+}
+
+export const buildModeratorChatReportUrl = (id: number | string): string => {
+  return `${getBackendBaseUrl()}/api/moderator/chat-reports/${encodeURIComponent(id)}/`
 }
 
 export const buildSpecialLandnameUrl = (text: string = '', options?: { track?: boolean }): string => {
@@ -714,8 +805,8 @@ export type BackendComun = {
   can_post_category_ids?: number[]
   can_start_post?: boolean
   is_subscribed?: boolean
-  creator?: { id?: number; username?: string | null; display_name?: string | null }
-  moderators?: Array<{ id: number; username: string; display_name?: string | null }>
+  creator?: { id?: number; username?: string | null; display_name?: string | null; is_deleted?: boolean }
+  moderators?: Array<{ id: number; username: string; display_name?: string | null; is_deleted?: boolean }>
   moderators_count?: number
   moderator_ids?: number[]
   excluded_authors?: Array<{ id: number; username: string; title?: string | null; avatar_url?: string | null }>
@@ -794,8 +885,60 @@ export type BackendPublicSiteUser = {
   comuns_count?: number
   authors_count?: number
   is_staff?: boolean
+  is_deleted?: boolean
   first_name?: string | null
   last_name?: string | null
+}
+
+export type BackendSiteChatUser = {
+  id: number
+  username: string
+  display_name?: string | null
+  avatar_url?: string | null
+  profile_url?: string | null
+  is_deleted?: boolean
+}
+
+export type BackendSiteChatMessage = {
+  id: number
+  chat_id: number
+  sender: BackendSiteChatUser
+  sender_id: number
+  body: string
+  read_at?: string | null
+  created_at: string
+  updated_at?: string | null
+}
+
+export type BackendSiteChat = {
+  id: number
+  participant: BackendSiteChatUser
+  created_at: string
+  updated_at?: string | null
+  last_message_at?: string | null
+  last_message?: BackendSiteChatMessage | null
+  unread_count?: number
+}
+
+export type BackendSiteChatReportStatus = 'open' | 'reviewed' | 'dismissed'
+
+export type BackendSiteChatReport = {
+  id: number
+  chat_id: number
+  status: BackendSiteChatReportStatus
+  status_label?: string
+  created_at: string
+  updated_at?: string | null
+  reviewed_at?: string | null
+  reporter: BackendSiteChatUser
+  reported_user: BackendSiteChatUser
+  reviewed_by?: BackendSiteChatUser | null
+  message: {
+    id?: number | null
+    sender_id?: number | null
+    body: string
+    created_at?: string | null
+  }
 }
 
 export type BackendPublicSiteUserComun = {

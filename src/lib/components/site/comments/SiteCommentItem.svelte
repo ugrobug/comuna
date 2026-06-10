@@ -8,6 +8,7 @@
   import { buildCommentLikeUrl, buildCommentDetailUrl } from '$lib/api/backend'
   import { siteToken } from '$lib/siteAuth'
   import SiteCommentForm from './SiteCommentForm.svelte'
+  import { normalizeCommentImageMarkdown } from './imageMarkdown'
   import type { SiteComment, SiteCommentMask, SiteCommentNode } from './types'
 
   export let node: SiteCommentNode
@@ -43,11 +44,14 @@
   $: isDeleted = Boolean(node.comment.is_deleted)
   $: commentDate = new Date(node.comment.created_at)
   $: commenterProfileUrl =
-    node.comment.user?.profile_url || (node.comment.user?.id ? `/id${node.comment.user.id}` : null)
+    node.comment.user?.is_deleted
+      ? null
+      : node.comment.user?.profile_url || (node.comment.user?.id ? `/id${node.comment.user.id}` : null)
   $: commenterLabel =
     (node.comment.user?.display_name || '').trim() || node.comment.user?.username || 'user'
   $: commenterHandle =
     node.comment.user?.username &&
+    !node.comment.user?.is_deleted &&
     (node.comment.user?.display_name || '').trim() &&
     node.comment.user.display_name?.trim() !== node.comment.user.username
       ? `@${node.comment.user.username}`
@@ -56,6 +60,7 @@
   $: edited =
     node.comment.updated_at &&
     new Date(node.comment.updated_at).getTime() > commentDate.getTime()
+  $: renderedBody = normalizeCommentImageMarkdown(node.comment.body)
 
   const setComment = (comment: SiteComment) => {
     node = { ...node, comment }
@@ -187,7 +192,7 @@
           {#if isDeleted}
             <span class="italic text-slate-500">Комментарий удален</span>
           {:else}
-            <Markdown source={node.comment.body} />
+            <Markdown source={renderedBody} />
           {/if}
         </div>
       {/if}

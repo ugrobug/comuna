@@ -3,10 +3,14 @@
   import { browser } from '$app/environment'
   import {
     buildModeratorAnalyticsUrl,
+    buildModeratorChatReportUrl,
+    buildModeratorChatReportsUrl,
     buildModeratorPostViewSettingsUrl,
     buildModeratorPostViewSettingUrl,
     buildModeratorRatingSettingsUrl,
     buildModeratorRatingSettingsUpdateUrl,
+    type BackendSiteChatReport,
+    type BackendSiteChatReportStatus,
   } from '$lib/api/backend'
   import {
     EDITABLE_STATIC_PAGE_META,
@@ -94,7 +98,19 @@
     recalculated_comuns?: number
   }
 
-  type ModeratorTab = 'analytics' | 'views' | 'rating' | 'static-pages'
+  type ChatReportsResponse = {
+    ok: boolean
+    error?: string
+    reports?: BackendSiteChatReport[]
+    report?: BackendSiteChatReport
+    total?: number
+    limit?: number
+    offset?: number
+    open_count?: number
+  }
+
+  type ModeratorTab = 'analytics' | 'views' | 'rating' | 'chat-reports' | 'static-pages'
+  type ChatReportsFilter = 'open' | 'all'
 
   const dateValue = (date: Date) => {
     const year = date.getFullYear()
@@ -122,6 +138,14 @@
   let ratingSettingsError = ''
   let ratingSettingsNotice = ''
   let ratingSettings: RatingSettings | null = null
+  let chatReportsLoading = true
+  let chatReportsError = ''
+  let chatReportsNotice = ''
+  let chatReports: BackendSiteChatReport[] = []
+  let chatReportsTotal = 0
+  let chatReportsOpenCount = 0
+  let chatReportsFilter: ChatReportsFilter = 'open'
+  let savingChatReports: Record<number, boolean> = {}
   const staticPages = (Object.entries(EDITABLE_STATIC_PAGE_META) as Array<
     [EditableStaticPageSlug, (typeof EDITABLE_STATIC_PAGE_META)[EditableStaticPageSlug]]
   >).map(([slug, meta]) => ({
@@ -134,6 +158,7 @@
   const dashboardTitle = (tab: ModeratorTab) => {
     if (tab === 'views') return 'Настройки просмотров'
     if (tab === 'rating') return 'Настройки рейтинга'
+    if (tab === 'chat-reports') return 'Модерация комментариев'
     if (tab === 'static-pages') return 'Статичные страницы'
     return 'Аналитика сайта'
   }
@@ -179,13 +204,6 @@
       label: 'Рейтинг автора в посте',
       description: 'Вклад рейтинга автора в итоговый рейтинг поста.',
       step: '0.1',
-      min: '0',
-    },
-    {
-      key: 'community_post_rating_weight',
-      label: 'Посты в рейтинге сообщества',
-      description: 'Множитель суммы рейтингов постов для рейтинга сообщества.',
-      step: '0.01',
       min: '0',
     },
     {
@@ -278,6 +296,18 @@
       month: '2-digit',
       year: 'numeric',
     }).format(new Date(value))
+  const formatDateTime = (value?: string | null) =>
+    value
+      ? new Intl.DateTimeFormat('ru-RU', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        }).format(new Date(value))
+      : 'Дата неизвестна'
+  const chatReportUserName = (user: BackendSiteChatReport['reporter']) =>
+    (user.display_name || '').trim() || (user.username ? `@${user.username}` : `ID ${user.id}`)
   async function readModeratorJson<T>(response: Response): Promise<T> {
     const contentType = response.headers.get('content-type') ?? ''
     if (!contentType.includes('application/json')) {
@@ -424,6 +454,80 @@
     }
   }
 
+  async function loadChatReports() {
+    if (!$siteUser?.is_staff) return
+    chatReportsLoading = true
+    chatReportsError = ''
+    chatReportsNotice = ''
+
+    try {
+      const token = $siteToken
+      const response = await fetch(
+        buildModeratorChatReportsUrl({ status: chatReportsFilter, limit: 50 }),
+        {
+          credentials: 'include',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        }
+      )
+      const data = await readModeratorJson<ChatReportsResponse>(response)
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || 'Не удалось загрузить жалобы')
+      }
+      chatReports = data.reports ?? []
+      chatReportsTotal = Number(data.total ?? chatReports.length)
+      chatReportsOpenCount = Number(data.open_count ?? 0)
+    } catch (err) {
+      chatReportsError = err instanceof Error ? err.message : 'Не удалось загрузить жалобы'
+      chatReports = []
+      chatReportsTotal = 0
+    } finally {
+      chatReportsLoading = false
+    }
+  }
+
+  async function updateChatReportStatus(
+    report: BackendSiteChatReport,
+    status: BackendSiteChatReportStatus
+  ) {
+    savingChatReports = { ...savingChatReports, [report.id]: true }
+    chatReportsError = ''
+    chatReportsNotice = ''
+
+    try {
+      const token = $siteToken
+      const response = await fetch(buildModeratorChatReportUrl(report.id), {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ status }),
+      })
+      const data = await readModeratorJson<ChatReportsResponse>(response)
+      if (!response.ok || !data.ok || !data.report) {
+        throw new Error(data.error || 'Не удалось обновить жалобу')
+      }
+      chatReportsOpenCount = Number(data.open_count ?? chatReportsOpenCount)
+      if (chatReportsFilter === 'open' && status !== 'open') {
+        chatReports = chatReports.filter((item) => item.id !== report.id)
+        chatReportsTotal = Math.max(0, chatReportsTotal - 1)
+      } else {
+        chatReports = chatReports.map((item) => (item.id === report.id ? data.report! : item))
+      }
+      chatReportsNotice = status === 'reviewed' ? 'Жалоба отмечена обработанной.' : 'Жалоба отклонена.'
+    } catch (err) {
+      chatReportsError = err instanceof Error ? err.message : 'Не удалось обновить жалобу'
+    } finally {
+      savingChatReports = { ...savingChatReports, [report.id]: false }
+    }
+  }
+
+  function setChatReportsFilter(filter: ChatReportsFilter) {
+    chatReportsFilter = filter
+    loadChatReports()
+  }
+
   function setPreset(days: number) {
     const end = new Date()
     const start = new Date(end)
@@ -447,6 +551,7 @@
     loadAnalytics()
     loadViewSettings()
     loadRatingSettings()
+    loadChatReports()
   })
 </script>
 
@@ -505,6 +610,16 @@
       on:click={() => (activeTab = 'rating')}
     >
       Рейтинг
+    </button>
+    <button
+      type="button"
+      class:active={activeTab === 'chat-reports'}
+      on:click={() => (activeTab = 'chat-reports')}
+    >
+      Модерация комментариев
+      {#if chatReportsOpenCount}
+        <span class="tab-badge">{chatReportsOpenCount}</span>
+      {/if}
     </button>
     <button
       type="button"
@@ -671,7 +786,7 @@
       {:else if ratingSettings}
         <div class="formula-strip">
           <span>Пост = голоса + комментарии + лайки комментариев + сообщество + автор</span>
-          <span>Сообщество = посты за первые {ratingSettings.community_post_rating_days} дней * {ratingSettings.community_post_rating_weight}</span>
+          <span>Сообщество = накопительный рейтинг, пост влияет только первые {ratingSettings.community_post_rating_days} дней</span>
           <span>Главная = до {ratingSettings.home_posts_per_community_per_day} постов сообщества в день</span>
           <span>Автор = посты автора + лайки его комментариев</span>
         </div>
@@ -693,6 +808,112 @@
         </div>
       {:else}
         <div class="empty-state">Настройки рейтинга не загружены.</div>
+      {/if}
+    </section>
+  {/if}
+
+  {#if activeTab === 'chat-reports'}
+    <section class="chat-reports-section">
+      <div class="section-header">
+        <div>
+          <p class="section-label">Раздел</p>
+          <h2>Модерация комментариев</h2>
+        </div>
+        <div class="chat-reports-toolbar">
+          <div class="chat-report-filters" aria-label="Фильтр жалоб">
+            <button
+              type="button"
+              class:active={chatReportsFilter === 'open'}
+              on:click={() => setChatReportsFilter('open')}
+            >
+              Новые
+            </button>
+            <button
+              type="button"
+              class:active={chatReportsFilter === 'all'}
+              on:click={() => setChatReportsFilter('all')}
+            >
+              Все
+            </button>
+          </div>
+          <button class="secondary-button" type="button" disabled={chatReportsLoading} on:click={loadChatReports}>
+            Обновить
+          </button>
+        </div>
+      </div>
+
+      {#if chatReportsError}
+        <div class="notice error">{chatReportsError}</div>
+      {/if}
+      {#if chatReportsNotice}
+        <div class="notice success">{chatReportsNotice}</div>
+      {/if}
+
+      {#if chatReportsLoading}
+        <div class="chat-reports-list">
+          {#each Array(4) as _}
+            <div class="chat-report-row skeleton"></div>
+          {/each}
+        </div>
+      {:else if chatReports.length}
+        <div class="chat-reports-list">
+          {#each chatReports as report (report.id)}
+            <article class="chat-report-row">
+              <div class="chat-report-header">
+                <div class="chat-report-users">
+                  <strong>{chatReportUserName(report.reported_user)}</strong>
+                  <span>Жалоба от {chatReportUserName(report.reporter)} · {formatDateTime(report.created_at)}</span>
+                </div>
+                <span class={`chat-report-status status-${report.status}`}>
+                  {report.status_label || report.status}
+                </span>
+              </div>
+
+              <div class="chat-report-message">
+                {report.message?.body || 'Сообщение не найдено или пустое.'}
+              </div>
+
+              <div class="chat-report-footer">
+                <span>
+                  Чат #{report.chat_id}
+                  {#if report.message?.id}
+                    · сообщение #{report.message.id}
+                  {/if}
+                  {#if report.message?.created_at}
+                    · {formatDateTime(report.message.created_at)}
+                  {/if}
+                </span>
+                <div class="chat-report-actions">
+                  {#if report.status !== 'reviewed'}
+                    <button
+                      class="secondary-button"
+                      type="button"
+                      disabled={savingChatReports[report.id]}
+                      on:click={() => updateChatReportStatus(report, 'reviewed')}
+                    >
+                      Обработано
+                    </button>
+                  {/if}
+                  {#if report.status !== 'dismissed'}
+                    <button
+                      class="secondary-button danger-button"
+                      type="button"
+                      disabled={savingChatReports[report.id]}
+                      on:click={() => updateChatReportStatus(report, 'dismissed')}
+                    >
+                      Отклонить
+                    </button>
+                  {/if}
+                </div>
+              </div>
+            </article>
+          {/each}
+        </div>
+        <div class="chat-reports-total">
+          Показано {formatNumber(chatReports.length)} из {formatNumber(chatReportsTotal)}
+        </div>
+      {:else}
+        <div class="empty-state">Новых жалоб нет.</div>
       {/if}
     </section>
   {/if}
@@ -796,12 +1017,28 @@
     padding: 0 12px;
     color: rgb(71 85 105);
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
   }
 
   .moderator-tabs button.active {
     border-bottom-color: rgb(37 99 235);
     color: rgb(15 23 42);
     font-weight: 600;
+  }
+
+  .tab-badge {
+    min-width: 20px;
+    height: 20px;
+    border-radius: 999px;
+    display: inline-grid;
+    place-items: center;
+    padding: 0 6px;
+    background: rgb(220 38 38);
+    color: white;
+    font-size: 12px;
+    line-height: 1;
   }
 
   .preset-group {
@@ -902,6 +1139,7 @@
   .analytics-section,
   .view-settings-section,
   .rating-settings-section,
+  .chat-reports-section,
   .static-pages-section {
     border: 1px solid rgb(226 232 240);
     border-radius: 8px;
@@ -984,6 +1222,140 @@
   .static-pages-list {
     display: grid;
     gap: 10px;
+  }
+
+  .chat-reports-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .chat-report-filters {
+    min-height: 38px;
+    border: 1px solid rgb(226 232 240);
+    border-radius: 8px;
+    display: inline-flex;
+    overflow: hidden;
+    background: white;
+  }
+
+  .chat-report-filters button {
+    border: 0;
+    border-right: 1px solid rgb(226 232 240);
+    background: transparent;
+    padding: 0 12px;
+    color: rgb(71 85 105);
+    cursor: pointer;
+  }
+
+  .chat-report-filters button:last-child {
+    border-right: 0;
+  }
+
+  .chat-report-filters button.active {
+    background: rgb(239 246 255);
+    color: rgb(37 99 235);
+    font-weight: 600;
+  }
+
+  .chat-reports-list {
+    display: grid;
+    gap: 10px;
+  }
+
+  .chat-report-row {
+    min-height: 148px;
+    border: 1px solid rgb(226 232 240);
+    border-radius: 8px;
+    padding: 14px;
+    display: grid;
+    gap: 12px;
+    background: rgb(248 250 252);
+  }
+
+  .chat-report-header,
+  .chat-report-footer {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .chat-report-users {
+    min-width: 0;
+    display: grid;
+    gap: 4px;
+  }
+
+  .chat-report-users strong {
+    color: rgb(15 23 42);
+    font-size: 15px;
+    line-height: 1.25;
+  }
+
+  .chat-report-users span,
+  .chat-report-footer span,
+  .chat-reports-total {
+    color: rgb(100 116 139);
+    font-size: 13px;
+    line-height: 1.35;
+  }
+
+  .chat-report-status {
+    border-radius: 999px;
+    padding: 5px 9px;
+    color: rgb(71 85 105);
+    background: white;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .chat-report-status.status-open {
+    color: rgb(153 27 27);
+    background: rgb(254 226 226);
+  }
+
+  .chat-report-status.status-reviewed {
+    color: rgb(22 101 52);
+    background: rgb(220 252 231);
+  }
+
+  .chat-report-status.status-dismissed {
+    color: rgb(71 85 105);
+    background: rgb(226 232 240);
+  }
+
+  .chat-report-message {
+    border: 1px solid rgb(226 232 240);
+    border-radius: 8px;
+    background: white;
+    padding: 12px;
+    color: rgb(15 23 42);
+    font-size: 14px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .chat-report-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .danger-button {
+    border-color: rgb(254 202 202);
+    color: rgb(185 28 28);
+  }
+
+  .danger-button:hover {
+    background: rgb(254 242 242);
+  }
+
+  .chat-reports-total {
+    padding-top: 2px;
+    text-align: right;
   }
 
   .static-page-row {
@@ -1205,6 +1577,9 @@
   :global(.dark) .post-info span,
   :global(.dark) .static-page-info span,
   :global(.dark) .static-page-info a,
+  :global(.dark) .chat-report-users span,
+  :global(.dark) .chat-report-footer span,
+  :global(.dark) .chat-reports-total,
   :global(.dark) .view-cell span,
   :global(.dark) .display-input span,
   :global(.dark) .rating-setting-card small,
@@ -1224,6 +1599,8 @@
   :global(.dark) .secondary-button,
   :global(.dark) .icon-action,
   :global(.dark) .post-info strong,
+  :global(.dark) .chat-report-users strong,
+  :global(.dark) .chat-report-message,
   :global(.dark) .static-page-info strong,
   :global(.dark) .view-cell strong {
     color: white;
@@ -1233,11 +1610,15 @@
   :global(.dark) .analytics-section,
   :global(.dark) .view-settings-section,
   :global(.dark) .rating-settings-section,
+  :global(.dark) .chat-reports-section,
   :global(.dark) .static-pages-section,
   :global(.dark) .view-settings-row,
+  :global(.dark) .chat-report-row,
+  :global(.dark) .chat-report-message,
   :global(.dark) .static-page-row,
   :global(.dark) .rating-setting-card,
   :global(.dark) .preset-group,
+  :global(.dark) .chat-report-filters,
   :global(.dark) .period-form input,
   :global(.dark) .view-settings-search input,
   :global(.dark) .display-input input,
@@ -1256,6 +1637,36 @@
   :global(.dark) .preset-group button {
     border-color: rgb(63 63 70);
     color: rgb(228 228 231);
+  }
+
+  :global(.dark) .chat-report-filters button {
+    border-color: rgb(63 63 70);
+    color: rgb(228 228 231);
+  }
+
+  :global(.dark) .chat-report-filters button.active {
+    background: rgb(30 58 138 / 0.35);
+    color: rgb(147 197 253);
+  }
+
+  :global(.dark) .chat-report-status {
+    background: rgb(39 39 42);
+    color: rgb(212 212 216);
+  }
+
+  :global(.dark) .chat-report-status.status-open {
+    background: rgb(127 29 29 / 0.45);
+    color: rgb(252 165 165);
+  }
+
+  :global(.dark) .chat-report-status.status-reviewed {
+    background: rgb(20 83 45 / 0.45);
+    color: rgb(134 239 172);
+  }
+
+  :global(.dark) .chat-report-status.status-dismissed {
+    background: rgb(63 63 70);
+    color: rgb(212 212 216);
   }
 
   :global(.dark) .metric-icon {
@@ -1304,6 +1715,17 @@
       align-items: stretch;
     }
 
+    .chat-reports-toolbar,
+    .chat-report-header,
+    .chat-report-footer {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .chat-report-actions {
+      justify-content: flex-start;
+    }
+
     .view-settings-search input {
       width: 100%;
     }
@@ -1350,7 +1772,8 @@
       grid-template-columns: 1fr;
     }
 
-    .view-settings-search {
+    .view-settings-search,
+    .chat-reports-toolbar {
       display: grid;
     }
   }

@@ -531,6 +531,7 @@
       on:hide
       on:deleted={() => (removedByAdmin = true)}
       on:categorychange
+      on:pinned
       {post}
       style="grid-area: actions;"
       {view}

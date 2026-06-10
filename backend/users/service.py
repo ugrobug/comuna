@@ -40,6 +40,7 @@ from users.models import (
     AuthorAdmin,
     AuthorVerificationCode,
     SiteAuthToken,
+    SiteChat,
     SiteUserProfile,
     TelegramAccount,
     VkAccount,
@@ -52,6 +53,7 @@ _TOKEN_MAX_AGE = int(getattr(settings, "SITE_AUTH_TOKEN_MAX_AGE_SECONDS", 60 * 6
 _AUTH_COOKIE_NAME = str(getattr(settings, "SITE_AUTH_COOKIE_NAME", "comuna_site_token") or "comuna_site_token")
 _COOKIE_AUTH_SENTINEL = "__cookie__"
 _VK_JWKS_CLIENTS: dict[str, PyJWKClient] = {}
+DELETED_USER_DISPLAY_NAME = "Удаленный пользователь"
 
 
 def _fv():
@@ -179,6 +181,230 @@ def _clear_auth_cookie(response: HttpResponse) -> None:
         domain=_auth_cookie_domain(),
         samesite=_auth_cookie_samesite(),
     )
+
+
+def _is_deleted_site_user(user: User | None) -> bool:
+    if not user:
+        return False
+    try:
+        profile = user.site_profile
+    except Exception:
+        profile = None
+    return bool(not user.is_active or getattr(profile, "deleted_at", None))
+
+
+def _deleted_user_public_payload(user_id: int | None = None) -> dict:
+    return {
+        "id": user_id,
+        "username": "deleted",
+        "display_name": DELETED_USER_DISPLAY_NAME,
+        "avatar_url": None,
+        "profile_url": None,
+        "is_deleted": True,
+    }
+
+
+def _unique_deleted_username(user: User) -> str:
+    base = f"deleted_user_{user.id}"
+    candidate = base[:150]
+    suffix = 1
+    while User.objects.filter(username__iexact=candidate).exclude(pk=user.pk).exists():
+        suffix += 1
+        candidate = f"{base}_{suffix}"[:150]
+    return candidate
+
+
+def _unique_deleted_author_username(user: User, author: Author) -> str:
+    base = f"deleted_user_{user.id}"
+    candidate = base[:64]
+    suffix = 1
+    while Author.objects.filter(username__iexact=candidate).exclude(pk=author.pk).exists():
+        suffix += 1
+        candidate = f"{base}_{suffix}"[:64]
+    return candidate
+
+
+def _anonymize_personal_author(user: User) -> None:
+    personal_author = Author.objects.filter(
+        username__iexact=(user.username or "").strip(),
+        channel_url="",
+        channel_id__isnull=True,
+    ).first()
+    if not personal_author:
+        return
+    personal_author.username = _unique_deleted_author_username(user, personal_author)
+    personal_author.title = DELETED_USER_DISPLAY_NAME
+    personal_author.channel_url = ""
+    personal_author.invite_url = ""
+    personal_author.avatar_url = ""
+    personal_author.avatar_image = ""
+    personal_author.avatar_file_id = ""
+    personal_author.description = ""
+    personal_author.admin_chat_id = None
+    personal_author.notify_comments = False
+    personal_author.auto_publish = False
+    personal_author.save(
+        update_fields=[
+            "username",
+            "title",
+            "channel_url",
+            "invite_url",
+            "avatar_url",
+            "avatar_image",
+            "avatar_file_id",
+            "description",
+            "admin_chat_id",
+            "notify_comments",
+            "auto_publish",
+            "updated_at",
+        ]
+    )
+
+
+def _delete_optional_user_rows(app_label: str, model_name: str, **filters) -> None:
+    try:
+        model = _model_class(app_label, model_name)
+    except LookupError:
+        return
+    model.objects.filter(**filters).delete()
+
+
+def _update_optional_user_rows(
+    app_label: str,
+    model_name: str,
+    filters: dict,
+    updates: dict,
+) -> None:
+    try:
+        model = _model_class(app_label, model_name)
+    except LookupError:
+        return
+    model.objects.filter(**filters).update(**updates)
+
+
+def _delete_site_user_account(user: User) -> None:
+    if not user:
+        raise ValueError("user not found")
+    if user.is_staff:
+        raise ValueError("staff account cannot be deleted here")
+
+    with transaction.atomic():
+        user = User.objects.select_for_update().get(pk=user.pk)
+        if _is_deleted_site_user(user):
+            return
+
+        _anonymize_personal_author(user)
+
+        profile, _ = SiteUserProfile.objects.select_for_update().get_or_create(user=user)
+        now = timezone.now()
+        profile.display_name = ""
+        profile.phone = ""
+        profile.avatar_url = ""
+        profile.email_verified_at = None
+        profile.registration_source = ""
+        profile.registration_path = ""
+        profile.deleted_at = now
+        profile.save(
+            update_fields=[
+                "display_name",
+                "phone",
+                "avatar_url",
+                "email_verified_at",
+                "registration_source",
+                "registration_path",
+                "deleted_at",
+                "updated_at",
+            ]
+        )
+
+        AuthorAdmin.objects.filter(user=user).delete()
+        AuthorVerificationCode.objects.filter(user=user).delete()
+        TelegramAccount.objects.filter(user=user).delete()
+        VkAccount.objects.filter(user=user).delete()
+        SiteAuthToken.objects.filter(user=user, revoked_at__isnull=True).update(revoked_at=now)
+        SiteChat.objects.filter(Q(user_one=user) | Q(user_two=user)).delete()
+
+        _delete_optional_user_rows("feeds", "UserFeedSettings", user=user)
+        _delete_optional_user_rows("feeds", "SiteNotificationPreference", user=user)
+        _delete_optional_user_rows("feeds", "SiteNotification", user=user)
+        _delete_optional_user_rows("feeds", "MobilePushDevice", user=user)
+        _delete_optional_user_rows("feeds", "PostFavorite", user=user)
+        _delete_optional_user_rows("feeds", "PostLike", user=user)
+        _delete_optional_user_rows("feeds", "PostRead", user=user)
+        _delete_optional_user_rows("feeds", "PostCommentLike", user=user)
+        _delete_optional_user_rows("feeds", "PostPollVote", user=user)
+        _delete_optional_user_rows("feeds", "PostRatingVote", user=user)
+        _delete_optional_user_rows("feeds", "ComunVote", user=user)
+        _delete_optional_user_rows(
+            "special_projects",
+            "SpecialProjectLetterSuggestion",
+            submitted_by=user,
+        )
+        _delete_optional_user_rows("special_projects", "PublicBookSubmissionState", user=user)
+        _delete_optional_user_rows("special_projects", "PublicBookReminder", user=user)
+        _delete_optional_user_rows(
+            "special_projects",
+            "PublicBookFinalNotificationSubscription",
+            user=user,
+        )
+        _delete_optional_user_rows("special_projects", "PublicBookModerationState", user=user)
+        _delete_optional_user_rows("special_projects", "FilmJourneySubscription", user=user)
+        _update_optional_user_rows(
+            "special_projects",
+            "SpecialProjectLetterImage",
+            {"created_by": user},
+            {"created_by": None},
+        )
+        _update_optional_user_rows(
+            "special_projects",
+            "SpecialProjectLetterSuggestion",
+            {"reviewed_by": user},
+            {"reviewed_by": None},
+        )
+        _update_optional_user_rows(
+            "special_projects",
+            "SpecialProjectGeneratedPhrase",
+            {"generated_by": user},
+            {"generated_by": None},
+        )
+        _update_optional_user_rows(
+            "special_projects",
+            "PublicBookProjectSettings",
+            {"updated_by": user},
+            {"updated_by": None},
+        )
+        _update_optional_user_rows(
+            "special_projects",
+            "PublicBookWord",
+            {"censored_by": user},
+            {"censored_by": None},
+        )
+        _update_optional_user_rows(
+            "special_projects",
+            "PublicBookBlockedWord",
+            {"created_by": user},
+            {"created_by": None},
+        )
+
+        for comun in Comun.objects.filter(moderators=user).iterator():
+            comun.moderators.remove(user)
+
+        user.username = _unique_deleted_username(user)
+        user.email = ""
+        user.first_name = ""
+        user.last_name = ""
+        user.is_active = False
+        user.set_unusable_password()
+        user.save(
+            update_fields=[
+                "username",
+                "email",
+                "first_name",
+                "last_name",
+                "is_active",
+                "password",
+            ]
+        )
 
 
 def _register_password_user(username: str, password: str, email: str = "") -> User:
@@ -699,6 +925,20 @@ def _update_site_profile(
             raise ValueError("invalid avatar_url")
         if len(next_avatar_url) > 500:
             raise ValueError("avatar_url too long")
+        if next_avatar_url:
+            from users.avatar_media import cache_external_avatar_for_user, public_cached_avatar_url
+
+            cached_avatar_url = public_cached_avatar_url(next_avatar_url)
+            if not cached_avatar_url:
+                cached_avatar_url = cache_external_avatar_for_user(
+                    user,
+                    next_avatar_url,
+                    source="profile",
+                    force=True,
+                )
+            if not cached_avatar_url:
+                raise ValueError("invalid avatar_url")
+            next_avatar_url = cached_avatar_url
         profile.avatar_url = next_avatar_url
 
     if email is not None:
@@ -1113,6 +1353,10 @@ def _upsert_vk_account(vk_user: dict, link_user: User | None = None) -> User:
     account.last_name = last_name
     account.avatar_url = avatar_url
     account.save(update_fields=["username", "email", "phone", "first_name", "last_name", "avatar_url", "updated_at"])
+    if avatar_url:
+        from users.avatar_media import cache_external_avatar_for_user
+
+        cache_external_avatar_for_user(user, avatar_url, source="vk")
     return user
 
 
@@ -1231,6 +1475,9 @@ __all__ = [
     "_build_public_user_profile_payload",
     "_build_telegram_login_redirect_html",
     "_clear_auth_cookie",
+    "_deleted_user_public_payload",
+    "_delete_site_user_account",
+    "_is_deleted_site_user",
     "_fetch_vk_json",
     "_fetch_vk_id_json",
     "_generate_verification_code",

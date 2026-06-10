@@ -1,7 +1,9 @@
 <script lang="ts">
   import { browser } from '$app/environment'
+  import { goto } from '$app/navigation'
   import { page } from '$app/stores'
   import { onDestroy, onMount } from 'svelte'
+  import LoginModal from '$lib/components/auth/LoginModal.svelte'
   import Post from '$lib/components/lemmy/post/Post.svelte'
   import { feedKeyboardShortcuts } from '$lib/actions/feedKeyboardShortcuts'
   import {
@@ -18,6 +20,7 @@
   import { env } from '$env/dynamic/public'
   import {
     deleteUserPost,
+    createSiteChat,
     fetchUserPosts,
     refreshSiteUser,
     siteToken,
@@ -41,6 +44,9 @@
   let ownerPostsError = ''
   let ownerPosts: SiteUserPost[] = []
   let deletingDraftId: number | null = null
+  let chatOpening = false
+  let chatError = ''
+  let loginModalOpen = false
   let profileTab: 'posts' | 'drafts' = 'posts'
   let lastOwnerProfileId: number | null = null
   let lastPostsRef = data.posts
@@ -100,6 +106,7 @@
 
   const userDisplayName = (user: BackendPublicSiteUser | null) => {
     if (!user) return 'Пользователь'
+    if (user.is_deleted) return 'Удаленный пользователь'
     const displayName = (user.display_name || '').trim()
     if (displayName) return displayName
     const fullName = [user.first_name, user.last_name].filter(Boolean).join(' ').trim()
@@ -113,7 +120,9 @@
   $: profilePath = profile?.id ? `/id${profile.id}` : $page.url.pathname
   $: title = profile ? `${userDisplayName(profile)} — ${siteTitle}` : siteTitle
   $: description = profile
-    ? `Профиль пользователя @${profile.username} на ${siteTitle}: посты и сообщества.`
+    ? profile.is_deleted
+      ? `Профиль удаленного пользователя на ${siteTitle}.`
+      : `Профиль пользователя @${profile.username} на ${siteTitle}: посты и сообщества.`
     : `Профиль пользователя на ${siteTitle}.`
   $: canonicalUrl = new URL(
     profilePath,
@@ -239,10 +248,30 @@
     }
   }
 
+  const openChat = async () => {
+    if (!profile?.id || isOwnProfile || chatOpening) return
+    if (!$siteToken) {
+      loginModalOpen = true
+      return
+    }
+    chatOpening = true
+    chatError = ''
+    try {
+      const chat = await createSiteChat(profile.id)
+      await goto(`/chats/${chat.id}`)
+    } catch (error) {
+      chatError = (error as Error)?.message ?? 'Не удалось открыть чат'
+    } finally {
+      chatOpening = false
+    }
+  }
+
   $: if (isOwnProfile && $siteToken && !ownerPostsLoaded && !ownerPostsLoading) {
     void loadOwnerPosts()
   }
 </script>
+
+<LoginModal bind:open={loginModalOpen} />
 
 <div class="flex flex-col gap-6 max-w-5xl w-full">
   <section class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-5 sm:p-6">
@@ -267,7 +296,7 @@
             </span>
           {/if}
         </div>
-        {#if profile?.username}
+        {#if profile?.username && !profile?.is_deleted}
           <div class="text-sm text-slate-500 dark:text-zinc-400">@{profile.username}</div>
         {/if}
         <div class="flex flex-wrap gap-2 text-sm">
@@ -283,6 +312,21 @@
             </span>
           {/if}
         </div>
+        {#if profile && !isOwnProfile && !profile.is_deleted}
+          <div class="flex flex-col gap-2">
+            <button
+              type="button"
+              class="inline-flex w-fit items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+              on:click={openChat}
+              disabled={chatOpening}
+            >
+              {chatOpening ? 'Открываем...' : 'Написать'}
+            </button>
+            {#if chatError}
+              <div class="text-sm text-red-600 dark:text-red-300">{chatError}</div>
+            {/if}
+          </div>
+        {/if}
       </div>
     </div>
   </section>

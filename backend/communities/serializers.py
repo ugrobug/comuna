@@ -21,6 +21,44 @@ from feeds.models import Author, Post, PostComment, PostCommentLike, PostFavorit
 from my_feed import service as my_feed_service
 
 User = get_user_model()
+DELETED_USER_DISPLAY_NAME = "Удаленный пользователь"
+
+
+def _site_user_is_deleted(user: User | None) -> bool:
+    if not user:
+        return False
+    if not getattr(user, "is_active", True):
+        return True
+    try:
+        return bool(getattr(user.site_profile, "deleted_at", None))
+    except Exception:
+        return False
+
+
+def _serialize_site_user_summary(user: User | None, user_id: int | None = None) -> dict:
+    if not user:
+        return {
+            "id": user_id,
+            "username": None,
+            "display_name": None,
+            "is_deleted": False,
+        }
+    if _site_user_is_deleted(user):
+        return {
+            "id": user.id,
+            "username": "deleted",
+            "display_name": DELETED_USER_DISPLAY_NAME,
+            "is_deleted": True,
+        }
+    return {
+        "id": user.id,
+        "username": user.username,
+        "display_name": (
+            (getattr(getattr(user, "site_profile", None), "display_name", "") or "").strip()
+            or None
+        ),
+        "is_deleted": False,
+    }
 
 
 def _serialize_comun_glossary_term(term: ComunGlossaryTerm) -> dict:
@@ -66,21 +104,10 @@ def _serialize_comun_profile_card(
         "website_url": comun.website_url,
         "role": role,
         "can_moderate": community_service._comun_is_moderator(current_user, comun),
-        "creator": {
-            "id": comun.creator_id,
-            "username": comun.creator.username if getattr(comun, "creator", None) else None,
-            "display_name": (
-                (
-                    getattr(
-                        getattr(getattr(comun, "creator", None), "site_profile", None),
-                        "display_name",
-                        "",
-                    )
-                    or ""
-                ).strip()
-                or None
-            ),
-        },
+        "creator": _serialize_site_user_summary(
+            getattr(comun, "creator", None),
+            comun.creator_id,
+        ),
         "tags": [
             {
                 "id": tag.id,
@@ -332,7 +359,7 @@ def _serialize_comun(
             .filter(id=comun.welcome_post_id, is_blocked=False, author__is_blocked=False)
             .first()
         )
-        if welcome_post:
+        if welcome_post and community_service._post_belongs_to_comun(comun, welcome_post):
             welcome_post_payload = editor_service._serialize_post_for_user(request, welcome_post, current_user)
 
     payload = {
@@ -363,32 +390,11 @@ def _serialize_comun(
         "allowed_template_types": community_service._allowed_templates_for_comun(comun),
         "template_type_options": editor_service._serialize_post_template_type_options(),
         "template_editor_blocks_by_template": editor_service._template_editor_blocks_by_template(),
-        "creator": {
-            "id": comun.creator_id,
-            "username": comun.creator.username if getattr(comun, "creator", None) else None,
-            "display_name": (
-                (
-                    getattr(
-                        getattr(getattr(comun, "creator", None), "site_profile", None),
-                        "display_name",
-                        "",
-                    )
-                    or ""
-                ).strip()
-                or None
-            ),
-        },
-        "moderators": [
-            {
-                "id": moderator.id,
-                "username": moderator.username,
-                "display_name": (
-                    (getattr(getattr(moderator, "site_profile", None), "display_name", "") or "").strip()
-                    or None
-                ),
-            }
-            for moderator in moderators
-        ],
+        "creator": _serialize_site_user_summary(
+            getattr(comun, "creator", None),
+            comun.creator_id,
+        ),
+        "moderators": [_serialize_site_user_summary(moderator, moderator.id) for moderator in moderators],
         "moderators_count": len(moderators),
         "excluded_authors_count": len(excluded_authors),
         "categories": [
@@ -440,7 +446,7 @@ def _serialize_comun(
             }
             for author in excluded_authors
         ],
-        "welcome_post_id": comun.welcome_post_id,
+        "welcome_post_id": welcome_post_payload["id"] if welcome_post_payload else None,
         "welcome_post": welcome_post_payload,
         "is_subscribed": is_subscribed,
         "can_moderate": can_moderate,
@@ -464,7 +470,7 @@ def _serialize_comun(
         payload["blocked_tag_ids"] = [tag.id for tag in blocked_tags]
         payload["excluded_tag_ids"] = [tag.id for tag in blocked_tags]
         payload["telegram_source_author_id"] = comun.telegram_source_author_id
-        payload["welcome_post_ref"] = str(comun.welcome_post_id or "")
+        payload["welcome_post_ref"] = str(welcome_post_payload["id"] if welcome_post_payload else "")
     if include_options:
         verified_telegram_authors = community_service._current_user_verified_telegram_authors(current_user)
         payload["options"] = {

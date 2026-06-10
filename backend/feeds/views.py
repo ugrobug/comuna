@@ -172,16 +172,16 @@ _COMUN_ACTIVITY_POINTS = {
     "read": 1,
 }
 _COMMENT_PERSONAS = (
-    {"key": "persona_1", "username": "anna_m", "display_name": "Анна М.", "bio": "Часто обсуждает новые релизы и сериалы."},
-    {"key": "persona_2", "username": "igor_p", "display_name": "Игорь П.", "bio": "Любит спорить о киноиндустрии и трендах."},
-    {"key": "persona_3", "username": "olga_v", "display_name": "Ольга В.", "bio": "Следит за фестивалями, кастом и премьерами."},
-    {"key": "persona_4", "username": "sergey_k", "display_name": "Сергей К.", "bio": "Собирает новости о продакшене и сериалах."},
-    {"key": "persona_5", "username": "maria_t", "display_name": "Мария Т.", "bio": "Комментирует актерские работы и сценарии."},
-    {"key": "persona_6", "username": "nikita_l", "display_name": "Никита Л.", "bio": "Следит за анонсами, кассой и стримингами."},
-    {"key": "persona_7", "username": "elena_s", "display_name": "Елена С.", "bio": "Пишет о любимых франшизах и премьерах."},
-    {"key": "persona_8", "username": "denis_r", "display_name": "Денис Р.", "bio": "Смотрит новинки и обсуждает их без спойлеров."},
-    {"key": "persona_9", "username": "kate_n", "display_name": "Катя Н.", "bio": "Любит разговоры про жанры, актеров и сериалы."},
-    {"key": "persona_10", "username": "alex_b", "display_name": "Алекс Б.", "bio": "Следит за индустрией и громкими релизами."},
+    {"key": "persona_1", "username": "anna_m", "display_name": "YARE YARE", "bio": "Часто обсуждает новые релизы и сериалы."},
+    {"key": "persona_2", "username": "igor_p", "display_name": "Банана Фан", "bio": "Любит спорить о киноиндустрии и трендах."},
+    {"key": "persona_3", "username": "olga_v", "display_name": "Юлия", "bio": "Следит за фестивалями, кастом и премьерами."},
+    {"key": "persona_4", "username": "sergey_k", "display_name": "Сергей", "bio": "Собирает новости о продакшене и сериалах."},
+    {"key": "persona_5", "username": "maria_t", "display_name": "Leonchik", "bio": "Комментирует актерские работы и сценарии."},
+    {"key": "persona_6", "username": "nikita_l", "display_name": "Akuta", "bio": "Следит за анонсами, кассой и стримингами."},
+    {"key": "persona_7", "username": "elena_s", "display_name": "Тот самый", "bio": "Пишет о любимых франшизах и премьерах."},
+    {"key": "persona_8", "username": "denis_r", "display_name": "Даниэль", "bio": "Смотрит новинки и обсуждает их без спойлеров."},
+    {"key": "persona_9", "username": "kate_n", "display_name": "NDA", "bio": "Любит разговоры про жанры, актеров и сериалы."},
+    {"key": "persona_10", "username": "alex_b", "display_name": "WeakKun", "bio": "Следит за индустрией и громкими релизами."},
 )
 _COMMENT_PERSONAS_BY_KEY = {item["key"]: item for item in _COMMENT_PERSONAS}
 _COMMENT_PERSONAS_BY_USERNAME = {
@@ -216,6 +216,8 @@ _EDITABLE_STATIC_PAGE_TITLES = {
 }
 
 def _site_user_display_name(user: User) -> str:
+    if user_service._is_deleted_site_user(user):
+        return user_service.DELETED_USER_DISPLAY_NAME
     display_name = (
         (getattr(getattr(user, "site_profile", None), "display_name", "") or "").strip()
     )
@@ -283,6 +285,8 @@ def _author_avatar_for_display(
 ) -> str | None:
     site_user = _site_user_for_personal_author(request, author)
     if site_user:
+        if user_service._is_deleted_site_user(site_user):
+            return None
         site_avatar = _site_user_avatar_url(request, site_user)
         if site_avatar:
             return site_avatar
@@ -389,8 +393,65 @@ def _maybe_notify_new_author(author: Author, post: Post) -> None:
     author.save(update_fields=["first_post_notified", "updated_at"])
 
 
+_COMMENT_IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif")
+_COMMENT_MARKDOWN_IMAGE_LINE_RE = re.compile(
+    r"^\s*!\[[^\]]*\]\(\s*(?P<url><[^>]+>|[^\s)]+)(?:\s+[\"'][^\"']*[\"'])?\s*\)\s*$",
+    re.IGNORECASE,
+)
+_COMMENT_BARE_IMAGE_URL_LINE_RE = re.compile(
+    r"^\s*(?P<url>https?://[^\s<>()]+|/[^\s<>()]+)\s*$",
+    re.IGNORECASE,
+)
+
+
+def _normalize_comment_url_token(value: str) -> str:
+    value = (value or "").strip()
+    if value.startswith("<") and value.endswith(">"):
+        return value[1:-1].strip()
+    return value
+
+
+def _is_comment_image_url(value: str) -> bool:
+    value = _normalize_comment_url_token(value)
+    if not re.match(r"^(https?://|/)", value, re.IGNORECASE):
+        return False
+    path = urllib.parse.urlsplit(value).path.lower()
+    return path.endswith(_COMMENT_IMAGE_EXTENSIONS)
+
+
+def _comment_markdown_image_url_from_line(line: str) -> str:
+    match = _COMMENT_MARKDOWN_IMAGE_LINE_RE.match(line or "")
+    if not match:
+        return ""
+    url = _normalize_comment_url_token(match.group("url") or "")
+    return url if _is_comment_image_url(url) else ""
+
+
+def _comment_bare_image_url_from_line(line: str) -> str:
+    match = _COMMENT_BARE_IMAGE_URL_LINE_RE.match(line or "")
+    if not match:
+        return ""
+    url = _normalize_comment_url_token(match.group("url") or "")
+    return url if _is_comment_image_url(url) else ""
+
+
+def _normalize_comment_body_images(body: str) -> str:
+    normalized_lines: list[str] = []
+    for line in (body or "").splitlines():
+        if _comment_markdown_image_url_from_line(line):
+            normalized_lines.append(line.strip())
+            continue
+        bare_image_url = _comment_bare_image_url_from_line(line)
+        if bare_image_url:
+            normalized_lines.append(f"![]({bare_image_url})")
+            continue
+        normalized_lines.append(line)
+    return "\n".join(normalized_lines).strip()
+
+
 def _comment_preview(text: str, max_length: int = 220) -> str:
-    preview = re.sub(r"\s+", " ", text or "").strip()
+    preview_source = re.sub(r"!\[[^\]]*\]\([^)]+\)", "[изображение]", text or "")
+    preview = re.sub(r"\s+", " ", preview_source).strip()
     if len(preview) <= max_length:
         return preview
     return preview[: max_length - 1].rstrip() + "…"
@@ -504,6 +565,11 @@ def _serialize_comment_user(comment: PostComment) -> dict:
     except Exception:
         display_name = ""
 
+    if user_service._is_deleted_site_user(comment.user):
+        payload = user_service._deleted_user_public_payload(comment.user_id)
+        payload["is_mask"] = False
+        return payload
+
     return {
         "id": comment.user_id,
         "username": (getattr(comment.user, "username", "") or "").strip() or "user",
@@ -517,7 +583,7 @@ def _serialize_comment_user(comment: PostComment) -> dict:
 def _serialize_site_comment(comment: PostComment, *, liked_by_me: bool = False, likes_count: int = 0, can_edit: bool = False) -> dict:
     return {
         "id": comment.id,
-        "body": "" if comment.is_deleted else comment.body,
+        "body": "" if comment.is_deleted else _normalize_comment_body_images(comment.body),
         "created_at": comment.created_at.isoformat(),
         "updated_at": comment.updated_at.isoformat(),
         "parent_id": comment.parent_id,
@@ -539,6 +605,11 @@ def _comment_personas_for_user(user: User | None) -> list[dict]:
             {
                 "key": item["key"],
                 "username": (getattr(persona_user, "username", "") or item["username"]).strip(),
+                "display_name": (
+                    getattr(getattr(persona_user, "site_profile", None), "display_name", "")
+                    or item.get("display_name")
+                    or item["username"]
+                ),
             }
         )
     return personas
@@ -2527,7 +2598,7 @@ def post_comments(request: HttpRequest, post_id: int) -> HttpResponse:
     except json.JSONDecodeError:
         return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
 
-    body = (payload.get("body") or "").strip()
+    body = _normalize_comment_body_images((payload.get("body") or "").strip())
     parent_id = payload.get("parent_id")
     mask_key = str(payload.get("mask_key") or "").strip()
     if not body:
@@ -2565,7 +2636,11 @@ def post_comments(request: HttpRequest, post_id: int) -> HttpResponse:
     )
     Post.objects.filter(id=post.id).update(comments_count=F("comments_count") + 1)
     post.refresh_from_db(fields=["comments_count"])
-    community_service._recalculate_comun_ratings_for_post(post)
+    community_service._apply_comun_rating_delta_for_post(
+        post,
+        value_delta=1,
+        event_type="post_comment",
+    )
     _maybe_notify_post_comment(post, comment, parent=parent)
     _maybe_notify_comment_reply(post, parent, comment)
     _maybe_notify_author_comment(post, comment)
@@ -2610,7 +2685,7 @@ def comment_detail(request: HttpRequest, comment_id: int) -> HttpResponse:
         except json.JSONDecodeError:
             return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
 
-        body = (payload.get("body") or "").strip()
+        body = _normalize_comment_body_images((payload.get("body") or "").strip())
         if not body:
             return JsonResponse({"ok": False, "error": "comment is empty"}, status=400)
         if len(body) > 2000:
@@ -2638,7 +2713,11 @@ def comment_detail(request: HttpRequest, comment_id: int) -> HttpResponse:
     Post.objects.filter(id=comment.post_id, comments_count__gt=0).update(
         comments_count=F("comments_count") - 1
     )
-    community_service._recalculate_comun_ratings_for_post(comment.post_id)
+    community_service._apply_comun_rating_delta_for_post(
+        comment.post_id,
+        value_delta=-1,
+        event_type="post_comment",
+    )
 
     return JsonResponse({"ok": True, "comment_id": comment.id})
 
@@ -2684,7 +2763,11 @@ def comment_like(request: HttpRequest, comment_id: int) -> HttpResponse:
         delta = 1
 
     if delta:
-        community_service._recalculate_comun_ratings_for_post(comment.post_id)
+        community_service._apply_comun_rating_delta_for_post(
+            comment.post_id,
+            value_delta=delta,
+            event_type="comment_like",
+        )
 
     likes_count = PostCommentLike.objects.filter(comment=comment).count()
 
@@ -2751,7 +2834,11 @@ def post_like(request: HttpRequest, post_id: int) -> HttpResponse:
             actor_id=user.id,
             post_id=post.id,
         )
-        community_service._recalculate_comun_ratings_for_post(post.id)
+        community_service._apply_comun_rating_delta_for_post(
+            post.id,
+            value_delta=delta,
+            event_type="post_vote",
+        )
 
     liked = new_vote == 1
 

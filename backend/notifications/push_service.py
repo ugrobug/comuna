@@ -283,8 +283,8 @@ def _get_fcm_access_token() -> tuple[str | None, str | None]:
     try:
         from google.auth.transport.requests import Request
         from google.oauth2 import service_account
-    except ImportError:
-        return None, "google-auth is not installed"
+    except ImportError as exc:
+        return None, f"push auth dependency is not installed: {exc}"
 
     try:
         credentials = service_account.Credentials.from_service_account_info(

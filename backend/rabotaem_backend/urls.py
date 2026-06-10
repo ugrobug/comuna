@@ -10,8 +10,10 @@ from communities.views import (
     comun_knowledge_base_item,
     comun_post_category_update,
     comun_posts,
+    comun_welcome_post_options,
     comun_vote,
     comuns_composer,
+    comuns_catalog,
     comuns_list_create,
     comuns_sidebar,
 )
@@ -64,6 +66,8 @@ from my_feed.views import (
 )
 from moderator.views import (
     moderator_analytics,
+    moderator_chat_report_update,
+    moderator_chat_reports,
     moderator_post_view_setting_update,
     moderator_post_view_settings,
     moderator_rating_settings,
@@ -113,6 +117,10 @@ from special_projects.views import (
 )
 from telegram_integration.views import telegram_auth, telegram_webhook
 from users.views import (
+    auth_chat_detail,
+    auth_chat_messages,
+    auth_chat_report_block,
+    auth_chats,
     auth_me,
     author_verification_code,
     login_user,
@@ -157,6 +165,7 @@ urlpatterns = [
     path("api/home/favorites/", favorites_feed, name="favorites-feed"),
     path("api/home/my/", my_feed, name="my-feed"),
     path("api/comuns/", comuns_list_create, name="comuns-list-create"),
+    path("api/comuns/catalog/", comuns_catalog, name="comuns-catalog"),
     path("api/comuns/composer/", comuns_composer, name="comuns-composer"),
     path("api/comuns/sidebar/", comuns_sidebar, name="comuns-sidebar"),
     path(
@@ -178,6 +187,11 @@ urlpatterns = [
     ),
     path("api/comuns/<slug:slug>/", comun_detail_manage, name="comun-detail-manage"),
     path("api/comuns/<slug:slug>/vote/", comun_vote, name="comun-vote"),
+    path(
+        "api/comuns/<slug:slug>/welcome-post-options/",
+        comun_welcome_post_options,
+        name="comun-welcome-post-options",
+    ),
     path("api/comuns/<slug:slug>/posts/", comun_posts, name="comun-posts"),
     path(
         "api/comuns/<slug:slug>/posts/<int:post_id>/category/",
@@ -219,6 +233,14 @@ urlpatterns = [
     path("api/auth/telegram/", telegram_auth, name="auth-telegram"),
     path("api/auth/vk/", vk_auth, name="auth-vk"),
     path("api/auth/me/", auth_me, name="auth-me"),
+    path("api/auth/chats/", auth_chats, name="auth-chats"),
+    path("api/auth/chats/<int:chat_id>/", auth_chat_detail, name="auth-chat-detail"),
+    path("api/auth/chats/<int:chat_id>/messages/", auth_chat_messages, name="auth-chat-messages"),
+    path(
+        "api/auth/chats/<int:chat_id>/report-block/",
+        auth_chat_report_block,
+        name="auth-chat-report-block",
+    ),
     path("api/auth/feed-settings/", auth_feed_settings, name="auth-feed-settings"),
     path(
         "api/auth/post-templates/movie-review/autofill/",
@@ -250,6 +272,12 @@ urlpatterns = [
     path("api/auth/verification-code/", author_verification_code, name="auth-verification-code"),
     path("api/auth/posts/", user_posts, name="auth-posts"),
     path("api/moderator/analytics/", moderator_analytics, name="moderator-analytics"),
+    path("api/moderator/chat-reports/", moderator_chat_reports, name="moderator-chat-reports"),
+    path(
+        "api/moderator/chat-reports/<int:report_id>/",
+        moderator_chat_report_update,
+        name="moderator-chat-report-update",
+    ),
     path(
         "api/moderator/post-view-settings/",
         moderator_post_view_settings,

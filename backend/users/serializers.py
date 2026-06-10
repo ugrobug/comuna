@@ -5,7 +5,7 @@ from django.http import HttpRequest
 
 from communities import service as community_service
 from ratings.service import calculate_author_rating
-from telegram_integration.media import safe_public_url
+from users.avatar_media import public_cached_avatar_url
 from users.models import AuthorAdmin
 
 User = get_user_model()
@@ -75,7 +75,7 @@ def _serialize_user(user: User) -> dict:
             else None
         ),
         "display_name": (site_profile.display_name if site_profile else "") or None,
-        "avatar_url": safe_public_url(site_profile.avatar_url if site_profile else "") or avatar_url,
+        "avatar_url": public_cached_avatar_url(site_profile.avatar_url if site_profile else "") or avatar_url,
         "is_staff": user.is_staff,
         "is_author": bool(authors),
         "authors": authors,
@@ -93,6 +93,25 @@ def _serialize_public_site_user_profile(
     posts_count: int = 0,
     comuns_count: int = 0,
 ) -> dict:
+    try:
+        deleted_at = getattr(user.site_profile, "deleted_at", None)
+    except Exception:
+        deleted_at = None
+    if not user.is_active or deleted_at:
+        return {
+            "id": user.id,
+            "username": "deleted",
+            "display_name": "Удаленный пользователь",
+            "avatar_url": None,
+            "posts_count": int(posts_count or 0),
+            "comuns_count": int(comuns_count or 0),
+            "authors_count": 0,
+            "is_staff": False,
+            "first_name": None,
+            "last_name": None,
+            "is_deleted": True,
+        }
+
     author_links = author_links or []
     fallback_author_avatars: dict[int, str | None] = {}
     for link in author_links:

@@ -6,6 +6,10 @@
   import LoginModal from '$lib/components/auth/LoginModal.svelte'
   import { buildCommentDetailUrl, buildPostCommentsUrl } from '$lib/api/backend'
   import { siteToken, siteUser, uploadSiteImage } from '$lib/siteAuth'
+  import { optimizeImageURL } from '$lib/components/lemmy/post/helpers'
+  import { getSafeUrl } from '$lib/security/url'
+  import { Icon, XMark } from 'svelte-hero-icons'
+  import { composeCommentBody, splitCommentBodyImages } from './imageMarkdown'
   import type { SiteComment, SiteCommentMask } from './types'
 
   export let postId: number
@@ -24,22 +28,34 @@
     cancel: void
   }>()
 
-  let value = initialBody
+  let value = ''
+  let imageUrls: string[] = []
   let loading = false
   let error = ''
   let showLoginModal = false
   let lastCommentId = commentId
+  let lastInitialBody = initialBody
   let selectedMaskKey = ''
   let masksInitialized = false
   let loginPromptedForDraft = false
   let lastObservedValue = value
   const COMMENT_MASK_STORAGE_KEY = 'comuna.admin.comment.mask'
 
+  function resetDraft(nextBody: string) {
+    const parsed = splitCommentBodyImages(nextBody)
+    value = parsed.text
+    imageUrls = parsed.imageUrls
+    lastObservedValue = value
+  }
+
+  resetDraft(initialBody)
+
   $: canChooseMask = Boolean($siteUser?.is_staff && !commentId && commentMasks.length > 0)
 
-  $: if (commentId !== lastCommentId) {
+  $: if (commentId !== lastCommentId || initialBody !== lastInitialBody) {
     lastCommentId = commentId
-    value = initialBody
+    lastInitialBody = initialBody
+    resetDraft(initialBody)
     error = ''
   }
 
@@ -93,12 +109,26 @@
     return uploadSiteImage(image)
   }
 
+  function addImageUrls(urls: string[]) {
+    imageUrls = Array.from(new Set([...imageUrls, ...urls]))
+  }
+
+  function removeImageUrl(url: string) {
+    imageUrls = imageUrls.filter((item) => item !== url)
+  }
+
+  function imagePreviewUrl(url: string) {
+    const safeUrl = getSafeUrl(url, { allowRelative: true })
+    return safeUrl ? optimizeImageURL(safeUrl, 320) : ''
+  }
+
   async function submit() {
     if (!$siteToken) {
       showLoginModal = true
       return
     }
-    if (!value.trim()) {
+    const body = composeCommentBody(value, imageUrls)
+    if (!body) {
       error = 'Введите текст комментария'
       return
     }
@@ -108,7 +138,7 @@
 
     try {
       const payload: Record<string, unknown> = {
-        body: value.trim(),
+        body,
       }
       if (parentId) {
         payload.parent_id = parentId
@@ -138,6 +168,8 @@
         dispatch('comment', data.comment as SiteComment)
         if (!commentId) {
           value = ''
+          imageUrls = []
+          lastObservedValue = ''
         }
       }
     } catch (err) {
@@ -164,7 +196,7 @@
       >
         <option value="">Мой аккаунт (@{$siteUser?.username})</option>
         {#each commentMasks as mask}
-          <option value={mask.key}>@{mask.username}</option>
+          <option value={mask.key}>{mask.display_name || `@${mask.username}`}</option>
         {/each}
       </select>
       <p class="text-xs text-slate-500 dark:text-zinc-500">
@@ -182,7 +214,37 @@
     previewButton={false}
     images={true}
     imageUploadHandler={uploadCommentImage}
+    imageInsertMode="event"
+    on:images={(event) => addImageUrls(event.detail)}
   />
+  {#if imageUrls.length}
+    <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+      {#each imageUrls as imageUrl, index (imageUrl)}
+        {@const previewUrl = imagePreviewUrl(imageUrl)}
+        {#if previewUrl}
+          <div
+            class="relative aspect-[4/3] overflow-hidden rounded-lg border border-slate-200 bg-slate-100 dark:border-zinc-800 dark:bg-zinc-900"
+          >
+            <img
+              src={previewUrl}
+              alt={`Изображение ${index + 1}`}
+              class="h-full w-full object-cover"
+            />
+            <button
+              type="button"
+              class="absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-slate-700 shadow-sm transition hover:bg-white hover:text-rose-600 dark:bg-zinc-950/90 dark:text-zinc-200"
+              title="Удалить изображение"
+              aria-label="Удалить изображение"
+              on:click={() => removeImageUrl(imageUrl)}
+              disabled={loading}
+            >
+              <Icon src={XMark} size="16" micro />
+            </button>
+          </div>
+        {/if}
+      {/each}
+    </div>
+  {/if}
   {#if error}
     <p class="text-sm text-red-600">{error}</p>
   {/if}

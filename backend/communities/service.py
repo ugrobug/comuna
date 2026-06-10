@@ -8,7 +8,7 @@ import secrets
 import urllib.parse
 from collections import defaultdict
 from datetime import timedelta
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 try:
     import pymorphy2
@@ -17,7 +17,8 @@ except ImportError:  # optional dependency for lemmatization
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.db.models import Case, Count, F, IntegerField, Q, Value, When
+from django.db import transaction
+from django.db.models import Case, Count, F, IntegerField, Q, Sum, Value, When
 from django.http import HttpRequest
 from django.utils import timezone
 from django.utils.text import slugify
@@ -27,6 +28,7 @@ from communities.models import (
     ComunCategory,
     ComunGlossaryTerm,
     ComunPostCategoryAssignment,
+    ComunPostRatingContribution,
     ComunVote,
 )
 from editor.models import PostPollVote
@@ -44,17 +46,18 @@ from feeds.models import (
 from rabotaem_backend.media_urls import public_url
 from ratings.service import (
     calculate_author_rating,
-    calculate_community_rating_for_posts,
     format_rating_value,
     get_rating_settings,
     user_max_author_rating,
 )
 from telegram_integration.media import safe_public_url
+from users.avatar_media import public_cached_avatar_url
 from users.models import AuthorAdmin
 
 User = get_user_model()
 
 _COMUN_CREATION_MIN_AUTHOR_RATING = 0.0
+_COMUN_COMMENT_RATING_WEIGHT = Decimal("0.1")
 _COMUN_ACTIVITY_POINTS = {
     "post": 10,
     "comment": 5,
@@ -995,22 +998,35 @@ def _site_user_avatar_url(
     *,
     fallback_author_avatars: dict[int, str | None] | None = None,
 ) -> str | None:
+    if not user or not getattr(user, "is_active", True):
+        return None
+    try:
+        if getattr(user.site_profile, "deleted_at", None):
+            return None
+    except Exception:
+        pass
     try:
         site_profile = user.site_profile
         if site_profile and site_profile.avatar_url:
-            return safe_public_url(site_profile.avatar_url)
+            cached_avatar_url = public_cached_avatar_url(site_profile.avatar_url)
+            if cached_avatar_url:
+                return cached_avatar_url
     except Exception:
         pass
     try:
         tg = user.telegram_account
         if tg and tg.avatar_url:
-            return safe_public_url(tg.avatar_url)
+            cached_avatar_url = public_cached_avatar_url(tg.avatar_url)
+            if cached_avatar_url:
+                return cached_avatar_url
     except Exception:
         pass
     try:
         vk = user.vk_account
         if vk and vk.avatar_url:
-            return safe_public_url(vk.avatar_url)
+            cached_avatar_url = public_cached_avatar_url(vk.avatar_url)
+            if cached_avatar_url:
+                return cached_avatar_url
     except Exception:
         pass
     if fallback_author_avatars and user.id in fallback_author_avatars:
@@ -1040,6 +1056,69 @@ def _comun_categories_count(comun: Comun) -> int:
     return len(_comun_categories_list(comun))
 
 
+def _decimal_rating(value: object, default: str = "0") -> Decimal:
+    try:
+        return Decimal(str(value))
+    except Exception:
+        return Decimal(default)
+
+
+def _quantize_rating(value: Decimal) -> Decimal:
+    return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def _sync_comun_vote_counts(comun_id: int) -> tuple[int, int]:
+    counts = ComunVote.objects.filter(comun_id=comun_id).aggregate(
+        up=Count("id", filter=Q(value=1)),
+        down=Count("id", filter=Q(value=-1)),
+    )
+    votes_up = int(counts.get("up") or 0)
+    votes_down = int(counts.get("down") or 0)
+    Comun.objects.filter(id=comun_id).update(
+        votes_up=votes_up,
+        votes_down=votes_down,
+    )
+    return votes_up, votes_down
+
+
+def _comun_rating_window_days(settings=None) -> int:
+    settings = settings or get_rating_settings()
+    try:
+        return max(int(settings.community_post_rating_days or 7), 1)
+    except (TypeError, ValueError):
+        return 7
+
+
+def _post_in_comun_rating_window(post: Post, *, settings=None, now=None) -> bool:
+    created_at = getattr(post, "created_at", None)
+    if not created_at:
+        return False
+    current_time = now or timezone.now()
+    return created_at >= current_time - timedelta(days=_comun_rating_window_days(settings))
+
+
+def _comun_post_rating_delta(value_delta: int | Decimal, event_type: str, *, settings=None) -> Decimal:
+    if not value_delta:
+        return Decimal("0.00")
+    settings = settings or get_rating_settings()
+    if event_type == "post_vote":
+        weight = _decimal_rating(getattr(settings, "post_vote_weight", 1), "1")
+    elif event_type == "post_comment":
+        weight = _COMUN_COMMENT_RATING_WEIGHT
+    elif event_type == "comment_like":
+        weight = _decimal_rating(getattr(settings, "post_comment_like_weight", "0.5"), "0.5") * _COMUN_COMMENT_RATING_WEIGHT
+    else:
+        weight = Decimal("0")
+    return _quantize_rating(_decimal_rating(value_delta) * weight)
+
+
+def _comun_contribution_rating(comun_id: int) -> Decimal:
+    totals = ComunPostRatingContribution.objects.filter(comun_id=comun_id).aggregate(
+        score_total=Sum("score")
+    )
+    return _quantize_rating(_decimal_rating(totals.get("score_total")))
+
+
 def _recalculate_comun_rating(comun_id: int) -> tuple[int, int, Decimal]:
     comun = (
         Comun.objects.filter(id=comun_id)
@@ -1049,22 +1128,53 @@ def _recalculate_comun_rating(comun_id: int) -> tuple[int, int, Decimal]:
     )
     if not comun:
         return 0, 0, Decimal("0.00")
-    counts = ComunVote.objects.filter(comun_id=comun_id).aggregate(
-        up=Count("id", filter=Q(value=1)),
-        down=Count("id", filter=Q(value=-1)),
-    )
-    votes_up = int(counts.get("up") or 0)
-    votes_down = int(counts.get("down") or 0)
-    settings = get_rating_settings()
-    cutoff = timezone.now() - timedelta(days=int(settings.community_post_rating_days or 7))
-    posts = _comun_posts_base_queryset(comun).filter(created_at__gte=cutoff)
-    rating_score = calculate_community_rating_for_posts(posts, settings=settings)
+    votes_up, votes_down = _sync_comun_vote_counts(comun_id)
+    rating_score = _comun_contribution_rating(comun_id)
     Comun.objects.filter(id=comun_id).update(
         votes_up=votes_up,
         votes_down=votes_down,
         rating_score=rating_score,
     )
     return votes_up, votes_down, rating_score
+
+
+def _apply_comun_rating_delta_for_post(
+    post_or_id: Post | int | None,
+    *,
+    value_delta: int | Decimal,
+    event_type: str,
+) -> Decimal:
+    if not post_or_id or not value_delta:
+        return Decimal("0.00")
+    if isinstance(post_or_id, Post):
+        post = post_or_id
+    else:
+        post = Post.objects.filter(id=post_or_id).first()
+    if not post:
+        return Decimal("0.00")
+    settings = get_rating_settings()
+    if not _post_in_comun_rating_window(post, settings=settings):
+        return Decimal("0.00")
+    rating_delta = _comun_post_rating_delta(value_delta, event_type, settings=settings)
+    if not rating_delta:
+        return Decimal("0.00")
+    comun_ids = _candidate_comun_ids_for_post(post)
+    if not comun_ids:
+        return Decimal("0.00")
+    with transaction.atomic():
+        for comun_id in comun_ids:
+            contribution, _created = (
+                ComunPostRatingContribution.objects.select_for_update()
+                .get_or_create(
+                    comun_id=comun_id,
+                    post_id=post.id,
+                    defaults={"score": Decimal("0.00")},
+                )
+            )
+            contribution.score = _quantize_rating(_decimal_rating(contribution.score) + rating_delta)
+            contribution.save(update_fields=["score", "updated_at"])
+        Comun.objects.filter(id__in=comun_ids).update(rating_score=F("rating_score") + rating_delta)
+    return rating_delta
 
 
 def _subscribed_comun_slugs_from_settings(settings: dict | None) -> set[str]:
@@ -1185,6 +1295,7 @@ def _candidate_comun_ids_for_post(post: Post | None) -> list[int]:
 
 
 def _recalculate_comun_ratings_for_post(post_or_id: Post | int | None) -> None:
+    """Full rebuild for maintenance paths. Live post events must use rating deltas."""
     if not post_or_id:
         return
     if isinstance(post_or_id, Post):
@@ -1235,8 +1346,8 @@ def _comun_posts_base_queryset(comun: Comun, now=None):
         if blocked_tag_lemmas:
             blocked_tags_filter |= Q(tags__lemma__in=blocked_tag_lemmas)
         base_query = base_query.exclude(blocked_tags_filter).distinct()
+    blocked_post_ids: list[int] = []
     if bool(getattr(comun, "forbid_external_links", False)):
-        blocked_post_ids: list[int] = []
         for row in base_query.values("id", "title", "content", "raw_data").iterator(chunk_size=200):
             raw_data = row.get("raw_data") if isinstance(row, dict) else {}
             template_payload, _template_error = editor_service._normalize_post_template_payload(
@@ -1248,9 +1359,22 @@ def _comun_posts_base_queryset(comun: Comun, now=None):
                 template_payload=template_payload,
             ):
                 blocked_post_ids.append(int(row["id"]))
-        if blocked_post_ids:
-            base_query = base_query.exclude(id__in=blocked_post_ids)
+    if blocked_post_ids:
+        base_query = base_query.exclude(id__in=blocked_post_ids)
     return base_query
+
+
+def _post_belongs_to_comun(comun: Comun, post_or_id: Post | int | None, now=None) -> bool:
+    if not comun or not post_or_id:
+        return False
+    post_id = getattr(post_or_id, "id", post_or_id)
+    try:
+        post_id = int(post_id)
+    except (TypeError, ValueError):
+        return False
+    if post_id <= 0:
+        return False
+    return _comun_posts_base_queryset(comun, now=now).filter(id=post_id).exists()
 
 
 def _generate_manual_message_id(author: Author) -> int:
@@ -1321,7 +1445,9 @@ def _maybe_notify_post_published_to_subscribers(
 __all__ = [
     "_COMUN_ACTIVITY_POINTS",
     "_COMUN_EXTERNAL_LINKS_FORBIDDEN_ERROR",
+    "_COMUN_COMMENT_RATING_WEIGHT",
     "_active_comun_category_queryset",
+    "_apply_comun_rating_delta_for_post",
     "_active_comun_glossary_queryset",
     "_allowed_template_overrides_for_comun_category",
     "_allowed_templates_for_comun",
@@ -1375,12 +1501,14 @@ __all__ = [
     "_parse_post_reference_to_id",
     "_parse_tag_payload",
     "_payload_contains_external_links",
+    "_post_belongs_to_comun",
     "_post_comun",
     "_post_comun_slug",
     "_public_user_author_ids",
     "_publish_ready_filter",
     "_recalculate_comun_rating",
     "_recalculate_comun_ratings_for_post",
+    "_sync_comun_vote_counts",
     "_serialize_backend_post_card",
     "_serialize_post_comun",
     "_site_user_avatar_url",

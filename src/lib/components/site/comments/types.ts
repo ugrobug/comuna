@@ -15,12 +15,14 @@ export type SiteComment = {
     avatar_url?: string | null
     profile_url?: string | null
     is_mask?: boolean
+    is_deleted?: boolean
   }
 }
 
 export type SiteCommentMask = {
   key: string
   username: string
+  display_name?: string | null
 }
 
 export type SiteCommentNode = {

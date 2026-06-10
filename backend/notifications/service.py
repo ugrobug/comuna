@@ -44,6 +44,22 @@ NOTIFICATION_EVENT_DEFINITIONS: list[dict[str, Any]] = [
         "default_push_enabled": True,
     },
     {
+        "key": "new_chat",
+        "title": "Новый чат",
+        "description": "Пользователь написал вам первое сообщение в новом чате.",
+        "default_site_enabled": True,
+        "default_telegram_enabled": False,
+        "default_push_enabled": True,
+    },
+    {
+        "key": "chat_message",
+        "title": "Новое сообщение в чате",
+        "description": "Пользователь отправил вам сообщение в существующем чате.",
+        "default_site_enabled": True,
+        "default_telegram_enabled": False,
+        "default_push_enabled": True,
+    },
+    {
         "key": "post_published",
         "title": "Пост опубликован",
         "description": "Опубликован пост в сообществе на которую вы подписаны.",
