@@ -571,6 +571,32 @@ export const logout = () => {
   siteUser.set(null)
 }
 
+export const deleteSiteAccount = async () => {
+  const token = get(siteToken)
+  if (!token) {
+    throw new Error('Нужна авторизация')
+  }
+
+  const response = await fetch(buildUrl('/api/auth/me/'), {
+    method: 'DELETE',
+    credentials: 'include',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+
+  const data = await parseApiResponse(response)
+  if (!response.ok || !data?.ok) {
+    throw new Error(data?.error || 'Не удалось удалить профиль')
+  }
+
+  saveToken(null)
+  resetBackendFeedSettingsSync()
+  siteToken.set(null)
+  siteUser.set(null)
+  return true
+}
+
 export const fetchVerificationCode = async () => {
   const token = get(siteToken)
   if (!token) {

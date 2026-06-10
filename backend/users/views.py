@@ -198,6 +198,14 @@ def auth_me(request: HttpRequest) -> HttpResponse:
         return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
     if request.method == "GET":
         return JsonResponse({"ok": True, "user": _serialize_user(user)})
+    if request.method == "DELETE":
+        try:
+            user_service._delete_site_user_account(user)
+        except ValueError as exc:
+            return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+        response = JsonResponse({"ok": True, "deleted": True})
+        user_service._clear_auth_cookie(response)
+        return response
     if request.method not in ("PATCH", "POST"):
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
 

@@ -998,6 +998,13 @@ def _site_user_avatar_url(
     *,
     fallback_author_avatars: dict[int, str | None] | None = None,
 ) -> str | None:
+    if not user or not getattr(user, "is_active", True):
+        return None
+    try:
+        if getattr(user.site_profile, "deleted_at", None):
+            return None
+    except Exception:
+        pass
     try:
         site_profile = user.site_profile
         if site_profile and site_profile.avatar_url:

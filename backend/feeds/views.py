@@ -216,6 +216,8 @@ _EDITABLE_STATIC_PAGE_TITLES = {
 }
 
 def _site_user_display_name(user: User) -> str:
+    if user_service._is_deleted_site_user(user):
+        return user_service.DELETED_USER_DISPLAY_NAME
     display_name = (
         (getattr(getattr(user, "site_profile", None), "display_name", "") or "").strip()
     )
@@ -283,6 +285,8 @@ def _author_avatar_for_display(
 ) -> str | None:
     site_user = _site_user_for_personal_author(request, author)
     if site_user:
+        if user_service._is_deleted_site_user(site_user):
+            return None
         site_avatar = _site_user_avatar_url(request, site_user)
         if site_avatar:
             return site_avatar
@@ -560,6 +564,11 @@ def _serialize_comment_user(comment: PostComment) -> dict:
         display_name = (getattr(comment.user.site_profile, "display_name", "") or "").strip()
     except Exception:
         display_name = ""
+
+    if user_service._is_deleted_site_user(comment.user):
+        payload = user_service._deleted_user_public_payload(comment.user_id)
+        payload["is_mask"] = False
+        return payload
 
     return {
         "id": comment.user_id,

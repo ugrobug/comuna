@@ -12,6 +12,7 @@
     id?: number | null
     username?: string | null
     display_name?: string | null
+    is_deleted?: boolean
     isCreator?: boolean
   }
 
@@ -143,7 +144,7 @@
               {userInitial(moderator)}
             </div>
             <div class="min-w-0 flex-1">
-              {#if moderator.id}
+              {#if moderator.id && !moderator.is_deleted}
                 <a
                   href={`/id${moderator.id}`}
                   class="block truncate text-sm font-medium text-slate-900 hover:underline dark:text-zinc-100"
@@ -157,7 +158,7 @@
                 </div>
               {/if}
               <div class="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-zinc-400">
-                {#if moderator.username}
+                {#if moderator.username && !moderator.is_deleted}
                   <span>@{moderator.username}</span>
                 {/if}
                 {#if moderator.isCreator}

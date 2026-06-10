@@ -93,6 +93,25 @@ def _serialize_public_site_user_profile(
     posts_count: int = 0,
     comuns_count: int = 0,
 ) -> dict:
+    try:
+        deleted_at = getattr(user.site_profile, "deleted_at", None)
+    except Exception:
+        deleted_at = None
+    if not user.is_active or deleted_at:
+        return {
+            "id": user.id,
+            "username": "deleted",
+            "display_name": "Удаленный пользователь",
+            "avatar_url": None,
+            "posts_count": int(posts_count or 0),
+            "comuns_count": int(comuns_count or 0),
+            "authors_count": 0,
+            "is_staff": False,
+            "first_name": None,
+            "last_name": None,
+            "is_deleted": True,
+        }
+
     author_links = author_links or []
     fallback_author_avatars: dict[int, str | None] = {}
     for link in author_links:

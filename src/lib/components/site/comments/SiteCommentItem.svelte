@@ -44,11 +44,14 @@
   $: isDeleted = Boolean(node.comment.is_deleted)
   $: commentDate = new Date(node.comment.created_at)
   $: commenterProfileUrl =
-    node.comment.user?.profile_url || (node.comment.user?.id ? `/id${node.comment.user.id}` : null)
+    node.comment.user?.is_deleted
+      ? null
+      : node.comment.user?.profile_url || (node.comment.user?.id ? `/id${node.comment.user.id}` : null)
   $: commenterLabel =
     (node.comment.user?.display_name || '').trim() || node.comment.user?.username || 'user'
   $: commenterHandle =
     node.comment.user?.username &&
+    !node.comment.user?.is_deleted &&
     (node.comment.user?.display_name || '').trim() &&
     node.comment.user.display_name?.trim() !== node.comment.user.username
       ? `@${node.comment.user.username}`

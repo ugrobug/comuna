@@ -106,6 +106,7 @@
 
   const userDisplayName = (user: BackendPublicSiteUser | null) => {
     if (!user) return 'Пользователь'
+    if (user.is_deleted) return 'Удаленный пользователь'
     const displayName = (user.display_name || '').trim()
     if (displayName) return displayName
     const fullName = [user.first_name, user.last_name].filter(Boolean).join(' ').trim()
@@ -119,7 +120,9 @@
   $: profilePath = profile?.id ? `/id${profile.id}` : $page.url.pathname
   $: title = profile ? `${userDisplayName(profile)} — ${siteTitle}` : siteTitle
   $: description = profile
-    ? `Профиль пользователя @${profile.username} на ${siteTitle}: посты и сообщества.`
+    ? profile.is_deleted
+      ? `Профиль удаленного пользователя на ${siteTitle}.`
+      : `Профиль пользователя @${profile.username} на ${siteTitle}: посты и сообщества.`
     : `Профиль пользователя на ${siteTitle}.`
   $: canonicalUrl = new URL(
     profilePath,
@@ -293,7 +296,7 @@
             </span>
           {/if}
         </div>
-        {#if profile?.username}
+        {#if profile?.username && !profile?.is_deleted}
           <div class="text-sm text-slate-500 dark:text-zinc-400">@{profile.username}</div>
         {/if}
         <div class="flex flex-wrap gap-2 text-sm">
@@ -309,7 +312,7 @@
             </span>
           {/if}
         </div>
-        {#if profile && !isOwnProfile}
+        {#if profile && !isOwnProfile && !profile.is_deleted}
           <div class="flex flex-col gap-2">
             <button
               type="button"

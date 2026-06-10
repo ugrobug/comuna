@@ -805,8 +805,8 @@ export type BackendComun = {
   can_post_category_ids?: number[]
   can_start_post?: boolean
   is_subscribed?: boolean
-  creator?: { id?: number; username?: string | null; display_name?: string | null }
-  moderators?: Array<{ id: number; username: string; display_name?: string | null }>
+  creator?: { id?: number; username?: string | null; display_name?: string | null; is_deleted?: boolean }
+  moderators?: Array<{ id: number; username: string; display_name?: string | null; is_deleted?: boolean }>
   moderators_count?: number
   moderator_ids?: number[]
   excluded_authors?: Array<{ id: number; username: string; title?: string | null; avatar_url?: string | null }>
@@ -885,6 +885,7 @@ export type BackendPublicSiteUser = {
   comuns_count?: number
   authors_count?: number
   is_staff?: boolean
+  is_deleted?: boolean
   first_name?: string | null
   last_name?: string | null
 }
@@ -895,6 +896,7 @@ export type BackendSiteChatUser = {
   display_name?: string | null
   avatar_url?: string | null
   profile_url?: string | null
+  is_deleted?: boolean
 }
 
 export type BackendSiteChatMessage = {
