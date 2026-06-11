@@ -12,18 +12,31 @@ from feeds.models import Post
 from legacy_migration.models import LegacyWpPostMap, WpPosts
 from legacy_migration.wp_content import legacy_article_source_url
 
-DEFAULT_LINKS_CSV = "backend/legacy_migration/pt_tambur_post_links.csv"
+# Относительно корня Django-проекта (backend/ локально, /app в Docker).
+DEFAULT_LINKS_CSV = "legacy_migration/pt_tambur_post_links.csv"
 
 
-def repo_root() -> Path:
-    return Path(__file__).resolve().parents[2]
+def backend_root() -> Path:
+    return Path(__file__).resolve().parents[1]
 
 
 def resolve_links_path(raw: str) -> Path:
-    p = Path((raw or "").strip())
-    if not p.is_absolute():
-        p = repo_root() / p
-    return p
+    p = Path((raw or "").strip() or DEFAULT_LINKS_CSV)
+    if p.is_absolute():
+        return p
+
+    backend = backend_root()
+    candidates = [
+        backend / p,
+        backend.parent / p,
+    ]
+    if p.parts and p.parts[0] == "backend":
+        candidates.insert(0, backend / Path(*p.parts[1:]))
+
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return candidates[0]
 
 
 def parse_links_csv(path: Path) -> list[tuple[int, int]]:
