@@ -1,0 +1,17 @@
+Миграция ПТ → Tambur (см. backend/legacy_migration/PROD_RUNBOOK.md §7)
+
+---
+
+Пилот (стенд): 28741, 28808, 507, 19938
+[ ] цепочка import → assign → recount → export (без prod 301)
+
+Массово (стенд ~1546) — только после снятия блокера выше:
+[ ] link_wp_posts_to_existing_tambur_posts (pt_tambur_post_links.csv)
+[ ] import_wp_users + import_wp_posts (пакеты)
+[ ] tags, supplement, mirror, meta, rewrite, assign, recount, export
+
+Prod (после OK стенда + Рома):
+[ ] полный прогон
+[ ] выяснить как развернуть редиректы на wp
+[ ] согласование редиректов
+[ ] 301 + DNS

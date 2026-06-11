@@ -66,19 +66,21 @@ class Command(BaseCommand):
             body = format_nginx_map(result.rows)
 
         out_path = (options.get("output") or "").strip()
+        report = self.stderr
         if out_path:
             path = Path(out_path)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(body, encoding="utf-8")
-            self.stdout.write(self.style.SUCCESS(f"Записано {path} ({unique_from} путей)"))
+            report.write(self.style.SUCCESS(f"Записано {path} ({unique_from} путей)"))
         else:
             self.stdout.write(body)
+            report = self.stderr
 
-        self.stdout.write(
+        report.write(
             f"маппингов={len(maps)} строк={len(result.rows)} уникальных from={unique_from} "
-            f"skip={result.skipped_no_post} конфликтов={len(result.conflicts)}"
+            f"skip={result.skipped_no_post} конфликтов={len(result.conflicts)}\n"
         )
         for msg in result.conflicts[:20]:
-            self.stdout.write(self.style.WARNING(msg))
+            report.write(self.style.WARNING(f"{msg}\n"))
         if len(result.conflicts) > 20:
-            self.stdout.write(self.style.WARNING(f"… ещё {len(result.conflicts) - 20} конфликтов"))
+            report.write(self.style.WARNING(f"… ещё {len(result.conflicts) - 20} конфликтов\n"))
