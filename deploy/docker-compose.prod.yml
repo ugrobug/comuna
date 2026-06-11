@@ -16,8 +16,10 @@ services:
     ports:
       - "127.0.0.1:3306:3306"
     environment:
-      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
-      MYSQL_DATABASE: romawho_posl1
+      MYSQL_ROOT_PASSWORD: ${MYSQL57_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_ROMAWHO_DB}
+      MYSQL_USER: ${MYSQL_ROMAWHO_USER}
+      MYSQL_PASSWORD: ${MYSQL_ROMAWHO_PASSWORD}
     volumes:
       - mysql57_data:/var/lib/mysql
       - ./mysql57-init:/docker-entrypoint-initdb.d:ro
