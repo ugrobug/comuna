@@ -372,6 +372,7 @@ def _serialize_comun(
         "rules_text": comun.rules_text,
         "target_audience": comun.target_audience,
         "glossary_enabled": bool(getattr(comun, "glossary_enabled", False)),
+        "glossary_auto_link_enabled": bool(getattr(comun, "glossary_auto_link_enabled", False)),
         "roadmap_enabled": bool(getattr(comun, "roadmap_enabled", False)),
         "knowledge_base_enabled": bool(getattr(comun, "knowledge_base_enabled", False)),
         "roadmap_category_ids": [category.id for category in roadmap_categories],

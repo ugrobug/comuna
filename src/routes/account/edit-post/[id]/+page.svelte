@@ -4,11 +4,18 @@
   import { page } from '$app/stores'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import EditorAutosaveNotice from '$lib/components/editor/EditorAutosaveNotice.svelte'
+  import GlossaryAutoLinkModal from '$lib/components/editor/GlossaryAutoLinkModal.svelte'
   import { Button, Spinner, TextInput, toast } from 'mono-svelte'
   import EditorJS from '$lib/components/editor/EditorJS.svelte'
   import { normalizeEditorJsContent } from '$lib/editorJsContent'
   import PostTemplateFields from '$lib/components/site/post-templates/PostTemplateFields.svelte'
-  import { buildBackendPostPath, buildComunsUrl, type BackendComun } from '$lib/api/backend'
+  import { buildBackendPostPath, buildComunUrl, buildComunsUrl, type BackendComun } from '$lib/api/backend'
+  import {
+    applyGlossaryAutoLinkMatches,
+    findGlossaryAutoLinkMatches,
+    type GlossaryAutoLinkMatch,
+    type GlossaryAutoLinkTerm,
+  } from '$lib/glossaryAutoLink'
   import {
     fetchUserPost,
     refreshSiteUser,
@@ -62,6 +69,23 @@
     kind: 'site'
     username?: string
     avatar_url?: string | null
+  }
+
+  type EditPostPayload = {
+    title: string
+    content: string
+    author_source?: 'site'
+    comun_slug?: string
+    comun_category_id: number | null
+    tags: string[]
+    template: unknown
+    is_draft?: boolean
+  }
+
+  type PendingGlossaryEdit = {
+    mode: 'save' | 'publish'
+    payload: EditPostPayload
+    terms: GlossaryAutoLinkTerm[]
   }
 
   const SITE_AUTHOR_CHOICE = '__site__'
@@ -118,6 +142,9 @@
   let firstDraftChangeAt: number | null = null
   let firstDraftAutosaveCompleted = false
   let tweetCharacterCountValue = 0
+  let glossaryAutoLinkOpen = false
+  let glossaryAutoLinkMatches: GlossaryAutoLinkMatch[] = []
+  let pendingGlossaryEdit: PendingGlossaryEdit | null = null
 
   $: selectedComun = comuns.find((comun) => comun.slug === editComunSlug)
   $: selectedComunCategory =
@@ -229,6 +256,111 @@
       tags,
       template: editTemplateType ? template : null,
     }
+  }
+
+  const glossaryAutoLinkTermsForComun = (comun: BackendComun | undefined) => {
+    if (!comun?.glossary_enabled || !comun.glossary_auto_link_enabled) return []
+    return (comun.glossary_terms ?? []) as GlossaryAutoLinkTerm[]
+  }
+
+  const mergeComunGlossaryFields = (
+    baseComun: BackendComun | undefined,
+    freshComun: BackendComun
+  ): BackendComun => ({
+    ...(baseComun ?? freshComun),
+    glossary_enabled: Boolean(freshComun.glossary_enabled),
+    glossary_auto_link_enabled: Boolean(freshComun.glossary_auto_link_enabled),
+    glossary_terms: freshComun.glossary_terms ?? [],
+    glossary_terms_count: freshComun.glossary_terms_count ?? freshComun.glossary_terms?.length ?? 0,
+  })
+
+  const loadFreshGlossaryComun = async (slug: string): Promise<BackendComun | undefined> => {
+    if (!slug || !browser) return selectedComun
+    const fallbackComun = comuns.find((item) => item.slug === slug) ?? selectedComun
+    const headers: Record<string, string> = {}
+    if ($siteToken) {
+      headers.Authorization = `Bearer ${$siteToken}`
+    }
+    try {
+      const comunUrl = new URL(buildComunUrl(slug), window.location.origin)
+      comunUrl.searchParams.set('_', String(Date.now()))
+      const response = await fetch(comunUrl.toString(), {
+        headers,
+        cache: 'no-store',
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok || !data?.comun) return fallbackComun
+      const mergedComun = mergeComunGlossaryFields(fallbackComun, data.comun as BackendComun)
+      if (fallbackComun) {
+        comuns = comuns.map((item) => (item.slug === slug ? mergeComunGlossaryFields(item, data.comun) : item))
+      }
+      return mergedComun
+    } catch {
+      return fallbackComun
+    }
+  }
+
+  const loadGlossaryAutoLinkTermsForPublish = async (slug: string) =>
+    glossaryAutoLinkTermsForComun(await loadFreshGlossaryComun(slug))
+
+  const resetGlossaryAutoLinkPrompt = () => {
+    glossaryAutoLinkOpen = false
+    glossaryAutoLinkMatches = []
+    pendingGlossaryEdit = null
+  }
+
+  const promptGlossaryAutoLinks = (pending: PendingGlossaryEdit) => {
+    const matches = findGlossaryAutoLinkMatches(pending.payload.content, pending.terms)
+    if (!matches.length) return false
+    pendingGlossaryEdit = pending
+    glossaryAutoLinkMatches = matches
+    glossaryAutoLinkOpen = true
+    return true
+  }
+
+  const submitPublishedEditPayload = async (payload: EditPostPayload) => {
+    if (!post) return
+    saving = true
+    try {
+      const updated = await updateUserPost(post.id, payload)
+      post = updated
+      fillForm(updated)
+      toast({ content: 'Пост обновлён', type: 'success' })
+    } catch (err) {
+      saveError = (err as Error)?.message ?? 'Не удалось сохранить изменения'
+    } finally {
+      saving = false
+    }
+  }
+
+  const submitDraftPublishPayload = async (payload: EditPostPayload) => {
+    if (!post) return
+    publishing = true
+    try {
+      const updated = await updateUserPost(post.id, payload)
+      toast({ content: 'Черновик опубликован', type: 'success' })
+      await goto(buildBackendPostPath({ id: updated.id, title: updated.title }))
+    } catch (err) {
+      saveError = (err as Error)?.message ?? 'Не удалось опубликовать черновик'
+    } finally {
+      publishing = false
+    }
+  }
+
+  const applyGlossaryAutoLinksAndSave = async (ids: string[]) => {
+    const pending = pendingGlossaryEdit
+    if (!pending) return
+    const nextPayload = {
+      ...pending.payload,
+      content: applyGlossaryAutoLinkMatches(pending.payload.content, pending.terms, ids),
+    }
+    const mode = pending.mode
+    resetGlossaryAutoLinkPrompt()
+    if (mode === 'publish') {
+      await submitDraftPublishPayload(nextPayload)
+      return
+    }
+    await submitPublishedEditPayload(nextPayload)
   }
 
   const clearAutosaveTimeout = () => {
@@ -488,46 +620,35 @@
 
   const savePublishedEdit = async () => {
     if (!post) return
-    saving = true
     saveError = ''
     clearAutosaveTimeout()
-    try {
-      if (!validateForPublish()) {
-        saving = false
-        return
-      }
-      const updated = await updateUserPost(post.id, buildEditPayload())
-      post = updated
-      fillForm(updated)
-      toast({ content: 'Пост обновлён', type: 'success' })
-    } catch (err) {
-      saveError = (err as Error)?.message ?? 'Не удалось сохранить изменения'
-    } finally {
-      saving = false
+    if (!validateForPublish()) return
+    const payload = buildEditPayload() as EditPostPayload
+    const pending: PendingGlossaryEdit = {
+      mode: 'save',
+      payload,
+      terms: await loadGlossaryAutoLinkTermsForPublish(editComunSlug),
     }
+    if (pending.terms.length && promptGlossaryAutoLinks(pending)) return
+    await submitPublishedEditPayload(payload)
   }
 
   const publishDraft = async () => {
     if (!post || saving) return
-    publishing = true
     saveError = ''
     clearAutosaveTimeout()
-    try {
-      if (!validateForPublish()) {
-        publishing = false
-        return
-      }
-      const updated = await updateUserPost(post.id, {
-        ...buildEditPayload(),
-        is_draft: false,
-      })
-      toast({ content: 'Черновик опубликован', type: 'success' })
-      await goto(buildBackendPostPath({ id: updated.id, title: updated.title }))
-    } catch (err) {
-      saveError = (err as Error)?.message ?? 'Не удалось опубликовать черновик'
-    } finally {
-      publishing = false
+    if (!validateForPublish()) return
+    const payload = {
+      ...(buildEditPayload() as EditPostPayload),
+      is_draft: false,
     }
+    const pending: PendingGlossaryEdit = {
+      mode: 'publish',
+      payload,
+      terms: await loadGlossaryAutoLinkTermsForPublish(editComunSlug),
+    }
+    if (pending.terms.length && promptGlossaryAutoLinks(pending)) return
+    await submitDraftPublishPayload(payload)
   }
 
   const copyDraftShareLink = async () => {
@@ -620,6 +741,15 @@
     queueDraftAutosave()
   }
 </script>
+
+<GlossaryAutoLinkModal
+  open={glossaryAutoLinkOpen}
+  matches={glossaryAutoLinkMatches}
+  on:cancel={resetGlossaryAutoLinkPrompt}
+  on:applyAll={() =>
+    void applyGlossaryAutoLinksAndSave(glossaryAutoLinkMatches.map((match) => match.id))}
+  on:applySelected={(event) => void applyGlossaryAutoLinksAndSave(event.detail.ids)}
+/>
 
 <div class="flex flex-col gap-6 max-w-3xl">
   <Header pageHeader>
@@ -911,6 +1041,8 @@
               glossaryTerms={
                 selectedComun?.glossary_enabled ? selectedComun?.glossary_terms ?? [] : []
               }
+              glossaryComunSlug={selectedComun?.glossary_enabled ? selectedComun.slug : ''}
+              canManageGlossary={Boolean(selectedComun?.glossary_enabled && selectedComun?.can_moderate)}
               enableAutosave={false}
               postId={post.id}
               showPostSettings={false}

@@ -778,6 +778,7 @@ export type BackendComun = {
   rules_text?: string | null
   target_audience?: string | null
   glossary_enabled?: boolean
+  glossary_auto_link_enabled?: boolean
   roadmap_enabled?: boolean
   knowledge_base_enabled?: boolean
   roadmap_category_ids?: number[]

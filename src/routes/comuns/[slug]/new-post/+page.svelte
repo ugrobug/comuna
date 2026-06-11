@@ -5,7 +5,14 @@
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import { Button, Spinner, TextInput, toast } from 'mono-svelte'
   import EditorJS from '$lib/components/editor/EditorJS.svelte'
+  import GlossaryAutoLinkModal from '$lib/components/editor/GlossaryAutoLinkModal.svelte'
   import { deserializeEditorModel, postPayloadContainsExternalLinks } from '$lib/util'
+  import {
+    applyGlossaryAutoLinkMatches,
+    findGlossaryAutoLinkMatches,
+    type GlossaryAutoLinkMatch,
+    type GlossaryAutoLinkTerm,
+  } from '$lib/glossaryAutoLink'
   import {
     buildComunCustomTemplateEditorPath,
     buildComunUrl,
@@ -68,6 +75,22 @@
   let customTemplatePreviewBodyFields: NonNullable<BackendComunCustomTemplate['fields']> = []
   let customTemplatePreviewFooterFields: NonNullable<BackendComunCustomTemplate['fields']> = []
   let customTemplatePreviewEditorPath = ''
+  let glossaryAutoLinkOpen = false
+  let glossaryAutoLinkMatches: GlossaryAutoLinkMatch[] = []
+  let pendingGlossaryCreate: PendingCreatePost | null = null
+
+  type CreateComunPostPayload = {
+    title: string
+    content: string
+    author_source: 'site'
+    comun_category_id: number | null
+    template?: unknown
+  }
+
+  type PendingCreatePost = {
+    payload: CreateComunPostPayload
+    terms: GlossaryAutoLinkTerm[]
+  }
 
   const customTemplatePreviewStorageKey = (slug: string) => `comuna:custom-template-preview:${slug}`
 
@@ -328,6 +351,95 @@
   $: customTemplatePreviewFooterFields =
     (customTemplatePreview?.fields ?? []).filter((field) => field.placement === 'footer') ?? []
 
+  const glossaryAutoLinkTermsForComun = (targetComun: BackendComun | null) => {
+    if (!targetComun?.glossary_enabled || !targetComun.glossary_auto_link_enabled) return []
+    return (targetComun.glossary_terms ?? []) as GlossaryAutoLinkTerm[]
+  }
+
+  const mergeComunGlossaryFields = (
+    baseComun: BackendComun | null,
+    freshComun: BackendComun
+  ): BackendComun => ({
+    ...(baseComun ?? freshComun),
+    glossary_enabled: Boolean(freshComun.glossary_enabled),
+    glossary_auto_link_enabled: Boolean(freshComun.glossary_auto_link_enabled),
+    glossary_terms: freshComun.glossary_terms ?? [],
+    glossary_terms_count: freshComun.glossary_terms_count ?? freshComun.glossary_terms?.length ?? 0,
+  })
+
+  const loadFreshGlossaryComun = async (): Promise<BackendComun | null> => {
+    if (!comun?.slug || !browser) return comun
+    const fallbackComun = comun
+    const headers: Record<string, string> = {}
+    if ($siteToken) {
+      headers.Authorization = `Bearer ${$siteToken}`
+    }
+    try {
+      const comunUrl = new URL(buildComunUrl(comun.slug), window.location.origin)
+      comunUrl.searchParams.set('_', String(Date.now()))
+      const response = await fetch(comunUrl.toString(), {
+        headers,
+        cache: 'no-store',
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok || !data?.comun) return fallbackComun
+      const mergedComun = mergeComunGlossaryFields(fallbackComun, data.comun as BackendComun)
+      comun = mergedComun
+      return mergedComun
+    } catch {
+      return fallbackComun
+    }
+  }
+
+  const loadGlossaryAutoLinkTermsForPublish = async () =>
+    glossaryAutoLinkTermsForComun(await loadFreshGlossaryComun())
+
+  const resetGlossaryAutoLinkPrompt = () => {
+    glossaryAutoLinkOpen = false
+    glossaryAutoLinkMatches = []
+    pendingGlossaryCreate = null
+  }
+
+  const promptGlossaryAutoLinks = (pending: PendingCreatePost) => {
+    const matches = findGlossaryAutoLinkMatches(pending.payload.content, pending.terms)
+    if (!matches.length) return false
+    pendingGlossaryCreate = pending
+    glossaryAutoLinkMatches = matches
+    glossaryAutoLinkOpen = true
+    return true
+  }
+
+  const submitCreatePostPayload = async (pending: PendingCreatePost) => {
+    if (!comun?.slug) return
+    creating = true
+    try {
+      await createComunPost(comun.slug, pending.payload)
+      toast({
+        content: 'Пост опубликован в сообществе',
+        type: 'success',
+      })
+      await goto(`/comuns/${comun.slug}`)
+    } catch (error) {
+      createError = (error as Error)?.message ?? 'Не удалось создать пост'
+    } finally {
+      creating = false
+    }
+  }
+
+  const applyGlossaryAutoLinksAndCreate = async (ids: string[]) => {
+    const pending = pendingGlossaryCreate
+    if (!pending) return
+    const nextPending = {
+      ...pending,
+      payload: {
+        ...pending.payload,
+        content: applyGlossaryAutoLinkMatches(pending.payload.content, pending.terms, ids),
+      },
+    }
+    resetGlossaryAutoLinkPrompt()
+    await submitCreatePostPayload(nextPending)
+  }
+
   const createPost = async () => {
     if (!$siteUser || !comun?.slug) return
     createError = ''
@@ -376,25 +488,18 @@
       return
     }
 
-    creating = true
-    try {
-      await createComunPost(comun.slug, {
+    const pending: PendingCreatePost = {
+      payload: {
         title: createTitle.trim(),
         content: createContent.trim(),
         author_source: 'site',
         comun_category_id: createCategoryId ? Number(createCategoryId) : null,
         template: template ?? undefined,
-      })
-      toast({
-        content: 'Пост опубликован в сообществе',
-        type: 'success',
-      })
-      await goto(`/comuns/${comun.slug}`)
-    } catch (error) {
-      createError = (error as Error)?.message ?? 'Не удалось создать пост'
-    } finally {
-      creating = false
+      },
+      terms: await loadGlossaryAutoLinkTermsForPublish(),
     }
+    if (pending.terms.length && promptGlossaryAutoLinks(pending)) return
+    await submitCreatePostPayload(pending)
   }
 
   const goToLogin = () => {
@@ -402,6 +507,15 @@
     goto(`/account?next=${encodeURIComponent(`${$page.url.pathname}${$page.url.search}`)}`)
   }
 </script>
+
+<GlossaryAutoLinkModal
+  open={glossaryAutoLinkOpen}
+  matches={glossaryAutoLinkMatches}
+  on:cancel={resetGlossaryAutoLinkPrompt}
+  on:applyAll={() =>
+    void applyGlossaryAutoLinksAndCreate(glossaryAutoLinkMatches.map((match) => match.id))}
+  on:applySelected={(event) => void applyGlossaryAutoLinksAndCreate(event.detail.ids)}
+/>
 
 <div class="flex flex-col gap-6 max-w-3xl">
   <Header pageHeader>
@@ -668,6 +782,8 @@
             postTemplateType={createTemplateType}
             enabledTemplateEditorBlockTypes={editorEnabledTemplateBlockTypes}
             glossaryTerms={comun?.glossary_enabled ? comun?.glossary_terms ?? [] : []}
+            glossaryComunSlug={comun?.glossary_enabled ? comun.slug : ''}
+            canManageGlossary={Boolean(comun?.glossary_enabled && comun?.can_moderate)}
             enableAutosave={false}
             postId={null}
             showPostSettings={false}

@@ -108,7 +108,11 @@
 
   const patchSettingsDraft = (patch: Partial<BackendComun>) => {
     if (!settingsDraft) return
-    settingsDraft = { ...settingsDraft, ...patch }
+    const nextDraft = { ...settingsDraft, ...patch }
+    if (patch.glossary_enabled === false) {
+      nextDraft.glossary_auto_link_enabled = false
+    }
+    settingsDraft = nextDraft
   }
 
   const cloneComun = (value: BackendComun | null): BackendComun | null =>

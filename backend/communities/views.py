@@ -820,6 +820,7 @@ def _serialize_comun(
         "rules_text": comun.rules_text,
         "target_audience": comun.target_audience,
         "glossary_enabled": bool(getattr(comun, "glossary_enabled", False)),
+        "glossary_auto_link_enabled": bool(getattr(comun, "glossary_auto_link_enabled", False)),
         "roadmap_enabled": bool(getattr(comun, "roadmap_enabled", False)),
         "knowledge_base_enabled": bool(getattr(comun, "knowledge_base_enabled", False)),
         "roadmap_category_ids": [category.id for category in roadmap_categories],
@@ -1738,6 +1739,7 @@ def comuns_composer(request: HttpRequest) -> HttpResponse:
             "product_description",
             "rules_text",
             "glossary_enabled",
+            "glossary_auto_link_enabled",
             "minimum_author_rating_to_post",
             "only_moderators_can_post",
             "forbid_external_links",
@@ -1792,6 +1794,9 @@ def comuns_composer(request: HttpRequest) -> HttpResponse:
                 "product_description": comun.product_description,
                 "rules_text": comun.rules_text,
                 "glossary_enabled": bool(getattr(comun, "glossary_enabled", False)),
+                "glossary_auto_link_enabled": bool(
+                    getattr(comun, "glossary_auto_link_enabled", False)
+                ),
                 "glossary_terms": [],
                 "glossary_terms_count": 0,
                 "minimum_author_rating_to_post": _comun_minimum_author_rating_value(comun),
@@ -1915,6 +1920,12 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
         comun.target_audience = str(body.get("target_audience") or "").strip()
     if "glossary_enabled" in body:
         comun.glossary_enabled = bool(body.get("glossary_enabled"))
+        if not comun.glossary_enabled:
+            comun.glossary_auto_link_enabled = False
+    if "glossary_auto_link_enabled" in body:
+        comun.glossary_auto_link_enabled = bool(body.get("glossary_auto_link_enabled")) and bool(
+            comun.glossary_enabled
+        )
     if "roadmap_enabled" in body:
         comun.roadmap_enabled = bool(body.get("roadmap_enabled"))
     if "knowledge_base_enabled" in body:

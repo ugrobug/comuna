@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import { buildComunUrl, type BackendComun, type BackendComunGlossaryTerm } from '$lib/api/backend'
   import { Button, toast } from 'mono-svelte'
@@ -13,6 +14,9 @@
   let glossarySaving = false
   let glossaryError = ''
   let draftTerms: GlossaryDraftTerm[] = []
+  let glossarySettingsOpen = false
+  let glossarySettingsSection: HTMLElement | null = null
+  let glossaryAutoLinkDraft = Boolean(comun?.glossary_auto_link_enabled)
 
   const createGlossaryLocalId = () =>
     `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
@@ -70,7 +74,15 @@
       definition: term.definition.trim(),
     }))
   )
-  $: glossaryHasChanges = draftComparable !== sourceComparable
+  $: glossaryAutoLinkHasChanges =
+    glossaryAutoLinkDraft !== Boolean(comun?.glossary_auto_link_enabled)
+  $: glossaryHasChanges = draftComparable !== sourceComparable || glossaryAutoLinkHasChanges
+
+  const openGlossarySettings = async () => {
+    glossarySettingsOpen = true
+    await tick()
+    glossarySettingsSection?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   const addDraftGlossaryTerm = () => {
     draftTerms = [
@@ -123,6 +135,7 @@
         method: 'PATCH',
         headers: authHeaders(),
         body: JSON.stringify({
+          glossary_auto_link_enabled: glossaryAutoLinkDraft,
           glossary_terms: draftTerms.map((term, index) => ({
             id: Number(term.id) || undefined,
             term: term.term.trim(),
@@ -137,6 +150,7 @@
       }
       comun = payload?.comun ?? comun
       draftTerms = normalizeGlossaryTerms(comun?.glossary_terms)
+      glossaryAutoLinkDraft = Boolean(comun?.glossary_auto_link_enabled)
       toast({ content: 'Глоссарий сохранен', type: 'success' })
     } catch (error) {
       glossaryError = error instanceof Error ? error.message : 'Не удалось сохранить глоссарий'
@@ -170,6 +184,29 @@
       >
         Назад к сообществу
       </a>
+      {#if canManageGlossary}
+        <button
+          type="button"
+          on:click={openGlossarySettings}
+          class="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-900 transition hover:bg-slate-50 dark:border-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-800/60"
+          aria-label="Настройки глоссария"
+          title="Настройки глоссария"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+            class="h-5 w-5"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
+            <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.04.04a2.05 2.05 0 0 1-2.9 2.9l-.04-.04A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21a2.05 2.05 0 0 1-4.1 0v-.06A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.04.04a2.05 2.05 0 0 1-2.9-2.9l.04-.04A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3a2.05 2.05 0 0 1 0-4.1h.06A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.04-.04a2.05 2.05 0 0 1 2.9-2.9l.04.04A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3a2.05 2.05 0 0 1 4.1 0v.06A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l.04-.04a2.05 2.05 0 0 1 2.9 2.9l-.04.04A1.7 1.7 0 0 0 19.4 9c.4.2.75.4 1 .6.3.3.4.7.4 1.1V11a2.05 2.05 0 0 1 0 4.1h-.06a1.7 1.7 0 0 0-1.34.9Z" />
+          </svg>
+        </button>
+      {/if}
     </div>
   </div>
 
@@ -181,6 +218,48 @@
 
   <section class="rounded-2xl border border-slate-200 bg-white/95 p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/85">
     <div class="flex flex-col gap-4">
+      {#if canManageGlossary && glossarySettingsOpen}
+        <section
+          id="glossary-settings"
+          bind:this={glossarySettingsSection}
+          class="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 dark:border-zinc-800 dark:bg-zinc-900/60"
+        >
+          <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div class="max-w-3xl">
+              <div class="text-sm font-semibold text-slate-900 dark:text-zinc-100">
+                Настройки глоссария
+              </div>
+              <p class="mt-1 text-sm text-slate-600 dark:text-zinc-400">
+                Управляйте тем, как термины глоссария предлагаются авторам при публикации постов в этом сообществе.
+              </p>
+            </div>
+            <Button on:click={saveGlossary} disabled={glossarySaving || !glossaryHasChanges}>
+              {glossarySaving ? 'Сохраняем...' : 'Сохранить настройки'}
+            </Button>
+          </div>
+
+          <label class="mt-4 flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 bg-white/75 p-3 dark:border-zinc-800 dark:bg-zinc-950/30">
+            <input
+              type="checkbox"
+              class="mt-1"
+              checked={glossaryAutoLinkDraft}
+              disabled={glossarySaving}
+              on:change={() => {
+                glossaryAutoLinkDraft = !glossaryAutoLinkDraft
+              }}
+            />
+            <span class="min-w-0">
+              <span class="block font-semibold text-slate-900 dark:text-zinc-100">
+                Автоматически искать термины в тексте
+              </span>
+              <span class="mt-1 block text-sm text-slate-600 dark:text-zinc-400">
+                При сохранении поста автор увидит найденные термины, их расшифровки и сможет согласовать разметку.
+              </span>
+            </span>
+          </label>
+        </section>
+      {/if}
+
       <div class="flex flex-wrap items-center justify-between gap-3">
         <input
           bind:value={searchQuery}

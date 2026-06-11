@@ -178,6 +178,11 @@ class Comun(models.Model):
         verbose_name="Включить глоссарий",
         help_text="Если включено, в сообществе будет доступна публичная страница глоссария и вставка терминов в публикации.",
     )
+    glossary_auto_link_enabled = models.BooleanField(
+        default=False,
+        verbose_name="Автоматически искать термины в тексте",
+        help_text="Если включено, при публикации автору будут предложены найденные в тексте термины глоссария.",
+    )
     roadmap_enabled = models.BooleanField(
         default=False,
         verbose_name="Включить дорожную карту",

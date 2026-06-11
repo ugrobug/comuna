@@ -7,7 +7,7 @@
     normalizeTemplateEditorBlockTypes,
     type PostTemplateType,
   } from '$lib/postTemplates'
-  import { buildPostDetailUrl, buildSearchUrl } from '$lib/api/backend'
+  import { buildComunUrl, buildPostDetailUrl, buildSearchUrl } from '$lib/api/backend'
   import {
     buildAuthorBlockSnapshot,
     normalizeAuthorBlockData,
@@ -3596,12 +3596,13 @@
       }
     }
 
-    private applyTerm(termWrapper: HTMLSpanElement, term: { term: string; slug: string; definition: string }) {
+    private applyTerm(termWrapper: HTMLSpanElement, term: GlossaryTermOption) {
+      const slug = String(term.slug || term.term).trim()
       termWrapper.classList.add(this.className)
       termWrapper.setAttribute('data-glossary-term', term.term)
-      termWrapper.setAttribute('data-glossary-slug', term.slug)
+      termWrapper.setAttribute('data-glossary-slug', slug)
       termWrapper.setAttribute('data-glossary-definition', term.definition)
-      termWrapper.setAttribute('title', term.term)
+      termWrapper.setAttribute('title', term.definition)
     }
 
     private unwrap(termWrapper: HTMLSpanElement) {
@@ -3629,7 +3630,67 @@
       removeButton.className = 'ce-glossary-popup__remove'
       removeButton.textContent = 'Убрать термин'
 
-      const terms = this.getTerms()
+      const createButton = document.createElement('button')
+      createButton.type = 'button'
+      createButton.className = 'ce-glossary-popup__create'
+      createButton.textContent = 'Добавить термин'
+
+      const createForm = document.createElement('form')
+      createForm.className = 'ce-glossary-popup__create-form'
+      createForm.hidden = true
+
+      const termInput = document.createElement('input')
+      termInput.type = 'text'
+      termInput.className = 'ce-glossary-popup__input'
+      termInput.placeholder = 'Термин'
+
+      const definitionInput = document.createElement('textarea')
+      definitionInput.className = 'ce-glossary-popup__textarea'
+      definitionInput.placeholder = 'Значение термина'
+      definitionInput.rows = 3
+
+      const createError = document.createElement('div')
+      createError.className = 'ce-glossary-popup__error'
+
+      const createActions = document.createElement('div')
+      createActions.className = 'ce-glossary-popup__actions'
+
+      const cancelCreateButton = document.createElement('button')
+      cancelCreateButton.type = 'button'
+      cancelCreateButton.className = 'ce-glossary-popup__cancel'
+      cancelCreateButton.textContent = 'Отмена'
+
+      const saveCreateButton = document.createElement('button')
+      saveCreateButton.type = 'submit'
+      saveCreateButton.className = 'ce-glossary-popup__save'
+      saveCreateButton.textContent = 'Сохранить'
+
+      createActions.appendChild(cancelCreateButton)
+      createActions.appendChild(saveCreateButton)
+      createForm.appendChild(termInput)
+      createForm.appendChild(definitionInput)
+      createForm.appendChild(createError)
+      createForm.appendChild(createActions)
+
+      let terms = this.getTerms()
+
+      const setCreateMode = (enabled: boolean) => {
+        createForm.hidden = !enabled
+        searchInput.hidden = enabled
+        list.hidden = enabled
+        createButton.hidden = enabled
+        removeButton.hidden = enabled
+        createError.textContent = ''
+        if (enabled) {
+          termInput.value = (searchInput.value || termWrapper.textContent || '').trim()
+          setTimeout(() => {
+            termInput.focus()
+            termInput.select()
+          }, 0)
+        } else {
+          searchInput.focus()
+        }
+      }
 
       const renderResults = (query: string) => {
         list.innerHTML = ''
@@ -3669,6 +3730,50 @@
       }
 
       searchInput.addEventListener('input', () => renderResults(searchInput.value))
+      createButton.addEventListener('click', (event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        setCreateMode(true)
+      })
+      cancelCreateButton.addEventListener('click', (event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        setCreateMode(false)
+      })
+      createForm.addEventListener('submit', async (event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        const termName = termInput.value.trim()
+        const definition = definitionInput.value.trim()
+        if (!termName) {
+          createError.textContent = 'Введите термин'
+          termInput.focus()
+          return
+        }
+        if (!definition) {
+          createError.textContent = 'Введите значение термина'
+          definitionInput.focus()
+          return
+        }
+
+        saveCreateButton.disabled = true
+        cancelCreateButton.disabled = true
+        createError.textContent = ''
+        saveCreateButton.textContent = 'Сохраняю...'
+        try {
+          const createdTerm = await createComunGlossaryTerm(termName, definition)
+          terms = this.getTerms()
+          this.applyTerm(termWrapper, createdTerm)
+          popup.remove()
+          setTimeout(() => this.triggerSave(), 50)
+        } catch (error) {
+          createError.textContent = error instanceof Error ? error.message : 'Не удалось добавить термин'
+        } finally {
+          saveCreateButton.disabled = false
+          cancelCreateButton.disabled = false
+          saveCreateButton.textContent = 'Сохранить'
+        }
+      })
       removeButton.addEventListener('click', (event) => {
         event.preventDefault()
         event.stopPropagation()
@@ -3679,6 +3784,10 @@
 
       popup.appendChild(searchInput)
       popup.appendChild(list)
+      if (canCreateGlossaryTerms) {
+        popup.appendChild(createButton)
+        popup.appendChild(createForm)
+      }
       popup.appendChild(removeButton)
       popup.style.visibility = 'hidden'
       popup.style.position = 'absolute'
@@ -3785,6 +3894,8 @@
   export let postTemplateType: '' | PostTemplateType = ''
   export let enabledTemplateEditorBlockTypes: string[] | undefined = undefined
   export let glossaryTerms: GlossaryTermOption[] = []
+  export let glossaryComunSlug = ''
+  export let canManageGlossary = false
   export let postId: string | number | null = null // ID поста для автосохранения
   export let enableAutosave: boolean = true // Разрешение автосохранения
   export let onContentChange: (() => void) | null = null // Callback для уведомления PostForm об изменениях
@@ -3799,6 +3910,93 @@
       }))
       .filter((term) => term.term && term.definition)
 
+  const buildGlossaryTermsSavePayload = (terms: GlossaryTermOption[]) =>
+    normalizeGlossaryTermOptions(terms).map((term, index) => ({
+      ...(term.id ? { id: term.id } : {}),
+      term: term.term,
+      definition: term.definition,
+      sort_order: index,
+    }))
+
+  const createComunGlossaryTerm = async (
+    termName: string,
+    definition: string
+  ): Promise<GlossaryTermOption> => {
+    const comunSlug = glossaryComunSlug.trim()
+    if (!canManageGlossary || !comunSlug) {
+      throw new Error('Добавлять термины могут только модераторы и создатель сообщества')
+    }
+
+    const token = get(siteToken)
+    if (!token) {
+      throw new Error('Нужна авторизация')
+    }
+
+    let currentTerms = normalizeGlossaryTermOptions(glossaryTerms)
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    }
+
+    try {
+      const comunUrl = new URL(buildComunUrl(comunSlug), window.location.origin)
+      comunUrl.searchParams.set('_', String(Date.now()))
+      const response = await fetch(comunUrl.toString(), {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: 'no-store',
+      })
+      const data = await response.json().catch(() => ({}))
+      if (response.ok && data?.comun?.glossary_terms) {
+        currentTerms = normalizeGlossaryTermOptions(data.comun.glossary_terms)
+      }
+    } catch {
+      currentTerms = normalizeGlossaryTermOptions(glossaryTerms)
+    }
+
+    const normalizedTermName = termName.trim().toLowerCase()
+    if (currentTerms.some((term) => term.term.toLowerCase() === normalizedTermName)) {
+      throw new Error('Такой термин уже есть в глоссарии')
+    }
+
+    const payloadTerms = [
+      ...buildGlossaryTermsSavePayload(currentTerms),
+      {
+        term: termName.trim(),
+        definition: definition.trim(),
+        sort_order: currentTerms.length,
+      },
+    ]
+
+    const response = await fetch(buildComunUrl(comunSlug), {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ glossary_terms: payloadTerms }),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok || !data?.comun) {
+      const error = String(data?.error || '').trim()
+      if (response.status === 403) {
+        throw new Error('Нет прав на добавление термина')
+      }
+      throw new Error(error || 'Не удалось добавить термин')
+    }
+
+    const savedTerms = normalizeGlossaryTermOptions(data.comun.glossary_terms ?? payloadTerms)
+    glossaryTerms = savedTerms
+    const createdTerm =
+      savedTerms.find(
+        (term) =>
+          term.term.toLowerCase() === normalizedTermName &&
+          term.definition.trim() === definition.trim()
+      ) ||
+      savedTerms.find((term) => term.term.toLowerCase() === normalizedTermName) ||
+      savedTerms[savedTerms.length - 1]
+    if (!createdTerm) {
+      throw new Error('Сервер не вернул созданный термин')
+    }
+    return createdTerm
+  }
+
   const escapeInlineHtml = (value: string) =>
     String(value ?? '')
       .replace(/&/g, '&amp;')
@@ -3811,8 +4009,9 @@
   let previewDescription = ''
   let metaDescription = ''
   let metaTitle = ''
+  $: canCreateGlossaryTerms = Boolean(canManageGlossary && glossaryComunSlug.trim())
   $: hasGlossaryTerms = normalizeGlossaryTermOptions(glossaryTerms).length > 0
-  $: inlineTextToolbar = hasGlossaryTerms
+  $: inlineTextToolbar = hasGlossaryTerms || canCreateGlossaryTerms
     ? ['bold', 'italic', 'customInlineLink', 'customInlineGlossaryTerm']
     : ['bold', 'italic', 'customInlineLink']
   let draftLastSaved: Date | null = null
@@ -7679,6 +7878,120 @@
     padding: 0.625rem 0.875rem;
     font-size: 0.9rem;
     font-weight: 600;
+  }
+
+  :global(.ce-glossary-popup__create) {
+    margin-top: 0.75rem;
+    width: 100%;
+    border-radius: 12px;
+    border: 1px solid rgb(125 211 252);
+    background: rgb(240 249 255);
+    color: rgb(3 105 161);
+    padding: 0.625rem 0.875rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
+
+  :global(.ce-glossary-popup__create:hover) {
+    border-color: rgb(14 165 233);
+    background: rgb(224 242 254);
+  }
+
+  :global(.ce-glossary-popup__create-form) {
+    margin-top: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+  }
+
+  :global(.ce-glossary-popup__create-form[hidden]) {
+    display: none;
+  }
+
+  :global(.ce-glossary-popup__textarea) {
+    width: 100%;
+    resize: vertical;
+    min-height: 86px;
+    border-radius: 12px;
+    border: 1px solid rgb(203 213 225);
+    background: white;
+    color: rgb(15 23 42);
+    padding: 0.625rem 0.875rem;
+    font-size: 0.95rem;
+    line-height: 1.45;
+    outline: none;
+  }
+
+  :global(.ce-glossary-popup__error) {
+    min-height: 1rem;
+    color: rgb(220 38 38);
+    font-size: 0.82rem;
+    line-height: 1.35;
+  }
+
+  :global(.ce-glossary-popup__actions) {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+  }
+
+  :global(.ce-glossary-popup__cancel),
+  :global(.ce-glossary-popup__save) {
+    border-radius: 10px;
+    padding: 0.55rem 0.8rem;
+    font-size: 0.86rem;
+    font-weight: 600;
+  }
+
+  :global(.ce-glossary-popup__cancel) {
+    border: 1px solid rgb(226 232 240);
+    background: white;
+    color: rgb(51 65 85);
+  }
+
+  :global(.ce-glossary-popup__save) {
+    border: 1px solid rgb(14 165 233);
+    background: rgb(14 165 233);
+    color: white;
+  }
+
+  :global(.ce-glossary-popup__save:disabled),
+  :global(.ce-glossary-popup__cancel:disabled) {
+    cursor: wait;
+    opacity: 0.65;
+  }
+
+  :global(.dark .ce-glossary-popup__create) {
+    border-color: rgba(56, 189, 248, 0.35);
+    background: rgba(14, 116, 144, 0.22);
+    color: rgb(186 230 253);
+  }
+
+  :global(.dark .ce-glossary-popup__create:hover) {
+    border-color: rgba(56, 189, 248, 0.7);
+    background: rgba(14, 116, 144, 0.32);
+  }
+
+  :global(.dark .ce-glossary-popup__textarea) {
+    border-color: rgb(82 82 91);
+    background: rgb(39 39 42);
+    color: rgb(244 244 245);
+  }
+
+  :global(.dark .ce-glossary-popup__error) {
+    color: rgb(252 165 165);
+  }
+
+  :global(.dark .ce-glossary-popup__cancel) {
+    border-color: rgb(63 63 70);
+    background: rgb(39 39 42);
+    color: rgb(228 228 231);
+  }
+
+  :global(.dark .ce-glossary-popup__save) {
+    border-color: rgb(16 185 129);
+    background: rgb(16 185 129);
+    color: rgb(6 78 59);
   }
 
   :global(.dark .ce-glossary-popup__remove) {

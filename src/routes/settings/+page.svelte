@@ -457,25 +457,6 @@
         on:externalLinked={() => refreshSiteUser().catch(() => {})}
         on:save={saveSiteProfileSettings}
       />
-      <div class="mt-4 rounded-2xl border border-red-200 bg-red-50/60 p-4 dark:border-red-900/50 dark:bg-red-950/20">
-        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div class="min-w-0">
-            <div class="text-sm font-semibold text-red-800 dark:text-red-200">
-              Удаление профиля
-            </div>
-            <div class="mt-1 text-sm leading-6 text-red-700/80 dark:text-red-200/80">
-              Персональные данные и вход будут удалены, публичный контент останется на сайте как от удаленного пользователя.
-            </div>
-          </div>
-          <button
-            type="button"
-            class="inline-flex shrink-0 items-center justify-center rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700"
-            on:click={openDeleteProfileModal}
-          >
-            Удалить профиль
-          </button>
-        </div>
-      </div>
     </Section>
   {/if}
   {#if $siteUser}
@@ -600,4 +581,13 @@
       {/if}
     </Setting>
   </Section>
+  {#if $siteUser}
+    <button
+      type="button"
+      class="mt-2 inline-flex w-fit items-center justify-center rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700"
+      on:click={openDeleteProfileModal}
+    >
+      Удалить профиль
+    </button>
+  {/if}
 </div>
