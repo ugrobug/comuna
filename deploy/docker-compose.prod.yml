@@ -9,14 +9,12 @@ services:
     
     volumes:
       - db_data:/var/lib/postgresql/data
-    ports:
-      - "5436:5432"
 
   mysql57:
     image: mysql:5.7
     restart: unless-stopped
     ports:
-      - "3306:3306"
+      - "127.0.0.1:3306:3306"
     environment:
       MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
       MYSQL_DATABASE: romawho_posl1
