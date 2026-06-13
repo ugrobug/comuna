@@ -191,4 +191,14 @@
       </div>
     {/if}
   </div>
+  {#if selectedOption}
+    <button
+      type="button"
+      class="w-max rounded-lg px-2 py-1 text-sm font-medium text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60 dark:text-rose-400 dark:hover:bg-rose-950/30"
+      disabled={disabled}
+      on:click={() => selectPost(null)}
+    >
+      Открепить пост
+    </button>
+  {/if}
 </div>

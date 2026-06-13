@@ -4,17 +4,13 @@
   import { page } from '$app/stores'
   import { onDestroy, onMount } from 'svelte'
   import { Button, Modal, toast } from 'mono-svelte'
-  import Post from '$lib/components/lemmy/post/Post.svelte'
   import ComunRoadmapModal from '$lib/components/comuns/ComunRoadmapModal.svelte'
   import WelcomePostDropdown from '$lib/components/comuns/WelcomePostDropdown.svelte'
-  import { feedKeyboardShortcuts } from '$lib/actions/feedKeyboardShortcuts'
+  import FeedPostsList from '$lib/components/feeds/FeedPostsList.svelte'
   import {
-    backendPostCommunityPath,
-    backendPostToPostView,
     buildBackendPostPath,
     buildComunPostsUrl,
     buildComunUrl,
-    isSpecialProjectPost,
     type BackendComun,
     type BackendComunCategory,
     type BackendPost,
@@ -263,6 +259,22 @@
       welcome_post: withCurrentComunContext(sourcePost),
     }
   }
+  const handleWelcomePostUnpinned = (
+    event: CustomEvent<{
+      postId: number
+      comunSlug: string
+    }>
+  ) => {
+    if (!comun?.slug || event.detail.comunSlug !== comun.slug) return
+    const postId = Number(event.detail.postId)
+    if (!postId || currentWelcomePostId !== postId) return
+    comun = {
+      ...comun,
+      welcome_post_id: null,
+      welcome_post_ref: '',
+      welcome_post: null,
+    }
+  }
   const formatRatingValue = (value?: number | null) => {
     const normalized = Math.max(Number(value ?? 0) || 0, 0)
     return new Intl.NumberFormat('ru-RU', {
@@ -276,9 +288,11 @@
 
   $: siteTitle = env.PUBLIC_SITE_TITLE || 'Тамбур'
   $: comunName = comun?.name || 'Сообщество'
-  $: welcomePostView = comun?.welcome_post ? backendPostToPostView(withCurrentComunContext(comun.welcome_post)) : null
   $: minimumAuthorRatingToPost = Math.max(Number(comun?.minimum_author_rating_to_post ?? 0) || 0, 0)
   $: comunCategories = comun?.categories ?? []
+  $: feedPosts = visiblePosts.map(withCurrentComunContext)
+  $: welcomeFeedPosts = comun?.welcome_post ? [withCurrentComunContext(comun.welcome_post)] : []
+  $: currentWelcomePostId = comun?.welcome_post_id ?? comun?.welcome_post?.id ?? null
   $: hasComunCategories = comunCategories.length > 0
   $: hasUserWritableComunCategory = comunCategories.some(
     (category) => !Boolean(category.only_moderators_can_post)
@@ -1332,60 +1346,35 @@
     onSubmit={openRoadmapSubmitFlow}
   />
 
-  {#if comun?.welcome_post && welcomePostView}
+  {#if comun?.welcome_post && welcomeFeedPosts.length}
     <section class="rounded-2xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/60 dark:bg-blue-950/20 p-4 sm:p-5">
       <div class="mb-3 text-sm font-semibold text-blue-800 dark:text-blue-300">
         Приветственный пост
       </div>
-      <Post
-        post={welcomePostView}
-        class="rounded-2xl border border-slate-200/80 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 shadow-sm px-4 sm:px-5"
-        view="cozy"
-        actions={true}
-        showReadMore={false}
-        showFullBody={false}
+      <FeedPostsList
+        posts={welcomeFeedPosts}
+        postClass="feed-shortcut-post rounded-2xl border border-slate-200/80 bg-white/95 px-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/85 sm:px-5"
         hideCommunity={true}
         {comunCategories}
-        linkOverride={buildBackendPostPath(comun.welcome_post)}
-        userUrlOverride={comun.welcome_post.author?.username ? `/${comun.welcome_post.author.username}` : undefined}
-        communityUrlOverride={backendPostCommunityPath(comun.welcome_post)}
-        subscribeUrl={comun.welcome_post.channel_url ?? comun.welcome_post.author?.channel_url}
-        subscribeLabel="Подписаться"
-        hideSubscribe={isSpecialProjectPost(comun.welcome_post)}
+        {currentWelcomePostId}
         on:categorychange={handlePostCategoryChange}
         on:pinned={handleWelcomePostPinned}
+        on:unpinned={handleWelcomePostUnpinned}
       />
     </section>
   {/if}
 
-  {#if visiblePosts.length}
-    <div class="flex flex-col gap-6" use:feedKeyboardShortcuts>
-      {#each visiblePosts as backendPost (backendPost.id)}
-        <div class="flex flex-col gap-3">
-          <Post
-            post={backendPostToPostView(withCurrentComunContext(backendPost))}
-            class="feed-shortcut-post rounded-2xl border border-slate-200/80 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 shadow-sm px-4 sm:px-5"
-            view="cozy"
-            actions={true}
-            showReadMore={false}
-            showFullBody={false}
-            hideCommunity={true}
-            {comunCategories}
-            linkOverride={buildBackendPostPath(backendPost)}
-            userUrlOverride={backendPost.author?.username ? `/${backendPost.author.username}` : undefined}
-            communityUrlOverride={backendPostCommunityPath(backendPost)}
-            subscribeUrl={backendPost.channel_url ?? backendPost.author?.channel_url}
-            subscribeLabel="Подписаться"
-            hideSubscribe={isSpecialProjectPost(backendPost)}
-            on:categorychange={handlePostCategoryChange}
-            on:pinned={handleWelcomePostPinned}
-          />
-        </div>
-      {/each}
-    </div>
-    {#if loadingMore}
-      <div class="text-sm text-slate-500">Загрузка...</div>
-    {/if}
+  {#if feedPosts.length}
+    <FeedPostsList
+      posts={feedPosts}
+      {loadingMore}
+      hideCommunity={true}
+      {comunCategories}
+      {currentWelcomePostId}
+      on:categorychange={handlePostCategoryChange}
+      on:pinned={handleWelcomePostPinned}
+      on:unpinned={handleWelcomePostUnpinned}
+    />
   {:else}
     <div class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-6 text-slate-600 dark:text-zinc-400">
       <div class="flex flex-col gap-4">

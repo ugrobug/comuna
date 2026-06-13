@@ -58,6 +58,7 @@
   export let hideSubscribe: boolean = false
   export let disableUserLink: boolean | undefined = undefined
   export let comunCategories: BackendComunCategory[] = []
+  export let currentWelcomePostId: number | null | undefined = undefined
 
   $: postUrl = linkOverride ?? postLink(post.post)
   $: isBackendPost = Boolean(linkOverride)
@@ -532,6 +533,7 @@
       on:deleted={() => (removedByAdmin = true)}
       on:categorychange
       on:pinned
+      on:unpinned
       {post}
       style="grid-area: actions;"
       {view}
@@ -543,6 +545,7 @@
       {userUrlOverride}
       {communityUrlOverride}
       {comunCategories}
+      {currentWelcomePostId}
     />
   {:else if view == 'compact'}
     <div class="flex flex-row items-center gap-2 text-sm">
