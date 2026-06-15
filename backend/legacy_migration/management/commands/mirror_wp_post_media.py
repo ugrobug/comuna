@@ -31,9 +31,11 @@ class Command(BaseCommand):
         parser.add_argument(
             "--wp-ids",
             type=str,
-            required=True,
-            help="WP post ID через запятую",
+            default="",
+            help="WP post ID через запятую; пусто — все строки LegacyWpPostMap с post_id",
         )
+        parser.add_argument("--limit", type=int, default=0, help="Макс. постов (после offset)")
+        parser.add_argument("--offset", type=int, default=0, help="Пропустить N постов в выборке")
         parser.add_argument(
             "--dry-run",
             action="store_true",
@@ -65,12 +67,20 @@ class Command(BaseCommand):
             action="store_true",
             help="Писать в MEDIA_ROOT, не в S3 (даже если MEDIA_STORAGE_BACKEND=s3)",
         )
+        parser.add_argument(
+            "--skip-missing",
+            action="store_true",
+            help="Не падать на 404/ошибке скачивания; пропустить файл, остальные URL поста обработать",
+        )
 
     def handle(self, *args, **options):
-        wp_ids = _parse_wp_ids(options["wp_ids"])
+        wp_ids = _parse_wp_ids(options.get("wp_ids") or "")
+        limit = max(int(options["limit"] or 0), 0)
+        offset = max(int(options["offset"] or 0), 0)
         dry_run: bool = options["dry_run"]
         skip_content: bool = options["skip_content"]
         rewrite_only: bool = options["rewrite_only"]
+        skip_missing: bool = options["skip_missing"]
         use_object_storage = legacy_media_use_object_storage() and not options["local_disk"]
         relative_urls = (
             not options["absolute_urls"]
@@ -85,15 +95,35 @@ class Command(BaseCommand):
         total_files = 0
         total_posts = 0
 
-        for wp_id in wp_ids:
-            map_row = (
-                LegacyWpPostMap.objects.filter(wp_post_id=wp_id)
-                .select_related("post")
-                .first()
-            )
-            if not map_row or not map_row.post_id:
-                raise CommandError(f"wp:{wp_id} — нет LegacyWpPostMap / Post (сначала import_wp_posts)")
+        qs = (
+            LegacyWpPostMap.objects.filter(post_id__isnull=False)
+            .select_related("post")
+            .order_by("wp_post_id")
+        )
+        if wp_ids:
+            qs = qs.filter(wp_post_id__in=wp_ids)
+        if offset:
+            qs = qs[offset:]
+        if limit:
+            qs = qs[:limit]
 
+        map_rows = list(qs)
+        if wp_ids:
+            found = {int(m.wp_post_id) for m in map_rows}
+            missing = [wid for wid in wp_ids if wid not in found]
+            if missing:
+                raise CommandError(
+                    f"нет LegacyWpPostMap / Post для wp: {','.join(str(x) for x in missing)} "
+                    "(сначала import_wp_posts)"
+                )
+        if not map_rows:
+            self.stdout.write(self.style.WARNING("Нет постов в выборке"))
+            return
+
+        self.stdout.write(f"К обработке: {len(map_rows)} пост(ов)")
+
+        for map_row in map_rows:
+            wp_id = int(map_row.wp_post_id)
             post: Post = map_row.post
             urls = extract_wp_upload_urls_from_post_content(post.content or "")
 
@@ -137,14 +167,23 @@ class Command(BaseCommand):
                 continue
 
             try:
-                mapping = build_url_mapping(
+                mapping, dl_errors = build_url_mapping(
                     urls,
                     backend_base=backend_base,
                     relative_urls=relative_urls,
                     use_object_storage=use_object_storage,
+                    skip_missing=skip_missing,
                 )
             except OSError as exc:
                 raise CommandError(f"wp:{wp_id}: {exc}") from exc
+
+            for err in dl_errors:
+                self.stderr.write(self.style.WARNING(f"  пропуск: {err}\n"))
+            if not mapping:
+                self.stdout.write(
+                    self.style.WARNING(f"  wp:{wp_id} — нет успешных медиа, пост не изменён")
+                )
+                continue
 
             total_files += len({wp_url_to_storage_path(u) for u in urls if wp_url_to_storage_path(u)})
 

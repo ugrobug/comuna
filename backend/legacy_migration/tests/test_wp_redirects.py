@@ -59,6 +59,7 @@ class RedirectionExportFormatTests(SimpleTestCase):
         self.assertEqual(redir["type"], "redirection")
         self.assertEqual(entry["metas"]["ignore_trailing_slashes"], "1")
         self.assertEqual(entry["metas"]["redirect_code"], "301")
+        self.assertNotIn("rules_group1", entry["metas"])
 
 
 class WpTagRedirectTests(TestCase):

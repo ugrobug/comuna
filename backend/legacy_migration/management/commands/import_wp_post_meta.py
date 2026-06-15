@@ -17,9 +17,11 @@ class Command(BaseCommand):
         parser.add_argument(
             "--wp-ids",
             type=str,
-            required=True,
-            help="WP post ID через запятую",
+            default="",
+            help="WP post ID через запятую; пусто — все LegacyWpPostMap с post_id",
         )
+        parser.add_argument("--limit", type=int, default=0, help="Макс. постов (после offset)")
+        parser.add_argument("--offset", type=int, default=0, help="Пропустить N постов в выборке")
         parser.add_argument(
             "--dry-run",
             action="store_true",
@@ -32,14 +34,36 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        wp_ids = _parse_wp_ids(options["wp_ids"])
-        dry_run: bool = options["dry_run"]
-        force: bool = options["force"]
-
         from legacy_migration.models import LegacyWpPostMap, WpComments, WpUlike, WpUlikeComments
         from legacy_migration.wp_post_meta import wp_post_total_views
 
-        for wp_id in wp_ids:
+        wp_ids = _parse_wp_ids(options.get("wp_ids") or "")
+        limit = max(int(options["limit"] or 0), 0)
+        offset = max(int(options["offset"] or 0), 0)
+        dry_run: bool = options["dry_run"]
+        force: bool = options["force"]
+
+        if wp_ids:
+            id_list = wp_ids
+        else:
+            qs = (
+                LegacyWpPostMap.objects.filter(post_id__isnull=False)
+                .order_by("wp_post_id")
+                .values_list("wp_post_id", flat=True)
+            )
+            if offset:
+                qs = qs[offset:]
+            if limit:
+                qs = qs[:limit]
+            id_list = [int(x) for x in qs]
+
+        if not id_list:
+            self.stdout.write(self.style.WARNING("Нет постов в выборке"))
+            return
+
+        self.stdout.write(f"К обработке: {len(id_list)} пост(ов)")
+
+        for wp_id in id_list:
             if not LegacyWpPostMap.objects.filter(wp_post_id=wp_id, post__isnull=False).exists():
                 raise CommandError(f"wp:{wp_id} — сначала import_wp_posts")
 

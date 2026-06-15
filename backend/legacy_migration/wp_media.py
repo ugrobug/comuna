@@ -253,15 +253,20 @@ def build_url_mapping(
     backend_base: str,
     relative_urls: bool = False,
     use_object_storage: bool | None = None,
-) -> dict[str, str]:
+    skip_missing: bool = False,
+) -> tuple[dict[str, str], list[str]]:
     mapping: dict[str, str] = {}
+    errors: list[str] = []
     for url in urls:
         norm = normalize_wp_media_url(url)
         if not norm:
             continue
         try:
             storage_path = download_wp_media_file(norm, use_object_storage=use_object_storage)
-        except OSError:
+        except OSError as exc:
+            if skip_missing:
+                errors.append(f"{norm}: {exc}")
+                continue
             raise
         new_url = target_public_url(
             storage_path,
@@ -272,7 +277,7 @@ def build_url_mapping(
             mapping[variant] = new_url
         mapping[norm] = new_url
         mapping[url] = new_url
-    return mapping
+    return mapping, errors
 
 
 # Любые уже записанные абсолютные URL медиа → относительные /media/...
