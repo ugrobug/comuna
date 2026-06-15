@@ -5,13 +5,18 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from typing import Iterable
-from urllib.parse import unquote, urlparse
+from urllib.parse import quote, unquote, urlparse
 
-from django.utils.text import slugify
-
-from feeds.models import Post
-from legacy_migration.models import LegacyWpPostMap, WpPostmeta, WpPosts
-from legacy_migration.wp_content import legacy_article_source_url
+from feeds.models import Post, Tag, _lemmatize_tag
+from legacy_migration.models import (
+    LegacyWpPostMap,
+    WpPostmeta,
+    WpPosts,
+    WpTermRelationships,
+    WpTermTaxonomy,
+    WpTerms,
+)
+from legacy_migration.wp_content import LEGACY_SITE, legacy_article_source_url
 from legacy_migration.wp_content_rewrites import post_public_path
 
 _CANONICAL_META_KEYS = (
@@ -24,8 +29,9 @@ _CANONICAL_META_KEYS = (
 class RedirectRow:
     from_path: str
     to_path: str
-    wp_post_id: int
-    post_id: int
+    wp_post_id: int = 0
+    post_id: int = 0
+    wp_term_id: int = 0
     source: str = ""
 
 
@@ -33,6 +39,14 @@ class RedirectRow:
 class RedirectBuildResult:
     rows: list[RedirectRow] = field(default_factory=list)
     skipped_no_post: int = 0
+    conflicts: list[str] = field(default_factory=list)
+
+
+@dataclass
+class TagRedirectBuildResult:
+    rows: list[RedirectRow] = field(default_factory=list)
+    skipped_no_slug: int = 0
+    skipped_no_dest: int = 0
     conflicts: list[str] = field(default_factory=list)
 
 
@@ -163,6 +177,107 @@ def collect_redirect_rows(
     return result
 
 
+def tambur_tag_url_key(wp_name: str) -> str:
+    """Ключ для /tags/{key} — как на фронте (normalizeTag от lemma/name)."""
+    stored = (wp_name or "").strip()[:64]
+    if not stored:
+        return ""
+    tag = Tag.objects.filter(name__iexact=stored).order_by("id").first()
+    if tag:
+        raw = (tag.lemma or _lemmatize_tag(tag.name) or tag.name).strip()
+    else:
+        raw = (_lemmatize_tag(stored) or stored).strip()
+    return raw.lower()
+
+
+def tag_public_path(wp_name: str) -> str:
+    key = tambur_tag_url_key(wp_name)
+    if not key:
+        return ""
+    return f"/tags/{quote(key, safe='')}"
+
+
+def collect_tag_redirect_rows(
+    *,
+    mapped_wp_post_ids: list[int] | None = None,
+    min_term_count: int = 1,
+) -> TagRedirectBuildResult:
+    """
+    /tag/{wp_slug}/ → /tags/{lemma-key}/ на Tambur.
+    slug из wp_terms; цель — lemma/name как у import_wp_post_tags (slug в Tag не пишем).
+    """
+    result = TagRedirectBuildResult()
+    seen_dest: dict[str, str] = {}
+    rows_by_path: dict[str, RedirectRow] = {}
+
+    tt_qs = WpTermTaxonomy.objects.filter(taxonomy="post_tag")
+    if min_term_count > 0:
+        tt_qs = tt_qs.filter(count__gte=min_term_count)
+
+    if mapped_wp_post_ids is not None:
+        if not mapped_wp_post_ids:
+            return result
+        rel_tt_ids = (
+            WpTermRelationships.objects.filter(object_id__in=mapped_wp_post_ids)
+            .values_list("term_taxonomy_id", flat=True)
+            .distinct()
+        )
+        tt_qs = tt_qs.filter(term_taxonomy_id__in=rel_tt_ids)
+
+    term_ids = list(tt_qs.values_list("term_id", flat=True).distinct())
+    if not term_ids:
+        return result
+
+    for term in WpTerms.objects.filter(term_id__in=term_ids).order_by("slug"):
+        slug = (term.slug or "").strip()
+        if not slug:
+            result.skipped_no_slug += 1
+            continue
+        dest = tag_public_path(term.name or "")
+        if not dest:
+            result.skipped_no_dest += 1
+            continue
+        term_id = int(term.term_id)
+        from_base = normalize_legacy_path(f"/tag/{slug}")
+        for variant in path_variants(from_base):
+            key = variant
+            prev = seen_dest.get(key)
+            if prev and prev != dest:
+                result.conflicts.append(f"{key!r}: tag dest {prev!r} vs {dest!r}")
+                continue
+            seen_dest[key] = dest
+            if key not in rows_by_path:
+                rows_by_path[key] = RedirectRow(
+                    from_path=variant,
+                    to_path=dest,
+                    wp_term_id=term_id,
+                    source="post_tag",
+                )
+
+    result.rows = sorted(rows_by_path.values(), key=lambda r: r.from_path)
+    return result
+
+
+def merge_redirect_rows(
+    post_rows: list[RedirectRow],
+    tag_rows: list[RedirectRow],
+) -> tuple[list[RedirectRow], list[str]]:
+    """Объединить статьи и теги; при коллизии from_path приоритет у статьи."""
+    by_path: dict[str, RedirectRow] = {}
+    conflicts: list[str] = []
+    for row in tag_rows:
+        by_path[row.from_path] = row
+    for row in post_rows:
+        prev = by_path.get(row.from_path)
+        if prev and prev.to_path != row.to_path:
+            conflicts.append(
+                f"{row.from_path!r}: post → {row.to_path!r} vs tag → {prev.to_path!r} (post wins)"
+            )
+        by_path[row.from_path] = row
+    merged = sorted(by_path.values(), key=lambda r: (r.from_path, r.post_id, r.wp_term_id))
+    return merged, conflicts
+
+
 def format_nginx_map(rows: list[RedirectRow], *, map_name: str = "pt_legacy_post_redirect") -> str:
     lines = [
         f"# Сгенерировано export_wp_redirects, строк: {len(rows)}",
@@ -200,3 +315,64 @@ def format_json(rows: list[RedirectRow]) -> str:
         for r in rows
     ]
     return json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+
+
+def _absolute_url(base: str, path: str) -> str:
+    base = (base or "").strip().rstrip("/")
+    path = normalize_legacy_path(path)
+    if not path or path == "/":
+        return base
+    return f"{base}{path}"
+
+
+def format_redirection_plugin_json(
+    rows: list[RedirectRow],
+    *,
+    pt_base_url: str = LEGACY_SITE,
+    tambur_base_url: str = "https://tambur.pub",
+) -> str:
+    """
+    JSON для импорта в WP-плагин Redirection (Tools → Import).
+    https://github.com/WPPlugins/redirection — match_type url, action url 301.
+    """
+    emitted: set[str] = set()
+    redirects: list[dict] = []
+    for row in rows:
+        if row.from_path in emitted:
+            continue
+        emitted.add(row.from_path)
+        redirects.append(
+            {
+                "url": row.from_path,
+                "match_type": "url",
+                "action_type": "url",
+                "action_code": 301,
+                "action_data": {"url": _absolute_url(tambur_base_url, row.to_path)},
+                "title": (
+                    f"pt tag:{row.wp_term_id} → {row.to_path}"
+                    if row.wp_term_id
+                    else f"pt wp:{row.wp_post_id} → post:{row.post_id}"
+                ),
+                "enabled": True,
+            }
+        )
+    return json.dumps(redirects, ensure_ascii=False, indent=2) + "\n"
+
+
+def format_redirection_plugin_csv(
+    rows: list[RedirectRow],
+    *,
+    tambur_base_url: str = "https://tambur.pub",
+) -> str:
+    """CSV для Redirection: source,target,regex,code (source = path на ПТ)."""
+    lines = ["source,target,regex,code"]
+    emitted: set[str] = set()
+    for row in rows:
+        if row.from_path in emitted:
+            continue
+        emitted.add(row.from_path)
+        target = _absolute_url(tambur_base_url, row.to_path)
+        src = row.from_path.replace(",", "%2C")
+        tgt = target.replace(",", "%2C")
+        lines.append(f"{src},{tgt},0,301")
+    return "\n".join(lines) + "\n"

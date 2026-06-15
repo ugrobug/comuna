@@ -92,7 +92,7 @@ const TAG_ATTRIBUTES: Record<string, Set<string>> = {
     'data-expandable-image',
     'data-expandable-src',
   ]),
-  iframe: new Set(['src', 'allow', 'allowfullscreen', 'frameborder', 'referrerpolicy', 'loading', 'class']),
+  iframe: new Set(['src', 'allow', 'allowfullscreen', 'frameborder', 'referrerpolicy', 'loading', 'class', 'title']),
   input: new Set(['type', 'value', 'max', 'class', 'data-option-index']),
 }
 
@@ -103,6 +103,12 @@ const ALLOWED_IFRAME_PREFIXES = [
   'https://w.soundcloud.com/player/',
   'https://music.yandex.ru/iframe/',
   'https://music.yandex.com/iframe/',
+  'https://www.youtube.com/embed/',
+  'https://youtube.com/embed/',
+  'https://www.youtube-nocookie.com/embed/',
+  'https://rutube.ru/play/embed/',
+  'https://vk.com/video_ext.php',
+  'https://player.vimeo.com/video/',
 ]
 
 const DANGEROUS_CONTENT_TAGS =

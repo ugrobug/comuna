@@ -2110,6 +2110,28 @@
       </figure>`
     }
 
+    const renderEmbedBlock = (raw: any): string => {
+      const embedUrl = String(raw?.embed || '').trim()
+      if (!embedUrl || !/^https:\/\//i.test(embedUrl)) return ''
+      const captionText = typeof raw?.caption === 'string' ? raw.caption.trim() : ''
+      const captionHtml = captionText
+        ? `<div class="image-alt-text">${escapeHtml(captionText)}</div>`
+        : ''
+      return `<div class="post-embed">
+        <div class="post-embed__responsive">
+          <iframe
+            src="${escapeHtml(embedUrl)}"
+            loading="lazy"
+            title="Встроенное видео"
+            frameborder="0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowfullscreen
+          ></iframe>
+        </div>
+        ${captionHtml}
+      </div>`
+    }
+
     const renderTableBlock = (raw: any): string => {
       const sourceRows = Array.isArray(raw?.content) ? raw.content : []
       const rows = sourceRows
@@ -2179,8 +2201,16 @@
       case 'delimiter':
       case 'divider':
         return '<div class="post-divider" aria-hidden="true"></div>'
-      case 'image':
-        return processImage(block.data.file.url, '', block.data.file.alt || '', block.data.file.title || '', block.data.file.caption || '');
+      case 'image': {
+        const file = block.data?.file || {}
+        const url = file.url || block.data?.url || ''
+        const alt = block.data?.alt || file.alt || ''
+        const title = file.title || block.data?.title || ''
+        const caption =
+          (typeof block.data?.caption === 'string' ? block.data.caption.trim() : '') ||
+          (typeof file.caption === 'string' ? file.caption.trim() : '')
+        return processImage(url, '', alt, title, caption)
+      }
       case 'gallery':
         if (
           template?.type === 'tweet' &&
@@ -2222,6 +2252,8 @@
       case 'music':
       case 'musicTrack':
         return renderMusicBlock(block.data)
+      case 'embed':
+        return renderEmbedBlock(block.data)
       case 'link':
       case 'customLink':
         const url = block.data.url || '#';
@@ -2429,7 +2461,10 @@
     const loadingAttrs = collapsible && !showFullBody
       ? 'loading="lazy" decoding="async"'
       : 'decoding="async"';
-    return `<img src="${imgUrl}" data-expandable-image="1" data-expandable-src="${imgUrl}" ${loadingAttrs} ${alt ? `alt="${alt}"` : 'alt="Post image"'} ${title ? `title="${title}"` : ''} class="w-full h-auto">`;
+    const captionHtml = caption
+      ? `<div class="image-alt-text">${escapeHtml(caption)}</div>`
+      : '';
+    return `<img src="${imgUrl}" data-expandable-image="1" data-expandable-src="${imgUrl}" ${loadingAttrs} ${alt ? `alt="${alt}"` : 'alt="Post image"'} ${title ? `title="${title}"` : ''} class="w-full h-auto">${captionHtml}`;
   }
 
   // Добавляем функцию для определения, находится ли изображение выше сгиба
@@ -3466,6 +3501,10 @@
   :global(.post-content a) {
     overflow-wrap: anywhere;
     word-break: break-word;
+  }
+
+  :global(.post-content .image-alt-text) {
+    @apply text-sm text-slate-600 dark:text-zinc-400 text-center mt-2;
   }
 
   :global(.post-content img:not(.post-image-compare__image):not(.post-quote__author-photo)) {
@@ -4838,9 +4877,15 @@
     @apply my-4;
   }
 
+  :global(.post-content .post-embed__responsive) {
+    @apply w-full overflow-hidden rounded-lg;
+    aspect-ratio: 16 / 9;
+  }
+
   :global(.post-content .post-embed iframe) {
-    @apply w-full rounded-lg;
+    @apply w-full h-full;
     border: 0;
+    display: block;
   }
 
   :global(.post-content .post-map) {

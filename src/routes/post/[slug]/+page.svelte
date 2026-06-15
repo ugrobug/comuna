@@ -570,14 +570,14 @@
         const imageWithAnchor = anchorId 
           ? `<div class="image-wrapper"${anchorId}>
           <img src="${block.data.file.url}" 
-            alt="${block.data.file.alt || ''}" 
+            alt="${block.data.alt || block.data.file.alt || ''}" 
             title="${block.data.file.title || ''}"
             ${block.data.caption ? `data-caption="${block.data.caption}"` : ''}>
           ${block.data.caption ? `<div class="image-alt-text">${block.data.caption}</div>` : ''}
         </div>`
           : `<div class="image-wrapper">
           <img src="${block.data.file.url}" 
-            alt="${block.data.file.alt || ''}" 
+            alt="${block.data.alt || block.data.file.alt || ''}" 
             title="${block.data.file.title || ''}"
             ${block.data.caption ? `data-caption="${block.data.caption}"` : ''}>
           ${block.data.caption ? `<div class="image-alt-text">${block.data.caption}</div>` : ''}
@@ -764,6 +764,11 @@
 
             // Удаляем существующий alt-текст, если он есть
             const existingAltText = img.nextElementSibling
+            const preservedCaption =
+              img.getAttribute('data-caption')?.trim() ||
+              (existingAltText?.className === 'image-alt-text'
+                ? existingAltText.textContent?.trim() || ''
+                : '')
             if (existingAltText?.className === 'image-alt-text') {
               existingAltText.remove()
             }
@@ -829,11 +834,13 @@
               img.parentNode?.insertBefore(wrapper, img)
               wrapper.appendChild(img)
 
-              // Добавляем alt-текст под изображением
-              if (img instanceof HTMLImageElement && img.title) {
+              // Добавляем подпись под изображением
+              const captionText =
+                preservedCaption || (img instanceof HTMLImageElement ? img.title?.trim() : '') || ''
+              if (captionText) {
                 const altText = document.createElement('div')
                 altText.className = 'image-alt-text'
-                altText.textContent = img.title
+                altText.textContent = captionText
                 wrapper.appendChild(altText)
               }
               
