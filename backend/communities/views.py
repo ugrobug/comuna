@@ -32,6 +32,7 @@ from editor.models import (
     normalize_allowed_post_templates_override,
     normalize_post_template_type_code,
 )
+from feeds.post_paths import slugify_title
 from editor import service as editor_service
 from feeds.models import (
     Author,
@@ -90,7 +91,7 @@ def _generate_unique_comun_category_slug(comun: Comun, name: str) -> str:
     normalized_name = str(name or "").strip()
     base_slug = slugify(normalized_name)[:120]
     if not base_slug:
-        base_slug = _fv()._slugify_title(normalized_name)[:120]
+        base_slug = slugify_title(normalized_name)[:120]
     if not base_slug:
         return ""
     slug = base_slug
@@ -145,7 +146,7 @@ def _generate_unique_comun_glossary_term_slug(
     normalized_term = str(term or "").strip()
     base_slug = slugify(normalized_term)[:180]
     if not base_slug:
-        base_slug = _fv()._slugify_title(normalized_term)[:180]
+        base_slug = slugify_title(normalized_term)[:180]
     if not base_slug:
         base_slug = f"term-{secrets.token_hex(4)}"
     slug = base_slug
@@ -179,12 +180,6 @@ def _serialize_comun_glossary_term(term: ComunGlossaryTerm) -> dict:
     }
 
 
-def _post_public_path(post: Post) -> str:
-    post_title = _fv()._post_display_title(post)
-    post_slug = _fv()._slugify_title(post_title)
-    return f"/b/post/{post.id}-{post_slug}" if post_slug else f"/b/post/{post.id}"
-
-
 def _serialize_comun_knowledge_base_item(item: ComunKnowledgeBaseItem) -> dict:
     post = getattr(item, "post", None)
     title = (item.title or "").strip()
@@ -198,7 +193,7 @@ def _serialize_comun_knowledge_base_item(item: ComunKnowledgeBaseItem) -> dict:
         "title": title,
         "parent_id": item.parent_id,
         "post_id": item.post_id,
-        "post_path": _post_public_path(post) if post else None,
+        "post_path": _fv()._post_public_path(post) if post else None,
         "sort_order": item.sort_order,
     }
 
@@ -407,7 +402,7 @@ def _normalize_comun_slug(value: str) -> str:
         return ""
     base_slug = slugify(normalized_value)[:160]
     if not base_slug:
-        base_slug = _fv()._slugify_title(normalized_value)[:160]
+        base_slug = slugify_title(normalized_value)[:160]
     return str(base_slug or "").strip("-")
 
 

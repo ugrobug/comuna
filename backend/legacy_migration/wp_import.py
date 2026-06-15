@@ -16,7 +16,7 @@ from legacy_migration.wordpress_hasher import (
     wordpress_password_field_value,
     wp_password_hash_usable,
 )
-from users.models import SiteUserProfile
+from users.models import AuthorAdmin, SiteUserProfile
 
 User = get_user_model()
 
@@ -264,7 +264,54 @@ def upsert_django_user_for_wp_user(
             "imported_at": timezone.now(),
         },
     )
+    ensure_author_admin_for_legacy_map(
+        LegacyWpUserMap.objects.filter(wp_user_id=wp_user_id).first()
+    )
     return user, user_created, password_updated, linked_existing_user
+
+
+def ensure_author_admin_for_legacy_map(
+    map_row: LegacyWpUserMap | None,
+    *,
+    dry_run: bool = False,
+) -> str:
+    """
+    Связать User ↔ Author через AuthorAdmin по строке LegacyWpUserMap.
+    Возвращает: created | verified | exists | missing | conflict.
+    """
+    if not map_row or not map_row.user_id or not map_row.author_id:
+        return "missing"
+
+    user_id = int(map_row.user_id)
+    author_id = int(map_row.author_id)
+
+    other_user_link = (
+        AuthorAdmin.objects.filter(author_id=author_id)
+        .exclude(user_id=user_id)
+        .first()
+    )
+    if other_user_link:
+        return "conflict"
+
+    link = AuthorAdmin.objects.filter(user_id=user_id, author_id=author_id).first()
+    if link:
+        if link.verified_at:
+            return "exists"
+        if dry_run:
+            return "verified"
+        link.verified_at = timezone.now()
+        link.save(update_fields=["verified_at"])
+        return "verified"
+
+    if dry_run:
+        return "created"
+
+    AuthorAdmin.objects.create(
+        user_id=user_id,
+        author_id=author_id,
+        verified_at=timezone.now(),
+    )
+    return "created"
 
 
 def resolve_user_for_wp_user_id(wp_user_id: int) -> User:

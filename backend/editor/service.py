@@ -18,6 +18,8 @@ from django.http import HttpRequest
 from django.utils import timezone
 from django.utils.text import slugify
 
+from feeds.post_paths import build_post_public_path, slugify_title
+
 from editor.models import (
     COMUN_CUSTOM_TEMPLATE_BLOCK_PLACEMENT_AVAILABLE,
     COMUN_CUSTOM_TEMPLATE_BLOCK_PLACEMENT_OPTION_ITEMS,
@@ -1271,8 +1273,7 @@ def _normalize_post_vote_poll_template_items(
         for post_id in ordered_post_ids:
             post = posts_by_id[post_id]
             post_title = _fv()._post_display_title(post)
-            post_slug = _fv()._slugify_title(post_title)
-            post_path = f"/b/post/{post.id}-{post_slug}" if post_slug else f"/b/post/{post.id}"
+            post_path = build_post_public_path(post.id, post_title)
             normalized_items.append(
                 {
                     "post_id": post.id,
@@ -1548,7 +1549,7 @@ def _generate_comun_custom_template_slug(
     normalized_name = str(name or "").strip()
     base_slug = slugify(normalized_name)[:160]
     if not base_slug:
-        base_slug = _fv()._slugify_title(normalized_name)[:160]
+        base_slug = slugify_title(normalized_name)[:160]
     if not base_slug:
         base_slug = f"template-{secrets.token_hex(4)}"
     slug = base_slug
@@ -1576,7 +1577,7 @@ def _generate_comun_custom_template_field_key(
 ) -> str:
     base_key = slugify(label)[:160]
     if not base_key:
-        base_key = _fv()._slugify_title(label)[:160]
+        base_key = slugify_title(label)[:160]
     if not base_key:
         base_key = f"field-{fallback_index}"
     key = base_key
