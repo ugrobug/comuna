@@ -351,16 +351,13 @@ def _dedupe_rows_by_normalized_path(rows: list[RedirectRow]) -> list[RedirectRow
     return list(by_path.values())
 
 
-def format_redirection_plugin_json(
+def redirection_plugin_items(
     rows: list[RedirectRow],
     *,
     pt_base_url: str = LEGACY_SITE,
     tambur_base_url: str = "https://tambur.pub",
-) -> str:
-    """
-    JSON для импорта в WP-плагин Redirection (Список для импорта).
-    Структура как в Export: {"redirect": {...}, "metas": {...}}.
-    """
+) -> list[dict]:
+    """Элементы JSON для импорта Redirection (один объект = одно правило)."""
     pt_base = (pt_base_url or LEGACY_SITE).strip().rstrip("/")
     metas = _redirection_plugin_metas()
     items: list[dict] = []
@@ -379,6 +376,24 @@ def format_redirection_plugin_json(
                 "metas": metas,
             }
         )
+    return items
+
+
+def format_redirection_plugin_json(
+    rows: list[RedirectRow],
+    *,
+    pt_base_url: str = LEGACY_SITE,
+    tambur_base_url: str = "https://tambur.pub",
+    compact: bool = False,
+) -> str:
+    """
+    JSON для импорта в WP-плагин Redirection (Список для импорта).
+    """
+    items = redirection_plugin_items(
+        rows, pt_base_url=pt_base_url, tambur_base_url=tambur_base_url
+    )
+    if compact:
+        return json.dumps(items, ensure_ascii=False, separators=(",", ":")) + "\n"
     return json.dumps(items, ensure_ascii=False, indent=2) + "\n"
 
 
