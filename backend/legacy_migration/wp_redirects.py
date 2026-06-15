@@ -326,7 +326,7 @@ def _absolute_url(base: str, path: str) -> str:
 
 
 def _redirection_plugin_metas() -> dict:
-    """Шаблон metas как в нативном Export плагина Redirection (John Godley)."""
+    """Минимальный metas для импорта Redirection (rules_group* не нужны)."""
     return {
         "ignore_trailing_slashes": "1",
         "ignore_parameters": "1",
@@ -336,30 +336,6 @@ def _redirection_plugin_metas() -> dict:
         "inclusion_exclusion_rules": "",
         "redirect_options": "are_case",
         "redirection_http_headers": "",
-        "rules_group1": {"enabled": "0", "login_info": ""},
-        "rules_group2": {"enabled": "0", "role": "", "role_name": "[]"},
-        "rules_group3": {
-            "enabled": "0",
-            "referrer": "",
-            "referrer_value": "",
-            "referrer_regex": "0",
-        },
-        "rules_group4": {
-            "enabled": "0",
-            "agent": "",
-            "agent_value": "",
-            "agent_regex": "0",
-        },
-        "rules_group5": {
-            "enabled": "0",
-            "cookie": "",
-            "cookie_name": "",
-            "cookie_value": "",
-            "cookie_regex": "0",
-        },
-        "rules_group6": {"enabled": "0", "ip": "", "ip_value": ""},
-        "rules_group7": {"enabled": "0", "server": "", "server_value": ""},
-        "rules_group8": {"enabled": "0", "language": "", "language_value": ""},
     }
 
 
