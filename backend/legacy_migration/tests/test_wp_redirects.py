@@ -2,6 +2,8 @@ from django.test import SimpleTestCase, TestCase
 
 from feeds.models import Tag
 from legacy_migration.wp_redirects import (
+    RedirectRow,
+    format_redirection_plugin_json,
     merge_redirect_rows,
     normalize_legacy_path,
     path_variants,
@@ -23,6 +25,40 @@ class WpRedirectsPathTests(SimpleTestCase):
             path_variants("/articles/foo/"),
             ["/articles/foo", "/articles/foo/"],
         )
+
+
+class RedirectionExportFormatTests(SimpleTestCase):
+    def test_redirection_json_matches_plugin_export_shape(self) -> None:
+        rows = [
+            RedirectRow(
+                from_path="/articles/acolyte",
+                to_path="/b/post/16972-2024",
+                wp_post_id=19938,
+                post_id=16972,
+                source="legacy_url",
+            ),
+            RedirectRow(
+                from_path="/articles/acolyte/",
+                to_path="/b/post/16972-2024",
+                wp_post_id=19938,
+                post_id=16972,
+                source="legacy_url",
+            ),
+        ]
+        import json
+
+        payload = json.loads(format_redirection_plugin_json(rows))
+        self.assertEqual(len(payload), 1)
+        entry = payload[0]
+        self.assertIn("redirect", entry)
+        self.assertIn("metas", entry)
+        redir = entry["redirect"]
+        self.assertEqual(redir["from"], "https://posletitrov.ru/articles/acolyte")
+        self.assertEqual(redir["match"], "/articles/acolyte")
+        self.assertEqual(redir["to"], "https://tambur.pub/b/post/16972-2024")
+        self.assertEqual(redir["type"], "redirection")
+        self.assertEqual(entry["metas"]["ignore_trailing_slashes"], "1")
+        self.assertEqual(entry["metas"]["redirect_code"], "301")
 
 
 class WpTagRedirectTests(TestCase):

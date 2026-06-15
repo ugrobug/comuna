@@ -325,6 +325,56 @@ def _absolute_url(base: str, path: str) -> str:
     return f"{base}{path}"
 
 
+def _redirection_plugin_metas() -> dict:
+    """Шаблон metas как в нативном Export плагина Redirection (John Godley)."""
+    return {
+        "ignore_trailing_slashes": "1",
+        "ignore_parameters": "1",
+        "ignore_case": "1",
+        "pass_on_parameters": "",
+        "redirect_code": "301",
+        "inclusion_exclusion_rules": "",
+        "redirect_options": "are_case",
+        "redirection_http_headers": "",
+        "rules_group1": {"enabled": "0", "login_info": ""},
+        "rules_group2": {"enabled": "0", "role": "", "role_name": "[]"},
+        "rules_group3": {
+            "enabled": "0",
+            "referrer": "",
+            "referrer_value": "",
+            "referrer_regex": "0",
+        },
+        "rules_group4": {
+            "enabled": "0",
+            "agent": "",
+            "agent_value": "",
+            "agent_regex": "0",
+        },
+        "rules_group5": {
+            "enabled": "0",
+            "cookie": "",
+            "cookie_name": "",
+            "cookie_value": "",
+            "cookie_regex": "0",
+        },
+        "rules_group6": {"enabled": "0", "ip": "", "ip_value": ""},
+        "rules_group7": {"enabled": "0", "server": "", "server_value": ""},
+        "rules_group8": {"enabled": "0", "language": "", "language_value": ""},
+    }
+
+
+def _dedupe_rows_by_normalized_path(rows: list[RedirectRow]) -> list[RedirectRow]:
+    """Один redirect на путь; trailing slash покрывается metas.ignore_trailing_slashes."""
+    by_path: dict[str, RedirectRow] = {}
+    for row in rows:
+        key = normalize_legacy_path(row.from_path)
+        if not key or key == "/":
+            continue
+        if key not in by_path:
+            by_path[key] = row
+    return list(by_path.values())
+
+
 def format_redirection_plugin_json(
     rows: list[RedirectRow],
     *,
@@ -332,47 +382,44 @@ def format_redirection_plugin_json(
     tambur_base_url: str = "https://tambur.pub",
 ) -> str:
     """
-    JSON для импорта в WP-плагин Redirection (Tools → Import).
-    https://github.com/WPPlugins/redirection — match_type url, action url 301.
+    JSON для импорта в WP-плагин Redirection (Список для импорта).
+    Структура как в Export: {"redirect": {...}, "metas": {...}}.
     """
-    emitted: set[str] = set()
-    redirects: list[dict] = []
-    for row in rows:
-        if row.from_path in emitted:
-            continue
-        emitted.add(row.from_path)
-        redirects.append(
+    pt_base = (pt_base_url or LEGACY_SITE).strip().rstrip("/")
+    metas = _redirection_plugin_metas()
+    items: list[dict] = []
+    for row in _dedupe_rows_by_normalized_path(rows):
+        match_path = normalize_legacy_path(row.from_path)
+        to_url = _absolute_url(tambur_base_url, row.to_path)
+        items.append(
             {
-                "url": row.from_path,
-                "match_type": "url",
-                "action_type": "url",
-                "action_code": 301,
-                "action_data": {"url": _absolute_url(tambur_base_url, row.to_path)},
-                "title": (
-                    f"pt tag:{row.wp_term_id} → {row.to_path}"
-                    if row.wp_term_id
-                    else f"pt wp:{row.wp_post_id} → post:{row.post_id}"
-                ),
-                "enabled": True,
+                "redirect": {
+                    "from": f"{pt_base}{match_path}",
+                    "match": match_path,
+                    "to": to_url,
+                    "status": "1",
+                    "type": "redirection",
+                },
+                "metas": metas,
             }
         )
-    return json.dumps(redirects, ensure_ascii=False, indent=2) + "\n"
+    return json.dumps(items, ensure_ascii=False, indent=2) + "\n"
 
 
 def format_redirection_plugin_csv(
     rows: list[RedirectRow],
     *,
+    pt_base_url: str = LEGACY_SITE,
     tambur_base_url: str = "https://tambur.pub",
 ) -> str:
-    """CSV для Redirection: source,target,regex,code (source = path на ПТ)."""
+    """CSV для Redirection: source,target,regex,code (полные URL, как в импорте плагина)."""
+    pt_base = (pt_base_url or LEGACY_SITE).strip().rstrip("/")
     lines = ["source,target,regex,code"]
-    emitted: set[str] = set()
-    for row in rows:
-        if row.from_path in emitted:
-            continue
-        emitted.add(row.from_path)
+    for row in _dedupe_rows_by_normalized_path(rows):
+        match_path = normalize_legacy_path(row.from_path)
+        source = f"{pt_base}{match_path}"
         target = _absolute_url(tambur_base_url, row.to_path)
-        src = row.from_path.replace(",", "%2C")
+        src = source.replace(",", "%2C")
         tgt = target.replace(",", "%2C")
         lines.append(f"{src},{tgt},0,301")
     return "\n".join(lines) + "\n"
