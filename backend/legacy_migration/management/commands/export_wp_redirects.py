@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
+import zipfile
 from pathlib import Path
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
 from legacy_migration.management.commands.import_wp_posts import _parse_wp_ids
 from legacy_migration.models import LegacyWpPostMap
@@ -17,6 +19,7 @@ from legacy_migration.wp_redirects import (
     format_redirection_plugin_csv,
     format_redirection_plugin_json,
     merge_redirect_rows,
+    redirection_plugin_items,
 )
 
 
@@ -69,6 +72,22 @@ class Command(BaseCommand):
             default=1,
             help="Минимум wp_term_taxonomy.count для --tags-all (0 = без фильтра)",
         )
+        parser.add_argument(
+            "--chunk-size",
+            type=int,
+            default=0,
+            help="redirection-json: разбить на части по N правил (файлы …-part001.json)",
+        )
+        parser.add_argument(
+            "--compact",
+            action="store_true",
+            help="redirection-json: без отступов (меньше размер файла)",
+        )
+        parser.add_argument(
+            "--chunk-zip",
+            action="store_true",
+            help="С --chunk-size: собрать part*.json в один .zip (имя: <stem>-parts.zip)",
+        )
 
     def handle(self, *args, **options):
         wp_ids = _parse_wp_ids(options.get("wp_ids") or "")
@@ -105,27 +124,72 @@ class Command(BaseCommand):
         unique_from = len({r.from_path for r in rows})
         tambur_base = (options.get("tambur_base_url") or "https://tambur.pub").strip()
         fmt = options["format"]
+        chunk_size = max(int(options.get("chunk_size") or 0), 0)
+        compact: bool = bool(options.get("compact"))
+        chunk_zip: bool = bool(options.get("chunk_zip"))
+
+        out_path = (options.get("output") or "").strip()
+        report = self.stderr
+
+        if fmt == "redirection-json" and chunk_size > 0 and not out_path:
+            raise CommandError("Для --chunk-size нужен -o /tmp/pt-redirection-full.json")
+
         if fmt == "csv":
             body = format_csv(rows)
         elif fmt == "json":
             body = format_json(rows)
         elif fmt == "redirection-json":
-            body = format_redirection_plugin_json(rows, tambur_base_url=tambur_base)
+            if chunk_size > 0 and out_path:
+                items = redirection_plugin_items(rows, tambur_base_url=tambur_base)
+                base = Path(out_path)
+                base.parent.mkdir(parents=True, exist_ok=True)
+                stem = base.stem
+                suffix = base.suffix or ".json"
+                written: list[Path] = []
+                for idx in range(0, len(items), chunk_size):
+                    part_no = idx // chunk_size + 1
+                    chunk = items[idx : idx + chunk_size]
+                    if compact:
+                        body = json.dumps(chunk, ensure_ascii=False, separators=(",", ":")) + "\n"
+                    else:
+                        body = json.dumps(chunk, ensure_ascii=False, indent=2) + "\n"
+                    part_path = base.parent / f"{stem}-part{part_no:03d}{suffix}"
+                    part_path.write_text(body, encoding="utf-8")
+                    written.append(part_path)
+                report.write(
+                    self.style.SUCCESS(
+                        f"Записано {len(written)} файлов по {chunk_size} правил "
+                        f"(всего {len(items)}): {written[0].name} … {written[-1].name}"
+                    )
+                )
+                if chunk_zip and written:
+                    zip_path = base.parent / f"{stem}-parts.zip"
+                    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                        for part_path in written:
+                            zf.write(part_path, arcname=part_path.name)
+                    report.write(
+                        self.style.SUCCESS(f"Архив: {zip_path} ({len(written)} JSON внутри)")
+                    )
+                body = ""
+            else:
+                body = format_redirection_plugin_json(
+                    rows, tambur_base_url=tambur_base, compact=compact
+                )
         elif fmt == "redirection-csv":
             body = format_redirection_plugin_csv(rows, tambur_base_url=tambur_base)
         elif fmt == "nginx-map":
             body = format_nginx_map(rows)
         else:
-            body = format_redirection_plugin_json(rows, tambur_base_url=tambur_base)
+            body = format_redirection_plugin_json(
+                rows, tambur_base_url=tambur_base, compact=compact
+            )
 
-        out_path = (options.get("output") or "").strip()
-        report = self.stderr
-        if out_path:
+        if body and out_path:
             path = Path(out_path)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(body, encoding="utf-8")
             report.write(self.style.SUCCESS(f"Записано {path} ({unique_from} путей)"))
-        else:
+        elif body:
             self.stdout.write(body)
             report = self.stderr
 
