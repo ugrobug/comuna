@@ -12,6 +12,7 @@ from typing import Any
 from django.utils.text import slugify
 
 from feeds.models import Author, Post
+from feeds.post_paths import build_post_public_path
 from legacy_migration.models import LegacyWpPostMap, LegacyWpUserMap
 
 _ARTICLE_HREF_RE = re.compile(
@@ -29,12 +30,6 @@ def _block_id() -> str:
 def _strip_html(html: str) -> str:
     text = re.sub(r"<[^>]+>", " ", html or "")
     return re.sub(r"\s+", " ", unescape(text)).strip()
-
-
-def post_public_path(post: Post) -> str:
-    title = (post.title or "").strip()
-    slug = slugify(title)[:80] if title else ""
-    return f"/b/post/{post.id}-{slug}" if slug else f"/b/post/{post.id}"
 
 
 def _extract_article_slug(path: str) -> str:
@@ -62,7 +57,7 @@ def _build_post_link_block(target: Post, *, announcement: str = "") -> dict[str,
     author = target.author
     snapshot = {
         "post_id": int(target.id),
-        "path": post_public_path(target),
+        "path": build_post_public_path(target.id, target.title),
         "title": (target.title or "").strip()[:255] or f"Материал #{target.id}",
         "author_title": (author.title or author.username or "").strip() if author else "",
         "author_username": (author.username or "").strip() if author else "",
@@ -135,7 +130,7 @@ def _replace_article_urls_in_text(text: str, cache: dict[str, str]) -> str:
         key = path.rstrip("/")
         if key not in cache:
             post = _resolve_post_by_article_path(path)
-            cache[key] = post_public_path(post) if post else ""
+            cache[key] = build_post_public_path(post.id, post.title) if post else ""
         if cache[key]:
             return f'href="{cache[key]}"'
         return match.group(0)

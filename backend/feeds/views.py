@@ -116,6 +116,7 @@ from editor.service import (
     _user_can_manage_site_post,
 )
 from ratings.models import AuthorRatingEvent
+from .post_paths import build_post_public_path
 from .models import (
     Author,
     Post,
@@ -1726,50 +1727,6 @@ def _apply_post_tags(post: Post, explicit_tags: list[str] | None = None) -> None
         post.tags.clear()
 
 
-def _slugify_title(text: str) -> str:
-    if not text:
-        return ""
-    translit_map = {
-        "а": "a",
-        "б": "b",
-        "в": "v",
-        "г": "g",
-        "д": "d",
-        "е": "e",
-        "ё": "e",
-        "ж": "zh",
-        "з": "z",
-        "и": "i",
-        "й": "y",
-        "к": "k",
-        "л": "l",
-        "м": "m",
-        "н": "n",
-        "о": "o",
-        "п": "p",
-        "р": "r",
-        "с": "s",
-        "т": "t",
-        "у": "u",
-        "ф": "f",
-        "х": "h",
-        "ц": "ts",
-        "ч": "ch",
-        "ш": "sh",
-        "щ": "shch",
-        "ы": "y",
-        "э": "e",
-        "ю": "yu",
-        "я": "ya",
-        "ъ": "",
-        "ь": "",
-    }
-    lowered = text.lower()
-    translit = "".join(translit_map.get(ch, ch) for ch in lowered)
-    slug = re.sub(r"[^a-z0-9]+", "-", translit).strip("-")
-    return slug
-
-
 def _extract_plain_text(message: dict) -> str:
     return (message.get("text") or message.get("caption") or "").strip()
 
@@ -2463,9 +2420,7 @@ def content_page_manage(request: HttpRequest, slug: str) -> HttpResponse:
 def _post_public_path(post: Post) -> str:
     if _special_project_redirect_path(post):
         return "/s/book"
-    post_title = _post_display_title(post)
-    post_slug = _slugify_title(post_title)
-    return f"/b/post/{post.id}-{post_slug}" if post_slug else f"/b/post/{post.id}"
+    return build_post_public_path(post.id, _post_display_title(post))
 
 
 def _serialize_post_vote_poll_participations(
@@ -4182,8 +4137,7 @@ def sitemap_posts_xml(request: HttpRequest, page: int) -> HttpResponse:
     entries = []
     for post in posts:
         lastmod = _format_lastmod(post.updated_at or post.created_at)
-        slug = _slugify_title(post.title)
-        path = f"/b/post/{post.id}-{slug}" if slug else f"/b/post/{post.id}"
+        path = _post_public_path(post)
         entries.append((f"{base_url}{path}", lastmod))
 
     return _sitemap_urlset(entries)

@@ -12,16 +12,8 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 
 from feeds.models import PublicFeedItem
+from feeds.post_paths import build_post_public_path
 from feeds.views import _post_display_title
-
-
-def _slugify_title(value: str) -> str:
-    import re
-
-    normalized = re.sub(r"[^a-zA-Z0-9а-яА-ЯёЁ\s-]+", "", value or "").strip().lower()
-    normalized = re.sub(r"\s+", "-", normalized)
-    normalized = re.sub(r"-+", "-", normalized).strip("-")
-    return normalized[:100]
 
 
 def _snapshot_file_for_path(root: Path, path: str) -> Path:
@@ -70,8 +62,7 @@ class Command(BaseCommand):
         paths = ["/"]
         for item in feed_items:
             title = _post_display_title(item.post)
-            slug = _slugify_title(title)
-            paths.append(f"/b/post/{item.post_id}-{slug}" if slug else f"/b/post/{item.post_id}")
+            paths.append(build_post_public_path(item.post_id, title))
 
         unique_paths = list(dict.fromkeys(paths))
         self.stdout.write(

@@ -33,6 +33,7 @@ from communities.models import (
 )
 from editor.models import PostPollVote
 from editor import service as editor_service
+from feeds.post_paths import slugify_title
 from feeds.models import (
     Author,
     Post,
@@ -211,49 +212,6 @@ def _lemmatize_tag(value: str) -> str:
     return " ".join(lemmas).strip()
 
 
-def _slugify_title(text: str) -> str:
-    if not text:
-        return ""
-    translit_map = {
-        "а": "a",
-        "б": "b",
-        "в": "v",
-        "г": "g",
-        "д": "d",
-        "е": "e",
-        "ё": "e",
-        "ж": "zh",
-        "з": "z",
-        "и": "i",
-        "й": "y",
-        "к": "k",
-        "л": "l",
-        "м": "m",
-        "н": "n",
-        "о": "o",
-        "п": "p",
-        "р": "r",
-        "с": "s",
-        "т": "t",
-        "у": "u",
-        "ф": "f",
-        "х": "h",
-        "ц": "ts",
-        "ч": "ch",
-        "ш": "sh",
-        "щ": "shch",
-        "ы": "y",
-        "э": "e",
-        "ю": "yu",
-        "я": "ya",
-        "ъ": "",
-        "ь": "",
-    }
-    lowered = text.lower()
-    translit = "".join(translit_map.get(ch, ch) for ch in lowered)
-    return re.sub(r"[^a-z0-9]+", "-", translit).strip("-")
-
-
 def _ensure_tag_by_name(raw_name: str) -> tuple[Tag | None, bool]:
     normalized = _normalize_tag_value(raw_name).lstrip("#").strip()
     if not normalized:
@@ -373,7 +331,7 @@ def _generate_unique_comun_category_slug(comun: Comun, name: str) -> str:
     normalized_name = str(name or "").strip()
     base_slug = slugify(normalized_name)[:120]
     if not base_slug:
-        base_slug = _slugify_title(normalized_name)[:120]
+        base_slug = slugify_title(normalized_name)[:120]
     if not base_slug:
         return ""
     slug = base_slug
@@ -428,7 +386,7 @@ def _generate_unique_comun_glossary_term_slug(
     normalized_term = str(term or "").strip()
     base_slug = slugify(normalized_term)[:180]
     if not base_slug:
-        base_slug = _slugify_title(normalized_term)[:180]
+        base_slug = slugify_title(normalized_term)[:180]
     if not base_slug:
         base_slug = f"term-{secrets.token_hex(4)}"
     slug = base_slug
@@ -563,7 +521,7 @@ def _normalize_comun_slug(value: str) -> str:
         return ""
     base_slug = slugify(normalized_value)[:160]
     if not base_slug:
-        base_slug = _slugify_title(normalized_value)[:160]
+        base_slug = slugify_title(normalized_value)[:160]
     return base_slug
 
 
@@ -1512,7 +1470,6 @@ __all__ = [
     "_serialize_backend_post_card",
     "_serialize_post_comun",
     "_site_user_avatar_url",
-    "_slugify_title",
     "_sync_comun_glossary_terms",
     "_sync_comun_subscriber_counts",
     "_sync_comun_logo_from_author",

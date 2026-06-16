@@ -19,6 +19,7 @@ from django.db import IntegrityError, transaction
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
+from feeds.post_paths import build_post_public_path
 from communities import service as community_service
 from communities.models import Comun, ComunCategory, ComunPostCategoryAssignment
 from feeds.models import Author, Post
@@ -48,8 +49,7 @@ def _site_url(path: str) -> str:
 
 def _post_public_url(post: Post) -> str:
     post_title = str(post.title or "").strip() or f"post-{post.id}"
-    post_slug = community_service._slugify_title(post_title)
-    return _site_url(f"/b/post/{post.id}-{post_slug}" if post_slug else f"/b/post/{post.id}")
+    return _site_url(build_post_public_path(post.id, post_title))
 
 
 def _auth_token() -> str:

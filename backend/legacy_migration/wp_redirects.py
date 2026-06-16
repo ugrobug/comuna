@@ -17,7 +17,7 @@ from legacy_migration.models import (
     WpTerms,
 )
 from legacy_migration.wp_content import LEGACY_SITE, legacy_article_source_url
-from legacy_migration.wp_content_rewrites import post_public_path
+from feeds.post_paths import build_post_public_path
 
 _CANONICAL_META_KEYS = (
     "_yoast_wpseo_canonical",
@@ -136,7 +136,7 @@ def collect_redirect_rows(
             result.skipped_no_post += 1
             continue
         post = map_row.post
-        dest = post_public_path(post)
+        dest = build_post_public_path(post.id, post.title)
         wp_id = int(map_row.wp_post_id)
 
         sources: list[tuple[str, str]] = []

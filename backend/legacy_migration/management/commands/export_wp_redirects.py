@@ -88,8 +88,14 @@ class Command(BaseCommand):
             action="store_true",
             help="С --chunk-size: собрать part*.json в один .zip (имя: <stem>-parts.zip)",
         )
+        parser.add_argument(
+            "--tags-only",
+            action="store_true",
+            help="Только /tag/… → /tags/… (без статей). По умолчанию все post_tag (--tags-all)",
+        )
 
     def handle(self, *args, **options):
+        tags_only: bool = bool(options.get("tags_only"))
         wp_ids = _parse_wp_ids(options.get("wp_ids") or "")
         limit = max(int(options["limit"] or 0), 0)
 
@@ -102,24 +108,38 @@ class Command(BaseCommand):
             qs = qs[:limit]
 
         maps = list(qs)
-        result: RedirectBuildResult = collect_redirect_rows(
-            maps,
-            include_wp_guid=not options["no_guid"],
-            include_canonical_meta=not options["no_canonical"],
-            include_slug_fallback=not options["no_slug_fallback"],
-        )
-
         tag_result: TagRedirectBuildResult | None = None
         merge_conflicts: list[str] = []
-        rows = result.rows
-        if options["include_tags"]:
-            mapped_ids = None if options["tags_all"] else [int(m.wp_post_id) for m in maps]
-            min_count = int(options["tags_min_count"]) if options["tags_all"] else 0
+
+        if tags_only:
+            result = RedirectBuildResult()
+            if wp_ids and not options["tags_all"]:
+                mapped_ids = [int(m.wp_post_id) for m in maps]
+                min_count = 0
+            else:
+                mapped_ids = None
+                min_count = max(int(options["tags_min_count"]), 0) or 1
             tag_result = collect_tag_redirect_rows(
                 mapped_wp_post_ids=mapped_ids,
-                min_term_count=max(min_count, 0),
+                min_term_count=min_count,
             )
-            rows, merge_conflicts = merge_redirect_rows(result.rows, tag_result.rows)
+            rows = tag_result.rows
+        else:
+            result = collect_redirect_rows(
+                maps,
+                include_wp_guid=not options["no_guid"],
+                include_canonical_meta=not options["no_canonical"],
+                include_slug_fallback=not options["no_slug_fallback"],
+            )
+            rows = result.rows
+            if options["include_tags"]:
+                mapped_ids = None if options["tags_all"] else [int(m.wp_post_id) for m in maps]
+                min_count = int(options["tags_min_count"]) if options["tags_all"] else 0
+                tag_result = collect_tag_redirect_rows(
+                    mapped_wp_post_ids=mapped_ids,
+                    min_term_count=max(min_count, 0),
+                )
+                rows, merge_conflicts = merge_redirect_rows(result.rows, tag_result.rows)
 
         unique_from = len({r.from_path for r in rows})
         tambur_base = (options.get("tambur_base_url") or "https://tambur.pub").strip()
@@ -197,6 +217,8 @@ class Command(BaseCommand):
             f"маппингов={len(maps)} строк={len(rows)} уникальных from={unique_from} "
             f"skip_post={result.skipped_no_post} конфликтов_post={len(result.conflicts)}"
         )
+        if tags_only:
+            report.write(" [только теги]")
         if tag_result is not None:
             report.write(
                 f" тегов_строк={len(tag_result.rows)} skip_tag_slug={tag_result.skipped_no_slug} "
@@ -204,8 +226,9 @@ class Command(BaseCommand):
                 f"merge={len(merge_conflicts)}"
             )
         report.write("\n")
-        for msg in result.conflicts[:20]:
-            report.write(self.style.WARNING(f"{msg}\n"))
+        if not tags_only:
+            for msg in result.conflicts[:20]:
+                report.write(self.style.WARNING(f"{msg}\n"))
         if tag_result:
             for msg in tag_result.conflicts[:20]:
                 report.write(self.style.WARNING(f"{msg}\n"))
