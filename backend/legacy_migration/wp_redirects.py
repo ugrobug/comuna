@@ -159,9 +159,7 @@ def collect_redirect_rows(
                 key = variant
                 prev = seen_dest.get(key)
                 if prev and prev[0] != dest:
-                    result.conflicts.append(
-                        f"{key!r}: post {prev[1]} ({prev[0]}) vs post {post.id} ({dest})"
-                    )
+                    result.conflicts.append(f"{key!r}: post {prev[1]} ({prev[0]}) vs post {post.id} ({dest})")
                     continue
                 seen_dest[key] = (dest, int(post.id))
                 if key not in rows_by_path:
@@ -270,9 +268,7 @@ def merge_redirect_rows(
     for row in post_rows:
         prev = by_path.get(row.from_path)
         if prev and prev.to_path != row.to_path:
-            conflicts.append(
-                f"{row.from_path!r}: post → {row.to_path!r} vs tag → {prev.to_path!r} (post wins)"
-            )
+            conflicts.append(f"{row.from_path!r}: post → {row.to_path!r} vs tag → {prev.to_path!r} (post wins)")
         by_path[row.from_path] = row
     merged = sorted(by_path.values(), key=lambda r: (r.from_path, r.post_id, r.wp_term_id))
     return merged, conflicts
@@ -297,9 +293,7 @@ def format_nginx_map(rows: list[RedirectRow], *, map_name: str = "pt_legacy_post
 def format_csv(rows: list[RedirectRow]) -> str:
     lines = ["from_path,to_path,wp_post_id,post_id,source"]
     for row in rows:
-        lines.append(
-            f"{row.from_path},{row.to_path},{row.wp_post_id},{row.post_id},{row.source}"
-        )
+        lines.append(f"{row.from_path},{row.to_path},{row.wp_post_id},{row.post_id},{row.source}")
     return "\n".join(lines) + "\n"
 
 
@@ -370,7 +364,7 @@ def redirection_plugin_items(
                     "from": f"{pt_base}{match_path}",
                     "match": match_path,
                     "to": to_url,
-                    "status": "1",
+                    "status": "-1",
                     "type": "redirection",
                 },
                 "metas": metas,
@@ -389,9 +383,7 @@ def format_redirection_plugin_json(
     """
     JSON для импорта в WP-плагин Redirection (Список для импорта).
     """
-    items = redirection_plugin_items(
-        rows, pt_base_url=pt_base_url, tambur_base_url=tambur_base_url
-    )
+    items = redirection_plugin_items(rows, pt_base_url=pt_base_url, tambur_base_url=tambur_base_url)
     if compact:
         return json.dumps(items, ensure_ascii=False, separators=(",", ":")) + "\n"
     return json.dumps(items, ensure_ascii=False, indent=2) + "\n"

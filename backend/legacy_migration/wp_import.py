@@ -7,10 +7,11 @@ import secrets
 from html import unescape
 
 from django.contrib.auth import get_user_model
+from django.db.models import Count, Q
 from django.utils import timezone
 from django.utils.text import slugify
 
-from feeds.models import Author
+from feeds.models import Author, Post
 from legacy_migration.models import LegacyWpUserMap, WpUsers
 from legacy_migration.wordpress_hasher import (
     wordpress_password_field_value,
@@ -62,11 +63,27 @@ def resolve_author_for_wp_user(
     display_name: str,
 ) -> tuple[Author, bool]:
     """Возвращает (author, created)."""
+    map_row = (
+        LegacyWpUserMap.objects.filter(wp_user_id=wp_user_id)
+        .select_related("author")
+        .first()
+    )
+    if map_row and map_row.author_id and map_row.author:
+        return map_row.author, False
+
     base = wp_author_username(
         wp_user_id=wp_user_id,
         user_login=user_login,
         user_nicename=user_nicename,
     )
+    # Если на Tambur уже существует Author с таким username и совпадающим title,
+    # считаем что это "тот же" автор и используем его, даже если это телеграм-канал.
+    display_norm = (display_name or "").strip()
+    if display_norm and base:
+        existing_by_base = Author.objects.filter(username__iexact=base).first()
+        if existing_by_base and (existing_by_base.title or "").strip() == display_norm:
+            return existing_by_base, False
+
     username = unique_author_username(base, wp_user_id=wp_user_id)
     existing = Author.objects.filter(username__iexact=username).first()
     if existing:
@@ -86,6 +103,136 @@ def resolve_author_for_wp_user(
         description="",
     )
     return author, True
+
+
+def _wp_import_author_username_q(base: str, wp_user_id: int) -> Q:
+    """Имена Author, которые создаёт импорт WP для одного wp_user_id (без голого base)."""
+    escaped = re.escape(base)
+    wid = int(wp_user_id)
+    return (
+        Q(username__iexact=f"{base}-wp{wid}")
+        | Q(username__iregex=rf"^{escaped}-wp{wid}-\d+$")
+        | Q(username__iregex=rf"^{escaped}-legacy-wp{wid}(-\d+)?$")
+    )
+
+
+def authors_created_for_wp_import(wp_user_id: int, base: str) -> list[Author]:
+    return list(
+        Author.objects.filter(_wp_import_author_username_q(base, wp_user_id)).order_by("id")
+    )
+
+
+def pick_canonical_wp_import_author(
+    authors: list[Author],
+    *,
+    wp_user_id: int,
+    base: str,
+    map_author_id: int | None,
+) -> Author:
+    if not authors:
+        raise ValueError("authors пуст")
+    if len(authors) == 1:
+        return authors[0]
+    by_id = {a.id: a for a in authors}
+    if map_author_id and map_author_id in by_id:
+        return by_id[map_author_id]
+    preferred = f"{base}-wp{wp_user_id}".lower()
+    for author in authors:
+        if author.username.lower() == preferred:
+            return author
+    post_counts = (
+        Post.objects.filter(author_id__in=by_id.keys())
+        .values("author_id")
+        .annotate(c=Count("id"))
+    )
+    count_map = {row["author_id"]: row["c"] for row in post_counts}
+    return max(authors, key=lambda a: (count_map.get(a.id, 0), -a.id))
+
+
+def dedupe_wp_import_authors_for_user(
+    wp_user_id: int,
+    *,
+    dry_run: bool = False,
+) -> dict[str, object]:
+    """
+    Слить jeckmod-wp266, jeckmod-wp266-2, … в одного Author.
+    Карточку jeckmod без суффикса -wp{id} не трогаем (часто живой канал).
+    """
+    wp_user = WpUsers.objects.filter(id=wp_user_id).first()
+    if not wp_user:
+        return {"status": "no_wp_user", "wp_user_id": wp_user_id}
+
+    base = wp_author_username(
+        wp_user_id=wp_user_id,
+        user_login=wp_user.user_login or "",
+        user_nicename=wp_user.user_nicename or "",
+    )
+    display_norm = (getattr(wp_user, "display_name", "") or "").strip()
+
+    # Canonical: если есть живой Author с username=base и title совпадает с display_name,
+    # то это "оригинал" — сливаем всё в него.
+    canonical_by_base = None
+    if base and display_norm:
+        a = Author.objects.filter(username__iexact=base).first()
+        if a and (a.title or "").strip() == display_norm:
+            canonical_by_base = a
+
+    authors = authors_created_for_wp_import(wp_user_id, base)
+    if canonical_by_base:
+        # Сливаем в base-автора, даже если дублей пока нет.
+        canonical = canonical_by_base
+        dup_ids = [a.id for a in authors if a.id != canonical.id]
+    else:
+        if len(authors) <= 1:
+            return {
+                "status": "skip",
+                "wp_user_id": wp_user_id,
+                "canonical_id": authors[0].id if authors else None,
+                "canonical_username": authors[0].username if authors else None,
+                "merged": 0,
+            }
+
+        map_row = LegacyWpUserMap.objects.filter(wp_user_id=wp_user_id).first()
+        map_author_id = int(map_row.author_id) if map_row and map_row.author_id else None
+        canonical = pick_canonical_wp_import_author(
+            authors,
+            wp_user_id=wp_user_id,
+            base=base,
+            map_author_id=map_author_id,
+        )
+        dup_ids = [a.id for a in authors if a.id != canonical.id]
+
+    map_row = LegacyWpUserMap.objects.filter(wp_user_id=wp_user_id).first()
+    posts_moved = Post.objects.filter(author_id__in=dup_ids).count()
+
+    if dry_run:
+        return {
+            "status": "dry-run",
+            "wp_user_id": wp_user_id,
+            "canonical_id": canonical.id,
+            "canonical_username": canonical.username,
+            "dup_ids": dup_ids,
+            "posts_moved": posts_moved,
+            "merged": len(dup_ids),
+        }
+
+    if dup_ids:
+        Post.objects.filter(author_id__in=dup_ids).update(author_id=canonical.id)
+        LegacyWpUserMap.objects.filter(author_id__in=dup_ids).update(author=canonical)
+        Author.objects.filter(id__in=dup_ids).delete()
+    if map_row and map_row.author_id and int(map_row.author_id) != int(canonical.id):
+        map_row.author = canonical
+        map_row.save(update_fields=["author", "updated_at"])
+
+    return {
+        "status": "merged",
+        "wp_user_id": wp_user_id,
+        "canonical_id": canonical.id,
+        "canonical_username": canonical.username,
+        "dup_ids": dup_ids,
+        "posts_moved": posts_moved,
+        "merged": len(dup_ids),
+    }
 
 
 def wp_user_username(
