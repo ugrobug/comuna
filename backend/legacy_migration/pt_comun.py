@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from legacy_migration.models import LegacyWpPostMap, WpPosts
 from legacy_migration.wp_content import legacy_article_source_url
 from legacy_migration.wp_redirects import normalize_legacy_path
+from legacy_migration.wp_post_categories import wp_categories_suggest_serialy
 from legacy_migration.wp_post_tags import wp_post_tag_names
 
 # Сообщество на prod: https://tambur.pub/comuns/after_the_credits
@@ -145,6 +146,14 @@ def decide_pt_comun(
             wp_subsection=wp_sub,
             extra_tags=tags_tuple,
             reason="wp_tag_animation",
+        )
+    if wp_post_id and wp_categories_suggest_serialy(wp_post_id):
+        return _decision(
+            CATEGORY_SLUG_SERIALY,
+            path,
+            wp_subsection=wp_sub,
+            extra_tags=tags_tuple,
+            reason="wp_category_serialy",
         )
     if "anime" in segs or "animation" in segs or "multfilmy" in segs:
         return _decision(

@@ -11,7 +11,8 @@ from legacy_migration.wp_comun_assign import assign_maps, load_pt_comun_context
 class Command(BaseCommand):
     help = (
         "ПТ → коммуна after_the_credits + категории filmy/serialy/animatsiya "
-        "(ComunPostCategoryAssignment)"
+        "(ComunPostCategoryAssignment). Сериалы: path tv-series, рубрика WP «Сериалы», "
+        "анимация по тегам — выше рубрики."
     )
 
     def add_arguments(self, parser):

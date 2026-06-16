@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from django.test import SimpleTestCase
 
 from legacy_migration.pt_comun import (
@@ -44,3 +46,19 @@ class PtComunRulesTests(SimpleTestCase):
         d = decide_pt_comun("/articles/anime/one-piece")
         self.assertEqual(d.category_slug, CATEGORY_SLUG_ANIMATSIYA)
         self.assertEqual(d.reason, "path_animation")
+
+    @patch("legacy_migration.pt_comun._tag_names_suggest_animation", return_value=False)
+    @patch("legacy_migration.pt_comun.wp_categories_suggest_serialy", return_value=True)
+    def test_wp_category_serialy_on_root_articles_path(self, _mock_serialy, _mock_anim) -> None:
+        d = decide_pt_comun("/articles/buhta-vdov/", wp_post_id=28755)
+        self.assertEqual(d.category_slug, CATEGORY_SLUG_SERIALY)
+        self.assertEqual(d.reason, "wp_category_serialy")
+
+    @patch("legacy_migration.pt_comun.wp_categories_suggest_serialy", return_value=True)
+    @patch("legacy_migration.pt_comun._tag_names_suggest_animation", return_value=True)
+    def test_animation_tag_beats_serialy_category(
+        self, _mock_anim, _mock_serialy
+    ) -> None:
+        d = decide_pt_comun("/articles/jujutsu-season-3/", wp_post_id=1)
+        self.assertEqual(d.category_slug, CATEGORY_SLUG_ANIMATSIYA)
+        self.assertEqual(d.reason, "wp_tag_animation")
