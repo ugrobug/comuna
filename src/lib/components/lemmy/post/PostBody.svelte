@@ -2132,12 +2132,30 @@
       </div>`
     }
 
+    const renderTableCellHtml = (value: unknown): string => {
+      const raw = String(value ?? '')
+      const hasAllowedInlineTag = /<\/?(a|b|strong|i|em|span|br|code)\b/i.test(raw)
+      const hasEncodedEntity = /&(?:[a-z][a-z0-9]+|#\d+|#x[\da-f]+);/i.test(raw)
+      if (!hasAllowedInlineTag) {
+        const cellText = hasEncodedEntity && !/[<>]/.test(raw) ? raw : escapeHtml(raw)
+        return cellText.replace(/\r?\n/g, '<br>')
+      }
+
+      const allowedInlineTags = new Set(['a', 'b', 'strong', 'i', 'em', 'span', 'br', 'code'])
+      return raw
+        .replace(/\r?\n/g, '<br>')
+        .replace(/<\/?([a-zA-Z][\w:-]*)([^<>]*)>/g, (match, tagName) => {
+          const normalizedTag = String(tagName || '').toLowerCase()
+          return allowedInlineTags.has(normalizedTag) ? match : ''
+        })
+    }
+
     const renderTableBlock = (raw: any): string => {
       const sourceRows = Array.isArray(raw?.content) ? raw.content : []
       const rows = sourceRows
         .map((row: unknown) =>
           Array.isArray(row)
-            ? row.map((cell) => escapeHtml(String(cell ?? '')).replace(/\r?\n/g, '<br>'))
+            ? row.map((cell) => renderTableCellHtml(cell))
             : []
         )
         .filter((row: string[]) => row.length > 0)
