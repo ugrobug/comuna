@@ -1148,6 +1148,75 @@
     document.body.appendChild(modal)
   }
 
+  const openTableModal = (tableBlock: HTMLElement) => {
+    if (!browser) return
+    const sourceTable = tableBlock.querySelector('.post-table-wrap table') as HTMLTableElement | null
+    if (!sourceTable) return
+    if (document.querySelector('.post-table-modal')) return
+
+    const modal = document.createElement('div')
+    modal.className = 'post-table-modal'
+    modal.setAttribute('role', 'dialog')
+    modal.setAttribute('aria-modal', 'true')
+    modal.setAttribute('aria-label', 'Просмотр таблицы')
+
+    const backdrop = document.createElement('div')
+    backdrop.className = 'post-table-modal__backdrop'
+
+    const content = document.createElement('div')
+    content.className = 'post-table-modal__content'
+
+    const header = document.createElement('div')
+    header.className = 'post-table-modal__header'
+
+    const title = document.createElement('div')
+    title.className = 'post-table-modal__title'
+    title.textContent = 'Таблица'
+
+    const closeButton = document.createElement('button')
+    closeButton.type = 'button'
+    closeButton.className = 'post-table-modal__close'
+    closeButton.setAttribute('aria-label', 'Закрыть таблицу')
+    closeButton.textContent = 'Закрыть'
+
+    const tableWrap = document.createElement('div')
+    tableWrap.className = 'post-table-modal__table-wrap'
+
+    const tableClone = sourceTable.cloneNode(true) as HTMLTableElement
+    tableClone.classList.add('post-table-modal__table')
+    tableWrap.appendChild(tableClone)
+
+    header.appendChild(title)
+    header.appendChild(closeButton)
+    content.appendChild(header)
+    content.appendChild(tableWrap)
+    modal.appendChild(backdrop)
+    modal.appendChild(content)
+
+    const previousOverflow = document.body.style.overflow
+
+    const close = () => {
+      modal.remove()
+      document.body.style.overflow = previousOverflow
+      document.removeEventListener('keydown', onKeydown)
+    }
+
+    const onKeydown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      close()
+    }
+
+    backdrop.addEventListener('click', close)
+    closeButton.addEventListener('click', close)
+    document.addEventListener('keydown', onKeydown)
+
+    document.body.style.overflow = 'hidden'
+    document.body.appendChild(modal)
+    setTimeout(() => modal.classList.add('is-open'), 10)
+    closeButton.focus()
+  }
+
   const toggleSpoilerBlock = (spoiler: HTMLElement) => {
     if (!element?.contains(spoiler)) return
     const isOpen = spoiler.classList.toggle('is-open')
@@ -2163,6 +2232,7 @@
       if (!rows.length) return ''
 
       const withHeadings = Boolean(raw?.withHeadings)
+      const withColumnHeadings = Boolean(raw?.withColumnHeadings)
       const headRow = withHeadings ? rows[0] : null
       const bodyRows = withHeadings ? rows.slice(1) : rows
 
@@ -2171,11 +2241,32 @@
         : ''
       const bodyHtml = bodyRows.length
         ? `<tbody>${bodyRows
-            .map((row: string[]) => `<tr>${row.map((cell) => `<td>${cell || '&nbsp;'}</td>`).join('')}</tr>`)
+            .map(
+              (row: string[]) =>
+                `<tr>${row
+                  .map((cell, columnIndex) =>
+                    withColumnHeadings && columnIndex === 0
+                      ? `<th>${cell || '&nbsp;'}</th>`
+                      : `<td>${cell || '&nbsp;'}</td>`
+                  )
+                  .join('')}</tr>`
+            )
             .join('')}</tbody>`
         : ''
 
-      return `<div class="post-table-wrap"><table>${headHtml}${bodyHtml}</table></div>`
+      return `<div class="post-table-block">
+        <div class="post-table-toolbar">
+          <button
+            type="button"
+            class="post-table-expand"
+            aria-label="Открыть таблицу во всю ширину"
+            title="Открыть таблицу во всю ширину"
+          >
+            <span class="post-table-expand__icon" aria-hidden="true"></span>
+          </button>
+        </div>
+        <div class="post-table-wrap"><table>${headHtml}${bodyHtml}</table></div>
+      </div>`
     }
 
     switch (block.type) {
@@ -3256,6 +3347,15 @@
         openMapModal(mapElement)
         return
       }
+      const tableExpandButton = target?.closest('.post-table-expand') as HTMLElement | null
+      if (tableExpandButton && element?.contains(tableExpandButton)) {
+        const tableBlock = tableExpandButton.closest('.post-table-block') as HTMLElement | null
+        if (!tableBlock || !element?.contains(tableBlock)) return
+        event.preventDefault()
+        event.stopPropagation()
+        openTableModal(tableBlock)
+        return
+      }
       const ratingButton = target?.closest('.post-inline-rating__item') as HTMLElement | null
       if (ratingButton && element?.contains(ratingButton)) {
         void handlePostRatingClick(event)
@@ -3519,6 +3619,255 @@
   :global(.post-content a) {
     overflow-wrap: anywhere;
     word-break: break-word;
+  }
+
+  :global(.post-content .post-table-block) {
+    margin: 1rem 0;
+    min-width: 0;
+  }
+
+  :global(.post-content .post-table-toolbar) {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 0.35rem;
+  }
+
+  :global(.post-content .post-table-expand) {
+    display: inline-flex;
+    width: 2.1rem;
+    height: 2.1rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    border: 1px solid rgb(203 213 225);
+    background: rgb(255 255 255 / 0.94);
+    color: rgb(51 65 85);
+    box-shadow: 0 6px 18px rgb(15 23 42 / 0.1);
+    transition:
+      transform 0.15s ease,
+      border-color 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+
+  :global(.post-content .post-table-expand:hover) {
+    transform: translateY(-1px);
+    border-color: rgb(148 163 184);
+    box-shadow: 0 10px 24px rgb(15 23 42 / 0.14);
+  }
+
+  :global(.post-table-expand__icon) {
+    width: 1rem;
+    height: 1rem;
+    display: inline-block;
+    background:
+      linear-gradient(currentColor, currentColor) left top / 0.48rem 0.12rem no-repeat,
+      linear-gradient(currentColor, currentColor) left top / 0.12rem 0.48rem no-repeat,
+      linear-gradient(currentColor, currentColor) right top / 0.48rem 0.12rem no-repeat,
+      linear-gradient(currentColor, currentColor) right top / 0.12rem 0.48rem no-repeat,
+      linear-gradient(currentColor, currentColor) left bottom / 0.48rem 0.12rem no-repeat,
+      linear-gradient(currentColor, currentColor) left bottom / 0.12rem 0.48rem no-repeat,
+      linear-gradient(currentColor, currentColor) right bottom / 0.48rem 0.12rem no-repeat,
+      linear-gradient(currentColor, currentColor) right bottom / 0.12rem 0.48rem no-repeat;
+  }
+
+  :global(.post-content .post-table-wrap) {
+    overflow-x: auto;
+    border-radius: 0.85rem;
+    border: 1px solid rgb(226 232 240);
+    background: rgb(248 250 252);
+  }
+
+  :global(.post-content .post-table-wrap table) {
+    width: 100%;
+    min-width: 520px;
+    border-collapse: collapse;
+    font-size: 0.92rem;
+    line-height: 1.45;
+  }
+
+  :global(.post-content .post-table-wrap th),
+  :global(.post-content .post-table-wrap td) {
+    border: 1px solid rgb(226 232 240);
+    padding: 0.72rem 0.82rem;
+    vertical-align: top;
+  }
+
+  :global(.post-content .post-table-wrap th) {
+    background: rgb(241 245 249);
+    color: rgb(15 23 42);
+    font-weight: 700;
+  }
+
+  :global(.post-content .post-table-wrap td) {
+    background: rgb(255 255 255);
+  }
+
+  :global(.dark .post-content .post-table-expand) {
+    border-color: rgb(63 63 70);
+    background: rgb(24 24 27 / 0.96);
+    color: rgb(228 228 231);
+    box-shadow: 0 6px 18px rgb(0 0 0 / 0.3);
+  }
+
+  :global(.dark .post-content .post-table-wrap) {
+    border-color: rgb(63 63 70);
+    background: rgb(24 24 27);
+  }
+
+  :global(.dark .post-content .post-table-wrap th),
+  :global(.dark .post-content .post-table-wrap td) {
+    border-color: rgb(63 63 70);
+  }
+
+  :global(.dark .post-content .post-table-wrap th) {
+    background: rgb(39 39 42);
+    color: rgb(244 244 245);
+  }
+
+  :global(.dark .post-content .post-table-wrap td) {
+    background: rgb(24 24 27);
+  }
+
+  :global(.post-table-modal) {
+    position: fixed;
+    inset: 0;
+    z-index: 2100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: clamp(0.75rem, 2vw, 1.5rem);
+    opacity: 0;
+    transition: opacity 0.16s ease;
+  }
+
+  :global(.post-table-modal.is-open) {
+    opacity: 1;
+  }
+
+  :global(.post-table-modal__backdrop) {
+    position: absolute;
+    inset: 0;
+    background: rgb(15 23 42 / 0.66);
+    backdrop-filter: blur(3px);
+  }
+
+  :global(.post-table-modal__content) {
+    position: relative;
+    z-index: 1;
+    width: min(1180px, 100%);
+    max-height: min(780px, calc(100vh - 2rem));
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    overflow: hidden;
+    border-radius: 1rem;
+    border: 1px solid rgb(226 232 240);
+    background: rgb(255 255 255);
+    color: rgb(15 23 42);
+    box-shadow: 0 28px 80px rgb(15 23 42 / 0.32);
+    padding: 1rem;
+  }
+
+  :global(.post-table-modal__header) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  :global(.post-table-modal__title) {
+    min-width: 0;
+    color: rgb(15 23 42);
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  :global(.post-table-modal__close) {
+    flex: 0 0 auto;
+    border-radius: 0.75rem;
+    border: 1px solid rgb(203 213 225);
+    background: rgb(248 250 252);
+    color: rgb(51 65 85);
+    font-size: 0.84rem;
+    font-weight: 700;
+    line-height: 1.2;
+    padding: 0.62rem 0.9rem;
+    transition:
+      transform 0.15s ease,
+      border-color 0.15s ease;
+  }
+
+  :global(.post-table-modal__close:hover) {
+    transform: translateY(-1px);
+    border-color: rgb(148 163 184);
+  }
+
+  :global(.post-table-modal__table-wrap) {
+    min-height: 0;
+    overflow: auto;
+    border-radius: 0.85rem;
+    border: 1px solid rgb(226 232 240);
+    background: rgb(248 250 252);
+  }
+
+  :global(.post-table-modal__table) {
+    width: 100%;
+    min-width: 760px;
+    border-collapse: collapse;
+    font-size: 0.94rem;
+    line-height: 1.45;
+  }
+
+  :global(.post-table-modal__table th),
+  :global(.post-table-modal__table td) {
+    border: 1px solid rgb(226 232 240);
+    padding: 0.8rem 0.9rem;
+    vertical-align: top;
+  }
+
+  :global(.post-table-modal__table th) {
+    background: rgb(241 245 249);
+    font-weight: 700;
+  }
+
+  :global(.post-table-modal__table td) {
+    background: rgb(255 255 255);
+  }
+
+  :global(.dark .post-table-modal__content) {
+    border-color: rgb(63 63 70);
+    background: rgb(24 24 27);
+    color: rgb(244 244 245);
+    box-shadow: 0 28px 80px rgb(0 0 0 / 0.48);
+  }
+
+  :global(.dark .post-table-modal__title) {
+    color: rgb(244 244 245);
+  }
+
+  :global(.dark .post-table-modal__close) {
+    border-color: rgb(63 63 70);
+    background: rgb(39 39 42);
+    color: rgb(228 228 231);
+  }
+
+  :global(.dark .post-table-modal__table-wrap) {
+    border-color: rgb(63 63 70);
+    background: rgb(24 24 27);
+  }
+
+  :global(.dark .post-table-modal__table th),
+  :global(.dark .post-table-modal__table td) {
+    border-color: rgb(63 63 70);
+  }
+
+  :global(.dark .post-table-modal__table th) {
+    background: rgb(39 39 42);
+  }
+
+  :global(.dark .post-table-modal__table td) {
+    background: rgb(24 24 27);
   }
 
   :global(.post-content .image-alt-text) {

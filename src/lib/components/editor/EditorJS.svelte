@@ -1218,6 +1218,7 @@
   class TableTool {
     private data: {
       withHeadings: boolean
+      withColumnHeadings: boolean
       content: string[][]
     }
     private grid: HTMLDivElement | null = null
@@ -1225,6 +1226,8 @@
     private modalGrid: HTMLDivElement | null = null
     private headingToggle: HTMLInputElement | null = null
     private modalHeadingToggle: HTMLInputElement | null = null
+    private columnHeadingToggle: HTMLInputElement | null = null
+    private modalColumnHeadingToggle: HTMLInputElement | null = null
 
     static get toolbox() {
       return {
@@ -1245,6 +1248,7 @@
     static get sanitize() {
       return {
         withHeadings: false,
+        withColumnHeadings: false,
         content: {
           br: true,
           b: true,
@@ -1272,6 +1276,7 @@
     constructor({ data }: { data?: any }) {
       this.data = {
         withHeadings: Boolean(data?.withHeadings),
+        withColumnHeadings: Boolean(data?.withColumnHeadings),
         content: this.normalizeContent(data?.content),
       }
     }
@@ -1456,6 +1461,26 @@
       this.updateCell(rowIndex, columnIndex, editable.innerHTML)
     }
 
+    private syncContentFromGrid(grid: HTMLDivElement | null) {
+      if (!grid) return
+
+      const inputs = Array.from(
+        grid.querySelectorAll<HTMLDivElement>('.table-tool__input[data-row-index][data-column-index]')
+      )
+
+      inputs.forEach((input) => {
+        const rowIndex = Number(input.dataset.rowIndex)
+        const columnIndex = Number(input.dataset.columnIndex)
+        if (!Number.isInteger(rowIndex) || !Number.isInteger(columnIndex)) return
+        this.updateCell(rowIndex, columnIndex, input.innerHTML)
+      })
+    }
+
+    private syncContentFromVisibleGrids() {
+      this.syncContentFromGrid(this.grid)
+      this.syncContentFromGrid(this.modalGrid)
+    }
+
     private syncHeadingToggles() {
       if (this.headingToggle) {
         this.headingToggle.checked = this.data.withHeadings
@@ -1463,10 +1488,24 @@
       if (this.modalHeadingToggle) {
         this.modalHeadingToggle.checked = this.data.withHeadings
       }
+      if (this.columnHeadingToggle) {
+        this.columnHeadingToggle.checked = this.data.withColumnHeadings
+      }
+      if (this.modalColumnHeadingToggle) {
+        this.modalColumnHeadingToggle.checked = this.data.withColumnHeadings
+      }
     }
 
     private setHeadings(value: boolean) {
+      this.syncContentFromVisibleGrids()
       this.data.withHeadings = value
+      this.syncHeadingToggles()
+      this.renderAllGrids()
+    }
+
+    private setColumnHeadings(value: boolean) {
+      this.syncContentFromVisibleGrids()
+      this.data.withColumnHeadings = value
       this.syncHeadingToggles()
       this.renderAllGrids()
     }
@@ -1477,6 +1516,7 @@
     }
 
     private addRow() {
+      this.syncContentFromVisibleGrids()
       const columnCount = this.data.content[0]?.length || 2
       this.data.content = [
         ...this.data.content,
@@ -1487,11 +1527,13 @@
 
     private removeRow() {
       if (this.data.content.length <= 2) return
+      this.syncContentFromVisibleGrids()
       this.data.content = this.data.content.slice(0, -1)
       this.renderAllGrids()
     }
 
     private addColumn() {
+      this.syncContentFromVisibleGrids()
       this.data.content = this.data.content.map((row) => [...row, ''])
       this.renderAllGrids()
     }
@@ -1499,12 +1541,14 @@
     private removeColumn() {
       const columnCount = this.data.content[0]?.length || 0
       if (columnCount <= 2) return
+      this.syncContentFromVisibleGrids()
       this.data.content = this.data.content.map((row) => row.slice(0, -1))
       this.renderAllGrids()
     }
 
     private openWideEditor() {
       if (typeof document === 'undefined') return
+      this.syncContentFromGrid(this.grid)
 
       if (this.modalRoot) {
         const firstInput = this.modalRoot.querySelector('.table-tool__input') as HTMLElement | null
@@ -1563,6 +1607,24 @@
       headingToggle.appendChild(headingText)
       options.appendChild(headingToggle)
 
+      const columnHeadingToggle = document.createElement('label')
+      columnHeadingToggle.classList.add('table-tool__toggle', 'table-tool__toggle--modal')
+
+      const columnHeadingInput = document.createElement('input')
+      columnHeadingInput.type = 'checkbox'
+      columnHeadingInput.checked = this.data.withColumnHeadings
+      columnHeadingInput.addEventListener('change', () => {
+        this.setColumnHeadings(columnHeadingInput.checked)
+      })
+      this.modalColumnHeadingToggle = columnHeadingInput
+
+      const columnHeadingText = document.createElement('span')
+      columnHeadingText.textContent = 'Первый столбец — заголовки'
+
+      columnHeadingToggle.appendChild(columnHeadingInput)
+      columnHeadingToggle.appendChild(columnHeadingText)
+      options.appendChild(columnHeadingToggle)
+
       const grid = document.createElement('div')
       grid.classList.add('table-tool__grid', 'table-tool__grid--modal')
       this.modalGrid = grid
@@ -1575,12 +1637,14 @@
       modal.appendChild(panel)
 
       const closeModal = () => {
+        this.syncContentFromGrid(this.modalGrid)
         document.removeEventListener('keydown', handleKeydown)
         modal.remove()
         if (this.modalRoot === modal) {
           this.modalRoot = null
           this.modalGrid = null
           this.modalHeadingToggle = null
+          this.modalColumnHeadingToggle = null
         }
         this.renderGrid()
         previousActiveElement?.focus()
@@ -1644,8 +1708,14 @@
         )
       )
       if (!isModal) {
-        const expandButton = makeButton('Открыть шире', () => this.openWideEditor())
+        const expandButton = makeButton('', () => this.openWideEditor())
         expandButton.classList.add('table-tool__action--expand')
+        expandButton.setAttribute('aria-label', 'Открыть таблицу шире')
+        expandButton.setAttribute('title', 'Открыть таблицу шире')
+        const expandIcon = document.createElement('span')
+        expandIcon.classList.add('table-tool__expand-icon')
+        expandIcon.setAttribute('aria-hidden', 'true')
+        expandButton.appendChild(expandIcon)
         controls.appendChild(expandButton)
       }
 
@@ -1667,9 +1737,12 @@
         const tr = document.createElement('tr')
 
         row.forEach((cell, columnIndex) => {
+          const isHeadingCell =
+            (this.data.withHeadings && rowIndex === 0) ||
+            (this.data.withColumnHeadings && columnIndex === 0)
           const td = document.createElement('td')
           td.classList.add('table-tool__cell')
-          if (this.data.withHeadings && rowIndex === 0) {
+          if (isHeadingCell) {
             td.classList.add('table-tool__cell--heading')
           }
 
@@ -1681,9 +1754,14 @@
           input.contentEditable = 'true'
           input.setAttribute('role', 'textbox')
           input.setAttribute('aria-multiline', 'true')
+          input.dataset.rowIndex = String(rowIndex)
+          input.dataset.columnIndex = String(columnIndex)
           if (this.data.withHeadings && rowIndex === 0) {
             input.classList.add('table-tool__input--heading')
             input.dataset.placeholder = `Заголовок ${columnIndex + 1}`
+          } else if (this.data.withColumnHeadings && columnIndex === 0) {
+            input.classList.add('table-tool__input--heading')
+            input.dataset.placeholder = `Заголовок строки ${rowIndex + 1}`
           } else {
             input.dataset.placeholder = `Ячейка ${rowIndex + 1}.${columnIndex + 1}`
           }
@@ -1754,6 +1832,23 @@
       headingToggle.appendChild(headingInput)
       headingToggle.appendChild(headingText)
 
+      const columnHeadingToggle = document.createElement('label')
+      columnHeadingToggle.classList.add('table-tool__toggle')
+
+      const columnHeadingInput = document.createElement('input')
+      columnHeadingInput.type = 'checkbox'
+      columnHeadingInput.checked = this.data.withColumnHeadings
+      columnHeadingInput.addEventListener('change', () => {
+        this.setColumnHeadings(columnHeadingInput.checked)
+      })
+      this.columnHeadingToggle = columnHeadingInput
+
+      const columnHeadingText = document.createElement('span')
+      columnHeadingText.textContent = 'Первый столбец — заголовки'
+
+      columnHeadingToggle.appendChild(columnHeadingInput)
+      columnHeadingToggle.appendChild(columnHeadingText)
+
       const grid = document.createElement('div')
       grid.classList.add('table-tool__grid')
       this.grid = grid
@@ -1761,6 +1856,7 @@
       wrapper.appendChild(title)
       wrapper.appendChild(hint)
       wrapper.appendChild(headingToggle)
+      wrapper.appendChild(columnHeadingToggle)
       wrapper.appendChild(grid)
 
       this.renderGrid()
@@ -1769,10 +1865,12 @@
     }
 
     save() {
+      this.syncContentFromVisibleGrids()
       const content = this.normalizeCurrentContent()
 
       return {
         withHeadings: this.data.withHeadings,
+        withColumnHeadings: this.data.withColumnHeadings,
         content,
       }
     }
@@ -6512,6 +6610,9 @@
   }
 
   :global(.table-tool__action) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     border: 1px solid rgba(96, 165, 250, 0.26);
     background: rgba(15, 23, 42, 0.42);
     color: #dbeafe;
@@ -6533,7 +6634,10 @@
   }
 
   :global(.table-tool__action--expand) {
+    width: 2.25rem;
+    height: 2.25rem;
     margin-left: auto;
+    padding: 0;
     border-color: rgba(56, 189, 248, 0.42);
     background: rgba(14, 165, 233, 0.16);
     color: #e0f2fe;
@@ -6541,6 +6645,21 @@
 
   :global(.table-tool__action--expand:hover:not(:disabled)) {
     border-color: rgba(56, 189, 248, 0.68);
+  }
+
+  :global(.table-tool__expand-icon) {
+    width: 1rem;
+    height: 1rem;
+    display: inline-block;
+    background:
+      linear-gradient(currentColor, currentColor) left top / 0.48rem 0.12rem no-repeat,
+      linear-gradient(currentColor, currentColor) left top / 0.12rem 0.48rem no-repeat,
+      linear-gradient(currentColor, currentColor) right top / 0.48rem 0.12rem no-repeat,
+      linear-gradient(currentColor, currentColor) right top / 0.12rem 0.48rem no-repeat,
+      linear-gradient(currentColor, currentColor) left bottom / 0.48rem 0.12rem no-repeat,
+      linear-gradient(currentColor, currentColor) left bottom / 0.12rem 0.48rem no-repeat,
+      linear-gradient(currentColor, currentColor) right bottom / 0.48rem 0.12rem no-repeat,
+      linear-gradient(currentColor, currentColor) right bottom / 0.12rem 0.48rem no-repeat;
   }
 
   :global(.table-tool__wrap) {

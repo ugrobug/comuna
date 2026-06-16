@@ -75,7 +75,7 @@ const GLOBAL_ATTRIBUTES = new Set([
 
 const TAG_ATTRIBUTES: Record<string, Set<string>> = {
   a: new Set(['href', 'target', 'rel', 'title', 'class', 'id', 'aria-label']),
-  button: new Set(['type', 'class', 'data-rating-value', 'aria-pressed', 'aria-label']),
+  button: new Set(['type', 'class', 'title', 'data-rating-value', 'aria-pressed', 'aria-label']),
   audio: new Set(['src', 'controls', 'preload', 'class']),
   source: new Set(['src', 'type']),
   img: new Set([
