@@ -39,6 +39,7 @@ services:
     volumes:
       - media_data:/app/media
       - static_data:/app/staticfiles
+      - ./secrets:/app/secrets:ro
 
   public-book-reminders:
     build:
@@ -53,6 +54,8 @@ services:
       - "oauth.telegram.org:149.154.167.220"
     depends_on:
       - db
+    volumes:
+      - ./secrets:/app/secrets:ro
 
   film-journey-deliveries:
     build:
@@ -67,6 +70,8 @@ services:
       - "oauth.telegram.org:149.154.167.220"
     depends_on:
       - db
+    volumes:
+      - ./secrets:/app/secrets:ro
 
   frontend:
     build:

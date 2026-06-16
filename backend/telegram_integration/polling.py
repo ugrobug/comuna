@@ -13,8 +13,8 @@ from telegram_integration.bot import (
     _fetch_telegram_json,
     _handle_callback_query,
     _handle_channel_post,
+    _handle_message,
     _handle_my_chat_member,
-    _handle_private_message,
 )
 
 logger = logging.getLogger(__name__)
@@ -68,7 +68,7 @@ def _polling_loop(token: str) -> None:
                 elif "edited_channel_post" in update:
                     _handle_channel_post(update["edited_channel_post"])
                 elif "message" in update:
-                    _handle_private_message(update["message"])
+                    _handle_message(update["message"])
                 elif "callback_query" in update:
                     _handle_callback_query(update["callback_query"])
                 elif "my_chat_member" in update:

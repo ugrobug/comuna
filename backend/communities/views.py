@@ -12,6 +12,7 @@ from django.db import transaction
 from django.db.models import Count, Prefetch, Q
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils import timezone
+from django.utils.html import escape
 from django.utils.text import slugify
 from django.views.decorators.csrf import csrf_exempt
 
@@ -24,6 +25,7 @@ from communities.models import (
     ComunKnowledgeBaseItem,
     ComunPostCategoryAssignment,
     ComunVote,
+    ComunTelegramSubmission,
 )
 from editor.models import (
     PostPollVote,
@@ -229,12 +231,183 @@ def _serialize_comun_knowledge_base(items: list[ComunKnowledgeBaseItem]) -> dict
     return {"items": roots, "flat_items": flat_items}
 
 
-def _parse_positive_int_param(value: object, *, default: int, maximum: int | None = None) -> int:
+def _serialize_comun_telegram_submission(item: ComunTelegramSubmission) -> dict:
+    requested_by = getattr(item, "requested_by", None)
+    reviewed_by = getattr(item, "reviewed_by", None)
+    return {
+        "id": item.id,
+        "request_type": item.request_type,
+        "status": item.status,
+        "title": item.title,
+        "source_text": item.source_text,
+        "source_author_name": item.source_author_name,
+        "telegram_username": item.telegram_username,
+        "telegram_chat_title": item.telegram_chat_title,
+        "telegram_source_url": item.telegram_source_url,
+        "glossary_term": item.glossary_term,
+        "glossary_definition": item.glossary_definition,
+        "created_post_id": item.created_post_id,
+        "created_glossary_term_id": item.created_glossary_term_id,
+        "requested_by": community_serializers._serialize_site_user_summary(
+            requested_by,
+            item.requested_by_id,
+        ),
+        "reviewed_by": community_serializers._serialize_site_user_summary(
+            reviewed_by,
+            item.reviewed_by_id,
+        ),
+        "reviewed_at": item.reviewed_at.isoformat() if item.reviewed_at else None,
+        "created_at": item.created_at.isoformat() if item.created_at else None,
+        "updated_at": item.updated_at.isoformat() if item.updated_at else None,
+    }
+
+
+def _telegram_submission_status(value: object) -> str:
+    status = str(value or "").strip().lower()
+    allowed = {
+        ComunTelegramSubmission.STATUS_PENDING,
+        ComunTelegramSubmission.STATUS_APPROVED,
+        ComunTelegramSubmission.STATUS_REJECTED,
+    }
+    return status if status in allowed else ComunTelegramSubmission.STATUS_PENDING
+
+
+def _telegram_submission_content_html(text: str) -> str:
+    lines = [line.strip() for line in str(text or "").splitlines()]
+    paragraphs = [line for line in lines if line]
+    if not paragraphs:
+        return ""
+    return "\n".join(
+        f"<p>{escape(line)}</p>"
+        for line in paragraphs
+    )
+
+
+def _approve_knowledge_base_submission(
+    request: HttpRequest,
+    comun: Comun,
+    submission: ComunTelegramSubmission,
+    reviewer: User,
+    payload: dict,
+) -> None:
+    if not comun.knowledge_base_enabled:
+        raise ValueError("knowledge base disabled")
+    title = str(payload.get("title") or submission.title or "").strip()[:255]
+    if not title:
+        title = "Сообщение из Telegram"
+    content = _telegram_submission_content_html(submission.source_text)
+    if not content:
+        raise ValueError("source text is empty")
+
+    author, personal_author_error = editor_service._get_or_create_personal_author(reviewer)
+    if personal_author_error:
+        raise ValueError(personal_author_error)
+    if not author:
+        raise ValueError("author not found")
+    try:
+        message_id = community_service._generate_manual_message_id(author)
+    except ValueError as error:
+        raise ValueError("unable to create post") from error
+
+    raw_data = {
+        "source": "manual_comun",
+        "comun_slug": comun.slug,
+        "telegram_submission_id": submission.id,
+        "telegram_chat_id": submission.telegram_chat_id,
+        "telegram_source_message_id": submission.telegram_source_message_id,
+        "telegram_source_url": submission.telegram_source_url,
+    }
+    post = Post.objects.create(
+        author=author,
+        message_id=message_id,
+        title=title,
+        content=content,
+        channel_url=author.invite_url or author.channel_url or "",
+        source_url=submission.telegram_source_url or author.invite_url or author.channel_url or "",
+        raw_data=raw_data,
+        is_pending=False,
+        is_blocked=False,
+        publish_at=None,
+    )
+    item, _created = ComunKnowledgeBaseItem.objects.get_or_create(
+        comun=comun,
+        post=post,
+        defaults={
+            "item_type": ComunKnowledgeBaseItem.TYPE_POST,
+            "title": title,
+            "sort_order": _next_knowledge_base_sort_order(comun),
+            "created_by": reviewer,
+            "is_active": True,
+        },
+    )
+    if not item.is_active:
+        item.is_active = True
+        item.save(update_fields=["is_active", "updated_at"])
+    community_service._maybe_notify_new_author(author, post)
+    community_service._maybe_notify_post_published_to_subscribers(
+        post,
+        actor=reviewer,
+        comun=comun,
+        category=None,
+    )
+    community_service._maybe_increment_comun_author_count_for_post(post, comun=comun)
+    submission.created_post = post
+
+
+def _approve_glossary_submission(
+    comun: Comun,
+    submission: ComunTelegramSubmission,
+    payload: dict,
+) -> None:
+    if not comun.glossary_enabled:
+        raise ValueError("glossary disabled")
+    term = _normalize_comun_glossary_term(
+        payload.get("glossary_term") or payload.get("term") or submission.glossary_term
+    )
+    definition = _normalize_comun_glossary_definition(
+        payload.get("glossary_definition") or payload.get("definition") or submission.glossary_definition
+    )
+    if not term:
+        raise ValueError("term required")
+    if not definition:
+        definition = submission.source_text.strip()[:5000]
+    existing = ComunGlossaryTerm.objects.filter(comun=comun, term__iexact=term).first()
+    if existing:
+        existing.definition = definition
+        existing.is_active = True
+        existing.save(update_fields=["definition", "is_active", "updated_at"])
+        submission.created_glossary_term = existing
+        return
+    glossary_term = ComunGlossaryTerm.objects.create(
+        comun=comun,
+        term=term,
+        slug=_generate_unique_comun_glossary_term_slug(comun, term),
+        definition=definition,
+        sort_order=(
+            ComunGlossaryTerm.objects.filter(comun=comun, is_active=True)
+            .order_by("-sort_order", "-id")
+            .values_list("sort_order", flat=True)
+            .first()
+            or 0
+        )
+        + 10,
+        is_active=True,
+    )
+    submission.created_glossary_term = glossary_term
+
+
+def _parse_positive_int_param(
+    value: object,
+    *,
+    default: int,
+    minimum: int = 1,
+    maximum: int | None = None,
+) -> int:
     try:
         parsed = int(value)
     except (TypeError, ValueError):
         parsed = default
-    parsed = max(parsed, 1)
+    parsed = max(parsed, minimum)
     if maximum is not None:
         parsed = min(parsed, maximum)
     return parsed
@@ -2732,6 +2905,132 @@ def comun_knowledge_base_item(request: HttpRequest, slug: str, item_id: int) -> 
     item.save(update_fields=["title", "sort_order", "parent", "updated_at"])
     serialized = _serialize_comun_knowledge_base(list(_comun_knowledge_base_queryset(comun)))
     return JsonResponse({"ok": True, "item": _serialize_comun_knowledge_base_item(item), **serialized})
+
+
+@csrf_exempt
+def comun_telegram_submissions(request: HttpRequest, slug: str) -> HttpResponse:
+    current_user = user_views._get_user_from_request(request)
+    if not current_user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    try:
+        comun = (
+            Comun.objects.filter(slug=slug)
+            .select_related("creator")
+            .prefetch_related("moderators")
+            .get()
+        )
+    except Comun.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "comun not found"}, status=404)
+    if not _comun_is_moderator(current_user, comun):
+        return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+    if request.method not in ("GET", "HEAD"):
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    status = _telegram_submission_status(request.GET.get("status"))
+    limit = _parse_positive_int_param(request.GET.get("limit"), default=50, maximum=100)
+    offset = _parse_positive_int_param(request.GET.get("offset"), default=0, minimum=0)
+    queryset = (
+        ComunTelegramSubmission.objects.filter(comun=comun, status=status)
+        .select_related("requested_by", "reviewed_by", "created_post", "created_glossary_term")
+        .order_by("-created_at", "-id")
+    )
+    total = queryset.count()
+    items = list(queryset[offset : offset + limit])
+    return JsonResponse(
+        {
+            "ok": True,
+            "comun": _serialize_comun(request, comun, current_user=current_user),
+            "items": [_serialize_comun_telegram_submission(item) for item in items],
+            "total": total,
+        }
+    )
+
+
+@csrf_exempt
+def comun_telegram_submission_detail(request: HttpRequest, slug: str, submission_id: int) -> HttpResponse:
+    if request.method not in ("PATCH", "POST"):
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    current_user = user_views._get_user_from_request(request)
+    if not current_user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    try:
+        comun = (
+            Comun.objects.filter(slug=slug)
+            .select_related("creator")
+            .prefetch_related("moderators")
+            .get()
+        )
+    except Comun.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "comun not found"}, status=404)
+    if not _comun_is_moderator(current_user, comun):
+        return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+    submission = ComunTelegramSubmission.objects.filter(comun=comun, id=submission_id).first()
+    if not submission:
+        return JsonResponse({"ok": False, "error": "submission not found"}, status=404)
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+    action = str(payload.get("action") or payload.get("status") or "").strip().lower()
+    if action in {"approved", "approve"}:
+        action = "approve"
+    elif action in {"rejected", "reject"}:
+        action = "reject"
+    else:
+        return JsonResponse({"ok": False, "error": "invalid action"}, status=400)
+    if submission.status != ComunTelegramSubmission.STATUS_PENDING:
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": "submission already reviewed",
+                "item": _serialize_comun_telegram_submission(submission),
+            },
+            status=409,
+        )
+
+    try:
+        with transaction.atomic():
+            submission = (
+                ComunTelegramSubmission.objects.select_for_update()
+                .filter(comun=comun, id=submission_id)
+                .first()
+            )
+            if not submission:
+                return JsonResponse({"ok": False, "error": "submission not found"}, status=404)
+            if submission.status != ComunTelegramSubmission.STATUS_PENDING:
+                return JsonResponse(
+                    {
+                        "ok": False,
+                        "error": "submission already reviewed",
+                        "item": _serialize_comun_telegram_submission(submission),
+                    },
+                    status=409,
+                )
+            if action == "approve":
+                if submission.request_type == ComunTelegramSubmission.TYPE_KNOWLEDGE_BASE:
+                    _approve_knowledge_base_submission(request, comun, submission, current_user, payload)
+                elif submission.request_type == ComunTelegramSubmission.TYPE_GLOSSARY:
+                    _approve_glossary_submission(comun, submission, payload)
+                else:
+                    raise ValueError("unknown submission type")
+                submission.status = ComunTelegramSubmission.STATUS_APPROVED
+            else:
+                submission.status = ComunTelegramSubmission.STATUS_REJECTED
+            submission.reviewed_by = current_user
+            submission.reviewed_at = timezone.now()
+            update_fields = [
+                "status",
+                "reviewed_by",
+                "reviewed_at",
+                "created_post",
+                "created_glossary_term",
+                "updated_at",
+            ]
+            submission.save(update_fields=update_fields)
+    except ValueError as error:
+        return JsonResponse({"ok": False, "error": str(error)}, status=400)
+
+    return JsonResponse({"ok": True, "item": _serialize_comun_telegram_submission(submission)})
 
 
 @csrf_exempt

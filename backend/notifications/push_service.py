@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import re
+import time
 import urllib.error
 import urllib.request
 from functools import lru_cache
@@ -15,9 +17,13 @@ from notifications.models import MobilePushDevice, SiteNotification
 _PUSH_SCOPES = ("https://www.googleapis.com/auth/firebase.messaging",)
 _TERMINAL_PUSH_ERROR_MARKERS = (
     "UNREGISTERED",
+    "BadDeviceToken",
     "registration token is not a valid fcm registration token",
     "requested entity was not found",
 )
+_APNS_DEVICE_TOKEN_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+_APNS_AUTH_TOKEN_TTL_SECONDS = 50 * 60
+_APNS_AUTH_TOKEN_CACHE: dict[str, Any] = {}
 
 
 def normalize_push_platform(value: str) -> str:
@@ -60,22 +66,79 @@ def _load_push_service_account_info() -> dict[str, Any] | None:
     return parsed
 
 
-def get_push_provider_config() -> dict[str, Any]:
+@lru_cache(maxsize=1)
+def _load_apns_auth_key() -> str:
+    raw_key = str(getattr(settings, "PUSH_APNS_AUTH_KEY", "") or "").strip()
+    raw_file = str(getattr(settings, "PUSH_APNS_AUTH_KEY_FILE", "") or "").strip()
+
+    if raw_key:
+        return raw_key.replace("\\n", "\n")
+    if not raw_file:
+        return ""
+    with open(raw_file, "r", encoding="utf-8") as handle:
+        return handle.read().strip()
+
+
+def _get_apns_provider_config() -> dict[str, Any]:
     config_error = ""
+    auth_key = ""
+    try:
+        auth_key = _load_apns_auth_key()
+    except OSError as exc:
+        config_error = str(exc)
+
+    key_id = str(getattr(settings, "PUSH_APNS_KEY_ID", "") or "").strip()
+    team_id = str(getattr(settings, "PUSH_APNS_TEAM_ID", "") or "").strip()
+    topic = str(getattr(settings, "PUSH_APNS_TOPIC", "") or "").strip()
+    use_sandbox = bool(getattr(settings, "PUSH_APNS_USE_SANDBOX", False))
+    missing = [
+        label
+        for label, value in {
+            "APPLE_APNS_KEY_ID/PUSH_APNS_KEY_ID": key_id,
+            "APPLE_TEAM_ID": team_id,
+            "APPLE_APNS_TOPIC": topic,
+            "PUSH_APNS_AUTH_KEY/PUSH_APNS_AUTH_KEY_FILE": auth_key,
+        }.items()
+        if not value
+    ]
+    if not config_error and missing and any([key_id, team_id, topic, auth_key]):
+        config_error = "missing " + ", ".join(missing)
+    return {
+        "configured": bool(key_id and team_id and topic and auth_key),
+        "config_error": config_error,
+        "key_id": key_id,
+        "team_id": team_id,
+        "topic": topic,
+        "auth_key": auth_key,
+        "use_sandbox": use_sandbox,
+    }
+
+
+def get_push_provider_config() -> dict[str, Any]:
+    fcm_config_error = ""
     try:
         info = _load_push_service_account_info()
     except ValueError as exc:
         info = None
-        config_error = str(exc)
+        fcm_config_error = str(exc)
     project_id = str(getattr(settings, "PUSH_FCM_PROJECT_ID", "") or "").strip()
     if not project_id and info:
         project_id = str(info.get("project_id") or "").strip()
+    fcm_configured = bool(project_id and info)
+    apns_config = _get_apns_provider_config()
 
     return {
-        "configured": bool(project_id and info),
-        "config_error": config_error,
+        "configured": bool(fcm_configured or apns_config["configured"]),
+        "config_error": "; ".join(
+            error for error in [fcm_config_error, apns_config["config_error"]] if error
+        ),
+        "fcm_configured": fcm_configured,
+        "fcm_config_error": fcm_config_error,
+        "apns_configured": apns_config["configured"],
+        "apns_config_error": apns_config["config_error"],
         "project_id": project_id,
         "service_account_info": info,
+        "apns": apns_config,
     }
 
 
@@ -277,8 +340,8 @@ def _build_push_request_body(notification: SiteNotification, device: MobilePushD
 
 def _get_fcm_access_token() -> tuple[str | None, str | None]:
     config = get_push_provider_config()
-    if not config["configured"]:
-        return None, str(config.get("config_error") or "push provider is not configured")
+    if not config["fcm_configured"]:
+        return None, str(config.get("fcm_config_error") or "FCM push provider is not configured")
 
     try:
         from google.auth.transport.requests import Request
@@ -298,6 +361,46 @@ def _get_fcm_access_token() -> tuple[str | None, str | None]:
     token = str(credentials.token or "").strip()
     if not token:
         return None, "failed to get firebase access token"
+    return token, None
+
+
+def _apns_device_token(value: str) -> str:
+    token = re.sub(r"\s+", "", str(value or "")).strip()
+    return token if _APNS_DEVICE_TOKEN_RE.fullmatch(token) else ""
+
+
+def _get_apns_auth_token(apns_config: dict[str, Any]) -> tuple[str | None, str | None]:
+    if not apns_config.get("configured"):
+        return None, str(apns_config.get("config_error") or "APNs push provider is not configured")
+
+    try:
+        import jwt
+    except ImportError as exc:
+        return None, f"APNs auth dependency is not installed: {exc}"
+
+    now = int(time.time())
+    cache_key = f"{apns_config['team_id']}:{apns_config['key_id']}"
+    cached = _APNS_AUTH_TOKEN_CACHE.get(cache_key)
+    if cached and cached.get("expires_at", 0) > now:
+        return str(cached.get("token") or ""), None
+
+    try:
+        token = jwt.encode(
+            {"iss": apns_config["team_id"], "iat": now},
+            apns_config["auth_key"],
+            algorithm="ES256",
+            headers={"kid": apns_config["key_id"]},
+        )
+    except Exception as exc:
+        return None, str(exc)
+
+    token = str(token or "").strip()
+    if not token:
+        return None, "failed to create APNs auth token"
+    _APNS_AUTH_TOKEN_CACHE[cache_key] = {
+        "token": token,
+        "expires_at": now + _APNS_AUTH_TOKEN_TTL_SECONDS,
+    }
     return token, None
 
 
@@ -354,18 +457,88 @@ def _send_fcm_request(project_id: str, access_token: str, body: dict[str, Any]) 
     return True, ""
 
 
+def _extract_apns_error_message(status_code: int, raw_body: str) -> str:
+    raw_value = str(raw_body or "").strip()
+    if not raw_value:
+        return f"APNS HTTP {status_code}"
+    try:
+        parsed = json.loads(raw_value)
+    except json.JSONDecodeError:
+        return f"APNS HTTP {status_code}: {raw_value}"
+    if not isinstance(parsed, dict):
+        return f"APNS HTTP {status_code}: {raw_value}"
+    reason = str(parsed.get("reason") or "").strip()
+    timestamp = str(parsed.get("timestamp") or "").strip()
+    if reason and timestamp:
+        return f"APNS {reason} ({timestamp})"
+    if reason:
+        return f"APNS {reason}"
+    return f"APNS HTTP {status_code}: {raw_value}"
+
+
+def _build_apns_payload(notification: SiteNotification) -> dict[str, Any]:
+    return {
+        "aps": {
+            "alert": {
+                "title": str(notification.title or "")[:255],
+                "body": str(notification.message or "")[:1000],
+            },
+            "sound": "default",
+        },
+        "data": _build_push_data(notification),
+    }
+
+
+def _send_apns_request(
+    notification: SiteNotification,
+    device: MobilePushDevice,
+    apns_config: dict[str, Any],
+) -> tuple[bool, str]:
+    device_token = _apns_device_token(device.token)
+    if not device_token:
+        return False, "APNS BadDeviceToken"
+
+    auth_token, auth_error = _get_apns_auth_token(apns_config)
+    if not auth_token:
+        return False, auth_error or "failed to create APNs auth token"
+
+    try:
+        import httpx
+    except ImportError as exc:
+        return False, f"APNs HTTP/2 dependency is not installed: {exc}"
+
+    host = "api.sandbox.push.apple.com" if apns_config.get("use_sandbox") else "api.push.apple.com"
+    url = f"https://{host}/3/device/{device_token}"
+    headers = {
+        "authorization": f"bearer {auth_token}",
+        "apns-topic": str(apns_config.get("topic") or ""),
+        "apns-push-type": "alert",
+        "apns-priority": "10",
+    }
+    try:
+        with httpx.Client(http2=True, timeout=5.0) as client:
+            response = client.post(url, headers=headers, json=_build_apns_payload(notification))
+    except Exception as exc:
+        return False, str(exc)
+    if response.status_code == 200:
+        return True, ""
+    return False, _extract_apns_error_message(response.status_code, response.text)
+
+
+def _should_send_device_via_apns(device: MobilePushDevice, config: dict[str, Any]) -> bool:
+    return (
+        device.platform == "ios"
+        and bool(config.get("apns_configured"))
+        and bool(_apns_device_token(device.token))
+    )
+
+
 def send_site_notification_to_push(notification: SiteNotification) -> None:
     if not notification.is_push:
         return
 
     config = get_push_provider_config()
     if not config["configured"]:
-        return
-
-    access_token, access_token_error = _get_fcm_access_token()
-    if not access_token:
-        notification.push_error = access_token_error or "failed to initialize push sender"
-        notification.save(update_fields=["push_error", "updated_at"])
         return
 
     devices = list(
@@ -377,10 +550,27 @@ def send_site_notification_to_push(notification: SiteNotification) -> None:
     now = timezone.now()
     sent = False
     errors: list[str] = []
+    fcm_access_token: str | None = None
+    fcm_access_token_error = ""
+    fcm_access_token_loaded = False
 
     for device in devices:
-        payload = _build_push_request_body(notification, device)
-        ok, error_message = _send_fcm_request(str(config["project_id"]), access_token, payload)
+        if _should_send_device_via_apns(device, config):
+            ok, error_message = _send_apns_request(notification, device, config["apns"])
+        else:
+            if not config.get("fcm_configured"):
+                ok = False
+                error_message = "FCM push provider is not configured"
+            else:
+                if not fcm_access_token_loaded:
+                    fcm_access_token, fcm_access_token_error = _get_fcm_access_token()
+                    fcm_access_token_loaded = True
+                if not fcm_access_token:
+                    ok = False
+                    error_message = fcm_access_token_error or "failed to initialize FCM push sender"
+                else:
+                    payload = _build_push_request_body(notification, device)
+                    ok, error_message = _send_fcm_request(str(config["project_id"]), fcm_access_token, payload)
         if ok:
             sent = True
             device.last_push_sent_at = now

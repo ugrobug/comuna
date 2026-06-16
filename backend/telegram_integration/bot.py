@@ -6,8 +6,11 @@ import urllib.request
 from datetime import timedelta
 
 from communities import service as community_service
+from communities.models import Comun, ComunTelegramSubmission
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
+from django.db import IntegrityError
 from django.db import transaction
 from django.utils import timezone
 from feeds.models import Author, Post
@@ -18,6 +21,7 @@ from users.models import AuthorAdmin, AuthorVerificationCode
 _BOT_ID: int | None = None
 CHANNEL_FLOW_CREATE = "create_comun"
 CHANNEL_FLOW_EXISTING = "link_existing"
+User = get_user_model()
 
 
 def _fv():
@@ -158,6 +162,280 @@ def _send_main_menu(chat_id: int) -> None:
         "привязать канал телеграм к сообществу. Выбери что ты хочешь.",
         _main_reply_keyboard(),
     )
+
+
+def _telegram_plain_text(message: dict) -> str:
+    return str(message.get("text") or message.get("caption") or "").strip()
+
+
+def _telegram_actor_name(actor: dict) -> str:
+    username = str(actor.get("username") or "").strip()
+    if username:
+        return f"@{username}"
+    full_name = " ".join(
+        part
+        for part in [
+            str(actor.get("first_name") or "").strip(),
+            str(actor.get("last_name") or "").strip(),
+        ]
+        if part
+    ).strip()
+    return full_name
+
+
+def _normalize_bot_command_text(text: str) -> str:
+    value = str(text or "").strip()
+    if value.startswith("/"):
+        parts = value.split(" ", 1)
+        command = parts[0].split("@", 1)[0]
+        return " ".join([command, parts[1] if len(parts) > 1 else ""]).strip()
+    return value
+
+
+def _submission_type_from_text(text: str) -> str:
+    value = _normalize_bot_command_text(text).strip().lower().replace("ё", "е")
+    if not value:
+        return ""
+    if value in {"/kb", "/knowledge", "/knowledge_base"}:
+        return ComunTelegramSubmission.TYPE_KNOWLEDGE_BASE
+    if value in {"/glossary", "/term"}:
+        return ComunTelegramSubmission.TYPE_GLOSSARY
+    if "глоссар" in value or "гласар" in value:
+        return ComunTelegramSubmission.TYPE_GLOSSARY
+    if "баз" in value and "знан" in value:
+        return ComunTelegramSubmission.TYPE_KNOWLEDGE_BASE
+    return ""
+
+
+def _parse_link_comun_slug(text: str) -> str:
+    value = _normalize_bot_command_text(text)
+    parts = value.split()
+    if len(parts) < 2:
+        return ""
+    command = parts[0].lower()
+    if command not in {"/link_comun", "/link_community", "/link"}:
+        return ""
+    return parts[1].strip().strip("/")
+
+
+def _telegram_source_url(chat: dict, message_id: int | None) -> str:
+    username = str(chat.get("username") or "").strip()
+    if not username or not message_id:
+        return ""
+    return f"https://t.me/{username}/{message_id}"
+
+
+def _glossary_candidate_from_text(text: str) -> tuple[str, str]:
+    normalized = "\n".join(line.strip() for line in str(text or "").splitlines() if line.strip())
+    if not normalized:
+        return "", ""
+    first_line, _separator, rest = normalized.partition("\n")
+    for separator in (" — ", " – ", " - ", ": "):
+        if separator in first_line:
+            term, definition = first_line.split(separator, 1)
+            combined_definition = "\n".join(part for part in [definition.strip(), rest.strip()] if part)
+            return term.strip()[:180], combined_definition.strip()[:5000]
+    if rest.strip():
+        return first_line.strip()[:180], rest.strip()[:5000]
+    return first_line.strip()[:180], normalized.strip()[:5000]
+
+
+def _title_candidate_from_text(text: str) -> str:
+    for line in str(text or "").splitlines():
+        title = line.strip()
+        if title:
+            return title[:255]
+    return "Сообщение из Telegram"
+
+
+def _requesting_user_from_message(message: dict) -> tuple[User | None, int | None, str]:
+    actor = message.get("from") if isinstance(message.get("from"), dict) else {}
+    telegram_user_id = actor.get("id")
+    try:
+        telegram_user_id = int(telegram_user_id)
+    except (TypeError, ValueError):
+        telegram_user_id = None
+    account = (
+        TelegramAccount.objects.select_related("user")
+        .filter(telegram_id=telegram_user_id)
+        .first()
+        if telegram_user_id
+        else None
+    )
+    return (account.user if account else None), telegram_user_id, _telegram_actor_name(actor)
+
+
+def _notify_comun_team_about_telegram_submission(submission: ComunTelegramSubmission) -> None:
+    team_user_ids = community_service._comun_team_user_ids(submission.comun)
+    if not team_user_ids:
+        return
+    request_type_label = (
+        "базу знаний"
+        if submission.request_type == ComunTelegramSubmission.TYPE_KNOWLEDGE_BASE
+        else "глоссарий"
+    )
+    title = f"Новая заявка в {request_type_label}"
+    message = (
+        f"В сообщество «{submission.comun.name}» из Telegram-чата "
+        f"предложили материал в {request_type_label}."
+    )
+    link_url = f"/comuns/{submission.comun.slug}/telegram-submissions?status=pending&id={submission.id}"
+    for user in User.objects.filter(id__in=team_user_ids, is_active=True):
+        _notification_service().create_user_notification(
+            user=user,
+            event_key="comun_telegram_submission",
+            title=title,
+            message=message,
+            link_url=link_url,
+            payload={
+                "comun_id": submission.comun_id,
+                "comun_slug": submission.comun.slug,
+                "submission_id": submission.id,
+                "request_type": submission.request_type,
+            },
+        )
+
+
+def _handle_group_link_comun(message: dict, slug: str) -> None:
+    chat = message.get("chat") if isinstance(message.get("chat"), dict) else {}
+    chat_id = chat.get("id")
+    if not chat_id:
+        return
+    requester, telegram_user_id, _actor_name = _requesting_user_from_message(message)
+    if not requester or not telegram_user_id:
+        _send_bot_message(
+            chat_id,
+            "Чтобы привязать чат к сообществу, сначала привяжите Telegram к профилю на Тамбуре.",
+        )
+        return
+    comun = Comun.objects.filter(slug=slug, is_active=True).prefetch_related("moderators").first()
+    if not comun:
+        _send_bot_message(chat_id, "Сообщество не найдено. Проверьте slug после команды.")
+        return
+    if not community_service._comun_is_moderator(requester, comun):
+        _send_bot_message(
+            chat_id,
+            "Привязать чат может только создатель или модератор этого сообщества.",
+        )
+        return
+    existing = Comun.objects.filter(telegram_chat_id=chat_id).exclude(id=comun.id).first()
+    if existing:
+        _send_bot_message(
+            chat_id,
+            f"Этот чат уже привязан к сообществу «{existing.name}».",
+        )
+        return
+    comun.telegram_chat_id = int(chat_id)
+    comun.telegram_chat_title = str(chat.get("title") or "").strip()[:255]
+    comun.save(update_fields=["telegram_chat_id", "telegram_chat_title", "updated_at"])
+    _send_bot_message(
+        chat_id,
+        f"Чат привязан к сообществу «{comun.name}». Теперь ответьте на сообщение текстом "
+        "команды /kb или /glossary, чтобы отправить заявку модераторам.",
+    )
+
+
+def _handle_group_submission_request(message: dict, request_type: str) -> None:
+    chat = message.get("chat") if isinstance(message.get("chat"), dict) else {}
+    chat_id = chat.get("id")
+    if not chat_id:
+        return
+    reply = message.get("reply_to_message") if isinstance(message.get("reply_to_message"), dict) else None
+    if not reply:
+        _send_bot_message(
+            chat_id,
+            "Ответьте этой командой на конкретное сообщение, которое нужно предложить.",
+        )
+        return
+    comun = Comun.objects.filter(telegram_chat_id=chat_id, is_active=True).first()
+    if not comun:
+        _send_bot_message(
+            chat_id,
+            "Этот чат не привязан к сообществу. Создатель или модератор может привязать его командой /link_comun slug.",
+        )
+        return
+    if request_type == ComunTelegramSubmission.TYPE_KNOWLEDGE_BASE and not comun.knowledge_base_enabled:
+        _send_bot_message(chat_id, "В этом сообществе база знаний пока выключена.")
+        return
+    if request_type == ComunTelegramSubmission.TYPE_GLOSSARY and not comun.glossary_enabled:
+        _send_bot_message(chat_id, "В этом сообществе глоссарий пока выключен.")
+        return
+    source_text = _telegram_plain_text(reply)
+    if not source_text:
+        _send_bot_message(chat_id, "Пока можно отправлять на модерацию только текстовые сообщения.")
+        return
+    source_message_id = reply.get("message_id")
+    try:
+        source_message_id = int(source_message_id)
+    except (TypeError, ValueError):
+        return
+    requester, telegram_user_id, actor_name = _requesting_user_from_message(message)
+    source_author_name = _telegram_actor_name(reply.get("from") if isinstance(reply.get("from"), dict) else {})
+    glossary_term = ""
+    glossary_definition = ""
+    title = ""
+    if request_type == ComunTelegramSubmission.TYPE_GLOSSARY:
+        glossary_term, glossary_definition = _glossary_candidate_from_text(source_text)
+    else:
+        title = _title_candidate_from_text(source_text)
+    defaults = {
+        "requested_by": requester,
+        "telegram_user_id": telegram_user_id,
+        "telegram_username": actor_name[:255],
+        "telegram_chat_title": str(chat.get("title") or "").strip()[:255],
+        "telegram_request_message_id": message.get("message_id"),
+        "telegram_source_url": _telegram_source_url(chat, source_message_id),
+        "source_author_name": source_author_name[:255],
+        "source_text": source_text[:20000],
+        "title": title,
+        "glossary_term": glossary_term,
+        "glossary_definition": glossary_definition,
+        "source_payload": {
+            "request_message": message,
+            "source_message": reply,
+        },
+    }
+    try:
+        submission, created = ComunTelegramSubmission.objects.get_or_create(
+            comun=comun,
+            request_type=request_type,
+            telegram_chat_id=int(chat_id),
+            telegram_source_message_id=source_message_id,
+            status=ComunTelegramSubmission.STATUS_PENDING,
+            defaults=defaults,
+        )
+    except IntegrityError:
+        submission = ComunTelegramSubmission.objects.filter(
+            comun=comun,
+            request_type=request_type,
+            telegram_chat_id=int(chat_id),
+            telegram_source_message_id=source_message_id,
+            status=ComunTelegramSubmission.STATUS_PENDING,
+        ).first()
+        created = False
+    if not submission:
+        _send_bot_message(chat_id, "Не удалось создать заявку. Попробуйте позже.")
+        return
+    if not created:
+        _send_bot_message(chat_id, "Такая заявка уже ожидает модерации.")
+        return
+    _notify_comun_team_about_telegram_submission(submission)
+    target_label = "базу знаний" if request_type == ComunTelegramSubmission.TYPE_KNOWLEDGE_BASE else "глоссарий"
+    _send_bot_message(chat_id, f"Заявка на добавление в {target_label} отправлена модераторам.")
+
+
+def _handle_group_message(message: dict) -> None:
+    chat = message.get("chat") if isinstance(message.get("chat"), dict) else {}
+    if chat.get("type") not in {"group", "supergroup"}:
+        return
+    text = _telegram_plain_text(message)
+    slug = _parse_link_comun_slug(text)
+    if slug:
+        _handle_group_link_comun(message, slug)
+        return
+    request_type = _submission_type_from_text(text)
+    if request_type:
+        _handle_group_submission_request(message, request_type)
 
 
 def _refresh_author_from_telegram(author: Author, chat_ref, token: str) -> None:
@@ -924,8 +1202,33 @@ def _handle_private_message(message: dict) -> None:
     )
 
 
+def _handle_message(message: dict) -> None:
+    chat = message.get("chat", {})
+    chat_type = chat.get("type")
+    if chat_type == "private":
+        _handle_private_message(message)
+        return
+    if chat_type in {"group", "supergroup"}:
+        _handle_group_message(message)
+
+
 def _handle_my_chat_member(update: dict) -> None:
     chat = update.get("chat", {})
+    if chat.get("type") in {"group", "supergroup"}:
+        new_member = update.get("new_chat_member", {})
+        status = new_member.get("status")
+        if status in {"administrator", "member"}:
+            chat_id = chat.get("id")
+            if chat_id:
+                _send_bot_message(
+                    chat_id,
+                    "Я могу отправлять сообщения из этого чата на модерацию в базу знаний "
+                    "или глоссарий сообщества. Создатель или модератор сообщества должен "
+                    "привязать чат командой /link_comun slug. После этого отвечайте на "
+                    "сообщения командами /kb или /glossary.",
+                )
+        return
+
     if chat.get("type") != "channel":
         return
 
@@ -1296,6 +1599,7 @@ __all__ = [
     "_fetch_telegram_json",
     "_handle_callback_query",
     "_handle_channel_post",
+    "_handle_message",
     "_handle_my_chat_member",
     "_handle_private_message",
     "_send_bot_message",

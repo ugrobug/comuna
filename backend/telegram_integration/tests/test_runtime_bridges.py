@@ -20,7 +20,7 @@ class TelegramIntegrationRuntimeBridgeTests(SimpleTestCase):
 
     def test_telegram_views_use_telegram_bot_runtime(self):
         self.assertIs(telegram_views._handle_channel_post, telegram_bot._handle_channel_post)
-        self.assertIs(telegram_views._handle_private_message, telegram_bot._handle_private_message)
+        self.assertIs(telegram_views._handle_message, telegram_bot._handle_message)
         self.assertIs(telegram_views._handle_callback_query, telegram_bot._handle_callback_query)
         self.assertIs(telegram_views._handle_my_chat_member, telegram_bot._handle_my_chat_member)
 

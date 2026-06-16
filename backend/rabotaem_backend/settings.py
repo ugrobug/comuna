@@ -259,6 +259,17 @@ TELEGRAM_AUTH_ALLOWED_ORIGINS = _csv_env(
 PUSH_FCM_PROJECT_ID = os.environ.get("PUSH_FCM_PROJECT_ID", "")
 PUSH_FCM_SERVICE_ACCOUNT_JSON = os.environ.get("PUSH_FCM_SERVICE_ACCOUNT_JSON", "")
 PUSH_FCM_SERVICE_ACCOUNT_FILE = os.environ.get("PUSH_FCM_SERVICE_ACCOUNT_FILE", "")
+APPLE_APNS_ENV = os.environ.get("APPLE_APNS_ENV", "").strip().lower()
+PUSH_APNS_KEY_ID = os.environ.get("APPLE_APNS_KEY_ID", os.environ.get("PUSH_APNS_KEY_ID", ""))
+PUSH_APNS_TEAM_ID = os.environ.get("APPLE_TEAM_ID", os.environ.get("PUSH_APNS_TEAM_ID", ""))
+PUSH_APNS_TOPIC = os.environ.get("APPLE_APNS_TOPIC", os.environ.get("PUSH_APNS_TOPIC", ""))
+PUSH_APNS_AUTH_KEY = os.environ.get("PUSH_APNS_AUTH_KEY", "")
+PUSH_APNS_AUTH_KEY_FILE = os.environ.get("PUSH_APNS_AUTH_KEY_FILE", "")
+PUSH_APNS_USE_SANDBOX = (
+    APPLE_APNS_ENV == "sandbox"
+    if APPLE_APNS_ENV
+    else os.environ.get("PUSH_APNS_USE_SANDBOX", "0") == "1"
+)
 SITE_BASE_URL = os.environ.get("SITE_BASE_URL", "http://localhost:5173")
 WHEREFILMED_IMPORT_TOKEN = os.environ.get(
     "WHEREFILMED_IMPORT_TOKEN",
