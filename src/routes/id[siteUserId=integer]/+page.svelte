@@ -299,7 +299,7 @@
             {formatNumber(profile?.posts_count)} постов
           </span>
           <span class="px-3 py-1.5 rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300">
-            {formatNumber(profile?.comuns_count)} коммун
+            {formatNumber(profile?.comuns_count)} сообществ
           </span>
           {#if profile?.authors_count}
             <span class="px-3 py-1.5 rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300">
@@ -414,7 +414,7 @@
       </div>
     {:else}
       <div class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-4 text-sm text-slate-500 dark:text-zinc-400">
-        Пока нет коммун.
+        Пока нет сообществ.
       </div>
     {/if}
   </section>
