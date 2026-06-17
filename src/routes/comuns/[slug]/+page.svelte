@@ -1274,7 +1274,7 @@
               </div>
             {/if}
           </div>
-          {#if $siteToken && comun?.slug}
+          {#if isModerator() && comun?.slug}
             <button
               type="button"
               class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 text-slate-700 transition hover:bg-slate-50 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-800/60"
