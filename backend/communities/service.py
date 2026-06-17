@@ -1170,6 +1170,84 @@ def _sync_comun_subscriber_counts(previous_settings: dict, next_settings: dict) 
         )
 
 
+def _ensure_users_subscribed_to_comun(comun: Comun, user_ids: object) -> int:
+    slug = str(getattr(comun, "slug", "") or "").strip()
+    if not slug:
+        return 0
+
+    normalized_user_ids: list[int] = []
+    seen_user_ids: set[int] = set()
+    raw_user_ids = user_ids if isinstance(user_ids, (list, tuple, set)) else []
+    for raw_user_id in raw_user_ids:
+        try:
+            user_id = int(raw_user_id)
+        except (TypeError, ValueError):
+            continue
+        if user_id <= 0 or user_id in seen_user_ids:
+            continue
+        seen_user_ids.add(user_id)
+        normalized_user_ids.append(user_id)
+    if not normalized_user_ids:
+        return 0
+
+    from my_feed.models import UserFeedSettings
+
+    active_user_ids = set(
+        User.objects.filter(id__in=normalized_user_ids, is_active=True).values_list("id", flat=True)
+    )
+    if not active_user_ids:
+        return 0
+
+    new_subscribers_count = 0
+    with transaction.atomic():
+        settings_by_user_id = {
+            settings.user_id: settings
+            for settings in UserFeedSettings.objects.select_for_update().filter(user_id__in=active_user_ids)
+        }
+        for user_id in sorted(active_user_ids):
+            settings = settings_by_user_id.get(user_id)
+            is_new_settings = settings is None
+            if settings is None:
+                settings = UserFeedSettings(user_id=user_id)
+
+            current_slugs: list[str] = []
+            current_slug_set: set[str] = set()
+            for raw_slug in settings.my_feed_comuns or []:
+                current_slug = str(raw_slug or "").strip()
+                if not current_slug or current_slug in current_slug_set:
+                    continue
+                current_slug_set.add(current_slug)
+                current_slugs.append(current_slug)
+
+            category_selection = settings.my_feed_comun_categories or {}
+            was_subscribed = slug in current_slug_set or (
+                isinstance(category_selection, dict) and slug in category_selection
+            )
+            if slug in current_slug_set:
+                continue
+
+            settings.my_feed_comuns = [*current_slugs, slug]
+            if is_new_settings:
+                settings.save()
+            else:
+                settings.save(update_fields=["my_feed_comuns", "updated_at"])
+            if not was_subscribed:
+                new_subscribers_count += 1
+
+        if new_subscribers_count:
+            Comun.objects.filter(id=comun.id).update(
+                subscribers_count=F("subscribers_count") + new_subscribers_count
+            )
+    return new_subscribers_count
+
+
+def _ensure_comun_moderators_subscribed(comun: Comun) -> int:
+    user_ids = set(comun.moderators.values_list("id", flat=True))
+    if getattr(comun, "creator_id", None):
+        user_ids.add(comun.creator_id)
+    return _ensure_users_subscribed_to_comun(comun, user_ids)
+
+
 def _post_author_is_site_user(post: Post) -> bool:
     author = getattr(post, "author", None)
     if author is None and getattr(post, "author_id", None):

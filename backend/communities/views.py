@@ -2060,6 +2060,8 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
     except json.JSONDecodeError:
         return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
 
+    moderator_subscriptions_need_sync = False
+
     if "name" in body:
         if not _comun_can_manage_moderators(current_user, comun):
             return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
@@ -2144,6 +2146,7 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
         moderator_ids.add(comun.creator_id)
         moderator_ids = {int(user_id) for user_id in moderator_ids if int(user_id) > 0}
         comun.moderators.set(User.objects.filter(id__in=moderator_ids, is_active=True))
+        moderator_subscriptions_need_sync = True
 
     if "tag_ids" in body:
         tag_ids = community_service._parse_int_list(body.get("tag_ids"))[:5]
@@ -2224,6 +2227,12 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
             comun.welcome_post = None
 
     comun.save()
+    if moderator_subscriptions_need_sync:
+        moderator_auto_subscribed_count = community_service._ensure_comun_moderators_subscribed(comun)
+        if moderator_auto_subscribed_count:
+            bump_public_cache_prefix("comuns-catalog")
+            bump_public_cache_prefix("comuns-sidebar")
+            bump_public_cache_prefix("top-comuns")
 
     if "category_ids" in body or "category_names" in body:
         if "category_ids" in body:
