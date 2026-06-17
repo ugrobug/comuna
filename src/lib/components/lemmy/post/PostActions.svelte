@@ -90,12 +90,14 @@
   export let userUrlOverride: string | undefined = undefined
   export let communityUrlOverride: string | undefined = undefined
   export let comunCategories: BackendComunCategory[] = []
+  export let currentWelcomePostId: number | null | undefined = undefined
 
   const dispatcher = createEventDispatcher<{
     edit: PostView
     hide: boolean
     deleted: { postId: number }
     pinned: { postId: number; comunSlug: string }
+    unpinned: { postId: number; comunSlug: string }
     categorychange: {
       postId: number
       category: BackendComunCategory | null
@@ -170,6 +172,12 @@
       backendComunSlug &&
       (post.post as any)?.comun_can_moderate
   )
+  $: currentWelcomePostIdValue = Number(currentWelcomePostId ?? 0) || 0
+  $: isCurrentWelcomePost = Boolean(
+    backendPostId && currentWelcomePostIdValue && backendPostId === currentWelcomePostIdValue
+  )
+  $: canUnpinWelcomePost = canPinWelcomePost && isCurrentWelcomePost
+  $: canShowPinWelcomePost = canPinWelcomePost && !isCurrentWelcomePost
   $: backendComunCategoryId =
     typeof (post.post as any)?.comun_category_id === 'number'
       ? Number((post.post as any).comun_category_id)
@@ -422,6 +430,35 @@
     } catch (error) {
       toast({
         content: error instanceof Error ? error.message : 'Не удалось закрепить пост',
+        type: 'error',
+      })
+    } finally {
+      welcomePostSaving = false
+    }
+  }
+
+  const unpinWelcomePost = async () => {
+    if (!backendPostId || !backendComunSlug || !$siteToken || welcomePostSaving) return
+    welcomePostSaving = true
+    try {
+      const response = await fetch(buildComunUrl(backendComunSlug), {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${$siteToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ welcome_post_id: null }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(data?.error || 'Не удалось открепить пост')
+      }
+      dispatcher('unpinned', { postId: backendPostId, comunSlug: backendComunSlug })
+      actionsMenuOpen = false
+      toast({ content: 'Пост откреплен', type: 'success' })
+    } catch (error) {
+      toast({
+        content: error instanceof Error ? error.message : 'Не удалось открепить пост',
         type: 'error',
       })
     } finally {
@@ -773,10 +810,20 @@
         {knowledgeBaseSaving ? 'Добавляем...' : 'Добавить в базу знаний'}
       </MenuButton>
     {/if}
-    {#if canPinWelcomePost}
+    {#if canShowPinWelcomePost}
       <MenuButton on:click={pinWelcomePost} disabled={welcomePostSaving}>
         <Icon src={Star} size="16" micro slot="prefix" />
         {welcomePostSaving ? 'Закрепляем...' : 'Закрепить пост'}
+      </MenuButton>
+    {/if}
+    {#if canUnpinWelcomePost}
+      <MenuButton
+        on:click={unpinWelcomePost}
+        disabled={welcomePostSaving}
+        color="danger-subtle"
+      >
+        <Icon src={XMark} size="16" micro slot="prefix" />
+        {welcomePostSaving ? 'Открепляем...' : 'Открепить пост'}
       </MenuButton>
     {/if}
     {#if canChangeComunCategory}
@@ -787,7 +834,7 @@
         aria-expanded={categoryMenuOpen}
         on:click|stopPropagation={() => (categoryMenuOpen = !categoryMenuOpen)}
       >
-        <span class="contents text-slate-600 dark:text-zinc-400 flex-shrink-0">
+        <span class="contents !text-slate-600 dark:!text-zinc-400 flex-shrink-0">
           <Icon src={ArrowsUpDown} size="16" micro />
         </span>
         <span class="min-w-0 flex-1 truncate">
@@ -951,7 +998,7 @@
 
 <style lang="postcss">
   .category-toggle {
-    @apply flex w-full min-h-[36px] items-center gap-1.5 rounded-lg px-2 text-left text-sm font-normal text-slate-900 transition duration-100 hover:bg-slate-100 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-70 dark:text-zinc-200 hover:dark:bg-zinc-800/70;
+    @apply flex w-full min-h-[36px] items-center gap-1.5 rounded-lg px-2 text-left text-sm font-normal !text-slate-900 transition duration-100 hover:bg-slate-100 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-70 dark:!text-zinc-200 hover:dark:bg-zinc-800/70;
   }
 
   .category-option {

@@ -41,6 +41,16 @@
 
   let textArea: HTMLTextAreaElement
   let imageInput: HTMLInputElement | null = null
+  let linkDialogElement: HTMLDivElement | null = null
+  let linkButtonElement: HTMLSpanElement | null = null
+  let linkTextInput: HTMLInputElement | null = null
+  let linkUrlInput: HTMLInputElement | null = null
+  let linkDialogOpen = false
+  let linkDialogStyle = ''
+  let linkText = ''
+  let linkUrl = ''
+  let linkSelectionStart = 0
+  let linkSelectionEnd = 0
 
   function replaceTextAtIndices(
     str: string,
@@ -72,6 +82,190 @@
     value = textArea.value
   }
 
+  function looksLikeUrl(input: string) {
+    const value = input.trim()
+    return /^(https?:\/\/|mailto:|tel:|\/|#)/i.test(value) || /^www\./i.test(value)
+  }
+
+  function normalizeLinkUrl(input: string) {
+    const value = input.trim()
+    if (/^www\./i.test(value)) return `https://${value}`
+    return value
+  }
+
+  function escapeMarkdownLinkText(input: string) {
+    return input.replace(/\\/g, '\\\\').replace(/\[/g, '\\[').replace(/\]/g, '\\]')
+  }
+
+  function escapeMarkdownLinkUrl(input: string) {
+    return input.replace(/\)/g, '%29')
+  }
+
+  function getMarkdownLinkMatch(input: string) {
+    return input.match(/^\[([^\]]*)\]\(([^)]*)\)$/)
+  }
+
+  async function readClipboardUrl() {
+    if (typeof navigator === 'undefined' || !navigator.clipboard?.readText) return ''
+    try {
+      const clipboardText = (await navigator.clipboard.readText()).trim()
+      return looksLikeUrl(clipboardText) ? clipboardText : ''
+    } catch {
+      return ''
+    }
+  }
+
+  function getTextareaCaretCoordinates(textarea: HTMLTextAreaElement, index: number) {
+    if (typeof document === 'undefined') return textarea.getBoundingClientRect()
+
+    const style = window.getComputedStyle(textarea)
+    const mirror = document.createElement('div')
+    const marker = document.createElement('span')
+    const properties = [
+      'box-sizing',
+      'border-top-width',
+      'border-right-width',
+      'border-bottom-width',
+      'border-left-width',
+      'padding-top',
+      'padding-right',
+      'padding-bottom',
+      'padding-left',
+      'font-family',
+      'font-size',
+      'font-weight',
+      'font-style',
+      'letter-spacing',
+      'line-height',
+      'text-align',
+      'text-indent',
+      'text-transform',
+      'word-spacing',
+      'tab-size',
+    ]
+
+    properties.forEach((property) => {
+      mirror.style.setProperty(property, style.getPropertyValue(property))
+    })
+
+    mirror.style.position = 'absolute'
+    mirror.style.visibility = 'hidden'
+    mirror.style.left = '-9999px'
+    mirror.style.top = '0'
+    mirror.style.width = `${textarea.offsetWidth}px`
+    mirror.style.whiteSpace = 'pre-wrap'
+    mirror.style.overflowWrap = 'break-word'
+    mirror.style.wordBreak = 'break-word'
+    mirror.textContent = textarea.value.substring(0, index)
+    marker.textContent = textarea.value.substring(index) || '.'
+    mirror.appendChild(marker)
+    document.body.appendChild(mirror)
+
+    const textareaRect = textarea.getBoundingClientRect()
+    const mirrorRect = mirror.getBoundingClientRect()
+    const markerRect = marker.getBoundingClientRect()
+    const coordinates = {
+      left: textareaRect.left + markerRect.left - mirrorRect.left - textarea.scrollLeft,
+      top: textareaRect.top + markerRect.top - mirrorRect.top - textarea.scrollTop,
+      height: markerRect.height || parseFloat(style.lineHeight) || 20,
+    }
+
+    mirror.remove()
+    return coordinates
+  }
+
+  function positionLinkDialog() {
+    if (!textArea || !linkDialogOpen) return
+
+    const coordinates = getTextareaCaretCoordinates(textArea, linkSelectionStart)
+    const dialogWidth = 352
+    const dialogHeight = 224
+    const margin = 12
+    const maxLeft = Math.max(margin, window.innerWidth - dialogWidth - margin)
+    const maxTop = Math.max(margin, window.innerHeight - dialogHeight - margin)
+    const left = Math.min(
+      Math.max(coordinates.left, margin),
+      maxLeft
+    )
+    const top = Math.min(
+      Math.max(coordinates.top + coordinates.height + 8, margin),
+      maxTop
+    )
+
+    linkDialogStyle = `left: ${left}px; top: ${top}px;`
+  }
+
+  async function openLinkDialog() {
+    if (disabled || !textArea) return
+
+    linkSelectionStart = textArea.selectionStart
+    linkSelectionEnd = textArea.selectionEnd
+    const selectedText = textArea.value.substring(linkSelectionStart, linkSelectionEnd)
+    const existingLink = getMarkdownLinkMatch(selectedText)
+    const clipboardUrl = existingLink ? '' : await readClipboardUrl()
+
+    linkText = existingLink?.[1] ?? selectedText
+    linkUrl = existingLink?.[2] ?? clipboardUrl
+    linkDialogStyle = 'left: 12px; top: 12px;'
+    linkDialogOpen = true
+
+    await tick()
+    positionLinkDialog()
+    if (linkUrl) {
+      linkUrlInput?.focus()
+      linkUrlInput?.select()
+    } else {
+      const initialInput = linkText ? linkUrlInput : linkTextInput
+      initialInput?.focus()
+    }
+  }
+
+  function closeLinkDialog() {
+    linkDialogOpen = false
+    textArea?.focus()
+  }
+
+  async function submitLinkDialog() {
+    const normalizedUrl = normalizeLinkUrl(linkUrl)
+    if (!normalizedUrl) {
+      linkUrlInput?.focus()
+      return
+    }
+
+    const displayText = linkText.trim() || normalizedUrl
+    const markdown = `[${escapeMarkdownLinkText(displayText)}](${escapeMarkdownLinkUrl(
+      normalizedUrl
+    )})`
+    linkDialogOpen = false
+    await insertMarkdownAt(markdown, linkSelectionStart, linkSelectionEnd)
+  }
+
+  function handleLinkDialogKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      closeLinkDialog()
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      void submitLinkDialog()
+    }
+  }
+
+  function handleWindowMouseDown(event: MouseEvent) {
+    if (!linkDialogOpen) return
+    const target = event.target as Node | null
+    if (!target) return
+    if (linkDialogElement?.contains(target) || linkButtonElement?.contains(target)) return
+    closeLinkDialog()
+  }
+
+  function handleWindowKeydown(event: KeyboardEvent) {
+    if (linkDialogOpen && event.key === 'Escape') {
+      event.preventDefault()
+      closeLinkDialog()
+    }
+  }
+
   let uploadingImage = false
   let uploadingInlineImage = false
   let image: FileList | null = null
@@ -83,7 +277,7 @@
     KeyI: () => wrapSelection('*', '*'),
     KeyS: () => wrapSelection('~~', '~~'),
     KeyH: () => wrapSelection('\n# ', ''),
-    KeyK: () => wrapSelection('[](', ')'),
+    KeyK: () => void openLinkDialog(),
     Enter: (e: any) => {
       dispatcher('confirm', value)
       const newEvent = new Event('submit', { cancelable: true })
@@ -188,6 +382,13 @@
   })
 </script>
 
+<svelte:window
+  on:mousedown={handleWindowMouseDown}
+  on:keydown={handleWindowKeydown}
+  on:resize={positionLinkDialog}
+  on:scroll={positionLinkDialog}
+/>
+
 {#if uploadingImage && images}
   <ImageUploadModal
     bind:open={uploadingImage}
@@ -251,13 +452,11 @@ overflow-hidden transition-colors {$$props.class}"
           >
             <Icon src={Italic} size="16" micro />
           </Button>
-          <Button
-            on:click={() => wrapSelection('[', '](https://example.com)')}
-            title="Link"
-            size="square-md"
-          >
-            <Icon src={Link} size="16" micro />
-          </Button>
+          <span bind:this={linkButtonElement} class="inline-flex">
+            <Button on:click={openLinkDialog} title="Link" size="square-md">
+              <Icon src={Link} size="16" micro />
+            </Button>
+          </span>
           <Button
             on:click={() => wrapSelection('\n# ', '')}
             title="Header"
@@ -332,6 +531,56 @@ overflow-hidden transition-colors {$$props.class}"
               <Icon src={Photo} size="16" micro />
             </Button>
           {/if}
+        </div>
+      {/if}
+      {#if linkDialogOpen}
+        <div
+          bind:this={linkDialogElement}
+          class="fixed z-50 w-[min(22rem,calc(100vw-1.5rem))] rounded-xl border border-slate-200 bg-white p-3 shadow-xl shadow-slate-900/15 dark:border-zinc-700 dark:bg-zinc-950 dark:shadow-black/40"
+          style={linkDialogStyle}
+          role="dialog"
+          aria-label="Вставка ссылки"
+          tabindex="-1"
+          on:keydown={handleLinkDialogKeydown}
+        >
+          <div class="space-y-2">
+            <label class="block text-xs font-semibold text-slate-600 dark:text-zinc-300">
+              Отображаемый текст
+              <input
+                bind:this={linkTextInput}
+                bind:value={linkText}
+                class="mt-1 block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-primary-400 dark:focus:ring-primary-900/40"
+                type="text"
+              />
+            </label>
+            <label class="block text-xs font-semibold text-slate-600 dark:text-zinc-300">
+              Ссылка
+              <input
+                bind:this={linkUrlInput}
+                bind:value={linkUrl}
+                class="mt-1 block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-primary-400 dark:focus:ring-primary-900/40"
+                placeholder="https://"
+                type="url"
+              />
+            </label>
+          </div>
+          <div class="mt-3 flex justify-end gap-2">
+            <button
+              type="button"
+              class="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              on:click={closeLinkDialog}
+            >
+              Отмена
+            </button>
+            <button
+              type="button"
+              class="rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={!normalizeLinkUrl(linkUrl)}
+              on:click={submitLinkDialog}
+            >
+              Вставить
+            </button>
+          </div>
         </div>
       {/if}
       {#if images && imageUploadHandler}

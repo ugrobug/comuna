@@ -2,19 +2,15 @@
   import { browser } from '$app/environment'
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
-  import { onDestroy, onMount, tick } from 'svelte'
+  import { onDestroy, onMount } from 'svelte'
   import { Button, Modal, toast } from 'mono-svelte'
-  import Post from '$lib/components/lemmy/post/Post.svelte'
   import ComunRoadmapModal from '$lib/components/comuns/ComunRoadmapModal.svelte'
-  import { feedKeyboardShortcuts } from '$lib/actions/feedKeyboardShortcuts'
+  import WelcomePostDropdown from '$lib/components/comuns/WelcomePostDropdown.svelte'
+  import FeedPostsList from '$lib/components/feeds/FeedPostsList.svelte'
   import {
-    backendPostCommunityPath,
-    backendPostToPostView,
     buildBackendPostPath,
     buildComunPostsUrl,
     buildComunUrl,
-    buildComunWelcomePostOptionsUrl,
-    isSpecialProjectPost,
     type BackendComun,
     type BackendComunCategory,
     type BackendPost,
@@ -46,16 +42,6 @@
   let settingsError = ''
   let settingsUserSearch = ''
   let settingsDraft: BackendComun | null = null
-  type WelcomePostOption = { id: number; title: string }
-  let welcomePostOptions: WelcomePostOption[] = []
-  let welcomePostSearch = ''
-  let welcomePostDropdownOpen = false
-  let welcomePostOptionsLoaded = false
-  let welcomePostOptionsLoading = false
-  let welcomePostOptionsError = ''
-  let welcomePostSearchTimer: ReturnType<typeof setTimeout> | null = null
-  let welcomePostRequestSeq = 0
-  let welcomePostSearchInput: HTMLInputElement | null = null
   let settingsLogoInput: HTMLInputElement | null = null
   let lastAuthRefreshToken: string | null = null
   let autoSettingsOpenHandled = false
@@ -273,6 +259,22 @@
       welcome_post: withCurrentComunContext(sourcePost),
     }
   }
+  const handleWelcomePostUnpinned = (
+    event: CustomEvent<{
+      postId: number
+      comunSlug: string
+    }>
+  ) => {
+    if (!comun?.slug || event.detail.comunSlug !== comun.slug) return
+    const postId = Number(event.detail.postId)
+    if (!postId || currentWelcomePostId !== postId) return
+    comun = {
+      ...comun,
+      welcome_post_id: null,
+      welcome_post_ref: '',
+      welcome_post: null,
+    }
+  }
   const formatRatingValue = (value?: number | null) => {
     const normalized = Math.max(Number(value ?? 0) || 0, 0)
     return new Intl.NumberFormat('ru-RU', {
@@ -286,9 +288,11 @@
 
   $: siteTitle = env.PUBLIC_SITE_TITLE || 'Тамбур'
   $: comunName = comun?.name || 'Сообщество'
-  $: welcomePostView = comun?.welcome_post ? backendPostToPostView(withCurrentComunContext(comun.welcome_post)) : null
   $: minimumAuthorRatingToPost = Math.max(Number(comun?.minimum_author_rating_to_post ?? 0) || 0, 0)
   $: comunCategories = comun?.categories ?? []
+  $: feedPosts = visiblePosts.map(withCurrentComunContext)
+  $: welcomeFeedPosts = comun?.welcome_post ? [withCurrentComunContext(comun.welcome_post)] : []
+  $: currentWelcomePostId = comun?.welcome_post_id ?? comun?.welcome_post?.id ?? null
   $: hasComunCategories = comunCategories.length > 0
   $: hasUserWritableComunCategory = comunCategories.some(
     (category) => !Boolean(category.only_moderators_can_post)
@@ -946,95 +950,11 @@
     settingsOpen = true
   }
 
-  const selectedWelcomePostOption = () => {
-    const selectedId = Number(settingsDraft?.welcome_post_ref ?? settingsDraft?.welcome_post_id ?? 0) || 0
-    if (!selectedId) return null
-    const fromOptions = welcomePostOptions.find((item) => item.id === selectedId)
-    if (fromOptions) return fromOptions
-    const fromDraft = settingsDraft?.welcome_post
-    if (fromDraft?.id === selectedId) {
-      return { id: fromDraft.id, title: fromDraft.title || `Пост ${fromDraft.id}` }
-    }
-    return { id: selectedId, title: `Пост ${selectedId}` }
-  }
-
-  const setWelcomePostOptions = (items: WelcomePostOption[], includeSelected = true) => {
-    const byId = new Map<number, WelcomePostOption>()
-    const selected = selectedWelcomePostOption()
-    if (includeSelected && selected) byId.set(selected.id, selected)
-    for (const item of items) byId.set(item.id, item)
-    welcomePostOptions = Array.from(byId.values())
-  }
-
-  const loadWelcomePostOptions = async (query = welcomePostSearch) => {
-    const slug = comun?.slug
-    if (!slug || !$siteToken) return
-    const requestId = ++welcomePostRequestSeq
-    welcomePostOptionsLoading = true
-    welcomePostOptionsError = ''
-    try {
-      const response = await fetch(
-        buildComunWelcomePostOptionsUrl(slug, {
-          q: query.trim(),
-          limit: 10,
-        }),
-        {
-          headers: { Authorization: `Bearer ${$siteToken}` },
-        }
-      )
-      const payload = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        throw new Error(payload?.error || 'Не удалось загрузить посты')
-      }
-      if (requestId !== welcomePostRequestSeq) return
-      const posts = Array.isArray(payload?.posts) ? payload.posts : []
-      const normalizedQuery = query.trim()
-      setWelcomePostOptions(
-        posts
-          .map((item: any) => ({
-            id: Number(item?.id ?? 0),
-            title: String(item?.title ?? '').trim(),
-          }))
-          .filter((item: WelcomePostOption) => item.id > 0 && item.title),
-        !normalizedQuery
-      )
-      welcomePostOptionsLoaded = true
-    } catch (error) {
-      if (requestId !== welcomePostRequestSeq) return
-      welcomePostOptionsError = error instanceof Error ? error.message : 'Не удалось загрузить посты'
-    } finally {
-      if (requestId === welcomePostRequestSeq) welcomePostOptionsLoading = false
-    }
-  }
-
-  const openWelcomePostDropdown = () => {
-    if (welcomePostDropdownOpen) {
-      welcomePostDropdownOpen = false
-      return
-    }
-    welcomePostDropdownOpen = true
-    welcomePostSearch = ''
-    setWelcomePostOptions([])
-    void tick().then(() => welcomePostSearchInput?.focus())
-    void loadWelcomePostOptions('')
-  }
-
-  const scheduleWelcomePostSearch = () => {
-    if (!welcomePostDropdownOpen) return
-    if (welcomePostSearchTimer) {
-      clearTimeout(welcomePostSearchTimer)
-    }
-    welcomePostSearchTimer = setTimeout(() => {
-      void loadWelcomePostOptions(welcomePostSearch)
-    }, 250)
-  }
-
   const selectWelcomePost = (postId: number | null) => {
     patchSettingsDraft({
       welcome_post_ref: postId ? String(postId) : '',
       welcome_post_id: postId,
     } as Partial<BackendComun>)
-    welcomePostDropdownOpen = false
   }
 
   const toggleDraftCategory = (categoryId: number) => {
@@ -1093,11 +1013,6 @@
   $: settingsHasChanges = settingsComparable(settingsDraft) !== settingsComparable(comun)
   $: settingsCanDismiss =
     !settingsHasChanges && !settingsSaving && !settingsLogoUploading
-  $: if (!settingsOpen) {
-    welcomePostDropdownOpen = false
-    welcomePostSearch = ''
-  }
-  $: welcomePostSelected = selectedWelcomePostOption()
   $: filteredUserOptions = (settingsUserOptions ?? [])
     .filter((user) => {
       if (!normalizedUserSearch) return false
@@ -1271,10 +1186,6 @@
   })
 
   onDestroy(() => {
-    if (welcomePostSearchTimer) {
-      clearTimeout(welcomePostSearchTimer)
-      welcomePostSearchTimer = null
-    }
     if (browser) {
       window.removeEventListener('scroll', onScroll)
       window.removeEventListener('keydown', onWindowKeydown)
@@ -1363,7 +1274,7 @@
               </div>
             {/if}
           </div>
-          {#if $siteToken && comun?.slug}
+          {#if isModerator() && comun?.slug}
             <button
               type="button"
               class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 text-slate-700 transition hover:bg-slate-50 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-800/60"
@@ -1435,60 +1346,35 @@
     onSubmit={openRoadmapSubmitFlow}
   />
 
-  {#if comun?.welcome_post && welcomePostView}
+  {#if comun?.welcome_post && welcomeFeedPosts.length}
     <section class="rounded-2xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/60 dark:bg-blue-950/20 p-4 sm:p-5">
       <div class="mb-3 text-sm font-semibold text-blue-800 dark:text-blue-300">
         Приветственный пост
       </div>
-      <Post
-        post={welcomePostView}
-        class="rounded-2xl border border-slate-200/80 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 shadow-sm px-4 sm:px-5"
-        view="cozy"
-        actions={true}
-        showReadMore={false}
-        showFullBody={false}
+      <FeedPostsList
+        posts={welcomeFeedPosts}
+        postClass="feed-shortcut-post rounded-2xl border border-slate-200/80 bg-white/95 px-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/85 sm:px-5"
         hideCommunity={true}
         {comunCategories}
-        linkOverride={buildBackendPostPath(comun.welcome_post)}
-        userUrlOverride={comun.welcome_post.author?.username ? `/${comun.welcome_post.author.username}` : undefined}
-        communityUrlOverride={backendPostCommunityPath(comun.welcome_post)}
-        subscribeUrl={comun.welcome_post.channel_url ?? comun.welcome_post.author?.channel_url}
-        subscribeLabel="Подписаться"
-        hideSubscribe={isSpecialProjectPost(comun.welcome_post)}
+        {currentWelcomePostId}
         on:categorychange={handlePostCategoryChange}
         on:pinned={handleWelcomePostPinned}
+        on:unpinned={handleWelcomePostUnpinned}
       />
     </section>
   {/if}
 
-  {#if visiblePosts.length}
-    <div class="flex flex-col gap-6" use:feedKeyboardShortcuts>
-      {#each visiblePosts as backendPost (backendPost.id)}
-        <div class="flex flex-col gap-3">
-          <Post
-            post={backendPostToPostView(withCurrentComunContext(backendPost))}
-            class="feed-shortcut-post rounded-2xl border border-slate-200/80 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 shadow-sm px-4 sm:px-5"
-            view="cozy"
-            actions={true}
-            showReadMore={false}
-            showFullBody={false}
-            hideCommunity={true}
-            {comunCategories}
-            linkOverride={buildBackendPostPath(backendPost)}
-            userUrlOverride={backendPost.author?.username ? `/${backendPost.author.username}` : undefined}
-            communityUrlOverride={backendPostCommunityPath(backendPost)}
-            subscribeUrl={backendPost.channel_url ?? backendPost.author?.channel_url}
-            subscribeLabel="Подписаться"
-            hideSubscribe={isSpecialProjectPost(backendPost)}
-            on:categorychange={handlePostCategoryChange}
-            on:pinned={handleWelcomePostPinned}
-          />
-        </div>
-      {/each}
-    </div>
-    {#if loadingMore}
-      <div class="text-sm text-slate-500">Загрузка...</div>
-    {/if}
+  {#if feedPosts.length}
+    <FeedPostsList
+      posts={feedPosts}
+      {loadingMore}
+      hideCommunity={true}
+      {comunCategories}
+      {currentWelcomePostId}
+      on:categorychange={handlePostCategoryChange}
+      on:pinned={handleWelcomePostPinned}
+      on:unpinned={handleWelcomePostUnpinned}
+    />
   {:else}
     <div class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-6 text-slate-600 dark:text-zinc-400">
       <div class="flex flex-col gap-4">
@@ -1744,67 +1630,14 @@
           </div>
         </div>
 
-        <div class="flex flex-col gap-1">
-          <span class="text-sm text-slate-700 dark:text-zinc-300">Приветственный пост</span>
-          <div class="relative">
-            <button
-              type="button"
-              class="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-sm text-slate-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
-              on:click={openWelcomePostDropdown}
-              disabled={settingsSaving}
-            >
-              <span class="min-w-0 truncate">
-                {welcomePostSelected ? welcomePostSelected.title : 'Не выбран'}
-              </span>
-              <span class="shrink-0 text-xs text-slate-400">
-                {welcomePostDropdownOpen ? 'Закрыть' : 'Выбрать'}
-              </span>
-            </button>
-
-            {#if welcomePostDropdownOpen}
-              <div
-                class="absolute left-0 right-0 top-full z-30 mt-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-zinc-700 dark:bg-zinc-900"
-              >
-                <div class="border-b border-slate-100 p-2 dark:border-zinc-800">
-                  <input
-                    bind:this={welcomePostSearchInput}
-                    bind:value={welcomePostSearch}
-                    on:input={scheduleWelcomePostSearch}
-                    placeholder="Поиск по названию"
-                    class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
-                  />
-                </div>
-                <div class="max-h-64 overflow-y-auto py-1">
-                  <button
-                    type="button"
-                    class="block w-full px-3 py-2 text-left text-sm text-slate-600 hover:bg-slate-50 dark:text-zinc-300 dark:hover:bg-zinc-800"
-                    on:mousedown|preventDefault={() => selectWelcomePost(null)}
-                  >
-                    Не выбран
-                  </button>
-                  {#each welcomePostOptions as option (option.id)}
-                    <button
-                      type="button"
-                      class="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-zinc-800 {Number(settingsDraft.welcome_post_ref ?? settingsDraft.welcome_post_id ?? 0) === option.id
-                        ? 'bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300'
-                        : 'text-slate-900 dark:text-zinc-100'}"
-                      on:mousedown|preventDefault={() => selectWelcomePost(option.id)}
-                    >
-                      <span class="block truncate">{option.title}</span>
-                    </button>
-                  {/each}
-                  {#if welcomePostOptionsLoading}
-                    <div class="px-3 py-2 text-sm text-slate-500 dark:text-zinc-400">Загрузка...</div>
-                  {:else if welcomePostOptionsError}
-                    <div class="px-3 py-2 text-sm text-red-600">{welcomePostOptionsError}</div>
-                  {:else if welcomePostOptionsLoaded && welcomePostOptions.length === 0}
-                    <div class="px-3 py-2 text-sm text-slate-500 dark:text-zinc-400">Постов не найдено</div>
-                  {/if}
-                </div>
-              </div>
-            {/if}
-          </div>
-        </div>
+        <WelcomePostDropdown
+          slug={comun?.slug ?? ''}
+          token={$siteToken}
+          value={settingsDraft.welcome_post_ref ?? settingsDraft.welcome_post_id ?? null}
+          selectedPost={settingsDraft.welcome_post}
+          disabled={settingsSaving}
+          on:change={(event) => selectWelcomePost(event.detail.postId)}
+        />
       </div>
 
       <div class="flex justify-between gap-2 pt-2">

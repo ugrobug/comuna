@@ -71,7 +71,7 @@
             community={{
               community: community,
               banned_from_community: false,
-              blocked: false,
+              blocked: blocked,
               counts: counts || defaultCounts,
               subscribed: subscribed,
             }}

@@ -7,6 +7,7 @@
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import ComunSettingsTabs from '$lib/components/comuns/ComunSettingsTabs.svelte'
   import TemplateTypeDropdown from '$lib/components/comuns/TemplateTypeDropdown.svelte'
+  import WelcomePostDropdown from '$lib/components/comuns/WelcomePostDropdown.svelte'
   import {
     buildComunCustomTemplateEditorPath,
     buildComunUrl,
@@ -1221,14 +1222,18 @@
             </div>
           </div>
 
-          <label class="flex flex-col gap-1">
-            <span class="text-sm text-slate-700 dark:text-zinc-300">Приветственный пост (ID или ссылка на пост)</span>
-            <input
-              bind:value={settingsDraft.welcome_post_ref}
-              placeholder="/b/post/123... или 123"
-              class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"
-            />
-          </label>
+          <WelcomePostDropdown
+            {slug}
+            token={$siteToken}
+            value={settingsDraft.welcome_post_ref ?? settingsDraft.welcome_post_id ?? null}
+            selectedPost={settingsDraft.welcome_post}
+            disabled={settingsSaving}
+            on:change={(event) =>
+              patchSettingsDraft({
+                welcome_post_ref: event.detail.postId ? String(event.detail.postId) : '',
+                welcome_post_id: event.detail.postId,
+              } as Partial<BackendComun>)}
+          />
         {:else if settingsTab === 'moderation'}
           <div class="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/40">
             <div class="mb-4">

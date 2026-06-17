@@ -25,6 +25,11 @@ export TELEGRAM_WEBHOOK_SECRET=your-secret
 export TELEGRAM_USE_POLLING=0
 export PUSH_FCM_PROJECT_ID=your-firebase-project-id
 export PUSH_FCM_SERVICE_ACCOUNT_FILE=/absolute/path/firebase-service-account.json
+export APPLE_APNS_KEY_ID=your-apple-key-id
+export APPLE_TEAM_ID=your-apple-team-id
+export APPLE_APNS_TOPIC=your.ios.bundle.id
+export APPLE_APNS_ENV=production
+export PUSH_APNS_AUTH_KEY_FILE=/absolute/path/AuthKey_XXXX.p8
 ```
 
 3. Migrate and run:
@@ -68,7 +73,9 @@ To import history, forward channel posts to the bot in a private chat.
 Returns the latest posts for a channel/author. Blocked authors or posts are hidden.
 
 `/api/auth/notifications/push-devices/` allows the mobile app to register or deactivate
-FCM device tokens for Android and iOS. The authenticated user is taken from the Bearer token.
+mobile push tokens. Android uses FCM. iOS uses APNs when the token is a 64-character
+APNs device token and APNs env vars are configured; otherwise it can still fall back
+to FCM if Firebase is configured. The authenticated user is taken from the Bearer token.
 
 ## Admin
 

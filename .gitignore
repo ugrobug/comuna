@@ -24,5 +24,6 @@ deploy/secrets/
 *firebase-adminsdk*.json
 
 
-.deploy/.env.*
-.deploy/.env
+deploy/.env.*
+deploy/.env
+deploy/pt-post-redirects*.map

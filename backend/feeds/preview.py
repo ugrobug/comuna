@@ -214,6 +214,51 @@ def _editor_preview_content(payload: dict[str, Any], max_length: int) -> str:
     return ""
 
 
+def _collect_editor_text(value: Any) -> str:
+    if not value:
+        return ""
+    if isinstance(value, str):
+        return _normalize_text(value)
+    if isinstance(value, list):
+        return " ".join(filter(None, (_collect_editor_text(item) for item in value)))
+    if not isinstance(value, dict):
+        return ""
+
+    chunks: list[str] = []
+    for key in ("text", "caption", "title", "description", "quote", "message"):
+        raw_text = value.get(key)
+        if isinstance(raw_text, str):
+            text = _normalize_text(raw_text)
+            if text:
+                chunks.append(text)
+    for key in ("blocks", "data", "items", "content", "rows", "images", "file", "before", "after"):
+        nested = value.get(key)
+        if isinstance(nested, (dict, list)):
+            text = _collect_editor_text(nested)
+            if text:
+                chunks.append(text)
+    return " ".join(chunks)
+
+
+def post_preview_has_more(content: str, preview_content: str) -> bool:
+    preview_text = _normalize_text(preview_content or "")
+    if not preview_text:
+        return False
+
+    editor_payload = parse_editor_payload(content)
+    full_text = (
+        _collect_editor_text(editor_payload)
+        if editor_payload
+        else _normalize_text(content or "")
+    )
+    if not full_text:
+        return False
+
+    normalized_preview = preview_text.rstrip(".…").strip()
+    normalized_full = full_text.rstrip(".…").strip()
+    return len(normalized_full) > len(normalized_preview) + 8
+
+
 def _bug_report_preview_content(template_payload: dict[str, Any] | None, max_length: int) -> str:
     if not isinstance(template_payload, dict) or str(template_payload.get("type") or "").strip() != "bug_report":
         return ""

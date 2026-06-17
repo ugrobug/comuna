@@ -33,6 +33,7 @@ from communities.models import (
 )
 from editor.models import PostPollVote
 from editor import service as editor_service
+from feeds.post_paths import slugify_title
 from feeds.models import (
     Author,
     Post,
@@ -211,49 +212,6 @@ def _lemmatize_tag(value: str) -> str:
     return " ".join(lemmas).strip()
 
 
-def _slugify_title(text: str) -> str:
-    if not text:
-        return ""
-    translit_map = {
-        "а": "a",
-        "б": "b",
-        "в": "v",
-        "г": "g",
-        "д": "d",
-        "е": "e",
-        "ё": "e",
-        "ж": "zh",
-        "з": "z",
-        "и": "i",
-        "й": "y",
-        "к": "k",
-        "л": "l",
-        "м": "m",
-        "н": "n",
-        "о": "o",
-        "п": "p",
-        "р": "r",
-        "с": "s",
-        "т": "t",
-        "у": "u",
-        "ф": "f",
-        "х": "h",
-        "ц": "ts",
-        "ч": "ch",
-        "ш": "sh",
-        "щ": "shch",
-        "ы": "y",
-        "э": "e",
-        "ю": "yu",
-        "я": "ya",
-        "ъ": "",
-        "ь": "",
-    }
-    lowered = text.lower()
-    translit = "".join(translit_map.get(ch, ch) for ch in lowered)
-    return re.sub(r"[^a-z0-9]+", "-", translit).strip("-")
-
-
 def _ensure_tag_by_name(raw_name: str) -> tuple[Tag | None, bool]:
     normalized = _normalize_tag_value(raw_name).lstrip("#").strip()
     if not normalized:
@@ -373,7 +331,7 @@ def _generate_unique_comun_category_slug(comun: Comun, name: str) -> str:
     normalized_name = str(name or "").strip()
     base_slug = slugify(normalized_name)[:120]
     if not base_slug:
-        base_slug = _slugify_title(normalized_name)[:120]
+        base_slug = slugify_title(normalized_name)[:120]
     if not base_slug:
         return ""
     slug = base_slug
@@ -428,7 +386,7 @@ def _generate_unique_comun_glossary_term_slug(
     normalized_term = str(term or "").strip()
     base_slug = slugify(normalized_term)[:180]
     if not base_slug:
-        base_slug = _slugify_title(normalized_term)[:180]
+        base_slug = slugify_title(normalized_term)[:180]
     if not base_slug:
         base_slug = f"term-{secrets.token_hex(4)}"
     slug = base_slug
@@ -563,7 +521,7 @@ def _normalize_comun_slug(value: str) -> str:
         return ""
     base_slug = slugify(normalized_value)[:160]
     if not base_slug:
-        base_slug = _slugify_title(normalized_value)[:160]
+        base_slug = slugify_title(normalized_value)[:160]
     return base_slug
 
 
@@ -1212,6 +1170,84 @@ def _sync_comun_subscriber_counts(previous_settings: dict, next_settings: dict) 
         )
 
 
+def _ensure_users_subscribed_to_comun(comun: Comun, user_ids: object) -> int:
+    slug = str(getattr(comun, "slug", "") or "").strip()
+    if not slug:
+        return 0
+
+    normalized_user_ids: list[int] = []
+    seen_user_ids: set[int] = set()
+    raw_user_ids = user_ids if isinstance(user_ids, (list, tuple, set)) else []
+    for raw_user_id in raw_user_ids:
+        try:
+            user_id = int(raw_user_id)
+        except (TypeError, ValueError):
+            continue
+        if user_id <= 0 or user_id in seen_user_ids:
+            continue
+        seen_user_ids.add(user_id)
+        normalized_user_ids.append(user_id)
+    if not normalized_user_ids:
+        return 0
+
+    from my_feed.models import UserFeedSettings
+
+    active_user_ids = set(
+        User.objects.filter(id__in=normalized_user_ids, is_active=True).values_list("id", flat=True)
+    )
+    if not active_user_ids:
+        return 0
+
+    new_subscribers_count = 0
+    with transaction.atomic():
+        settings_by_user_id = {
+            settings.user_id: settings
+            for settings in UserFeedSettings.objects.select_for_update().filter(user_id__in=active_user_ids)
+        }
+        for user_id in sorted(active_user_ids):
+            settings = settings_by_user_id.get(user_id)
+            is_new_settings = settings is None
+            if settings is None:
+                settings = UserFeedSettings(user_id=user_id)
+
+            current_slugs: list[str] = []
+            current_slug_set: set[str] = set()
+            for raw_slug in settings.my_feed_comuns or []:
+                current_slug = str(raw_slug or "").strip()
+                if not current_slug or current_slug in current_slug_set:
+                    continue
+                current_slug_set.add(current_slug)
+                current_slugs.append(current_slug)
+
+            category_selection = settings.my_feed_comun_categories or {}
+            was_subscribed = slug in current_slug_set or (
+                isinstance(category_selection, dict) and slug in category_selection
+            )
+            if slug in current_slug_set:
+                continue
+
+            settings.my_feed_comuns = [*current_slugs, slug]
+            if is_new_settings:
+                settings.save()
+            else:
+                settings.save(update_fields=["my_feed_comuns", "updated_at"])
+            if not was_subscribed:
+                new_subscribers_count += 1
+
+        if new_subscribers_count:
+            Comun.objects.filter(id=comun.id).update(
+                subscribers_count=F("subscribers_count") + new_subscribers_count
+            )
+    return new_subscribers_count
+
+
+def _ensure_comun_moderators_subscribed(comun: Comun) -> int:
+    user_ids = set(comun.moderators.values_list("id", flat=True))
+    if getattr(comun, "creator_id", None):
+        user_ids.add(comun.creator_id)
+    return _ensure_users_subscribed_to_comun(comun, user_ids)
+
+
 def _post_author_is_site_user(post: Post) -> bool:
     author = getattr(post, "author", None)
     if author is None and getattr(post, "author_id", None):
@@ -1512,7 +1548,6 @@ __all__ = [
     "_serialize_backend_post_card",
     "_serialize_post_comun",
     "_site_user_avatar_url",
-    "_slugify_title",
     "_sync_comun_glossary_terms",
     "_sync_comun_subscriber_counts",
     "_sync_comun_logo_from_author",

@@ -126,6 +126,14 @@ class Comun(models.Model):
         verbose_name="Username Telegram-канала",
         help_text="Публичный @username канала. Можно указать заранее на сайте, а затем завершить настройку в боте.",
     )
+    telegram_chat_id = models.BigIntegerField(
+        null=True,
+        blank=True,
+        unique=True,
+        verbose_name="ID Telegram-чата",
+        help_text="Группа или супергруппа Telegram, из которой можно предлагать материалы в базу знаний и глоссарий.",
+    )
+    telegram_chat_title = models.CharField(max_length=255, blank=True, verbose_name="Название Telegram-чата")
     moderators = models.ManyToManyField(
         User,
         blank=True,
@@ -406,6 +414,99 @@ class ComunKnowledgeBaseItem(models.Model):
         return self.title or f"{self.comun_id}:{self.post_id or self.item_type}"
 
 
+class ComunTelegramSubmission(models.Model):
+    TYPE_KNOWLEDGE_BASE = "knowledge_base"
+    TYPE_GLOSSARY = "glossary"
+    TYPE_CHOICES = (
+        (TYPE_KNOWLEDGE_BASE, "База знаний"),
+        (TYPE_GLOSSARY, "Глоссарий"),
+    )
+
+    STATUS_PENDING = "pending"
+    STATUS_APPROVED = "approved"
+    STATUS_REJECTED = "rejected"
+    STATUS_CHOICES = (
+        (STATUS_PENDING, "На модерации"),
+        (STATUS_APPROVED, "Утверждено"),
+        (STATUS_REJECTED, "Отклонено"),
+    )
+
+    comun = models.ForeignKey(
+        "feeds.Comun",
+        on_delete=models.CASCADE,
+        related_name="telegram_submissions",
+        verbose_name="Сообщество",
+    )
+    request_type = models.CharField(max_length=32, choices=TYPE_CHOICES)
+    status = models.CharField(max_length=32, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    requested_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="comun_telegram_submissions",
+        verbose_name="Предложил пользователь",
+    )
+    reviewed_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="reviewed_comun_telegram_submissions",
+        verbose_name="Проверил пользователь",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    telegram_user_id = models.BigIntegerField(null=True, blank=True)
+    telegram_username = models.CharField(max_length=255, blank=True)
+    telegram_chat_id = models.BigIntegerField()
+    telegram_chat_title = models.CharField(max_length=255, blank=True)
+    telegram_source_message_id = models.BigIntegerField()
+    telegram_request_message_id = models.BigIntegerField(null=True, blank=True)
+    telegram_source_url = models.URLField(max_length=500, blank=True)
+    source_author_name = models.CharField(max_length=255, blank=True)
+    source_text = models.TextField()
+    title = models.CharField(max_length=255, blank=True)
+    glossary_term = models.CharField(max_length=180, blank=True)
+    glossary_definition = models.TextField(blank=True)
+    created_post = models.ForeignKey(
+        "feeds.Post",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="telegram_knowledge_base_submissions",
+    )
+    created_glossary_term = models.ForeignKey(
+        "feeds.ComunGlossaryTerm",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="telegram_submissions",
+    )
+    source_payload = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = "feeds"
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["comun", "status", "-created_at"], name="comtgsub_comun_status_idx"),
+            models.Index(fields=["telegram_chat_id", "telegram_source_message_id"], name="comtgsub_tg_msg_idx"),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["comun", "request_type", "telegram_chat_id", "telegram_source_message_id"],
+                condition=models.Q(status="pending"),
+                name="comtgsub_unique_pending_source",
+            )
+        ]
+        verbose_name = "Telegram-заявка сообщества"
+        verbose_name_plural = "Telegram-заявки сообществ"
+
+    def __str__(self) -> str:
+        return f"{self.comun_id}:{self.request_type}:{self.status}:{self.id}"
+
+
 __all__ = [
     "Comun",
     "ComunCategory",
@@ -413,5 +514,6 @@ __all__ = [
     "ComunKnowledgeBaseItem",
     "ComunPostCategoryAssignment",
     "ComunPostRatingContribution",
+    "ComunTelegramSubmission",
     "ComunVote",
 ]

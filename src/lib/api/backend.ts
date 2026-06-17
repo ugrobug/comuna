@@ -157,6 +157,30 @@ export const buildComunKnowledgeBaseItemUrl = (
   return `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/knowledge-base/${encodeURIComponent(itemId)}/`
 }
 
+export const buildComunTelegramSubmissionsPath = (slug: string): string => {
+  return `/comuns/${encodeURIComponent(slug)}/telegram-submissions`
+}
+
+export const buildComunTelegramSubmissionsUrl = (
+  slug: string,
+  options?: { status?: string; limit?: number; offset?: number }
+): string => {
+  const base = `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/telegram-submissions/`
+  const params = new URLSearchParams()
+  if (options?.status) params.set('status', options.status)
+  if (typeof options?.limit === 'number') params.set('limit', String(options.limit))
+  if (typeof options?.offset === 'number') params.set('offset', String(options.offset))
+  const query = params.toString()
+  return query ? `${base}?${query}` : base
+}
+
+export const buildComunTelegramSubmissionUrl = (
+  slug: string,
+  submissionId: number | string
+): string => {
+  return `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/telegram-submissions/${encodeURIComponent(submissionId)}/`
+}
+
 export const buildComunRoadmapPath = (slug: string): string => {
   return `/comuns/${encodeURIComponent(slug)}/roadmap`
 }
@@ -766,6 +790,37 @@ export type BackendComunCustomTemplate = {
   fields?: BackendComunCustomTemplateField[]
 }
 
+export type BackendComunTelegramSubmission = {
+  id: number
+  request_type: 'knowledge_base' | 'glossary'
+  status: 'pending' | 'approved' | 'rejected'
+  title?: string
+  source_text: string
+  source_author_name?: string
+  telegram_username?: string
+  telegram_chat_title?: string
+  telegram_source_url?: string
+  glossary_term?: string
+  glossary_definition?: string
+  created_post_id?: number | null
+  created_glossary_term_id?: number | null
+  requested_by?: {
+    id?: number | null
+    username?: string | null
+    display_name?: string | null
+    is_deleted?: boolean
+  }
+  reviewed_by?: {
+    id?: number | null
+    username?: string | null
+    display_name?: string | null
+    is_deleted?: boolean
+  }
+  reviewed_at?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+
 export type BackendComun = {
   id: number
   name: string
@@ -1020,6 +1075,7 @@ export type BackendPost = {
   post_rating?: BackendPostRating | null
   preview_image_url?: string | null
   thumbnail_url?: string | null
+  has_full_content?: boolean
   created_at: string
   source_url?: string | null
   channel_url?: string | null
@@ -1093,6 +1149,7 @@ export const backendPostToPostView = (
       post_ratings: post.post_ratings ?? {},
       post_rating: post.post_rating ?? null,
       url: options.includePreviewMedia === false ? '' : previewImageUrl,
+      has_full_content: Boolean(post.has_full_content),
       tags: post.tags ?? [],
       published: post.created_at,
       updated: post.created_at,

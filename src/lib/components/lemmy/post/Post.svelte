@@ -58,6 +58,7 @@
   export let hideSubscribe: boolean = false
   export let disableUserLink: boolean | undefined = undefined
   export let comunCategories: BackendComunCategory[] = []
+  export let currentWelcomePostId: number | null | undefined = undefined
 
   $: postUrl = linkOverride ?? postLink(post.post)
   $: isBackendPost = Boolean(linkOverride)
@@ -92,6 +93,9 @@
   $: backendPostRatings = (
     post.post as { post_ratings?: Record<string, BackendPostRating> | null }
   ).post_ratings ?? {}
+  $: backendHasFullContent = Boolean(
+    (post.post as { has_full_content?: boolean }).has_full_content
+  )
   $: backendVotePollParticipations = (
     post.post as { vote_poll_participations?: VotePollParticipation[] }
   ).vote_poll_participations ?? []
@@ -481,6 +485,7 @@
               clickThrough={false}
               {showFullBody}
               collapsible={true}
+              canExpandPreview={backendHasFullContent}
               externalPreviewImageUrl={post.post.url}
               class="relative text-slate-600 dark:text-zinc-400"
               on:expand={handleBackendPreviewExpand}
@@ -532,6 +537,7 @@
       on:deleted={() => (removedByAdmin = true)}
       on:categorychange
       on:pinned
+      on:unpinned
       {post}
       style="grid-area: actions;"
       {view}
@@ -543,6 +549,7 @@
       {userUrlOverride}
       {communityUrlOverride}
       {comunCategories}
+      {currentWelcomePostId}
     />
   {:else if view == 'compact'}
     <div class="flex flex-row items-center gap-2 text-sm">

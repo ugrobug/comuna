@@ -28,14 +28,6 @@
   role="button"
   tabindex="0"
 >
-  <!-- svelte-ignore a11y-missing-attribute -->
-  <img
-    loading="lazy"
-    fetchpriority="auto"
-    src={bestImageURL(post, false, 64)}
-    class="-z-10 absolute top-0 left-0 w-full h-full object-cover blur-lg
-         scale-[1.2] opacity-50"
-  />
   <picture class="max-h-[inherit]">
     <source
       srcset={bestImageURL(post, false, 256)}

@@ -143,6 +143,50 @@ class ComunPostingApiTests(TestCase):
         self.assertEqual(update_response.status_code, 400, update_response.content.decode())
         self.assertEqual(update_response.json()["error"], "post does not belong to comun")
 
+    def test_welcome_post_options_returns_recent_comun_posts_and_searches_all_comun_titles(self):
+        author = Author.objects.create(username="welcome-author", title="Welcome Author")
+        local_posts = [
+            Post.objects.create(
+                author=author,
+                message_id=7000 + index,
+                title=f"Пост сообщества {index}",
+                content="{}",
+                raw_data={"source": "manual_comun", "comun_slug": self.comun.slug},
+                is_pending=False,
+                is_blocked=False,
+            )
+            for index in range(6)
+        ]
+        Post.objects.create(
+            author=author,
+            message_id=8000,
+            title="Чужой точный пост",
+            content="{}",
+            raw_data={"source": "manual_comun", "comun_slug": "foreign-comun"},
+            is_pending=False,
+            is_blocked=False,
+        )
+
+        response = self.client.get(reverse("comun-welcome-post-options", kwargs={"slug": self.comun.slug}))
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        posts = response.json()["posts"]
+        self.assertEqual([post["id"] for post in posts], [post.id for post in reversed(local_posts[1:])])
+        self.assertEqual(set(posts[0].keys()), {"id", "title"})
+
+        search_response = self.client.get(
+            reverse("comun-welcome-post-options", kwargs={"slug": self.comun.slug}),
+            {"q": "Пост сообщества 0"},
+        )
+        self.assertEqual(search_response.status_code, 200, search_response.content.decode())
+        self.assertEqual(search_response.json()["posts"], [{"id": local_posts[0].id, "title": local_posts[0].title}])
+
+        foreign_search_response = self.client.get(
+            reverse("comun-welcome-post-options", kwargs={"slug": self.comun.slug}),
+            {"q": "Чужой точный"},
+        )
+        self.assertEqual(foreign_search_response.status_code, 200, foreign_search_response.content.decode())
+        self.assertEqual(foreign_search_response.json()["posts"], [])
+
     def test_comun_rating_post_delta_applies_only_in_first_rating_window(self):
         author = Author.objects.create(username="rating-author", title="Rating Author")
         post = Post.objects.create(

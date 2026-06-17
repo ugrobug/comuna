@@ -12,8 +12,8 @@ from telegram_integration import serializers as telegram_serializers
 from telegram_integration.bot import (
     _handle_callback_query,
     _handle_channel_post,
+    _handle_message,
     _handle_my_chat_member,
-    _handle_private_message,
 )
 from telegram_integration.service import (
     build_telegram_login_redirect_html,
@@ -147,7 +147,7 @@ def telegram_webhook(request: HttpRequest, token: str) -> HttpResponse:
     elif "my_chat_member" in payload:
         _handle_my_chat_member(payload["my_chat_member"])
     elif "message" in payload:
-        _handle_private_message(payload["message"])
+        _handle_message(payload["message"])
     elif "callback_query" in payload:
         _handle_callback_query(payload["callback_query"])
 

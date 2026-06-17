@@ -4,14 +4,9 @@
   import { page } from '$app/stores'
   import { onDestroy, onMount } from 'svelte'
   import LoginModal from '$lib/components/auth/LoginModal.svelte'
-  import Post from '$lib/components/lemmy/post/Post.svelte'
-  import { feedKeyboardShortcuts } from '$lib/actions/feedKeyboardShortcuts'
+  import FeedPostsList from '$lib/components/feeds/FeedPostsList.svelte'
   import {
-    backendPostCommunityPath,
-    backendPostToPostView,
-    buildBackendPostPath,
     buildPublicUserProfileUrl,
-    isSpecialProjectPost,
     type BackendPost,
     type BackendPublicSiteUser,
     type BackendPublicSiteUserAuthor,
@@ -304,7 +299,7 @@
             {formatNumber(profile?.posts_count)} постов
           </span>
           <span class="px-3 py-1.5 rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300">
-            {formatNumber(profile?.comuns_count)} коммун
+            {formatNumber(profile?.comuns_count)} сообществ
           </span>
           {#if profile?.authors_count}
             <span class="px-3 py-1.5 rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300">
@@ -419,7 +414,7 @@
       </div>
     {:else}
       <div class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-4 text-sm text-slate-500 dark:text-zinc-400">
-        Пока нет коммун.
+        Пока нет сообществ.
       </div>
     {/if}
   </section>
@@ -452,27 +447,7 @@
       {/if}
     </div>
     {#if profileTab === 'posts' && visiblePosts.length}
-      <div class="flex flex-col gap-6" use:feedKeyboardShortcuts>
-        {#each visiblePosts as backendPost (backendPost.id)}
-          <Post
-            post={backendPostToPostView(backendPost)}
-            class="feed-shortcut-post rounded-2xl border border-slate-200/80 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 shadow-sm px-4 sm:px-5"
-            view="cozy"
-            actions={true}
-            showReadMore={false}
-            showFullBody={false}
-            linkOverride={buildBackendPostPath(backendPost)}
-            userUrlOverride={backendPost.author?.username ? `/${backendPost.author.username}` : undefined}
-            communityUrlOverride={backendPostCommunityPath(backendPost)}
-            subscribeUrl={backendPost.channel_url ?? backendPost.author?.channel_url}
-            subscribeLabel="Подписаться"
-            hideSubscribe={isSpecialProjectPost(backendPost)}
-          />
-        {/each}
-      </div>
-      {#if loadingMore}
-        <div class="text-sm text-slate-500">Загрузка...</div>
-      {/if}
+      <FeedPostsList posts={visiblePosts} {loadingMore} />
     {:else if profileTab === 'posts'}
       <div class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-4 text-sm text-slate-500 dark:text-zinc-400">
         Пока нет публикаций.

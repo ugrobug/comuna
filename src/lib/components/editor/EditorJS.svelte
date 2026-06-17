@@ -1218,10 +1218,16 @@
   class TableTool {
     private data: {
       withHeadings: boolean
+      withColumnHeadings: boolean
       content: string[][]
     }
     private grid: HTMLDivElement | null = null
+    private modalRoot: HTMLDivElement | null = null
+    private modalGrid: HTMLDivElement | null = null
     private headingToggle: HTMLInputElement | null = null
+    private modalHeadingToggle: HTMLInputElement | null = null
+    private columnHeadingToggle: HTMLInputElement | null = null
+    private modalColumnHeadingToggle: HTMLInputElement | null = null
 
     static get toolbox() {
       return {
@@ -1235,15 +1241,155 @@
       }
     }
 
+    static get enableLineBreaks() {
+      return true
+    }
+
+    static get sanitize() {
+      return {
+        withHeadings: false,
+        withColumnHeadings: false,
+        content: {
+          br: true,
+          b: true,
+          strong: true,
+          i: true,
+          em: true,
+          code: true,
+          a: {
+            href: true,
+            target: true,
+            rel: true,
+            title: true,
+          },
+          span: {
+            class: true,
+            'data-glossary-term': true,
+            'data-glossary-slug': true,
+            'data-glossary-definition': true,
+            title: true,
+          },
+        },
+      }
+    }
+
     constructor({ data }: { data?: any }) {
       this.data = {
         withHeadings: Boolean(data?.withHeadings),
+        withColumnHeadings: Boolean(data?.withColumnHeadings),
         content: this.normalizeContent(data?.content),
       }
     }
 
+    private cellHasHtmlFragment(value: string): boolean {
+      return (
+        /<\/?(a|b|strong|i|em|span|br|code)\b/i.test(value) ||
+        /&(?:[a-z][a-z0-9]+|#\d+|#x[\da-f]+);/i.test(value)
+      )
+    }
+
+    private escapeCellText(value: string): string {
+      return escapeInlineHtml(value).replace(/\r\n|\r|\n/g, '<br>')
+    }
+
+    private normalizeEditableHtml(value: string): string {
+      const withLineBreaks = String(value ?? '')
+        .replace(/<div><br><\/div>/gi, '<br>')
+        .replace(/<div\b[^>]*>/gi, '<br>')
+        .replace(/<\/div>/gi, '')
+        .replace(/<p\b[^>]*>/gi, '')
+        .replace(/<\/p>/gi, '<br>')
+        .replace(/\r\n|\r|\n/g, '<br>')
+        .replace(/\u200b/g, '')
+
+      const sanitized = this.sanitizeCellHtml(withLineBreaks)
+        .replace(/(?:\s|&nbsp;|<br\s*\/?>)+$/gi, '')
+        .trim()
+
+      return /^(?:\s|&nbsp;|<br\s*\/?>)*$/i.test(sanitized) ? '' : sanitized
+    }
+
+    private sanitizeCellHtml(value: string): string {
+      if (typeof document === 'undefined') {
+        return this.escapeCellText(value)
+      }
+
+      const allowedTags = new Set(['A', 'B', 'STRONG', 'I', 'EM', 'SPAN', 'BR', 'CODE'])
+      const template = document.createElement('template')
+      template.innerHTML = String(value ?? '')
+
+      const cleanNode = (node: Node) => {
+        if (node.nodeType !== Node.ELEMENT_NODE) return
+        const element = node as HTMLElement
+        const tagName = element.tagName
+
+        if (!allowedTags.has(tagName)) {
+          Array.from(element.childNodes).forEach(cleanNode)
+          const fragment = document.createDocumentFragment()
+          while (element.firstChild) {
+            fragment.appendChild(element.firstChild)
+          }
+          element.replaceWith(fragment)
+          return
+        }
+
+        for (const attribute of Array.from(element.attributes)) {
+          const name = attribute.name.toLowerCase()
+          const isEventAttribute = name.startsWith('on')
+          const isAllowedAnchorAttribute =
+            tagName === 'A' && ['href', 'target', 'rel', 'title'].includes(name)
+          const isAllowedGlossaryAttribute =
+            tagName === 'SPAN' &&
+            (name === 'class' ||
+              name === 'title' ||
+              name === 'data-glossary-term' ||
+              name === 'data-glossary-slug' ||
+              name === 'data-glossary-definition')
+
+          if (isEventAttribute || name === 'style') {
+            element.removeAttribute(attribute.name)
+            continue
+          }
+          if (!isAllowedAnchorAttribute && !isAllowedGlossaryAttribute) {
+            element.removeAttribute(attribute.name)
+          }
+        }
+
+        if (tagName === 'A') {
+          const href = (element.getAttribute('href') || '').trim()
+          const isSafeHref =
+            !href ||
+            href.startsWith('#') ||
+            href.startsWith('/') ||
+            /^https?:\/\//i.test(href) ||
+            /^mailto:/i.test(href)
+          if (!isSafeHref) {
+            element.removeAttribute('href')
+          }
+          if (element.getAttribute('target') === '_blank') {
+            element.setAttribute('rel', 'noopener nofollow')
+          }
+        }
+
+        if (tagName === 'SPAN') {
+          const className = element.getAttribute('class') || ''
+          if (!className.split(/\s+/).includes('post-glossary-term')) {
+            element.removeAttribute('class')
+          }
+        }
+
+        Array.from(element.childNodes).forEach(cleanNode)
+      }
+
+      Array.from(template.content.childNodes).forEach(cleanNode)
+      return template.innerHTML
+    }
+
     private normalizeCell(value: unknown): string {
-      return typeof value === 'string' ? value : String(value ?? '')
+      const raw = typeof value === 'string' ? value : String(value ?? '')
+      return this.cellHasHtmlFragment(raw)
+        ? this.normalizeEditableHtml(raw)
+        : this.escapeCellText(raw)
     }
 
     private normalizeContent(value: unknown): string[][] {
@@ -1264,42 +1410,277 @@
       )
     }
 
+    private normalizeCurrentContent(): string[][] {
+      const rows = Array.isArray(this.data.content) ? this.data.content : []
+      const normalizedRows = rows
+        .map((row) =>
+          Array.isArray(row)
+            ? row.map((cell) => this.normalizeEditableHtml(cell))
+            : []
+        )
+        .filter((row) => row.length > 0)
+
+      const rowCount = Math.max(2, normalizedRows.length || 0)
+      const columnCount = Math.max(2, ...normalizedRows.map((row) => row.length), 0)
+
+      return Array.from({ length: rowCount }, (_, rowIndex) =>
+        Array.from({ length: columnCount }, (_, columnIndex) =>
+          normalizedRows[rowIndex]?.[columnIndex] ?? ''
+        )
+      )
+    }
+
     private updateCell(rowIndex: number, columnIndex: number, value: string) {
       if (!this.data.content[rowIndex]) return
-      this.data.content[rowIndex][columnIndex] = value
+      this.data.content[rowIndex][columnIndex] = this.normalizeEditableHtml(value)
+    }
+
+    private insertHtmlAtSelection(html: string) {
+      const selection = window.getSelection()
+      if (!selection || selection.rangeCount === 0) return
+
+      const range = selection.getRangeAt(0)
+      range.deleteContents()
+
+      const template = document.createElement('template')
+      template.innerHTML = html
+      const fragment = template.content
+      const lastNode = fragment.lastChild
+      range.insertNode(fragment)
+
+      if (lastNode) {
+        range.setStartAfter(lastNode)
+        range.collapse(true)
+        selection.removeAllRanges()
+        selection.addRange(range)
+      }
+    }
+
+    private insertLineBreak(editable: HTMLDivElement, rowIndex: number, columnIndex: number) {
+      this.insertHtmlAtSelection('<br>')
+      this.updateCell(rowIndex, columnIndex, editable.innerHTML)
+    }
+
+    private syncContentFromGrid(grid: HTMLDivElement | null) {
+      if (!grid) return
+
+      const inputs = Array.from(
+        grid.querySelectorAll<HTMLDivElement>('.table-tool__input[data-row-index][data-column-index]')
+      )
+
+      inputs.forEach((input) => {
+        const rowIndex = Number(input.dataset.rowIndex)
+        const columnIndex = Number(input.dataset.columnIndex)
+        if (!Number.isInteger(rowIndex) || !Number.isInteger(columnIndex)) return
+        this.updateCell(rowIndex, columnIndex, input.innerHTML)
+      })
+    }
+
+    private syncContentFromVisibleGrids() {
+      this.syncContentFromGrid(this.grid)
+      this.syncContentFromGrid(this.modalGrid)
+    }
+
+    private syncHeadingToggles() {
+      if (this.headingToggle) {
+        this.headingToggle.checked = this.data.withHeadings
+      }
+      if (this.modalHeadingToggle) {
+        this.modalHeadingToggle.checked = this.data.withHeadings
+      }
+      if (this.columnHeadingToggle) {
+        this.columnHeadingToggle.checked = this.data.withColumnHeadings
+      }
+      if (this.modalColumnHeadingToggle) {
+        this.modalColumnHeadingToggle.checked = this.data.withColumnHeadings
+      }
+    }
+
+    private setHeadings(value: boolean) {
+      this.syncContentFromVisibleGrids()
+      this.data.withHeadings = value
+      this.syncHeadingToggles()
+      this.renderAllGrids()
+    }
+
+    private setColumnHeadings(value: boolean) {
+      this.syncContentFromVisibleGrids()
+      this.data.withColumnHeadings = value
+      this.syncHeadingToggles()
+      this.renderAllGrids()
+    }
+
+    private renderAllGrids() {
+      this.renderGrid()
+      this.renderModalGrid()
     }
 
     private addRow() {
+      this.syncContentFromVisibleGrids()
       const columnCount = this.data.content[0]?.length || 2
       this.data.content = [
         ...this.data.content,
         Array.from({ length: columnCount }, () => ''),
       ]
-      this.renderGrid()
+      this.renderAllGrids()
     }
 
     private removeRow() {
       if (this.data.content.length <= 2) return
+      this.syncContentFromVisibleGrids()
       this.data.content = this.data.content.slice(0, -1)
-      this.renderGrid()
+      this.renderAllGrids()
     }
 
     private addColumn() {
+      this.syncContentFromVisibleGrids()
       this.data.content = this.data.content.map((row) => [...row, ''])
-      this.renderGrid()
+      this.renderAllGrids()
     }
 
     private removeColumn() {
       const columnCount = this.data.content[0]?.length || 0
       if (columnCount <= 2) return
+      this.syncContentFromVisibleGrids()
       this.data.content = this.data.content.map((row) => row.slice(0, -1))
-      this.renderGrid()
+      this.renderAllGrids()
+    }
+
+    private openWideEditor() {
+      if (typeof document === 'undefined') return
+      this.syncContentFromGrid(this.grid)
+
+      if (this.modalRoot) {
+        const firstInput = this.modalRoot.querySelector('.table-tool__input') as HTMLElement | null
+        firstInput?.focus()
+        return
+      }
+
+      const previousActiveElement =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null
+      const modal = document.createElement('div')
+      modal.classList.add('table-tool-modal')
+      modal.setAttribute('role', 'dialog')
+      modal.setAttribute('aria-modal', 'true')
+      modal.setAttribute('aria-label', 'Широкое редактирование таблицы')
+
+      const backdrop = document.createElement('div')
+      backdrop.classList.add('table-tool-modal__backdrop')
+
+      const panel = document.createElement('div')
+      panel.classList.add('table-tool-modal__panel')
+
+      const header = document.createElement('div')
+      header.classList.add('table-tool-modal__header')
+
+      const title = document.createElement('div')
+      title.classList.add('table-tool-modal__title')
+      title.textContent = 'Таблица'
+
+      const closeButton = document.createElement('button')
+      closeButton.type = 'button'
+      closeButton.classList.add('table-tool-modal__close')
+      closeButton.setAttribute('aria-label', 'Закрыть')
+      closeButton.textContent = 'Готово'
+
+      header.appendChild(title)
+      header.appendChild(closeButton)
+
+      const options = document.createElement('div')
+      options.classList.add('table-tool-modal__options')
+
+      const headingToggle = document.createElement('label')
+      headingToggle.classList.add('table-tool__toggle', 'table-tool__toggle--modal')
+
+      const headingInput = document.createElement('input')
+      headingInput.type = 'checkbox'
+      headingInput.checked = this.data.withHeadings
+      headingInput.addEventListener('change', () => {
+        this.setHeadings(headingInput.checked)
+      })
+      this.modalHeadingToggle = headingInput
+
+      const headingText = document.createElement('span')
+      headingText.textContent = 'Первая строка — заголовки'
+
+      headingToggle.appendChild(headingInput)
+      headingToggle.appendChild(headingText)
+      options.appendChild(headingToggle)
+
+      const columnHeadingToggle = document.createElement('label')
+      columnHeadingToggle.classList.add('table-tool__toggle', 'table-tool__toggle--modal')
+
+      const columnHeadingInput = document.createElement('input')
+      columnHeadingInput.type = 'checkbox'
+      columnHeadingInput.checked = this.data.withColumnHeadings
+      columnHeadingInput.addEventListener('change', () => {
+        this.setColumnHeadings(columnHeadingInput.checked)
+      })
+      this.modalColumnHeadingToggle = columnHeadingInput
+
+      const columnHeadingText = document.createElement('span')
+      columnHeadingText.textContent = 'Первый столбец — заголовки'
+
+      columnHeadingToggle.appendChild(columnHeadingInput)
+      columnHeadingToggle.appendChild(columnHeadingText)
+      options.appendChild(columnHeadingToggle)
+
+      const grid = document.createElement('div')
+      grid.classList.add('table-tool__grid', 'table-tool__grid--modal')
+      this.modalGrid = grid
+
+      panel.appendChild(header)
+      panel.appendChild(options)
+      panel.appendChild(grid)
+
+      modal.appendChild(backdrop)
+      modal.appendChild(panel)
+
+      const closeModal = () => {
+        this.syncContentFromGrid(this.modalGrid)
+        document.removeEventListener('keydown', handleKeydown)
+        modal.remove()
+        if (this.modalRoot === modal) {
+          this.modalRoot = null
+          this.modalGrid = null
+          this.modalHeadingToggle = null
+          this.modalColumnHeadingToggle = null
+        }
+        this.renderGrid()
+        previousActiveElement?.focus()
+      }
+      const handleKeydown = (event: KeyboardEvent) => {
+        if (event.key !== 'Escape') return
+        event.preventDefault()
+        closeModal()
+      }
+
+      backdrop.addEventListener('click', closeModal)
+      closeButton.addEventListener('click', closeModal)
+      document.addEventListener('keydown', handleKeydown)
+
+      this.modalRoot = modal
+      document.body.appendChild(modal)
+      this.renderModalGrid()
+      setTimeout(() => modal.classList.add('is-open'), 10)
+      setTimeout(() => {
+        const firstInput = modal.querySelector('.table-tool__input') as HTMLElement | null
+        firstInput?.focus()
+      }, 50)
     }
 
     private renderGrid() {
-      if (!this.grid) return
+      this.renderGridInto(this.grid, false)
+    }
 
-      this.grid.innerHTML = ''
+    private renderModalGrid() {
+      this.renderGridInto(this.modalGrid, true)
+    }
+
+    private renderGridInto(target: HTMLDivElement | null, isModal: boolean) {
+      if (!target) return
+
+      target.innerHTML = ''
 
       const controls = document.createElement('div')
       controls.classList.add('table-tool__controls')
@@ -1326,12 +1707,29 @@
           (this.data.content[0]?.length || 0) <= 2
         )
       )
+      if (!isModal) {
+        const expandButton = makeButton('', () => this.openWideEditor())
+        expandButton.classList.add('table-tool__action--expand')
+        expandButton.setAttribute('aria-label', 'Открыть таблицу шире')
+        expandButton.setAttribute('title', 'Открыть таблицу шире')
+        const expandIcon = document.createElement('span')
+        expandIcon.classList.add('table-tool__expand-icon')
+        expandIcon.setAttribute('aria-hidden', 'true')
+        expandButton.appendChild(expandIcon)
+        controls.appendChild(expandButton)
+      }
 
       const tableWrap = document.createElement('div')
       tableWrap.classList.add('table-tool__wrap')
+      if (isModal) {
+        tableWrap.classList.add('table-tool__wrap--modal')
+      }
 
       const table = document.createElement('table')
       table.classList.add('table-tool__table')
+      if (isModal) {
+        table.classList.add('table-tool__table--modal')
+      }
 
       const body = document.createElement('tbody')
 
@@ -1339,24 +1737,56 @@
         const tr = document.createElement('tr')
 
         row.forEach((cell, columnIndex) => {
+          const isHeadingCell =
+            (this.data.withHeadings && rowIndex === 0) ||
+            (this.data.withColumnHeadings && columnIndex === 0)
           const td = document.createElement('td')
           td.classList.add('table-tool__cell')
-          if (this.data.withHeadings && rowIndex === 0) {
+          if (isHeadingCell) {
             td.classList.add('table-tool__cell--heading')
           }
 
-          const input = document.createElement('input')
-          input.type = 'text'
+          const input = document.createElement('div')
           input.classList.add('table-tool__input')
+          if (isModal) {
+            input.classList.add('table-tool__input--modal')
+          }
+          input.contentEditable = 'true'
+          input.setAttribute('role', 'textbox')
+          input.setAttribute('aria-multiline', 'true')
+          input.dataset.rowIndex = String(rowIndex)
+          input.dataset.columnIndex = String(columnIndex)
           if (this.data.withHeadings && rowIndex === 0) {
             input.classList.add('table-tool__input--heading')
-            input.placeholder = `Заголовок ${columnIndex + 1}`
+            input.dataset.placeholder = `Заголовок ${columnIndex + 1}`
+          } else if (this.data.withColumnHeadings && columnIndex === 0) {
+            input.classList.add('table-tool__input--heading')
+            input.dataset.placeholder = `Заголовок строки ${rowIndex + 1}`
           } else {
-            input.placeholder = `Ячейка ${rowIndex + 1}.${columnIndex + 1}`
+            input.dataset.placeholder = `Ячейка ${rowIndex + 1}.${columnIndex + 1}`
           }
-          input.value = cell
+          input.innerHTML = cell
           input.addEventListener('input', () => {
-            this.updateCell(rowIndex, columnIndex, input.value)
+            this.updateCell(rowIndex, columnIndex, input.innerHTML)
+          })
+          input.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter') return
+            event.preventDefault()
+            event.stopPropagation()
+            this.insertLineBreak(input, rowIndex, columnIndex)
+          })
+          input.addEventListener('paste', (event) => {
+            const clipboardData = event.clipboardData
+            if (!clipboardData) return
+            const html = clipboardData.getData('text/html')
+            const text = clipboardData.getData('text/plain')
+            const nextHtml = html
+              ? this.normalizeEditableHtml(html)
+              : this.escapeCellText(text)
+            if (!nextHtml) return
+            event.preventDefault()
+            this.insertHtmlAtSelection(nextHtml)
+            this.updateCell(rowIndex, columnIndex, input.innerHTML)
           })
 
           td.appendChild(input)
@@ -1369,8 +1799,8 @@
       table.appendChild(body)
       tableWrap.appendChild(table)
 
-      this.grid.appendChild(controls)
-      this.grid.appendChild(tableWrap)
+      target.appendChild(controls)
+      target.appendChild(tableWrap)
     }
 
     render() {
@@ -1392,8 +1822,7 @@
       headingInput.type = 'checkbox'
       headingInput.checked = this.data.withHeadings
       headingInput.addEventListener('change', () => {
-        this.data.withHeadings = headingInput.checked
-        this.renderGrid()
+        this.setHeadings(headingInput.checked)
       })
       this.headingToggle = headingInput
 
@@ -1403,6 +1832,23 @@
       headingToggle.appendChild(headingInput)
       headingToggle.appendChild(headingText)
 
+      const columnHeadingToggle = document.createElement('label')
+      columnHeadingToggle.classList.add('table-tool__toggle')
+
+      const columnHeadingInput = document.createElement('input')
+      columnHeadingInput.type = 'checkbox'
+      columnHeadingInput.checked = this.data.withColumnHeadings
+      columnHeadingInput.addEventListener('change', () => {
+        this.setColumnHeadings(columnHeadingInput.checked)
+      })
+      this.columnHeadingToggle = columnHeadingInput
+
+      const columnHeadingText = document.createElement('span')
+      columnHeadingText.textContent = 'Первый столбец — заголовки'
+
+      columnHeadingToggle.appendChild(columnHeadingInput)
+      columnHeadingToggle.appendChild(columnHeadingText)
+
       const grid = document.createElement('div')
       grid.classList.add('table-tool__grid')
       this.grid = grid
@@ -1410,6 +1856,7 @@
       wrapper.appendChild(title)
       wrapper.appendChild(hint)
       wrapper.appendChild(headingToggle)
+      wrapper.appendChild(columnHeadingToggle)
       wrapper.appendChild(grid)
 
       this.renderGrid()
@@ -1418,12 +1865,12 @@
     }
 
     save() {
-      const content = this.normalizeContent(this.data.content).map((row) =>
-        row.map((cell) => cell.trim())
-      )
+      this.syncContentFromVisibleGrids()
+      const content = this.normalizeCurrentContent()
 
       return {
-        withHeadings: this.headingToggle?.checked || false,
+        withHeadings: this.data.withHeadings,
+        withColumnHeadings: this.data.withColumnHeadings,
         content,
       }
     }
@@ -4488,7 +4935,10 @@
           : {}),
         ...(enabledTemplateBlockTypes.has('table')
           ? {
-              table: TableTool,
+              table: {
+                class: TableTool,
+                inlineToolbar: inlineTextToolbar,
+              },
             }
           : {}),
         ...(enabledTemplateBlockTypes.has('image') && postTemplateType !== 'tweet'
@@ -6160,6 +6610,9 @@
   }
 
   :global(.table-tool__action) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     border: 1px solid rgba(96, 165, 250, 0.26);
     background: rgba(15, 23, 42, 0.42);
     color: #dbeafe;
@@ -6180,6 +6633,35 @@
     cursor: not-allowed;
   }
 
+  :global(.table-tool__action--expand) {
+    width: 2.25rem;
+    height: 2.25rem;
+    margin-left: auto;
+    padding: 0;
+    border-color: rgba(56, 189, 248, 0.42);
+    background: rgba(14, 165, 233, 0.16);
+    color: #e0f2fe;
+  }
+
+  :global(.table-tool__action--expand:hover:not(:disabled)) {
+    border-color: rgba(56, 189, 248, 0.68);
+  }
+
+  :global(.table-tool__expand-icon) {
+    width: 1rem;
+    height: 1rem;
+    display: inline-block;
+    background:
+      linear-gradient(currentColor, currentColor) left top / 0.48rem 0.12rem no-repeat,
+      linear-gradient(currentColor, currentColor) left top / 0.12rem 0.48rem no-repeat,
+      linear-gradient(currentColor, currentColor) right top / 0.48rem 0.12rem no-repeat,
+      linear-gradient(currentColor, currentColor) right top / 0.12rem 0.48rem no-repeat,
+      linear-gradient(currentColor, currentColor) left bottom / 0.48rem 0.12rem no-repeat,
+      linear-gradient(currentColor, currentColor) left bottom / 0.12rem 0.48rem no-repeat,
+      linear-gradient(currentColor, currentColor) right bottom / 0.48rem 0.12rem no-repeat,
+      linear-gradient(currentColor, currentColor) right bottom / 0.12rem 0.48rem no-repeat;
+  }
+
   :global(.table-tool__wrap) {
     overflow-x: auto;
     border-radius: 0.78rem;
@@ -6188,10 +6670,20 @@
     padding: 0.35rem;
   }
 
+  :global(.table-tool__wrap--modal) {
+    min-height: 0;
+    max-height: calc(100vh - 13rem);
+    overflow: auto;
+  }
+
   :global(.table-tool__table) {
     width: 100%;
     min-width: 420px;
     border-collapse: collapse;
+  }
+
+  :global(.table-tool__table--modal) {
+    min-width: 760px;
   }
 
   :global(.table-tool__cell) {
@@ -6207,6 +6699,7 @@
   :global(.table-tool__input) {
     width: 100%;
     min-width: 8rem;
+    min-height: 2.65rem;
     border: 0;
     background: transparent;
     color: #f8fafc;
@@ -6215,8 +6708,16 @@
     padding: 0.68rem 0.72rem;
   }
 
-  :global(.table-tool__input::placeholder) {
+  :global(.table-tool__input--modal) {
+    min-width: 12rem;
+    min-height: 3.1rem;
+    font-size: 0.9rem;
+  }
+
+  :global(.table-tool__input:empty::before) {
+    content: attr(data-placeholder);
     color: #94a3b8;
+    pointer-events: none;
   }
 
   :global(.table-tool__input:focus) {
@@ -6227,6 +6728,99 @@
   :global(.table-tool__input--heading) {
     font-weight: 700;
     color: #eff6ff;
+  }
+
+  :global(.table-tool-modal) {
+    position: fixed;
+    inset: 0;
+    z-index: 2200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: clamp(0.75rem, 2vw, 1.5rem);
+    opacity: 0;
+    transition: opacity 0.16s ease;
+  }
+
+  :global(.table-tool-modal.is-open) {
+    opacity: 1;
+  }
+
+  :global(.table-tool-modal__backdrop) {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.66);
+    backdrop-filter: blur(3px);
+  }
+
+  :global(.table-tool-modal__panel) {
+    position: relative;
+    z-index: 1;
+    width: min(1120px, 100%);
+    max-height: min(760px, calc(100vh - 2rem));
+    border-radius: 1rem;
+    border: 1px solid rgba(96, 165, 250, 0.28);
+    background:
+      radial-gradient(120% 120% at 0% 0%, rgba(96, 165, 250, 0.14), rgba(96, 165, 250, 0) 58%),
+      #0f172a;
+    box-shadow: 0 28px 80px rgba(15, 23, 42, 0.42);
+    color: #e2e8f0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    overflow: hidden;
+    padding: 1rem;
+  }
+
+  :global(.table-tool-modal__header) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.8rem;
+  }
+
+  :global(.table-tool-modal__title) {
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 700;
+  }
+
+  :global(.table-tool-modal__close) {
+    border: 1px solid rgba(96, 165, 250, 0.32);
+    background: rgba(96, 165, 250, 0.14);
+    color: #dbeafe;
+    border-radius: 0.72rem;
+    font-size: 0.84rem;
+    font-weight: 700;
+    line-height: 1.2;
+    padding: 0.62rem 0.9rem;
+    transition: border-color 0.18s ease, transform 0.18s ease;
+  }
+
+  :global(.table-tool-modal__close:hover) {
+    border-color: rgba(96, 165, 250, 0.58);
+    transform: translateY(-1px);
+  }
+
+  :global(.table-tool-modal__options) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  :global(.table-tool__toggle--modal) {
+    border-radius: 999px;
+    border: 1px solid rgba(96, 165, 250, 0.2);
+    background: rgba(15, 23, 42, 0.44);
+    padding: 0.5rem 0.74rem;
+    width: fit-content;
+  }
+
+  :global(.table-tool__grid--modal) {
+    min-height: 0;
+    flex: 1 1 auto;
   }
 
   :global(.divider-tool__line) {

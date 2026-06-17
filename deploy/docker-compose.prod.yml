@@ -10,6 +10,20 @@ services:
     volumes:
       - db_data:/var/lib/postgresql/data
 
+  mysql57:
+    image: mysql:5.7
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL57_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_ROMAWHO_DB}
+      MYSQL_USER: ${MYSQL_ROMAWHO_USER}
+      MYSQL_PASSWORD: ${MYSQL_ROMAWHO_PASSWORD}
+    volumes:
+      - mysql57_data:/var/lib/mysql
+      - ./mysql57-init:/docker-entrypoint-initdb.d:ro
+
   backend:
     build:
       context: ..
@@ -25,6 +39,7 @@ services:
     volumes:
       - media_data:/app/media
       - static_data:/app/staticfiles
+      - ./secrets:/app/secrets:ro
 
   public-book-reminders:
     build:
@@ -39,6 +54,8 @@ services:
       - "oauth.telegram.org:149.154.167.220"
     depends_on:
       - db
+    volumes:
+      - ./secrets:/app/secrets:ro
 
   film-journey-deliveries:
     build:
@@ -53,6 +70,8 @@ services:
       - "oauth.telegram.org:149.154.167.220"
     depends_on:
       - db
+    volumes:
+      - ./secrets:/app/secrets:ro
 
   frontend:
     build:
@@ -81,5 +100,6 @@ services:
 
 volumes:
   db_data:
+  mysql57_data:
   media_data:
   static_data:

@@ -1,14 +1,7 @@
 <script lang="ts">
   import { browser } from '$app/environment'
-  import Post from '$lib/components/lemmy/post/Post.svelte'
-  import { feedKeyboardShortcuts } from '$lib/actions/feedKeyboardShortcuts'
-  import {
-    backendPostCommunityPath,
-    backendPostToPostView,
-    buildAuthorPostsUrl,
-    buildBackendPostPath,
-    isSpecialProjectPost,
-  } from '$lib/api/backend'
+  import FeedPostsList from '$lib/components/feeds/FeedPostsList.svelte'
+  import { buildAuthorPostsUrl } from '$lib/api/backend'
   import { env } from '$env/dynamic/public'
   import { userSettings } from '$lib/settings'
   import { page } from '$app/stores'
@@ -179,28 +172,7 @@
   <div class="text-lg font-semibold text-slate-900 dark:text-zinc-100">Посты</div>
 
   {#if visiblePosts?.length}
-    <div class="flex flex-col gap-6" use:feedKeyboardShortcuts>
-      {#each visiblePosts as backendPost (backendPost.id)}
-        {@const postView = backendPostToPostView(backendPost, data.author)}
-        <Post
-          post={postView}
-          class="feed-shortcut-post"
-          view="cozy"
-          actions={true}
-          showReadMore={false}
-          showFullBody={false}
-          linkOverride={buildBackendPostPath(backendPost)}
-          userUrlOverride={`/${data.author?.username}`}
-          communityUrlOverride={backendPostCommunityPath(backendPost)}
-          subscribeUrl={backendPost.channel_url ?? data.author?.channel_url}
-          subscribeLabel="Подписаться"
-          hideSubscribe={isSpecialProjectPost(backendPost)}
-        />
-      {/each}
-    </div>
-    {#if loadingMore}
-      <div class="text-sm text-slate-500">Загрузка...</div>
-    {/if}
+    <FeedPostsList posts={visiblePosts} {loadingMore} />
   {:else}
     <div class="text-base text-slate-500">Пока нет публикаций.</div>
   {/if}
