@@ -30,11 +30,7 @@ class Command(BaseCommand):
         if wp_ids:
             id_list = wp_ids
         else:
-            id_list = list(
-                LegacyWpUserMap.objects.order_by("wp_user_id").values_list(
-                    "wp_user_id", flat=True
-                )
-            )
+            id_list = list(LegacyWpUserMap.objects.order_by("wp_user_id").values_list("wp_user_id", flat=True))
 
         merged_users = 0
         removed_authors = 0

@@ -12,11 +12,7 @@ User = get_user_model()
 
 
 def pt_imported_post_author_ids() -> set[int]:
-    ids = set(
-        LegacyWpPostMap.objects.filter(post_id__isnull=False).values_list(
-            "post__author_id", flat=True
-        )
-    )
+    ids = set(LegacyWpPostMap.objects.filter(post_id__isnull=False).values_list("post__author_id", flat=True))
     ids.discard(None)
     return {int(x) for x in ids}
 
@@ -33,19 +29,17 @@ def user_ids_for_pt_authors(*, author_ids: set[int] | None = None) -> set[int]:
 
     user_ids: set[int] = set()
 
-    for uid in LegacyWpUserMap.objects.filter(
-        author_id__in=author_ids, user_id__isnull=False
-    ).values_list("user_id", flat=True):
-        user_ids.add(int(uid))
-
-    for uid in AuthorAdmin.objects.filter(
-        author_id__in=author_ids, verified_at__isnull=False
-    ).values_list("user_id", flat=True):
-        user_ids.add(int(uid))
-
-    for author in Author.objects.filter(id__in=author_ids).only(
-        "id", "username", "channel_url", "channel_id"
+    for uid in LegacyWpUserMap.objects.filter(author_id__in=author_ids, user_id__isnull=False).values_list(
+        "user_id", flat=True
     ):
+        user_ids.add(int(uid))
+
+    for uid in AuthorAdmin.objects.filter(author_id__in=author_ids, verified_at__isnull=False).values_list(
+        "user_id", flat=True
+    ):
+        user_ids.add(int(uid))
+
+    for author in Author.objects.filter(id__in=author_ids).only("id", "username", "channel_url", "channel_id"):
         if (author.channel_url or "").strip() or author.channel_id is not None:
             continue
         username = (author.username or "").strip()

@@ -53,9 +53,7 @@ class Command(BaseCommand):
             User = get_user_model()
             user_ids = {
                 int(uid)
-                for uid in LegacyWpUserMap.objects.filter(user_id__isnull=False).values_list(
-                    "user_id", flat=True
-                )
+                for uid in LegacyWpUserMap.objects.filter(user_id__isnull=False).values_list("user_id", flat=True)
             }
             author_ids = None
         else:

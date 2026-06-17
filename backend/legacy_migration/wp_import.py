@@ -63,11 +63,7 @@ def resolve_author_for_wp_user(
     display_name: str,
 ) -> tuple[Author, bool]:
     """Возвращает (author, created)."""
-    map_row = (
-        LegacyWpUserMap.objects.filter(wp_user_id=wp_user_id)
-        .select_related("author")
-        .first()
-    )
+    map_row = LegacyWpUserMap.objects.filter(wp_user_id=wp_user_id).select_related("author").first()
     if map_row and map_row.author_id and map_row.author:
         return map_row.author, False
 
@@ -117,9 +113,7 @@ def _wp_import_author_username_q(base: str, wp_user_id: int) -> Q:
 
 
 def authors_created_for_wp_import(wp_user_id: int, base: str) -> list[Author]:
-    return list(
-        Author.objects.filter(_wp_import_author_username_q(base, wp_user_id)).order_by("id")
-    )
+    return list(Author.objects.filter(_wp_import_author_username_q(base, wp_user_id)).order_by("id"))
 
 
 def pick_canonical_wp_import_author(
@@ -140,11 +134,7 @@ def pick_canonical_wp_import_author(
     for author in authors:
         if author.username.lower() == preferred:
             return author
-    post_counts = (
-        Post.objects.filter(author_id__in=by_id.keys())
-        .values("author_id")
-        .annotate(c=Count("id"))
-    )
+    post_counts = Post.objects.filter(author_id__in=by_id.keys()).values("author_id").annotate(c=Count("id"))
     count_map = {row["author_id"]: row["c"] for row in post_counts}
     return max(authors, key=lambda a: (count_map.get(a.id, 0), -a.id))
 
@@ -411,9 +401,7 @@ def upsert_django_user_for_wp_user(
             "imported_at": timezone.now(),
         },
     )
-    ensure_author_admin_for_legacy_map(
-        LegacyWpUserMap.objects.filter(wp_user_id=wp_user_id).first()
-    )
+    ensure_author_admin_for_legacy_map(LegacyWpUserMap.objects.filter(wp_user_id=wp_user_id).first())
     return user, user_created, password_updated, linked_existing_user
 
 
@@ -432,11 +420,7 @@ def ensure_author_admin_for_legacy_map(
     user_id = int(map_row.user_id)
     author_id = int(map_row.author_id)
 
-    other_user_link = (
-        AuthorAdmin.objects.filter(author_id=author_id)
-        .exclude(user_id=user_id)
-        .first()
-    )
+    other_user_link = AuthorAdmin.objects.filter(author_id=author_id).exclude(user_id=user_id).first()
     if other_user_link:
         return "conflict"
 
