@@ -131,6 +131,10 @@ export const buildComunUrl = (slug: string): string => {
   return `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/`
 }
 
+export const buildComunSidebarUrl = (slug: string): string => {
+  return `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/sidebar/`
+}
+
 export const buildComunCustomTemplateEditorPath = (
   slug: string,
   templateRef: string | number

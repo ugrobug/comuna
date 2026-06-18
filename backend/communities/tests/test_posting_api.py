@@ -339,6 +339,40 @@ class ComunPostingApiTests(TestCase):
         self.assertEqual(first_comun["tags"][0]["name"], sidebar_tag.name)
         self.assertTrue(first_comun["can_moderate"])
 
+    def test_comun_sidebar_detail_returns_light_payload_without_activity(self):
+        self.comun.rules_text = "Правила для правого сайдбара"
+        self.comun.glossary_enabled = True
+        self.comun.roadmap_enabled = True
+        self.comun.knowledge_base_enabled = True
+        self.comun.save(
+            update_fields=[
+                "rules_text",
+                "glossary_enabled",
+                "roadmap_enabled",
+                "knowledge_base_enabled",
+            ]
+        )
+        self.comun.moderators.add(self.user)
+
+        response = self.client.get(
+            reverse("comun-sidebar-detail", kwargs={"slug": self.comun.slug})
+        )
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        payload = response.json()
+        comun = payload["comun"]
+        self.assertEqual(comun["slug"], self.comun.slug)
+        self.assertEqual(comun["rules_text"], "Правила для правого сайдбара")
+        self.assertTrue(comun["glossary_enabled"])
+        self.assertTrue(comun["roadmap_enabled"])
+        self.assertTrue(comun["knowledge_base_enabled"])
+        self.assertEqual(comun["creator"]["id"], self.user.id)
+        self.assertEqual(comun["moderators"][0]["id"], self.user.id)
+        self.assertNotIn("activity", comun)
+        self.assertNotIn("welcome_post", comun)
+        self.assertNotIn("tags", comun)
+        self.assertNotIn("categories", comun)
+
     def test_auth_posts_require_comun_for_published_post(self):
         response = self.client.post(
             reverse("auth-posts"),

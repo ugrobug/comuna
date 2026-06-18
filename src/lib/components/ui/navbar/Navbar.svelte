@@ -45,13 +45,11 @@
   import { onMount } from 'svelte';
   import { siteToken, siteUser, logout as siteLogout } from '$lib/siteAuth'
   
-  import { buildComunsSidebarUrl, type BackendComun } from '$lib/api/backend';
-  import { cachedJson } from '$lib/api/publicCache'
-  import { selectSidebarComuns } from '$lib/communitySidebar'
+  import type { BackendComun } from '$lib/api/backend'
+  import { loadSidebarComuns, selectSidebarComuns, sidebarComunsStore } from '$lib/communitySidebar'
   import { getRandomTaglineFromSite, hasTaglines } from '$lib/taglineUtils.js';
   import Markdown from '$lib/components/markdown/Markdown.svelte';
 
-  let comuns: BackendComun[] = [];
   let sidebarComuns: BackendComun[] = [];
   let sidebarComunsTotal = 0;
 
@@ -66,21 +64,8 @@
   // Переменная для случайного слогана
   let randomTagline = '';
 
-  async function loadComuns() {
-    try {
-      const data = await cachedJson<{ comuns?: BackendComun[] }>(
-        'public:sidebar-comuns',
-        buildComunsSidebarUrl(),
-        { ttlMs: 21_600_000 }
-      );
-      comuns = data.comuns ?? [];
-    } catch (e) {
-      comuns = [];
-    }
-  }
-
   onMount(() => {
-    loadComuns();
+    void loadSidebarComuns();
     
     // Добавляем обработчик клавиши Escape
     document.addEventListener('keydown', handleKeydown);
@@ -137,7 +122,7 @@
 
   $: currentFeed = $page.url.searchParams.get('feed') ?? ($userSettings.homeFeed ?? 'hot')
   $: sidebarComunsSelection = selectSidebarComuns(
-    comuns,
+    $sidebarComunsStore,
     $userSettings.myFeedComuns,
     !$siteToken || $feedSettingsHydrated
   )

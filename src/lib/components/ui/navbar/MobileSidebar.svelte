@@ -25,11 +25,10 @@
   import LoginModal from '$lib/components/auth/LoginModal.svelte'
   import { env } from '$env/dynamic/public'
   import { createEventDispatcher } from 'svelte'
-  import { buildComunsSidebarUrl, type BackendComun } from '$lib/api/backend'
-  import { cachedJson } from '$lib/api/publicCache'
+  import type { BackendComun } from '$lib/api/backend'
   import { siteToken, siteUser, logout as siteLogout } from '$lib/siteAuth'
   import { feedSettingsHydrated, userSettings } from '$lib/settings'
-  import { selectSidebarComuns } from '$lib/communitySidebar'
+  import { loadSidebarComuns, selectSidebarComuns, sidebarComunsStore } from '$lib/communitySidebar'
 
   const dispatch = createEventDispatcher()
 
@@ -40,7 +39,6 @@
   const PUBLIC_PROJECT_RULES = env.PUBLIC_PROJECT_RULES || '/rules';
 
   let loginModalOpen = false;
-  let comuns: BackendComun[] = [];
   let sidebarComuns: BackendComun[] = [];
   let sidebarComunsTotal = 0;
 
@@ -55,21 +53,8 @@
     dispatch('close');
   }
   
-  async function loadComuns() {
-    try {
-      const data = await cachedJson<{ comuns?: BackendComun[] }>(
-        'public:sidebar-comuns',
-        buildComunsSidebarUrl(),
-        { ttlMs: 21_600_000 }
-      );
-      comuns = data.comuns ?? [];
-    } catch (e) {
-      comuns = [];
-    }
-  }
-
   onMount(async () => {
-    loadComuns();
+    void loadSidebarComuns();
   });
 
   $: searchParams = new URLSearchParams($page.url.search);
@@ -77,7 +62,7 @@
                        $page.url.pathname.includes('/edit/post')
   $: currentFeed = $page.url.searchParams.get('feed') ?? ($userSettings.homeFeed ?? 'hot')
   $: sidebarComunsSelection = selectSidebarComuns(
-    comuns,
+    $sidebarComunsStore,
     $userSettings.myFeedComuns,
     !$siteToken || $feedSettingsHydrated
   )

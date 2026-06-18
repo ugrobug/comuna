@@ -2362,6 +2362,31 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
     )
 
 
+def comun_sidebar_detail(request: HttpRequest, slug: str) -> HttpResponse:
+    if request.method != "GET":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    current_user = user_views._get_user_from_request(request)
+    try:
+        comun = (
+            Comun.objects.filter(slug=slug)
+            .select_related("creator", "creator__site_profile")
+            .get()
+        )
+    except Comun.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "comun not found"}, status=404)
+
+    if not comun.is_active and not _comun_is_moderator(current_user, comun):
+        return JsonResponse({"ok": False, "error": "comun not found"}, status=404)
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "comun": _serialize_comun_sidebar(request, comun),
+        }
+    )
+
+
 def comun_welcome_post_options(request: HttpRequest, slug: str) -> HttpResponse:
     if request.method != "GET":
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
@@ -3171,6 +3196,7 @@ _serialize_comun_category = community_serializers._serialize_comun_category
 _serialize_comun_rating = community_serializers._serialize_comun_rating
 _serialize_comun = community_serializers._serialize_comun
 _serialize_comun_activity = community_serializers._serialize_comun_activity
+_serialize_comun_sidebar = community_serializers._serialize_comun_sidebar
 
 
 __all__ = [
@@ -3185,6 +3211,7 @@ __all__ = [
     "_serialize_comun_profile_card",
     "comun_create_from_telegram_channel",
     "comun_detail_manage",
+    "comun_sidebar_detail",
     "comun_post_category_update",
     "comun_posts",
     "comun_welcome_post_options",

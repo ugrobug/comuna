@@ -120,6 +120,28 @@ def _serialize_comun_profile_card(
     }
 
 
+def _serialize_comun_sidebar(request: HttpRequest, comun: Comun) -> dict:
+    moderators = list(comun.moderators.select_related("site_profile").order_by("username"))
+    return {
+        "id": comun.id,
+        "name": comun.name,
+        "slug": comun.slug,
+        "website_url": comun.website_url,
+        "logo_url": community_service._comun_logo_url(request, comun),
+        "rules_text": comun.rules_text,
+        "glossary_enabled": bool(getattr(comun, "glossary_enabled", False)),
+        "roadmap_enabled": bool(getattr(comun, "roadmap_enabled", False)),
+        "knowledge_base_enabled": bool(getattr(comun, "knowledge_base_enabled", False)),
+        "creator": _serialize_site_user_summary(
+            getattr(comun, "creator", None),
+            comun.creator_id,
+        ),
+        "moderators": [
+            _serialize_site_user_summary(moderator, moderator.id) for moderator in moderators
+        ],
+    }
+
+
 def _serialize_comun_category(
     category: ComunCategory,
     comun: Comun | None = None,
@@ -527,5 +549,6 @@ __all__ = [
     "_serialize_comun_category",
     "_serialize_comun_glossary_term",
     "_serialize_comun_profile_card",
+    "_serialize_comun_sidebar",
     "_serialize_comun_rating",
 ]

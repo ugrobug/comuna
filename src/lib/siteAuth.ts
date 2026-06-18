@@ -18,6 +18,7 @@ import type {
   PostVotePollTemplateItem,
   SitePostTemplate,
 } from '$lib/postTemplates'
+import { refreshSidebarComuns } from '$lib/communitySidebar'
 import { loadBackendFeedSettings, resetBackendFeedSettingsSync } from '$lib/settings'
 import { writable, get } from 'svelte/store'
 
@@ -169,6 +170,17 @@ export const siteToken = writable<string | null>(initialToken)
 export const siteUser = writable<SiteUser | null>(null)
 
 const buildUrl = (path: string) => `${getBackendBaseUrl()}${path}`
+let sidebarAuthIdentity = 'anon'
+
+const syncSidebarComunsForAuthState = (user: SiteUser | null) => {
+  if (!browser) return
+  const nextIdentity = user?.id ? `user:${user.id}` : 'anon'
+  if (nextIdentity === sidebarAuthIdentity) return
+  sidebarAuthIdentity = nextIdentity
+  refreshSidebarComuns().catch((error) => {
+    console.error('Failed to refresh sidebar communities after auth change:', error)
+  })
+}
 
 const normalizeNotificationGroupingPeriod = (value: any): 'none' | 'day' | 'week' => {
   const text = String(value || '').trim()
@@ -257,6 +269,7 @@ export const refreshSiteUser = async () => {
     resetBackendFeedSettingsSync()
     siteToken.set(null)
     siteUser.set(null)
+    syncSidebarComunsForAuthState(null)
     return null
   }
 
@@ -266,6 +279,7 @@ export const refreshSiteUser = async () => {
       siteToken.set(COOKIE_AUTH_SENTINEL)
     }
     siteUser.set(data.user)
+    syncSidebarComunsForAuthState(data.user as SiteUser)
     loadBackendFeedSettings(token || COOKIE_AUTH_SENTINEL).catch((error) => {
       console.error('Failed to load feed settings:', error)
     })
@@ -380,6 +394,7 @@ export const login = async (username: string, password: string) => {
   saveToken(data.token)
   siteToken.set(data.token)
   siteUser.set(data.user)
+  syncSidebarComunsForAuthState(data.user as SiteUser)
   loadBackendFeedSettings(data.token).catch((error) => {
     console.error('Failed to load feed settings:', error)
   })
@@ -409,6 +424,7 @@ export const register = async (payload: {
   saveToken(data.token)
   siteToken.set(data.token)
   siteUser.set(data.user)
+  syncSidebarComunsForAuthState(data.user as SiteUser)
   loadBackendFeedSettings(data.token).catch((error) => {
     console.error('Failed to load feed settings:', error)
   })
@@ -468,6 +484,7 @@ export const confirmPasswordReset = async (payload: {
   saveToken(data.token)
   siteToken.set(data.token)
   siteUser.set(data.user)
+  syncSidebarComunsForAuthState(data.user as SiteUser)
   loadBackendFeedSettings(data.token).catch((error) => {
     console.error('Failed to load feed settings:', error)
   })
@@ -511,6 +528,7 @@ export const loginTelegram = async (payload: TelegramAuthPayload) => {
   saveToken(data.token)
   siteToken.set(data.token)
   siteUser.set(data.user)
+  syncSidebarComunsForAuthState(data.user as SiteUser)
   loadBackendFeedSettings(data.token).catch((error) => {
     console.error('Failed to load feed settings:', error)
   })
@@ -550,6 +568,7 @@ export const loginVK = async (payload: VkAuthPayload) => {
   saveToken(data.token)
   siteToken.set(data.token)
   siteUser.set(data.user)
+  syncSidebarComunsForAuthState(data.user as SiteUser)
   loadBackendFeedSettings(data.token).catch((error) => {
     console.error('Failed to load feed settings:', error)
   })
@@ -569,6 +588,7 @@ export const logout = () => {
   resetBackendFeedSettingsSync()
   siteToken.set(null)
   siteUser.set(null)
+  syncSidebarComunsForAuthState(null)
 }
 
 export const deleteSiteAccount = async () => {
@@ -594,6 +614,7 @@ export const deleteSiteAccount = async () => {
   resetBackendFeedSettingsSync()
   siteToken.set(null)
   siteUser.set(null)
+  syncSidebarComunsForAuthState(null)
   return true
 }
 

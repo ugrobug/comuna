@@ -10,6 +10,7 @@
   import ResetPasswordForm from './ResetPasswordForm.svelte'
   import { Envelope, Icon } from 'svelte-hero-icons'
   import { createEventDispatcher } from 'svelte'
+  import { refreshAfterSiteAuth } from '$lib/authRefresh'
 
   export let open = false
   export let initialMode: 'login' | 'signup' = 'login'
@@ -28,8 +29,13 @@
     loading: false,
   }
 
-  function handleSuccessfulAuth() {
+  async function handleSuccessfulAuth() {
     open = false
+    try {
+      await refreshAfterSiteAuth()
+    } catch (error) {
+      console.error('Failed to refresh page after auth:', error)
+    }
     dispatch('success')
     loginData = {
       username: '',
@@ -47,7 +53,7 @@
     try {
       await login(loginData.username.trim(), loginData.password)
       toast({ content: 'Вы успешно вошли', type: 'success' })
-      handleSuccessfulAuth()
+      await handleSuccessfulAuth()
     } catch (error) {
       pushError({
         message: (error as Error)?.message ?? 'Не удалось войти',

@@ -27,11 +27,10 @@
   import LoginModal from '$lib/components/auth/LoginModal.svelte'
   import { env } from '$env/dynamic/public'
   import { HAS_LEMMY_INSTANCE } from '$lib/instance'
-  import { buildComunsSidebarUrl, type BackendComun } from '$lib/api/backend'
-  import { cachedJson } from '$lib/api/publicCache'
+  import type { BackendComun } from '$lib/api/backend'
   import { feedSettingsHydrated, userSettings } from '$lib/settings'
   import { siteToken, siteUser } from '$lib/siteAuth'
-  import { selectSidebarComuns } from '$lib/communitySidebar'
+  import { loadSidebarComuns, selectSidebarComuns, sidebarComunsStore } from '$lib/communitySidebar'
 
   const PUBLIC_PROJECT_ABOUT = env.PUBLIC_PROJECT_ABOUT || '/about';
   const PUBLIC_PROJECT_ADVRTISEMENT =
@@ -65,7 +64,6 @@
   let showFederated = false; // Флаг показа федерациях сообществ
 
   let loginModalOpen = false;
-  let comuns: BackendComun[] = [];
   let sidebarComuns: BackendComun[] = [];
   let sidebarComunsTotal = 0;
 
@@ -113,19 +111,6 @@
     hasMoreCommunities = 10 < federatedCommunities.length;
   }
 
-  async function loadComuns() {
-    try {
-      const data = await cachedJson<{ comuns?: BackendComun[] }>(
-        'public:sidebar-comuns',
-        buildComunsSidebarUrl(),
-        { ttlMs: 21_600_000 }
-      );
-      comuns = data.comuns ?? [];
-    } catch (e) {
-      comuns = [];
-    }
-  }
-
   function updateDisplayedCommunities() {
     if (showFederated) {
       // Показываем все локальные + часть федерация
@@ -149,13 +134,13 @@
       // Кнопка показывается, если есть больше локальных ИЛИ есть федерация сообщества
       hasMoreCommunities = allLocalCommunities.length > displayedCommunitiesCount || allLocalCommunities.length > 0;
     }
-    loadComuns();
+    void loadSidebarComuns();
   });
 
   $: searchParams = new URLSearchParams($page.url.search);
   $: currentFeed = searchParams.get('feed') ?? ($userSettings.homeFeed ?? 'hot');
   $: sidebarComunsSelection = selectSidebarComuns(
-    comuns,
+    $sidebarComunsStore,
     $userSettings.myFeedComuns,
     !$siteToken || $feedSettingsHydrated
   );

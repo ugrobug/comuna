@@ -13,6 +13,10 @@ class CommunityRuntimeBridgeTests(SimpleTestCase):
             community_views._serialize_comun_profile_card,
             community_serializers._serialize_comun_profile_card,
         )
+        self.assertIs(
+            community_views._serialize_comun_sidebar,
+            community_serializers._serialize_comun_sidebar,
+        )
         self.assertIs(community_views._serialize_comun_activity, community_serializers._serialize_comun_activity)
         self.assertIs(community_views._comun_source_filter, community_service._comun_source_filter)
         self.assertIs(community_views._author_telegram_source_comun, community_service._author_telegram_source_comun)

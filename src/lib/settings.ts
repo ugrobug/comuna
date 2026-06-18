@@ -5,6 +5,7 @@ import { locale } from './translations'
 import { browser } from '$app/environment'
 import type { Link } from './components/ui/navbar/link'
 import { buildAuthFeedSettingsUrl } from './api/backend'
+import { refreshSidebarComuns } from './communitySidebar'
 import { invalidateCachedJson } from './api/publicCache'
 
 export type View = 'card' | 'cozy' | 'list' | 'compact'
@@ -281,6 +282,9 @@ let lastCommunitySubscriptionSnapshot = ''
 const invalidateCommunityChromeCaches = () => {
   invalidateCachedJson('public:sidebar-comuns')
   invalidateCachedJson('public:top-comuns')
+  refreshSidebarComuns().catch((error) => {
+    console.error('Failed to refresh sidebar communities:', error)
+  })
 }
 
 const saveBackendFeedSettings = async (settings: Settings) => {

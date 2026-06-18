@@ -1,5 +1,5 @@
 import ComunSidebarInfo from '$lib/components/ui/sidebar/ComunSidebarInfo.svelte'
-import { buildComunUrl, buildPostDetailUrl } from '$lib/api/backend'
+import { buildComunSidebarUrl, buildPostDetailUrl } from '$lib/api/backend'
 import { slugifyTitle } from '$lib/util/slug'
 import { error, redirect } from '@sveltejs/kit'
 
@@ -32,7 +32,7 @@ export const load = async ({ params, fetch, url }) => {
 
   if (comunSlug) {
     try {
-      const comunResponse = await fetch(new URL(buildComunUrl(comunSlug), url.origin).toString())
+      const comunResponse = await fetch(new URL(buildComunSidebarUrl(comunSlug), url.origin).toString())
       if (comunResponse.ok) {
         const comunPayload = await comunResponse.json()
         sidebarComun = comunPayload?.comun ?? sidebarComun
