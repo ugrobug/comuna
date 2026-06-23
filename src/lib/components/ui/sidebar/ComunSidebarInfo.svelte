@@ -1,10 +1,15 @@
 <script lang="ts">
+  import Avatar from '$lib/components/ui/Avatar.svelte'
+  import { ChatBubbleLeftRight, Icon, Trophy } from 'svelte-hero-icons'
   import {
+    buildBackendPostPath,
     buildComunGlossaryPath,
     buildComunKnowledgeBasePath,
     buildComunRoadmapPath,
     type BackendComun,
+    type BackendComunTopPost,
   } from '$lib/api/backend'
+  import { formatTopAuthorNumber } from '$lib/ratings/topAuthors'
 
   export let comun: BackendComun | null = null
 
@@ -16,6 +21,9 @@
     isCreator?: boolean
   }
 
+  let moderatorsExpanded = false
+  let lastComunSlug = ''
+
   const displayName = (user?: SidebarMember | null) => {
     const name = (user?.display_name ?? '').trim()
     if (name) return name
@@ -25,6 +33,26 @@
 
   const userInitial = (user?: SidebarMember | null) =>
     ((user?.display_name ?? user?.username ?? '?').trim().slice(0, 1) || '?').toUpperCase()
+
+  const authorTitle = (post?: BackendComunTopPost | null) =>
+    (post?.author?.title ?? post?.author?.username ?? '').trim() || 'Автор'
+
+  const postDateFormatter = new Intl.DateTimeFormat('ru-RU', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  })
+
+  const formatPostDate = (value?: string | null) => {
+    const raw = (value ?? '').trim()
+    if (!raw) return ''
+    const date = new Date(raw)
+    if (Number.isNaN(date.getTime())) return ''
+    return postDateFormatter.format(date).replace('.', '')
+  }
+
+  const topPostPath = (post: BackendComunTopPost) =>
+    post.path || buildBackendPostPath({ id: post.id, title: post.title })
 
   const externalUrl = (value?: string | null) => {
     const raw = (value ?? '').trim()
@@ -40,6 +68,10 @@
   $: glossaryPath = comun?.slug ? buildComunGlossaryPath(comun.slug) : '/comuns'
   $: knowledgeBasePath = comun?.slug ? buildComunKnowledgeBasePath(comun.slug) : '/comuns'
   $: roadmapPath = comun?.slug ? buildComunRoadmapPath(comun.slug) : '/comuns'
+  $: if ((comun?.slug ?? '') !== lastComunSlug) {
+    lastComunSlug = comun?.slug ?? ''
+    moderatorsExpanded = false
+  }
   $: moderatorList = (() => {
     const seen = new Set<number>()
     const result: SidebarMember[] = []
@@ -66,6 +98,9 @@
 
     return result
   })()
+  $: visibleModerators = moderatorsExpanded ? moderatorList : moderatorList.slice(0, 2)
+  $: hiddenModeratorsCount = Math.max(moderatorList.length - visibleModerators.length, 0)
+  $: topPosts = comun?.top_posts ?? []
 </script>
 
 <div class="flex flex-col gap-4">
@@ -138,7 +173,7 @@
     <section class="rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/85">
       <div class="text-base font-semibold text-slate-900 dark:text-zinc-100">Модераторы</div>
       <div class="mt-4 flex flex-col gap-3">
-        {#each moderatorList as moderator}
+        {#each visibleModerators as moderator}
           <div class="flex items-center gap-3">
             <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-100 text-sm font-semibold text-slate-700 dark:border-zinc-800 dark:bg-zinc-800 dark:text-zinc-200">
               {userInitial(moderator)}
@@ -169,6 +204,65 @@
               </div>
             </div>
           </div>
+        {/each}
+      </div>
+      {#if moderatorList.length > 2}
+        <button
+          type="button"
+          class="mt-4 inline-flex w-full items-center justify-center rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-800"
+          on:click={() => {
+            moderatorsExpanded = !moderatorsExpanded
+          }}
+        >
+          {#if moderatorsExpanded}
+            Свернуть
+          {:else}
+            Раскрыть еще {hiddenModeratorsCount}
+          {/if}
+        </button>
+      {/if}
+    </section>
+  {/if}
+
+  {#if topPosts.length}
+    <section class="rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/85">
+      <div class="text-base font-semibold text-slate-900 dark:text-zinc-100">Лучшие посты сообщества</div>
+      <div class="mt-4 flex flex-col divide-y divide-slate-200 dark:divide-zinc-800">
+        {#each topPosts as post}
+          <a
+            href={topPostPath(post)}
+            class="group block py-3 first:pt-0 last:pb-0"
+          >
+            <div class="flex items-start gap-3">
+              <Avatar
+                url={post.author?.avatar_url || undefined}
+                alt={authorTitle(post)}
+                width={36}
+                class_="h-9 w-9 rounded-full"
+              />
+              <div class="min-w-0 flex-1">
+                <div class="line-clamp-2 text-sm font-semibold leading-snug text-slate-900 transition group-hover:text-blue-600 dark:text-zinc-100 dark:group-hover:text-blue-400">
+                  {post.title}
+                </div>
+                <div class="mt-1 truncate text-xs text-slate-500 dark:text-zinc-400">
+                  {authorTitle(post)}
+                  {#if formatPostDate(post.created_at)}
+                    · {formatPostDate(post.created_at)}
+                  {/if}
+                </div>
+                <div class="mt-2 flex items-center gap-3 text-xs font-medium text-slate-600 dark:text-zinc-400">
+                  <span class="inline-flex items-center gap-1">
+                    <Icon src={ChatBubbleLeftRight} size="14" class="text-sky-500" />
+                    {formatTopAuthorNumber(post.comments_count ?? 0)}
+                  </span>
+                  <span class="inline-flex items-center gap-1">
+                    <Icon src={Trophy} size="14" class="text-amber-500" />
+                    {formatTopAuthorNumber(post.rating ?? 0)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </a>
         {/each}
       </div>
     </section>

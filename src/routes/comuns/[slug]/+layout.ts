@@ -1,5 +1,5 @@
 import ComunSidebarInfo from '$lib/components/ui/sidebar/ComunSidebarInfo.svelte'
-import { buildComunUrl } from '$lib/api/backend'
+import { buildComunSidebarUrl, buildComunUrl } from '$lib/api/backend'
 import { error } from '@sveltejs/kit'
 
 export const load = async ({ fetch, params, url, depends }) => {
@@ -15,6 +15,16 @@ export const load = async ({ fetch, params, url, depends }) => {
   }
 
   const comunPayload = await comunResponse.json()
+  let sidebarComun = comunPayload?.comun ?? null
+  try {
+    const sidebarResponse = await fetch(new URL(buildComunSidebarUrl(slug), url.origin).toString())
+    if (sidebarResponse.ok) {
+      const sidebarPayload = await sidebarResponse.json()
+      sidebarComun = sidebarPayload?.comun ?? sidebarComun
+    }
+  } catch {
+    sidebarComun = comunPayload?.comun ?? null
+  }
 
   return {
     slug,
@@ -24,7 +34,7 @@ export const load = async ({ fetch, params, url, depends }) => {
           sidebar: {
             component: ComunSidebarInfo,
             props: {
-              comun: comunPayload.comun,
+              comun: sidebarComun,
             },
           },
         }

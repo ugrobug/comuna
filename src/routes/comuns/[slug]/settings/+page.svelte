@@ -2,7 +2,7 @@
   import { browser } from '$app/environment'
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
-  import { onMount } from 'svelte'
+  import { onDestroy, onMount } from 'svelte'
   import { Button, Modal, toast } from 'mono-svelte'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import ComunSettingsTabs from '$lib/components/comuns/ComunSettingsTabs.svelte'
@@ -10,6 +10,7 @@
   import WelcomePostDropdown from '$lib/components/comuns/WelcomePostDropdown.svelte'
   import {
     buildComunCustomTemplateEditorPath,
+    buildComunSettingsOptionsUrl,
     buildComunUrl,
     buildTagsEnsureUrl,
     type BackendComun,
@@ -62,6 +63,7 @@
     channel_url?: string | null
     avatar_url?: string | null
   }
+  type SettingsOptionType = 'users' | 'tags' | 'authors'
   type TemplateTypeOption = { value: PostTemplateCode; label: string; description?: string }
   type ComunSettingsTabKey = 'description' | 'moderation' | 'categories' | 'rules'
   type CustomTemplateBlockOption = { value: string; label: string }
@@ -106,6 +108,17 @@
   let settingsTelegramChannelOptions: ComunTelegramChannelOption[] = []
   let settingsLogoInput: HTMLInputElement | null = null
   let settingsTab: ComunSettingsTabKey = 'description'
+  const settingsOptionSearchTimers: Partial<Record<SettingsOptionType, ReturnType<typeof setTimeout>>> = {}
+  const settingsOptionSearchTokens: Record<SettingsOptionType, number> = {
+    users: 0,
+    tags: 0,
+    authors: 0,
+  }
+  const lastSettingsOptionSearches: Record<SettingsOptionType, string> = {
+    users: '',
+    tags: '',
+    authors: '',
+  }
 
   const patchSettingsDraft = (patch: Partial<BackendComun>) => {
     if (!settingsDraft) return
@@ -316,6 +329,64 @@
     }
   }
 
+  const mergeById = <T extends { id: number }>(current: T[], next: T[]) => {
+    const byId = new Map<number, T>()
+    for (const item of current ?? []) byId.set(item.id, item)
+    for (const item of next ?? []) byId.set(item.id, item)
+    return Array.from(byId.values())
+  }
+
+  const applySettingsOptionItems = (type: SettingsOptionType, items: any[]) => {
+    if (type === 'users') {
+      settingsUserOptions = mergeById(settingsUserOptions, items as ComunUserOption[]).sort((a, b) =>
+        userDisplayName(a).localeCompare(userDisplayName(b), 'ru')
+      )
+    } else if (type === 'tags') {
+      settingsTagOptions = mergeById(settingsTagOptions, items as ComunTagOption[]).sort((a, b) =>
+        a.name.localeCompare(b.name, 'ru')
+      )
+    } else if (type === 'authors') {
+      settingsAuthorOptions = mergeById(settingsAuthorOptions, items as ComunAuthorOption[]).sort((a, b) =>
+        (a.title || a.username).localeCompare(b.title || b.username, 'ru')
+      )
+    }
+  }
+
+  const loadSettingsOptions = async (type: SettingsOptionType, query: string) => {
+    const normalizedQuery = query.trim()
+    if (!slug || !$siteToken || normalizedQuery.length < 2) return
+    const token = settingsOptionSearchTokens[type] + 1
+    settingsOptionSearchTokens[type] = token
+    try {
+      const response = await fetch(
+        buildComunSettingsOptionsUrl(slug, type, { q: normalizedQuery, limit: 30 }),
+        {
+          headers: { Authorization: `Bearer ${$siteToken}` },
+          cache: 'no-store',
+        }
+      )
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) return
+      if (settingsOptionSearchTokens[type] !== token) return
+      applySettingsOptionItems(type, Array.isArray(payload?.items) ? payload.items : [])
+    } catch (error) {
+      console.error('Failed to load comun settings options', error)
+    }
+  }
+
+  const queueSettingsOptionsSearch = (type: SettingsOptionType, query: string) => {
+    if (!browser) return
+    const normalizedQuery = query.trim()
+    if (normalizedQuery.length < 2) return
+    const searchKey = `${type}:${normalizedQuery.toLowerCase()}`
+    if (lastSettingsOptionSearches[type] === searchKey) return
+    lastSettingsOptionSearches[type] = searchKey
+    if (settingsOptionSearchTimers[type]) clearTimeout(settingsOptionSearchTimers[type])
+    settingsOptionSearchTimers[type] = setTimeout(() => {
+      void loadSettingsOptions(type, normalizedQuery)
+    }, 250)
+  }
+
   const customTemplateEditorPath = (templateRef = 'new') =>
     buildComunCustomTemplateEditorPath(slug, templateRef)
 
@@ -331,7 +402,7 @@
     settingsLoading = true
     settingsError = ''
     try {
-      const comunUrl = new URL(buildComunUrl(slug), window.location.origin)
+      const comunUrl = new URL(buildComunUrl(slug, { includeSettings: true }), window.location.origin)
       comunUrl.searchParams.set('_', String(Date.now()))
       const response = await fetch(comunUrl.toString(), {
         headers: { Authorization: `Bearer ${$siteToken}` },
@@ -349,9 +420,12 @@
       comun = payload.comun
       settingsDraft = cloneComun(payload.comun)
       settingsCategoryOptions = payload.comun?.options?.categories ?? []
-      settingsTagOptions = payload.comun?.options?.tags ?? []
-      settingsUserOptions = payload.comun?.options?.users ?? []
-      settingsAuthorOptions = payload.comun?.options?.authors ?? []
+      settingsTagOptions = mergeById(
+        mergeById(payload.comun?.tags ?? [], payload.comun?.blocked_tags ?? []),
+        payload.comun?.excluded_tags ?? []
+      )
+      settingsUserOptions = payload.comun?.moderators ?? []
+      settingsAuthorOptions = payload.comun?.excluded_authors ?? []
       settingsTelegramChannelOptions = payload.comun?.options?.telegram_channels ?? []
       settingsTemplateTypeOptions = normalizeTemplateTypeOptions(payload.comun?.options?.template_types)
       if (!payload.comun?.can_moderate) {
@@ -703,6 +777,10 @@
     })
     .slice(0, 50)
   $: normalizedAuthorSearch = settingsAuthorSearch.trim().toLowerCase()
+  $: queueSettingsOptionsSearch('tags', settingsSearchTagSearch)
+  $: queueSettingsOptionsSearch('tags', settingsBlockedTagSearch)
+  $: queueSettingsOptionsSearch('users', settingsUserSearch)
+  $: queueSettingsOptionsSearch('authors', settingsAuthorSearch)
   $: filteredAuthorOptions = (settingsAuthorOptions ?? [])
     .filter((author) => {
       if (!normalizedAuthorSearch) return false
@@ -797,7 +875,7 @@
     settingsCategoryCreating = true
     settingsError = ''
     try {
-      const response = await fetch(buildComunUrl(slug), {
+      const response = await fetch(buildComunUrl(slug, { includeSettings: true }), {
         method: 'PATCH',
         headers: authHeaders(),
         body: JSON.stringify({
@@ -846,7 +924,7 @@
     try {
       const welcomePostRef = comunWelcomePostRef(settingsDraft)
       const currentWelcomePostRef = comunWelcomePostRef(comun)
-      const response = await fetch(buildComunUrl(slug), {
+      const response = await fetch(buildComunUrl(slug, { includeSettings: true }), {
         method: 'PATCH',
         headers: authHeaders(),
         body: JSON.stringify({
@@ -894,9 +972,15 @@
       settingsDraft = cloneComun(comun)
       settingsCategoryOptions =
         payload.comun?.options?.categories ?? payload.comun?.categories ?? settingsCategoryOptions
-      settingsTagOptions = payload.comun?.options?.tags ?? settingsTagOptions
-      settingsUserOptions = payload.comun?.options?.users ?? settingsUserOptions
-      settingsAuthorOptions = payload.comun?.options?.authors ?? settingsAuthorOptions
+      settingsTagOptions = mergeById(
+        settingsTagOptions,
+        mergeById(
+          mergeById(payload.comun?.tags ?? [], payload.comun?.blocked_tags ?? []),
+          payload.comun?.excluded_tags ?? []
+        )
+      )
+      settingsUserOptions = mergeById(settingsUserOptions, payload.comun?.moderators ?? [])
+      settingsAuthorOptions = mergeById(settingsAuthorOptions, payload.comun?.excluded_authors ?? [])
       settingsTelegramChannelOptions =
         payload.comun?.options?.telegram_channels ?? settingsTelegramChannelOptions
       settingsTemplateTypeOptions = normalizeTemplateTypeOptions(
@@ -992,6 +1076,12 @@
       return
     }
     void refreshComunManage()
+  })
+
+  onDestroy(() => {
+    for (const timer of Object.values(settingsOptionSearchTimers)) {
+      if (timer) clearTimeout(timer)
+    }
   })
 
   $: siteTitle = env.PUBLIC_SITE_TITLE || 'Тамбур'

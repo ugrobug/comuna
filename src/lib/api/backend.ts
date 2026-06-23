@@ -127,12 +127,40 @@ export const buildComunFromTelegramChannelUrl = (): string => {
   return `${getBackendBaseUrl()}/api/comuns/from-telegram-channel/`
 }
 
-export const buildComunUrl = (slug: string): string => {
-  return `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/`
+export const buildComunUrl = (
+  slug: string,
+  options?: {
+    includeSettings?: boolean
+    includeOptions?: boolean
+    includeActivity?: boolean
+  }
+): string => {
+  const params = new URLSearchParams()
+  if (options?.includeSettings) params.set('include_settings', '1')
+  if (options?.includeOptions) params.set('include_options', '1')
+  if (options?.includeActivity) params.set('include_activity', '1')
+  const query = params.toString()
+  const base = `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/`
+  return query ? `${base}?${query}` : base
 }
 
 export const buildComunSidebarUrl = (slug: string): string => {
   return `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/sidebar/`
+}
+
+export const buildComunSettingsOptionsUrl = (
+  slug: string,
+  type: 'users' | 'tags' | 'authors',
+  options?: { q?: string; ids?: Array<number | string>; limit?: number }
+): string => {
+  const params = new URLSearchParams()
+  params.set('type', type)
+  const query = options?.q?.trim()
+  if (query) params.set('q', query)
+  const ids = (options?.ids ?? []).map((id) => String(id).trim()).filter(Boolean)
+  if (ids.length) params.set('ids', ids.join(','))
+  if (options?.limit) params.set('limit', String(options.limit))
+  return `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/settings-options/?${params.toString()}`
 }
 
 export const buildComunCustomTemplateEditorPath = (
@@ -762,6 +790,16 @@ export type BackendComunRating = {
   user_vote?: number
 }
 
+export type BackendComunTopPost = {
+  id: number
+  title: string
+  path?: string | null
+  created_at?: string | null
+  comments_count?: number
+  rating?: number
+  author?: BackendAuthor | null
+}
+
 export type BackendComunCustomTemplateBlock = {
   id?: number
   block_type: string
@@ -890,6 +928,7 @@ export type BackendComun = {
   welcome_post_id?: number | null
   welcome_post_ref?: string
   welcome_post?: BackendPost | null
+  top_posts?: BackendComunTopPost[]
   activity?: BackendComunActivity | null
   options?: {
     categories?: BackendComunCategory[]

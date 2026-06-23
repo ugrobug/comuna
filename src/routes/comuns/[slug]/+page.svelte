@@ -10,6 +10,7 @@
   import {
     buildBackendPostPath,
     buildComunPostsUrl,
+    buildComunSettingsOptionsUrl,
     buildComunUrl,
     type BackendComun,
     type BackendComunCategory,
@@ -43,12 +44,14 @@
   let settingsUserSearch = ''
   let settingsDraft: BackendComun | null = null
   let settingsLogoInput: HTMLInputElement | null = null
-  let lastAuthRefreshToken: string | null = null
   let autoSettingsOpenHandled = false
   let wantsSettingsOpenFromUrl = false
   let settingsCategoryOptions: BackendComunCategory[] = []
   type ComunUserOption = { id: number; username: string; display_name?: string | null }
   let settingsUserOptions: ComunUserOption[] = []
+  let settingsUserSearchTimer: ReturnType<typeof setTimeout> | null = null
+  let settingsUserSearchToken = 0
+  let lastSettingsUserSearch = ''
   const COMUN_SUGGESTIONS_CATEGORY_SLUGS = new Set(['feature-ideas', 'suggestions'])
   const ROADMAP_PREVIEW_LIMIT = 4
   const ROADMAP_PREVIEW_FETCH_LIMIT = 8
@@ -816,6 +819,52 @@
     }
   }
 
+  const mergeUsersById = (current: ComunUserOption[], next: ComunUserOption[]) => {
+    const byId = new Map<number, ComunUserOption>()
+    for (const user of current ?? []) byId.set(user.id, user)
+    for (const user of next ?? []) byId.set(user.id, user)
+    return Array.from(byId.values()).sort((a, b) =>
+      userDisplayName(a).localeCompare(userDisplayName(b), 'ru')
+    )
+  }
+
+  const loadSettingsUserOptions = async (query: string) => {
+    const normalizedQuery = query.trim()
+    if (!comun?.slug || !$siteToken || normalizedQuery.length < 2) return
+    const token = settingsUserSearchToken + 1
+    settingsUserSearchToken = token
+    try {
+      const response = await fetch(
+        buildComunSettingsOptionsUrl(comun.slug, 'users', { q: normalizedQuery, limit: 30 }),
+        {
+          headers: { Authorization: `Bearer ${$siteToken}` },
+          cache: 'no-store',
+        }
+      )
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok || settingsUserSearchToken !== token) return
+      settingsUserOptions = mergeUsersById(
+        settingsUserOptions,
+        Array.isArray(payload?.items) ? payload.items : []
+      )
+    } catch (error) {
+      console.error('Failed to load comun moderator options', error)
+    }
+  }
+
+  const queueSettingsUserSearch = (query: string) => {
+    if (!browser) return
+    const normalizedQuery = query.trim()
+    if (normalizedQuery.length < 2) return
+    const searchKey = normalizedQuery.toLowerCase()
+    if (lastSettingsUserSearch === searchKey) return
+    lastSettingsUserSearch = searchKey
+    if (settingsUserSearchTimer) clearTimeout(settingsUserSearchTimer)
+    settingsUserSearchTimer = setTimeout(() => {
+      void loadSettingsUserOptions(normalizedQuery)
+    }, 250)
+  }
+
   const buildPostsUrl = (offset: number) => {
     if (!comun?.slug) return ''
     const url = new URL(
@@ -914,7 +963,7 @@
     settingsLoading = true
     settingsError = ''
     try {
-      const response = await fetch(buildComunUrl(comun.slug), {
+      const response = await fetch(buildComunUrl(comun.slug, { includeSettings: true }), {
         headers: { Authorization: `Bearer ${$siteToken}` },
       })
       const payload = await response.json().catch(() => ({}))
@@ -925,7 +974,7 @@
         comun = payload.comun
         settingsDraft = cloneComun(payload.comun)
         settingsCategoryOptions = payload.comun?.options?.categories ?? []
-        settingsUserOptions = payload.comun?.options?.users ?? []
+        settingsUserOptions = payload.comun?.moderators ?? []
       }
     } catch (error) {
       settingsError = error instanceof Error ? error.message : 'Ошибка загрузки'
@@ -1009,6 +1058,7 @@
       (settingsDraft?.categories ?? []).map((item) => item.id)) as number[]
   )
   $: normalizedUserSearch = settingsUserSearch.trim().toLowerCase()
+  $: queueSettingsUserSearch(settingsUserSearch)
   $: draftModeratorIdSet = new Set<number>(comunModeratorIds(settingsDraft))
   $: settingsHasChanges = settingsComparable(settingsDraft) !== settingsComparable(comun)
   $: settingsCanDismiss =
@@ -1037,7 +1087,7 @@
     try {
       const welcomePostRef = comunWelcomePostRef(settingsDraft)
       const currentWelcomePostRef = comunWelcomePostRef(comun)
-      const response = await fetch(buildComunUrl(comun.slug), {
+      const response = await fetch(buildComunUrl(comun.slug, { includeSettings: true }), {
         method: 'PATCH',
         headers: authHeaders(),
         body: JSON.stringify({
@@ -1065,6 +1115,7 @@
       }
       comun = payload.comun ?? comun
       settingsDraft = cloneComun(comun)
+      settingsUserOptions = mergeUsersById(settingsUserOptions, payload.comun?.moderators ?? [])
       settingsOpen = false
       toast({ content: 'Настройки сообщества сохранены', type: 'success' })
       await loadPosts(true)
@@ -1134,13 +1185,7 @@
 
   $: wantsSettingsOpenFromUrl = $page.url.searchParams.get('settings') === '1'
 
-  $: if (browser && comun?.slug && $siteToken && $siteToken !== lastAuthRefreshToken) {
-    lastAuthRefreshToken = $siteToken
-    void refreshComunManage()
-  }
-
   $: if (!$siteToken) {
-    lastAuthRefreshToken = null
     autoSettingsOpenHandled = false
   }
 
@@ -1192,6 +1237,10 @@
       if (scrollRaf !== null) {
         window.cancelAnimationFrame(scrollRaf)
         scrollRaf = null
+      }
+      if (settingsUserSearchTimer) {
+        clearTimeout(settingsUserSearchTimer)
+        settingsUserSearchTimer = null
       }
       if (publicRoadmapBodyOverflowBeforeOpen !== null) {
         document.body.style.overflow = publicRoadmapBodyOverflowBeforeOpen

@@ -79,6 +79,10 @@ _COMUNS_CATALOG_DEFAULT_LIMIT = 20
 _COMUNS_CATALOG_MAX_LIMIT = 50
 
 
+def _request_flag(request: HttpRequest, name: str) -> bool:
+    return str(request.GET.get(name) or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _fv():
     from feeds import views as feeds_views
 
@@ -797,6 +801,17 @@ def _comun_post_access_state(
         return False, minimum_rating, None
     if category is not None and bool(getattr(category, "only_moderators_can_post", False)):
         return False, minimum_rating, None
+    if author is not None and comun.excluded_authors.filter(id=author.id).exists():
+        return False, minimum_rating, None
+    excluded_linked_author_ids: set[int] = set()
+    if author is None:
+        author_ids, _author_links = _fv()._public_user_author_ids(user)
+        if author_ids:
+            excluded_linked_author_ids = set(
+                comun.excluded_authors.filter(id__in=author_ids).values_list("id", flat=True)
+            )
+            if excluded_linked_author_ids and len(excluded_linked_author_ids) >= len(set(author_ids)):
+                return False, minimum_rating, None
     if minimum_rating <= 0:
         return True, minimum_rating, None
 
@@ -810,6 +825,8 @@ def _comun_post_access_state(
 
     max_author_rating = 0.0
     for linked_author in Author.objects.filter(id__in=author_ids):
+        if linked_author.id in excluded_linked_author_ids:
+            continue
         max_author_rating = max(max_author_rating, round(float(calculate_author_rating(linked_author)), 2))
     return max_author_rating >= minimum_rating, minimum_rating, max_author_rating
 
@@ -819,7 +836,10 @@ def _comun_post_access_error_message(
     *,
     author_rating: float | None = None,
     category: ComunCategory | None = None,
+    author: Author | None = None,
 ) -> str:
+    if author is not None and comun.excluded_authors.filter(id=author.id).exists():
+        return "Этот автор не может публиковать в этом сообществе."
     if category is not None and bool(getattr(category, "only_moderators_can_post", False)):
         return (
             f'Публикация в категории "{category.name}" доступна только создателю и модераторам.'
@@ -1005,7 +1025,6 @@ def _serialize_comun(
         "allowed_template_types": _allowed_templates_for_comun(comun),
         "template_type_options": editor_service._serialize_post_template_type_options(),
         "template_editor_blocks_by_template": editor_service._template_editor_blocks_by_template(),
-        "custom_templates": editor_service._serialize_comun_custom_post_templates(comun),
         "creator": {
             "id": comun.creator_id,
             "username": comun.creator.username if getattr(comun, "creator", None) else None,
@@ -1093,27 +1112,11 @@ def _serialize_comun(
         payload["excluded_tag_ids"] = [tag.id for tag in blocked_tags]
         payload["telegram_source_author_id"] = comun.telegram_source_author_id
         payload["welcome_post_ref"] = str(welcome_post_payload["id"] if welcome_post_payload else "")
+        payload["custom_templates"] = editor_service._serialize_comun_custom_post_templates(comun)
     if include_options:
         verified_telegram_authors = _current_user_verified_telegram_authors(current_user)
         payload["options"] = {
             "categories": [_serialize_comun_category(category, comun) for category in categories],
-            "tags": [
-                {
-                    "id": tag.id,
-                    "name": tag.name,
-                    "lemma": tag.lemma or _fv()._lemmatize_tag(tag.name) or tag.name,
-                }
-                for tag in Tag.objects.filter(is_active=True).order_by("name")
-            ],
-            "authors": [
-                {
-                    "id": author.id,
-                    "username": author.username,
-                    "title": author.title,
-                    "avatar_url": _fv()._author_avatar_url(request, author),
-                }
-                for author in Author.objects.filter(is_blocked=False).order_by("username")
-            ],
             "telegram_channels": [
                 _serialize_author_source_summary(request, author) for author in verified_telegram_authors
             ],
@@ -1124,17 +1127,6 @@ def _serialize_comun(
             "template_editor_blocks_by_template": editor_service._template_editor_blocks_by_template(),
             "custom_template_editor": editor_service._serialize_comun_custom_template_editor_options(),
         }
-        if _comun_can_manage_moderators(current_user, comun):
-            payload["options"]["users"] = [
-                {
-                    "id": user.id,
-                    "username": user.username,
-                    "display_name": (
-                        (getattr(getattr(user, "site_profile", None), "display_name", "") or "").strip() or None
-                    ),
-                }
-                for user in User.objects.filter(is_active=True).select_related("site_profile").order_by("username")
-            ]
     return payload
 
 
@@ -1544,6 +1536,7 @@ def comun_create_from_telegram_channel(request: HttpRequest) -> HttpResponse:
     comun.moderators.add(current_user)
     bump_public_cache_prefix("comuns-catalog")
     bump_public_cache_prefix("comuns-sidebar")
+    bump_public_cache_prefix("comun-sidebar-detail")
     bump_public_cache_prefix("top-comuns")
     comun = (
         Comun.objects.filter(id=comun.id)
@@ -1764,6 +1757,7 @@ def comuns_list_create(request: HttpRequest) -> HttpResponse:
     comun.save()
     bump_public_cache_prefix("comuns-catalog")
     bump_public_cache_prefix("comuns-sidebar")
+    bump_public_cache_prefix("comun-sidebar-detail")
     bump_public_cache_prefix("top-comuns")
 
     comun = (
@@ -2030,6 +2024,10 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
         return JsonResponse({"ok": False, "error": "comun not found"}, status=404)
 
     if request.method == "GET":
+        include_settings = _request_flag(request, "include_settings")
+        include_options = include_settings or _request_flag(request, "include_options")
+        include_activity = _request_flag(request, "include_activity")
+        can_moderate = _comun_is_moderator(current_user, comun)
         return JsonResponse(
             {
                 "ok": True,
@@ -2037,9 +2035,9 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
                     request,
                     comun,
                     current_user=current_user,
-                    include_manage_fields=True,
-                    include_options=_comun_is_moderator(current_user, comun),
-                    include_activity=True,
+                    include_manage_fields=include_settings and can_moderate,
+                    include_options=include_options and can_moderate,
+                    include_activity=include_activity,
                 ),
             }
         )
@@ -2227,6 +2225,7 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
             comun.welcome_post = None
 
     comun.save()
+    bump_public_cache_prefix("comun-sidebar-detail")
     if moderator_subscriptions_need_sync:
         moderator_auto_subscribed_count = community_service._ensure_comun_moderators_subscribed(comun)
         if moderator_auto_subscribed_count:
@@ -2355,13 +2354,108 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
                 comun,
                 current_user=current_user,
                 include_manage_fields=True,
-                include_options=True,
-                include_activity=True,
+                include_options=_request_flag(request, "include_options") or _request_flag(request, "include_settings"),
+                include_activity=_request_flag(request, "include_activity"),
             ),
         }
     )
 
 
+@csrf_exempt
+def comun_settings_options(request: HttpRequest, slug: str) -> HttpResponse:
+    current_user = user_views._get_user_from_request(request)
+    if not current_user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    if request.method != "GET":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    try:
+        comun = (
+            Comun.objects.filter(slug=slug)
+            .select_related("creator")
+            .prefetch_related("moderators")
+            .get()
+        )
+    except Comun.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "comun not found"}, status=404)
+
+    if not _comun_is_moderator(current_user, comun):
+        return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+
+    option_type = str(request.GET.get("type") or "").strip().lower()
+    query = re.sub(r"\s+", " ", str(request.GET.get("q") or "").strip())
+    ids = community_service._parse_int_list(request.GET.get("ids"))
+    try:
+        limit = min(max(int(request.GET.get("limit", "30")), 1), 50)
+    except ValueError:
+        limit = 30
+
+    if not ids and len(query) < 2:
+        return JsonResponse({"ok": True, "type": option_type, "items": []})
+
+    if option_type == "users":
+        if not _comun_can_manage_moderators(current_user, comun):
+            return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+        queryset = User.objects.filter(is_active=True).select_related("site_profile")
+        if ids:
+            queryset = queryset.filter(id__in=ids)
+        else:
+            queryset = queryset.filter(
+                Q(username__icontains=query)
+                | Q(first_name__icontains=query)
+                | Q(last_name__icontains=query)
+                | Q(site_profile__display_name__icontains=query)
+            )
+        items = [
+            {
+                "id": user.id,
+                "username": user.username,
+                "display_name": (
+                    (getattr(getattr(user, "site_profile", None), "display_name", "") or "").strip()
+                    or None
+                ),
+            }
+            for user in queryset.order_by("username")[:limit]
+        ]
+        return JsonResponse({"ok": True, "type": "users", "items": items})
+
+    if option_type == "tags":
+        queryset = Tag.objects.filter(is_active=True)
+        if ids:
+            queryset = queryset.filter(id__in=ids)
+        else:
+            queryset = queryset.filter(Q(name__icontains=query) | Q(lemma__icontains=query))
+        items = [
+            {
+                "id": tag.id,
+                "name": tag.name,
+                "lemma": tag.lemma or _fv()._lemmatize_tag(tag.name) or tag.name,
+            }
+            for tag in queryset.order_by("name")[:limit]
+        ]
+        return JsonResponse({"ok": True, "type": "tags", "items": items})
+
+    if option_type == "authors":
+        queryset = Author.objects.filter(is_blocked=False)
+        if ids:
+            queryset = queryset.filter(id__in=ids)
+        else:
+            queryset = queryset.filter(Q(username__icontains=query) | Q(title__icontains=query))
+        items = [
+            {
+                "id": author.id,
+                "username": author.username,
+                "title": author.title,
+                "avatar_url": _fv()._author_avatar_url(request, author),
+            }
+            for author in queryset.order_by("username")[:limit]
+        ]
+        return JsonResponse({"ok": True, "type": "authors", "items": items})
+
+    return JsonResponse({"ok": False, "error": "invalid option type"}, status=400)
+
+
+@anonymous_cache(prefix="comun-sidebar-detail", seconds=86_400)
 def comun_sidebar_detail(request: HttpRequest, slug: str) -> HttpResponse:
     if request.method != "GET":
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
@@ -2584,6 +2678,7 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
                         comun,
                         author_rating=author_rating,
                         category=category,
+                        author=author,
                     ),
                 },
                 status=403,
@@ -2747,7 +2842,7 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
     return JsonResponse(
         {
             "ok": True,
-            "comun": _serialize_comun(request, comun, current_user=current_user, include_activity=True),
+            "comun": _serialize_comun(request, comun, current_user=current_user),
             "posts": serialized_posts,
             "selected_category": (_serialize_comun_category(selected_category, comun) if selected_category else None),
             "total_count": total_count,
@@ -3211,6 +3306,7 @@ __all__ = [
     "_serialize_comun_profile_card",
     "comun_create_from_telegram_channel",
     "comun_detail_manage",
+    "comun_settings_options",
     "comun_sidebar_detail",
     "comun_post_category_update",
     "comun_posts",

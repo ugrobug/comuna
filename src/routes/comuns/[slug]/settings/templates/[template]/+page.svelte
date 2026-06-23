@@ -153,7 +153,7 @@
     loading = true
     errorMessage = ''
     try {
-      const comunUrl = new URL(buildComunUrl(slug), window.location.origin)
+      const comunUrl = new URL(buildComunUrl(slug, { includeSettings: true }), window.location.origin)
       comunUrl.searchParams.set('_', String(Date.now()))
       const response = await fetch(comunUrl.toString(), {
         headers: { Authorization: `Bearer ${$siteToken}` },
@@ -572,7 +572,7 @@
         : templates.map((template) =>
             template.id === currentDraft.id || template.slug === currentDraft.slug ? nextTemplate : normalizedDraftForSaveFromTemplate(template)
           )
-      const response = await fetch(buildComunUrl(slug), {
+      const response = await fetch(buildComunUrl(slug, { includeSettings: true }), {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -657,7 +657,7 @@
       const nextTemplates = customTemplates(comun)
         .filter((template) => template.id !== currentDraft.id && template.slug !== currentDraft.slug)
         .map((template) => normalizedDraftForSaveFromTemplate(template))
-      const response = await fetch(buildComunUrl(slug), {
+      const response = await fetch(buildComunUrl(slug, { includeSettings: true }), {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',

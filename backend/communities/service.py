@@ -17,6 +17,7 @@ except ImportError:  # optional dependency for lemmatization
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.db import transaction
 from django.db.models import Case, Count, F, IntegerField, Q, Sum, Value, When
 from django.http import HttpRequest
@@ -86,6 +87,7 @@ _INTERNAL_COMUNA_HOSTS = frozenset(
 _COMUN_EXTERNAL_LINKS_FORBIDDEN_ERROR = (
     "В этом сообществе запрещены внешние ссылки. Удалите ссылки из текста и шаблона публикации."
 )
+_COMUN_TOP_POSTS_CACHE_SECONDS = 86_400
 _MORPH_ANALYZER = None
 
 
@@ -822,6 +824,13 @@ def _comun_post_access_state(
         return False, minimum_rating, None
     if category is not None and bool(getattr(category, "only_moderators_can_post", False)):
         return False, minimum_rating, None
+    if author is not None and comun.excluded_authors.filter(id=author.id).exists():
+        return False, minimum_rating, None
+    personal_author = None
+    if author is None:
+        personal_author = _personal_user_author(user)
+        if personal_author and comun.excluded_authors.filter(id=personal_author.id).exists():
+            return False, minimum_rating, None
     if minimum_rating <= 0:
         return True, minimum_rating, None
 
@@ -829,7 +838,6 @@ def _comun_post_access_state(
         author_rating = round(float(calculate_author_rating(author)), 2)
         return author_rating >= minimum_rating, minimum_rating, author_rating
 
-    personal_author = _personal_user_author(user)
     if not personal_author:
         return False, minimum_rating, 0.0
 
@@ -842,7 +850,10 @@ def _comun_post_access_error_message(
     *,
     author_rating: float | None = None,
     category: ComunCategory | None = None,
+    author: Author | None = None,
 ) -> str:
+    if author is not None and comun.excluded_authors.filter(id=author.id).exists():
+        return "Этот автор не может публиковать в этом сообществе."
     if category is not None and bool(getattr(category, "only_moderators_can_post", False)):
         return (
             f'Публикация в категории "{category.name}" доступна только создателю и модераторам.'
@@ -1398,6 +1409,63 @@ def _comun_posts_base_queryset(comun: Comun, now=None):
     if blocked_post_ids:
         base_query = base_query.exclude(id__in=blocked_post_ids)
     return base_query
+
+
+def _comun_top_post_ids(comun: Comun, *, limit: int = 5, now=None) -> list[int]:
+    try:
+        normalized_limit = min(max(int(limit), 1), 10)
+    except (TypeError, ValueError):
+        normalized_limit = 5
+    comun_id = int(getattr(comun, "id", 0) or 0)
+    if comun_id <= 0:
+        return []
+
+    updated_at = getattr(comun, "updated_at", None)
+    try:
+        cache_version = int(updated_at.timestamp()) if updated_at else 0
+    except Exception:
+        cache_version = 0
+    cache_key = f"comun-top-posts:v1:{comun_id}:{cache_version}:{normalized_limit}"
+    cached_ids = cache.get(cache_key)
+    if isinstance(cached_ids, list):
+        return [int(post_id) for post_id in cached_ids if int(post_id or 0) > 0]
+
+    post_ids = list(
+        _comun_posts_base_queryset(comun, now=now)
+        .order_by("-rating", "-comments_count", "-created_at", "-id")
+        .values_list("id", flat=True)[:normalized_limit]
+    )
+    cache.set(cache_key, post_ids, timeout=_COMUN_TOP_POSTS_CACHE_SECONDS)
+    return [int(post_id) for post_id in post_ids]
+
+
+def _comun_top_posts(comun: Comun, *, limit: int = 5, now=None) -> list[Post]:
+    post_ids = _comun_top_post_ids(comun, limit=limit, now=now)
+    if not post_ids:
+        return []
+    ordering = Case(
+        *[When(id=post_id, then=Value(index)) for index, post_id in enumerate(post_ids)],
+        default=Value(len(post_ids)),
+        output_field=IntegerField(),
+    )
+    return list(
+        Post.objects.filter(id__in=post_ids)
+        .select_related("author")
+        .only(
+            "id",
+            "title",
+            "created_at",
+            "rating",
+            "comments_count",
+            "author__id",
+            "author__username",
+            "author__title",
+            "author__avatar_image",
+            "author__avatar_url",
+        )
+        .annotate(_comun_top_order=ordering)
+        .order_by("_comun_top_order")
+    )
 
 
 def _post_belongs_to_comun(comun: Comun, post_or_id: Post | int | None, now=None) -> bool:

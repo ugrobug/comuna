@@ -86,6 +86,26 @@ def _serialize_author_source_summary(
     }
 
 
+def _serialize_comun_top_post_item(request: HttpRequest | None, post: Post) -> dict:
+    title = (post.title or "").strip() or f"Пост {post.id}"
+    slug = community_service.slugify_title(title)
+    path = f"/b/post/{post.id}-{slug}" if slug else f"/b/post/{post.id}"
+    author = getattr(post, "author", None)
+    return {
+        "id": post.id,
+        "title": title,
+        "path": path,
+        "created_at": post.created_at.isoformat() if post.created_at else None,
+        "comments_count": int(getattr(post, "comments_count", 0) or 0),
+        "rating": int(getattr(post, "rating", 0) or 0),
+        "author": {
+            "username": getattr(author, "username", "") if author else "",
+            "title": ((getattr(author, "title", "") or "").strip() or getattr(author, "username", "")) if author else "",
+            "avatar_url": community_service._author_avatar_url(request, author) if author else None,
+        },
+    }
+
+
 def _serialize_comun_profile_card(
     request: HttpRequest,
     comun: Comun,
@@ -122,6 +142,7 @@ def _serialize_comun_profile_card(
 
 def _serialize_comun_sidebar(request: HttpRequest, comun: Comun) -> dict:
     moderators = list(comun.moderators.select_related("site_profile").order_by("username"))
+    top_posts = community_service._comun_top_posts(comun, limit=5)
     return {
         "id": comun.id,
         "name": comun.name,
@@ -138,6 +159,9 @@ def _serialize_comun_sidebar(request: HttpRequest, comun: Comun) -> dict:
         ),
         "moderators": [
             _serialize_site_user_summary(moderator, moderator.id) for moderator in moderators
+        ],
+        "top_posts": [
+            _serialize_comun_top_post_item(request, post) for post in top_posts
         ],
     }
 
@@ -494,27 +518,11 @@ def _serialize_comun(
         payload["excluded_tag_ids"] = [tag.id for tag in blocked_tags]
         payload["telegram_source_author_id"] = comun.telegram_source_author_id
         payload["welcome_post_ref"] = str(welcome_post_payload["id"] if welcome_post_payload else "")
+        payload["custom_templates"] = editor_service._serialize_comun_custom_post_templates(comun)
     if include_options:
         verified_telegram_authors = community_service._current_user_verified_telegram_authors(current_user)
         payload["options"] = {
             "categories": [_serialize_comun_category(category, comun) for category in categories],
-            "tags": [
-                {
-                    "id": tag.id,
-                    "name": tag.name,
-                    "lemma": tag.lemma or community_service._lemmatize_tag(tag.name) or tag.name,
-                }
-                for tag in Tag.objects.filter(is_active=True).order_by("name")
-            ],
-            "authors": [
-                {
-                    "id": author.id,
-                    "username": author.username,
-                    "title": author.title,
-                    "avatar_url": community_service._author_avatar_url(request, author),
-                }
-                for author in Author.objects.filter(is_blocked=False).order_by("username")
-            ],
             "telegram_channels": [
                 _serialize_author_source_summary(request, author)
                 for author in verified_telegram_authors
@@ -524,21 +532,8 @@ def _serialize_comun(
                 editor_service._serialize_template_editor_block_options_by_template()
             ),
             "template_editor_blocks_by_template": editor_service._template_editor_blocks_by_template(),
+            "custom_template_editor": editor_service._serialize_comun_custom_template_editor_options(),
         }
-        if community_service._comun_can_manage_moderators(current_user, comun):
-            payload["options"]["users"] = [
-                {
-                    "id": user.id,
-                    "username": user.username,
-                    "display_name": (
-                        (getattr(getattr(user, "site_profile", None), "display_name", "") or "").strip()
-                        or None
-                    ),
-                }
-                for user in User.objects.filter(is_active=True)
-                .select_related("site_profile")
-                .order_by("username")
-            ]
     return payload
 
 
