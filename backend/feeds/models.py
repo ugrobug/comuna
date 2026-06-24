@@ -363,6 +363,67 @@ class Post(models.Model):
         super().save(*args, **kwargs)
 
 
+POST_TRANSLATION_LANGUAGE_TURKISH = "tr"
+POST_TRANSLATION_LANGUAGE_INDONESIAN = "id"
+POST_TRANSLATION_LANGUAGE_CHOICES = (
+    (POST_TRANSLATION_LANGUAGE_TURKISH, "Турецкий"),
+    (POST_TRANSLATION_LANGUAGE_INDONESIAN, "Индонезийский"),
+)
+
+POST_TRANSLATION_STATUS_PENDING = "pending"
+POST_TRANSLATION_STATUS_TRANSLATED = "translated"
+POST_TRANSLATION_STATUS_FAILED = "failed"
+POST_TRANSLATION_STATUS_CHOICES = (
+    (POST_TRANSLATION_STATUS_PENDING, "В процессе"),
+    (POST_TRANSLATION_STATUS_TRANSLATED, "Переведен"),
+    (POST_TRANSLATION_STATUS_FAILED, "Ошибка"),
+)
+
+
+class PostTranslation(models.Model):
+    post = models.ForeignKey(
+        Post,
+        on_delete=models.CASCADE,
+        related_name="translations",
+    )
+    language = models.CharField(
+        max_length=8,
+        choices=POST_TRANSLATION_LANGUAGE_CHOICES,
+        db_index=True,
+    )
+    title = models.CharField(max_length=255, blank=True)
+    content = models.TextField(blank=True)
+    preview_content = models.TextField(blank=True)
+    status = models.CharField(
+        max_length=16,
+        choices=POST_TRANSLATION_STATUS_CHOICES,
+        default=POST_TRANSLATION_STATUS_PENDING,
+        db_index=True,
+    )
+    model = models.CharField(max_length=120, blank=True)
+    error_message = models.TextField(blank=True)
+    raw_response = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["post_id", "language"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["post", "language"],
+                name="unique_post_translation_language",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["language", "status"], name="post_trans_lang_status_idx"),
+        ]
+        verbose_name = "Перевод поста"
+        verbose_name_plural = "Переводы постов"
+
+    def __str__(self) -> str:
+        return f"{self.post_id}:{self.language}"
+
+
 from communities.models import (
     Comun,
     ComunCategory,

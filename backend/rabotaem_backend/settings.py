@@ -63,6 +63,7 @@ MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.locale.LocaleMiddleware",
     "django.middleware.common.CommonMiddleware",
     "rabotaem_backend.security.UnsafeOriginProtectionMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -156,6 +157,11 @@ PASSWORD_HASHERS = [
 ]
 
 LANGUAGE_CODE = "ru-ru"
+LANGUAGES = [
+    ("ru", "Русский"),
+    ("tr", "Türkçe"),
+    ("id", "Bahasa Indonesia"),
+]
 TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
@@ -271,6 +277,16 @@ PUSH_APNS_USE_SANDBOX = (
     else os.environ.get("PUSH_APNS_USE_SANDBOX", "0") == "1"
 )
 SITE_BASE_URL = os.environ.get("SITE_BASE_URL", "http://localhost:5173")
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+OPENROUTER_API_URL = os.environ.get(
+    "OPENROUTER_API_URL",
+    "https://openrouter.ai/api/v1/chat/completions",
+)
+OPENROUTER_TRANSLATION_MODEL = os.environ.get(
+    "OPENROUTER_TRANSLATION_MODEL",
+    "deepseek/deepseek-v4-flash",
+)
+OPENROUTER_APP_TITLE = os.environ.get("OPENROUTER_APP_TITLE", "Tambur")
 WHEREFILMED_IMPORT_TOKEN = os.environ.get(
     "WHEREFILMED_IMPORT_TOKEN",
     os.environ.get("TAMBUR_EXPORT_TOKEN", ""),

@@ -1,4 +1,9 @@
 from django.contrib import admin
+from django.contrib import messages
+from django.core.exceptions import PermissionDenied
+from django.http import HttpRequest, HttpResponseRedirect
+from django.urls import path, reverse
+from django.utils.html import format_html_join
 
 from .models import (
     Author,
@@ -6,10 +11,17 @@ from .models import (
     PostComment,
     PostCommentLike,
     PostLike,
+    PostTranslation,
     StaticPageContent,
     Tag,
     TagRelation,
     TagRelationType,
+)
+from .translation_service import (
+    PostTranslationError,
+    get_translation_language_label,
+    translate_post_to_all_languages,
+    translate_post_to_language,
 )
 
 
@@ -48,16 +60,19 @@ class PostAdmin(admin.ModelAdmin):
         "is_blocked",
         "publish_at",
         "created_at",
+        "translation_actions",
     )
     list_filter = ("is_pending", "is_blocked", "author")
     search_fields = ("title", "content", "author__username")
     raw_id_fields = ("author",)
+    readonly_fields = ("translation_actions",)
     fields = (
         "author",
         "tags",
         "message_id",
         "title",
         "content",
+        "translation_actions",
         "rating",
         "comments_count",
         "source_url",
@@ -68,6 +83,93 @@ class PostAdmin(admin.ModelAdmin):
         "raw_data",
     )
     filter_horizontal = ("tags",)
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                "<path:object_id>/translate/<str:language>/",
+                self.admin_site.admin_view(self.translate_view),
+                name="feeds_post_translate",
+            ),
+        ]
+        return custom_urls + urls
+
+    @admin.display(description="Перевод")
+    def translation_actions(self, obj: Post):
+        if not obj or not obj.pk:
+            return "Сохраните пост перед переводом"
+        links = [
+            (
+                reverse("admin:feeds_post_translate", args=[obj.pk, "tr"]),
+                "Перевести TR",
+            ),
+            (
+                reverse("admin:feeds_post_translate", args=[obj.pk, "id"]),
+                "Перевести ID",
+            ),
+            (
+                reverse("admin:feeds_post_translate", args=[obj.pk, "all"]),
+                "Перевести все",
+            ),
+        ]
+        return format_html_join(" ", '<a class="button" href="{}">{}</a>', links)
+
+    def translate_view(self, request: HttpRequest, object_id: str, language: str):
+        post = self.get_object(request, object_id)
+        if post is None:
+            messages.error(request, "Пост не найден")
+            return HttpResponseRedirect(reverse("admin:feeds_post_changelist"))
+        if not self.has_change_permission(request, post):
+            raise PermissionDenied
+
+        try:
+            if language == "all":
+                translations = translate_post_to_all_languages(post)
+                labels = ", ".join(
+                    get_translation_language_label(translation.language)
+                    for translation in translations
+                )
+                messages.success(request, f"Переводы обновлены: {labels}")
+            else:
+                translation = translate_post_to_language(post, language)
+                label = get_translation_language_label(translation.language)
+                messages.success(request, f"Перевод обновлен: {label}")
+        except PostTranslationError as exc:
+            messages.error(request, f"Не удалось перевести пост: {exc}")
+
+        fallback_url = reverse("admin:feeds_post_change", args=[post.pk])
+        return HttpResponseRedirect(request.META.get("HTTP_REFERER") or fallback_url)
+
+
+class PostTranslationInline(admin.StackedInline):
+    model = PostTranslation
+    extra = 0
+    show_change_link = True
+    fields = (
+        "language",
+        "status",
+        "title",
+        "content",
+        "preview_content",
+        "model",
+        "error_message",
+        "created_at",
+        "updated_at",
+    )
+    readonly_fields = ("status", "model", "error_message", "created_at", "updated_at")
+
+
+PostAdmin.inlines = (PostTranslationInline,)
+
+
+@admin.register(PostTranslation)
+class PostTranslationAdmin(admin.ModelAdmin):
+    list_display = ("post", "language", "status", "model", "updated_at")
+    list_filter = ("language", "status", "model")
+    search_fields = ("post__title", "title", "content")
+    raw_id_fields = ("post",)
+    readonly_fields = ("created_at", "updated_at")
 
 
 class TagRelationInline(admin.TabularInline):
