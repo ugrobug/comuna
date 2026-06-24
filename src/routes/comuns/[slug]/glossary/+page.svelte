@@ -50,6 +50,25 @@
   let pendingGlossarySubmissionsLoadedFor = ''
   let reviewingGlossarySubmissionId: number | null = null
 
+  const portalToBody = (node: HTMLElement) => {
+    if (typeof document === 'undefined') return
+    const parent = node.parentNode
+    const placeholder = document.createComment('glossary-term-modal')
+    parent?.insertBefore(placeholder, node)
+    document.body.appendChild(node)
+
+    return {
+      destroy() {
+        if (placeholder.parentNode) {
+          placeholder.parentNode.insertBefore(node, placeholder)
+          placeholder.remove()
+        } else {
+          node.remove()
+        }
+      },
+    }
+  }
+
   const createGlossaryLocalId = () =>
     `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 
@@ -861,6 +880,7 @@
 
 {#if glossaryTermModalMode}
   <div
+    use:portalToBody
     class="glossary-term-modal-backdrop"
     role="presentation"
     on:click={(event) => {
@@ -868,7 +888,7 @@
     }}
   >
     <div
-      class="glossary-term-modal-panel w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-zinc-800 dark:bg-zinc-950"
+      class="glossary-term-modal-panel rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-zinc-800 dark:bg-zinc-950"
       role="dialog"
       aria-modal="true"
     >
@@ -878,11 +898,6 @@
             <div class="text-lg font-semibold text-slate-900 dark:text-zinc-100">
               {glossaryTermModalMode === 'add' ? 'Добавить термин' : 'Предложить термин'}
             </div>
-            <p class="mt-1 text-sm text-slate-600 dark:text-zinc-400">
-              {glossaryTermModalMode === 'add'
-                ? 'После добавления сохраните глоссарий, чтобы термин появился на сайте.'
-                : 'Создатель или модераторы сообщества проверят предложение перед публикацией.'}
-            </p>
           </div>
           <button
             type="button"
@@ -900,8 +915,7 @@
 
         <div class="mt-5 grid gap-3">
           {#if glossaryTermModalMode === 'add'}
-            <div class="grid gap-2 text-sm font-medium text-slate-700 dark:text-zinc-300">
-              <span>Картинка</span>
+            <div class="grid gap-2">
               <div class="flex flex-col gap-3 sm:flex-row sm:items-start">
                 <label
                   class="group relative flex aspect-square w-full cursor-pointer items-center justify-center overflow-hidden rounded-2xl border border-dashed border-slate-300 bg-white text-center text-xs font-medium text-slate-500 transition hover:border-sky-300 hover:bg-sky-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:border-sky-700 dark:hover:bg-sky-950/25 sm:w-36"
@@ -929,14 +943,11 @@
                     on:change={onGlossaryTermModalImageInput}
                   />
                 </label>
-                <div class="min-w-0 flex-1 text-sm leading-relaxed text-slate-500 dark:text-zinc-400">
-                  <p>
-                    Картинка будет сжата на сервере и сохранится вместе с новым термином после сохранения глоссария.
-                  </p>
+                <div class="min-w-0 flex-1">
                   {#if glossaryTermModalDraft.image_url}
                     <button
                       type="button"
-                      class="mt-3 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 dark:border-zinc-700 dark:text-zinc-400 dark:hover:border-rose-900/60 dark:hover:bg-rose-950/30 dark:hover:text-rose-300"
+                      class="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 dark:border-zinc-700 dark:text-zinc-400 dark:hover:border-rose-900/60 dark:hover:bg-rose-950/30 dark:hover:text-rose-300"
                       disabled={glossaryTermModalSaving || glossaryTermModalDraft.imageUploading}
                       on:click={removeGlossaryTermModalImage}
                     >
@@ -944,7 +955,7 @@
                     </button>
                   {/if}
                   {#if glossaryTermModalDraft.imageError}
-                    <div class="mt-2 text-xs text-rose-600 dark:text-rose-300">
+                    <div class="text-xs text-rose-600 dark:text-rose-300">
                       {glossaryTermModalDraft.imageError}
                     </div>
                   {/if}
@@ -952,28 +963,28 @@
               </div>
             </div>
           {/if}
-          <label class="grid gap-1 text-sm font-medium text-slate-700 dark:text-zinc-300">
-            <span>Термин</span>
+          <label class="grid">
             <input
               bind:value={glossaryTermModalDraft.term}
+              aria-label="Термин"
               class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-base text-slate-900 outline-none focus:border-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
               placeholder="Введите термин"
               disabled={glossaryTermModalSaving}
             />
           </label>
-          <label class="grid gap-1 text-sm font-medium text-slate-700 dark:text-zinc-300">
-            <span>Термин на английском</span>
+          <label class="grid">
             <input
               bind:value={glossaryTermModalDraft.term_en}
+              aria-label="Термин на английском"
               class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-base text-slate-900 outline-none focus:border-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
               placeholder="Необязательно"
               disabled={glossaryTermModalSaving}
             />
           </label>
-          <label class="grid gap-1 text-sm font-medium text-slate-700 dark:text-zinc-300">
-            <span>Расшифровка</span>
+          <label class="grid">
             <textarea
               bind:value={glossaryTermModalDraft.definition}
+              aria-label="Расшифровка"
               rows="5"
               class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-base leading-relaxed text-slate-900 outline-none focus:border-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
               placeholder="Опишите значение термина"
@@ -1024,16 +1035,17 @@
   .glossary-term-modal-backdrop {
     position: fixed !important;
     inset: 0 !important;
-    z-index: 10000;
+    z-index: 2147483000;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 1.5rem 1rem;
-    background: rgba(2, 6, 23, 0.55);
-    backdrop-filter: blur(8px);
+    background: rgba(2, 6, 23, 0.62);
+    backdrop-filter: blur(6px);
   }
 
   .glossary-term-modal-panel {
+    width: min(420px, calc(100vw - 2rem));
     max-height: min(720px, calc(100vh - 2rem));
     overflow: auto;
   }
