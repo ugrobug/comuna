@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import json
 import re
-import threading
+import subprocess
+import sys
 from typing import Any
 
 import requests
 from django.conf import settings
-from django.db import close_old_connections
 
 from feeds.models import (
     POST_TRANSLATION_LANGUAGE_CHOICES,
@@ -126,12 +126,7 @@ def queue_post_translation(post: Post, languages: list[str]) -> list[PostTransla
         )
         translations.append(translation)
 
-    worker = threading.Thread(
-        target=_run_queued_post_translations,
-        args=(post.pk, tuple(normalized_languages)),
-        daemon=True,
-    )
-    worker.start()
+    _start_post_translation_process(post.pk, tuple(normalized_languages))
     return translations
 
 
@@ -146,19 +141,21 @@ def _normalize_translation_languages(languages: list[str]) -> list[str]:
     return normalized
 
 
-def _run_queued_post_translations(post_id: int, languages: tuple[str, ...]) -> None:
-    close_old_connections()
+def _start_post_translation_process(post_id: int, languages: tuple[str, ...]) -> None:
+    manage_py = settings.BASE_DIR / "manage.py"
+    command = [sys.executable, str(manage_py), "translate_post", str(post_id)]
+    for language in languages:
+        command.extend(["--language", language])
     try:
-        post = Post.objects.get(pk=post_id)
-        for language in languages:
-            try:
-                translate_post_to_language(post, language)
-            except PostTranslationError:
-                continue
-    except Post.DoesNotExist:
-        return
-    finally:
-        close_old_connections()
+        subprocess.Popen(
+            command,
+            cwd=str(settings.BASE_DIR),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except OSError as exc:
+        raise PostTranslationError(f"Не удалось запустить фоновый перевод: {exc}") from exc
 
 
 def _request_openrouter_translation(post: Post, target: dict[str, str]) -> dict[str, Any]:

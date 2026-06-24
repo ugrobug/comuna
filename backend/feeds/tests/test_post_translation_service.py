@@ -98,8 +98,8 @@ class PostTranslationServiceTests(TestCase):
         self.assertEqual(translation.status, POST_TRANSLATION_STATUS_FAILED)
         self.assertIn("OPENROUTER_API_KEY", translation.error_message)
 
-    @patch("feeds.translation_service.threading.Thread")
-    def test_queue_post_translation_sets_pending_and_starts_worker(self, thread_mock) -> None:
+    @patch("feeds.translation_service.subprocess.Popen")
+    def test_queue_post_translation_sets_pending_and_starts_worker(self, popen_mock) -> None:
         translations = queue_post_translation(self.post, ["tr", "id"])
 
         self.assertEqual([translation.language for translation in translations], ["tr", "id"])
@@ -111,5 +111,9 @@ class PostTranslationServiceTests(TestCase):
             ),
             [("id", POST_TRANSLATION_STATUS_PENDING), ("tr", POST_TRANSLATION_STATUS_PENDING)],
         )
-        thread_mock.assert_called_once()
-        thread_mock.return_value.start.assert_called_once()
+        popen_mock.assert_called_once()
+        command = popen_mock.call_args.args[0]
+        self.assertIn("translate_post", command)
+        self.assertIn(str(self.post.pk), command)
+        self.assertIn("tr", command)
+        self.assertIn("id", command)
