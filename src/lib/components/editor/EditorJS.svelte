@@ -1265,8 +1265,10 @@
           span: {
             class: true,
             'data-glossary-term': true,
+            'data-glossary-term-en': true,
             'data-glossary-slug': true,
             'data-glossary-definition': true,
+            'data-glossary-image-url': true,
             title: true,
           },
         },
@@ -1343,8 +1345,10 @@
             (name === 'class' ||
               name === 'title' ||
               name === 'data-glossary-term' ||
+              name === 'data-glossary-term-en' ||
               name === 'data-glossary-slug' ||
-              name === 'data-glossary-definition')
+              name === 'data-glossary-definition' ||
+              name === 'data-glossary-image-url')
 
           if (isEventAttribute || name === 'style') {
             element.removeAttribute(attribute.name)
@@ -4049,6 +4053,16 @@
       termWrapper.setAttribute('data-glossary-term', term.term)
       termWrapper.setAttribute('data-glossary-slug', slug)
       termWrapper.setAttribute('data-glossary-definition', term.definition)
+      if (term.term_en) {
+        termWrapper.setAttribute('data-glossary-term-en', term.term_en)
+      } else {
+        termWrapper.removeAttribute('data-glossary-term-en')
+      }
+      if (term.image_url) {
+        termWrapper.setAttribute('data-glossary-image-url', term.image_url)
+      } else {
+        termWrapper.removeAttribute('data-glossary-image-url')
+      }
       termWrapper.setAttribute('title', term.definition)
     }
 
@@ -4144,7 +4158,7 @@
         const normalizedQuery = query.trim().toLowerCase()
         const results = terms.filter((term) => {
           if (!normalizedQuery) return true
-          return [term.term, term.definition].some((value) =>
+          return [term.term, term.term_en, term.definition].some((value) =>
             value.toLowerCase().includes(normalizedQuery)
           )
         })
@@ -4160,9 +4174,13 @@
         for (const term of results.slice(0, 20)) {
           const item = document.createElement('button')
           item.type = 'button'
-          item.className = 'ce-glossary-popup__item'
+          item.className = term.image_url
+            ? 'ce-glossary-popup__item ce-glossary-popup__item--with-media'
+            : 'ce-glossary-popup__item'
           item.innerHTML = `
+            ${term.image_url ? `<div class="ce-glossary-popup__item-media"><img src="${escapeInlineHtml(term.image_url)}" alt=""></div>` : ''}
             <div class="ce-glossary-popup__item-term">${escapeInlineHtml(term.term)}</div>
+            ${term.term_en ? `<div class="ce-glossary-popup__item-en">${escapeInlineHtml(term.term_en)}</div>` : ''}
             <div class="ce-glossary-popup__item-definition">${escapeInlineHtml(term.definition)}</div>
           `
           item.addEventListener('click', (event) => {
@@ -4307,8 +4325,10 @@
         span: {
           class: true,
           'data-glossary-term': true,
+          'data-glossary-term-en': true,
           'data-glossary-slug': true,
           'data-glossary-definition': true,
+          'data-glossary-image-url': true,
           title: true,
         },
       }
@@ -4331,8 +4351,10 @@
   type GlossaryTermOption = {
     id?: number | null
     term: string
+    term_en?: string | null
     slug?: string | null
     definition: string
+    image_url?: string | null
   }
 
   export let value = ''
@@ -4352,8 +4374,10 @@
       .map((term) => ({
         id: Number(term?.id ?? 0) || 0,
         term: String(term?.term ?? '').trim(),
+        term_en: String(term?.term_en ?? '').trim(),
         slug: String(term?.slug ?? '').trim(),
         definition: String(term?.definition ?? '').trim(),
+        image_url: String(term?.image_url ?? '').trim(),
       }))
       .filter((term) => term.term && term.definition)
 
@@ -4361,6 +4385,7 @@
     normalizeGlossaryTermOptions(terms).map((term, index) => ({
       ...(term.id ? { id: term.id } : {}),
       term: term.term,
+      term_en: term.term_en,
       definition: term.definition,
       sort_order: index,
     }))
@@ -8416,6 +8441,28 @@
     transition: border-color 0.16s ease, background-color 0.16s ease;
   }
 
+  :global(.ce-glossary-popup__item--with-media) {
+    display: grid;
+    grid-template-columns: 3.2rem minmax(0, 1fr);
+    column-gap: 0.75rem;
+    align-items: start;
+  }
+
+  :global(.ce-glossary-popup__item-media) {
+    grid-row: span 3;
+    aspect-ratio: 1 / 1;
+    overflow: hidden;
+    border-radius: 10px;
+    background: rgb(226 232 240);
+  }
+
+  :global(.ce-glossary-popup__item-media img) {
+    display: block;
+    height: 100%;
+    width: 100%;
+    object-fit: cover;
+  }
+
   :global(.ce-glossary-popup__item:hover) {
     border-color: rgb(56 189 248);
     background: rgb(240 249 255);
@@ -8431,6 +8478,10 @@
     background: rgb(24 24 27);
   }
 
+  :global(.dark .ce-glossary-popup__item-media) {
+    background: rgb(63 63 70);
+  }
+
   :global(.ce-glossary-popup__item-term) {
     font-size: 0.95rem;
     font-weight: 600;
@@ -8439,6 +8490,17 @@
 
   :global(.dark .ce-glossary-popup__item-term) {
     color: rgb(244 244 245);
+  }
+
+  :global(.ce-glossary-popup__item-en) {
+    margin-top: 0.15rem;
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: rgb(100 116 139);
+  }
+
+  :global(.dark .ce-glossary-popup__item-en) {
+    color: rgb(161 161 170);
   }
 
   :global(.ce-glossary-popup__item-definition) {

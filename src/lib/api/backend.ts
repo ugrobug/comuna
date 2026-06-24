@@ -174,6 +174,10 @@ export const buildComunGlossaryPath = (slug: string): string => {
   return `/comuns/${encodeURIComponent(slug)}/glossary`
 }
 
+export const buildComunGlossaryImageUrl = (slug: string): string => {
+  return `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/glossary-image/`
+}
+
 export const buildComunKnowledgeBasePath = (slug: string): string => {
   return `/comuns/${encodeURIComponent(slug)}/knowledge-base`
 }
@@ -763,8 +767,10 @@ export type BackendComunCategory = {
 export type BackendComunGlossaryTerm = {
   id: number
   term: string
+  term_en?: string | null
   slug: string
   definition: string
+  image_url?: string | null
   sort_order?: number
 }
 

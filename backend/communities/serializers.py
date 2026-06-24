@@ -61,12 +61,14 @@ def _serialize_site_user_summary(user: User | None, user_id: int | None = None) 
     }
 
 
-def _serialize_comun_glossary_term(term: ComunGlossaryTerm) -> dict:
+def _serialize_comun_glossary_term(term: ComunGlossaryTerm, request: HttpRequest | None = None) -> dict:
     return {
         "id": term.id,
         "term": term.term,
+        "term_en": getattr(term, "term_en", "") or "",
         "slug": term.slug,
         "definition": term.definition,
+        "image_url": community_service._media_url(request, getattr(term, "image", None)),
         "sort_order": term.sort_order,
     }
 
@@ -425,7 +427,7 @@ def _serialize_comun(
         "roadmap_categories": [
             _serialize_comun_category(category, comun) for category in roadmap_categories
         ],
-        "glossary_terms": [_serialize_comun_glossary_term(term) for term in glossary_terms],
+        "glossary_terms": [_serialize_comun_glossary_term(term, request=request) for term in glossary_terms],
         "glossary_terms_count": len(glossary_terms),
         "minimum_author_rating_to_post": community_service._comun_minimum_author_rating_value(comun),
         "only_moderators_can_post": bool(getattr(comun, "only_moderators_can_post", False)),

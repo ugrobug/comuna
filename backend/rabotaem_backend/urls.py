@@ -6,6 +6,7 @@ from django.urls import path
 from communities.views import (
     comun_create_from_telegram_channel,
     comun_detail_manage,
+    comun_glossary_image_upload,
     comun_knowledge_base,
     comun_knowledge_base_item,
     comun_post_category_update,
@@ -208,6 +209,11 @@ urlpatterns = [
         "api/comuns/<slug:slug>/settings-options/",
         comun_settings_options,
         name="comun-settings-options",
+    ),
+    path(
+        "api/comuns/<slug:slug>/glossary-image/",
+        comun_glossary_image_upload,
+        name="comun-glossary-image-upload",
     ),
     path("api/comuns/<slug:slug>/", comun_detail_manage, name="comun-detail-manage"),
     path("api/comuns/<slug:slug>/vote/", comun_vote, name="comun-vote"),

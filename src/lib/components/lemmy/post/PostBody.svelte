@@ -64,6 +64,12 @@
               node.setAttribute('rel', Array.from(relParts).join(' '))
             }
           }
+          if (node.tagName === 'SPAN' && node.classList.contains('post-glossary-term')) {
+            const imageUrl = (node.getAttribute('data-glossary-image-url') || '').trim()
+            if (imageUrl && !imageUrl.startsWith('/') && !/^https?:\/\//i.test(imageUrl)) {
+              node.removeAttribute('data-glossary-image-url')
+            }
+          }
           if (node.tagName === 'IFRAME') {
             const src = node.getAttribute('src') || ''
             const isTelegram = src.startsWith('https://t.me/')
@@ -146,6 +152,7 @@
   let pollRestoreInFlight = false
   let restoredPollToken: string | null = null
   const activeGlossaryTermClass = 'post-glossary-term--active'
+  let glossaryTooltipElement: HTMLElement | null = null
   const maxPreviewLength = 250;
   const hydratedPostLinkSnapshots = new Map<number, PostLinkSnapshot>()
   type TocEntry = { id: string; text: string; level: 2 | 3 }
@@ -211,54 +218,110 @@
     return `${questionValue}::${optionsValue}`
   }
 
+  const hideGlossaryTooltip = () => {
+    glossaryTooltipElement?.remove()
+    glossaryTooltipElement = null
+  }
+
   const clearActiveGlossaryTerms = () => {
-    if (!element) return
-    element
-      .querySelectorAll(`.${activeGlossaryTermClass}`)
-      .forEach((item) => item.classList.remove(activeGlossaryTermClass))
+    if (element) {
+      element
+        .querySelectorAll(`.${activeGlossaryTermClass}`)
+        .forEach((item) => item.classList.remove(activeGlossaryTermClass))
+    }
+    hideGlossaryTooltip()
+  }
+
+  const renderGlossaryTermTooltip = (termElement: HTMLElement): HTMLElement | null => {
+    const definition = String(termElement.getAttribute('data-glossary-definition') || '').trim()
+    if (!browser || !definition) return null
+
+    const termName = String(termElement.getAttribute('data-glossary-term') || termElement.textContent || '').trim()
+    const termEn = String(termElement.getAttribute('data-glossary-term-en') || '').trim()
+    const imageUrl = String(termElement.getAttribute('data-glossary-image-url') || '').trim()
+    const tooltip = glossaryTooltipElement ?? document.createElement('div')
+    tooltip.className = imageUrl
+      ? 'post-glossary-tooltip post-glossary-tooltip--with-image'
+      : 'post-glossary-tooltip'
+    tooltip.innerHTML = ''
+    tooltip.setAttribute('role', 'tooltip')
+
+    if (imageUrl) {
+      const media = document.createElement('div')
+      media.className = 'post-glossary-tooltip__media'
+      const image = document.createElement('img')
+      image.src = imageUrl
+      image.alt = ''
+      image.loading = 'lazy'
+      media.appendChild(image)
+      tooltip.appendChild(media)
+    }
+
+    const content = document.createElement('div')
+    content.className = 'post-glossary-tooltip__content'
+    if (termName) {
+      const titleElement = document.createElement('div')
+      titleElement.className = 'post-glossary-tooltip__term'
+      titleElement.textContent = termName
+      content.appendChild(titleElement)
+    }
+    if (termEn) {
+      const englishElement = document.createElement('div')
+      englishElement.className = 'post-glossary-tooltip__term-en'
+      englishElement.textContent = termEn
+      content.appendChild(englishElement)
+    }
+    const definitionElement = document.createElement('div')
+    definitionElement.className = 'post-glossary-tooltip__definition'
+    definitionElement.textContent = definition
+    content.appendChild(definitionElement)
+    tooltip.appendChild(content)
+
+    if (!glossaryTooltipElement) {
+      document.body.appendChild(tooltip)
+      glossaryTooltipElement = tooltip
+    }
+    return tooltip
   }
 
   const positionGlossaryTermTooltip = (termElement: HTMLElement) => {
     if (!browser) return
-    const definition = String(termElement.getAttribute('data-glossary-definition') || '').trim()
+    const tooltip = renderGlossaryTermTooltip(termElement)
     const termRect = termElement.getBoundingClientRect()
     const contentRect =
       termElement.closest('.post-content')?.getBoundingClientRect() ??
       element?.getBoundingClientRect()
-    if (!definition || !contentRect) return
+    if (!tooltip || !contentRect) return
 
+    const hasImage = Boolean(termElement.getAttribute('data-glossary-image-url'))
     const viewportMargin = 12
     const contentMargin = 8
     const minLeft = Math.max(contentRect.left + contentMargin, viewportMargin)
     const maxRight = Math.min(contentRect.right - contentMargin, window.innerWidth - viewportMargin)
     const availableWidth = Math.max(180, maxRight - minLeft)
-    const maxTooltipWidth = Math.min(352, window.innerWidth - viewportMargin * 2, availableWidth)
-    const measureElement = document.createElement('span')
-    measureElement.textContent = definition
-    measureElement.style.position = 'fixed'
-    measureElement.style.left = '-10000px'
-    measureElement.style.top = '-10000px'
-    measureElement.style.visibility = 'hidden'
-    measureElement.style.whiteSpace = 'nowrap'
-    measureElement.style.fontSize = '0.82rem'
-    measureElement.style.fontWeight = '400'
-    document.body.appendChild(measureElement)
-    const measuredTextWidth = measureElement.getBoundingClientRect().width
-    measureElement.remove()
+    const targetWidth = hasImage ? 420 : 320
+    const tooltipWidth = Math.min(targetWidth, window.innerWidth - viewportMargin * 2, availableWidth)
+    tooltip.style.width = `${Math.round(tooltipWidth)}px`
+    tooltip.style.visibility = 'hidden'
+    tooltip.style.left = '0px'
+    tooltip.style.top = '0px'
 
-    const tooltipHorizontalPadding = 28
-    const tooltipWidth = Math.min(
-      maxTooltipWidth,
-      Math.max(96, Math.ceil(measuredTextWidth + tooltipHorizontalPadding))
-    )
+    const tooltipRect = tooltip.getBoundingClientRect()
     const termCenter = termRect.left + termRect.width / 2
-    const defaultLeft = termCenter - tooltipWidth / 2
-    const maxLeft = maxRight - tooltipWidth
-    const clampedLeft = Math.min(Math.max(defaultLeft, minLeft), maxLeft)
-    const shiftX = Math.round(clampedLeft - defaultLeft)
+    const defaultLeft = termCenter - tooltipRect.width / 2
+    const maxLeft = maxRight - tooltipRect.width
+    const left = maxLeft < minLeft ? minLeft : Math.min(Math.max(defaultLeft, minLeft), maxLeft)
+    let top = termRect.top - tooltipRect.height - 10
+    if (top < viewportMargin) {
+      top = termRect.bottom + 10
+    }
+    if (top + tooltipRect.height > window.innerHeight - viewportMargin) {
+      top = Math.max(viewportMargin, window.innerHeight - viewportMargin - tooltipRect.height)
+    }
 
-    termElement.style.setProperty('--post-glossary-tooltip-width', `${Math.round(tooltipWidth)}px`)
-    termElement.style.setProperty('--post-glossary-tooltip-shift-x', `${shiftX}px`)
+    tooltip.style.left = `${Math.round(left)}px`
+    tooltip.style.top = `${Math.round(top)}px`
+    tooltip.style.visibility = 'visible'
   }
 
   const handlePostContentPointerOver = (event: PointerEvent) => {
@@ -277,11 +340,36 @@
     }
   }
 
+  const handlePostContentPointerOut = (event: PointerEvent) => {
+    const target = event.target as HTMLElement | null
+    const termElement = target?.closest('.post-glossary-term') as HTMLElement | null
+    const relatedTarget = event.relatedTarget
+    const relatedNode = relatedTarget instanceof Node ? relatedTarget : null
+    if (
+      termElement &&
+      !termElement.contains(relatedNode) &&
+      !termElement.classList.contains(activeGlossaryTermClass)
+    ) {
+      hideGlossaryTooltip()
+    }
+  }
+
+  const handlePostContentFocusOut = (event: FocusEvent) => {
+    const target = event.target as HTMLElement | null
+    const termElement = target?.closest('.post-glossary-term') as HTMLElement | null
+    if (termElement && !termElement.classList.contains(activeGlossaryTermClass)) {
+      hideGlossaryTooltip()
+    }
+  }
+
   const refreshActiveGlossaryTooltips = () => {
     if (!element) return
-    element
-      .querySelectorAll(`.${activeGlossaryTermClass}`)
-      .forEach((item) => positionGlossaryTermTooltip(item as HTMLElement))
+    const activeItems = element.querySelectorAll(`.${activeGlossaryTermClass}`)
+    if (!activeItems.length) {
+      hideGlossaryTooltip()
+      return
+    }
+    activeItems.forEach((item) => positionGlossaryTermTooltip(item as HTMLElement))
   }
 
   const handlePostContentClick = (event: MouseEvent) => {
@@ -305,14 +393,21 @@
   const glossaryTermClickHandler = (node: Element) => {
     node.addEventListener('click', handlePostContentClick as EventListener)
     node.addEventListener('pointerover', handlePostContentPointerOver as EventListener)
+    node.addEventListener('pointerout', handlePostContentPointerOut as EventListener)
     node.addEventListener('focusin', handlePostContentFocusIn as EventListener)
+    node.addEventListener('focusout', handlePostContentFocusOut as EventListener)
     window.addEventListener('resize', refreshActiveGlossaryTooltips)
+    window.addEventListener('scroll', refreshActiveGlossaryTooltips, true)
     return {
       destroy() {
         node.removeEventListener('click', handlePostContentClick as EventListener)
         node.removeEventListener('pointerover', handlePostContentPointerOver as EventListener)
+        node.removeEventListener('pointerout', handlePostContentPointerOut as EventListener)
         node.removeEventListener('focusin', handlePostContentFocusIn as EventListener)
+        node.removeEventListener('focusout', handlePostContentFocusOut as EventListener)
         window.removeEventListener('resize', refreshActiveGlossaryTooltips)
+        window.removeEventListener('scroll', refreshActiveGlossaryTooltips, true)
+        hideGlossaryTooltip()
       },
     }
   }
@@ -3084,8 +3179,10 @@
           'data-post-link-text',
           'data-post-link-image',
           'data-glossary-term',
+          'data-glossary-term-en',
           'data-glossary-slug',
           'data-glossary-definition',
+          'data-glossary-image-url',
           'role',
           'tabindex',
           'aria-expanded',
@@ -5484,30 +5581,67 @@
     background: rgb(34 197 94 / 0.22);
   }
 
-  :global(.post-content .post-glossary-term::after) {
-    content: attr(data-glossary-definition);
-    position: absolute;
-    left: 50%;
-    bottom: calc(100% + 0.7rem);
-    z-index: 20;
-    width: var(--post-glossary-tooltip-width);
-    transform: translateX(calc(-50% + var(--post-glossary-tooltip-shift-x)));
+  :global(.post-glossary-tooltip) {
+    position: fixed;
+    z-index: 1000;
+    display: block;
+    overflow: hidden;
     border-radius: 14px;
     background: rgba(15, 23, 42, 0.96);
     box-shadow: 0 18px 40px rgba(15, 23, 42, 0.22);
     color: white;
-    padding: 0.7rem 0.85rem;
-    font-size: 0.82rem;
-    line-height: 1.45;
-    opacity: 0;
     pointer-events: none;
     white-space: normal;
-    transition: opacity 0.18s ease, transform 0.18s ease;
   }
 
-  :global(.post-content .post-glossary-term:hover::after),
-  :global(.post-content .post-glossary-term.post-glossary-term--active::after) {
-    opacity: 1;
-    transform: translateX(calc(-50% + var(--post-glossary-tooltip-shift-x))) translateY(-2px);
+  :global(.post-glossary-tooltip--with-image) {
+    display: grid;
+    grid-template-columns: minmax(6rem, 34%) minmax(0, 1fr);
+    min-height: 7rem;
+  }
+
+  :global(.post-glossary-tooltip__media) {
+    align-self: stretch;
+    min-height: 100%;
+    background: rgb(30 41 59);
+  }
+
+  :global(.post-glossary-tooltip__media img) {
+    display: block;
+    height: 100%;
+    min-height: 100%;
+    width: 100%;
+    object-fit: cover;
+  }
+
+  :global(.post-glossary-tooltip__content) {
+    min-width: 0;
+    padding: 0.75rem 0.85rem;
+  }
+
+  :global(.post-glossary-tooltip--with-image .post-glossary-tooltip__content) {
+    padding: 0.85rem 0.95rem;
+  }
+
+  :global(.post-glossary-tooltip__term) {
+    font-size: 0.9rem;
+    font-weight: 700;
+    line-height: 1.25;
+  }
+
+  :global(.post-glossary-tooltip__term-en) {
+    margin-top: 0.15rem;
+    color: rgb(203 213 225);
+    font-size: 0.78rem;
+    font-weight: 600;
+    line-height: 1.25;
+  }
+
+  :global(.post-glossary-tooltip__definition) {
+    margin-top: 0.35rem;
+    color: rgb(241 245 249);
+    font-size: 0.82rem;
+    line-height: 1.45;
+    white-space: pre-line;
   }
 </style>

@@ -8,6 +8,10 @@ from editor.models import default_allowed_post_templates
 User = get_user_model()
 
 
+def comun_glossary_image_path(instance: "ComunGlossaryTerm", filename: str) -> str:
+    return f"comuns/glossary/{instance.comun_id or 'new'}/{filename}"
+
+
 class ComunCategory(models.Model):
     comun = models.ForeignKey(
         "feeds.Comun",
@@ -73,8 +77,14 @@ class ComunGlossaryTerm(models.Model):
         verbose_name="Сообщество",
     )
     term = models.CharField(max_length=180, verbose_name="Термин")
+    term_en = models.CharField(max_length=180, blank=True, verbose_name="Термин на английском")
     slug = models.SlugField(max_length=180, verbose_name="Slug термина")
     definition = models.TextField(blank=True, verbose_name="Расшифровка")
+    image = models.ImageField(
+        upload_to=comun_glossary_image_path,
+        blank=True,
+        verbose_name="Картинка",
+    )
     sort_order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)

@@ -69,8 +69,10 @@ const GLOBAL_ATTRIBUTES = new Set([
   'data-post-link-text',
   'data-post-link-image',
   'data-glossary-term',
+  'data-glossary-term-en',
   'data-glossary-slug',
   'data-glossary-definition',
+  'data-glossary-image-url',
 ])
 
 const TAG_ATTRIBUTES: Record<string, Set<string>> = {
@@ -201,6 +203,10 @@ const sanitizeAttributeValue = (tag: string, name: string, value: string) => {
   }
 
   if (name === 'srcset') return sanitizeSrcSet(decodedValue)
+
+  if (name === 'data-glossary-image-url') {
+    return getSafeUrl(decodedValue, { allowRelative: true })
+  }
 
   return decodedValue
 }

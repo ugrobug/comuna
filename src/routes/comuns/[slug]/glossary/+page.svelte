@@ -1,13 +1,24 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
-  import { buildComunUrl, type BackendComun, type BackendComunGlossaryTerm } from '$lib/api/backend'
+  import {
+    buildComunGlossaryImageUrl,
+    buildComunUrl,
+    type BackendComun,
+    type BackendComunGlossaryTerm,
+  } from '$lib/api/backend'
   import { Button, toast } from 'mono-svelte'
   import { siteToken, siteUser } from '$lib/siteAuth'
 
   export let data
 
-  type GlossaryDraftTerm = BackendComunGlossaryTerm & { localId: string }
+  type GlossaryDraftTerm = BackendComunGlossaryTerm & {
+    localId: string
+    image_path?: string
+    image_remove?: boolean
+    imageUploading?: boolean
+    imageError?: string
+  }
 
   let comun: BackendComun | null = data?.comun ?? null
   let searchQuery = ''
@@ -28,8 +39,14 @@
       id: Number(term?.id ?? 0) || 0,
       localId: (term as GlossaryDraftTerm)?.localId || createGlossaryLocalId(),
       term: String(term?.term ?? '').trim(),
+      term_en: String(term?.term_en ?? '').trim(),
       slug: String(term?.slug ?? '').trim(),
       definition: String(term?.definition ?? '').trim(),
+      image_url: String(term?.image_url ?? '').trim(),
+      image_path: String((term as GlossaryDraftTerm)?.image_path ?? '').trim(),
+      image_remove: Boolean((term as GlossaryDraftTerm)?.image_remove),
+      imageUploading: Boolean((term as GlossaryDraftTerm)?.imageUploading),
+      imageError: String((term as GlossaryDraftTerm)?.imageError ?? ''),
       sort_order: Number(term?.sort_order ?? index) || index,
     }))
 
@@ -56,7 +73,7 @@
   $: normalizedSearchQuery = searchQuery.trim().toLowerCase()
   $: filteredGlossaryTerms = draftTerms.filter((term) => {
     if (!normalizedSearchQuery) return true
-    return [term.term, term.definition].some((value) =>
+    return [term.term, term.term_en, term.definition].some((value) =>
       String(value ?? '').toLowerCase().includes(normalizedSearchQuery)
     )
   })
@@ -64,14 +81,22 @@
     draftTerms.map((term) => ({
       id: Number(term.id) || 0,
       term: term.term.trim(),
+      term_en: String(term.term_en ?? '').trim(),
       definition: term.definition.trim(),
+      image_url: String(term.image_url ?? '').trim(),
+      image_path: String(term.image_path ?? '').trim(),
+      image_remove: Boolean(term.image_remove),
     }))
   )
   $: sourceComparable = JSON.stringify(
     normalizeGlossaryTerms(comun?.glossary_terms).map((term) => ({
       id: Number(term.id) || 0,
       term: term.term.trim(),
+      term_en: String(term.term_en ?? '').trim(),
       definition: term.definition.trim(),
+      image_url: String(term.image_url ?? '').trim(),
+      image_path: '',
+      image_remove: false,
     }))
   )
   $: glossaryAutoLinkHasChanges =
@@ -91,8 +116,12 @@
         id: 0,
         localId: createGlossaryLocalId(),
         term: '',
+        term_en: '',
         slug: '',
         definition: '',
+        image_url: '',
+        image_path: '',
+        image_remove: false,
         sort_order: draftTerms.length,
       },
     ]
@@ -100,7 +129,7 @@
 
   const updateDraftGlossaryTerm = (
     localId: string,
-    field: 'term' | 'definition',
+    field: 'term' | 'term_en' | 'definition',
     value: string
   ) => {
     draftTerms = draftTerms.map((term, index) =>
@@ -121,9 +150,74 @@
     updateDraftGlossaryTerm(localId, 'term', target?.value ?? '')
   }
 
+  const onGlossaryTermEnInput = (localId: string, event: Event) => {
+    const target = event.currentTarget as HTMLInputElement | null
+    updateDraftGlossaryTerm(localId, 'term_en', target?.value ?? '')
+  }
+
   const onGlossaryDefinitionInput = (localId: string, event: Event) => {
     const target = event.currentTarget as HTMLTextAreaElement | null
     updateDraftGlossaryTerm(localId, 'definition', target?.value ?? '')
+  }
+
+  const setDraftGlossaryImageState = (localId: string, patch: Partial<GlossaryDraftTerm>) => {
+    draftTerms = draftTerms.map((term, index) =>
+      term.localId === localId
+        ? { ...term, ...patch, sort_order: index }
+        : { ...term, sort_order: index }
+    )
+  }
+
+  const onGlossaryImageInput = async (localId: string, event: Event) => {
+    const input = event.currentTarget as HTMLInputElement | null
+    const file = input?.files?.[0]
+    if (input) input.value = ''
+    if (!file || !comun?.slug || !canManageGlossary) return
+    if (file.type && !file.type.startsWith('image/')) {
+      setDraftGlossaryImageState(localId, { imageError: 'Выберите картинку' })
+      return
+    }
+    if (!$siteToken) {
+      setDraftGlossaryImageState(localId, { imageError: 'Нужна авторизация' })
+      return
+    }
+
+    setDraftGlossaryImageState(localId, { imageUploading: true, imageError: '' })
+    try {
+      const body = new FormData()
+      body.append('image', file)
+      const response = await fetch(buildComunGlossaryImageUrl(comun.slug), {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${$siteToken}`,
+        },
+        body,
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Не удалось загрузить картинку')
+      }
+      setDraftGlossaryImageState(localId, {
+        image_url: String(payload?.image_url ?? '').trim(),
+        image_path: String(payload?.image_path ?? '').trim(),
+        image_remove: false,
+        imageUploading: false,
+        imageError: '',
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Не удалось загрузить картинку'
+      setDraftGlossaryImageState(localId, { imageUploading: false, imageError: message })
+      toast({ content: message, type: 'error' })
+    }
+  }
+
+  const removeDraftGlossaryImage = (localId: string) => {
+    setDraftGlossaryImageState(localId, {
+      image_url: '',
+      image_path: '',
+      image_remove: true,
+      imageError: '',
+    })
   }
 
   const saveGlossary = async () => {
@@ -139,7 +233,10 @@
           glossary_terms: draftTerms.map((term, index) => ({
             id: Number(term.id) || undefined,
             term: term.term.trim(),
+            term_en: String(term.term_en ?? '').trim(),
             definition: term.definition.trim(),
+            image_path: String(term.image_path ?? '').trim() || undefined,
+            image_remove: Boolean(term.image_remove) || undefined,
             sort_order: index,
           })),
         }),
@@ -264,7 +361,7 @@
         <input
           bind:value={searchQuery}
           type="text"
-          placeholder="Поиск по термину или расшифровке..."
+          placeholder="Поиск по термину, английскому названию или расшифровке..."
           class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500 sm:max-w-md"
         />
         {#if canManageGlossary && glossaryHasChanges}
@@ -282,43 +379,112 @@
               class="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-4 dark:border-zinc-800 dark:bg-zinc-900/60"
             >
               {#if canManageGlossary}
-                <div class="flex items-start justify-between gap-3">
-                  <div class="flex-1 grid gap-3">
-                    <input
-                      value={term.term}
-                      on:input={(event) => onGlossaryTermInput(term.localId, event)}
-                      placeholder="Термин"
-                      class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-base font-semibold text-slate-900 outline-none focus:border-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
-                    />
-                    <textarea
-                      rows="4"
-                      on:input={(event) => onGlossaryDefinitionInput(term.localId, event)}
-                      class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm leading-relaxed text-slate-700 outline-none focus:border-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:focus:border-zinc-500"
-                      placeholder="Расшифровка термина"
-                    >{term.definition}</textarea>
+                <div class="flex flex-col gap-4 sm:flex-row sm:items-start">
+                  <div class="w-full shrink-0 sm:w-36">
+                    <label
+                      class="group relative flex aspect-square cursor-pointer items-center justify-center overflow-hidden rounded-2xl border border-dashed border-slate-300 bg-white text-center text-xs font-medium text-slate-500 transition hover:border-sky-300 hover:bg-sky-50 dark:border-zinc-700 dark:bg-zinc-950/40 dark:text-zinc-400 dark:hover:border-sky-700 dark:hover:bg-sky-950/25"
+                      title="Загрузить картинку термина"
+                    >
+                      {#if term.image_url}
+                        <img
+                          src={term.image_url}
+                          alt=""
+                          class="absolute inset-0 h-full w-full object-cover"
+                          loading="lazy"
+                        />
+                        <span class="absolute inset-x-0 bottom-0 bg-slate-950/70 px-2 py-1 text-white opacity-0 transition group-hover:opacity-100">
+                          Заменить
+                        </span>
+                      {:else}
+                        <span class="px-3">
+                          {term.imageUploading ? 'Загружаем...' : 'Загрузить картинку'}
+                        </span>
+                      {/if}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        class="sr-only"
+                        disabled={glossarySaving || term.imageUploading}
+                        on:change={(event) => onGlossaryImageInput(term.localId, event)}
+                      />
+                    </label>
+                    {#if term.image_url}
+                      <button
+                        type="button"
+                        class="mt-2 w-full rounded-lg border border-slate-200 px-2 py-1 text-xs font-medium text-slate-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 dark:border-zinc-700 dark:text-zinc-400 dark:hover:border-rose-900/60 dark:hover:bg-rose-950/30 dark:hover:text-rose-300"
+                        disabled={glossarySaving || term.imageUploading}
+                        on:click={() => removeDraftGlossaryImage(term.localId)}
+                      >
+                        Удалить картинку
+                      </button>
+                    {/if}
+                    {#if term.imageError}
+                      <div class="mt-2 text-xs text-rose-600 dark:text-rose-300">{term.imageError}</div>
+                    {/if}
                   </div>
-                  <button
-                    type="button"
-                    class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 dark:border-zinc-700 dark:text-zinc-400 dark:hover:border-rose-900/60 dark:hover:bg-rose-950/30 dark:hover:text-rose-300"
-                    title="Удалить термин"
-                    aria-label="Удалить термин"
-                    on:click={() => removeDraftGlossaryTerm(term.localId)}
-                  >
-                    <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                      <path d="M3 6h18"></path>
-                      <path d="M8 6V4.8c0-.9.7-1.6 1.6-1.6h4.8c.9 0 1.6.7 1.6 1.6V6"></path>
-                      <path d="M18 6v12.2c0 .9-.7 1.6-1.6 1.6H7.6c-.9 0-1.6-.7-1.6-1.6V6"></path>
-                      <path d="M10 10.5v5"></path>
-                      <path d="M14 10.5v5"></path>
-                    </svg>
-                  </button>
+                  <div class="flex min-w-0 flex-1 items-start justify-between gap-3">
+                    <div class="grid flex-1 gap-3">
+                      <input
+                        value={term.term}
+                        on:input={(event) => onGlossaryTermInput(term.localId, event)}
+                        placeholder="Термин"
+                        class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-base font-semibold text-slate-900 outline-none focus:border-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
+                      />
+                      <input
+                        value={term.term_en}
+                        on:input={(event) => onGlossaryTermEnInput(term.localId, event)}
+                        placeholder="Термин на английском"
+                        class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 outline-none focus:border-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:focus:border-zinc-500"
+                      />
+                      <textarea
+                        rows="4"
+                        on:input={(event) => onGlossaryDefinitionInput(term.localId, event)}
+                        class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm leading-relaxed text-slate-700 outline-none focus:border-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:focus:border-zinc-500"
+                        placeholder="Расшифровка термина"
+                      >{term.definition}</textarea>
+                    </div>
+                    <button
+                      type="button"
+                      class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 dark:border-zinc-700 dark:text-zinc-400 dark:hover:border-rose-900/60 dark:hover:bg-rose-950/30 dark:hover:text-rose-300"
+                      title="Удалить термин"
+                      aria-label="Удалить термин"
+                      on:click={() => removeDraftGlossaryTerm(term.localId)}
+                    >
+                      <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M3 6h18"></path>
+                        <path d="M8 6V4.8c0-.9.7-1.6 1.6-1.6h4.8c.9 0 1.6.7 1.6 1.6V6"></path>
+                        <path d="M18 6v12.2c0 .9-.7 1.6-1.6 1.6H7.6c-.9 0-1.6-.7-1.6-1.6V6"></path>
+                        <path d="M10 10.5v5"></path>
+                        <path d="M14 10.5v5"></path>
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               {:else}
-                <div class="text-lg font-semibold text-slate-900 dark:text-zinc-100">
-                  {term.term}
-                </div>
-                <div class="mt-2 whitespace-pre-line text-sm leading-relaxed text-slate-700 dark:text-zinc-300">
-                  {term.definition}
+                <div class="flex flex-col gap-4 sm:flex-row">
+                  {#if term.image_url}
+                    <div class="aspect-square w-full shrink-0 overflow-hidden rounded-2xl bg-slate-100 dark:bg-zinc-800 sm:w-32">
+                      <img
+                        src={term.image_url}
+                        alt=""
+                        class="h-full w-full object-cover"
+                        loading="lazy"
+                      />
+                    </div>
+                  {/if}
+                  <div class="min-w-0 flex-1">
+                    <div class="text-lg font-semibold text-slate-900 dark:text-zinc-100">
+                      {term.term}
+                    </div>
+                    {#if term.term_en}
+                      <div class="mt-1 text-sm font-medium text-slate-500 dark:text-zinc-400">
+                        {term.term_en}
+                      </div>
+                    {/if}
+                    <div class="mt-2 whitespace-pre-line text-sm leading-relaxed text-slate-700 dark:text-zinc-300">
+                      {term.definition}
+                    </div>
+                  </div>
                 </div>
               {/if}
             </article>

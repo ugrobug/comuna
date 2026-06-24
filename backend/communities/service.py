@@ -379,6 +379,20 @@ def _normalize_comun_glossary_definition(raw_value: object) -> str:
     return str(raw_value or "").strip()[:5000]
 
 
+def _normalize_comun_glossary_term_en(raw_value: object) -> str:
+    return re.sub(r"\s+", " ", str(raw_value or "").strip())[:180]
+
+
+def _delete_comun_glossary_term_image(term: ComunGlossaryTerm) -> None:
+    image = getattr(term, "image", None)
+    if not image:
+        return
+    try:
+        image.delete(save=False)
+    except Exception:
+        return
+
+
 def _generate_unique_comun_glossary_term_slug(
     comun: Comun,
     term: str,
@@ -424,12 +438,19 @@ def _sync_comun_glossary_terms(comun: Comun, raw_terms: object) -> None:
             continue
 
         term_name = _normalize_comun_glossary_term(item.get("term") or item.get("name"))
+        term_en = _normalize_comun_glossary_term_en(
+            item.get("term_en") or item.get("english_term") or item.get("termEn")
+        )
         definition = _normalize_comun_glossary_definition(item.get("definition") or item.get("description"))
         if not term_name or not definition:
             continue
 
         term_id = _parse_post_reference_to_id(item.get("id"))
         existing_term = existing_terms.get(term_id) if term_id else None
+        image_path = str(item.get("image_path") or item.get("image") or "").strip()
+        if image_path and not image_path.startswith("comuns/glossary/"):
+            image_path = ""
+        image_remove = bool(item.get("image_remove") or item.get("remove_image"))
         next_slug = _generate_unique_comun_glossary_term_slug(
             comun,
             term_name,
@@ -437,35 +458,54 @@ def _sync_comun_glossary_terms(comun: Comun, raw_terms: object) -> None:
         )
 
         if existing_term:
+            current_image_name = str(getattr(existing_term.image, "name", "") or "").strip()
+            image_changed = False
+            if image_remove:
+                _delete_comun_glossary_term_image(existing_term)
+                existing_term.image = ""
+                image_changed = True
+            elif image_path and image_path != current_image_name:
+                _delete_comun_glossary_term_image(existing_term)
+                existing_term.image = image_path
+                image_changed = True
             existing_term.term = term_name
+            existing_term.term_en = term_en
             existing_term.definition = definition
             existing_term.slug = next_slug
             existing_term.sort_order = index
             existing_term.is_active = True
-            existing_term.save(
-                update_fields=[
-                    "term",
-                    "definition",
-                    "slug",
-                    "sort_order",
-                    "is_active",
-                    "updated_at",
-                ]
-            )
+            update_fields = [
+                "term",
+                "term_en",
+                "definition",
+                "slug",
+                "sort_order",
+                "is_active",
+                "updated_at",
+            ]
+            if image_changed:
+                update_fields.append("image")
+            existing_term.save(update_fields=update_fields)
             kept_ids.add(existing_term.id)
             continue
 
         created_term = ComunGlossaryTerm.objects.create(
             comun=comun,
             term=term_name,
+            term_en=term_en,
             definition=definition,
+            image=image_path,
             slug=next_slug,
             sort_order=index,
             is_active=True,
         )
         kept_ids.add(created_term.id)
 
-    _comun_glossary_queryset(comun).exclude(id__in=list(kept_ids)).delete()
+    terms_to_delete = list(_comun_glossary_queryset(comun).exclude(id__in=list(kept_ids)))
+    for term in terms_to_delete:
+        _delete_comun_glossary_term_image(term)
+    if terms_to_delete:
+        ComunGlossaryTerm.objects.filter(id__in=[term.id for term in terms_to_delete]).delete()
 
 
 def _comun_category_queryset(comun: Comun):
@@ -1597,6 +1637,7 @@ __all__ = [
     "_normalize_comun_category_name",
     "_normalize_comun_glossary_definition",
     "_normalize_comun_glossary_term",
+    "_normalize_comun_glossary_term_en",
     "_normalize_comun_minimum_author_rating",
     "_normalize_comun_slug",
     "_normalize_tag_value",

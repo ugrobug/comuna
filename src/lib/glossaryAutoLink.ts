@@ -3,15 +3,19 @@ import { parseEditorJsPayload, type EditorJsPayload } from '$lib/editorJsContent
 export type GlossaryAutoLinkTerm = {
   id?: number | string
   term: string
+  term_en?: string | null
   slug?: string
   definition: string
+  image_url?: string | null
 }
 
 export type GlossaryAutoLinkMatch = {
   id: string
   term: string
+  term_en?: string
   slug: string
   definition: string
+  image_url?: string
   matchedText: string
   context: string
 }
@@ -53,17 +57,27 @@ const normalizeTerms = (terms: GlossaryAutoLinkTerm[]) => {
   return terms
     .map((term) => ({
       term: String(term.term || '').trim(),
+      term_en: String(term.term_en || '').trim(),
       slug: String(term.slug || term.id || term.term || '').trim(),
       definition: String(term.definition || '').trim(),
+      image_url: String(term.image_url || '').trim(),
     }))
     .filter((term) => term.term && term.definition)
-    .filter((term) => {
-      const key = normalizeTermKey(term.term)
-      if (seen.has(key)) return false
-      seen.add(key)
-      return true
+    .map((term) => {
+      const aliases = [term.term, term.term_en].filter(Boolean).filter((alias) => {
+        const key = normalizeTermKey(alias)
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+      return { ...term, aliases }
     })
-    .sort((a, b) => b.term.length - a.term.length || a.term.localeCompare(b.term))
+    .filter((term) => term.aliases.length > 0)
+    .sort((a, b) => {
+      const leftLength = Math.max(...a.aliases.map((alias) => alias.length))
+      const rightLength = Math.max(...b.aliases.map((alias) => alias.length))
+      return rightLength - leftLength || a.term.localeCompare(b.term)
+    })
 }
 
 const shouldProcessStringKey = (key: string) => TEXT_FIELD_KEYS.has(key)
@@ -87,34 +101,38 @@ const matchTermsInText = (
   const matches: Array<GlossaryAutoLinkMatch & { start: number; end: number }> = []
 
   for (const term of terms) {
-    const lowerTerm = normalizeTermKey(term.term)
-    let index = lowerText.indexOf(lowerTerm)
+    for (const alias of term.aliases) {
+      const lowerTerm = normalizeTermKey(alias)
+      let index = lowerText.indexOf(lowerTerm)
 
-    while (index !== -1) {
-      const end = index + lowerTerm.length
-      const previousChar = index > 0 ? text[index - 1] : ''
-      const nextChar = end < text.length ? text[end] : ''
-      const startsWithWord = isWordChar(term.term[0] || '')
-      const endsWithWord = isWordChar(term.term[term.term.length - 1] || '')
-      const hasWordBoundaryBefore = !startsWithWord || !previousChar || !isWordChar(previousChar)
-      const hasWordBoundaryAfter = !endsWithWord || !nextChar || !isWordChar(nextChar)
-      const overlaps = occupied.some((range) => index < range.end && end > range.start)
+      while (index !== -1) {
+        const end = index + lowerTerm.length
+        const previousChar = index > 0 ? text[index - 1] : ''
+        const nextChar = end < text.length ? text[end] : ''
+        const startsWithWord = isWordChar(alias[0] || '')
+        const endsWithWord = isWordChar(alias[alias.length - 1] || '')
+        const hasWordBoundaryBefore = !startsWithWord || !previousChar || !isWordChar(previousChar)
+        const hasWordBoundaryAfter = !endsWithWord || !nextChar || !isWordChar(nextChar)
+        const overlaps = occupied.some((range) => index < range.end && end > range.start)
 
-      if (hasWordBoundaryBefore && hasWordBoundaryAfter && !overlaps) {
-        occupied.push({ start: index, end })
-        matches.push({
-          id: `${targetId}:${textNodeIndex}:${index}:${end}:${escapeAttrPart(term.slug)}`,
-          term: term.term,
-          slug: term.slug,
-          definition: term.definition,
-          matchedText: text.slice(index, end),
-          context: makeContext(text, index, end),
-          start: index,
-          end,
-        })
+        if (hasWordBoundaryBefore && hasWordBoundaryAfter && !overlaps) {
+          occupied.push({ start: index, end })
+          matches.push({
+            id: `${targetId}:${textNodeIndex}:${index}:${end}:${escapeAttrPart(term.slug)}:${escapeAttrPart(alias)}`,
+            term: term.term,
+            term_en: term.term_en,
+            slug: term.slug,
+            definition: term.definition,
+            image_url: term.image_url,
+            matchedText: text.slice(index, end),
+            context: makeContext(text, index, end),
+            start: index,
+            end,
+          })
+        }
+
+        index = lowerText.indexOf(lowerTerm, index + lowerTerm.length)
       }
-
-      index = lowerText.indexOf(lowerTerm, index + lowerTerm.length)
     }
   }
 
@@ -195,6 +213,12 @@ const applyStringMatches = (
       span.setAttribute('data-glossary-term', match.term)
       span.setAttribute('data-glossary-slug', match.slug)
       span.setAttribute('data-glossary-definition', match.definition)
+      if (match.term_en) {
+        span.setAttribute('data-glossary-term-en', match.term_en)
+      }
+      if (match.image_url) {
+        span.setAttribute('data-glossary-image-url', match.image_url)
+      }
       span.setAttribute('title', match.definition)
       span.textContent = text.slice(match.start, match.end)
       fragment.appendChild(span)

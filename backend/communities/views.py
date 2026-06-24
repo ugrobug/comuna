@@ -1,20 +1,24 @@
-from __future__ import annotations
-
+import io
 import json
 import math
+import os
 import re
 import secrets
 import urllib.parse
 from collections import defaultdict
 
 from django.contrib.auth import get_user_model
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 from django.db import transaction
 from django.db.models import Count, Prefetch, Q
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils import timezone
 from django.utils.html import escape
+from django.utils.text import get_valid_filename
 from django.utils.text import slugify
 from django.views.decorators.csrf import csrf_exempt
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from communities import serializers as community_serializers
 from communities import service as community_service
@@ -47,6 +51,7 @@ from feeds.models import (
     Tag,
 )
 from rabotaem_backend.cache import anonymous_cache, bump_public_cache_prefix
+from rabotaem_backend.media_urls import public_url
 from ratings.service import calculate_author_rating, format_rating_value, user_max_author_rating
 from users.models import AuthorAdmin
 from users import views as user_views
@@ -77,6 +82,8 @@ _COMUN_EXTERNAL_LINKS_FORBIDDEN_ERROR = (
 )
 _COMUNS_CATALOG_DEFAULT_LIMIT = 20
 _COMUNS_CATALOG_MAX_LIMIT = 50
+_COMUN_GLOSSARY_IMAGE_MAX_BYTES = 10 * 1024 * 1024
+_COMUN_GLOSSARY_IMAGE_MAX_SIZE = (320, 320)
 
 
 def _request_flag(request: HttpRequest, name: str) -> bool:
@@ -180,8 +187,10 @@ def _serialize_comun_glossary_term(term: ComunGlossaryTerm) -> dict:
     return {
         "id": term.id,
         "term": term.term,
+        "term_en": getattr(term, "term_en", "") or "",
         "slug": term.slug,
         "definition": term.definition,
+        "image_url": community_service._media_url(None, getattr(term, "image", None)),
         "sort_order": term.sort_order,
     }
 
@@ -2007,6 +2016,75 @@ def comuns_composer(request: HttpRequest) -> HttpResponse:
     )
 
 
+def _save_comun_glossary_image(request: HttpRequest, comun: Comun, upload) -> tuple[str, str]:
+    upload_size = int(getattr(upload, "size", 0) or 0)
+    if upload_size > _COMUN_GLOSSARY_IMAGE_MAX_BYTES:
+        raise ValueError("image too large")
+
+    data = upload.read()
+    if not data:
+        raise ValueError("image required")
+    if len(data) > _COMUN_GLOSSARY_IMAGE_MAX_BYTES:
+        raise ValueError("image too large")
+
+    try:
+        with Image.open(io.BytesIO(data)) as opened:
+            image = ImageOps.exif_transpose(opened)
+            image.load()
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
+        raise ValueError("invalid image") from exc
+
+    image.thumbnail(_COMUN_GLOSSARY_IMAGE_MAX_SIZE, Image.Resampling.LANCZOS)
+    has_alpha = image.mode in {"RGBA", "LA"} or "transparency" in getattr(image, "info", {})
+    image = image.convert("RGBA" if has_alpha else "RGB")
+
+    output = io.BytesIO()
+    image.save(output, format="WEBP", quality=82, method=6)
+
+    base_name = get_valid_filename(os.path.splitext(str(getattr(upload, "name", "") or "term"))[0])[:60]
+    if not base_name:
+        base_name = "term"
+    filename = f"{base_name}-{secrets.token_hex(8)}.webp"
+    storage_path = f"comuns/glossary/{comun.id}/{filename}"
+    saved_path = default_storage.save(storage_path, ContentFile(output.getvalue()))
+    image_url = public_url(default_storage.url(saved_path), request=request)
+    return saved_path, image_url
+
+
+@csrf_exempt
+def comun_glossary_image_upload(request: HttpRequest, slug: str) -> HttpResponse:
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    current_user = user_views._get_user_from_request(request)
+    if not current_user:
+        return JsonResponse({"ok": False, "error": "auth required"}, status=401)
+
+    try:
+        comun = Comun.objects.filter(slug=slug).select_related("creator").prefetch_related("moderators").get()
+    except Comun.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "comun not found"}, status=404)
+
+    if not comun.is_active and not _comun_is_moderator(current_user, comun):
+        return JsonResponse({"ok": False, "error": "comun not found"}, status=404)
+    if not _comun_is_moderator(current_user, comun):
+        return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+
+    upload = request.FILES.get("image") or request.FILES.get("file")
+    if not upload:
+        return JsonResponse({"ok": False, "error": "image required"}, status=400)
+
+    try:
+        image_path, image_url = _save_comun_glossary_image(request, comun, upload)
+    except ValueError as exc:
+        message = str(exc)
+        if message == "image too large":
+            return JsonResponse({"ok": False, "error": "image too large"}, status=413)
+        return JsonResponse({"ok": False, "error": message or "invalid image"}, status=400)
+
+    return JsonResponse({"ok": True, "image_path": image_path, "image_url": image_url})
+
+
 @csrf_exempt
 def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
     current_user = user_views._get_user_from_request(request)
@@ -3306,6 +3384,7 @@ __all__ = [
     "_serialize_comun_profile_card",
     "comun_create_from_telegram_channel",
     "comun_detail_manage",
+    "comun_glossary_image_upload",
     "comun_settings_options",
     "comun_sidebar_detail",
     "comun_post_category_update",
