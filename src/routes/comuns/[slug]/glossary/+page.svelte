@@ -59,12 +59,8 @@
 
     return {
       destroy() {
-        if (placeholder.parentNode) {
-          placeholder.parentNode.insertBefore(node, placeholder)
-          placeholder.remove()
-        } else {
-          node.remove()
-        }
+        node.remove()
+        placeholder.remove()
       },
     }
   }
