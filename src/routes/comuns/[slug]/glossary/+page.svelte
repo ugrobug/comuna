@@ -189,28 +189,38 @@
     resetGlossaryTermModal()
   }
 
-  const appendDraftGlossaryTerm = (
-    term: string,
-    termEn: string,
-    definition: string,
-    imageUrl = '',
-    imagePath = ''
-  ) => {
-    draftTerms = [
-      ...draftTerms,
-      {
-        id: 0,
-        localId: createGlossaryLocalId(),
-        term,
-        term_en: termEn,
-        slug: '',
-        definition,
-        image_url: imageUrl,
-        image_path: imagePath,
-        image_remove: false,
-        sort_order: draftTerms.length,
-      },
-    ]
+  const serializeGlossaryTerms = (terms: GlossaryDraftTerm[]) =>
+    terms.map((term, index) => ({
+      id: Number(term.id) || undefined,
+      term: term.term.trim(),
+      term_en: String(term.term_en ?? '').trim(),
+      definition: term.definition.trim(),
+      image_path: String(term.image_path ?? '').trim() || undefined,
+      image_remove: Boolean(term.image_remove) || undefined,
+      sort_order: index,
+    }))
+
+  const persistGlossaryTerms = async (terms: GlossaryDraftTerm[]) => {
+    if (!comun?.slug) throw new Error('Сообщество не найдено')
+    const response = await fetch(buildComunUrl(comun.slug), {
+      method: 'PATCH',
+      headers: authHeaders(),
+      body: JSON.stringify({
+        glossary_auto_link_enabled: glossaryAutoLinkDraft,
+        glossary_terms: serializeGlossaryTerms(terms),
+      }),
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      throw new Error(payload?.error || 'Не удалось сохранить глоссарий')
+    }
+    if (payload?.comun) {
+      comun = payload.comun
+      draftTerms = normalizeGlossaryTerms(comun?.glossary_terms ?? terms)
+      glossaryAutoLinkDraft = Boolean(comun?.glossary_auto_link_enabled)
+    } else {
+      draftTerms = normalizeGlossaryTerms(terms)
+    }
   }
 
   const setGlossaryTermModalImageState = (
@@ -285,16 +295,35 @@
 
     if (glossaryTermModalMode === 'add') {
       if (!canManageGlossary) return
-      appendDraftGlossaryTerm(
-        term,
-        termEn,
-        definition,
-        glossaryTermModalDraft.image_url.trim(),
-        glossaryTermModalDraft.image_path.trim()
-      )
-      glossaryTermModalMode = null
-      resetGlossaryTermModal()
-      toast({ content: 'Термин добавлен в черновик глоссария', type: 'success' })
+      glossaryTermModalSaving = true
+      glossaryTermModalError = ''
+      try {
+        const nextTerms = [
+          ...draftTerms,
+          {
+            id: 0,
+            localId: createGlossaryLocalId(),
+            term,
+            term_en: termEn,
+            slug: '',
+            definition,
+            image_url: glossaryTermModalDraft.image_url.trim(),
+            image_path: glossaryTermModalDraft.image_path.trim(),
+            image_remove: false,
+            sort_order: draftTerms.length,
+          },
+        ]
+        await persistGlossaryTerms(nextTerms)
+        glossaryTermModalMode = null
+        resetGlossaryTermModal()
+        toast({ content: 'Термин добавлен', type: 'success' })
+      } catch (error) {
+        glossaryTermModalError =
+          error instanceof Error ? error.message : 'Не удалось добавить термин'
+        toast({ content: glossaryTermModalError, type: 'error' })
+      } finally {
+        glossaryTermModalSaving = false
+      }
       return
     }
 
@@ -516,29 +545,7 @@
     glossarySaving = true
     glossaryError = ''
     try {
-      const response = await fetch(buildComunUrl(comun.slug), {
-        method: 'PATCH',
-        headers: authHeaders(),
-        body: JSON.stringify({
-          glossary_auto_link_enabled: glossaryAutoLinkDraft,
-          glossary_terms: draftTerms.map((term, index) => ({
-            id: Number(term.id) || undefined,
-            term: term.term.trim(),
-            term_en: String(term.term_en ?? '').trim(),
-            definition: term.definition.trim(),
-            image_path: String(term.image_path ?? '').trim() || undefined,
-            image_remove: Boolean(term.image_remove) || undefined,
-            sort_order: index,
-          })),
-        }),
-      })
-      const payload = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        throw new Error(payload?.error || 'Не удалось сохранить глоссарий')
-      }
-      comun = payload?.comun ?? comun
-      draftTerms = normalizeGlossaryTerms(comun?.glossary_terms)
-      glossaryAutoLinkDraft = Boolean(comun?.glossary_auto_link_enabled)
+      await persistGlossaryTerms(draftTerms)
       toast({ content: 'Глоссарий сохранен', type: 'success' })
     } catch (error) {
       glossaryError = error instanceof Error ? error.message : 'Не удалось сохранить глоссарий'
