@@ -7,6 +7,7 @@ from communities.views import (
     comun_create_from_telegram_channel,
     comun_detail_manage,
     comun_glossary_image_upload,
+    comun_glossary_submission_create,
     comun_knowledge_base,
     comun_knowledge_base_item,
     comun_post_category_update,
@@ -194,6 +195,11 @@ urlpatterns = [
         "api/comuns/<slug:slug>/telegram-submissions/",
         comun_telegram_submissions,
         name="comun-telegram-submissions",
+    ),
+    path(
+        "api/comuns/<slug:slug>/glossary-submissions/",
+        comun_glossary_submission_create,
+        name="comun-glossary-submission-create",
     ),
     path(
         "api/comuns/<slug:slug>/telegram-submissions/<int:submission_id>/",

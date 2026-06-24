@@ -84,8 +84,16 @@ NOTIFICATION_EVENT_DEFINITIONS: list[dict[str, Any]] = [
     },
     {
         "key": "comun_telegram_submission",
-        "title": "Заявка из Telegram-чата",
+        "title": "Новая заявка в сообщество",
         "description": "В сообщество предложили материал для базы знаний или глоссария.",
+        "default_site_enabled": True,
+        "default_telegram_enabled": False,
+        "default_push_enabled": True,
+    },
+    {
+        "key": "glossary_term_submission_reviewed",
+        "title": "Решение по предложенному термину",
+        "description": "Модератор принял или удалил термин, который вы предложили в глоссарий.",
         "default_site_enabled": True,
         "default_telegram_enabled": False,
         "default_push_enabled": True,

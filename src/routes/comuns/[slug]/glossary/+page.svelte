@@ -3,9 +3,13 @@
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import {
     buildComunGlossaryImageUrl,
+    buildComunGlossarySubmissionsUrl,
+    buildComunTelegramSubmissionUrl,
+    buildComunTelegramSubmissionsUrl,
     buildComunUrl,
     type BackendComun,
     type BackendComunGlossaryTerm,
+    type BackendComunTelegramSubmission,
   } from '$lib/api/backend'
   import { Button, toast } from 'mono-svelte'
   import { siteToken, siteUser } from '$lib/siteAuth'
@@ -28,6 +32,19 @@
   let glossarySettingsOpen = false
   let glossarySettingsSection: HTMLElement | null = null
   let glossaryAutoLinkDraft = Boolean(comun?.glossary_auto_link_enabled)
+  let glossaryTermModalMode: 'add' | 'suggest' | null = null
+  let glossaryTermModalSaving = false
+  let glossaryTermModalError = ''
+  let glossaryTermModalDraft = {
+    term: '',
+    term_en: '',
+    definition: '',
+  }
+  let pendingGlossarySubmissions: BackendComunTelegramSubmission[] = []
+  let pendingGlossarySubmissionsLoading = false
+  let pendingGlossarySubmissionsError = ''
+  let pendingGlossarySubmissionsLoadedFor = ''
+  let reviewingGlossarySubmissionId: number | null = null
 
   const createGlossaryLocalId = () =>
     `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
@@ -102,6 +119,15 @@
   $: glossaryAutoLinkHasChanges =
     glossaryAutoLinkDraft !== Boolean(comun?.glossary_auto_link_enabled)
   $: glossaryHasChanges = draftComparable !== sourceComparable || glossaryAutoLinkHasChanges
+  $: canSuggestGlossary = Boolean(comun?.glossary_enabled && !canManageGlossary)
+  $: if (canManageGlossary && comun?.slug && pendingGlossarySubmissionsLoadedFor !== comun.slug) {
+    pendingGlossarySubmissionsLoadedFor = comun.slug
+    void loadPendingGlossarySubmissions()
+  }
+  $: if (!canManageGlossary && pendingGlossarySubmissionsLoadedFor) {
+    pendingGlossarySubmissionsLoadedFor = ''
+    pendingGlossarySubmissions = []
+  }
 
   const openGlossarySettings = async () => {
     glossarySettingsOpen = true
@@ -109,22 +135,110 @@
     glossarySettingsSection?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
-  const addDraftGlossaryTerm = () => {
+  const resetGlossaryTermModal = () => {
+    glossaryTermModalDraft = {
+      term: '',
+      term_en: '',
+      definition: '',
+    }
+    glossaryTermModalError = ''
+  }
+
+  const openAddGlossaryTermModal = () => {
+    if (!canManageGlossary) return
+    resetGlossaryTermModal()
+    glossaryTermModalMode = 'add'
+  }
+
+  const openSuggestGlossaryTermModal = () => {
+    if (!comun?.glossary_enabled) return
+    resetGlossaryTermModal()
+    glossaryTermModalMode = 'suggest'
+  }
+
+  const closeGlossaryTermModal = () => {
+    if (glossaryTermModalSaving) return
+    glossaryTermModalMode = null
+    resetGlossaryTermModal()
+  }
+
+  const appendDraftGlossaryTerm = (term: string, termEn: string, definition: string) => {
     draftTerms = [
       ...draftTerms,
       {
         id: 0,
         localId: createGlossaryLocalId(),
-        term: '',
-        term_en: '',
+        term,
+        term_en: termEn,
         slug: '',
-        definition: '',
+        definition,
         image_url: '',
         image_path: '',
         image_remove: false,
         sort_order: draftTerms.length,
       },
     ]
+  }
+
+  const submitGlossaryTermModal = async () => {
+    if (!glossaryTermModalMode || glossaryTermModalSaving) return
+    const term = glossaryTermModalDraft.term.trim()
+    const termEn = glossaryTermModalDraft.term_en.trim()
+    const definition = glossaryTermModalDraft.definition.trim()
+    if (!term) {
+      glossaryTermModalError = 'Введите термин'
+      return
+    }
+    if (!definition) {
+      glossaryTermModalError = 'Введите расшифровку'
+      return
+    }
+
+    if (glossaryTermModalMode === 'add') {
+      if (!canManageGlossary) return
+      appendDraftGlossaryTerm(term, termEn, definition)
+      glossaryTermModalMode = null
+      resetGlossaryTermModal()
+      toast({ content: 'Термин добавлен в черновик глоссария', type: 'success' })
+      return
+    }
+
+    if (!comun?.slug) return
+    if (!$siteToken) {
+      glossaryTermModalError = 'Нужна авторизация'
+      return
+    }
+
+    glossaryTermModalSaving = true
+    glossaryTermModalError = ''
+    try {
+      const response = await fetch(buildComunGlossarySubmissionsUrl(comun.slug), {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          glossary_term: term,
+          glossary_term_en: termEn,
+          glossary_definition: definition,
+        }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Не удалось отправить термин')
+      }
+      glossaryTermModalMode = null
+      resetGlossaryTermModal()
+      toast({
+        content: payload?.already_pending
+          ? 'Такой термин уже ожидает модерации'
+          : 'Термин отправлен на модерацию',
+        type: 'success',
+      })
+    } catch (error) {
+      glossaryTermModalError = error instanceof Error ? error.message : 'Не удалось отправить термин'
+      toast({ content: glossaryTermModalError, type: 'error' })
+    } finally {
+      glossaryTermModalSaving = false
+    }
   }
 
   const updateDraftGlossaryTerm = (
@@ -220,6 +334,88 @@
     })
   }
 
+  const refreshComun = async () => {
+    if (!comun?.slug) return
+    const response = await fetch(buildComunUrl(comun.slug), {
+      headers: $siteToken ? { Authorization: `Bearer ${$siteToken}` } : undefined,
+      cache: 'no-store',
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      throw new Error(payload?.error || 'Не удалось обновить глоссарий')
+    }
+    comun = payload?.comun ?? comun
+    draftTerms = normalizeGlossaryTerms(comun?.glossary_terms)
+    glossaryAutoLinkDraft = Boolean(comun?.glossary_auto_link_enabled)
+  }
+
+  const loadPendingGlossarySubmissions = async () => {
+    if (!comun?.slug || !canManageGlossary || pendingGlossarySubmissionsLoading) return
+    pendingGlossarySubmissionsLoading = true
+    pendingGlossarySubmissionsError = ''
+    try {
+      const response = await fetch(
+        buildComunTelegramSubmissionsUrl(comun.slug, {
+          status: 'pending',
+          type: 'glossary',
+          limit: 100,
+        }),
+        {
+          headers: authHeaders(),
+          cache: 'no-store',
+        }
+      )
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Не удалось загрузить предложения')
+      }
+      pendingGlossarySubmissions = Array.isArray(payload?.items) ? payload.items : []
+    } catch (error) {
+      pendingGlossarySubmissionsError =
+        error instanceof Error ? error.message : 'Не удалось загрузить предложения'
+    } finally {
+      pendingGlossarySubmissionsLoading = false
+    }
+  }
+
+  const reviewGlossarySubmission = async (
+    submission: BackendComunTelegramSubmission,
+    action: 'approve' | 'reject'
+  ) => {
+    if (!comun?.slug || !canManageGlossary || reviewingGlossarySubmissionId) return
+    reviewingGlossarySubmissionId = submission.id
+    try {
+      const response = await fetch(buildComunTelegramSubmissionUrl(comun.slug, submission.id), {
+        method: 'PATCH',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          action,
+          glossary_term: submission.glossary_term,
+          glossary_term_en: submission.glossary_term_en,
+          glossary_definition: submission.glossary_definition,
+        }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Не удалось обработать предложение')
+      }
+      pendingGlossarySubmissions = pendingGlossarySubmissions.filter(
+        (item) => item.id !== submission.id
+      )
+      if (action === 'approve') {
+        await refreshComun()
+        toast({ content: 'Термин принят', type: 'success' })
+      } else {
+        toast({ content: 'Предложение удалено', type: 'success' })
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Не удалось обработать предложение'
+      toast({ content: message, type: 'error' })
+    } finally {
+      reviewingGlossarySubmissionId = null
+    }
+  }
+
   const saveGlossary = async () => {
     if (!comun?.slug || !canManageGlossary || glossarySaving) return
     glossarySaving = true
@@ -271,8 +467,12 @@
     </div>
     <div class="flex flex-wrap items-center gap-2">
       {#if canManageGlossary}
-        <Button size="sm" on:click={addDraftGlossaryTerm} disabled={glossarySaving}>
+        <Button size="sm" on:click={openAddGlossaryTermModal} disabled={glossarySaving}>
           Добавить термин
+        </Button>
+      {:else if canSuggestGlossary}
+        <Button size="sm" on:click={openSuggestGlossaryTermModal}>
+          Предложить термин
         </Button>
       {/if}
       <a
@@ -354,6 +554,90 @@
               </span>
             </span>
           </label>
+        </section>
+      {/if}
+
+      {#if canManageGlossary && (pendingGlossarySubmissions.length || pendingGlossarySubmissionsLoading || pendingGlossarySubmissionsError)}
+        <section
+          id="glossary-submissions"
+          class="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 dark:border-amber-900/50 dark:bg-amber-950/15"
+        >
+          <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div class="text-sm font-semibold text-slate-900 dark:text-zinc-100">
+                Предложения терминов
+              </div>
+              <div class="text-sm text-slate-600 dark:text-zinc-400">
+                Эти термины видят только создатель и модераторы сообщества.
+              </div>
+            </div>
+            <button
+              type="button"
+              class="text-sm font-medium text-slate-600 underline-offset-4 hover:text-slate-900 hover:underline dark:text-zinc-400 dark:hover:text-zinc-100"
+              disabled={pendingGlossarySubmissionsLoading}
+              on:click={loadPendingGlossarySubmissions}
+            >
+              Обновить
+            </button>
+          </div>
+
+          {#if pendingGlossarySubmissionsError}
+            <div class="mt-3 rounded-xl border border-rose-200 bg-white/70 px-3 py-2 text-sm text-rose-700 dark:border-rose-900/50 dark:bg-zinc-950/30 dark:text-rose-300">
+              {pendingGlossarySubmissionsError}
+            </div>
+          {/if}
+
+          {#if pendingGlossarySubmissionsLoading && !pendingGlossarySubmissions.length}
+            <div class="mt-3 rounded-xl border border-amber-200 bg-white/70 px-3 py-2 text-sm text-slate-600 dark:border-amber-900/40 dark:bg-zinc-950/30 dark:text-zinc-400">
+              Загружаем предложения...
+            </div>
+          {/if}
+
+          {#if pendingGlossarySubmissions.length}
+            <div class="mt-3 grid gap-3">
+              {#each pendingGlossarySubmissions as submission (submission.id)}
+                <article class="rounded-2xl border border-amber-200 bg-white/90 p-4 dark:border-amber-900/50 dark:bg-zinc-950/40">
+                  <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div class="min-w-0">
+                      <div class="text-base font-semibold text-slate-900 dark:text-zinc-100">
+                        {submission.glossary_term || submission.title || 'Без названия'}
+                      </div>
+                      {#if submission.glossary_term_en}
+                        <div class="mt-1 text-sm font-medium text-slate-500 dark:text-zinc-400">
+                          {submission.glossary_term_en}
+                        </div>
+                      {/if}
+                      <div class="mt-2 whitespace-pre-line text-sm leading-relaxed text-slate-700 dark:text-zinc-300">
+                        {submission.glossary_definition || submission.source_text}
+                      </div>
+                      {#if submission.requested_by?.display_name || submission.requested_by?.username}
+                        <div class="mt-3 text-xs text-slate-500 dark:text-zinc-500">
+                          Предложил: {submission.requested_by?.display_name || submission.requested_by?.username}
+                        </div>
+                      {/if}
+                    </div>
+                    <div class="flex shrink-0 gap-2">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled={reviewingGlossarySubmissionId === submission.id}
+                        on:click={() => reviewGlossarySubmission(submission, 'reject')}
+                      >
+                        Удалить
+                      </Button>
+                      <Button
+                        size="sm"
+                        disabled={reviewingGlossarySubmissionId === submission.id}
+                        on:click={() => reviewGlossarySubmission(submission, 'approve')}
+                      >
+                        Принять
+                      </Button>
+                    </div>
+                  </div>
+                </article>
+              {/each}
+            </div>
+          {/if}
         </section>
       {/if}
 
@@ -498,6 +782,101 @@
     </div>
   </section>
 </div>
+
+{#if glossaryTermModalMode}
+  <div
+    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
+  >
+    <form
+      class="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-zinc-800 dark:bg-zinc-950"
+      on:submit|preventDefault={submitGlossaryTermModal}
+    >
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <div class="text-lg font-semibold text-slate-900 dark:text-zinc-100">
+            {glossaryTermModalMode === 'add' ? 'Добавить термин' : 'Предложить термин'}
+          </div>
+          <p class="mt-1 text-sm text-slate-600 dark:text-zinc-400">
+            {glossaryTermModalMode === 'add'
+              ? 'После добавления сохраните глоссарий, чтобы термин появился на сайте.'
+              : 'Создатель или модераторы сообщества проверят предложение перед публикацией.'}
+          </p>
+        </div>
+        <button
+          type="button"
+          class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900 dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-100"
+          aria-label="Закрыть"
+          disabled={glossaryTermModalSaving}
+          on:click={closeGlossaryTermModal}
+        >
+          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <path d="M6 6l12 12" />
+            <path d="M18 6L6 18" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="mt-5 grid gap-3">
+        <label class="grid gap-1 text-sm font-medium text-slate-700 dark:text-zinc-300">
+          <span>Термин</span>
+          <input
+            bind:value={glossaryTermModalDraft.term}
+            class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-base text-slate-900 outline-none focus:border-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
+            placeholder="Введите термин"
+            disabled={glossaryTermModalSaving}
+          />
+        </label>
+        <label class="grid gap-1 text-sm font-medium text-slate-700 dark:text-zinc-300">
+          <span>Термин на английском</span>
+          <input
+            bind:value={glossaryTermModalDraft.term_en}
+            class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-base text-slate-900 outline-none focus:border-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
+            placeholder="Необязательно"
+            disabled={glossaryTermModalSaving}
+          />
+        </label>
+        <label class="grid gap-1 text-sm font-medium text-slate-700 dark:text-zinc-300">
+          <span>Расшифровка</span>
+          <textarea
+            bind:value={glossaryTermModalDraft.definition}
+            rows="5"
+            class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-base leading-relaxed text-slate-900 outline-none focus:border-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
+            placeholder="Опишите значение термина"
+            disabled={glossaryTermModalSaving}
+          ></textarea>
+        </label>
+      </div>
+
+      {#if glossaryTermModalError}
+        <div class="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/25 dark:text-rose-300">
+          {glossaryTermModalError}
+        </div>
+      {/if}
+
+      <div class="mt-5 flex flex-wrap justify-end gap-2">
+        <button
+          type="button"
+          class="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900"
+          disabled={glossaryTermModalSaving}
+          on:click={closeGlossaryTermModal}
+        >
+          Отмена
+        </button>
+        <button
+          type="submit"
+          class="inline-flex items-center justify-center rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-200"
+          disabled={glossaryTermModalSaving}
+        >
+          {#if glossaryTermModalSaving}
+            Отправляем...
+          {:else}
+            {glossaryTermModalMode === 'add' ? 'Добавить' : 'Отправить'}
+          {/if}
+        </button>
+      </div>
+    </form>
+  </div>
+{/if}
 
 <svelte:head>
   <title>{comun?.name ? `Глоссарий ${comun.name}` : 'Глоссарий сообщества'}</title>

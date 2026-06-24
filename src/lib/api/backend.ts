@@ -178,6 +178,10 @@ export const buildComunGlossaryImageUrl = (slug: string): string => {
   return `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/glossary-image/`
 }
 
+export const buildComunGlossarySubmissionsUrl = (slug: string): string => {
+  return `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/glossary-submissions/`
+}
+
 export const buildComunKnowledgeBasePath = (slug: string): string => {
   return `/comuns/${encodeURIComponent(slug)}/knowledge-base`
 }
@@ -199,11 +203,12 @@ export const buildComunTelegramSubmissionsPath = (slug: string): string => {
 
 export const buildComunTelegramSubmissionsUrl = (
   slug: string,
-  options?: { status?: string; limit?: number; offset?: number }
+  options?: { status?: string; type?: string; limit?: number; offset?: number }
 ): string => {
   const base = `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/telegram-submissions/`
   const params = new URLSearchParams()
   if (options?.status) params.set('status', options.status)
+  if (options?.type) params.set('type', options.type)
   if (typeof options?.limit === 'number') params.set('limit', String(options.limit))
   if (typeof options?.offset === 'number') params.set('offset', String(options.offset))
   const query = params.toString()
@@ -849,6 +854,7 @@ export type BackendComunTelegramSubmission = {
   telegram_chat_title?: string
   telegram_source_url?: string
   glossary_term?: string
+  glossary_term_en?: string
   glossary_definition?: string
   created_post_id?: number | null
   created_glossary_term_id?: number | null

@@ -1,5 +1,4 @@
 <script lang="ts">
-  import Avatar from '$lib/components/ui/Avatar.svelte'
   import { ChatBubbleLeftRight, Icon, Trophy } from 'svelte-hero-icons'
   import {
     buildBackendPostPath,
@@ -233,33 +232,25 @@
             href={topPostPath(post)}
             class="group block py-3 first:pt-0 last:pb-0"
           >
-            <div class="flex items-start gap-3">
-              <Avatar
-                url={post.author?.avatar_url || undefined}
-                alt={authorTitle(post)}
-                width={36}
-                class_="h-9 w-9 rounded-full"
-              />
-              <div class="min-w-0 flex-1">
-                <div class="line-clamp-2 text-sm font-semibold leading-snug text-slate-900 transition group-hover:text-blue-600 dark:text-zinc-100 dark:group-hover:text-blue-400">
-                  {post.title}
-                </div>
-                <div class="mt-1 truncate text-xs text-slate-500 dark:text-zinc-400">
-                  {authorTitle(post)}
-                  {#if formatPostDate(post.created_at)}
-                    · {formatPostDate(post.created_at)}
-                  {/if}
-                </div>
-                <div class="mt-2 flex items-center gap-3 text-xs font-medium text-slate-600 dark:text-zinc-400">
-                  <span class="inline-flex items-center gap-1">
-                    <Icon src={ChatBubbleLeftRight} size="14" class="text-sky-500" />
-                    {formatTopAuthorNumber(post.comments_count ?? 0)}
-                  </span>
-                  <span class="inline-flex items-center gap-1">
-                    <Icon src={Trophy} size="14" class="text-amber-500" />
-                    {formatTopAuthorNumber(post.rating ?? 0)}
-                  </span>
-                </div>
+            <div class="min-w-0">
+              <div class="line-clamp-2 text-sm font-semibold leading-snug text-slate-900 transition group-hover:text-blue-600 dark:text-zinc-100 dark:group-hover:text-blue-400">
+                {post.title}
+              </div>
+              <div class="mt-1 truncate text-xs text-slate-500 dark:text-zinc-400">
+                {authorTitle(post)}
+                {#if formatPostDate(post.created_at)}
+                  · {formatPostDate(post.created_at)}
+                {/if}
+              </div>
+              <div class="mt-2 flex items-center gap-3 text-xs font-medium text-slate-600 dark:text-zinc-400">
+                <span class="inline-flex items-center gap-1">
+                  <Icon src={ChatBubbleLeftRight} size="14" class="text-sky-500" />
+                  {formatTopAuthorNumber(post.comments_count ?? 0)}
+                </span>
+                <span class="inline-flex items-center gap-1">
+                  <Icon src={Trophy} size="14" class="text-amber-500" />
+                  {formatTopAuthorNumber(post.rating ?? 0)}
+                </span>
               </div>
             </div>
           </a>

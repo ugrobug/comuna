@@ -50,6 +50,7 @@ from feeds.models import (
     PostRead,
     Tag,
 )
+from notifications.service import create_user_notification
 from rabotaem_backend.cache import anonymous_cache, bump_public_cache_prefix
 from rabotaem_backend.media_urls import public_url
 from ratings.service import calculate_author_rating, format_rating_value, user_max_author_rating
@@ -247,6 +248,7 @@ def _serialize_comun_knowledge_base(items: list[ComunKnowledgeBaseItem]) -> dict
 def _serialize_comun_telegram_submission(item: ComunTelegramSubmission) -> dict:
     requested_by = getattr(item, "requested_by", None)
     reviewed_by = getattr(item, "reviewed_by", None)
+    source_payload = item.source_payload if isinstance(item.source_payload, dict) else {}
     return {
         "id": item.id,
         "request_type": item.request_type,
@@ -259,6 +261,7 @@ def _serialize_comun_telegram_submission(item: ComunTelegramSubmission) -> dict:
         "telegram_source_url": item.telegram_source_url,
         "glossary_term": item.glossary_term,
         "glossary_definition": item.glossary_definition,
+        "glossary_term_en": str(source_payload.get("glossary_term_en") or "").strip(),
         "created_post_id": item.created_post_id,
         "created_glossary_term_id": item.created_glossary_term_id,
         "requested_by": community_serializers._serialize_site_user_summary(
@@ -374,12 +377,21 @@ def _approve_glossary_submission(
 ) -> None:
     if not comun.glossary_enabled:
         raise ValueError("glossary disabled")
+    source_payload = submission.source_payload if isinstance(submission.source_payload, dict) else {}
     term = _normalize_comun_glossary_term(
         payload.get("glossary_term") or payload.get("term") or submission.glossary_term
+    )
+    term_en = community_service._normalize_comun_glossary_term_en(
+        payload.get("glossary_term_en")
+        or payload.get("term_en")
+        or source_payload.get("glossary_term_en")
     )
     definition = _normalize_comun_glossary_definition(
         payload.get("glossary_definition") or payload.get("definition") or submission.glossary_definition
     )
+    image_path = str(payload.get("image_path") or source_payload.get("image_path") or "").strip()
+    if image_path and not image_path.startswith("comuns/glossary/"):
+        image_path = ""
     if not term:
         raise ValueError("term required")
     if not definition:
@@ -388,14 +400,23 @@ def _approve_glossary_submission(
     if existing:
         existing.definition = definition
         existing.is_active = True
-        existing.save(update_fields=["definition", "is_active", "updated_at"])
+        update_fields = ["definition", "is_active", "updated_at"]
+        if term_en:
+            existing.term_en = term_en
+            update_fields.append("term_en")
+        if image_path:
+            existing.image = image_path
+            update_fields.append("image")
+        existing.save(update_fields=update_fields)
         submission.created_glossary_term = existing
         return
     glossary_term = ComunGlossaryTerm.objects.create(
         comun=comun,
         term=term,
+        term_en=term_en,
         slug=_generate_unique_comun_glossary_term_slug(comun, term),
         definition=definition,
+        image=image_path,
         sort_order=(
             ComunGlossaryTerm.objects.filter(comun=comun, is_active=True)
             .order_by("-sort_order", "-id")
@@ -407,6 +428,94 @@ def _approve_glossary_submission(
         is_active=True,
     )
     submission.created_glossary_term = glossary_term
+
+
+def _glossary_submission_term_label(submission: ComunTelegramSubmission) -> str:
+    return (
+        str(submission.glossary_term or "").strip()
+        or str(submission.title or "").strip()
+        or "термин"
+    )
+
+
+def _notify_comun_team_about_glossary_submission(
+    comun: Comun,
+    submission: ComunTelegramSubmission,
+) -> None:
+    team_user_ids = _comun_team_user_ids(comun)
+    if not team_user_ids:
+        return
+    requester_id = int(submission.requested_by_id or 0)
+    if requester_id:
+        team_user_ids = [user_id for user_id in team_user_ids if user_id != requester_id]
+    if not team_user_ids:
+        return
+
+    term_label = _glossary_submission_term_label(submission)
+    link_url = f"/comuns/{comun.slug}/glossary#glossary-submissions"
+    message = (
+        f"В сообщество «{comun.name}» предложили термин «{term_label}» "
+        "для глоссария."
+    )
+    for user in User.objects.filter(id__in=team_user_ids, is_active=True):
+        create_user_notification(
+            user=user,
+            event_key="comun_telegram_submission",
+            title="Новый термин на модерации",
+            message=message,
+            link_url=link_url,
+            payload={
+                "comun_id": comun.id,
+                "comun_slug": comun.slug,
+                "submission_id": submission.id,
+                "request_type": submission.request_type,
+                "source": "site_glossary",
+            },
+        )
+
+
+def _notify_glossary_submission_reviewed(
+    comun: Comun,
+    submission: ComunTelegramSubmission,
+    *,
+    approved: bool,
+) -> None:
+    requester = getattr(submission, "requested_by", None)
+    if not requester or not requester.is_active:
+        return
+    term_label = _glossary_submission_term_label(submission)
+    created_term = getattr(submission, "created_glossary_term", None)
+    if approved:
+        title = "Термин принят"
+        message = f"Ваш термин «{term_label}» опубликован в глоссарии сообщества «{comun.name}»."
+        link_url = (
+            f"/comuns/{comun.slug}/glossary#term-{created_term.slug}"
+            if created_term and getattr(created_term, "slug", "")
+            else f"/comuns/{comun.slug}/glossary"
+        )
+    else:
+        title = "Термин не принят"
+        message = f"Ваше предложение термина «{term_label}» в сообществе «{comun.name}» удалено."
+        link_url = f"/comuns/{comun.slug}/glossary"
+
+    create_user_notification(
+        user=requester,
+        event_key="glossary_term_submission_reviewed",
+        title=title,
+        message=message,
+        link_url=link_url,
+        payload={
+            "comun_id": comun.id,
+            "comun_slug": comun.slug,
+            "submission_id": submission.id,
+            "glossary_term_id": submission.created_glossary_term_id,
+            "status": (
+                ComunTelegramSubmission.STATUS_APPROVED
+                if approved
+                else ComunTelegramSubmission.STATUS_REJECTED
+            ),
+        },
+    )
 
 
 def _parse_positive_int_param(
@@ -3115,6 +3224,83 @@ def comun_knowledge_base_item(request: HttpRequest, slug: str, item_id: int) -> 
 
 
 @csrf_exempt
+def comun_glossary_submission_create(request: HttpRequest, slug: str) -> HttpResponse:
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    current_user = user_views._get_user_from_request(request)
+    if not current_user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    try:
+        comun = (
+            Comun.objects.filter(slug=slug, is_active=True)
+            .select_related("creator")
+            .prefetch_related("moderators")
+            .get()
+        )
+    except Comun.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "comun not found"}, status=404)
+    if not comun.glossary_enabled:
+        return JsonResponse({"ok": False, "error": "glossary disabled"}, status=400)
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+
+    term = _normalize_comun_glossary_term(payload.get("glossary_term") or payload.get("term"))
+    term_en = community_service._normalize_comun_glossary_term_en(
+        payload.get("glossary_term_en") or payload.get("term_en")
+    )
+    definition = _normalize_comun_glossary_definition(
+        payload.get("glossary_definition") or payload.get("definition")
+    )
+    if not term:
+        return JsonResponse({"ok": False, "error": "term required"}, status=400)
+    if not definition:
+        return JsonResponse({"ok": False, "error": "definition required"}, status=400)
+    if ComunGlossaryTerm.objects.filter(comun=comun, term__iexact=term, is_active=True).exists():
+        return JsonResponse({"ok": False, "error": "term already exists"}, status=409)
+
+    existing_submission = (
+        ComunTelegramSubmission.objects.filter(
+            comun=comun,
+            request_type=ComunTelegramSubmission.TYPE_GLOSSARY,
+            status=ComunTelegramSubmission.STATUS_PENDING,
+            glossary_term__iexact=term,
+        )
+        .select_related("requested_by", "reviewed_by", "created_post", "created_glossary_term")
+        .first()
+    )
+    if existing_submission:
+        return JsonResponse(
+            {
+                "ok": True,
+                "already_pending": True,
+                "item": _serialize_comun_telegram_submission(existing_submission),
+            },
+            status=200,
+        )
+
+    submission = ComunTelegramSubmission.objects.create(
+        comun=comun,
+        request_type=ComunTelegramSubmission.TYPE_GLOSSARY,
+        status=ComunTelegramSubmission.STATUS_PENDING,
+        requested_by=current_user,
+        telegram_chat_id=-int(current_user.id or 1),
+        telegram_source_message_id=-int(timezone.now().timestamp() * 1000000),
+        source_text=definition,
+        title=term,
+        glossary_term=term,
+        glossary_definition=definition,
+        source_payload={"source": "site_glossary", "glossary_term_en": term_en},
+    )
+    _notify_comun_team_about_glossary_submission(comun, submission)
+    return JsonResponse(
+        {"ok": True, "item": _serialize_comun_telegram_submission(submission)},
+        status=201,
+    )
+
+
+@csrf_exempt
 def comun_telegram_submissions(request: HttpRequest, slug: str) -> HttpResponse:
     current_user = user_views._get_user_from_request(request)
     if not current_user:
@@ -3134,6 +3320,7 @@ def comun_telegram_submissions(request: HttpRequest, slug: str) -> HttpResponse:
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
 
     status = _telegram_submission_status(request.GET.get("status"))
+    request_type = str(request.GET.get("type") or request.GET.get("request_type") or "").strip()
     limit = _parse_positive_int_param(request.GET.get("limit"), default=50, maximum=100)
     offset = _parse_positive_int_param(request.GET.get("offset"), default=0, minimum=0)
     queryset = (
@@ -3141,6 +3328,8 @@ def comun_telegram_submissions(request: HttpRequest, slug: str) -> HttpResponse:
         .select_related("requested_by", "reviewed_by", "created_post", "created_glossary_term")
         .order_by("-created_at", "-id")
     )
+    if request_type in {ComunTelegramSubmission.TYPE_KNOWLEDGE_BASE, ComunTelegramSubmission.TYPE_GLOSSARY}:
+        queryset = queryset.filter(request_type=request_type)
     total = queryset.count()
     items = list(queryset[offset : offset + limit])
     return JsonResponse(
@@ -3236,6 +3425,9 @@ def comun_telegram_submission_detail(request: HttpRequest, slug: str, submission
             submission.save(update_fields=update_fields)
     except ValueError as error:
         return JsonResponse({"ok": False, "error": str(error)}, status=400)
+
+    if submission.request_type == ComunTelegramSubmission.TYPE_GLOSSARY:
+        _notify_glossary_submission_reviewed(comun, submission, approved=action == "approve")
 
     return JsonResponse({"ok": True, "item": _serialize_comun_telegram_submission(submission)})
 

@@ -7,7 +7,12 @@
     normalizeTemplateEditorBlockTypes,
     type PostTemplateType,
   } from '$lib/postTemplates'
-  import { buildComunUrl, buildPostDetailUrl, buildSearchUrl } from '$lib/api/backend'
+  import {
+    buildComunGlossarySubmissionsUrl,
+    buildComunUrl,
+    buildPostDetailUrl,
+    buildSearchUrl,
+  } from '$lib/api/backend'
   import {
     buildAuthorBlockSnapshot,
     normalizeAuthorBlockData,
@@ -4094,7 +4099,7 @@
       const createButton = document.createElement('button')
       createButton.type = 'button'
       createButton.className = 'ce-glossary-popup__create'
-      createButton.textContent = 'Добавить термин'
+      createButton.textContent = canCreateGlossaryTerms ? 'Добавить термин' : 'Предложить термин'
 
       const createForm = document.createElement('form')
       createForm.className = 'ce-glossary-popup__create-form'
@@ -4124,7 +4129,7 @@
       const saveCreateButton = document.createElement('button')
       saveCreateButton.type = 'submit'
       saveCreateButton.className = 'ce-glossary-popup__save'
-      saveCreateButton.textContent = 'Сохранить'
+      saveCreateButton.textContent = canCreateGlossaryTerms ? 'Сохранить' : 'Отправить'
 
       createActions.appendChild(cancelCreateButton)
       createActions.appendChild(saveCreateButton)
@@ -4224,19 +4229,26 @@
         saveCreateButton.disabled = true
         cancelCreateButton.disabled = true
         createError.textContent = ''
-        saveCreateButton.textContent = 'Сохраняю...'
+        const isSuggestionMode = !canCreateGlossaryTerms && canSuggestGlossaryTerms
+        saveCreateButton.textContent = isSuggestionMode ? 'Отправляю...' : 'Сохраняю...'
         try {
-          const createdTerm = await createComunGlossaryTerm(termName, definition)
-          terms = this.getTerms()
-          this.applyTerm(termWrapper, createdTerm)
+          if (isSuggestionMode) {
+            await suggestComunGlossaryTerm(termName, definition)
+            this.unwrap(termWrapper)
+            toast({ content: 'Термин отправлен на модерацию', type: 'success' })
+          } else {
+            const createdTerm = await createComunGlossaryTerm(termName, definition)
+            terms = this.getTerms()
+            this.applyTerm(termWrapper, createdTerm)
+          }
           popup.remove()
           setTimeout(() => this.triggerSave(), 50)
         } catch (error) {
-          createError.textContent = error instanceof Error ? error.message : 'Не удалось добавить термин'
+          createError.textContent = error instanceof Error ? error.message : 'Не удалось сохранить термин'
         } finally {
           saveCreateButton.disabled = false
           cancelCreateButton.disabled = false
-          saveCreateButton.textContent = 'Сохранить'
+          saveCreateButton.textContent = isSuggestionMode ? 'Отправить' : 'Сохранить'
         }
       })
       removeButton.addEventListener('click', (event) => {
@@ -4249,7 +4261,7 @@
 
       popup.appendChild(searchInput)
       popup.appendChild(list)
-      if (canCreateGlossaryTerms) {
+      if (canCreateGlossaryTerms || canSuggestGlossaryTerms) {
         popup.appendChild(createButton)
         popup.appendChild(createForm)
       }
@@ -4469,6 +4481,40 @@
     return createdTerm
   }
 
+  const suggestComunGlossaryTerm = async (termName: string, definition: string): Promise<void> => {
+    const comunSlug = glossaryComunSlug.trim()
+    if (!comunSlug) {
+      throw new Error('Не выбрано сообщество для глоссария')
+    }
+    const token = get(siteToken)
+    if (!token) {
+      throw new Error('Нужна авторизация')
+    }
+
+    const response = await fetch(buildComunGlossarySubmissionsUrl(comunSlug), {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        glossary_term: termName.trim(),
+        glossary_definition: definition.trim(),
+      }),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      const error = String(data?.error || '').trim()
+      if (response.status === 401) {
+        throw new Error('Нужна авторизация')
+      }
+      if (response.status === 409) {
+        throw new Error('Такой термин уже есть в глоссарии')
+      }
+      throw new Error(error || 'Не удалось отправить термин на модерацию')
+    }
+  }
+
   const escapeInlineHtml = (value: string) =>
     String(value ?? '')
       .replace(/&/g, '&amp;')
@@ -4482,8 +4528,9 @@
   let metaDescription = ''
   let metaTitle = ''
   $: canCreateGlossaryTerms = Boolean(canManageGlossary && glossaryComunSlug.trim())
+  $: canSuggestGlossaryTerms = Boolean(!canManageGlossary && glossaryComunSlug.trim())
   $: hasGlossaryTerms = normalizeGlossaryTermOptions(glossaryTerms).length > 0
-  $: inlineTextToolbar = hasGlossaryTerms || canCreateGlossaryTerms
+  $: inlineTextToolbar = hasGlossaryTerms || canCreateGlossaryTerms || canSuggestGlossaryTerms
     ? ['bold', 'italic', 'customInlineLink', 'customInlineGlossaryTerm']
     : ['bold', 'italic', 'customInlineLink']
   let draftLastSaved: Date | null = null
