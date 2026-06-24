@@ -7,11 +7,16 @@ from django.test import TestCase, override_settings
 from feeds.models import (
     Author,
     POST_TRANSLATION_STATUS_FAILED,
+    POST_TRANSLATION_STATUS_PENDING,
     POST_TRANSLATION_STATUS_TRANSLATED,
     Post,
     PostTranslation,
 )
-from feeds.translation_service import PostTranslationError, translate_post_to_language
+from feeds.translation_service import (
+    PostTranslationError,
+    queue_post_translation,
+    translate_post_to_language,
+)
 
 
 class FakeOpenRouterResponse:
@@ -92,3 +97,19 @@ class PostTranslationServiceTests(TestCase):
         translation = PostTranslation.objects.get(post=self.post, language="tr")
         self.assertEqual(translation.status, POST_TRANSLATION_STATUS_FAILED)
         self.assertIn("OPENROUTER_API_KEY", translation.error_message)
+
+    @patch("feeds.translation_service.threading.Thread")
+    def test_queue_post_translation_sets_pending_and_starts_worker(self, thread_mock) -> None:
+        translations = queue_post_translation(self.post, ["tr", "id"])
+
+        self.assertEqual([translation.language for translation in translations], ["tr", "id"])
+        self.assertEqual(
+            list(
+                PostTranslation.objects.filter(post=self.post)
+                .order_by("language")
+                .values_list("language", "status")
+            ),
+            [("id", POST_TRANSLATION_STATUS_PENDING), ("tr", POST_TRANSLATION_STATUS_PENDING)],
+        )
+        thread_mock.assert_called_once()
+        thread_mock.return_value.start.assert_called_once()

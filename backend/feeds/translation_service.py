@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 from typing import Any
 
 import requests
 from django.conf import settings
+from django.db import close_old_connections
 
 from feeds.models import (
     POST_TRANSLATION_LANGUAGE_CHOICES,
@@ -102,6 +104,61 @@ def translate_post_to_all_languages(post: Post) -> list[PostTranslation]:
         translate_post_to_language(post, language)
         for language in SUPPORTED_TRANSLATION_LANGUAGES
     ]
+
+
+def queue_post_translation(post: Post, languages: list[str]) -> list[PostTranslation]:
+    normalized_languages = _normalize_translation_languages(languages)
+    if not normalized_languages:
+        return []
+
+    model = str(getattr(settings, "OPENROUTER_TRANSLATION_MODEL", "") or "").strip()
+    translations: list[PostTranslation] = []
+    for language in normalized_languages:
+        translation, _ = PostTranslation.objects.get_or_create(
+            post=post,
+            language=language,
+        )
+        translation.status = POST_TRANSLATION_STATUS_PENDING
+        translation.model = model
+        translation.error_message = ""
+        translation.save(
+            update_fields=["status", "model", "error_message", "updated_at"]
+        )
+        translations.append(translation)
+
+    worker = threading.Thread(
+        target=_run_queued_post_translations,
+        args=(post.pk, tuple(normalized_languages)),
+        daemon=True,
+    )
+    worker.start()
+    return translations
+
+
+def _normalize_translation_languages(languages: list[str]) -> list[str]:
+    normalized: list[str] = []
+    for language in languages:
+        code = str(language or "").strip().lower()
+        if code not in SUPPORTED_TRANSLATION_LANGUAGES:
+            raise PostTranslationError(f"Язык перевода не поддерживается: {code}")
+        if code not in normalized:
+            normalized.append(code)
+    return normalized
+
+
+def _run_queued_post_translations(post_id: int, languages: tuple[str, ...]) -> None:
+    close_old_connections()
+    try:
+        post = Post.objects.get(pk=post_id)
+        for language in languages:
+            try:
+                translate_post_to_language(post, language)
+            except PostTranslationError:
+                continue
+    except Post.DoesNotExist:
+        return
+    finally:
+        close_old_connections()
 
 
 def _request_openrouter_translation(post: Post, target: dict[str, str]) -> dict[str, Any]:

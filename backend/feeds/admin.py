@@ -19,9 +19,9 @@ from .models import (
 )
 from .translation_service import (
     PostTranslationError,
+    SUPPORTED_TRANSLATION_LANGUAGES,
     get_translation_language_label,
-    translate_post_to_all_languages,
-    translate_post_to_language,
+    queue_post_translation,
 )
 
 
@@ -125,18 +125,22 @@ class PostAdmin(admin.ModelAdmin):
 
         try:
             if language == "all":
-                translations = translate_post_to_all_languages(post)
-                labels = ", ".join(
-                    get_translation_language_label(translation.language)
-                    for translation in translations
+                translations = queue_post_translation(
+                    post,
+                    list(SUPPORTED_TRANSLATION_LANGUAGES),
                 )
-                messages.success(request, f"Переводы обновлены: {labels}")
             else:
-                translation = translate_post_to_language(post, language)
-                label = get_translation_language_label(translation.language)
-                messages.success(request, f"Перевод обновлен: {label}")
+                translations = queue_post_translation(post, [language])
+            labels = ", ".join(
+                get_translation_language_label(translation.language)
+                for translation in translations
+            )
+            messages.success(
+                request,
+                f"Перевод запущен: {labels}. Обновите страницу через минуту.",
+            )
         except PostTranslationError as exc:
-            messages.error(request, f"Не удалось перевести пост: {exc}")
+            messages.error(request, f"Не удалось запустить перевод: {exc}")
 
         fallback_url = reverse("admin:feeds_post_change", args=[post.pk])
         return HttpResponseRedirect(request.META.get("HTTP_REFERER") or fallback_url)
