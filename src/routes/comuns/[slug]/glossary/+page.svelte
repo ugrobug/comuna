@@ -39,6 +39,10 @@
     term: '',
     term_en: '',
     definition: '',
+    image_url: '',
+    image_path: '',
+    imageUploading: false,
+    imageError: '',
   }
   let pendingGlossarySubmissions: BackendComunTelegramSubmission[] = []
   let pendingGlossarySubmissionsLoading = false
@@ -140,6 +144,10 @@
       term: '',
       term_en: '',
       definition: '',
+      image_url: '',
+      image_path: '',
+      imageUploading: false,
+      imageError: '',
     }
     glossaryTermModalError = ''
   }
@@ -157,12 +165,18 @@
   }
 
   const closeGlossaryTermModal = () => {
-    if (glossaryTermModalSaving) return
+    if (glossaryTermModalSaving || glossaryTermModalDraft.imageUploading) return
     glossaryTermModalMode = null
     resetGlossaryTermModal()
   }
 
-  const appendDraftGlossaryTerm = (term: string, termEn: string, definition: string) => {
+  const appendDraftGlossaryTerm = (
+    term: string,
+    termEn: string,
+    definition: string,
+    imageUrl = '',
+    imagePath = ''
+  ) => {
     draftTerms = [
       ...draftTerms,
       {
@@ -172,16 +186,72 @@
         term_en: termEn,
         slug: '',
         definition,
-        image_url: '',
-        image_path: '',
+        image_url: imageUrl,
+        image_path: imagePath,
         image_remove: false,
         sort_order: draftTerms.length,
       },
     ]
   }
 
+  const setGlossaryTermModalImageState = (
+    patch: Partial<typeof glossaryTermModalDraft>
+  ) => {
+    glossaryTermModalDraft = { ...glossaryTermModalDraft, ...patch }
+  }
+
+  const onGlossaryTermModalImageInput = async (event: Event) => {
+    const input = event.currentTarget as HTMLInputElement | null
+    const file = input?.files?.[0]
+    if (input) input.value = ''
+    if (!file || !comun?.slug || !canManageGlossary) return
+    if (file.type && !file.type.startsWith('image/')) {
+      setGlossaryTermModalImageState({ imageError: 'Выберите картинку' })
+      return
+    }
+    if (!$siteToken) {
+      setGlossaryTermModalImageState({ imageError: 'Нужна авторизация' })
+      return
+    }
+
+    setGlossaryTermModalImageState({ imageUploading: true, imageError: '' })
+    try {
+      const body = new FormData()
+      body.append('image', file)
+      const response = await fetch(buildComunGlossaryImageUrl(comun.slug), {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${$siteToken}`,
+        },
+        body,
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Не удалось загрузить картинку')
+      }
+      setGlossaryTermModalImageState({
+        image_url: String(payload?.image_url ?? '').trim(),
+        image_path: String(payload?.image_path ?? '').trim(),
+        imageUploading: false,
+        imageError: '',
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Не удалось загрузить картинку'
+      setGlossaryTermModalImageState({ imageUploading: false, imageError: message })
+      toast({ content: message, type: 'error' })
+    }
+  }
+
+  const removeGlossaryTermModalImage = () => {
+    setGlossaryTermModalImageState({
+      image_url: '',
+      image_path: '',
+      imageError: '',
+    })
+  }
+
   const submitGlossaryTermModal = async () => {
-    if (!glossaryTermModalMode || glossaryTermModalSaving) return
+    if (!glossaryTermModalMode || glossaryTermModalSaving || glossaryTermModalDraft.imageUploading) return
     const term = glossaryTermModalDraft.term.trim()
     const termEn = glossaryTermModalDraft.term_en.trim()
     const definition = glossaryTermModalDraft.definition.trim()
@@ -196,7 +266,13 @@
 
     if (glossaryTermModalMode === 'add') {
       if (!canManageGlossary) return
-      appendDraftGlossaryTerm(term, termEn, definition)
+      appendDraftGlossaryTerm(
+        term,
+        termEn,
+        definition,
+        glossaryTermModalDraft.image_url.trim(),
+        glossaryTermModalDraft.image_path.trim()
+      )
       glossaryTermModalMode = null
       resetGlossaryTermModal()
       toast({ content: 'Термин добавлен в черновик глоссария', type: 'success' })
@@ -785,99 +861,188 @@
 
 {#if glossaryTermModalMode}
   <div
-    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
+    class="glossary-term-modal-backdrop"
+    role="presentation"
+    on:click={(event) => {
+      if (event.currentTarget === event.target) closeGlossaryTermModal()
+    }}
   >
-    <form
-      class="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-zinc-800 dark:bg-zinc-950"
-      on:submit|preventDefault={submitGlossaryTermModal}
+    <div
+      class="glossary-term-modal-panel w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-zinc-800 dark:bg-zinc-950"
+      role="dialog"
+      aria-modal="true"
     >
-      <div class="flex items-start justify-between gap-4">
-        <div>
-          <div class="text-lg font-semibold text-slate-900 dark:text-zinc-100">
-            {glossaryTermModalMode === 'add' ? 'Добавить термин' : 'Предложить термин'}
+      <form on:submit|preventDefault={submitGlossaryTermModal}>
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <div class="text-lg font-semibold text-slate-900 dark:text-zinc-100">
+              {glossaryTermModalMode === 'add' ? 'Добавить термин' : 'Предложить термин'}
+            </div>
+            <p class="mt-1 text-sm text-slate-600 dark:text-zinc-400">
+              {glossaryTermModalMode === 'add'
+                ? 'После добавления сохраните глоссарий, чтобы термин появился на сайте.'
+                : 'Создатель или модераторы сообщества проверят предложение перед публикацией.'}
+            </p>
           </div>
-          <p class="mt-1 text-sm text-slate-600 dark:text-zinc-400">
-            {glossaryTermModalMode === 'add'
-              ? 'После добавления сохраните глоссарий, чтобы термин появился на сайте.'
-              : 'Создатель или модераторы сообщества проверят предложение перед публикацией.'}
-          </p>
+          <button
+            type="button"
+            class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900 dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-100"
+            aria-label="Закрыть"
+            disabled={glossaryTermModalSaving || glossaryTermModalDraft.imageUploading}
+            on:click={closeGlossaryTermModal}
+          >
+            <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+              <path d="M6 6l12 12" />
+              <path d="M18 6L6 18" />
+            </svg>
+          </button>
         </div>
-        <button
-          type="button"
-          class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900 dark:border-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-100"
-          aria-label="Закрыть"
-          disabled={glossaryTermModalSaving}
-          on:click={closeGlossaryTermModal}
-        >
-          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-            <path d="M6 6l12 12" />
-            <path d="M18 6L6 18" />
-          </svg>
-        </button>
-      </div>
 
-      <div class="mt-5 grid gap-3">
-        <label class="grid gap-1 text-sm font-medium text-slate-700 dark:text-zinc-300">
-          <span>Термин</span>
-          <input
-            bind:value={glossaryTermModalDraft.term}
-            class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-base text-slate-900 outline-none focus:border-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
-            placeholder="Введите термин"
-            disabled={glossaryTermModalSaving}
-          />
-        </label>
-        <label class="grid gap-1 text-sm font-medium text-slate-700 dark:text-zinc-300">
-          <span>Термин на английском</span>
-          <input
-            bind:value={glossaryTermModalDraft.term_en}
-            class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-base text-slate-900 outline-none focus:border-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
-            placeholder="Необязательно"
-            disabled={glossaryTermModalSaving}
-          />
-        </label>
-        <label class="grid gap-1 text-sm font-medium text-slate-700 dark:text-zinc-300">
-          <span>Расшифровка</span>
-          <textarea
-            bind:value={glossaryTermModalDraft.definition}
-            rows="5"
-            class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-base leading-relaxed text-slate-900 outline-none focus:border-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
-            placeholder="Опишите значение термина"
-            disabled={glossaryTermModalSaving}
-          ></textarea>
-        </label>
-      </div>
-
-      {#if glossaryTermModalError}
-        <div class="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/25 dark:text-rose-300">
-          {glossaryTermModalError}
-        </div>
-      {/if}
-
-      <div class="mt-5 flex flex-wrap justify-end gap-2">
-        <button
-          type="button"
-          class="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900"
-          disabled={glossaryTermModalSaving}
-          on:click={closeGlossaryTermModal}
-        >
-          Отмена
-        </button>
-        <button
-          type="submit"
-          class="inline-flex items-center justify-center rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-200"
-          disabled={glossaryTermModalSaving}
-        >
-          {#if glossaryTermModalSaving}
-            Отправляем...
-          {:else}
-            {glossaryTermModalMode === 'add' ? 'Добавить' : 'Отправить'}
+        <div class="mt-5 grid gap-3">
+          {#if glossaryTermModalMode === 'add'}
+            <div class="grid gap-2 text-sm font-medium text-slate-700 dark:text-zinc-300">
+              <span>Картинка</span>
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-start">
+                <label
+                  class="group relative flex aspect-square w-full cursor-pointer items-center justify-center overflow-hidden rounded-2xl border border-dashed border-slate-300 bg-white text-center text-xs font-medium text-slate-500 transition hover:border-sky-300 hover:bg-sky-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:border-sky-700 dark:hover:bg-sky-950/25 sm:w-36"
+                  title="Загрузить картинку термина"
+                >
+                  {#if glossaryTermModalDraft.image_url}
+                    <img
+                      src={glossaryTermModalDraft.image_url}
+                      alt=""
+                      class="absolute inset-0 h-full w-full object-cover"
+                    />
+                    <span class="absolute inset-x-0 bottom-0 bg-slate-950/70 px-2 py-1 text-white opacity-0 transition group-hover:opacity-100">
+                      Заменить
+                    </span>
+                  {:else}
+                    <span class="px-3">
+                      {glossaryTermModalDraft.imageUploading ? 'Загружаем...' : 'Загрузить картинку'}
+                    </span>
+                  {/if}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    class="sr-only"
+                    disabled={glossaryTermModalSaving || glossaryTermModalDraft.imageUploading}
+                    on:change={onGlossaryTermModalImageInput}
+                  />
+                </label>
+                <div class="min-w-0 flex-1 text-sm leading-relaxed text-slate-500 dark:text-zinc-400">
+                  <p>
+                    Картинка будет сжата на сервере и сохранится вместе с новым термином после сохранения глоссария.
+                  </p>
+                  {#if glossaryTermModalDraft.image_url}
+                    <button
+                      type="button"
+                      class="mt-3 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 dark:border-zinc-700 dark:text-zinc-400 dark:hover:border-rose-900/60 dark:hover:bg-rose-950/30 dark:hover:text-rose-300"
+                      disabled={glossaryTermModalSaving || glossaryTermModalDraft.imageUploading}
+                      on:click={removeGlossaryTermModalImage}
+                    >
+                      Удалить картинку
+                    </button>
+                  {/if}
+                  {#if glossaryTermModalDraft.imageError}
+                    <div class="mt-2 text-xs text-rose-600 dark:text-rose-300">
+                      {glossaryTermModalDraft.imageError}
+                    </div>
+                  {/if}
+                </div>
+              </div>
+            </div>
           {/if}
-        </button>
-      </div>
-    </form>
+          <label class="grid gap-1 text-sm font-medium text-slate-700 dark:text-zinc-300">
+            <span>Термин</span>
+            <input
+              bind:value={glossaryTermModalDraft.term}
+              class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-base text-slate-900 outline-none focus:border-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
+              placeholder="Введите термин"
+              disabled={glossaryTermModalSaving}
+            />
+          </label>
+          <label class="grid gap-1 text-sm font-medium text-slate-700 dark:text-zinc-300">
+            <span>Термин на английском</span>
+            <input
+              bind:value={glossaryTermModalDraft.term_en}
+              class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-base text-slate-900 outline-none focus:border-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
+              placeholder="Необязательно"
+              disabled={glossaryTermModalSaving}
+            />
+          </label>
+          <label class="grid gap-1 text-sm font-medium text-slate-700 dark:text-zinc-300">
+            <span>Расшифровка</span>
+            <textarea
+              bind:value={glossaryTermModalDraft.definition}
+              rows="5"
+              class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-base leading-relaxed text-slate-900 outline-none focus:border-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
+              placeholder="Опишите значение термина"
+              disabled={glossaryTermModalSaving}
+            ></textarea>
+          </label>
+        </div>
+
+        {#if glossaryTermModalError}
+          <div class="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/25 dark:text-rose-300">
+            {glossaryTermModalError}
+          </div>
+        {/if}
+
+        <div class="mt-5 flex flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            class="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900"
+            disabled={glossaryTermModalSaving || glossaryTermModalDraft.imageUploading}
+            on:click={closeGlossaryTermModal}
+          >
+            Отмена
+          </button>
+          <button
+            type="submit"
+            class="inline-flex items-center justify-center rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-200"
+            disabled={glossaryTermModalSaving || glossaryTermModalDraft.imageUploading}
+          >
+            {#if glossaryTermModalSaving}
+              Отправляем...
+            {:else if glossaryTermModalDraft.imageUploading}
+              Загружаем картинку...
+            {:else}
+              {glossaryTermModalMode === 'add' ? 'Добавить' : 'Отправить'}
+            {/if}
+          </button>
+        </div>
+      </form>
+    </div>
   </div>
 {/if}
 
 <svelte:head>
   <title>{comun?.name ? `Глоссарий ${comun.name}` : 'Глоссарий сообщества'}</title>
 </svelte:head>
+
+<style>
+  .glossary-term-modal-backdrop {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem 1rem;
+    background: rgba(2, 6, 23, 0.55);
+    backdrop-filter: blur(8px);
+  }
+
+  .glossary-term-modal-panel {
+    max-height: min(720px, calc(100vh - 2rem));
+    overflow: auto;
+  }
+
+  @media (max-width: 640px) {
+    .glossary-term-modal-backdrop {
+      align-items: flex-start;
+      padding-top: 1rem;
+      padding-bottom: 1rem;
+    }
+  }
+</style>
