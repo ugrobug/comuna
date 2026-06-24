@@ -913,84 +913,84 @@
           </button>
         </div>
 
-        <div class="mt-5 grid gap-3">
+        <div
+          class={`glossary-term-form-card mt-5 ${glossaryTermModalMode !== 'add' ? 'glossary-term-form-card--plain' : ''}`}
+        >
           {#if glossaryTermModalMode === 'add'}
-            <div class="grid gap-2">
-              <div class="flex flex-col gap-3 sm:flex-row sm:items-start">
-                <label
-                  class="group relative flex aspect-square w-full cursor-pointer items-center justify-center overflow-hidden rounded-2xl border border-dashed border-slate-300 bg-white text-center text-xs font-medium text-slate-500 transition hover:border-sky-300 hover:bg-sky-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:border-sky-700 dark:hover:bg-sky-950/25 sm:w-36"
-                  title="Загрузить картинку термина"
-                >
-                  {#if glossaryTermModalDraft.image_url}
-                    <img
-                      src={glossaryTermModalDraft.image_url}
-                      alt=""
-                      class="absolute inset-0 h-full w-full object-cover"
-                    />
-                    <span class="absolute inset-x-0 bottom-0 bg-slate-950/70 px-2 py-1 text-white opacity-0 transition group-hover:opacity-100">
-                      Заменить
-                    </span>
-                  {:else}
-                    <span class="px-3">
-                      {glossaryTermModalDraft.imageUploading ? 'Загружаем...' : 'Загрузить картинку'}
-                    </span>
-                  {/if}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    class="sr-only"
-                    disabled={glossaryTermModalSaving || glossaryTermModalDraft.imageUploading}
-                    on:change={onGlossaryTermModalImageInput}
+            <div class="glossary-term-image-column">
+              <label
+                class="group relative flex aspect-square w-full cursor-pointer items-center justify-center overflow-hidden rounded-2xl border border-dashed border-slate-300 bg-white text-center text-sm font-semibold text-slate-500 transition hover:border-sky-300 hover:bg-sky-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:border-sky-700 dark:hover:bg-sky-950/25"
+                title="Загрузить картинку термина"
+              >
+                {#if glossaryTermModalDraft.image_url}
+                  <img
+                    src={glossaryTermModalDraft.image_url}
+                    alt=""
+                    class="absolute inset-0 h-full w-full object-cover"
                   />
-                </label>
-                <div class="min-w-0 flex-1">
-                  {#if glossaryTermModalDraft.image_url}
-                    <button
-                      type="button"
-                      class="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 dark:border-zinc-700 dark:text-zinc-400 dark:hover:border-rose-900/60 dark:hover:bg-rose-950/30 dark:hover:text-rose-300"
-                      disabled={glossaryTermModalSaving || glossaryTermModalDraft.imageUploading}
-                      on:click={removeGlossaryTermModalImage}
-                    >
-                      Удалить картинку
-                    </button>
-                  {/if}
-                  {#if glossaryTermModalDraft.imageError}
-                    <div class="text-xs text-rose-600 dark:text-rose-300">
-                      {glossaryTermModalDraft.imageError}
-                    </div>
-                  {/if}
+                  <span class="absolute inset-x-0 bottom-0 bg-slate-950/70 px-2 py-1 text-white opacity-0 transition group-hover:opacity-100">
+                    Заменить
+                  </span>
+                {:else}
+                  <span class="px-4">
+                    {glossaryTermModalDraft.imageUploading ? 'Загружаем...' : 'Загрузить картинку'}
+                  </span>
+                {/if}
+                <input
+                  type="file"
+                  accept="image/*"
+                  class="sr-only"
+                  disabled={glossaryTermModalSaving || glossaryTermModalDraft.imageUploading}
+                  on:change={onGlossaryTermModalImageInput}
+                />
+              </label>
+              {#if glossaryTermModalDraft.image_url}
+                <button
+                  type="button"
+                  class="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 dark:border-zinc-700 dark:text-zinc-400 dark:hover:border-rose-900/60 dark:hover:bg-rose-950/30 dark:hover:text-rose-300"
+                  disabled={glossaryTermModalSaving || glossaryTermModalDraft.imageUploading}
+                  on:click={removeGlossaryTermModalImage}
+                >
+                  Удалить картинку
+                </button>
+              {/if}
+              {#if glossaryTermModalDraft.imageError}
+                <div class="text-xs text-rose-600 dark:text-rose-300">
+                  {glossaryTermModalDraft.imageError}
                 </div>
-              </div>
+              {/if}
             </div>
           {/if}
-          <label class="grid">
-            <input
-              bind:value={glossaryTermModalDraft.term}
-              aria-label="Термин"
-              class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-base text-slate-900 outline-none focus:border-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
-              placeholder="Введите термин"
-              disabled={glossaryTermModalSaving}
-            />
-          </label>
-          <label class="grid">
-            <input
-              bind:value={glossaryTermModalDraft.term_en}
-              aria-label="Термин на английском"
-              class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-base text-slate-900 outline-none focus:border-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
-              placeholder="Необязательно"
-              disabled={glossaryTermModalSaving}
-            />
-          </label>
-          <label class="grid">
-            <textarea
-              bind:value={glossaryTermModalDraft.definition}
-              aria-label="Расшифровка"
-              rows="5"
-              class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-base leading-relaxed text-slate-900 outline-none focus:border-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
-              placeholder="Опишите значение термина"
-              disabled={glossaryTermModalSaving}
-            ></textarea>
-          </label>
+          <div class="glossary-term-fields">
+            <label class="grid">
+              <input
+                bind:value={glossaryTermModalDraft.term}
+                aria-label="Термин"
+                class="glossary-term-field"
+                placeholder="Термин"
+                disabled={glossaryTermModalSaving}
+              />
+            </label>
+            <label class="grid">
+              <input
+                bind:value={glossaryTermModalDraft.term_en}
+                aria-label="Термин на английском"
+                class="glossary-term-field"
+                placeholder="Термин на английском"
+                disabled={glossaryTermModalSaving}
+              />
+            </label>
+            <label class="grid">
+              <textarea
+                bind:value={glossaryTermModalDraft.definition}
+                aria-label="Расшифровка термина"
+                rows="5"
+                class="glossary-term-field glossary-term-definition-field"
+                placeholder="Расшифровка термина"
+                disabled={glossaryTermModalSaving}
+              ></textarea>
+            </label>
+          </div>
         </div>
 
         {#if glossaryTermModalError}
@@ -1045,9 +1045,81 @@
   }
 
   .glossary-term-modal-panel {
-    width: min(420px, calc(100vw - 2rem));
+    width: min(760px, calc(100vw - 2rem));
     max-height: min(720px, calc(100vh - 2rem));
     overflow: auto;
+  }
+
+  .glossary-term-form-card {
+    display: grid;
+    grid-template-columns: 180px minmax(0, 1fr);
+    gap: 1rem;
+    align-items: start;
+    border: 1px solid #dbe3ef;
+    border-radius: 1.25rem;
+    background: #fff;
+    padding: 1rem;
+  }
+
+  .glossary-term-form-card--plain {
+    grid-template-columns: 1fr;
+  }
+
+  :global(.dark) .glossary-term-form-card {
+    border-color: #27272a;
+    background: #09090b;
+  }
+
+  .glossary-term-image-column {
+    display: grid;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+
+  .glossary-term-fields {
+    display: grid;
+    gap: 0.85rem;
+    min-width: 0;
+  }
+
+  .glossary-term-field {
+    width: 100%;
+    border-radius: 1rem;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    padding: 0.9rem 1rem;
+    font-size: 1.125rem;
+    font-weight: 600;
+    line-height: 1.35;
+    color: #0f172a;
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .glossary-term-field::placeholder {
+    color: #9ca3af;
+    opacity: 1;
+  }
+
+  .glossary-term-field:focus {
+    border-color: #94a3b8;
+    box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.16);
+  }
+
+  :global(.dark) .glossary-term-field {
+    border-color: #3f3f46;
+    background: #18181b;
+    color: #f4f4f5;
+  }
+
+  :global(.dark) .glossary-term-field:focus {
+    border-color: #71717a;
+    box-shadow: 0 0 0 3px rgba(113, 113, 122, 0.2);
+  }
+
+  .glossary-term-definition-field {
+    min-height: 9.85rem;
+    resize: vertical;
   }
 
   @media (max-width: 640px) {
@@ -1055,6 +1127,14 @@
       align-items: flex-start;
       padding-top: 1rem;
       padding-bottom: 1rem;
+    }
+
+    .glossary-term-form-card {
+      grid-template-columns: 1fr;
+    }
+
+    .glossary-term-image-column {
+      max-width: 16rem;
     }
   }
 </style>
