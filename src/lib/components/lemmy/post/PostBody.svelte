@@ -232,8 +232,13 @@
     hideGlossaryTooltip()
   }
 
+  const normalizeGlossaryTooltipText = (value: string) =>
+    value.replace(/<br\s*\/?>/gi, '\n')
+
   const renderGlossaryTermTooltip = (termElement: HTMLElement): HTMLElement | null => {
-    const definition = String(termElement.getAttribute('data-glossary-definition') || '').trim()
+    const definition = normalizeGlossaryTooltipText(
+      String(termElement.getAttribute('data-glossary-definition') || '')
+    ).trim()
     if (!browser || !definition) return null
 
     const termName = String(termElement.getAttribute('data-glossary-term') || termElement.textContent || '').trim()
