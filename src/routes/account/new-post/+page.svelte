@@ -1285,7 +1285,7 @@
                       for="new-post-comun-category"
                       class="mb-1 block text-xs font-medium uppercase tracking-[0.1em] text-slate-500 dark:text-zinc-500"
                     >
-                      Раздел комуны
+                      Разделы сообщества
                     </label>
                     <select
                       id="new-post-comun-category"
