@@ -33,6 +33,7 @@
   import { env } from '$env/dynamic/public'
   import YandexMetrika from '$lib/components/YandexMetrika.svelte'
   import GoogleAnalytics from '$lib/components/GoogleAnalytics.svelte'
+  import CookieNotice from '$lib/components/CookieNotice.svelte'
 
   nProgress.configure({
     minimum: 0.4,
@@ -205,6 +206,7 @@
   <ToastContainer />
   <ExpandableImage />
   <ModalContainer />
+  <CookieNotice />
 
   <svelte:fragment slot="sidebar" let:style={s} let:class={c}>
     {#if !isFullBleedRoute}
