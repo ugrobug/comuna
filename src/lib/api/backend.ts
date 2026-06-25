@@ -100,6 +100,7 @@ export const buildComunsCatalogUrl = (options?: {
   page?: number
   limit?: number
   q?: string
+  slugs?: string[]
 }): string => {
   const params = new URLSearchParams()
   if (typeof options?.page === 'number') {
@@ -110,6 +111,10 @@ export const buildComunsCatalogUrl = (options?: {
   }
   if (options?.q) {
     params.set('q', options.q)
+  }
+  const slugs = (options?.slugs ?? []).map((slug) => String(slug).trim()).filter(Boolean)
+  if (slugs.length) {
+    params.set('slugs', slugs.join(','))
   }
   const query = params.toString()
   return `${getBackendBaseUrl()}/api/comuns/catalog/${query ? `?${query}` : ''}`

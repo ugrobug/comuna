@@ -12,6 +12,15 @@
   export let posts: BackendPost[] = []
   export let loadingMore = false
 
+  const defaultRecommendedComunSlugs = [
+    'Music',
+    'after_the_credits',
+    'wherefilmed',
+    'nintendo-switch',
+    'homm-7-olden-era',
+    'entertainment',
+  ]
+
   let filteredPosts: BackendPost[] = []
   let hiddenAuthorKeys = new Set<string>()
 
@@ -46,9 +55,12 @@
   </div>
 
   {#if !$siteUser}
-    <div class="text-base text-slate-500">
-      После регистрации вы получите доступ к персонализируемой ленте и сможете видеть только интересные вам посты.
-    </div>
+    <RecommendedComunsPanel
+      selectedSlugs={selectedMyFeedComuns}
+      recommendedSlugs={defaultRecommendedComunSlugs}
+      title="Ваша лента пока не настроена"
+      description="Подпишитесь на сообщества или авторов, чтобы видеть их публикации здесь."
+    />
   {:else}
     {#if !$feedSettingsHydrated && $feedSettingsHydrationState !== 'error'}
       <div class="text-base text-slate-500 dark:text-zinc-400">Загружаем мою ленту...</div>
@@ -59,6 +71,7 @@
     {:else if !myFeedHasBaseSettings}
       <RecommendedComunsPanel
         selectedSlugs={selectedMyFeedComuns}
+        recommendedSlugs={defaultRecommendedComunSlugs}
         title="Ваша лента пока не настроена"
         description="Подпишитесь на сообщества или авторов, чтобы видеть их публикации здесь."
       />
@@ -72,6 +85,7 @@
       {:else if shouldShowRecommendations}
         <RecommendedComunsPanel
           selectedSlugs={selectedMyFeedComuns}
+          recommendedSlugs={defaultRecommendedComunSlugs}
           title="Пока нет постов в выбранных подписках"
           description="Подпишитесь на новые сообщества, чтобы видеть больше постов."
         />

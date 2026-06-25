@@ -5,6 +5,7 @@
   export let comun: BackendComun
   export let subscribed = false
   export let subscriptionsLoading = false
+  export let showSubscribeText = false
 
   const dispatch = createEventDispatcher<{ toggle: void }>()
 
@@ -46,11 +47,11 @@
       </a>
       <button
         type="button"
-        class={`grid h-9 w-9 place-items-center rounded-full border transition ${
+        class={`inline-flex h-9 items-center justify-center gap-1 rounded-full border transition ${
           subscribed
             ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-900/70 dark:bg-emerald-950/40 dark:text-emerald-300'
             : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-900/70 dark:bg-blue-950/40 dark:text-blue-300'
-        } ${subscriptionsLoading ? 'opacity-60 cursor-wait' : ''}`}
+        } ${showSubscribeText ? 'px-3 text-xs font-medium' : 'w-9'} ${subscriptionsLoading ? 'opacity-60 cursor-wait' : ''}`}
         title={subscriptionsLoading ? 'Загружаем подписки...' : subscribed ? 'Вы подписаны' : 'Подписаться'}
         aria-label={subscribed ? `Отписаться от ${comun.name}` : `Подписаться на ${comun.name}`}
         aria-pressed={subscribed}
@@ -61,10 +62,16 @@
           <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" aria-hidden="true">
             <path d="M4.5 10.4 8.1 14 15.7 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
+          {#if showSubscribeText}
+            <span>Вы подписаны</span>
+          {/if}
         {:else}
           <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" aria-hidden="true">
             <path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
           </svg>
+          {#if showSubscribeText}
+            <span>Подписаться</span>
+          {/if}
         {/if}
       </button>
     </div>

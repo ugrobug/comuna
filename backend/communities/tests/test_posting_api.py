@@ -310,6 +310,36 @@ class ComunPostingApiTests(TestCase):
         self.assertEqual(slugs, ["needle-community"])
         self.assertEqual(payload["total_comuns"], 1)
 
+    def test_comuns_catalog_filters_exact_slugs_in_requested_order(self):
+        music = Comun.objects.create(
+            name="Music",
+            slug="Music",
+            creator=self.user,
+            rating_score=10,
+        )
+        credits = Comun.objects.create(
+            name="После Титров",
+            slug="after_the_credits",
+            creator=self.user,
+            rating_score=100,
+        )
+        Comun.objects.create(
+            name="Unrequested",
+            slug="unrequested",
+            creator=self.user,
+            rating_score=200,
+        )
+
+        response = self.client.get(
+            reverse("comuns-catalog"),
+            {"slugs": f"{credits.slug},{music.slug.lower()}", "limit": "10"},
+        )
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        payload = response.json()
+        self.assertEqual([item["slug"] for item in payload["comuns"]], [credits.slug, music.slug])
+        self.assertEqual(payload["total_comuns"], 2)
+
     def test_comuns_sidebar_returns_catalog_card_fields(self):
         sidebar_tag = Tag.objects.create(name="Sidebar", lemma="sidebar")
         self.comun.product_description = "Sidebar community description"

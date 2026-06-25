@@ -535,6 +535,28 @@ def _parse_positive_int_param(
     return parsed
 
 
+def _parse_comun_slug_list_param(value: object, *, maximum: int = 50) -> list[str]:
+    raw_values: list[object]
+    if isinstance(value, (list, tuple)):
+        raw_values = list(value)
+    else:
+        raw_values = [value]
+
+    slugs: list[str] = []
+    seen: set[str] = set()
+    for raw_value in raw_values:
+        for part in str(raw_value or "").split(","):
+            slug = part.strip()
+            slug_key = slug.lower()
+            if not slug or slug_key in seen:
+                continue
+            seen.add(slug_key)
+            slugs.append(slug[:120])
+            if len(slugs) >= maximum:
+                return slugs
+    return slugs
+
+
 def _serialize_comun_catalog_item(request: HttpRequest, comun: Comun) -> dict:
     tags = [
         {
@@ -1678,7 +1700,7 @@ def comun_create_from_telegram_channel(request: HttpRequest) -> HttpResponse:
     )
 
 
-def _comuns_catalog_queryset(query: str = ""):
+def _comuns_catalog_queryset(query: str = "", slugs: list[str] | None = None):
     queryset = (
         Comun.objects.filter(is_active=True)
         .exclude(slug__iexact="faq")
@@ -1706,6 +1728,11 @@ def _comuns_catalog_queryset(query: str = ""):
         )
         .order_by("-rating_score", "sort_order", "name", "id")
     )
+    if slugs:
+        slug_filter = Q()
+        for slug in slugs:
+            slug_filter |= Q(slug__iexact=slug)
+        queryset = queryset.filter(slug_filter)
     if query:
         queryset = queryset.filter(
             Q(name__icontains=query)
@@ -1723,11 +1750,15 @@ def _comuns_catalog_response(
     page: int,
     limit: int,
     query: str,
+    slugs: list[str] | None = None,
 ) -> HttpResponse:
     total_comuns = queryset.count()
     total_pages = math.ceil(total_comuns / limit) if total_comuns else 0
     offset = (page - 1) * limit
     comuns = list(queryset[offset : offset + limit])
+    if slugs:
+        slug_order = {slug.lower(): index for index, slug in enumerate(slugs)}
+        comuns.sort(key=lambda comun: slug_order.get(str(comun.slug).lower(), len(slug_order)))
 
     return JsonResponse(
         {
@@ -1756,12 +1787,14 @@ def comuns_catalog(request: HttpRequest) -> HttpResponse:
         maximum=_COMUNS_CATALOG_MAX_LIMIT,
     )
     query = re.sub(r"\s+", " ", str(request.GET.get("q") or "").strip())[:120]
+    slugs = _parse_comun_slug_list_param(request.GET.getlist("slugs"))
     return _comuns_catalog_response(
         request,
-        _comuns_catalog_queryset(query),
+        _comuns_catalog_queryset(query, slugs),
         page=page,
         limit=limit,
         query=query,
+        slugs=slugs,
     )
 
 
