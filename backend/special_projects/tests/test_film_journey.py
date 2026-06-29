@@ -99,6 +99,10 @@ class FilmJourneyDeliveryTests(TestCase):
         self.assertEqual(post.raw_data.get("special_project", {}).get("film_id"), film.id)
         self.assertEqual(post.raw_data.get("template", {}).get("type"), "movie_review")
         self.assertEqual(
+            post.raw_data.get("template", {}).get("data", {}).get("release_date"),
+            "1977",
+        )
+        self.assertEqual(
             post.raw_data.get("template", {}).get("data", {}).get("poster_url"),
             "https://example.com/poster.jpg",
         )

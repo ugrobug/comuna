@@ -689,6 +689,14 @@ const bugReportBrowserAliases: Record<string, string> = {
 
 const trimOrEmpty = (value: unknown): string => (typeof value === 'string' ? value.trim() : '')
 
+const normalizeMovieReviewReleaseYear = (value: unknown): string => {
+  const raw =
+    typeof value === 'number' && Number.isFinite(value) ? String(Math.trunc(value)) : trimOrEmpty(value)
+  if (!raw) return ''
+  const match = raw.match(/\b(18\d{2}|19\d{2}|20\d{2})\b/)
+  return match?.[1] ?? ''
+}
+
 export const createEmptyMovieReviewTemplateData = (): MovieReviewTemplateData => ({
   imdb_url: '',
   poster_url: '',
@@ -826,7 +834,7 @@ export const normalizeMovieReviewTemplateData = (
     author_rating: normalizeMovieReviewAuthorRating(value?.author_rating),
     title: trimOrEmpty(value?.title),
     original_title: trimOrEmpty(value?.original_title),
-    release_date: trimOrEmpty(value?.release_date),
+    release_date: normalizeMovieReviewReleaseYear(value?.release_date),
     watch_where: normalizeMovieReviewWatchWhere(value?.watch_where),
   }
 }
@@ -1181,14 +1189,7 @@ export const bugReportBrowserLabels = (browsers: unknown): string[] =>
   ).map((browser) => bugReportBrowserLabel(browser))
 
 export const formatMovieReviewReleaseDate = (value: string | null | undefined): string => {
-  if (!value) return ''
-  const timestamp = Date.parse(value)
-  if (!Number.isFinite(timestamp)) return value
-  return new Date(timestamp).toLocaleDateString('ru-RU', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  })
+  return normalizeMovieReviewReleaseYear(value)
 }
 
 export const formatMusicReleaseDate = (value: string | null | undefined): string => {

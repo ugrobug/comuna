@@ -35,7 +35,8 @@
     authors: number
     comments: number
     likes: number
-    posts_telegram: number
+    registered_users: number
+    community_subscriptions: number
     posts_site: number
     post_real_views: number
     average_real_views_per_post: number
@@ -264,10 +265,16 @@
       icon: Heart,
     },
     {
-      key: 'posts_telegram',
-      label: 'Публикации из Telegram',
-      value: totals.posts_telegram,
-      icon: ChartBar,
+      key: 'registered_users',
+      label: 'Регистрации',
+      value: totals.registered_users,
+      icon: Users,
+    },
+    {
+      key: 'community_subscriptions',
+      label: 'Подписки на сообщества',
+      value: totals.community_subscriptions,
+      icon: UserGroup,
     },
     {
       key: 'posts_site',
@@ -637,7 +644,7 @@
 
     {#if loading}
       <div class="metrics-grid">
-        {#each Array(8) as _}
+        {#each Array(9) as _}
           <div class="metric-card skeleton"></div>
         {/each}
       </div>

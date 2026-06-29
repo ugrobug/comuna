@@ -428,7 +428,7 @@ def _raw_data(
     if genre:
         template_data["genre"] = genre
     if year:
-        template_data["release_date"] = f"{year}-01-01"
+        template_data["release_date"] = str(year)
     poster_url = _public_url(image_payload.get("poster_url"))
     if poster_url:
         template_data["poster_url"] = poster_url

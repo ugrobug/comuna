@@ -96,6 +96,7 @@ class WhereFilmedImportTests(TestCase):
         self.assertEqual(post.raw_data["template"]["type"], "movie_review")
         self.assertEqual(post.raw_data["template"]["data"]["title"], "Дружба")
         self.assertEqual(post.raw_data["template"]["data"]["original_title"], "Friendship")
+        self.assertEqual(post.raw_data["template"]["data"]["release_date"], "2024")
         self.assertEqual(
             post.raw_data["template"]["data"]["poster_url"],
             "https://tambur.pub/media/posts/wherefilmed/123/poster-960.webp",

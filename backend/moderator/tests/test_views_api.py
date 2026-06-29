@@ -29,6 +29,11 @@ class ModeratorAnalyticsApiTests(TestCase):
             email="user@example.com",
             password="password",
         )
+        self.period_user = User.objects.create_user(
+            username="period-user",
+            email="period-user@example.com",
+            password="password",
+        )
         self.staff_headers = {"HTTP_AUTHORIZATION": f"Bearer {_issue_token(self.staff)}"}
         self.user_headers = {"HTTP_AUTHORIZATION": f"Bearer {_issue_token(self.user)}"}
 
@@ -67,7 +72,18 @@ class ModeratorAnalyticsApiTests(TestCase):
             channel_url="https://t.me/channel",
         )
         site_author = Author.objects.create(username="site-author")
-        comun = Comun.objects.create(name="Community", slug="community", creator=self.staff)
+        comun = Comun.objects.create(
+            name="Community",
+            slug="community",
+            creator=self.staff,
+            subscribers_count=3,
+        )
+        Comun.objects.create(
+            name="Other community",
+            slug="other-community",
+            creator=self.staff,
+            subscribers_count=2,
+        )
         telegram_post = Post.objects.create(
             author=author,
             message_id=1,
@@ -106,6 +122,7 @@ class ModeratorAnalyticsApiTests(TestCase):
         Post.objects.filter(id=manual_comun_post.id).update(created_at=older)
         Author.objects.filter(id__in=[author.id, site_author.id]).update(created_at=older)
         Comun.objects.filter(id=comun.id).update(created_at=older)
+        User.objects.filter(id=self.period_user.id).update(date_joined=older)
         PostComment.objects.filter(id=comment.id).update(created_at=older)
         PostLike.objects.update(created_at=older)
         PostCommentLike.objects.update(created_at=older)
@@ -127,7 +144,8 @@ class ModeratorAnalyticsApiTests(TestCase):
                 "authors": 2,
                 "comments": 1,
                 "likes": 2,
-                "posts_telegram": 1,
+                "registered_users": 1,
+                "community_subscriptions": 5,
                 "posts_site": 2,
                 "post_real_views": 15,
                 "average_real_views_per_post": 5.0,

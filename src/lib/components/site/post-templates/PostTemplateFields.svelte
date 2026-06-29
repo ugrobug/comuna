@@ -619,10 +619,14 @@
       </label>
 
       <label class="flex flex-col gap-1">
-        <span class="text-sm text-slate-700 dark:text-zinc-300">Дата премьеры</span>
+        <span class="text-sm text-slate-700 dark:text-zinc-300">Год премьеры</span>
         <input
-          type="date"
+          type="text"
+          inputmode="numeric"
+          maxlength="4"
+          pattern="(18|19|20)[0-9]{2}"
           bind:value={movieReviewData.release_date}
+          placeholder="Например, 2024"
           class="w-full rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm text-slate-900 dark:text-zinc-100"
         />
       </label>

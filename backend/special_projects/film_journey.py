@@ -253,7 +253,7 @@ def _film_review_template_data(film: FilmJourneyFilm) -> dict[str, Any]:
         "content_kind": "movie",
         "title": film.title,
         "original_title": film.original_title,
-        "release_date": f"{film.year}-01-01" if film.year else "",
+        "release_date": str(film.year) if film.year else "",
         "watch_where": [],
         "author_rating": "",
     }

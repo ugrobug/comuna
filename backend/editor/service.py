@@ -580,13 +580,13 @@ def _parse_release_date_hint(value: object) -> str:
         return ""
     iso_date = re.search(r"\b(\d{4}-\d{2}-\d{2})\b", raw)
     if iso_date:
-        return iso_date.group(1)
+        return iso_date.group(1)[:4]
     year_month = re.search(r"\b(\d{4})-(\d{2})\b", raw)
     if year_month:
-        return f"{year_month.group(1)}-{year_month.group(2)}-01"
+        return year_month.group(1)
     year_only = re.search(r"\b(18\d{2}|19\d{2}|20\d{2})\b", raw)
     if year_only:
-        return f"{year_only.group(1)}-01-01"
+        return year_only.group(1)
     return ""
 
 
@@ -1010,9 +1010,8 @@ def _normalize_movie_review_template_data(raw_data: object) -> tuple[dict | None
     release_date_raw = str(raw_data.get("release_date") or "").strip()
     release_date = ""
     if release_date_raw:
-        try:
-            release_date = dt_datetime.strptime(release_date_raw, "%Y-%m-%d").date().isoformat()
-        except ValueError:
+        release_date = _parse_release_date_hint(release_date_raw)
+        if not release_date:
             return None, "invalid release date"
 
     normalized_data = {

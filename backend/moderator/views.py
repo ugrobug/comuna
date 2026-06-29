@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, time, timedelta
 
+from django.contrib.auth import get_user_model
 from django.db.models import Q, Sum
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils import timezone
@@ -18,6 +19,8 @@ from ratings.service import (
 from users import chat_service
 from users.models import SiteChatReport
 from users.service import _get_user_from_request
+
+User = get_user_model()
 
 _SITE_POST_SOURCES = {"manual", "manual_comun"}
 _DEFAULT_PERIOD_DAYS = 30
@@ -66,14 +69,6 @@ def _serialize_period(starts_at: datetime, ends_at: datetime) -> dict[str, str]:
         "from": starts_at.date().isoformat(),
         "to": ends_at.date().isoformat(),
     }
-
-
-def _telegram_channel_post_query() -> Q:
-    return (
-        Q(raw_data__chat__type="channel")
-        | Q(author__channel_id__isnull=False)
-        | Q(source_url__icontains="t.me/")
-    )
 
 
 def _staff_user_or_response(request: HttpRequest):
@@ -130,9 +125,6 @@ def moderator_analytics(request: HttpRequest) -> HttpResponse:
     post_period = _created_between("created_at", starts_at, ends_at)
     public_posts = _public_posts_queryset().filter(**post_period)
     site_posts = public_posts.filter(raw_data__source__in=_SITE_POST_SOURCES)
-    telegram_posts = public_posts.exclude(raw_data__source__in=_SITE_POST_SOURCES).filter(
-        _telegram_channel_post_query()
-    )
     public_posts_count = public_posts.count()
     post_real_views = int(public_posts.aggregate(total=Sum("real_views_count"))["total"] or 0)
     average_real_views_per_post = (
@@ -161,7 +153,15 @@ def moderator_analytics(request: HttpRequest) -> HttpResponse:
             **_created_between("created_at", starts_at, ends_at),
         ).count(),
         "likes": post_likes_count + comment_likes_count,
-        "posts_telegram": telegram_posts.count(),
+        "registered_users": User.objects.filter(
+            **_created_between("date_joined", starts_at, ends_at),
+        ).count(),
+        "community_subscriptions": int(
+            Comun.objects.filter(is_active=True).aggregate(total=Sum("subscribers_count"))[
+                "total"
+            ]
+            or 0
+        ),
         "posts_site": site_posts.count(),
         "post_real_views": post_real_views,
         "average_real_views_per_post": average_real_views_per_post,
