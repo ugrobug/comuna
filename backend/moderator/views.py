@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from datetime import datetime, time, timedelta
 
-from django.contrib.auth import get_user_model
 from django.db.models import Q, Sum
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils import timezone
@@ -17,10 +16,8 @@ from ratings.service import (
     update_rating_settings,
 )
 from users import chat_service
-from users.models import SiteChatReport
+from users.models import SiteChatReport, SiteUserProfile
 from users.service import _get_user_from_request
-
-User = get_user_model()
 
 _SITE_POST_SOURCES = {"manual", "manual_comun"}
 _DEFAULT_PERIOD_DAYS = 30
@@ -153,8 +150,10 @@ def moderator_analytics(request: HttpRequest) -> HttpResponse:
             **_created_between("created_at", starts_at, ends_at),
         ).count(),
         "likes": post_likes_count + comment_likes_count,
-        "registered_users": User.objects.filter(
-            **_created_between("date_joined", starts_at, ends_at),
+        "registered_users": SiteUserProfile.objects.filter(
+            deleted_at__isnull=True,
+            registration_source__gt="",
+            **_created_between("created_at", starts_at, ends_at),
         ).count(),
         "community_subscriptions": int(
             Comun.objects.filter(is_active=True).aggregate(total=Sum("subscribers_count"))[

@@ -10,7 +10,13 @@ from django.utils import timezone
 from communities.models import Comun
 from feeds.models import Author, Post, PostComment, PostCommentLike, PostLike
 from users import chat_service
-from users.models import SiteChat, SiteChatMessage, SiteChatParticipantState, SiteChatReport
+from users.models import (
+    SiteChat,
+    SiteChatMessage,
+    SiteChatParticipantState,
+    SiteChatReport,
+    SiteUserProfile,
+)
 from users.service import _issue_token
 
 User = get_user_model()
@@ -32,6 +38,16 @@ class ModeratorAnalyticsApiTests(TestCase):
         self.period_user = User.objects.create_user(
             username="period-user",
             email="period-user@example.com",
+            password="password",
+        )
+        self.imported_period_user = User.objects.create_user(
+            username="imported-period-user",
+            email="imported-period-user@example.com",
+            password="password",
+        )
+        self.profile_without_registration_source_user = User.objects.create_user(
+            username="profile-without-registration-source",
+            email="profile-without-registration-source@example.com",
             password="password",
         )
         self.staff_headers = {"HTTP_AUTHORIZATION": f"Bearer {_issue_token(self.staff)}"}
@@ -123,6 +139,17 @@ class ModeratorAnalyticsApiTests(TestCase):
         Author.objects.filter(id__in=[author.id, site_author.id]).update(created_at=older)
         Comun.objects.filter(id=comun.id).update(created_at=older)
         User.objects.filter(id=self.period_user.id).update(date_joined=older)
+        User.objects.filter(id=self.imported_period_user.id).update(date_joined=older)
+        registration_profile = SiteUserProfile.objects.create(
+            user=self.period_user,
+            registration_source="site",
+        )
+        blank_source_profile = SiteUserProfile.objects.create(
+            user=self.profile_without_registration_source_user,
+        )
+        SiteUserProfile.objects.filter(
+            id__in=[registration_profile.id, blank_source_profile.id]
+        ).update(created_at=older)
         PostComment.objects.filter(id=comment.id).update(created_at=older)
         PostLike.objects.update(created_at=older)
         PostCommentLike.objects.update(created_at=older)
