@@ -12,7 +12,7 @@ from my_feed.views import (
 )
 from communities.models import Comun, ComunCategory, ComunPostCategoryAssignment
 from feeds.models import Author, Post, PostRead
-from my_feed.models import FeedSourcePost, UserFeedSettings
+from my_feed.models import ComunSubscriptionEvent, FeedSourcePost, UserFeedSettings
 from users.service import _issue_token
 
 User = get_user_model()
@@ -239,6 +239,14 @@ class UserFeedSettingsApiTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content.decode())
         self.comun.refresh_from_db()
         self.assertEqual(self.comun.subscribers_count, 1)
+        self.assertEqual(
+            ComunSubscriptionEvent.objects.filter(
+                user=self.user,
+                comun=self.comun,
+                source=ComunSubscriptionEvent.SOURCE_FEED_SETTINGS,
+            ).count(),
+            1,
+        )
 
         response = self.client.patch(
             reverse("auth-feed-settings"),
@@ -249,6 +257,7 @@ class UserFeedSettingsApiTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content.decode())
         self.comun.refresh_from_db()
         self.assertEqual(self.comun.subscribers_count, 0)
+        self.assertEqual(ComunSubscriptionEvent.objects.filter(user=self.user).count(), 1)
 
     def test_my_feed_uses_saved_comun_subscriptions_without_query_filters(self):
         UserFeedSettings.objects.create(

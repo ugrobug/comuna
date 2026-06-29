@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from communities.models import Comun
 from feeds.models import Author, Post, PostComment, PostCommentLike, PostLike
+from my_feed.models import ComunSubscriptionEvent
 from users import chat_service
 from users.models import (
     SiteChat,
@@ -153,6 +154,20 @@ class ModeratorAnalyticsApiTests(TestCase):
         PostComment.objects.filter(id=comment.id).update(created_at=older)
         PostLike.objects.update(created_at=older)
         PostCommentLike.objects.update(created_at=older)
+        subscription_event = ComunSubscriptionEvent.objects.create(
+            user=self.user,
+            comun=comun,
+            comun_slug=comun.slug,
+        )
+        outside_subscription_event = ComunSubscriptionEvent.objects.create(
+            user=self.period_user,
+            comun=comun,
+            comun_slug=comun.slug,
+        )
+        ComunSubscriptionEvent.objects.filter(id=subscription_event.id).update(created_at=older)
+        ComunSubscriptionEvent.objects.filter(id=outside_subscription_event.id).update(
+            created_at=older - timedelta(days=5)
+        )
 
         start = (older - timedelta(days=1)).date().isoformat()
         end = (older + timedelta(days=1)).date().isoformat()
@@ -172,7 +187,7 @@ class ModeratorAnalyticsApiTests(TestCase):
                 "comments": 1,
                 "likes": 2,
                 "registered_users": 1,
-                "community_subscriptions": 5,
+                "community_subscriptions": 1,
                 "posts_site": 2,
                 "post_real_views": 15,
                 "average_real_views_per_post": 5.0,

@@ -5,7 +5,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from communities.models import Comun
-from my_feed.models import UserFeedSettings
+from my_feed.models import ComunSubscriptionEvent, UserFeedSettings
 
 
 User = get_user_model()
@@ -96,6 +96,13 @@ class ComunManagementPermissionTests(TestCase):
         self.assertIn(self.comun.slug, owner_settings.my_feed_comuns)
         self.comun.refresh_from_db()
         self.assertEqual(self.comun.subscribers_count, 3)
+        self.assertEqual(
+            ComunSubscriptionEvent.objects.filter(
+                comun=self.comun,
+                source=ComunSubscriptionEvent.SOURCE_MODERATOR_SYNC,
+            ).count(),
+            3,
+        )
 
         response = self.client.patch(
             self.url,
@@ -108,3 +115,10 @@ class ComunManagementPermissionTests(TestCase):
         self.assertEqual(moderator_settings.my_feed_comuns.count(self.comun.slug), 1)
         self.comun.refresh_from_db()
         self.assertEqual(self.comun.subscribers_count, 3)
+        self.assertEqual(
+            ComunSubscriptionEvent.objects.filter(
+                comun=self.comun,
+                source=ComunSubscriptionEvent.SOURCE_MODERATOR_SYNC,
+            ).count(),
+            3,
+        )

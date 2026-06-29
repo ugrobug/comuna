@@ -42,6 +42,42 @@ class UserFeedSettings(models.Model):
         return f"Feed settings for {self.user}"
 
 
+class ComunSubscriptionEvent(models.Model):
+    SOURCE_FEED_SETTINGS = "feed_settings"
+    SOURCE_MODERATOR_SYNC = "moderator_sync"
+    SOURCE_CHOICES = (
+        (SOURCE_FEED_SETTINGS, "Настройки ленты"),
+        (SOURCE_MODERATOR_SYNC, "Автоподписка модератора"),
+    )
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="comun_subscription_events",
+    )
+    comun = models.ForeignKey(
+        "feeds.Comun",
+        on_delete=models.CASCADE,
+        related_name="subscription_events",
+    )
+    comun_slug = models.SlugField(max_length=120)
+    source = models.CharField(max_length=32, choices=SOURCE_CHOICES, default=SOURCE_FEED_SETTINGS)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        app_label = "feeds"
+        indexes = [
+            models.Index(fields=["created_at"], name="feeds_comsub_created_idx"),
+            models.Index(fields=["comun", "created_at"], name="feeds_comsub_comun_created_idx"),
+            models.Index(fields=["user", "created_at"], name="feeds_comsub_user_created_idx"),
+        ]
+        verbose_name = "Событие подписки на сообщество"
+        verbose_name_plural = "События подписок на сообщества"
+
+    def __str__(self) -> str:
+        return f"{self.user_id}:{self.comun_slug}:{self.created_at:%Y-%m-%d %H:%M:%S}"
+
+
 class FeedSourcePost(models.Model):
     SOURCE_AUTHOR = "author"
     SOURCE_COMUN = "comun"
@@ -85,4 +121,9 @@ class FeedSourcePost(models.Model):
         return f"{self.source_type}:{self.source_id}:{self.post_id}"
 
 
-__all__ = ["UserFeedSettings", "FeedSourcePost", "default_feed_tag_rules"]
+__all__ = [
+    "UserFeedSettings",
+    "ComunSubscriptionEvent",
+    "FeedSourcePost",
+    "default_feed_tag_rules",
+]

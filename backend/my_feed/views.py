@@ -280,7 +280,11 @@ def auth_feed_settings(request: HttpRequest) -> HttpResponse:
         or previous_settings.get("my_feed_comun_categories")
         != next_settings.get("my_feed_comun_categories")
     ):
-        community_service._sync_comun_subscriber_counts(previous_settings, next_settings)
+        community_service._sync_comun_subscriber_counts(
+            previous_settings,
+            next_settings,
+            user_id=user.id,
+        )
         bump_public_cache_prefix("comuns-sidebar")
         bump_public_cache_prefix("top-comuns")
     return JsonResponse(

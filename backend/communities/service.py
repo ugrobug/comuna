@@ -1204,13 +1204,43 @@ def _subscribed_comun_slugs_from_settings(settings: dict | None) -> set[str]:
     return subscribed_slugs
 
 
-def _sync_comun_subscriber_counts(previous_settings: dict, next_settings: dict) -> None:
+def _record_comun_subscription_events(
+    *,
+    user_id: int | None,
+    slugs: set[str],
+    source: str = "feed_settings",
+) -> None:
+    if not user_id or not slugs:
+        return
+
+    from my_feed.models import ComunSubscriptionEvent
+
+    events = [
+        ComunSubscriptionEvent(
+            user_id=user_id,
+            comun_id=comun_id,
+            comun_slug=slug,
+            source=source,
+        )
+        for comun_id, slug in Comun.objects.filter(slug__in=slugs).values_list("id", "slug")
+    ]
+    if events:
+        ComunSubscriptionEvent.objects.bulk_create(events, batch_size=1000)
+
+
+def _sync_comun_subscriber_counts(
+    previous_settings: dict,
+    next_settings: dict,
+    *,
+    user_id: int | None = None,
+) -> None:
     previous_slugs = _subscribed_comun_slugs_from_settings(previous_settings)
     next_slugs = _subscribed_comun_slugs_from_settings(next_settings)
     added_slugs = next_slugs - previous_slugs
     removed_slugs = previous_slugs - next_slugs
     if added_slugs:
         Comun.objects.filter(slug__in=added_slugs).update(subscribers_count=F("subscribers_count") + 1)
+        _record_comun_subscription_events(user_id=user_id, slugs=added_slugs)
     if removed_slugs:
         Comun.objects.filter(slug__in=removed_slugs).update(
             subscribers_count=Case(
@@ -1241,7 +1271,7 @@ def _ensure_users_subscribed_to_comun(comun: Comun, user_ids: object) -> int:
     if not normalized_user_ids:
         return 0
 
-    from my_feed.models import UserFeedSettings
+    from my_feed.models import ComunSubscriptionEvent, UserFeedSettings
 
     active_user_ids = set(
         User.objects.filter(id__in=normalized_user_ids, is_active=True).values_list("id", flat=True)
@@ -1250,6 +1280,7 @@ def _ensure_users_subscribed_to_comun(comun: Comun, user_ids: object) -> int:
         return 0
 
     new_subscribers_count = 0
+    new_subscriber_user_ids: list[int] = []
     with transaction.atomic():
         settings_by_user_id = {
             settings.user_id: settings
@@ -1284,10 +1315,23 @@ def _ensure_users_subscribed_to_comun(comun: Comun, user_ids: object) -> int:
                 settings.save(update_fields=["my_feed_comuns", "updated_at"])
             if not was_subscribed:
                 new_subscribers_count += 1
+                new_subscriber_user_ids.append(user_id)
 
         if new_subscribers_count:
             Comun.objects.filter(id=comun.id).update(
                 subscribers_count=F("subscribers_count") + new_subscribers_count
+            )
+            ComunSubscriptionEvent.objects.bulk_create(
+                [
+                    ComunSubscriptionEvent(
+                        user_id=user_id,
+                        comun_id=comun.id,
+                        comun_slug=slug,
+                        source=ComunSubscriptionEvent.SOURCE_MODERATOR_SYNC,
+                    )
+                    for user_id in new_subscriber_user_ids
+                ],
+                batch_size=1000,
             )
     return new_subscribers_count
 

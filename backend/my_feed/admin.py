@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from my_feed.models import FeedSourcePost, UserFeedSettings
+from my_feed.models import ComunSubscriptionEvent, FeedSourcePost, UserFeedSettings
 
 
 @admin.register(UserFeedSettings)
@@ -36,3 +36,11 @@ class FeedSourcePostAdmin(admin.ModelAdmin):
     list_filter = ("source_type",)
     search_fields = ("post__title", "post__author__username")
     readonly_fields = ("source_type", "source_id", "post", "post_created_at")
+
+
+@admin.register(ComunSubscriptionEvent)
+class ComunSubscriptionEventAdmin(admin.ModelAdmin):
+    list_display = ("user", "comun", "source", "created_at")
+    list_filter = ("source", "created_at")
+    search_fields = ("user__username", "user__email", "comun__name", "comun_slug")
+    readonly_fields = ("user", "comun", "comun_slug", "source", "created_at")

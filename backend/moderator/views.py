@@ -10,6 +10,7 @@ from django.views.decorators.csrf import csrf_exempt
 
 from communities.models import Comun
 from feeds.models import Author, Post, PostComment, PostCommentLike, PostLike
+from my_feed.models import ComunSubscriptionEvent
 from ratings.service import (
     get_rating_settings,
     serialize_rating_settings,
@@ -155,12 +156,9 @@ def moderator_analytics(request: HttpRequest) -> HttpResponse:
             registration_source__gt="",
             **_created_between("created_at", starts_at, ends_at),
         ).count(),
-        "community_subscriptions": int(
-            Comun.objects.filter(is_active=True).aggregate(total=Sum("subscribers_count"))[
-                "total"
-            ]
-            or 0
-        ),
+        "community_subscriptions": ComunSubscriptionEvent.objects.filter(
+            **_created_between("created_at", starts_at, ends_at),
+        ).count(),
         "posts_site": site_posts.count(),
         "post_real_views": post_real_views,
         "average_real_views_per_post": average_real_views_per_post,
