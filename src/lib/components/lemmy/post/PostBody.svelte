@@ -44,6 +44,7 @@
   import { buildAuthorPublicPath, normalizeAuthorBlockData } from '$lib/authorBlocks'
   import { renderQuoteBlockHtml } from '$lib/quoteBlock'
   import { sanitizePostHtml as sanitizePostHtmlUniversal } from '$lib/security/html'
+  import { getSafeUrl, isExternalUrl } from '$lib/security/url'
   
   let DOMPurify: any
   let purifyConfigured = false
@@ -56,11 +57,25 @@
         DOMPurify.addHook('afterSanitizeAttributes', (node: Element) => {
           if (node.tagName === 'A') {
             const href = node.getAttribute('href') || ''
-            if (href.includes('t.me/')) {
+            const safeHref = getSafeUrl(href, {
+              allowedProtocols: ['http:', 'https:', 'mailto:'],
+              allowRelative: true,
+              normalizeBareExternal: true,
+            })
+            if (!safeHref) {
+              node.removeAttribute('href')
+              return
+            }
+            node.setAttribute('href', safeHref)
+            if (isExternalUrl(safeHref)) {
+              node.setAttribute('target', '_blank')
               const rel = node.getAttribute('rel') || ''
               const relParts = new Set(rel.split(/\s+/).filter(Boolean))
-              relParts.add('nofollow')
               relParts.add('noopener')
+              relParts.add('noreferrer')
+              if (safeHref.includes('t.me/')) {
+                relParts.add('nofollow')
+              }
               node.setAttribute('rel', Array.from(relParts).join(' '))
             }
           }

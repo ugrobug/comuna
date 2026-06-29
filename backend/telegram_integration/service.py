@@ -20,6 +20,7 @@ from telegram_integration.models import TelegramAccount
 
 User = get_user_model()
 _oidc_jwks_client: PyJWKClient | None = None
+GROUPED_POST_NOTIFICATION_TELEGRAM_LIMIT = 10
 
 _TELEGRAM_LOGIN_FIELDS = {
     "id",
@@ -372,6 +373,27 @@ def notification_link_absolute(link_url: str) -> str:
     return f"{base}{value}"
 
 
+def _grouped_post_notification_text(notification: SiteNotification) -> str:
+    payload = notification.payload if isinstance(notification.payload, dict) else {}
+    items = payload.get("items")
+    if not isinstance(items, list):
+        return ""
+    lines = [notification.title.strip()]
+    added = 0
+    for item in items[:GROUPED_POST_NOTIFICATION_TELEGRAM_LIMIT]:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or "Пост").strip()
+        link = notification_link_absolute(str(item.get("link_url") or "").strip())
+        if not title or not link:
+            continue
+        lines.append(f"{title}\n{link}")
+        added += 1
+    if not added:
+        return ""
+    return "\n\n".join(line for line in lines if line).strip()
+
+
 def send_site_notification_to_telegram(notification: SiteNotification) -> None:
     if not notification.is_telegram:
         return
@@ -383,13 +405,17 @@ def send_site_notification_to_telegram(notification: SiteNotification) -> None:
     if not account:
         return
 
-    parts = [notification.title.strip()]
-    if notification.message.strip():
-        parts.append(notification.message.strip())
-    link = notification_link_absolute(notification.link_url)
-    if link:
-        parts.append(link)
-    text = "\n\n".join([part for part in parts if part]).strip()
+    text = ""
+    if notification.event_key == "post_published" and notification.group_key:
+        text = _grouped_post_notification_text(notification)
+    if not text:
+        parts = [notification.title.strip()]
+        if notification.message.strip():
+            parts.append(notification.message.strip())
+        link = notification_link_absolute(notification.link_url)
+        if link:
+            parts.append(link)
+        text = "\n\n".join([part for part in parts if part]).strip()
     if not text:
         return
 

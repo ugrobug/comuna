@@ -178,7 +178,7 @@
                 {/if}
               </div>
               {#if item.message}
-                <div class="mt-1 text-sm text-slate-600 dark:text-zinc-300 break-words">
+                <div class="mt-1 text-sm text-slate-600 dark:text-zinc-300 break-words whitespace-pre-line">
                   {item.message}
                 </div>
               {/if}

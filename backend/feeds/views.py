@@ -21,7 +21,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections import defaultdict
-from datetime import datetime as dt_datetime, timedelta, timezone as dt_timezone
+from datetime import datetime as dt_datetime, time as dt_time, timedelta, timezone as dt_timezone
 from math import ceil
 from html import escape, unescape
 from xml.sax.saxutils import escape as xml_escape
@@ -887,6 +887,18 @@ def _post_published_group_key(period: str, *, now=None) -> str:
     return ""
 
 
+def _post_published_delivery_at(period: str, *, now=None):
+    current_tz = timezone.get_current_timezone()
+    local_now = timezone.localtime(now or timezone.now(), current_tz)
+    if period == "day":
+        delivery_date = local_now.date() + timedelta(days=1)
+    elif period == "week":
+        delivery_date = local_now.date() + timedelta(days=7 - local_now.weekday())
+    else:
+        return timezone.now()
+    return dt_datetime.combine(delivery_date, dt_time.min, tzinfo=current_tz)
+
+
 def _maybe_notify_post_published_to_subscribers(
     post: Post,
     *,
@@ -956,7 +968,7 @@ def _maybe_notify_post_published_to_subscribers(
         grouping_period = notification_grouping_period_for_user(recipient, "post_published")
         if grouping_period in {"day", "week"}:
             group_key = _post_published_group_key(grouping_period)
-            group_label = "сегодня" if grouping_period == "day" else "за неделю"
+            group_label = "за день" if grouping_period == "day" else "за неделю"
             create_grouped_user_notification(
                 user=recipient,
                 event_key="post_published",
@@ -973,6 +985,8 @@ def _maybe_notify_post_published_to_subscribers(
                 },
                 group_key=group_key,
                 group_item=item_payload,
+                delivery_at=_post_published_delivery_at(grouping_period),
+                defer_delivery=True,
             )
             continue
 
@@ -1790,6 +1804,26 @@ def _utf16_offset_to_index(text: str, offset: int) -> int:
     return len(text)
 
 
+_BARE_EXTERNAL_LINK_RE = re.compile(
+    r"^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}"
+    r"(?::\d{1,5})?(?:[/?#].*)?$",
+    re.I,
+)
+
+
+def _normalize_entity_link_href(value: object) -> str:
+    href = str(value or "").strip()
+    if not href:
+        return ""
+    if re.match(r"^[a-z0-9+.-]+:", href, re.I) or href.startswith("//"):
+        return href
+    if re.match(r"^(?:[/?#]|\.\.?/)", href):
+        return href
+    if not re.search(r"\s", href) and _BARE_EXTERNAL_LINK_RE.match(href):
+        return f"https://{href}"
+    return href
+
+
 def _entity_tags(entity: dict, segment: str) -> tuple[str, str] | None:
     entity_type = entity.get("type")
     if entity_type == "bold":
@@ -1811,10 +1845,10 @@ def _entity_tags(entity: dict, segment: str) -> tuple[str, str] | None:
     if entity_type == "blockquote":
         return "<blockquote>", "</blockquote>"
     if entity_type == "text_link":
-        url = entity.get("url") or ""
+        url = _normalize_entity_link_href(entity.get("url") or "")
         return f'<a href="{escape(url)}" target="_blank" rel="noopener">', "</a>"
     if entity_type == "url":
-        href = segment.strip()
+        href = _normalize_entity_link_href(segment)
         return f'<a href="{escape(href)}" target="_blank" rel="noopener">', "</a>"
     if entity_type == "mention":
         username = segment.lstrip("@")

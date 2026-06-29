@@ -407,6 +407,7 @@ def create_user_notification(
     if not is_site and not is_telegram and not is_push:
         return None
 
+    now = timezone.now()
     notification = SiteNotification.objects.create(
         user=user,
         event_key=event_key,
@@ -418,6 +419,8 @@ def create_user_notification(
         is_site=is_site,
         is_telegram=is_telegram,
         is_push=is_push,
+        delivery_at=now,
+        delivered_at=now,
     )
     if is_telegram:
         send_site_notification_to_telegram(notification)
@@ -436,6 +439,8 @@ def create_grouped_user_notification(
     payload: dict[str, Any] | None = None,
     group_key: str = "",
     group_item: dict[str, Any] | None = None,
+    delivery_at=None,
+    defer_delivery: bool = False,
     force_site: bool | None = None,
     force_telegram: bool | None = None,
     force_push: bool | None = None,
@@ -469,6 +474,9 @@ def create_grouped_user_notification(
     if not is_site and not is_telegram and not is_push:
         return None
 
+    now = timezone.now()
+    effective_delivery_at = delivery_at or now
+    delivered_at = None if defer_delivery else now
     item = group_item if isinstance(group_item, dict) else {}
     with transaction.atomic():
         notification = (
@@ -491,6 +499,8 @@ def create_grouped_user_notification(
                 is_site=is_site,
                 is_telegram=is_telegram,
                 is_push=is_push,
+                delivery_at=effective_delivery_at,
+                delivered_at=delivered_at,
             )
         else:
             group_payload = notification.payload if isinstance(notification.payload, dict) else {}
@@ -508,6 +518,15 @@ def create_grouped_user_notification(
             notification.is_site = is_site
             notification.is_telegram = is_telegram
             notification.is_push = is_push
+            notification.delivery_at = effective_delivery_at
+            if defer_delivery:
+                notification.delivered_at = None
+                notification.telegram_sent_at = None
+                notification.telegram_error = ""
+                notification.push_sent_at = None
+                notification.push_error = ""
+            else:
+                notification.delivered_at = now
             notification.read_at = None
             notification.save(
                 update_fields=[
@@ -519,16 +538,107 @@ def create_grouped_user_notification(
                     "is_site",
                     "is_telegram",
                     "is_push",
+                    "delivery_at",
+                    "delivered_at",
+                    "telegram_sent_at",
+                    "telegram_error",
+                    "push_sent_at",
+                    "push_error",
                     "read_at",
                     "updated_at",
                 ]
             )
 
+    if defer_delivery:
+        return notification
     if is_telegram:
         send_site_notification_to_telegram(notification)
     if is_push:
         send_site_notification_to_push(notification)
     return notification
+
+
+def _notification_group_items(notification: SiteNotification) -> list[dict[str, Any]]:
+    payload = notification.payload if isinstance(notification.payload, dict) else {}
+    items = payload.get("items")
+    if not isinstance(items, list):
+        return []
+    return [item for item in items if isinstance(item, dict)]
+
+
+def _prepare_grouped_post_notification_for_delivery(notification: SiteNotification) -> None:
+    if notification.event_key != "post_published" or not notification.group_key:
+        return
+
+    payload = notification.payload if isinstance(notification.payload, dict) else {}
+    period = str(payload.get("grouping_period") or "").strip()
+    group_label = str(payload.get("group_label") or "").strip()
+    if not group_label:
+        group_label = "за неделю" if period == "week" else "за день"
+
+    items = _notification_group_items(notification)
+    count = max(int(notification.group_count or 0), len(items), 1)
+    notification.title = f"Новые посты {group_label}"
+    if items:
+        lines = [f"В подборке {count} постов:"]
+        lines.extend(f"• {str(item.get('title') or 'Пост').strip()}" for item in items)
+        notification.message = "\n".join(lines)
+        latest_link = str(items[-1].get("link_url") or "").strip()
+        if latest_link:
+            notification.link_url = latest_link[:500]
+    else:
+        notification.message = f"В подборке {count} постов."
+    notification.group_count = count
+
+
+def deliver_grouped_notification(notification: SiteNotification, *, now=None) -> SiteNotification:
+    now = now or timezone.now()
+    _prepare_grouped_post_notification_for_delivery(notification)
+    notification.delivered_at = now
+    notification.read_at = None
+    notification.save(
+        update_fields=[
+            "title",
+            "message",
+            "link_url",
+            "group_count",
+            "delivered_at",
+            "read_at",
+            "updated_at",
+        ]
+    )
+    if notification.is_telegram:
+        send_site_notification_to_telegram(notification)
+    if notification.is_push:
+        send_site_notification_to_push(notification)
+    return notification
+
+
+def send_due_grouped_notifications(*, limit: int = 500, now=None) -> int:
+    now = now or timezone.now()
+    safe_limit = min(max(int(limit or 500), 1), 2000)
+    sent = 0
+    due_ids = list(
+        SiteNotification.objects.filter(
+            delivered_at__isnull=True,
+            delivery_at__lte=now,
+            group_key__gt="",
+        )
+        .order_by("delivery_at", "id")
+        .values_list("id", flat=True)[:safe_limit]
+    )
+    for notification_id in due_ids:
+        with transaction.atomic():
+            notification = (
+                SiteNotification.objects.select_for_update()
+                .filter(id=notification_id, delivered_at__isnull=True)
+                .first()
+            )
+            if not notification:
+                continue
+            deliver_grouped_notification(notification, now=now)
+            sent += 1
+    return sent
 
 
 def notification_grouping_period_for_user(user: User | None, event_key: str) -> str:
@@ -555,7 +665,11 @@ def list_site_notifications_for_user(
 ) -> tuple[list[SiteNotification], int, int]:
     safe_limit = min(max(int(limit or 10), 1), 50)
     safe_offset = max(int(offset or 0), 0)
-    base_qs = SiteNotification.objects.filter(user=user, is_site=True)
+    base_qs = SiteNotification.objects.filter(
+        user=user,
+        is_site=True,
+        delivered_at__isnull=False,
+    )
     list_qs = base_qs.filter(read_at__isnull=True) if unread_only else base_qs
     total_count = list_qs.count()
     items = list(list_qs.order_by("-updated_at", "-id")[safe_offset : safe_offset + safe_limit])
@@ -571,11 +685,13 @@ def mark_site_notification_read_for_user(
         id=notification_id,
         user=user,
         is_site=True,
+        delivered_at__isnull=False,
     ).first()
     if not notification:
         return None, SiteNotification.objects.filter(
             user=user,
             is_site=True,
+            delivered_at__isnull=False,
             read_at__isnull=True,
         ).count()
 
@@ -586,6 +702,7 @@ def mark_site_notification_read_for_user(
     unread_count = SiteNotification.objects.filter(
         user=user,
         is_site=True,
+        delivered_at__isnull=False,
         read_at__isnull=True,
     ).count()
     return notification, unread_count
@@ -596,6 +713,7 @@ def mark_all_site_notifications_read_for_user(user: User) -> int:
     return SiteNotification.objects.filter(
         user=user,
         is_site=True,
+        delivered_at__isnull=False,
         read_at__isnull=True,
     ).update(read_at=now, updated_at=now)
 
@@ -604,6 +722,7 @@ __all__ = [
     "NOTIFICATION_EVENT_DEFINITIONS",
     "create_grouped_user_notification",
     "create_user_notification",
+    "deliver_grouped_notification",
     "get_notification_event_catalog",
     "get_notification_event_definition",
     "list_site_notifications_for_user",
@@ -611,5 +730,6 @@ __all__ = [
     "mark_site_notification_read_for_user",
     "notification_grouping_period_for_user",
     "serialize_notification_settings_for_user",
+    "send_due_grouped_notifications",
     "update_notification_settings_for_user",
 ]

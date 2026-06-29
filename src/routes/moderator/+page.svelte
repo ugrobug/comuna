@@ -5,6 +5,7 @@
     buildModeratorAnalyticsUrl,
     buildModeratorChatReportUrl,
     buildModeratorChatReportsUrl,
+    buildModeratorPostViewDefaultsUrl,
     buildModeratorPostViewSettingsUrl,
     buildModeratorPostViewSettingUrl,
     buildModeratorRatingSettingsUrl,
@@ -74,8 +75,15 @@
   type PostViewSettingsResponse = {
     ok: boolean
     error?: string
+    defaults?: PostViewDefaults
     posts?: PostViewSettingsItem[]
     post?: PostViewSettingsItem
+  }
+
+  type PostViewDefaults = {
+    fake_views_target_min: number
+    fake_views_target_max: number
+    updated_at?: string | null
   }
 
   type RatingSettings = {
@@ -132,6 +140,9 @@
   let viewSettingsError = ''
   let viewSettingsQuery = ''
   let viewSettingsPosts: PostViewSettingsItem[] = []
+  let viewDefaults: PostViewDefaults | null = null
+  let viewDefaultsSaving = false
+  let viewDefaultsNotice = ''
   let savingViewSettings: Record<number, boolean> = {}
   let activeTab: ModeratorTab = 'analytics'
   let ratingSettingsLoading = true
@@ -365,12 +376,48 @@
       if (!response.ok || !data.ok) {
         throw new Error(data.error || 'Не удалось загрузить просмотры')
       }
+      viewDefaults = data.defaults ?? viewDefaults
       viewSettingsPosts = data.posts ?? []
     } catch (err) {
       viewSettingsError = err instanceof Error ? err.message : 'Не удалось загрузить просмотры'
       viewSettingsPosts = []
     } finally {
       viewSettingsLoading = false
+    }
+  }
+
+  async function saveViewDefaults() {
+    if (!viewDefaults) return
+    const nextMin = Math.max(0, Math.trunc(Number(viewDefaults.fake_views_target_min) || 0))
+    const nextMax = Math.max(0, Math.trunc(Number(viewDefaults.fake_views_target_max) || 0))
+    viewDefaults.fake_views_target_min = nextMin
+    viewDefaults.fake_views_target_max = nextMax
+    viewDefaultsSaving = true
+    viewSettingsError = ''
+    viewDefaultsNotice = ''
+
+    try {
+      const token = $siteToken
+      const response = await fetch(buildModeratorPostViewDefaultsUrl(), {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(viewDefaults),
+      })
+      const data = await readModeratorJson<PostViewSettingsResponse>(response)
+      if (!response.ok || !data.ok || !data.defaults) {
+        throw new Error(data.error || 'Не удалось сохранить диапазон просмотров')
+      }
+      viewDefaults = data.defaults
+      viewDefaultsNotice = 'Диапазон для новых постов сохранен.'
+    } catch (err) {
+      viewSettingsError =
+        err instanceof Error ? err.message : 'Не удалось сохранить диапазон просмотров'
+    } finally {
+      viewDefaultsSaving = false
     }
   }
 
@@ -703,6 +750,49 @@
 
     {#if viewSettingsError}
       <div class="notice error">{viewSettingsError}</div>
+    {/if}
+    {#if viewDefaultsNotice}
+      <div class="notice success">{viewDefaultsNotice}</div>
+    {/if}
+
+    {#if viewDefaults}
+      <article class="view-defaults-card">
+        <div class="view-defaults-info">
+          <strong>Диапазон фейковых просмотров для новых постов</strong>
+          <span>
+            Новые посты получают случайную цель в этом диапазоне. Уже созданные посты
+            меняются отдельно в списке ниже.
+          </span>
+        </div>
+        <label class="display-input">
+          <span>Минимум</span>
+          <input
+            type="number"
+            min="0"
+            max="1000000"
+            step="1"
+            bind:value={viewDefaults.fake_views_target_min}
+          />
+        </label>
+        <label class="display-input">
+          <span>Максимум</span>
+          <input
+            type="number"
+            min="0"
+            max="1000000"
+            step="1"
+            bind:value={viewDefaults.fake_views_target_max}
+          />
+        </label>
+        <button
+          class="secondary-button save-button"
+          type="button"
+          disabled={viewDefaultsSaving}
+          on:click={saveViewDefaults}
+        >
+          {viewDefaultsSaving ? 'Сохраняю' : 'Сохранить'}
+        </button>
+      </article>
     {/if}
 
     {#if viewSettingsLoading}
@@ -1226,6 +1316,36 @@
     gap: 10px;
   }
 
+  .view-defaults-card {
+    border: 1px solid rgb(226 232 240);
+    border-radius: 8px;
+    background: rgb(248 250 252);
+    padding: 14px;
+    display: grid;
+    grid-template-columns: minmax(260px, 1fr) minmax(110px, 160px) minmax(110px, 160px) auto;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 14px;
+  }
+
+  .view-defaults-info {
+    min-width: 0;
+    display: grid;
+    gap: 5px;
+  }
+
+  .view-defaults-info strong {
+    color: rgb(15 23 42);
+    font-size: 15px;
+    line-height: 1.25;
+  }
+
+  .view-defaults-info span {
+    color: rgb(100 116 139);
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
   .static-pages-list {
     display: grid;
     gap: 10px;
@@ -1588,6 +1708,7 @@
   :global(.dark) .chat-report-footer span,
   :global(.dark) .chat-reports-total,
   :global(.dark) .view-cell span,
+  :global(.dark) .view-defaults-info span,
   :global(.dark) .display-input span,
   :global(.dark) .rating-setting-card small,
   :global(.dark) .empty-state {
@@ -1606,6 +1727,7 @@
   :global(.dark) .secondary-button,
   :global(.dark) .icon-action,
   :global(.dark) .post-info strong,
+  :global(.dark) .view-defaults-info strong,
   :global(.dark) .chat-report-users strong,
   :global(.dark) .chat-report-message,
   :global(.dark) .static-page-info strong,
@@ -1619,6 +1741,7 @@
   :global(.dark) .rating-settings-section,
   :global(.dark) .chat-reports-section,
   :global(.dark) .static-pages-section,
+  :global(.dark) .view-defaults-card,
   :global(.dark) .view-settings-row,
   :global(.dark) .chat-report-row,
   :global(.dark) .chat-report-message,
@@ -1741,6 +1864,11 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
+    .view-defaults-card {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .view-defaults-info,
     .post-info,
     .save-button {
       grid-column: 1 / -1;

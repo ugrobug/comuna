@@ -59,6 +59,8 @@ class SiteNotification(models.Model):
     is_telegram = models.BooleanField(default=False)
     is_push = models.BooleanField(default=False)
     read_at = models.DateTimeField(null=True, blank=True)
+    delivery_at = models.DateTimeField(null=True, blank=True)
+    delivered_at = models.DateTimeField(null=True, blank=True)
     telegram_sent_at = models.DateTimeField(null=True, blank=True)
     telegram_error = models.TextField(blank=True)
     push_sent_at = models.DateTimeField(null=True, blank=True)
@@ -77,6 +79,7 @@ class SiteNotification(models.Model):
             models.Index(fields=("user", "is_site")),
             models.Index(fields=("user", "is_push")),
             models.Index(fields=("user", "event_key", "group_key")),
+            models.Index(fields=("delivered_at", "delivery_at")),
         ]
 
     def __str__(self) -> str:

@@ -31,6 +31,8 @@ from editor.models import (
 User = get_user_model()
 
 _MORPH_ANALYZER = None
+DEFAULT_FAKE_VIEWS_TARGET_MIN = 30
+DEFAULT_FAKE_VIEWS_TARGET_MAX = 400
 
 
 def _send_bot_message_to_chat(chat_id: int, text: str) -> None:
@@ -52,8 +54,23 @@ def _send_bot_message_to_chat(chat_id: int, text: str) -> None:
     except Exception:
         return
 
+
+def _current_fake_views_target_range() -> tuple[int, int]:
+    try:
+        settings_obj, _created = PostViewSettings.objects.get_or_create(pk=1)
+        min_value = int(settings_obj.fake_views_target_min or 0)
+        max_value = int(settings_obj.fake_views_target_max or 0)
+    except Exception:
+        min_value = DEFAULT_FAKE_VIEWS_TARGET_MIN
+        max_value = DEFAULT_FAKE_VIEWS_TARGET_MAX
+    min_value = max(min_value, 0)
+    max_value = max(max_value, min_value)
+    return min_value, max_value
+
+
 def default_post_fake_views_target() -> int:
-    return random.randint(30, 400)
+    min_value, max_value = _current_fake_views_target_range()
+    return random.randint(min_value, max_value)
 
 
 def _ensure_pymorphy2_compat():
@@ -295,6 +312,23 @@ class StaticPageContent(models.Model):
 
     def __str__(self) -> str:
         return self.slug
+
+
+class PostViewSettings(models.Model):
+    fake_views_target_min = models.PositiveIntegerField(default=DEFAULT_FAKE_VIEWS_TARGET_MIN)
+    fake_views_target_max = models.PositiveIntegerField(default=DEFAULT_FAKE_VIEWS_TARGET_MAX)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Настройки просмотров"
+        verbose_name_plural = "Настройки просмотров"
+
+    def __str__(self) -> str:
+        return "Настройки просмотров"
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
 
 
 class Post(models.Model):

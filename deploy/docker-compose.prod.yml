@@ -73,6 +73,22 @@ services:
     volumes:
       - ./secrets:/app/secrets:ro
 
+  grouped-notifications:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+    restart: unless-stopped
+    command: sh -c "while true; do python manage.py send_grouped_notifications_due || true; sleep 60; done"
+    env_file:
+      - .env.backend
+    extra_hosts:
+      - "api.telegram.org:149.154.167.220"
+      - "oauth.telegram.org:149.154.167.220"
+    depends_on:
+      - db
+    volumes:
+      - ./secrets:/app/secrets:ro
+
   frontend:
     build:
       context: ..

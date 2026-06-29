@@ -1,6 +1,6 @@
 <script lang="ts">
   import { photonify } from './plugins'
-  import { getSafeUrl } from '$lib/security/url'
+  import { getSafeUrl, isExternalUrl } from '$lib/security/url'
 
   export let href = ''
   export let title = undefined
@@ -17,12 +17,15 @@
   $: safeHref = getSafeUrl(photonified ?? href, {
     allowedProtocols: ['http:', 'https:', 'mailto:'],
     allowRelative: true,
+    normalizeBareExternal: true,
   })
+  $: externalHref = isExternalUrl(safeHref)
 </script>
 
 {#if safeHref}
   <a
     href={safeHref}
+    target={externalHref ? '_blank' : undefined}
     {title}
     rel="nofollow ugc noopener noreferrer"
     class="hover:underline text-sky-600 dark:text-sky-500 no-underline"

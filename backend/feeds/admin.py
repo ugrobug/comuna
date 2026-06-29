@@ -12,6 +12,7 @@ from .models import (
     PostCommentLike,
     PostLike,
     PostTranslation,
+    PostViewSettings,
     StaticPageContent,
     Tag,
     TagRelation,
@@ -211,6 +212,12 @@ class StaticPageContentAdmin(admin.ModelAdmin):
     search_fields = ("slug", "title")
     readonly_fields = ("created_at", "updated_at")
     fields = ("slug", "title", "content", "updated_by", "created_at", "updated_at")
+
+
+@admin.register(PostViewSettings)
+class PostViewSettingsAdmin(admin.ModelAdmin):
+    list_display = ("id", "fake_views_target_min", "fake_views_target_max", "updated_at")
+    readonly_fields = ("updated_at",)
 
 
 @admin.register(PostComment)

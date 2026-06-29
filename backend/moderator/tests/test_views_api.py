@@ -8,7 +8,14 @@ from django.urls import reverse
 from django.utils import timezone
 
 from communities.models import Comun
-from feeds.models import Author, Post, PostComment, PostCommentLike, PostLike
+from feeds.models import (
+    Author,
+    Post,
+    PostComment,
+    PostCommentLike,
+    PostLike,
+    PostViewSettings,
+)
 from my_feed.models import ComunSubscriptionEvent
 from users import chat_service
 from users.models import (
@@ -65,6 +72,21 @@ class ModeratorAnalyticsApiTests(TestCase):
         self.assertEqual(response.status_code, 401)
 
         response = self.client.get(reverse("moderator-post-view-settings"), **self.user_headers)
+        self.assertEqual(response.status_code, 403)
+
+        response = self.client.patch(
+            reverse("moderator-post-view-defaults-update"),
+            data='{"fake_views_target_min": 10, "fake_views_target_max": 20}',
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 401)
+
+        response = self.client.patch(
+            reverse("moderator-post-view-defaults-update"),
+            data='{"fake_views_target_min": 10, "fake_views_target_max": 20}',
+            content_type="application/json",
+            **self.user_headers,
+        )
         self.assertEqual(response.status_code, 403)
 
         response = self.client.patch(
@@ -210,9 +232,37 @@ class ModeratorAnalyticsApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertTrue(data["ok"])
+        self.assertEqual(data["defaults"]["fake_views_target_min"], 30)
+        self.assertEqual(data["defaults"]["fake_views_target_max"], 400)
         self.assertEqual(data["posts"][0]["id"], post.id)
         self.assertEqual(data["posts"][0]["real_views_count"], 12)
         self.assertEqual(data["posts"][0]["display_views_target"], 40)
+
+        response = self.client.patch(
+            reverse("moderator-post-view-defaults-update"),
+            data='{"fake_views_target_min": 7, "fake_views_target_max": 7}',
+            content_type="application/json",
+            **self.staff_headers,
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["defaults"]["fake_views_target_min"], 7)
+        self.assertEqual(data["defaults"]["fake_views_target_max"], 7)
+        settings = PostViewSettings.objects.get(pk=1)
+        self.assertEqual(settings.fake_views_target_min, 7)
+        self.assertEqual(settings.fake_views_target_max, 7)
+
+        next_post = Post.objects.create(author=author, message_id=11, title="Next post")
+        self.assertEqual(next_post.fake_views_target, 7)
+
+        response = self.client.patch(
+            reverse("moderator-post-view-defaults-update"),
+            data='{"fake_views_target_min": 9, "fake_views_target_max": 8}',
+            content_type="application/json",
+            **self.staff_headers,
+        )
+        self.assertEqual(response.status_code, 400)
 
         response = self.client.patch(
             reverse("moderator-post-view-setting-update", args=[post.id]),

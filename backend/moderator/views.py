@@ -9,7 +9,7 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
 from communities.models import Comun
-from feeds.models import Author, Post, PostComment, PostCommentLike, PostLike
+from feeds.models import Author, Post, PostComment, PostCommentLike, PostLike, PostViewSettings
 from my_feed.models import ComunSubscriptionEvent
 from ratings.service import (
     get_rating_settings,
@@ -104,6 +104,20 @@ def _serialize_post_view_settings(post: Post, now=None) -> dict:
         "display_views_target": int(post.display_views_target or 0),
         "display_views_current": _post_display_views_current(post, now=now),
         "views_total": _post_total_views(post, now=now),
+    }
+
+
+def _get_post_view_settings() -> PostViewSettings:
+    settings_obj, _created = PostViewSettings.objects.get_or_create(pk=1)
+    return settings_obj
+
+
+def _serialize_post_view_defaults(settings_obj: PostViewSettings | None = None) -> dict:
+    settings_obj = settings_obj or _get_post_view_settings()
+    return {
+        "fake_views_target_min": int(settings_obj.fake_views_target_min or 0),
+        "fake_views_target_max": int(settings_obj.fake_views_target_max or 0),
+        "updated_at": settings_obj.updated_at.isoformat() if settings_obj.updated_at else None,
     }
 
 
@@ -206,9 +220,49 @@ def moderator_post_view_settings(request: HttpRequest) -> HttpResponse:
     return JsonResponse(
         {
             "ok": True,
+            "defaults": _serialize_post_view_defaults(),
             "posts": [_serialize_post_view_settings(post, now=now) for post in posts[:limit]],
         }
     )
+
+
+@csrf_exempt
+def moderator_post_view_defaults_update(request: HttpRequest) -> HttpResponse:
+    if request.method not in {"PATCH", "POST"}:
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    _user, auth_response = _staff_user_or_response(request)
+    if auth_response is not None:
+        return auth_response
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+        min_value = int(payload.get("fake_views_target_min"))
+        max_value = int(payload.get("fake_views_target_max"))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return JsonResponse({"ok": False, "error": "invalid fake views range"}, status=400)
+
+    if min_value < 0 or max_value < 0:
+        return JsonResponse({"ok": False, "error": "fake views range must be positive"}, status=400)
+    if min_value > max_value:
+        return JsonResponse(
+            {"ok": False, "error": "fake views minimum must be less than or equal to maximum"},
+            status=400,
+        )
+    if max_value > _MAX_DISPLAY_VIEWS_TARGET:
+        return JsonResponse(
+            {
+                "ok": False,
+                "error": f"fake views maximum must be between 0 and {_MAX_DISPLAY_VIEWS_TARGET}",
+            },
+            status=400,
+        )
+
+    settings_obj = _get_post_view_settings()
+    settings_obj.fake_views_target_min = min_value
+    settings_obj.fake_views_target_max = max_value
+    settings_obj.save(update_fields=["fake_views_target_min", "fake_views_target_max", "updated_at"])
+    return JsonResponse({"ok": True, "defaults": _serialize_post_view_defaults(settings_obj)})
 
 
 @csrf_exempt

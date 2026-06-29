@@ -358,6 +358,10 @@ export const buildModeratorPostViewSettingUrl = (id: number | string): string =>
   return `${getBackendBaseUrl()}/api/moderator/posts/${encodeURIComponent(id)}/view-settings/`
 }
 
+export const buildModeratorPostViewDefaultsUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/moderator/post-view-settings/defaults/`
+}
+
 export const buildModeratorRatingSettingsUrl = (): string => {
   return `${getBackendBaseUrl()}/api/moderator/rating-settings/`
 }

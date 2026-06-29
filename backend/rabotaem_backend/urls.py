@@ -74,6 +74,7 @@ from moderator.views import (
     moderator_analytics,
     moderator_chat_report_update,
     moderator_chat_reports,
+    moderator_post_view_defaults_update,
     moderator_post_view_setting_update,
     moderator_post_view_settings,
     moderator_rating_settings,
@@ -318,6 +319,11 @@ urlpatterns = [
         "api/moderator/post-view-settings/",
         moderator_post_view_settings,
         name="moderator-post-view-settings",
+    ),
+    path(
+        "api/moderator/post-view-settings/defaults/",
+        moderator_post_view_defaults_update,
+        name="moderator-post-view-defaults-update",
     ),
     path(
         "api/moderator/posts/<int:post_id>/view-settings/",

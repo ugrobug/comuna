@@ -1,4 +1,4 @@
-import { getSafeUrl } from './url'
+import { getSafeUrl, isExternalUrl } from './url'
 
 const ALLOWED_TAGS = new Set([
   'p',
@@ -190,6 +190,7 @@ const sanitizeAttributeValue = (tag: string, name: string, value: string) => {
     return getSafeUrl(decodedValue, {
       allowedProtocols: ['http:', 'https:', 'mailto:'],
       allowRelative: true,
+      normalizeBareExternal: true,
     })
   }
 
@@ -233,15 +234,21 @@ const collectAttributes = (tag: string, source: string) => {
 
   if (tag === 'a') {
     const href = attributes.find(([name]) => name === 'href')?.[1]
+    const targetIndex = attributes.findIndex(([name]) => name === 'target')
     const relIndex = attributes.findIndex(([name]) => name === 'rel')
     const relParts = new Set(
       relIndex >= 0 && attributes[relIndex][1]
         ? String(attributes[relIndex][1]).split(/\s+/).filter(Boolean)
         : []
     )
+    if (typeof href === 'string' && isExternalUrl(href)) {
+      relParts.add('noopener')
+      relParts.add('noreferrer')
+      if (targetIndex >= 0) attributes[targetIndex] = ['target', '_blank']
+      if (targetIndex < 0) attributes.push(['target', '_blank'])
+    }
     if (typeof href === 'string' && href.includes('t.me/')) {
       relParts.add('nofollow')
-      relParts.add('noopener')
     }
     if (relParts.size && relIndex >= 0) attributes[relIndex] = ['rel', Array.from(relParts).join(' ')]
     if (relParts.size && relIndex < 0) attributes.push(['rel', Array.from(relParts).join(' ')])
