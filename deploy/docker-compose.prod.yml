@@ -89,6 +89,19 @@ services:
     volumes:
       - ./secrets:/app/secrets:ro
 
+  content-translation-tasks:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+    restart: unless-stopped
+    command: python manage.py process_translation_tasks --loop --interval 30 --limit 20
+    env_file:
+      - .env.backend
+    depends_on:
+      - db
+    volumes:
+      - ./secrets:/app/secrets:ro
+
   frontend:
     build:
       context: ..
