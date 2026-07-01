@@ -103,6 +103,7 @@ AUTO_TRANSLATION_DELAYS = {
 
 TRANSLATION_DISABLED_RETRY_DELAY = timedelta(minutes=15)
 POST_TRANSLATION_TITLE_MAX_LENGTH = 255
+CONTENT_TRANSLATION_TASK_STALE_AFTER = timedelta(minutes=12)
 
 
 def get_translation_language_label(language: str) -> str:
@@ -474,6 +475,7 @@ def schedule_comun_auto_translation(comun: Comun) -> ContentTranslationTask | No
 def process_due_translation_tasks(*, limit: int = 20) -> dict[str, int]:
     stats = {"processed": 0, "done": 0, "failed": 0, "skipped": 0}
     now = timezone.now()
+    _reset_stale_running_translation_tasks(now)
     task_ids = list(
         ContentTranslationTask.objects.filter(
             status=CONTENT_TRANSLATION_TASK_STATUS_PENDING,
@@ -529,6 +531,19 @@ def process_translation_task(task_id: int) -> str:
         CONTENT_TRANSLATION_TASK_STATUS_DONE,
         last_error="",
         result="done",
+    )
+
+
+def _reset_stale_running_translation_tasks(now) -> int:
+    stale_before = now - CONTENT_TRANSLATION_TASK_STALE_AFTER
+    return ContentTranslationTask.objects.filter(
+        status=CONTENT_TRANSLATION_TASK_STATUS_RUNNING,
+        locked_at__lt=stale_before,
+    ).update(
+        status=CONTENT_TRANSLATION_TASK_STATUS_PENDING,
+        locked_at=None,
+        last_error="Задача возвращена в очередь после таймаута обработчика",
+        updated_at=now,
     )
 
 
@@ -747,6 +762,8 @@ def _process_translation_task_payload(task: ContentTranslationTask) -> None:
         _raise_if_task_is_stale(task, post.updated_at)
         _reserve_translation_budget(task)
         for language in SUPPORTED_TRANSLATION_LANGUAGES:
+            if _post_translation_is_current(post, language):
+                continue
             translate_post_to_language(post, language)
         return
 
@@ -761,6 +778,8 @@ def _process_translation_task_payload(task: ContentTranslationTask) -> None:
         _raise_if_task_is_stale(task, comment.updated_at)
         _reserve_translation_budget(task)
         for language in SUPPORTED_TRANSLATION_LANGUAGES:
+            if _comment_translation_is_current(comment, language):
+                continue
             translate_comment_to_language(comment, language)
         return
 
@@ -771,10 +790,49 @@ def _process_translation_task_payload(task: ContentTranslationTask) -> None:
         _raise_if_task_is_stale(task, comun.updated_at)
         _reserve_translation_budget(task)
         for language in SUPPORTED_TRANSLATION_LANGUAGES:
+            if _comun_translation_is_current(comun, language):
+                continue
             translate_comun_to_language(comun, language)
         return
 
     raise AutoTranslationSkipped(f"Неизвестный тип задачи: {task.kind}")
+
+
+def _translation_updated_after_source(translation, source_updated_at) -> bool:
+    return not source_updated_at or translation.updated_at >= source_updated_at
+
+
+def _post_translation_is_current(post: Post, language: str) -> bool:
+    translation = PostTranslation.objects.filter(post=post, language=language).first()
+    if not translation or translation.status != POST_TRANSLATION_STATUS_TRANSLATED:
+        return False
+    if (post.title or "").strip() and not (translation.title or "").strip():
+        return False
+    if (post.content or "").strip() and not (translation.content or "").strip():
+        return False
+    return _translation_updated_after_source(translation, post.updated_at)
+
+
+def _comment_translation_is_current(comment: PostComment, language: str) -> bool:
+    translation = PostCommentTranslation.objects.filter(comment=comment, language=language).first()
+    if not translation or translation.status != POST_TRANSLATION_STATUS_TRANSLATED:
+        return False
+    if (comment.body or "").strip() and not (translation.body or "").strip():
+        return False
+    return _translation_updated_after_source(translation, comment.updated_at)
+
+
+def _comun_translation_is_current(comun: Comun, language: str) -> bool:
+    translation = ComunTranslation.objects.filter(comun=comun, language=language).first()
+    if not translation or translation.status != POST_TRANSLATION_STATUS_TRANSLATED:
+        return False
+    if (comun.product_description or "").strip() and not (
+        translation.product_description or ""
+    ).strip():
+        return False
+    if (comun.rules_text or "").strip() and not (translation.rules_text or "").strip():
+        return False
+    return _translation_updated_after_source(translation, comun.updated_at)
 
 
 def _raise_if_task_is_stale(task: ContentTranslationTask, source_updated_at) -> None:
