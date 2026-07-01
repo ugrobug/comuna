@@ -3006,7 +3006,7 @@
       const editorContent = parseSerializedEditorModel(html)
       const fullHtml = editorContent ? convertJsonToHtml(html) : html
       const contentHtml = stripLeadingTitleFromHtml(fullHtml)
-      return showFullBody ? contentHtml : removeDuplicateLeadingPreviewImage(contentHtml)
+      return contentHtml
     }
 
     if (collapsible) {

@@ -361,9 +361,9 @@ def auth_chat_detail(request: HttpRequest, chat_id: int) -> HttpResponse:
         except ValueError:
             before_id = None
 
-    messages = chat_service.list_messages_for_chat(chat, user, limit=limit, before_id=before_id)
     chat_service.mark_chat_read_for_user(chat, user)
     chat_service.mark_chat_notifications_read_for_user(chat, user)
+    messages = chat_service.list_messages_for_chat(chat, user, limit=limit, before_id=before_id)
     return JsonResponse(
         {
             "ok": True,

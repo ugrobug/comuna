@@ -131,6 +131,7 @@ def _serialize_chat_message(message: SiteChatMessage) -> dict:
         "sender": _serialize_chat_user(sender),
         "sender_id": message.sender_id,
         "body": message.body,
+        "delivered_at": message.delivered_at.isoformat() if message.delivered_at else None,
         "read_at": message.read_at.isoformat() if message.read_at else None,
         "created_at": message.created_at.isoformat(),
         "updated_at": message.updated_at.isoformat(),
@@ -244,10 +245,12 @@ def create_chat_message(chat: SiteChat, sender: User, body: str) -> SiteChatMess
 
     with transaction.atomic():
         had_messages = SiteChatMessage.objects.filter(chat=chat).exists()
+        delivered_at = timezone.now()
         message = SiteChatMessage.objects.create(
             chat=chat,
             sender=sender,
             body=normalized_body,
+            delivered_at=delivered_at,
         )
         SiteChat.objects.filter(id=chat.id).update(
             last_message_id=message.id,

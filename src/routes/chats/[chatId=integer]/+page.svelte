@@ -14,9 +14,12 @@
   } from '$lib/siteAuth'
   import type { BackendSiteChat, BackendSiteChatMessage } from '$lib/api/backend'
 
+  const CHAT_REFRESH_MS = 3500
+
   let chat: BackendSiteChat | null = null
   let messages: BackendSiteChatMessage[] = []
   let loading = false
+  let loadInFlight = false
   let sending = false
   let reporting = false
   let error = ''
@@ -24,6 +27,8 @@
   let loginModalOpen = false
   let messagesEl: HTMLDivElement | null = null
   let refreshTimer: ReturnType<typeof setInterval> | null = null
+  let mounted = false
+  let loadedChatKey = ''
 
   $: chatId = Number($page.params.chatId || 0)
 
@@ -45,18 +50,40 @@
     }
   }
 
-  const loadChat = async (showLoader = true) => {
-    if (!$siteToken || !chatId) return
+  const isNearBottom = () => {
+    if (!messagesEl) return true
+    return messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 120
+  }
+
+  const messageStatusLabel = (message: BackendSiteChatMessage) => {
+    if (message.read_at) return 'Прочитано'
+    if (message.delivered_at) return 'Доставлено'
+    return 'Отправлено'
+  }
+
+  const loadChat = async (showLoader = true, forceScroll = false) => {
+    if (!$siteToken || !chatId || loadInFlight) return
+    loadInFlight = true
     if (showLoader) loading = true
+    const previousLastMessageId = messages.length ? messages[messages.length - 1].id : 0
+    const shouldScrollAfterUpdate = forceScroll || showLoader || isNearBottom()
     error = ''
     try {
       const payload = await fetchSiteChat(chatId, 80)
       chat = payload.chat
       messages = payload.messages
-      await scrollToBottom()
+      const nextLastMessage = messages.length ? messages[messages.length - 1] : null
+      const hasNewMessages = Boolean(nextLastMessage && nextLastMessage.id > previousLastMessageId)
+      if (
+        shouldScrollAfterUpdate ||
+        (hasNewMessages && nextLastMessage?.sender_id === $siteUser?.id)
+      ) {
+        await scrollToBottom()
+      }
     } catch (err) {
       error = (err as Error)?.message ?? 'Не удалось загрузить чат'
     } finally {
+      loadInFlight = false
       loading = false
     }
   }
@@ -105,15 +132,37 @@
   }
 
   onMount(() => {
-    void loadChat()
+    mounted = true
+    if ($siteToken && chatId) {
+      loadedChatKey = `${$siteToken}:${chatId}`
+      void loadChat(true, true)
+    }
     refreshTimer = setInterval(() => {
+      if (document.hidden) return
       void loadChat(false)
-    }, 8000)
+    }, CHAT_REFRESH_MS)
   })
 
   onDestroy(() => {
     if (refreshTimer) clearInterval(refreshTimer)
   })
+
+  $: if (mounted) {
+    const nextChatKey = $siteToken && chatId ? `${$siteToken}:${chatId}` : ''
+    if (nextChatKey && nextChatKey !== loadedChatKey) {
+      loadedChatKey = nextChatKey
+      chat = null
+      messages = []
+      error = ''
+      void loadChat(true, true)
+    } else if (!nextChatKey && loadedChatKey) {
+      loadedChatKey = ''
+      chat = null
+      messages = []
+      error = ''
+      loading = false
+    }
+  }
 </script>
 
 <LoginModal bind:open={loginModalOpen} />
@@ -186,8 +235,17 @@
                   : 'bg-slate-100 text-slate-900 dark:bg-zinc-800 dark:text-zinc-100'
               }`}>
                 <div class="whitespace-pre-wrap break-words">{message.body}</div>
-                <div class={`mt-1 text-[11px] ${mine ? 'text-white/70 dark:text-zinc-500' : 'text-slate-500 dark:text-zinc-400'}`}>
+                <div class={`mt-1 flex items-center gap-1 text-[11px] ${mine ? 'justify-end text-white/70 dark:text-zinc-500' : 'text-slate-500 dark:text-zinc-400'}`}>
                   {formatMessageTime(message.created_at)}
+                  {#if mine}
+                    <span
+                      class={`text-[11px] font-semibold leading-none ${message.read_at ? 'text-sky-300 dark:text-sky-600' : 'text-white/70 dark:text-zinc-500'}`}
+                      title={messageStatusLabel(message)}
+                      aria-label={messageStatusLabel(message)}
+                    >
+                      {message.read_at ? '✓✓' : '✓'}
+                    </span>
+                  {/if}
                 </div>
               </div>
             </div>

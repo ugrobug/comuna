@@ -1,14 +1,20 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onDestroy, onMount } from 'svelte'
   import LoginModal from '$lib/components/auth/LoginModal.svelte'
   import Avatar from '$lib/components/ui/Avatar.svelte'
   import { fetchSiteChats, siteToken } from '$lib/siteAuth'
   import type { BackendSiteChat } from '$lib/api/backend'
 
+  const CHAT_LIST_REFRESH_MS = 6000
+
   let chats: BackendSiteChat[] = []
   let loading = false
   let error = ''
   let loginModalOpen = false
+  let mounted = false
+  let loadedToken: string | null = null
+  let loadInFlight = false
+  let refreshTimer: ReturnType<typeof setInterval> | null = null
 
   const participantName = (chat: BackendSiteChat) =>
     (chat.participant.display_name || '').trim() || `@${chat.participant.username}`
@@ -29,22 +35,49 @@
     }).format(new Date(value))
   }
 
-  const loadChats = async () => {
-    if (!$siteToken) return
-    loading = true
-    error = ''
+  const loadChats = async (showLoader = true) => {
+    if (!$siteToken || loadInFlight) return
+    loadInFlight = true
+    if (showLoader) loading = true
+    if (showLoader || !chats.length) error = ''
     try {
       const payload = await fetchSiteChats(50, 0)
       chats = payload.chats
     } catch (err) {
-      error = (err as Error)?.message ?? 'Не удалось загрузить чаты'
+      if (showLoader || !chats.length) {
+        error = (err as Error)?.message ?? 'Не удалось загрузить чаты'
+      }
     } finally {
+      loadInFlight = false
+      loading = false
+    }
+  }
+
+  $: if (mounted) {
+    if ($siteToken && $siteToken !== loadedToken) {
+      loadedToken = $siteToken
+      void loadChats(!chats.length)
+    } else if (!$siteToken && loadedToken) {
+      loadedToken = null
+      chats = []
+      error = ''
       loading = false
     }
   }
 
   onMount(() => {
-    void loadChats()
+    mounted = true
+    if ($siteToken) {
+      loadedToken = $siteToken
+      void loadChats(true)
+    }
+    refreshTimer = setInterval(() => {
+      void loadChats(false)
+    }, CHAT_LIST_REFRESH_MS)
+  })
+
+  onDestroy(() => {
+    if (refreshTimer) clearInterval(refreshTimer)
   })
 </script>
 
@@ -62,7 +95,7 @@
       <button
         type="button"
         class="rounded-full border border-slate-200 px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:opacity-60 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-900"
-        on:click={loadChats}
+        on:click={() => void loadChats(true)}
         disabled={loading}
       >
         Обновить

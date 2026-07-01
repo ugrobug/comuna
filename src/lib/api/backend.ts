@@ -1025,6 +1025,7 @@ export type BackendSiteChatMessage = {
   sender: BackendSiteChatUser
   sender_id: number
   body: string
+  delivered_at?: string | null
   read_at?: string | null
   created_at: string
   updated_at?: string | null
