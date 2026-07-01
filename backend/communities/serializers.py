@@ -17,11 +17,62 @@ from communities.models import (
 from editor.models import PostPollVote
 from communities import service as community_service
 from editor import service as editor_service
-from feeds.models import Author, Post, PostComment, PostCommentLike, PostFavorite, PostLike, PostRead, Tag
+from feeds.models import (
+    Author,
+    ComunTranslation,
+    POST_TRANSLATION_LANGUAGE_ENGLISH,
+    POST_TRANSLATION_LANGUAGE_FRENCH,
+    POST_TRANSLATION_LANGUAGE_GERMAN,
+    POST_TRANSLATION_LANGUAGE_INDONESIAN,
+    POST_TRANSLATION_LANGUAGE_PORTUGUESE,
+    POST_TRANSLATION_LANGUAGE_SPANISH,
+    POST_TRANSLATION_LANGUAGE_TURKISH,
+    POST_TRANSLATION_STATUS_TRANSLATED,
+    Post,
+    PostComment,
+    PostCommentLike,
+    PostFavorite,
+    PostLike,
+    PostRead,
+    Tag,
+)
 from my_feed import service as my_feed_service
 
 User = get_user_model()
 DELETED_USER_DISPLAY_NAME = "Удаленный пользователь"
+ORIGINAL_CONTENT_LANGUAGE = "ru"
+PUBLIC_CONTENT_LANGUAGES = {
+    ORIGINAL_CONTENT_LANGUAGE,
+    POST_TRANSLATION_LANGUAGE_ENGLISH,
+    POST_TRANSLATION_LANGUAGE_SPANISH,
+    POST_TRANSLATION_LANGUAGE_PORTUGUESE,
+    POST_TRANSLATION_LANGUAGE_GERMAN,
+    POST_TRANSLATION_LANGUAGE_FRENCH,
+    POST_TRANSLATION_LANGUAGE_TURKISH,
+    POST_TRANSLATION_LANGUAGE_INDONESIAN,
+}
+
+
+def _normalize_content_language(value: str | None) -> str:
+    language = str(value or ORIGINAL_CONTENT_LANGUAGE).strip().lower()
+    return language if language in PUBLIC_CONTENT_LANGUAGES else ORIGINAL_CONTENT_LANGUAGE
+
+
+def _comun_translation_for_language(
+    comun: Comun,
+    language: str | None,
+) -> ComunTranslation | None:
+    if not language or language == ORIGINAL_CONTENT_LANGUAGE:
+        return None
+    return (
+        ComunTranslation.objects.filter(
+            comun=comun,
+            language=language,
+            status=POST_TRANSLATION_STATUS_TRANSLATED,
+        )
+        .order_by("-updated_at")
+        .first()
+    )
 
 
 def _site_user_is_deleted(user: User | None) -> bool:
@@ -375,6 +426,7 @@ def _serialize_comun(
     include_options: bool = False,
     include_activity: bool = False,
     include_counts: bool = True,
+    language: str | None = None,
 ) -> dict:
     categories = community_service._comun_categories_list(comun)
     roadmap_category_ids = set(
@@ -410,14 +462,25 @@ def _serialize_comun(
         if welcome_post and community_service._post_belongs_to_comun(comun, welcome_post):
             welcome_post_payload = editor_service._serialize_post_for_user(request, welcome_post, current_user)
 
+    content_language = _normalize_content_language(language)
+    translation = None if include_manage_fields else _comun_translation_for_language(comun, content_language)
+    is_translated = bool(translation)
+    product_description = comun.product_description
+    rules_text = comun.rules_text
+    if translation:
+        product_description = translation.product_description or product_description
+        rules_text = translation.rules_text or rules_text
+
     payload = {
         "id": comun.id,
         "name": comun.name,
         "slug": comun.slug,
         "website_url": comun.website_url,
         "logo_url": community_service._comun_logo_url(request, comun),
-        "product_description": comun.product_description,
-        "rules_text": comun.rules_text,
+        "product_description": product_description,
+        "rules_text": rules_text,
+        "language": content_language if is_translated else ORIGINAL_CONTENT_LANGUAGE,
+        "is_translated": is_translated,
         "target_audience": comun.target_audience,
         "glossary_enabled": bool(getattr(comun, "glossary_enabled", False)),
         "glossary_auto_link_enabled": bool(getattr(comun, "glossary_auto_link_enabled", False)),
