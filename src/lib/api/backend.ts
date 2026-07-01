@@ -27,12 +27,18 @@ export const buildTagPostsUrl = (tag: string): string => {
   return `${getBackendBaseUrl()}/api/tags/${encodeURIComponent(tag)}/posts/`
 }
 
-export const buildPostDetailUrl = (id: number | string): string => {
-  return `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/`
+export const buildPostDetailUrl = (id: number | string, language?: string): string => {
+  const base = `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/`
+  if (!language || language === 'ru') return base
+  const params = new URLSearchParams({ lang: language })
+  return `${base}?${params.toString()}`
 }
 
-export const buildPostCommentsUrl = (id: number | string): string => {
-  return `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/comments/`
+export const buildPostCommentsUrl = (id: number | string, language?: string): string => {
+  const base = `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/comments/`
+  if (!language || language === 'ru') return base
+  const params = new URLSearchParams({ lang: language })
+  return `${base}?${params.toString()}`
 }
 
 export const buildCommentDetailUrl = (id: number | string): string => {
@@ -138,12 +144,14 @@ export const buildComunUrl = (
     includeSettings?: boolean
     includeOptions?: boolean
     includeActivity?: boolean
+    language?: string
   }
 ): string => {
   const params = new URLSearchParams()
   if (options?.includeSettings) params.set('include_settings', '1')
   if (options?.includeOptions) params.set('include_options', '1')
   if (options?.includeActivity) params.set('include_activity', '1')
+  if (options?.language && options.language !== 'ru') params.set('lang', options.language)
   const query = params.toString()
   const base = `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/`
   return query ? `${base}?${query}` : base
@@ -370,6 +378,14 @@ export const buildModeratorRatingSettingsUpdateUrl = (): string => {
   return `${getBackendBaseUrl()}/api/moderator/rating-settings/update/`
 }
 
+export const buildModeratorTranslationSettingsUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/moderator/translation-settings/`
+}
+
+export const buildModeratorTranslationSettingsUpdateUrl = (): string => {
+  return `${getBackendBaseUrl()}/api/moderator/translation-settings/update/`
+}
+
 export const buildModeratorChatReportsUrl = (options?: {
   status?: string
   limit?: number
@@ -581,9 +597,13 @@ export const buildLandingPageAdminImageUrl = (id: number | string): string => {
   return `${getBackendBaseUrl()}/api/landing-pages/admin/images/${encodeURIComponent(id)}/`
 }
 
-export const buildBackendPostPath = (post: { id: number; title: string }): string => {
+export const buildBackendPostPath = (
+  post: { id: number; title: string },
+  language = 'ru'
+): string => {
   const slug = slugifyTitle(post.title)
-  return slug ? `/b/post/${post.id}-${slug}` : `/b/post/${post.id}`
+  const path = slug ? `/b/post/${post.id}-${slug}` : `/b/post/${post.id}`
+  return language === 'ru' ? path : `/${language}${path}`
 }
 
 export const buildHomeFeedUrl = (options?: {
@@ -1132,6 +1152,11 @@ export type BackendPost = {
   id: number
   title: string
   content: string
+  original_title?: string
+  original_content?: string
+  original_language?: string
+  language?: string
+  is_translated?: boolean
   template?: SitePostTemplate | null
   enabled_template_editor_blocks?: string[]
   vote_poll_participations?: BackendPostVotePollParticipation[]

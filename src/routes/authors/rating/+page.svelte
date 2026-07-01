@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { env } from '$env/dynamic/public'
+  import { brandNameForLanguage } from '$lib/brand'
   import TopAuthorsPeriodTabs from '$lib/components/ratings/TopAuthorsPeriodTabs.svelte'
   import TopAuthorsPodium from '$lib/components/ratings/TopAuthorsPodium.svelte'
   import TopAuthorsTable from '$lib/components/ratings/TopAuthorsTable.svelte'
   import type { BackendTopAuthor, BackendTopAuthorPeriod } from '$lib/api/backend'
   import { topAuthorPeriodTitleMap } from '$lib/ratings/topAuthors'
+  import { locale } from '$lib/translations'
 
   export let data: {
     period: BackendTopAuthorPeriod
@@ -12,7 +13,7 @@
     totalAuthors: number
   }
 
-  $: pageTitle = `Рейтинг авторов ${topAuthorPeriodTitleMap[data.period]} - ${env.PUBLIC_SITE_TITLE || 'Тамбур'}`
+  $: pageTitle = `Рейтинг авторов ${topAuthorPeriodTitleMap[data.period]} - ${brandNameForLanguage($locale)}`
   $: pageDescription = `Полный рейтинг авторов сайта ${topAuthorPeriodTitleMap[data.period]}.`
   $: topThree = data.authors.slice(0, 3)
   $: remainingAuthors = data.authors.slice(3)

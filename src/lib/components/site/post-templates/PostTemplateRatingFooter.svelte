@@ -2,6 +2,7 @@
   import { toast } from 'mono-svelte'
   import { buildPostRatingVoteUrl, type BackendPostRating } from '$lib/api/backend'
   import { siteToken } from '$lib/siteAuth'
+  import { t } from '$lib/translations'
 
   export let postId: number | null = null
   export let rating: BackendPostRating | null = null
@@ -34,12 +35,12 @@
 
   const submitVote = async (value: number) => {
     if (!allowVoting || !postId) {
-      toast({ content: 'Голосование доступно только в опубликованном посте', type: 'warning' })
+      toast({ content: $t('site.template.rating.votePublishedOnly'), type: 'warning' })
       return
     }
     const token = $siteToken
     if (!token) {
-      toast({ content: 'Необходимо зарегистрироваться', type: 'warning' })
+      toast({ content: $t('site.template.rating.loginRequired'), type: 'warning' })
       return
     }
     if (!Number.isInteger(value) || value < scaleMin || value > scaleMax || submitting) {
@@ -59,14 +60,14 @@
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok || !payload?.ok) {
-        throw new Error(payload?.error || 'Не удалось сохранить оценку')
+        throw new Error(payload?.error || $t('site.template.rating.saveError'))
       }
       if (payload?.post_rating && typeof payload.post_rating === 'object') {
         localRating = { ...payload.post_rating }
       }
     } catch (error) {
       toast({
-        content: (error as Error)?.message ?? 'Не удалось сохранить оценку',
+        content: (error as Error)?.message ?? $t('site.template.rating.saveError'),
         type: 'error',
       })
     } finally {
@@ -79,11 +80,11 @@
   <section class="template-rating-footer">
     <div class="template-rating-footer__surface">
       <div class="template-rating-footer__copy">
-        <div class="template-rating-footer__eyebrow">Рейтинг</div>
+        <div class="template-rating-footer__eyebrow">{$t('site.template.rating.title')}</div>
       </div>
 
       <div class="template-rating-footer__content">
-        <div class="template-rating-scale" role="group" aria-label="Оценка материала от 1 до 10">
+        <div class="template-rating-scale" role="group" aria-label={$t('site.template.rating.aria')}>
           {#each values as value}
             <button
               type="button"
@@ -100,8 +101,8 @@
         <div class="template-rating-footer__stats" aria-live="polite">
           <div class="template-rating-footer__average">{averageLabel}</div>
           <div class="template-rating-footer__meta">
-            <span>средняя оценка</span>
-            <span>{votesCount} {votesCount === 1 ? 'голос' : votesCount < 5 ? 'голоса' : 'голосов'}</span>
+            <span>{$t('site.template.rating.average')}</span>
+            <span>{$t('site.template.rating.votes', { count: votesCount })}</span>
           </div>
         </div>
       </div>

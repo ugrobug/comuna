@@ -5,7 +5,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from communities.models import Comun, ComunPostCategoryAssignment
-from feeds.models import Author, Post
+from feeds.models import Author, Post, PostTranslation
 
 
 @override_settings(
@@ -52,6 +52,80 @@ class WhereFilmedImportTests(TestCase):
                 }
             ],
         }
+
+    def _payload_v2(self):
+        payload = self._payload()
+        payload.update(
+            {
+                "payload_version": 2,
+                "operation": "upsert",
+                "original_language": "ru",
+                "translation_languages": ["en", "es", "pt", "de", "fr"],
+                "include_media": True,
+            }
+        )
+        payload["movie"]["translations"] = {
+            "en": {
+                "title": "Friendship",
+                "description_html": "<p>English description</p>",
+                "description_text": "English description",
+            },
+            "es": {
+                "title": "Amistad",
+                "description_html": "<p>Descripción en español</p>",
+                "description_text": "Descripción en español",
+            },
+        }
+        payload["movie"]["genres"][0]["translations"] = {
+            "en": {"title": "Drama"},
+            "es": {"title": "Drama"},
+        }
+        payload["locations"][0]["translations"] = {
+            "en": {
+                "title": "Embankment",
+                "scene_description_html": "<p>Scene by the water</p>",
+                "scene_description_text": "Scene by the water",
+                "movie_spot_html": "<p>on the embankment near the bridge</p>",
+                "movie_spot_text": "on the embankment near the bridge",
+                "address": "Moscow",
+            },
+            "es": {
+                "title": "Malecón",
+                "scene_description_html": "<p>Escena junto al agua</p>",
+                "scene_description_text": "Escena junto al agua",
+                "movie_spot_html": "<p>en el malecón junto al puente</p>",
+                "movie_spot_text": "en el malecón junto al puente",
+                "address": "Moscú",
+            },
+        }
+        return payload
+
+    def _translations_only_payload(self):
+        payload = self._payload_v2()
+        payload["operation"] = "translations_only"
+        payload["include_media"] = False
+        payload["movie"].pop("poster_url", None)
+        for location in payload["locations"]:
+            location.pop("movie_gallery", None)
+            location.pop("reality_gallery", None)
+        payload["movie"]["translations"] = {
+            "en": {
+                "title": "Friendship updated",
+                "description_html": "<p>Updated English description</p>",
+                "description_text": "Updated English description",
+            }
+        }
+        payload["locations"][0]["translations"] = {
+            "en": {
+                "title": "Updated embankment",
+                "scene_description_html": "<p>Updated English scene</p>",
+                "scene_description_text": "Updated English scene",
+                "movie_spot_html": "<p>updated English spot</p>",
+                "movie_spot_text": "updated English spot",
+                "address": "Updated address",
+            }
+        }
+        return payload
 
     def test_requires_bearer_token(self):
         response = self.client.post(
@@ -176,3 +250,106 @@ class WhereFilmedImportTests(TestCase):
             post.raw_data["template"]["data"]["poster_url"],
             "https://tambur.pub/media/posts/wherefilmed/123/poster-960.webp",
         )
+
+    @patch("feeds.wherefilmed_import._download_image")
+    def test_v2_upsert_creates_post_translations_and_returns_url(self, download_image):
+        download_image.side_effect = [
+            "https://tambur.pub/media/posts/wherefilmed/123/poster-960.webp",
+            "https://tambur.pub/media/posts/wherefilmed/123/movie-960.webp",
+            "https://tambur.pub/media/posts/wherefilmed/123/reality-960.webp",
+        ]
+
+        response = self.client.post(
+            reverse("wherefilmed-import"),
+            data=json.dumps(self._payload_v2()),
+            content_type="application/json",
+            HTTP_AUTHORIZATION="Bearer shared-secret",
+        )
+
+        self.assertEqual(response.status_code, 201, response.content.decode())
+        payload = response.json()
+        self.assertIn("/b/post/", payload["url"])
+        post = Post.objects.get(message_id=-3000000000123)
+        translation = PostTranslation.objects.get(post=post, language="en")
+        self.assertEqual(translation.status, "translated")
+        self.assertIn('Where was "Friendship (2024)" filmed?', translation.title)
+        self.assertIn("English description", translation.content)
+        self.assertIn("Embankment", translation.content)
+        self.assertIn("movie-960.webp", translation.content)
+        self.assertIn("en", post.raw_data["wherefilmed"]["translation_languages"])
+        self.assertIn("translations", post.raw_data["wherefilmed"])
+
+    @patch("feeds.wherefilmed_import._download_image")
+    def test_v2_repeated_upsert_does_not_create_duplicate(self, download_image):
+        download_image.side_effect = [
+            "https://tambur.pub/media/posts/wherefilmed/123/poster-960.webp",
+            "https://tambur.pub/media/posts/wherefilmed/123/movie-960.webp",
+            "https://tambur.pub/media/posts/wherefilmed/123/reality-960.webp",
+        ]
+        first = self.client.post(
+            reverse("wherefilmed-import"),
+            data=json.dumps(self._payload_v2()),
+            content_type="application/json",
+            HTTP_AUTHORIZATION="Bearer shared-secret",
+        )
+        self.assertEqual(first.status_code, 201, first.content.decode())
+
+        download_image.reset_mock()
+        second = self.client.post(
+            reverse("wherefilmed-import"),
+            data=json.dumps(self._payload_v2()),
+            content_type="application/json",
+            HTTP_AUTHORIZATION="Bearer shared-secret",
+        )
+
+        self.assertEqual(second.status_code, 200, second.content.decode())
+        self.assertEqual(Post.objects.count(), 1)
+        self.assertEqual(second.json()["id"], first.json()["id"])
+        download_image.assert_not_called()
+
+    @patch("feeds.wherefilmed_import._download_image")
+    def test_v2_translations_only_updates_translations_without_media(self, download_image):
+        download_image.side_effect = [
+            "https://tambur.pub/media/posts/wherefilmed/123/poster-960.webp",
+            "https://tambur.pub/media/posts/wherefilmed/123/movie-960.webp",
+            "https://tambur.pub/media/posts/wherefilmed/123/reality-960.webp",
+        ]
+        created = self.client.post(
+            reverse("wherefilmed-import"),
+            data=json.dumps(self._payload_v2()),
+            content_type="application/json",
+            HTTP_AUTHORIZATION="Bearer shared-secret",
+        )
+        self.assertEqual(created.status_code, 201, created.content.decode())
+        post = Post.objects.get(message_id=-3000000000123)
+        original_title = post.title
+        original_content = post.content
+
+        download_image.reset_mock()
+        response = self.client.post(
+            reverse("wherefilmed-import"),
+            data=json.dumps(self._translations_only_payload()),
+            content_type="application/json",
+            HTTP_AUTHORIZATION="Bearer shared-secret",
+        )
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        download_image.assert_not_called()
+        post.refresh_from_db()
+        self.assertEqual(post.title, original_title)
+        self.assertEqual(post.content, original_content)
+        translation = PostTranslation.objects.get(post=post, language="en")
+        self.assertIn("Updated English description", translation.content)
+        self.assertIn("Updated embankment", translation.content)
+        self.assertIn("movie-960.webp", translation.content)
+
+    def test_v2_translations_only_unknown_movie_returns_clear_error(self):
+        response = self.client.post(
+            reverse("wherefilmed-import"),
+            data=json.dumps(self._translations_only_payload()),
+            content_type="application/json",
+            HTTP_AUTHORIZATION="Bearer shared-secret",
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertIn("not imported", response.json()["error"])

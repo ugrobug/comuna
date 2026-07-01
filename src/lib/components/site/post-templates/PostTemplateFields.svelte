@@ -16,13 +16,18 @@
     MOVIE_REVIEW_KIND_OPTIONS,
     MOVIE_REVIEW_WATCH_PROVIDER_OPTIONS,
     POST_TEMPLATE_TYPE_OPTIONS,
+    bugReportBrowserLabel,
     bugReportBrowserLabels,
+    bugReportPlatformLabel,
     bugReportPlatformLabels,
     createEmptyBugReportTemplateData,
     createEmptyMusicReleaseTemplateData,
     createEmptyMovieReviewTemplateData,
     createEmptyPostVotePollTemplateData,
     formatPostVotePollDeadline,
+    movieReviewGenreLabel,
+    movieReviewKindLabel,
+    musicReleaseStyleLabel,
     normalizeAllowedPostTemplateTypes,
     normalizeBugReportTemplateData,
     normalizePostTemplateTypeOptions,
@@ -38,6 +43,7 @@
     type PostVotePollTemplateData,
     type PostVotePollTemplateItem,
   } from '$lib/postTemplates'
+  import { t } from '$lib/translations'
 
   export let templateType: '' | PostTemplateType = ''
   export let movieReviewData: MovieReviewTemplateData = createEmptyMovieReviewTemplateData()
@@ -82,6 +88,14 @@
   let hasTemplateTypeChoice = false
   let shouldRenderTemplateBlock = false
   let selectedTemplateOption = POST_TEMPLATE_TYPE_OPTIONS[0]
+
+  const templateOptionKey = (value: string) => value || 'basic'
+  const templateOptionLabel = (option: PostTemplateTypeOption) =>
+    $t(`site.templateFields.types.${templateOptionKey(option.value)}.label`) || option.label
+  const templateOptionDescription = (option: PostTemplateTypeOption) =>
+    option.description
+      ? $t(`site.templateFields.types.${templateOptionKey(option.value)}.description`) || option.description
+      : ''
 
   $: allowedTemplateTypeSet = new Set(normalizeAllowedPostTemplateTypes(allowedTemplateTypes))
   $: normalizedTemplateTypeOptions = normalizePostTemplateTypeOptions(templateTypeOptions)
@@ -139,11 +153,11 @@
     const normalized = normalizePostVotePollTemplateData(postVotePollData)
     const currentItems = normalized.items ?? []
     if (currentItems.some((entry) => entry.post_id === item.post_id)) {
-      toast({ content: 'Этот пост уже добавлен', type: 'error' })
+      toast({ content: $t('site.templateFields.alreadyAdded'), type: 'error' })
       return
     }
     if (currentItems.length >= 10) {
-      toast({ content: 'Можно добавить не более 10 постов', type: 'error' })
+      toast({ content: $t('site.templateFields.maxPosts'), type: 'error' })
       return
     }
 
@@ -179,7 +193,7 @@
       votePollReference = ''
     } catch (error) {
       toast({
-        content: (error as Error)?.message ?? 'Не удалось добавить пост по ссылке',
+        content: (error as Error)?.message ?? $t('site.templateFields.addByLinkError'),
         type: 'error',
       })
     } finally {
@@ -202,7 +216,7 @@
       votePollSearchResults = await searchPostsForVotePoll(query, 10)
     } catch (error) {
       votePollSearchResults = []
-      votePollSearchError = (error as Error)?.message ?? 'Не удалось выполнить поиск'
+      votePollSearchError = (error as Error)?.message ?? $t('site.templateFields.searchError')
     } finally {
       votePollSearchLoading = false
     }
@@ -315,12 +329,12 @@
         poster_url: uploadedUrl,
       }
       toast({
-        content: 'Постер загружен',
+        content: $t('site.templateFields.posterUploaded'),
         type: 'success',
       })
     } catch (error) {
       toast({
-        content: (error as Error)?.message ?? 'Не удалось загрузить постер',
+        content: (error as Error)?.message ?? $t('site.templateFields.posterUploadError'),
         type: 'error',
       })
     } finally {
@@ -352,12 +366,12 @@
         cover_image_url: uploadedUrl,
       })
       toast({
-        content: 'Обложка загружена',
+        content: $t('site.templateFields.coverUploaded'),
         type: 'success',
       })
     } catch (error) {
       toast({
-        content: (error as Error)?.message ?? 'Не удалось загрузить обложку',
+        content: (error as Error)?.message ?? $t('site.templateFields.coverUploadError'),
         type: 'error',
       })
     } finally {
@@ -389,12 +403,12 @@
         screenshot_url: uploadedUrl,
       })
       toast({
-        content: 'Скриншот загружен',
+        content: $t('site.templateFields.screenshotUploaded'),
         type: 'success',
       })
     } catch (error) {
       toast({
-        content: (error as Error)?.message ?? 'Не удалось загрузить скриншот',
+        content: (error as Error)?.message ?? $t('site.templateFields.screenshotUploadError'),
         type: 'error',
       })
     } finally {
@@ -406,7 +420,7 @@
   const autofillFromImdb = async () => {
     const imdbUrl = (movieReviewData.imdb_url || '').trim()
     if (!imdbUrl) {
-      toast({ content: 'Сначала укажите ссылку IMDb', type: 'error' })
+      toast({ content: $t('site.templateFields.imdbRequired'), type: 'error' })
       return
     }
     if (imdbAutofillLoading) return
@@ -424,13 +438,13 @@
         ...merged,
       }
       const sourcesSuffix = payload.sources.length ? ` (${payload.sources.join(', ')})` : ''
-      toast({ content: `Поля заполнены по IMDb${sourcesSuffix}`, type: 'success' })
+      toast({ content: $t('site.templateFields.imdbFilled', { sources: sourcesSuffix }), type: 'success' })
       if (payload.warnings.length) {
         toast({ content: payload.warnings[0], type: 'success' })
       }
     } catch (error) {
       toast({
-        content: (error as Error)?.message ?? 'Не удалось заполнить поля',
+        content: (error as Error)?.message ?? $t('site.templateFields.fillError'),
         type: 'error',
       })
     } finally {
@@ -469,7 +483,7 @@
           on:click={() => (templateMenuOpen = !templateMenuOpen)}
         >
           <span class="min-w-0 text-sm text-slate-700 dark:text-zinc-200 whitespace-normal break-words">
-            Тип публикации: <span class="font-medium">{selectedTemplateOption.label}</span>
+            {$t('site.templateFields.publicationType')}: <span class="font-medium">{templateOptionLabel(selectedTemplateOption)}</span>
           </span>
           <svg
             class="h-4 w-4 text-slate-500 dark:text-zinc-400 flex-shrink-0"
@@ -500,11 +514,11 @@
               >
                 <span class="flex-1 whitespace-normal">
                   <span class="block text-sm font-medium text-slate-800 dark:text-zinc-100">
-                    {option.label}
+                    {templateOptionLabel(option)}
                   </span>
-                  {#if option.description}
+                  {#if templateOptionDescription(option)}
                     <span class="mt-1 block text-xs leading-snug text-slate-500 dark:text-zinc-400">
-                      {option.description}
+                      {templateOptionDescription(option)}
                     </span>
                   {/if}
                 </span>
@@ -517,14 +531,14 @@
 
     {#if templateType === 'movie_review'}
     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-      <TextInput label="Название" bind:value={movieReviewData.title} placeholder="Например, Дюна: Часть вторая" />
+      <TextInput label={$t('site.templateFields.title')} bind:value={movieReviewData.title} placeholder={$t('site.templateFields.titlePlaceholder')} />
       <TextInput
-        label="Оригинальное название"
+        label={$t('site.templateFields.originalTitle')}
         bind:value={movieReviewData.original_title}
-        placeholder="Например, Dune: Part Two"
+        placeholder={$t('site.templateFields.originalTitlePlaceholder')}
       />
       <TextInput
-        label="Ссылка на IMDb"
+        label={$t('site.templateFields.imdbUrl')}
         bind:value={movieReviewData.imdb_url}
         placeholder="https://www.imdb.com/title/..."
       />
@@ -535,12 +549,12 @@
           on:click={autofillFromImdb}
           disabled={imdbAutofillLoading}
         >
-          {imdbAutofillLoading ? 'Заполняем...' : 'Заполнить автоматически по IMDb'}
+          {imdbAutofillLoading ? $t('site.templateFields.autofilling') : $t('site.templateFields.autofillImdb')}
         </button>
       </div>
 
       <div class="md:col-span-2 flex flex-col gap-2">
-        <span class="text-sm text-slate-700 dark:text-zinc-300">Постер</span>
+        <span class="text-sm text-slate-700 dark:text-zinc-300">{$t('site.templateFields.poster')}</span>
         <input
           bind:this={posterInput}
           type="file"
@@ -551,21 +565,21 @@
         <div class="flex items-center gap-3 rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-3">
           <div class="h-20 w-14 rounded-lg overflow-hidden border border-slate-200 dark:border-zinc-800 bg-slate-100 dark:bg-zinc-800 shrink-0">
             {#if movieReviewData.poster_url}
-              <img src={movieReviewData.poster_url} alt="Постер" class="h-full w-full object-cover" />
+              <img src={movieReviewData.poster_url} alt={$t('site.templateFields.poster')} class="h-full w-full object-cover" />
             {:else}
               <div class="h-full w-full grid place-items-center text-[10px] text-slate-400 dark:text-zinc-500 text-center px-1">
-                Нет постера
+                {$t('site.templateFields.noPoster')}
               </div>
             {/if}
           </div>
           <div class="min-w-0 flex-1">
             <div class="text-sm text-slate-700 dark:text-zinc-300">
               {#if posterUploading}
-                Загрузка постера...
+                {$t('site.templateFields.posterUploading')}
               {:else if movieReviewData.poster_url}
-                Постер загружен
+                {$t('site.templateFields.posterUploaded')}
               {:else}
-                Загрузите файл постера
+                {$t('site.templateFields.uploadPoster')}
               {/if}
             </div>
             <div class="text-xs text-slate-500 dark:text-zinc-400">PNG, JPG, WEBP, GIF</div>
@@ -577,7 +591,7 @@
               on:click={pickPoster}
               disabled={posterUploading}
             >
-              {movieReviewData.poster_url ? 'Заменить' : 'Загрузить'}
+              {movieReviewData.poster_url ? $t('site.templateFields.replace') : $t('site.templateFields.upload')}
             </button>
             {#if movieReviewData.poster_url}
               <button
@@ -586,7 +600,7 @@
                 on:click={removePoster}
                 disabled={posterUploading}
               >
-                Убрать
+                {$t('site.templateFields.remove')}
               </button>
             {/if}
           </div>
@@ -594,60 +608,60 @@
       </div>
 
       <label class="flex flex-col gap-1">
-        <span class="text-sm text-slate-700 dark:text-zinc-300">Жанр</span>
+        <span class="text-sm text-slate-700 dark:text-zinc-300">{$t('site.templateFields.genre')}</span>
         <select
           bind:value={movieReviewData.genre}
           class="w-full rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm text-slate-900 dark:text-zinc-100"
         >
-          <option value="">Не выбран</option>
+          <option value="">{$t('site.templateFields.notSelected')}</option>
           {#each MOVIE_REVIEW_GENRE_OPTIONS as option}
-            <option value={option.value}>{option.label}</option>
+            <option value={option.value}>{movieReviewGenreLabel(option.value)}</option>
           {/each}
         </select>
       </label>
 
       <label class="flex flex-col gap-1">
-        <span class="text-sm text-slate-700 dark:text-zinc-300">Тип</span>
+        <span class="text-sm text-slate-700 dark:text-zinc-300">{$t('site.templateFields.type')}</span>
         <select
           bind:value={movieReviewData.content_kind}
           class="w-full rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm text-slate-900 dark:text-zinc-100"
         >
           {#each MOVIE_REVIEW_KIND_OPTIONS as option}
-            <option value={option.value}>{option.label}</option>
+            <option value={option.value}>{movieReviewKindLabel(option.value)}</option>
           {/each}
         </select>
       </label>
 
       <label class="flex flex-col gap-1">
-        <span class="text-sm text-slate-700 dark:text-zinc-300">Год премьеры</span>
+        <span class="text-sm text-slate-700 dark:text-zinc-300">{$t('site.templateFields.releaseYear')}</span>
         <input
           type="text"
           inputmode="numeric"
           maxlength="4"
           pattern="(18|19|20)[0-9]{2}"
           bind:value={movieReviewData.release_date}
-          placeholder="Например, 2024"
+          placeholder={$t('site.templateFields.releaseYearPlaceholder')}
           class="w-full rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm text-slate-900 dark:text-zinc-100"
         />
       </label>
 
       <label class="flex flex-col gap-1">
-        <span class="text-sm text-slate-700 dark:text-zinc-300">Оценка автора (0-10)</span>
+        <span class="text-sm text-slate-700 dark:text-zinc-300">{$t('site.templateFields.authorRating')}</span>
         <input
           type="text"
           inputmode="decimal"
           bind:value={movieReviewData.author_rating}
-          placeholder="Например, 8.5"
+          placeholder={$t('site.templateFields.authorRatingPlaceholder')}
           class="w-full rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm text-slate-900 dark:text-zinc-100"
         />
       </label>
 
       <div class="md:col-span-2 flex flex-col gap-2">
-        <span class="text-sm text-slate-700 dark:text-zinc-300">Где посмотреть</span>
+        <span class="text-sm text-slate-700 dark:text-zinc-300">{$t('site.templateFields.watchWhere')}</span>
         <details class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900">
           <summary class="list-none cursor-pointer px-3 py-2 text-sm text-slate-900 dark:text-zinc-100 flex items-center justify-between gap-3">
             <span class="truncate">
-              {watchProviderLabels.length ? watchProviderLabels.join(', ') : 'Выберите онлайн-кинотеатры'}
+              {watchProviderLabels.length ? watchProviderLabels.join(', ') : $t('site.templateFields.chooseCinemas')}
             </span>
             <span class="text-xs text-slate-500 dark:text-zinc-400">▼</span>
           </summary>
@@ -660,7 +674,7 @@
                   checked={watchProviderSet.has(option.value)}
                   on:change={(event) => onWatchProviderChange(option.value, event)}
                 />
-                <span class="text-sm text-slate-700 dark:text-zinc-200">{option.label}</span>
+                <span class="text-sm text-slate-700 dark:text-zinc-200">{bugReportPlatformLabel(option.value)}</span>
               </label>
             {/each}
           </div>
@@ -670,24 +684,24 @@
     {:else if templateType === 'music_release'}
     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
       <TextInput
-        label="Название группы"
+        label={$t('site.templateFields.bandName')}
         bind:value={musicReleaseData.artist_name}
-        placeholder="Например, Radiohead"
+        placeholder={$t('site.templateFields.bandPlaceholder')}
       />
       <TextInput
-        label="Название альбома/сингла"
+        label={$t('site.templateFields.releaseTitle')}
         bind:value={musicReleaseData.release_title}
-        placeholder="Например, OK Computer"
+        placeholder={$t('site.templateFields.releaseTitlePlaceholder')}
       />
 
       <TextInput
-        label="Ссылка на альбом"
+        label={$t('site.templateFields.albumLink')}
         bind:value={musicReleaseData.album_url}
         placeholder="https://open.spotify.com/album/..."
       />
 
       <label class="flex flex-col gap-1">
-        <span class="text-sm text-slate-700 dark:text-zinc-300">Дата релиза</span>
+        <span class="text-sm text-slate-700 dark:text-zinc-300">{$t('site.templateFields.releaseDate')}</span>
         <input
           type="date"
           bind:value={musicReleaseData.release_date}
@@ -696,31 +710,31 @@
       </label>
 
       <TextInput
-        label="Страна группы"
+        label={$t('site.templateFields.bandCountry')}
         bind:value={musicReleaseData.country}
-        placeholder="Например, Великобритания"
+        placeholder={$t('site.templateFields.countryPlaceholder')}
       />
       <TextInput
-        label="Город группы"
+        label={$t('site.templateFields.bandCity')}
         bind:value={musicReleaseData.city}
-        placeholder="Например, Лондон"
+        placeholder={$t('site.templateFields.cityPlaceholder')}
       />
 
       <label class="flex flex-col gap-1">
-        <span class="text-sm text-slate-700 dark:text-zinc-300">Музыкальный стиль</span>
+        <span class="text-sm text-slate-700 dark:text-zinc-300">{$t('site.templateFields.musicStyle')}</span>
         <select
           bind:value={musicReleaseData.style}
           class="w-full rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm text-slate-900 dark:text-zinc-100"
         >
-          <option value="">Не выбран</option>
+          <option value="">{$t('site.templateFields.notSelected')}</option>
           {#each MUSIC_RELEASE_STYLE_OPTIONS as option}
-            <option value={option.value}>{option.label}</option>
+            <option value={option.value}>{musicReleaseStyleLabel(option.value)}</option>
           {/each}
         </select>
       </label>
 
       <div class="md:col-span-2 flex flex-col gap-2">
-        <span class="text-sm text-slate-700 dark:text-zinc-300">Фото обложки</span>
+        <span class="text-sm text-slate-700 dark:text-zinc-300">{$t('site.templateFields.coverPhoto')}</span>
         <input
           bind:this={coverInput}
           type="file"
@@ -733,23 +747,23 @@
             {#if musicReleaseData.cover_image_url}
               <img
                 src={musicReleaseData.cover_image_url}
-                alt="Обложка релиза"
+                alt={$t('site.templateFields.coverAlt')}
                 class="h-full w-full object-cover"
               />
             {:else}
               <div class="h-full w-full grid place-items-center text-[10px] text-slate-400 dark:text-zinc-500 text-center px-1">
-                Нет обложки
+                {$t('site.templateFields.noCover')}
               </div>
             {/if}
           </div>
           <div class="min-w-0 flex-1">
             <div class="text-sm text-slate-700 dark:text-zinc-300">
               {#if coverUploading}
-                Загрузка обложки...
+                {$t('site.templateFields.coverUploading')}
               {:else if musicReleaseData.cover_image_url}
-                Обложка загружена
+                {$t('site.templateFields.coverUploaded')}
               {:else}
-                Загрузите файл обложки
+                {$t('site.templateFields.uploadCover')}
               {/if}
             </div>
             <div class="text-xs text-slate-500 dark:text-zinc-400">PNG, JPG, WEBP, GIF</div>
@@ -761,7 +775,7 @@
               on:click={pickCover}
               disabled={coverUploading}
             >
-              {musicReleaseData.cover_image_url ? 'Заменить' : 'Загрузить'}
+              {musicReleaseData.cover_image_url ? $t('site.templateFields.replace') : $t('site.templateFields.upload')}
             </button>
             {#if musicReleaseData.cover_image_url}
               <button
@@ -770,7 +784,7 @@
                 on:click={removeCover}
                 disabled={coverUploading}
               >
-                Убрать
+                {$t('site.templateFields.remove')}
               </button>
             {/if}
           </div>
@@ -780,18 +794,18 @@
     {:else if templateType === 'post_vote_poll'}
     <div class="flex flex-col gap-4">
       <label class="flex flex-col gap-1">
-        <span class="text-sm text-slate-700 dark:text-zinc-300">Вопрос голосования (необязательно)</span>
+        <span class="text-sm text-slate-700 dark:text-zinc-300">{$t('site.templateFields.pollQuestion')}</span>
         <input
           type="text"
           value={postVotePollData.question || ''}
           on:input={onVotePollQuestionInput}
-          placeholder="Например, Какой пост лучший в этом месяце?"
+          placeholder={$t('site.templateFields.pollQuestionPlaceholder')}
           class="w-full rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm text-slate-900 dark:text-zinc-100"
         />
       </label>
 
       <label class="flex flex-col gap-1">
-        <span class="text-sm text-slate-700 dark:text-zinc-300">Срок голосования</span>
+        <span class="text-sm text-slate-700 dark:text-zinc-300">{$t('site.templateFields.pollDeadline')}</span>
         <input
           type="datetime-local"
           value={votePollDeadlineInput}
@@ -800,7 +814,7 @@
         />
         {#if postVotePollData.ends_at}
           <span class="text-xs text-slate-500 dark:text-zinc-400">
-            Завершится: {formatPostVotePollDeadline(postVotePollData.ends_at)}
+            {$t('site.templateFields.pollEnds', { date: formatPostVotePollDeadline(postVotePollData.ends_at) })}
           </span>
         {/if}
       </label>
@@ -814,21 +828,21 @@
         />
         <span class="min-w-0">
           <span class="block text-sm text-slate-900 dark:text-zinc-100">
-            Голосование за несколько вариантов
+            {$t('site.templateFields.multipleVoting')}
           </span>
           <span class="block text-xs text-slate-500 dark:text-zinc-400">
-            Если включено, пользователь может выбрать несколько постов в одном голосовании.
+            {$t('site.templateFields.multipleVotingHint')}
           </span>
         </span>
       </label>
 
       <div class="flex flex-col gap-2">
-        <span class="text-sm text-slate-700 dark:text-zinc-300">Добавить пост по ссылке</span>
+        <span class="text-sm text-slate-700 dark:text-zinc-300">{$t('site.templateFields.addPostByLink')}</span>
         <div class="flex flex-col sm:flex-row gap-2">
           <input
             type="text"
             bind:value={votePollReference}
-            placeholder="/b/post/123 или https://.../b/post/123"
+            placeholder={$t('site.templateFields.addPostPlaceholder')}
             class="flex-1 rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm text-slate-900 dark:text-zinc-100"
           />
           <button
@@ -837,13 +851,13 @@
             disabled={votePollReferenceLoading}
             class="rounded-lg border border-slate-300 dark:border-zinc-700 px-3 py-2 text-sm text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 disabled:opacity-50"
           >
-            {votePollReferenceLoading ? 'Добавляем...' : 'Добавить'}
+            {votePollReferenceLoading ? $t('site.templateFields.addingPost') : $t('site.templateFields.add')}
           </button>
         </div>
       </div>
 
       <div class="flex flex-col gap-2">
-        <span class="text-sm text-slate-700 dark:text-zinc-300">Поиск постов</span>
+        <span class="text-sm text-slate-700 dark:text-zinc-300">{$t('site.templateFields.searchPosts')}</span>
         <div class="flex flex-col sm:flex-row gap-2">
           <input
             type="text"
@@ -854,7 +868,7 @@
                 searchVotePoll()
               }
             }}
-            placeholder="Название поста или автор"
+            placeholder={$t('site.templateFields.searchPlaceholder')}
             class="flex-1 rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm text-slate-900 dark:text-zinc-100"
           />
           <button
@@ -863,7 +877,7 @@
             disabled={votePollSearchLoading}
             class="rounded-lg border border-slate-300 dark:border-zinc-700 px-3 py-2 text-sm text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 disabled:opacity-50"
           >
-            {votePollSearchLoading ? 'Ищем...' : 'Найти'}
+            {votePollSearchLoading ? $t('site.templateFields.searching') : $t('site.templateFields.find')}
           </button>
         </div>
         {#if votePollSearchError}
@@ -880,7 +894,7 @@
                     rel="noopener"
                     class="text-sm text-slate-800 dark:text-zinc-100 hover:underline"
                   >
-                    {result.title || `Пост #${result.post_id}`}
+                    {result.title || $t('site.templateFields.postNumber', { id: result.post_id })}
                   </a>
                   {#if result.author_username}
                     <div class="text-xs text-slate-500 dark:text-zinc-400">@{result.author_username}</div>
@@ -892,7 +906,7 @@
                   disabled={votePollItemIds.has(result.post_id)}
                   on:click={() => addVotePollItem(result)}
                 >
-                  {votePollItemIds.has(result.post_id) ? 'Добавлен' : 'Добавить'}
+                  {votePollItemIds.has(result.post_id) ? $t('site.templateFields.added') : $t('site.templateFields.add')}
                 </button>
               </div>
             {/each}
@@ -902,7 +916,7 @@
 
       <div class="flex flex-col gap-2">
         <div class="flex items-center justify-between gap-3">
-          <span class="text-sm text-slate-700 dark:text-zinc-300">Выбранные посты</span>
+          <span class="text-sm text-slate-700 dark:text-zinc-300">{$t('site.templateFields.selectedPosts')}</span>
           <span class="text-xs text-slate-500 dark:text-zinc-400">{votePollItems.length}/10</span>
         </div>
         {#if votePollItems.length}
@@ -927,29 +941,29 @@
                   class="rounded-md border border-slate-300 dark:border-zinc-700 px-2.5 py-1 text-xs text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800"
                   on:click={() => removeVotePollItem(item.post_id)}
                 >
-                  Удалить
+                  {$t('site.templateFields.remove')}
                 </button>
               </div>
             {/each}
           </div>
         {:else}
           <div class="rounded-xl border border-dashed border-slate-300 dark:border-zinc-700 px-3 py-3 text-sm text-slate-500 dark:text-zinc-400">
-            Пока не добавлено ни одного поста.
+            {$t('site.templateFields.noPosts')}
           </div>
         {/if}
         <p class="text-xs text-slate-500 dark:text-zinc-400">
-          Для публикации голосования добавьте минимум 2 поста и укажите срок голосования.
+          {$t('site.templateFields.pollRequirement')}
         </p>
       </div>
     </div>
     {:else if templateType === 'bug_report'}
     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
       <div class="md:col-span-2 flex flex-col gap-2">
-        <span class="text-sm text-slate-700 dark:text-zinc-300">Платформы</span>
+        <span class="text-sm text-slate-700 dark:text-zinc-300">{$t('site.templateFields.platforms')}</span>
         <details class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900">
           <summary class="list-none cursor-pointer px-3 py-2 text-sm text-slate-900 dark:text-zinc-100 flex items-center justify-between gap-3">
             <span class="truncate">
-              {bugPlatformLabelValues.length ? bugPlatformLabelValues.join(', ') : 'Выберите платформы'}
+              {bugPlatformLabelValues.length ? bugPlatformLabelValues.join(', ') : $t('site.templateFields.choosePlatforms')}
             </span>
             <span class="text-xs text-slate-500 dark:text-zinc-400">▼</span>
           </summary>
@@ -962,7 +976,7 @@
                   checked={bugPlatformSet.has(option.value)}
                   on:change={(event) => onBugPlatformChange(option.value, event)}
                 />
-                <span class="text-sm text-slate-700 dark:text-zinc-200">{option.label}</span>
+                <span class="text-sm text-slate-700 dark:text-zinc-200">{bugReportBrowserLabel(option.value)}</span>
               </label>
             {/each}
           </div>
@@ -970,11 +984,11 @@
       </div>
 
       <div class="md:col-span-2 flex flex-col gap-2">
-        <span class="text-sm text-slate-700 dark:text-zinc-300">Браузеры</span>
+        <span class="text-sm text-slate-700 dark:text-zinc-300">{$t('site.templateFields.browsers')}</span>
         <details class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900">
           <summary class="list-none cursor-pointer px-3 py-2 text-sm text-slate-900 dark:text-zinc-100 flex items-center justify-between gap-3">
             <span class="truncate">
-              {bugBrowserLabelValues.length ? bugBrowserLabelValues.join(', ') : 'Выберите браузеры'}
+              {bugBrowserLabelValues.length ? bugBrowserLabelValues.join(', ') : $t('site.templateFields.chooseBrowsers')}
             </span>
             <span class="text-xs text-slate-500 dark:text-zinc-400">▼</span>
           </summary>
@@ -995,17 +1009,17 @@
       </div>
 
       <label class="md:col-span-2 flex flex-col gap-1">
-        <span class="text-sm text-slate-700 dark:text-zinc-300">Код ошибки</span>
+        <span class="text-sm text-slate-700 dark:text-zinc-300">{$t('site.templateFields.errorCode')}</span>
         <textarea
           bind:value={bugReportData.error_code}
           rows="4"
-          placeholder="Вставьте текст ошибки, stack trace или системное сообщение"
+          placeholder={$t('site.templateFields.errorPlaceholder')}
           class="w-full rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm font-mono text-slate-900 dark:text-zinc-100"
         ></textarea>
       </label>
 
       <div class="md:col-span-2 flex flex-col gap-2">
-        <span class="text-sm text-slate-700 dark:text-zinc-300">Скриншот</span>
+        <span class="text-sm text-slate-700 dark:text-zinc-300">{$t('site.templateFields.screenshot')}</span>
         <input
           bind:this={bugScreenshotInput}
           type="file"
@@ -1016,21 +1030,21 @@
         <div class="flex items-center gap-3 rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-3">
           <div class="h-20 w-28 rounded-lg overflow-hidden border border-slate-200 dark:border-zinc-800 bg-slate-100 dark:bg-zinc-800 shrink-0">
             {#if bugReportData.screenshot_url}
-              <img src={bugReportData.screenshot_url} alt="Скриншот бага" class="h-full w-full object-cover" />
+              <img src={bugReportData.screenshot_url} alt={$t('site.templateFields.bugScreenshotAlt')} class="h-full w-full object-cover" />
             {:else}
               <div class="h-full w-full grid place-items-center text-[10px] text-slate-400 dark:text-zinc-500 text-center px-1">
-                Нет скриншота
+                {$t('site.templateFields.noScreenshot')}
               </div>
             {/if}
           </div>
           <div class="min-w-0 flex-1">
             <div class="text-sm text-slate-700 dark:text-zinc-300">
               {#if bugScreenshotUploading}
-                Загрузка скриншота...
+                {$t('site.templateFields.screenshotUploading')}
               {:else if bugReportData.screenshot_url}
-                Скриншот загружен
+                {$t('site.templateFields.screenshotUploaded')}
               {:else}
-                Прикрепите фото ошибки
+                {$t('site.templateFields.attachScreenshot')}
               {/if}
             </div>
             <div class="text-xs text-slate-500 dark:text-zinc-400">PNG, JPG, WEBP, GIF</div>
@@ -1042,7 +1056,7 @@
               on:click={pickBugScreenshot}
               disabled={bugScreenshotUploading}
             >
-              {bugReportData.screenshot_url ? 'Заменить' : 'Загрузить'}
+              {bugReportData.screenshot_url ? $t('site.templateFields.replace') : $t('site.templateFields.upload')}
             </button>
             {#if bugReportData.screenshot_url}
               <button
@@ -1051,7 +1065,7 @@
                 on:click={removeBugScreenshot}
                 disabled={bugScreenshotUploading}
               >
-                Убрать
+                {$t('site.templateFields.remove')}
               </button>
             {/if}
           </div>
@@ -1060,9 +1074,9 @@
     </div>
     {:else if templateType === 'tweet'}
     <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-300">
-      <div class="font-medium text-slate-900 dark:text-zinc-100">Шаблон «Твит»</div>
+      <div class="font-medium text-slate-900 dark:text-zinc-100">{$t('site.templateFields.tweetTemplate')}</div>
       <div class="mt-1">
-        Дополнительных полей у этого шаблона нет. В самом тексте доступно до 280 символов и один медиаблок с изображениями.
+        {$t('site.templateFields.tweetHint')}
       </div>
     </div>
     {/if}

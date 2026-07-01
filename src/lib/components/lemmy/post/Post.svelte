@@ -42,6 +42,7 @@
     type BugReportTemplate,
     type SitePostTemplate,
   } from '$lib/postTemplates'
+  import { t } from '$lib/translations'
 
   export let post: PostView
   export let actions: boolean = true
@@ -54,7 +55,7 @@
   export let communityUrlOverride: string | undefined = undefined
   export let userUrlOverride: string | undefined = undefined
   export let subscribeUrl: string | null | undefined = undefined
-  export let subscribeLabel: string = 'Подписаться'
+  export let subscribeLabel: string = ''
   export let hideSubscribe: boolean = false
   export let disableUserLink: boolean | undefined = undefined
   export let comunCategories: BackendComunCategory[] = []
@@ -370,7 +371,7 @@
               class="vote-poll-participation-banner__link"
               data-sveltekit-preload-data="off"
             >
-              Пост участвует в голосовании: {activeVotePollParticipation.question}
+              {$t('site.postCard.voteParticipation', { question: activeVotePollParticipation.question })}
               {#if extraVotePollParticipationCount > 0}
                 (+{extraVotePollParticipationCount})
               {/if}
@@ -432,7 +433,7 @@
               class="h-10 !min-h-[2.5rem] max-w-max !px-4 inline-flex items-center gap-2 whitespace-nowrap dark:!bg-primary-900 dark:!text-white dark:!border-transparent dark:hover:!brightness-110"
             >
               <img src="/img/logos/telegram_logo.svg" alt="Telegram" class="w-4 h-4" />
-              <span class="text-white whitespace-nowrap">Подписаться на телеграм автора</span>
+              <span class="text-white whitespace-nowrap">{$t('site.postCard.subscribeTelegram')}</span>
             </Button>
           </div>
         {/if}
@@ -447,7 +448,7 @@
                 class="vote-poll-participation-banner__link"
                 data-sveltekit-preload-data="off"
               >
-                Пост участвует в голосовании: {activeVotePollParticipation.question}
+                {$t('site.postCard.voteParticipation', { question: activeVotePollParticipation.question })}
                 {#if extraVotePollParticipationCount > 0}
                   (+{extraVotePollParticipationCount})
                 {/if}
@@ -527,7 +528,7 @@
       style="grid-area: read-more;"
       data-sveltekit-preload-data="off"
     >
-      Читать далее
+      {$t('site.postCard.readMore')}
     </a>
   {/if}
 

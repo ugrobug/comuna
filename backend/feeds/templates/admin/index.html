@@ -18,34 +18,34 @@
 <div id="content-related">
   {% get_admin_metrics as metrics %}
   <div class="module" id="site-metrics-module">
-    <h2>Метрики сайта</h2>
+    <h2>{% translate "Site metrics" %}</h2>
     <table>
       <tr>
-        <th>Авторов</th>
+        <th>{% translate "Authors" %}</th>
         <td>{{ metrics.authors }}</td>
       </tr>
       <tr>
-        <th>Всего постов</th>
+        <th>{% translate "Total posts" %}</th>
         <td>{{ metrics.posts_total }}</td>
       </tr>
       <tr>
-        <th>Постов за 30 дней</th>
+        <th>{% translate "Posts in 30 days" %}</th>
         <td>{{ metrics.posts_last_30 }}</td>
       </tr>
       <tr>
-        <th>Постов на автора в месяц</th>
+        <th>{% translate "Posts per author per month" %}</th>
         <td>{{ metrics.avg_posts_per_author|floatformat:2 }}</td>
       </tr>
       <tr>
-        <th>Лайков за 30 дней</th>
+        <th>{% translate "Likes in 30 days" %}</th>
         <td>{{ metrics.likes_last_30 }}</td>
       </tr>
       <tr>
-        <th>Дизлайков за 30 дней</th>
+        <th>{% translate "Dislikes in 30 days" %}</th>
         <td>{{ metrics.dislikes_last_30 }}</td>
       </tr>
       <tr>
-        <th>Комментариев за 30 дней</th>
+        <th>{% translate "Comments in 30 days" %}</th>
         <td>{{ metrics.comments_last_30 }}</td>
       </tr>
     </table>

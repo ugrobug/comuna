@@ -397,9 +397,19 @@ class Post(models.Model):
         super().save(*args, **kwargs)
 
 
+POST_TRANSLATION_LANGUAGE_ENGLISH = "en"
+POST_TRANSLATION_LANGUAGE_SPANISH = "es"
+POST_TRANSLATION_LANGUAGE_PORTUGUESE = "pt"
+POST_TRANSLATION_LANGUAGE_GERMAN = "de"
+POST_TRANSLATION_LANGUAGE_FRENCH = "fr"
 POST_TRANSLATION_LANGUAGE_TURKISH = "tr"
 POST_TRANSLATION_LANGUAGE_INDONESIAN = "id"
 POST_TRANSLATION_LANGUAGE_CHOICES = (
+    (POST_TRANSLATION_LANGUAGE_ENGLISH, "Английский"),
+    (POST_TRANSLATION_LANGUAGE_SPANISH, "Испанский"),
+    (POST_TRANSLATION_LANGUAGE_PORTUGUESE, "Португальский"),
+    (POST_TRANSLATION_LANGUAGE_GERMAN, "Немецкий"),
+    (POST_TRANSLATION_LANGUAGE_FRENCH, "Французский"),
     (POST_TRANSLATION_LANGUAGE_TURKISH, "Турецкий"),
     (POST_TRANSLATION_LANGUAGE_INDONESIAN, "Индонезийский"),
 )
@@ -489,6 +499,188 @@ class PostComment(models.Model):
 
     def __str__(self) -> str:
         return f"{self.post_id}:{self.user_id}"
+
+
+class PostCommentTranslation(models.Model):
+    comment = models.ForeignKey(
+        PostComment,
+        on_delete=models.CASCADE,
+        related_name="translations",
+    )
+    language = models.CharField(
+        max_length=8,
+        choices=POST_TRANSLATION_LANGUAGE_CHOICES,
+        db_index=True,
+    )
+    body = models.TextField(blank=True)
+    status = models.CharField(
+        max_length=16,
+        choices=POST_TRANSLATION_STATUS_CHOICES,
+        default=POST_TRANSLATION_STATUS_PENDING,
+        db_index=True,
+    )
+    model = models.CharField(max_length=120, blank=True)
+    error_message = models.TextField(blank=True)
+    raw_response = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["comment_id", "language"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["comment", "language"],
+                name="unique_comment_translation_language",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["language", "status"], name="comment_trans_lang_status_idx"),
+        ]
+        verbose_name = "Перевод комментария"
+        verbose_name_plural = "Переводы комментариев"
+
+    def __str__(self) -> str:
+        return f"{self.comment_id}:{self.language}"
+
+
+class ComunTranslation(models.Model):
+    comun = models.ForeignKey(
+        Comun,
+        on_delete=models.CASCADE,
+        related_name="translations",
+    )
+    language = models.CharField(
+        max_length=8,
+        choices=POST_TRANSLATION_LANGUAGE_CHOICES,
+        db_index=True,
+    )
+    product_description = models.TextField(blank=True)
+    rules_text = models.TextField(blank=True)
+    status = models.CharField(
+        max_length=16,
+        choices=POST_TRANSLATION_STATUS_CHOICES,
+        default=POST_TRANSLATION_STATUS_PENDING,
+        db_index=True,
+    )
+    model = models.CharField(max_length=120, blank=True)
+    error_message = models.TextField(blank=True)
+    raw_response = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["comun_id", "language"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["comun", "language"],
+                name="unique_comun_translation_language",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["language", "status"], name="comun_trans_lang_status_idx"),
+        ]
+        verbose_name = "Перевод сообщества"
+        verbose_name_plural = "Переводы сообществ"
+
+    def __str__(self) -> str:
+        return f"{self.comun_id}:{self.language}"
+
+
+CONTENT_TRANSLATION_KIND_POST = "post"
+CONTENT_TRANSLATION_KIND_COMMENT = "comment"
+CONTENT_TRANSLATION_KIND_COMUN = "comun"
+CONTENT_TRANSLATION_KIND_CHOICES = (
+    (CONTENT_TRANSLATION_KIND_POST, "Пост"),
+    (CONTENT_TRANSLATION_KIND_COMMENT, "Комментарий"),
+    (CONTENT_TRANSLATION_KIND_COMUN, "Сообщество"),
+)
+
+CONTENT_TRANSLATION_TASK_STATUS_PENDING = "pending"
+CONTENT_TRANSLATION_TASK_STATUS_RUNNING = "running"
+CONTENT_TRANSLATION_TASK_STATUS_DONE = "done"
+CONTENT_TRANSLATION_TASK_STATUS_FAILED = "failed"
+CONTENT_TRANSLATION_TASK_STATUS_SKIPPED = "skipped"
+CONTENT_TRANSLATION_TASK_STATUS_CHOICES = (
+    (CONTENT_TRANSLATION_TASK_STATUS_PENDING, "Ожидает"),
+    (CONTENT_TRANSLATION_TASK_STATUS_RUNNING, "Выполняется"),
+    (CONTENT_TRANSLATION_TASK_STATUS_DONE, "Готово"),
+    (CONTENT_TRANSLATION_TASK_STATUS_FAILED, "Ошибка"),
+    (CONTENT_TRANSLATION_TASK_STATUS_SKIPPED, "Пропущено"),
+)
+
+
+class ContentTranslationTask(models.Model):
+    kind = models.CharField(max_length=16, choices=CONTENT_TRANSLATION_KIND_CHOICES)
+    object_id = models.PositiveBigIntegerField()
+    status = models.CharField(
+        max_length=16,
+        choices=CONTENT_TRANSLATION_TASK_STATUS_CHOICES,
+        default=CONTENT_TRANSLATION_TASK_STATUS_PENDING,
+        db_index=True,
+    )
+    scheduled_at = models.DateTimeField(db_index=True)
+    source_updated_at = models.DateTimeField(null=True, blank=True)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    last_error = models.TextField(blank=True)
+    locked_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["kind", "object_id"],
+                name="unique_content_translation_task",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["status", "scheduled_at"], name="content_trans_task_due_idx"),
+            models.Index(fields=["kind", "object_id"], name="content_trans_task_obj_idx"),
+        ]
+        verbose_name = "Задача перевода контента"
+        verbose_name_plural = "Задачи перевода контента"
+
+    def __str__(self) -> str:
+        return f"{self.kind}:{self.object_id}:{self.status}"
+
+
+class ContentTranslationSettings(models.Model):
+    enabled = models.BooleanField(default=True)
+    post_daily_limit = models.PositiveIntegerField(default=200)
+    comment_daily_limit = models.PositiveIntegerField(default=1000)
+    post_object_daily_limit = models.PositiveIntegerField(default=3)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Настройки перевода контента"
+        verbose_name_plural = "Настройки перевода контента"
+
+    def __str__(self) -> str:
+        return "Настройки перевода контента"
+
+
+class ContentTranslationRun(models.Model):
+    kind = models.CharField(max_length=16, choices=CONTENT_TRANSLATION_KIND_CHOICES)
+    object_id = models.PositiveBigIntegerField()
+    task = models.ForeignKey(
+        ContentTranslationTask,
+        on_delete=models.SET_NULL,
+        related_name="runs",
+        null=True,
+        blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["kind", "created_at"], name="content_trans_run_kind_day_idx"),
+            models.Index(fields=["kind", "object_id", "created_at"], name="content_trans_run_obj_day_idx"),
+        ]
+        verbose_name = "Запуск перевода контента"
+        verbose_name_plural = "Запуски перевода контента"
+
+    def __str__(self) -> str:
+        return f"{self.kind}:{self.object_id}:{self.created_at:%Y-%m-%d %H:%M:%S}"
 
 
 class PostCommentLike(models.Model):

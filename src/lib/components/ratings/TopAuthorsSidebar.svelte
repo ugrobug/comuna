@@ -8,6 +8,7 @@
     authorRatingHref,
     formatTopAuthorNumber,
   } from '$lib/ratings/topAuthors'
+  import { t } from '$lib/translations'
 
   let authors: BackendTopAuthor[] = []
   let loading = true
@@ -22,7 +23,7 @@
       const data = await response.json()
       authors = data.authors ?? []
     } catch (e: unknown) {
-      error = e instanceof Error ? e.message : 'Неизвестная ошибка'
+      error = e instanceof Error ? e.message : $t('site.sidebar.unknownError')
     } finally {
       loading = false
     }
@@ -36,7 +37,7 @@
     href={authorRatingHref}
     class="mb-2 text-base font-normal text-slate-900 transition-colors hover:text-blue-600 dark:text-zinc-200 dark:hover:text-blue-400"
   >
-    Топ авторов за месяц
+    {$t('site.sidebar.ratings.topAuthorsMonth')}
   </a>
 
   {#if loading}
@@ -51,7 +52,7 @@
     </div>
   {:else if authors.length === 0}
     <div class="text-sm text-slate-500 dark:text-zinc-400">
-      Нет данных за месяц
+      {$t('site.sidebar.ratings.noAuthorsMonth')}
     </div>
   {:else}
     <div class="flex flex-col divide-y divide-slate-200 dark:divide-zinc-800">
@@ -81,7 +82,7 @@
                 {formatTopAuthorNumber(author.rating ?? author.score)}
               </span>
               <span class="flex items-center gap-1">
-                {formatTopAuthorNumber(author.posts_count)} постов
+                {$t('site.sidebar.posts', { count: formatTopAuthorNumber(author.posts_count) })}
               </span>
             </div>
           </div>
@@ -94,7 +95,7 @@
       rounding="xl"
       class="mt-3 w-full justify-center !text-sm"
     >
-      Весь рейтинг
+      {$t('site.sidebar.ratings.fullRating')}
     </Button>
   {/if}
 </div>

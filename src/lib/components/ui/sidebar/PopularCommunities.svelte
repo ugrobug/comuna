@@ -47,7 +47,7 @@
 </style>
 {#if HAS_LEMMY_INSTANCE}
 <div class="flex flex-col gap-2 bg-white dark:bg-zinc-900 rounded-xl py-4">
-  <span class="text-base font-normal text-slate-900 dark:text-zinc-200 mb-2">Лучшее в этом месяце</span>
+  <span class="text-base font-normal text-slate-900 dark:text-zinc-200 mb-2">{$t('site.sidebar.ratings.bestThisMonth')}</span>
   <span class="px-2 py-1 text-sm font-normal">
     {$t('nav.popular_communities')}
   </span>

@@ -32,10 +32,12 @@
   import Profile from './Profile.svelte'
   import NavButton from './NavButton.svelte'
   import { LINKED_INSTANCE_URL } from '$lib/instance'
-  import { t } from '$lib/translations'
+  import { locale, t } from '$lib/translations'
+  import { brandNameForLanguage } from '$lib/brand'
   import CommandsWrapper from './commands/CommandsWrapper.svelte'
   import { optimizeImageURL } from '$lib/components/lemmy/post/helpers'
   import LoginModal from '$lib/components/auth/LoginModal.svelte'
+  import LanguageSwitcher from './LanguageSwitcher.svelte'
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
   import { env } from '$env/dynamic/public';
@@ -52,6 +54,7 @@
 
   let sidebarComuns: BackendComun[] = [];
   let sidebarComunsTotal = 0;
+  $: brandName = brandNameForLanguage($locale)
 
   const PUBLIC_TELEGRAM_URL = env.PUBLIC_TELEGRAM_URL;
 
@@ -142,7 +145,7 @@
   class="flex flex-row gap-2 items-center w-full mx-auto z-[1000] box-border p-0.5
   @container backdrop-blur-xl 
   bg-slate-50/80 dark:bg-zinc-950/80
-  pointer-events-auto overflow-hidden 
+  pointer-events-auto overflow-visible
   border-b border-slate-300 dark:border-zinc-800
   md:relative fixed top-0 left-0 right-0 md:top-0 md:bottom-auto"
   style={$$props.style}
@@ -168,7 +171,7 @@
           on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && goToHome()}
         >
           <span class="text-xl font-medium tracking-tight font-roboto text-slate-900 dark:text-white">
-            Тамбур
+            {brandName}
           </span>
         </div>
       </div>
@@ -208,7 +211,7 @@
         {#if $siteUser?.is_staff}
           <NavButton
             href="/moderator"
-            label="Модераторская"
+            label={$t('site.nav.moderator')}
             icon={ChartBar}
             class="relative"
             isSelectedFilter={(path) => path.startsWith('/moderator')}
@@ -221,7 +224,7 @@
             </div>
             <button
               class="w-6 h-6 rounded-full flex items-center justify-center hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
-              title="Обновить слоган"
+              title={$t('site.nav.refreshTagline')}
               on:click={updateRandomTagline}
             >
               <Icon src={ArrowPath} size="12" class="text-slate-500 dark:text-zinc-400" />
@@ -239,6 +242,7 @@
         >
           <Icon src={MagnifyingGlass} size="18" class="w-4 h-4 md:w-[18px] md:h-[18px]" />
         </button>
+        <LanguageSwitcher />
         <!-- Кнопка создания/входа -->
         {#if $profile?.jwt}
           <Menu placement="bottom-end">
@@ -277,7 +281,7 @@
               class="!rounded-full font-normal py-2 px-4 !text-base md:py-2 md:px-4 dark:!bg-primary-900 dark:!text-white dark:!border-transparent dark:hover:!brightness-110"
               href="/account/new-post?new=1"
             >
-              Написать
+              {$t('site.nav.write')}
             </Button>
             {#await import('$lib/components/notifications/NotificationBellMenu.svelte') then { default: NotificationBellMenu }}
               <NotificationBellMenu />
@@ -286,7 +290,7 @@
               <button
                 slot="target"
                 class="flex items-center gap-2 rounded-full border border-slate-200 dark:border-zinc-700 px-2 py-1 transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800"
-                title="Меню пользователя"
+                title={$t('site.nav.userMenu')}
               >
                 <Avatar
                   url={$siteUser.avatar_url || undefined}
@@ -296,20 +300,20 @@
                 <Icon src={ChevronDown} size="16" class="text-slate-500 dark:text-zinc-400" />
               </button>
               <MenuButton link href="/settings" class="py-2.5">
-                Настройки
+                {$t('site.nav.settings')}
               </MenuButton>
               <MenuButton link href={`/id${$siteUser.id}`} class="py-2.5">
-                Профиль
+                {$t('site.nav.profile')}
               </MenuButton>
               <MenuButton link href="/chats" class="py-2.5">
                 <Icon src={ChatBubbleLeftRight} size="16" micro slot="prefix" />
-                Чаты
+                {$t('site.nav.chats')}
               </MenuButton>
               <MenuButton
                 class="py-2.5 text-red-600 dark:text-red-400"
                 on:click={siteLogout}
               >
-                Выйти
+                {$t('account.logout')}
               </MenuButton>
             </Menu>
           {:else}
@@ -320,7 +324,7 @@
               on:click={() => (loginModalOpen = true)}
             >
               <span class="hidden md:inline">{$t('account.login')}</span>
-              <span class="md:hidden">Войти</span>
+              <span class="md:hidden">{$t('account.login')}</span>
             </Button>
           {/if}
         {/if}
@@ -342,7 +346,7 @@
     class="fixed left-0 right-0 z-[9999] bg-black/30 md:hidden transition-opacity duration-300"
     style="pointer-events: auto; top: 56px; height: calc(100vh - 56px);"
     on:click={toggleSidebar}
-    aria-label="Закрыть меню"
+    aria-label={$t('site.nav.closeMenu')}
   >
     <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
     <aside
@@ -350,7 +354,7 @@
       class:translate-x-0={sidebarOpen}
       class:-translate-x-full={!sidebarOpen}
       on:click|stopPropagation
-      aria-label="Боковое меню"
+      aria-label={$t('site.nav.sideMenu')}
     >
       <!-- Контент меню с отступом сверху -->
       <div class="flex flex-col gap-2 w-full">
@@ -361,7 +365,7 @@
           active={currentFeed === 'hot'}
           on:click={() => { sidebarOpen = false; }}
         >
-          <span slot="label">Горячее</span>
+          <span slot="label">{$t('site.nav.hot')}</span>
         </SidebarButton>
         <SidebarButton
           icon={UserGroup}
@@ -369,7 +373,7 @@
           active={currentFeed === 'mine'}
           on:click={() => { sidebarOpen = false; }}
         >
-          <span slot="label">Моя лента</span>
+          <span slot="label">{$t('site.nav.mine')}</span>
         </SidebarButton>
         <SidebarButton
           icon={Bookmark}
@@ -377,7 +381,7 @@
           active={currentFeed === 'favorites'}
           on:click={() => { sidebarOpen = false; }}
         >
-          <span slot="label">Избранное</span>
+          <span slot="label">{$t('site.nav.favorites')}</span>
         </SidebarButton>
       </div>
 
@@ -410,7 +414,7 @@
             href="/moderator"
             on:click={() => { sidebarOpen = false; }}
           >
-            <span slot="label">Модераторская</span>
+            <span slot="label">{$t('site.nav.moderator')}</span>
           </SidebarButton>
         </div>
       {/if}
@@ -419,10 +423,10 @@
           <span 
             class="px-2 py-1 text-sm font-normal text-slate-500 dark:text-zinc-200 text-left"
           >
-            Сообщества
+            {$t('site.nav.communities')}
           </span>
           <SidebarButton href="/comuns?create=1" icon={Plus} on:click={() => { sidebarOpen = false; }}>
-            <span slot="label">Создать сообщество</span>
+            <span slot="label">{$t('site.nav.createCommunity')}</span>
           </SidebarButton>
           {#each sidebarComuns as comun}
             <SidebarButton href={`/comuns/${comun.slug}`} on:click={() => { sidebarOpen = false; }}>
@@ -437,7 +441,7 @@
             </SidebarButton>
           {/each}
           <SidebarButton href="/comuns" icon={ChevronDown} on:click={() => { sidebarOpen = false; }}>
-            <span slot="label">Все сообщества</span>
+            <span slot="label">{$t('site.nav.allCommunities')}</span>
           </SidebarButton>
       </div>
 
@@ -445,7 +449,7 @@
         <span
           class="px-2 py-1 text-sm font-normal text-slate-500 dark:text-zinc-200 text-left"
         >
-          Ресурсы
+          {$t('site.nav.resources')}
         </span>
         {#if env.PUBLIC_TELEGRAM_URL || env.PUBLIC_GITHUB_URL}
           <div class="flex items-center pl-2 gap-2">
@@ -463,16 +467,16 @@
         {/if}
         <div class="flex flex-col gap-1">
           <SidebarButton href={PUBLIC_PROJECT_ABOUT} icon={InformationCircle} on:click={() => { sidebarOpen = false; }}>
-            <span slot="label">О Проекте</span>
+            <span slot="label">{$t('site.nav.aboutProject')}</span>
           </SidebarButton>
           <SidebarButton href={PUBLIC_PROJECT_ADVRTISEMENT} icon={Megaphone} on:click={() => { sidebarOpen = false; }}>
-            <span slot="label">Реклама</span>
+            <span slot="label">{$t('site.nav.advertisement')}</span>
           </SidebarButton>
           <SidebarButton href={PUBLIC_PROJECT_AUTHORS} icon={PencilSquare} on:click={() => { sidebarOpen = false; }}>
-            <span slot="label">Авторам</span>
+            <span slot="label">{$t('site.nav.authors')}</span>
           </SidebarButton>
           <SidebarButton href={PUBLIC_PROJECT_RULES} icon={ClipboardDocumentList} on:click={() => { sidebarOpen = false; }}>
-            <span slot="label">Правила</span>
+            <span slot="label">{$t('site.nav.rules')}</span>
           </SidebarButton>
         </div>
       </div>

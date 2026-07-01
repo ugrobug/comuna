@@ -11,6 +11,8 @@
   import FeedPostsList from '$lib/components/feeds/FeedPostsList.svelte'
   import { siteToken, siteUser } from '$lib/siteAuth'
   import { feedSettingsHydrated, userSettings } from '$lib/settings'
+  import { locale, t } from '$lib/translations'
+  import { normalizeInterfaceLanguage, originalPostLanguage } from '$lib/postLanguages'
   import { onDestroy, onMount } from 'svelte'
   import type { ComponentType } from 'svelte'
   import type { BackendPost } from '$lib/api/backend'
@@ -298,6 +300,15 @@
 
   $: siteBaseUrl = (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '')
   $: canonicalUrl = `${siteBaseUrl}/`
+  $: currentLanguage = normalizeInterfaceLanguage($locale) || originalPostLanguage
+  $: homeTitle =
+    currentLanguage === originalPostLanguage
+      ? env.PUBLIC_OG_TITLE || $t('site.meta.homeTitle')
+      : $t('site.meta.homeTitle')
+  $: homeDescription =
+    currentLanguage === originalPostLanguage
+      ? env.PUBLIC_SITE_DESCRIPTION || env.PUBLIC_OG_DESCRIPTION || $t('site.meta.homeDescription')
+      : $t('site.meta.homeDescription')
 </script>
 
 <div class="flex max-w-full min-w-0 w-full flex-col gap-2">
@@ -355,10 +366,10 @@
 </div>
 
 <svelte:head>
-  <title>Самые новые и обсуждаемые посты лучших telegram каналов</title>
-  <meta name="description" content={env.PUBLIC_SITE_DESCRIPTION} />
-  <meta property="og:title" content={env.PUBLIC_OG_TITLE} />
-  <meta property="og:description" content={env.PUBLIC_OG_DESCRIPTION} />
+  <title>{homeTitle}</title>
+  <meta name="description" content={homeDescription} />
+  <meta property="og:title" content={homeTitle} />
+  <meta property="og:description" content={homeDescription} />
   <meta property="og:image" content={env.PUBLIC_OG_IMAGE} />
   <meta property="og:url" content={env.PUBLIC_OG_URL} />
   <meta property="og:type" content="website" />

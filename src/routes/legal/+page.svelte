@@ -2,16 +2,18 @@
   import SiteCard from '$lib/components/lemmy/SiteCard.svelte'
   import Markdown from '$lib/components/markdown/Markdown.svelte'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
+  import { brandNameForLanguage } from '$lib/brand'
   import { site } from '$lib/lemmy'
-  import { t } from '$lib/translations'
+  import { locale, t } from '$lib/translations'
   import { Button, Modal, Spinner } from 'mono-svelte'
   import { env } from '$env/dynamic/public'
   import { page } from '$app/stores'
 
   let siteOpen: boolean = false
 
-  const title = `Правовая информация — ${env.PUBLIC_SITE_TITLE || 'Тамбур'}`
-  const description = 'Юридическая информация и документы проекта Тамбур.'
+  $: siteTitle = brandNameForLanguage($locale)
+  $: title = `Правовая информация — ${siteTitle}`
+  $: description = `Юридическая информация и документы проекта ${siteTitle}.`
   $: canonicalUrl = new URL(
     $page.url.pathname,
     (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '') + '/'

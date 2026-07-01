@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { t } from '$lib/translations'
+  import { locale, t } from '$lib/translations'
   import Avatar from '$lib/components/ui/Avatar.svelte'
   import { Badge, Popover, Button } from 'mono-svelte'
   import UserLink from '$lib/components/lemmy/user/UserLink.svelte'
@@ -50,7 +50,7 @@
   export let userUrlOverride: string | undefined = undefined
   export let communityUrlOverride: string | undefined = undefined
   export let subscribeUrl: string | undefined = undefined
-  export let subscribeLabel: string = 'Подписаться'
+  export let subscribeLabel: string = ''
   export let hideSubscribe: boolean = false
   export let disableUserLink: boolean = false
   export let authorNotifyCommentsEnabled: boolean | undefined = undefined
@@ -77,13 +77,13 @@
     ($userSettings.hiddenAuthors ?? []).map((value) => value.toLowerCase())
   )
   $: authorHidden = Boolean(authorKey && hiddenAuthorKeys.has(authorKey))
-  $: hiddenActionLabel = authorHidden ? 'Показывать автора' : 'Скрыть автора'
+  $: hiddenActionLabel = authorHidden ? $t('site.postMeta.showAuthor') : $t('site.postMeta.hideAuthor')
   $: showAdminNotifyCommentsIcon = Boolean(
     $siteUser?.is_staff && authorUsername && typeof authorNotifyCommentsEnabled === 'boolean'
   )
   $: notifyCommentsLabel = authorNotifyCommentsEnabled
-    ? 'Оповещения о комментариях автору в Telegram включены'
-    : 'Оповещения о комментариях автору в Telegram выключены'
+    ? $t('site.postMeta.notifyOn')
+    : $t('site.postMeta.notifyOff')
   $: authorDisplayName = (user?.display_name || user?.name || '').trim()
   $: communityDisplayName = (community?.title || community?.name || '').trim()
   $: authorAvatarUrl = (user?.avatar || '').trim()
@@ -166,7 +166,7 @@
     
     // Форматирование времени
     const formatTime = (d: Date) => {
-      return d.toLocaleTimeString('ru-RU', {
+      return d.toLocaleTimeString($locale || 'ru', {
         hour: '2-digit',
         minute: '2-digit'
       });
@@ -175,7 +175,7 @@
     // Форматирование даты для текущего года
     const formatDateCurrentYear = (d: Date) => {
       const day = d.getDate(); // Получаем день без ведущего нуля
-      const month = d.toLocaleDateString('ru-RU', {
+      const month = d.toLocaleDateString($locale || 'ru', {
         month: 'short'
       }).replace('.', '');
       
@@ -184,7 +184,7 @@
 
     // Форматирование даты для прошлых лет
     const formatDatePastYear = (d: Date) => {
-      return d.toLocaleDateString('ru-RU', {
+      return d.toLocaleDateString($locale || 'ru', {
         day: '2-digit',
         month: '2-digit',
         year: 'numeric'
@@ -198,7 +198,7 @@
     
     // Проверяем, вчера ли пост
     if (date.toDateString() === yesterday.toDateString()) {
-      return 'вчера';
+      return $t('site.postMeta.yesterday');
     }
     
     // Проверяем, в этом ли году пост
@@ -237,7 +237,7 @@
   const toggleHiddenAuthor = () => {
     if (!$siteUser) {
       toast({
-        content: 'Необходимо зарегистрироваться',
+        content: $t('site.postMeta.loginRequired'),
         type: 'warning',
       })
       return
@@ -251,13 +251,13 @@
     if (existingHidden) {
       nextHidden.delete(existingHidden)
       toast({
-        content: 'Посты автора снова отображаются на сайте',
+        content: $t('site.postMeta.authorVisible'),
         type: 'success',
       })
     } else {
       nextHidden.add(authorUsername)
       toast({
-        content: 'Вы больше не увидите посты автора на сайте',
+        content: $t('site.postMeta.authorHidden'),
         type: 'success',
       })
     }
@@ -377,9 +377,9 @@
         {#if badges.admin}
           <img 
             src="/badge.svg" 
-            alt="Администрация"
+            alt={$t('site.postMeta.admin')}
             class="w-4 h-4 !m-0" 
-            title="Администрация"
+            title={$t('site.postMeta.admin')}
           />
         {/if}
       </div>
@@ -464,9 +464,9 @@
 	              href={subscribeUrl}
 	              target="_blank"
 	              rel="nofollow noopener"
-	              title={subscribeLabel}
-	              aria-label={subscribeLabel}
-                data-tooltip={subscribeLabel}
+	              title={subscribeLabel || $t('site.postMeta.subscribe')}
+	              aria-label={subscribeLabel || $t('site.postMeta.subscribe')}
+                data-tooltip={subscribeLabel || $t('site.postMeta.subscribe')}
 	            >
 	              <span class="inline-flex items-center justify-center text-white">
 	                <img src="/img/logos/telegram_logo.svg" alt="Telegram" class="w-4 h-4" />

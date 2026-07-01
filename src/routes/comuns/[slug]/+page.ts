@@ -13,7 +13,7 @@ export const load = async ({ fetch, params, url, parent }) => {
   const postsResponse = await fetch(postsUrl.toString())
   if (!postsResponse.ok) {
     if (postsResponse.status === 404) {
-      throw error(404, 'Сообщество не найдено')
+      throw error(404, 'site.errors.communityNotFound')
     }
     throw error(postsResponse.status, 'Не удалось загрузить посты сообщества')
   }

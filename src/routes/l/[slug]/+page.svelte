@@ -2,6 +2,8 @@
   import { buildLandingPageLeadsUrl } from '$lib/api/backend'
   import { env } from '$env/dynamic/public'
   import { page } from '$app/stores'
+  import { brandNameForLanguage } from '$lib/brand'
+  import { locale } from '$lib/translations'
   import { Button, toast } from 'mono-svelte'
   import {
     ArrowRight,
@@ -39,9 +41,9 @@
   }
 
   const pageData = data.landingPage
-  const siteName = env.PUBLIC_SITE_TITLE || 'Тамбур'
-  const title = `${siteName} - платформа для создания сообществ, базы знаний и живых обсуждений`
-  const description =
+  $: siteName = brandNameForLanguage($locale)
+  $: title = `${siteName} - платформа для создания сообществ, базы знаний и живых обсуждений`
+  $: description =
     pageData.description ||
     'Создайте самостоятельное сообщество с рубриками, правилами, базой знаний, дорожной картой, ролями и публикациями.'
 

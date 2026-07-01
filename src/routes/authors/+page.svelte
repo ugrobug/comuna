@@ -1,12 +1,13 @@
 <script>
   import StaticPageArticle from '$lib/components/static-pages/StaticPageArticle.svelte'
-  import { env } from '$env/dynamic/public'
+  import { brandNameForLanguage } from '$lib/brand'
   import { EDITABLE_STATIC_PAGE_META } from '$lib/staticPageContent'
+  import { locale } from '$lib/translations'
 
   export let data
 
   const meta = EDITABLE_STATIC_PAGE_META.authors
-  const seoTitle = `${meta.heading} — ${env.PUBLIC_SITE_TITLE || 'Тамбур'}`
+  $: seoTitle = `${meta.heading} — ${brandNameForLanguage($locale)}`
 </script>
 
 <div class="flex max-w-3xl flex-col gap-6">

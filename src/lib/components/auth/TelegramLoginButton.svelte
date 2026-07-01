@@ -2,7 +2,7 @@
   import TelegramLoginButton from '$lib/components/telegram/TelegramLoginButton.svelte'
 
   export let onSuccess: (() => void) | null = null
-  export let label = 'Продолжить с Telegram'
+  export let label = ''
   export let helperText = ''
   export let active = true
   export let disabled = false

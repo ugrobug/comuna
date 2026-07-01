@@ -180,13 +180,13 @@
 >
   <div class="flex flex-col gap-1">
     <SidebarButton icon={Fire} href="/?feed=hot" active={currentFeed === 'hot'}>
-      <span slot="label">Горячее</span>
+      <span slot="label">{$t('site.sidebar.hot')}</span>
     </SidebarButton>
     <SidebarButton icon={UserGroup} href="/?feed=mine" active={currentFeed === 'mine'}>
-      <span slot="label">Моя лента</span>
+      <span slot="label">{$t('site.sidebar.myFeed')}</span>
     </SidebarButton>
     <SidebarButton icon={Bookmark} href="/?feed=favorites" active={currentFeed === 'favorites'}>
-      <span slot="label">Избранное</span>
+      <span slot="label">{$t('site.sidebar.favorites')}</span>
     </SidebarButton>
   </div>
 
@@ -211,7 +211,7 @@
   {#if $siteUser?.is_staff}
     <div class="flex flex-col gap-1">
       <SidebarButton icon={ChartBar} href="/moderator">
-        <span slot="label">Модераторская</span>
+        <span slot="label">{$t('site.sidebar.moderator')}</span>
       </SidebarButton>
     </div>
   {/if}
@@ -220,10 +220,10 @@
       <span
         class="px-2 py-1 text-sm font-normal text-slate-500 dark:text-zinc-200"
       >
-        Сообщества
+        {$t('site.sidebar.communities')}
       </span>
       <SidebarButton href="/comuns?create=1" icon={Plus}>
-        <span slot="label">Создать сообщество</span>
+        <span slot="label">{$t('site.sidebar.createCommunity')}</span>
       </SidebarButton>
       {#each sidebarComuns as comun}
         <SidebarButton href={`/comuns/${comun.slug}`}>
@@ -239,7 +239,7 @@
       {/each}
           {#if sidebarComunsTotal > 10}
             <SidebarButton href="/comuns" icon={ChevronDown}>
-              <span slot="label">Все сообщества</span>
+              <span slot="label">{$t('site.sidebar.allCommunities')}</span>
             </SidebarButton>
       {/if}
   </div>
@@ -272,7 +272,7 @@
           icon={ChevronDown}
           href="javascript:void(0)"
         >
-          <span slot="label">Показать все</span>
+          <span slot="label">{$t('site.sidebar.showAll')}</span>
         </SidebarButton>
       {/if}
     </div>
@@ -282,7 +282,7 @@
     <span
       class="px-2 py-1 text-sm font-normal text-slate-500 dark:text-zinc-200"
     >
-      Ресурсы
+      {$t('site.sidebar.resources')}
     </span>
     {#if env.PUBLIC_TELEGRAM_URL || env.PUBLIC_GITHUB_URL}
       <div class="flex items-center pl-2 gap-2">
@@ -300,16 +300,16 @@
     {/if}
     <div class="flex flex-col gap-1">
       <SidebarButton href={PUBLIC_PROJECT_ABOUT} icon={InformationCircle}>
-        <span slot="label">О Проекте</span>
+        <span slot="label">{$t('site.sidebar.aboutProject')}</span>
       </SidebarButton>
       <SidebarButton href={PUBLIC_PROJECT_ADVRTISEMENT} icon={Megaphone}>
-        <span slot="label">Реклама</span>
+        <span slot="label">{$t('site.sidebar.advertisement')}</span>
       </SidebarButton>
       <SidebarButton href={PUBLIC_PROJECT_AUTHORS} icon={PencilSquare}>
-        <span slot="label">Авторам</span>
+        <span slot="label">{$t('site.sidebar.authors')}</span>
       </SidebarButton>
       <SidebarButton href={PUBLIC_PROJECT_RULES} icon={ClipboardDocumentList}>
-        <span slot="label">Правила</span>
+        <span slot="label">{$t('site.sidebar.rules')}</span>
       </SidebarButton>
     </div>
   </div>

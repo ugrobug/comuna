@@ -10,6 +10,8 @@
     buildModeratorPostViewSettingUrl,
     buildModeratorRatingSettingsUrl,
     buildModeratorRatingSettingsUpdateUrl,
+    buildModeratorTranslationSettingsUpdateUrl,
+    buildModeratorTranslationSettingsUrl,
     type BackendSiteChatReport,
     type BackendSiteChatReportStatus,
   } from '$lib/api/backend'
@@ -17,7 +19,9 @@
     EDITABLE_STATIC_PAGE_META,
     type EditableStaticPageSlug,
   } from '$lib/staticPageContent'
+  import { brandNameForLanguage } from '$lib/brand'
   import { refreshSiteUser, siteToken, siteUser } from '$lib/siteAuth'
+  import { locale } from '$lib/translations'
   import { onMount } from 'svelte'
   import {
     ChartBar,
@@ -107,6 +111,28 @@
     recalculated_comuns?: number
   }
 
+  type TranslationSettings = {
+    enabled: boolean
+    post_daily_limit: number
+    comment_daily_limit: number
+    post_object_daily_limit: number
+    updated_at?: string | null
+    usage?: {
+      day_start?: string
+      post_used?: number
+      comment_used?: number
+      comun_used?: number
+      post_remaining?: number
+      comment_remaining?: number
+    }
+  }
+
+  type TranslationSettingsResponse = {
+    ok: boolean
+    error?: string
+    settings?: TranslationSettings
+  }
+
   type ChatReportsResponse = {
     ok: boolean
     error?: string
@@ -118,7 +144,13 @@
     open_count?: number
   }
 
-  type ModeratorTab = 'analytics' | 'views' | 'rating' | 'chat-reports' | 'static-pages'
+  type ModeratorTab =
+    | 'analytics'
+    | 'views'
+    | 'rating'
+    | 'translations'
+    | 'chat-reports'
+    | 'static-pages'
   type ChatReportsFilter = 'open' | 'all'
 
   const dateValue = (date: Date) => {
@@ -150,6 +182,11 @@
   let ratingSettingsError = ''
   let ratingSettingsNotice = ''
   let ratingSettings: RatingSettings | null = null
+  let translationSettingsLoading = true
+  let translationSettingsSaving = false
+  let translationSettingsError = ''
+  let translationSettingsNotice = ''
+  let translationSettings: TranslationSettings | null = null
   let chatReportsLoading = true
   let chatReportsError = ''
   let chatReportsNotice = ''
@@ -170,6 +207,7 @@
   const dashboardTitle = (tab: ModeratorTab) => {
     if (tab === 'views') return 'Настройки просмотров'
     if (tab === 'rating') return 'Настройки рейтинга'
+    if (tab === 'translations') return 'Лимиты перевода'
     if (tab === 'chat-reports') return 'Модерация комментариев'
     if (tab === 'static-pages') return 'Статичные страницы'
     return 'Аналитика сайта'
@@ -508,6 +546,75 @@
     }
   }
 
+  async function loadTranslationSettings() {
+    if (!$siteUser?.is_staff) return
+    translationSettingsLoading = true
+    translationSettingsError = ''
+    translationSettingsNotice = ''
+
+    try {
+      const token = $siteToken
+      const response = await fetch(buildModeratorTranslationSettingsUrl(), {
+        credentials: 'include',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      const data = await readModeratorJson<TranslationSettingsResponse>(response)
+      if (!response.ok || !data.ok || !data.settings) {
+        throw new Error(data.error || 'Не удалось загрузить настройки перевода')
+      }
+      translationSettings = data.settings
+    } catch (err) {
+      translationSettingsError =
+        err instanceof Error ? err.message : 'Не удалось загрузить настройки перевода'
+      translationSettings = null
+    } finally {
+      translationSettingsLoading = false
+    }
+  }
+
+  async function saveTranslationSettings() {
+    if (!translationSettings) return
+    translationSettings = {
+      ...translationSettings,
+      post_daily_limit: Math.max(0, Math.trunc(Number(translationSettings.post_daily_limit) || 0)),
+      comment_daily_limit: Math.max(
+        0,
+        Math.trunc(Number(translationSettings.comment_daily_limit) || 0)
+      ),
+      post_object_daily_limit: Math.max(
+        0,
+        Math.trunc(Number(translationSettings.post_object_daily_limit) || 0)
+      ),
+    }
+    translationSettingsSaving = true
+    translationSettingsError = ''
+    translationSettingsNotice = ''
+
+    try {
+      const token = $siteToken
+      const response = await fetch(buildModeratorTranslationSettingsUpdateUrl(), {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(translationSettings),
+      })
+      const data = await readModeratorJson<TranslationSettingsResponse>(response)
+      if (!response.ok || !data.ok || !data.settings) {
+        throw new Error(data.error || 'Не удалось сохранить настройки перевода')
+      }
+      translationSettings = data.settings
+      translationSettingsNotice = 'Настройки перевода сохранены.'
+    } catch (err) {
+      translationSettingsError =
+        err instanceof Error ? err.message : 'Не удалось сохранить настройки перевода'
+    } finally {
+      translationSettingsSaving = false
+    }
+  }
+
   async function loadChatReports() {
     if (!$siteUser?.is_staff) return
     chatReportsLoading = true
@@ -605,12 +712,13 @@
     loadAnalytics()
     loadViewSettings()
     loadRatingSettings()
+    loadTranslationSettings()
     loadChatReports()
   })
 </script>
 
 <svelte:head>
-  <title>Модераторская | Тамбур</title>
+  <title>Модераторская | {brandNameForLanguage($locale)}</title>
   <meta name="robots" content="noindex, nofollow" />
 </svelte:head>
 
@@ -664,6 +772,13 @@
       on:click={() => (activeTab = 'rating')}
     >
       Рейтинг
+    </button>
+    <button
+      type="button"
+      class:active={activeTab === 'translations'}
+      on:click={() => (activeTab = 'translations')}
+    >
+      Перевод
     </button>
     <button
       type="button"
@@ -905,6 +1020,109 @@
         </div>
       {:else}
         <div class="empty-state">Настройки рейтинга не загружены.</div>
+      {/if}
+    </section>
+  {/if}
+
+  {#if activeTab === 'translations'}
+    <section class="translation-settings-section">
+      <div class="section-header">
+        <div>
+          <p class="section-label">Раздел</p>
+          <h2>Лимиты перевода</h2>
+        </div>
+        <button
+          class="primary-button"
+          type="button"
+          disabled={translationSettingsSaving || translationSettingsLoading || !translationSettings}
+          on:click={saveTranslationSettings}
+        >
+          {translationSettingsSaving ? 'Сохраняю' : 'Сохранить'}
+        </button>
+      </div>
+
+      {#if translationSettingsError}
+        <div class="notice error">{translationSettingsError}</div>
+      {/if}
+      {#if translationSettingsNotice}
+        <div class="notice success">{translationSettingsNotice}</div>
+      {/if}
+
+      {#if translationSettingsLoading}
+        <div class="rating-settings-grid">
+          {#each Array(4) as _}
+            <div class="rating-setting-card skeleton"></div>
+          {/each}
+        </div>
+      {:else if translationSettings}
+        <div class="formula-strip">
+          <span>
+            Статьи сегодня: {formatNumber(translationSettings.usage?.post_used ?? 0)} / {formatNumber(translationSettings.post_daily_limit)}
+          </span>
+          <span>
+            Комментарии сегодня: {formatNumber(translationSettings.usage?.comment_used ?? 0)} / {formatNumber(translationSettings.comment_daily_limit)}
+          </span>
+          <span>
+            На одну статью: до {formatNumber(translationSettings.post_object_daily_limit)} переводов за 24 часа
+          </span>
+        </div>
+
+        <div class="rating-settings-grid">
+          <label class="rating-setting-card translation-toggle-card">
+            <span>Осуществлять перевод</span>
+            <div class="translation-toggle-row">
+              <input
+                id="translation-enabled"
+                type="checkbox"
+                bind:checked={translationSettings.enabled}
+              />
+              <span class:enabled={translationSettings.enabled}>
+                {translationSettings.enabled ? 'Включено' : 'Выключено'}
+              </span>
+            </div>
+            <small>
+              Если выключить, очередь переводов перестанет отправлять материалы в OpenRouter.
+            </small>
+          </label>
+
+          <label class="rating-setting-card">
+            <span>Статей в сутки</span>
+            <input
+              type="number"
+              min="0"
+              max="100000"
+              step="1"
+              bind:value={translationSettings.post_daily_limit}
+            />
+            <small>Общий дневной лимит автоматических переводов статей.</small>
+          </label>
+
+          <label class="rating-setting-card">
+            <span>Комментариев в сутки</span>
+            <input
+              type="number"
+              min="0"
+              max="100000"
+              step="1"
+              bind:value={translationSettings.comment_daily_limit}
+            />
+            <small>Общий дневной лимит автоматических переводов комментариев.</small>
+          </label>
+
+          <label class="rating-setting-card">
+            <span>Повторов для одной статьи</span>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="1"
+              bind:value={translationSettings.post_object_daily_limit}
+            />
+            <small>Защита от частых правок: одна статья не переводится чаще этого лимита в сутки.</small>
+          </label>
+        </div>
+      {:else}
+        <div class="empty-state">Настройки перевода не загружены.</div>
       {/if}
     </section>
   {/if}
@@ -1236,6 +1454,7 @@
   .analytics-section,
   .view-settings-section,
   .rating-settings-section,
+  .translation-settings-section,
   .chat-reports-section,
   .static-pages-section {
     border: 1px solid rgb(226 232 240);
@@ -1597,6 +1816,33 @@
     line-height: 1.35;
   }
 
+  .translation-toggle-card {
+    min-height: 132px;
+  }
+
+  .translation-toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .translation-toggle-row input {
+    width: 44px;
+    height: 24px;
+    flex: 0 0 auto;
+    accent-color: rgb(37 99 235);
+  }
+
+  .translation-toggle-row span {
+    color: rgb(185 28 28);
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .translation-toggle-row span.enabled {
+    color: rgb(22 101 52);
+  }
+
   .view-settings-row {
     min-height: 76px;
     border: 1px solid rgb(226 232 240);
@@ -1739,6 +1985,7 @@
   :global(.dark) .analytics-section,
   :global(.dark) .view-settings-section,
   :global(.dark) .rating-settings-section,
+  :global(.dark) .translation-settings-section,
   :global(.dark) .chat-reports-section,
   :global(.dark) .static-pages-section,
   :global(.dark) .view-defaults-card,
@@ -1813,6 +2060,14 @@
     border-color: rgb(63 63 70);
     background: rgb(39 39 42);
     color: rgb(212 212 216);
+  }
+
+  :global(.dark) .translation-toggle-row span {
+    color: rgb(252 165 165);
+  }
+
+  :global(.dark) .translation-toggle-row span.enabled {
+    color: rgb(134 239 172);
   }
 
   :global(.dark) .skeleton {

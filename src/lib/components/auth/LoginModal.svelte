@@ -11,6 +11,7 @@
   import { Envelope, Icon } from 'svelte-hero-icons'
   import { createEventDispatcher } from 'svelte'
   import { refreshAfterSiteAuth } from '$lib/authRefresh'
+  import { t } from '$lib/translations'
 
   export let open = false
   export let initialMode: 'login' | 'signup' = 'login'
@@ -52,11 +53,11 @@
 
     try {
       await login(loginData.username.trim(), loginData.password)
-      toast({ content: 'Вы успешно вошли', type: 'success' })
+      toast({ content: $t('site.authModal.loginSuccess'), type: 'success' })
       await handleSuccessfulAuth()
     } catch (error) {
       pushError({
-        message: (error as Error)?.message ?? 'Не удалось войти',
+        message: (error as Error)?.message ?? $t('site.authModal.loginError'),
         scope: $page.route.id!,
       })
     }
@@ -98,7 +99,7 @@
     }
 
     toast({
-      content: 'Сначала примите политику обработки персональных данных.',
+      content: $t('site.authModal.acceptPrivacyFirst'),
       type: 'info',
     })
   }
@@ -107,10 +108,10 @@
 <Modal bind:open dismissable on:close={handleModalClose}>
   <div class="w-full max-w-[30rem]">
     <h2 class="text-xl font-roboto font-medium text-center text-slate-900 dark:text-zinc-100">
-      Вход и регистрация
+      {$t('site.authModal.title')}
     </h2>
     <p class="mt-1 text-center text-sm text-slate-500 dark:text-zinc-400">
-      Войдите в существующий аккаунт или зарегистрируйтесь удобным способом
+      {$t('site.authModal.subtitle')}
     </p>
 
     <div class="mt-4 grid grid-cols-2 rounded-xl bg-slate-100 p-1 dark:bg-zinc-900">
@@ -126,7 +127,7 @@
           signupMethod = 'options'
         }}
       >
-        Авторизация
+        {$t('site.authModal.loginTab')}
       </button>
       <button
         type="button"
@@ -140,7 +141,7 @@
           signupMethod = 'options'
         }}
       >
-        Регистрация
+        {$t('site.authModal.signupTab')}
       </button>
     </div>
 
@@ -156,7 +157,7 @@
               privacyAccepted={false}
               registrationSource=""
               registrationPath=""
-              label="Войти через Telegram"
+              label={$t('site.authModal.loginTelegram')}
             />
           {/await}
         {/if}
@@ -166,13 +167,13 @@
           privacyAccepted={false}
           registrationSource=""
           registrationPath=""
-          label="Войти через VK"
+          label={$t('site.authModal.loginVk')}
         />
       </div>
 
       <div class="flex items-center gap-3 text-xs text-slate-400 dark:text-zinc-500 mt-4">
         <span class="h-px flex-1 bg-slate-200 dark:bg-zinc-800"></span>
-        или по почте
+        {$t('site.authModal.orEmail')}
         <span class="h-px flex-1 bg-slate-200 dark:bg-zinc-800"></span>
       </div>
 
@@ -182,7 +183,7 @@
         <TextInput
           id="username"
           bind:value={loginData.username}
-          label="Email или имя пользователя"
+          label={$t('site.authModal.usernameOrEmail')}
           class="flex-1"
           required
         />
@@ -190,7 +191,7 @@
         <TextInput
           id="password"
           bind:value={loginData.password}
-          label="Пароль"
+          label={$t('site.authModal.password')}
           type="password"
           minlength={8}
           maxlength={60}
@@ -205,14 +206,14 @@
           size="lg"
           submit
         >
-          Войти
+          {$t('site.authModal.loginSubmit')}
         </Button>
         <button
           type="button"
           class="text-sm text-blue-600 hover:underline dark:text-blue-400"
           on:click={() => (authMode = 'reset')}
         >
-          Забыли пароль?
+          {$t('site.authModal.forgotPassword')}
         </button>
       </form>
     {:else if authMode === 'reset'}
@@ -228,14 +229,14 @@
             class="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-900"
           />
           <span>
-            Я согласен с
+            {$t('site.authModal.privacyAgreePrefix')}
             <a
               href="/privacy"
               target="_blank"
               rel="noopener noreferrer"
               class="text-blue-600 hover:underline dark:text-blue-400"
             >
-              политикой обработки персональных данных
+              {$t('site.authModal.privacyPolicy')}
             </a>
           </span>
         </label>
@@ -248,7 +249,7 @@
             class="w-fit text-sm text-slate-500 transition hover:text-slate-900 dark:text-zinc-400 dark:hover:text-zinc-100"
             on:click={() => (signupMethod = 'options')}
           >
-            ← Назад к способам регистрации
+            {$t('site.authModal.backToSignupMethods')}
           </button>
 
           <SignupForm
@@ -273,7 +274,7 @@
             <span class="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-zinc-200">
               <Icon src={Envelope} size="18" solid />
             </span>
-            <span>Зарегистрироваться через почту</span>
+            <span>{$t('site.authModal.signupEmail')}</span>
           </button>
           {#if telegramButtonModulePromise}
             {#await telegramButtonModulePromise then module}
@@ -286,7 +287,7 @@
                 privacyAccepted={signupPrivacyAccepted}
                 registrationSource={registrationSource}
                 registrationPath={registrationPath}
-                label="Зарегистрироваться через Telegram"
+                label={$t('site.authModal.signupTelegram')}
               />
             {/await}
           {/if}
@@ -297,7 +298,7 @@
             privacyAccepted={signupPrivacyAccepted}
             registrationSource={registrationSource}
             registrationPath={registrationPath}
-            label="Зарегистрироваться через VK"
+            label={$t('site.authModal.signupVk')}
           />
         </div>
       {/if}

@@ -4,9 +4,10 @@
   import { env } from '$env/dynamic/public'
   import { toast } from 'mono-svelte'
   import { loginVK } from '$lib/siteAuth'
+  import { t } from '$lib/translations'
 
   export let onSuccess: (() => void) | null = null
-  export let label = 'Продолжить с VK'
+  export let label = ''
   export let helperText = ''
   export let disabled = false
   export let privacyAccepted = false
@@ -19,7 +20,7 @@
   let scriptLoaded = false
   let vkidSdk: typeof import('@vkid/sdk') | null = null
   const appId = env.PUBLIC_VK_APP_ID
-  const disabledMessage = 'Сначала примите политику обработки персональных данных.'
+  $: disabledMessage = $t('site.authModal.acceptPrivacyFirst')
 
   const handleDisabledClick = () => {
     if (!disabled || loading) return
@@ -47,13 +48,13 @@
       })
       .on(VKID.WidgetEvents.ERROR, (error: any) => {
         console.error('VKID error', error)
-        toast({ content: 'Ошибка VK', type: 'error' })
+        toast({ content: $t('site.authModal.vkError'), type: 'error' })
       })
       .on(VKID.OneTapInternalEvents.LOGIN_SUCCESS, (payload: any) => {
         const code = payload?.code
         const deviceId = payload?.device_id
         if (!code || !deviceId) {
-          toast({ content: 'Не удалось получить код VK', type: 'error' })
+          toast({ content: $t('site.authModal.vkCodeError'), type: 'error' })
           return
         }
         loading = true
@@ -71,12 +72,12 @@
               registration_source: registrationSource,
               registration_path: registrationPath,
             })
-            toast({ content: 'Вы успешно вошли через VK', type: 'success' })
+            toast({ content: $t('site.authModal.vkLoginSuccess'), type: 'success' })
             onSuccess?.()
           })
           .catch((error: any) => {
             console.error('VKID exchange error', error)
-            toast({ content: error?.message || 'Не удалось войти через VK', type: 'error' })
+            toast({ content: error?.message || $t('site.authModal.vkLoginError'), type: 'error' })
           })
           .finally(() => {
             loading = false
@@ -95,7 +96,7 @@
       })
       .catch((error) => {
         console.error('Failed to load VKID SDK', error)
-        toast({ content: 'Не удалось загрузить VK виджет', type: 'error' })
+        toast({ content: $t('site.authModal.vkWidgetLoadError'), type: 'error' })
       })
   })
 
@@ -106,13 +107,13 @@
     type="button"
     disabled
     class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-left text-sm text-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-500"
-    title="VK‑вход временно недоступен"
+    title={$t('site.authModal.vkUnavailableTitle')}
   >
     <span class="flex items-center gap-3">
       <span class="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100 text-blue-700 font-semibold dark:bg-blue-900/40 dark:text-blue-300">
         VK
       </span>
-      <span class="font-medium">VK недоступен</span>
+      <span class="font-medium">{$t('site.authModal.vkUnavailable')}</span>
     </span>
   </button>
 {:else}
@@ -125,7 +126,7 @@
         class:hover:bg-slate-50={!disabled}
         class:dark:hover:border-zinc-600={!disabled}
         class:dark:hover:bg-zinc-800={!disabled}
-        title={label}
+        title={label || $t('site.authModal.continueVk')}
         aria-hidden="true"
         on:click={handleDisabledClick}
       >
@@ -134,7 +135,9 @@
             VK
           </span>
           <span class="flex min-w-0 flex-col">
-            <span class="text-sm font-semibold text-slate-900 dark:text-zinc-100">{label}</span>
+            <span class="text-sm font-semibold text-slate-900 dark:text-zinc-100">
+              {label || $t('site.authModal.continueVk')}
+            </span>
             {#if helperText}
               <span class="text-xs text-slate-500 dark:text-zinc-400">{helperText}</span>
             {/if}
@@ -147,14 +150,14 @@
         class="vk-widget-host"
         class:is-loading={!scriptLoaded || loading}
         class:is-disabled={disabled}
-        aria-label={label}
+        aria-label={label || $t('site.authModal.continueVk')}
       ></div>
     </div>
 
     {#if loading}
-      <p class="text-xs text-slate-500 dark:text-zinc-400">Вход через VK…</p>
+      <p class="text-xs text-slate-500 dark:text-zinc-400">{$t('site.authModal.vkSigningIn')}</p>
     {:else if !scriptLoaded}
-      <p class="text-xs text-slate-500 dark:text-zinc-400">Загрузка VK виджета…</p>
+      <p class="text-xs text-slate-500 dark:text-zinc-400">{$t('site.authModal.vkWidgetLoading')}</p>
     {/if}
   </div>
 {/if}

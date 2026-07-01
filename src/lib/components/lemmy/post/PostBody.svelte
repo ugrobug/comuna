@@ -45,6 +45,7 @@
   import { renderQuoteBlockHtml } from '$lib/quoteBlock'
   import { sanitizePostHtml as sanitizePostHtmlUniversal } from '$lib/security/html'
   import { getSafeUrl, isExternalUrl } from '$lib/security/url'
+  import { t } from '$lib/translations'
   
   let DOMPurify: any
   let purifyConfigured = false
@@ -537,11 +538,7 @@
     const safeCount = Math.max(0, Math.floor(count))
     const mod10 = safeCount % 10
     const mod100 = safeCount % 100
-    if (mod10 === 1 && mod100 !== 11) return `${safeCount} голос`
-    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
-      return `${safeCount} голоса`
-    }
-    return `${safeCount} голосов`
+    return $t('site.postBody.votes', { count: safeCount })
   }
 
   const normalizeTextForCompare = (value: string): string =>
@@ -1002,7 +999,7 @@
     } catch (error) {
       console.error('Failed to load full post body:', error)
       fullBodyLoadFailed = true
-      toast({ content: 'Не удалось загрузить полный текст поста', type: 'error' })
+      toast({ content: $t('site.postBody.loadFullError'), type: 'error' })
       return false
     } finally {
       fullBodyLoading = false
@@ -1064,7 +1061,7 @@
     if (!allowPollVoting || !postId) return
     const token = $siteToken
     if (!token) {
-      toast({ content: 'Необходимо зарегистрироваться', type: 'warning' })
+      toast({ content: $t('site.postBody.loginRequired'), type: 'warning' })
       return
     }
 
@@ -1088,18 +1085,18 @@
         if (data?.poll && typeof data.poll === 'object') {
           applyLocalPollState(mergeServerPollWithSelection(data.poll as BackendPoll, nextSelection))
         }
-        throw new Error(data?.error || 'Не удалось проголосовать')
+        throw new Error(data?.error || $t('site.postBody.voteError'))
       }
       if (data?.poll && typeof data.poll === 'object') {
         applyLocalPollState(mergeServerPollWithSelection(data.poll as BackendPoll, nextSelection))
       }
       await refreshPollFromServer(token)
     } catch (error) {
-      if ((error as Error)?.message !== 'Вы уже проголосовали в этом опросе') {
+      if ((error as Error)?.message !== $t('site.postBody.alreadyVoted')) {
         applyLocalPollState(previousPollState)
       }
       toast({
-        content: (error as Error)?.message ?? 'Не удалось проголосовать',
+        content: (error as Error)?.message ?? $t('site.postBody.voteError'),
         type: 'error',
       })
     } finally {
@@ -1122,7 +1119,7 @@
     if (pollVoting || pollElement.getAttribute('data-poll-voting') === '1') return
     if (pollElement.getAttribute('data-poll-locked') === '1') return
     if (pollElement.getAttribute('data-poll-closed') === '1') {
-      toast({ content: 'Опрос завершен', type: 'warning' })
+      toast({ content: $t('site.postBody.pollFinished'), type: 'warning' })
       return
     }
 
@@ -1154,7 +1151,7 @@
     if (!postId) return
     const token = $siteToken
     if (!token) {
-      toast({ content: 'Необходимо зарегистрироваться', type: 'warning' })
+      toast({ content: $t('site.postBody.loginRequired'), type: 'warning' })
       return
     }
     if (!Number.isInteger(value) || value < 1 || value > 10 || postRatingsVoting) {
@@ -1174,7 +1171,7 @@
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok || !payload?.ok) {
-        throw new Error(payload?.error || 'Не удалось сохранить оценку')
+        throw new Error(payload?.error || $t('site.postBody.ratingSaveError'))
       }
 
       const nextBlockId =
@@ -1190,7 +1187,7 @@
       }
     } catch (error) {
       toast({
-        content: (error as Error)?.message ?? 'Не удалось сохранить оценку',
+        content: (error as Error)?.message ?? $t('site.postBody.ratingSaveError'),
         type: 'error',
       })
     } finally {
@@ -1237,9 +1234,9 @@
           referrerpolicy="no-referrer-when-downgrade"
           allowfullscreen
           frameborder="0"
-          title="Карта OpenStreetMap"
+          title="${$t('site.postBody.mapTitle')}"
         ></iframe>
-        <button type="button" class="post-map-modal__close" aria-label="Закрыть карту">✕</button>
+        <button type="button" class="post-map-modal__close" aria-label="${$t('site.postBody.mapClose')}">✕</button>
       </div>
     `
 
@@ -1273,7 +1270,7 @@
     modal.className = 'post-table-modal'
     modal.setAttribute('role', 'dialog')
     modal.setAttribute('aria-modal', 'true')
-    modal.setAttribute('aria-label', 'Просмотр таблицы')
+    modal.setAttribute('aria-label', $t('site.postBody.tableView'))
 
     const backdrop = document.createElement('div')
     backdrop.className = 'post-table-modal__backdrop'
@@ -1286,13 +1283,13 @@
 
     const title = document.createElement('div')
     title.className = 'post-table-modal__title'
-    title.textContent = 'Таблица'
+    title.textContent = $t('site.postBody.table')
 
     const closeButton = document.createElement('button')
     closeButton.type = 'button'
     closeButton.className = 'post-table-modal__close'
-    closeButton.setAttribute('aria-label', 'Закрыть таблицу')
-    closeButton.textContent = 'Закрыть'
+    closeButton.setAttribute('aria-label', $t('site.postBody.tableClose'))
+    closeButton.textContent = $t('site.postBody.tableClose')
 
     const tableWrap = document.createElement('div')
     tableWrap.className = 'post-table-modal__table-wrap'
@@ -1341,7 +1338,7 @@
     trigger.setAttribute('aria-expanded', isOpen ? 'true' : 'false')
     const hint = trigger.querySelector('.post-spoiler__hint') as HTMLElement | null
     if (hint) {
-      hint.textContent = isOpen ? 'Нажмите, чтобы скрыть' : 'Нажмите, чтобы раскрыть'
+      hint.textContent = isOpen ? $t('site.postBody.spoilerClose') : $t('site.postBody.spoilerOpen')
     }
   }
 
@@ -1371,7 +1368,7 @@
     const imageContainer = wrapper.querySelector('[data-post-link-image]') as HTMLElement | null
     if (imageContainer) {
       const imageUrl = (snapshot.preview_image_url || '').trim()
-      const imageTitle = (snapshot.title || 'Превью поста').trim()
+      const imageTitle = (snapshot.title || $t('site.postBody.previewTitle')).trim()
       if (imageUrl) {
         imageContainer.removeAttribute('hidden')
         imageContainer.innerHTML = `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(imageTitle)}" loading="lazy" />`
@@ -1509,9 +1506,9 @@
           referrerpolicy="no-referrer-when-downgrade"
           allowfullscreen
           frameborder="0"
-          title="Карта OpenStreetMap"
+          title="${$t('site.postBody.mapTitle')}"
         ></iframe>
-        <div class="post-map__hint">Нажмите, чтобы открыть карту</div>
+        <div class="post-map__hint">${escapeHtml($t('site.postBody.mapOpenHint'))}</div>
       </div>`
     }
 
@@ -1528,13 +1525,13 @@
       const beforeAlt = escapeHtml(
         typeof raw?.before?.alt === 'string' && raw.before.alt.trim()
           ? raw.before.alt
-          : 'Изображение до'
+          : $t('site.postBody.beforeImage')
       )
       const beforeTitle = escapeHtml(typeof raw?.before?.title === 'string' ? raw.before.title : '')
       const afterAlt = escapeHtml(
         typeof raw?.after?.alt === 'string' && raw.after.alt.trim()
           ? raw.after.alt
-          : 'Изображение после'
+          : $t('site.postBody.afterImage')
       )
       const afterTitle = escapeHtml(typeof raw?.after?.title === 'string' ? raw.after.title : '')
       const caption =
@@ -1611,7 +1608,7 @@
         chips.push(`<span class="post-movie-card__chip">${escapeHtml(displayGenre)}</span>`)
       }
       if (releaseLabel) {
-        chips.push(`<span class="post-movie-card__chip">Премьера: ${escapeHtml(releaseLabel)}</span>`)
+        chips.push(`<span class="post-movie-card__chip">${escapeHtml($t('site.postBody.premiere', { date: releaseLabel }))}</span>`)
       }
       if (authorRatingLabel) {
         const ratingClass =
@@ -1623,13 +1620,13 @@
                 ? ' post-movie-card__chip--red'
                 : ''
         chips.push(
-          `<span class="post-movie-card__chip post-movie-card__chip--rating${ratingClass}">Оценка автора: ${escapeHtml(authorRatingLabel)}</span>`
+          `<span class="post-movie-card__chip post-movie-card__chip--rating${ratingClass}">${escapeHtml($t('site.postBody.authorRating', { rating: authorRatingLabel }))}</span>`
         )
       }
 
       const watchWhereHtml = watchWhereLabels.length
         ? `<div class="post-movie-card__meta-item">
-            <span class="post-movie-card__meta-label">Где посмотреть</span>
+            <span class="post-movie-card__meta-label">${escapeHtml($t('site.postBody.watchWhere'))}</span>
             <span class="post-movie-card__meta-value">${escapeHtml(watchWhereLabels.join(', '))}</span>
           </div>`
         : ''
@@ -1637,7 +1634,7 @@
         ? `<div class="post-movie-card__meta-item">
             <span class="post-movie-card__meta-label">IMDb</span>
             <a href="${escapeHtml(imdbUrl)}" target="_blank" rel="nofollow noopener" class="post-movie-card__meta-link">
-              Открыть на ${escapeHtml(imdbHost)}
+              ${escapeHtml($t('site.postBody.openOn', { provider: imdbHost }))}
             </a>
           </div>`
         : ''
@@ -1650,7 +1647,7 @@
 
       const posterHtml = posterUrl
         ? `<div class="post-movie-card__poster">
-            <img src="${escapeHtml(posterUrl)}" alt="${escapeHtml(displayTitle || 'Постер')}" loading="lazy" />
+            <img src="${escapeHtml(posterUrl)}" alt="${escapeHtml(displayTitle || $t('site.postBody.poster'))}" loading="lazy" />
           </div>`
         : ''
 
@@ -1691,7 +1688,7 @@
       )
       const announcement = escapeHtml(normalized.announcement || '')
       const titleText = escapeHtml(
-        snapshot?.title || (resolvedPostId ? `Материал #${resolvedPostId}` : 'Материал Тамбур')
+        snapshot?.title || (resolvedPostId ? $t('site.postBody.materialNumber', { id: resolvedPostId }) : $t('site.postBody.materialTambur'))
       )
       const authorText = escapeHtml(snapshot?.author_title || snapshot?.author_username || '')
       const previewText = escapeHtml(snapshot?.preview_text || '')
@@ -1729,7 +1726,7 @@
             ${metaHtml}
             <div class="post-linked-material__title" data-post-link-title>${titleText}</div>
             ${previewTextHtml}
-            <span class="post-linked-material__action">Открыть материал</span>
+            <span class="post-linked-material__action">${escapeHtml($t('site.postBody.openMaterial'))}</span>
           </div>
         </a>
       </div>`
@@ -1840,18 +1837,16 @@
         .join('')
 
       return `<div class="post-inline-rating" data-rating-block-id="${escapeHtml(blockId)}">
-        <div class="post-inline-rating__eyebrow">Рейтинг</div>
+        <div class="post-inline-rating__eyebrow">${escapeHtml($t('site.postBody.rating'))}</div>
         <div class="post-inline-rating__content">
-          <div class="post-inline-rating__scale" role="group" aria-label="Оценка материала от 1 до 10">
+          <div class="post-inline-rating__scale" role="group" aria-label="${escapeHtml($t('site.postBody.ratingAria'))}">
             ${itemsHtml}
           </div>
           <div class="post-inline-rating__stats" aria-live="polite">
             <div class="post-inline-rating__average">${escapeHtml(averageLabel)}</div>
             <div class="post-inline-rating__meta">
-              <span>средняя оценка</span>
-              <span>${escapeHtml(
-                `${votesCount} ${votesCount === 1 ? 'голос' : votesCount < 5 ? 'голоса' : 'голосов'}`
-              )}</span>
+              <span>${escapeHtml($t('site.postBody.averageRating'))}</span>
+              <span>${escapeHtml($t('site.postBody.votes', { count: votesCount }))}</span>
             </div>
           </div>
         </div>
@@ -1871,8 +1866,8 @@
         )
         .join('')
 
-      return `<nav class="post-toc" aria-label="Оглавление">
-        <div class="post-toc__title">Оглавление</div>
+      return `<nav class="post-toc" aria-label="${escapeHtml($t('site.postBody.toc'))}">
+        <div class="post-toc__title">${escapeHtml($t('site.postBody.toc'))}</div>
         <ol class="post-toc__list">${itemsHtml}</ol>
       </nav>`
     }
@@ -1910,8 +1905,8 @@
       const hasUserVote = selectedSet.size > 0
       const totalVoters = Math.max(Number(activePoll?.total_voter_count || 0), 0)
       const modeLabel = allowsMultipleAnswers
-        ? 'Можно выбрать несколько вариантов'
-        : 'Можно выбрать только один вариант'
+        ? $t('site.postBody.pollMultiple')
+        : $t('site.postBody.pollSingle')
       const optionItems = options
         .map((option: string, index: number) => {
           const optionPayload = activePoll?.options?.[index]
@@ -1945,17 +1940,17 @@
               <progress class="post-inline-poll__progress${isSelected ? ' is-selected' : ''}" value="${percent}" max="100"></progress>
               <div class="post-inline-poll__option-meta">
                 <span>${formatPollVoteLabel(count)}</span>
-                ${isSelected ? '<span class="post-inline-poll__option-badge">Ваш голос</span>' : ''}
+                ${isSelected ? `<span class="post-inline-poll__option-badge">${escapeHtml($t('site.postBody.yourVote'))}</span>` : ''}
               </div>
             </div>
           </div>`
         })
         .join('')
       const statusLabel = activePoll?.is_closed
-        ? 'Опрос завершен'
+        ? $t('site.postBody.pollFinished')
         : hasUserVote
-          ? 'Вы уже проголосовали'
-          : 'Нажмите на вариант, чтобы проголосовать'
+          ? $t('site.postBody.alreadyVotedShort')
+          : $t('site.postBody.voteHint')
       const attrs = [
         `data-poll-multiple="${allowsMultipleAnswers ? '1' : '0'}"`,
         `data-poll-closed="${activePoll?.is_closed ? '1' : '0'}"`,
@@ -1967,7 +1962,7 @@
 
       return `<div class="post-poll post-inline-poll" ${attrs}>
         <div class="post-inline-poll__head">
-          <div class="post-inline-poll__eyebrow">Опрос</div>
+          <div class="post-inline-poll__eyebrow">${escapeHtml($t('site.postBody.poll'))}</div>
           <div class="post-inline-poll__question">${escapeHtml(question)}</div>
           <div class="post-inline-poll__mode">${escapeHtml(modeLabel)}</div>
         </div>
@@ -2024,7 +2019,7 @@
       const hasHoursInInput = rawTime.split(':').length === 3
       const displayTime = formatTimeFromSeconds(totalSeconds, hasHoursInInput || totalSeconds >= 3600)
       const sceneTitle = escapeHtml(
-        typeof raw?.title === 'string' && raw.title.trim() ? raw.title : 'Ключевой момент'
+        typeof raw?.title === 'string' && raw.title.trim() ? raw.title : $t('site.postBody.keyMoment')
       )
       const sceneNote = escapeHtml(typeof raw?.note === 'string' ? raw.note : '')
       const noteHtml = sceneNote
@@ -2036,7 +2031,7 @@
           <span class="post-movie-time__icon" aria-hidden="true">⏱</span>
           <span class="post-movie-time__stamp">${displayTime}</span>
           <span class="post-movie-time__details">
-            <span class="post-movie-time__meta">Время в фильме</span>
+            <span class="post-movie-time__meta">${escapeHtml($t('site.postBody.movieTime'))}</span>
             <span class="post-movie-time__scene">${sceneTitle}</span>
             ${noteHtml}
           </span>
@@ -2048,7 +2043,7 @@
       if (!isTemplateEditorBlockEnabled(template?.type ?? '', 'spoiler')) return ''
 
       const spoilerTitle =
-        typeof raw?.title === 'string' && raw.title.trim() ? raw.title.trim() : 'Спойлер'
+        typeof raw?.title === 'string' && raw.title.trim() ? raw.title.trim() : $t('site.postBody.spoilerTitle')
       const spoilerContent = typeof raw?.content === 'string' ? raw.content.trim() : ''
       if (!spoilerContent) return ''
 
@@ -2056,7 +2051,7 @@
       return `<div class="post-spoiler" data-spoiler-open="0">
         <div class="post-spoiler__trigger" role="button" tabindex="0" aria-expanded="false">
           <span class="post-spoiler__title">${escapeHtml(spoilerTitle)}</span>
-          <span class="post-spoiler__hint">Нажмите, чтобы раскрыть</span>
+          <span class="post-spoiler__hint">${escapeHtml($t('site.postBody.spoilerOpen'))}</span>
         </div>
         <div class="post-spoiler__content">
           <p>${spoilerBody}</p>
@@ -2127,7 +2122,7 @@
             provider: 'spotify',
             providerLabel: 'Spotify',
             embedUrl: `https://open.spotify.com/embed/track/${trackId}?utm_source=comuna`,
-            title: 'Плеер Spotify',
+            title: $t('site.template.music.spotifyPlayer'),
           }
         }
 
@@ -2142,7 +2137,7 @@
             provider: 'spotify',
             providerLabel: 'Spotify',
             embedUrl: `https://open.spotify.com/embed/playlist/${playlistId}?utm_source=comuna`,
-            title: 'Плейлист Spotify',
+            title: $t('site.template.music.spotifyPlaylist'),
             frameClassName: 'post-music__frame--playlist',
           }
         }
@@ -2157,9 +2152,9 @@
           const trackId = yandexAlbumTrackMatch[2]
           return {
             provider: 'yandex_music',
-            providerLabel: 'Яндекс Музыка',
+            providerLabel: $t('site.template.music.yandexMusic'),
             embedUrl: buildYandexTrackEmbedUrl(trackId, albumId),
-            title: 'Плеер Яндекс Музыки',
+            title: $t('site.template.music.yandexPlayer'),
           }
         }
 
@@ -2175,9 +2170,9 @@
           const trackId = yandexIframeAlbumTrackMatch[2]
           return {
             provider: 'yandex_music',
-            providerLabel: 'Яндекс Музыка',
+            providerLabel: $t('site.template.music.yandexMusic'),
             embedUrl: buildYandexTrackEmbedUrl(trackId, albumId),
-            title: 'Плеер Яндекс Музыки',
+            title: $t('site.template.music.yandexPlayer'),
           }
         }
 
@@ -2192,9 +2187,9 @@
           if (albumId) {
             return {
               provider: 'yandex_music',
-              providerLabel: 'Яндекс Музыка',
+              providerLabel: $t('site.template.music.yandexMusic'),
               embedUrl: buildYandexTrackEmbedUrl(trackId, albumId),
-              title: 'Плеер Яндекс Музыки',
+              title: $t('site.template.music.yandexPlayer'),
             }
           }
         }
@@ -2209,9 +2204,9 @@
           const playlistId = yandexPlaylistMatch[2]
           return {
             provider: 'yandex_music',
-            providerLabel: 'Яндекс Музыка',
+            providerLabel: $t('site.template.music.yandexMusic'),
             embedUrl: buildYandexPlaylistEmbedUrl(owner, playlistId),
-            title: 'Плейлист Яндекс Музыки',
+            title: $t('site.template.music.yandexPlaylist'),
             frameClassName: 'post-music__frame--playlist',
           }
         }
@@ -2226,9 +2221,9 @@
           const playlistId = yandexIframePlaylistMatch[2]
           return {
             provider: 'yandex_music',
-            providerLabel: 'Яндекс Музыка',
+            providerLabel: $t('site.template.music.yandexMusic'),
             embedUrl: buildYandexPlaylistEmbedUrl(owner, playlistId),
-            title: 'Плейлист Яндекс Музыки',
+            title: $t('site.template.music.yandexPlaylist'),
             frameClassName: 'post-music__frame--playlist',
           }
         }
@@ -2241,7 +2236,7 @@
             provider: 'soundcloud',
             providerLabel: 'SoundCloud',
             embedUrl: `https://w.soundcloud.com/player/?url=${encodeURIComponent(value)}&auto_play=false&hide_related=false&show_comments=false&show_user=true&show_reposts=false`,
-            title: 'Плеер SoundCloud',
+            title: $t('site.template.music.soundcloudPlayer'),
           }
         }
 
@@ -2252,18 +2247,18 @@
       if (!parsedEmbed) {
         return `<div class="post-music post-music--link-only">
           <div class="post-music__header">
-            <span class="post-music__badge">Музыка</span>
+            <span class="post-music__badge">${escapeHtml($t('site.postBody.music'))}</span>
             <a
               href="${escapeHtml(safeExternalUrl)}"
               target="_blank"
               rel="nofollow noopener"
               class="post-music__open-link"
             >
-              Открыть трек
+              ${escapeHtml($t('site.postBody.openTrack'))}
             </a>
           </div>
           <p class="post-music__fallback">
-            Для этой ссылки встроенный плеер недоступен. Поддержка: Spotify, Яндекс Музыка, SoundCloud.
+            ${escapeHtml($t('site.postBody.musicUnsupported'))}
           </p>
           ${fallbackCaption}
         </div>`
@@ -2271,7 +2266,7 @@
 
       return `<figure class="post-music" data-music-provider="${parsedEmbed.provider}">
         <div class="post-music__header">
-          <span class="post-music__badge">Музыка</span>
+          <span class="post-music__badge">${escapeHtml($t('site.postBody.music'))}</span>
           <span class="post-music__provider">${parsedEmbed.providerLabel}</span>
           <a
             href="${escapeHtml(safeExternalUrl)}"
@@ -2279,7 +2274,7 @@
             rel="nofollow noopener"
             class="post-music__open-link"
           >
-            Открыть трек
+            ${escapeHtml($t('site.postBody.openTrack'))}
           </a>
         </div>
           <iframe
@@ -2306,7 +2301,7 @@
           <iframe
             src="${escapeHtml(embedUrl)}"
             loading="lazy"
-            title="Встроенное видео"
+            title="${escapeHtml($t('site.postBody.embeddedVideo'))}"
             frameborder="0"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             allowfullscreen
@@ -2374,8 +2369,8 @@
           <button
             type="button"
             class="post-table-expand"
-            aria-label="Открыть таблицу во всю ширину"
-            title="Открыть таблицу во всю ширину"
+            aria-label="${escapeHtml($t('site.postBody.tableExpand'))}"
+            title="${escapeHtml($t('site.postBody.tableExpand'))}"
           >
             <span class="post-table-expand__icon" aria-hidden="true"></span>
           </button>
@@ -2517,8 +2512,8 @@
         if (!spoilerHtml.trim()) return ''
         return `<div class="post-spoiler" data-spoiler-open="0">
           <div class="post-spoiler__trigger" role="button" tabindex="0" aria-expanded="false">
-            <span class="post-spoiler__title">${escapeHtml(spoilerTitle || 'Спойлер')}</span>
-            <span class="post-spoiler__hint">Нажмите, чтобы раскрыть</span>
+            <span class="post-spoiler__title">${escapeHtml(spoilerTitle || $t('site.postBody.spoilerTitle'))}</span>
+            <span class="post-spoiler__hint">${escapeHtml($t('site.postBody.spoilerOpen'))}</span>
           </div>
           <div class="post-spoiler__content">
             ${spoilerHtml}
@@ -2578,7 +2573,7 @@
           const spoilerTitle =
             typeof rawData?.title === 'string' && rawData.title.trim()
               ? rawData.title.trim()
-              : 'Спойлер'
+              : $t('site.postBody.spoilerTitle')
           spoilerStack.push({
             title: spoilerTitle,
             parts: [],
@@ -3587,9 +3582,9 @@
       class="sr-only"
       data-post-action-toggle-expand
       on:click={toggleExpand}
-      aria-label="Свернуть пост"
+      aria-label={$t('site.postBody.collapsePost')}
     >
-      Свернуть пост
+      {$t('site.postBody.collapsePost')}
     </button>
   {/if}
 
@@ -3603,7 +3598,7 @@
           on:click={toggleExpand}
           disabled={fullBodyLoading}
           aria-busy={fullBodyLoading}
-          aria-label={fullBodyLoading ? 'Загружаем полный текст' : 'Показать полностью'}
+          aria-label={fullBodyLoading ? $t('site.postBody.loadingFull') : $t('site.postBody.showFull')}
         >
           {#if fullBodyLoading}
             <span class="post-expand-spinner" aria-hidden="true"></span>

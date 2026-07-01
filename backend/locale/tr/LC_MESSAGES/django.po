@@ -1,0 +1,105 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: tr\n"
+
+msgid "Site metrics"
+msgstr "Site metrikleri"
+
+msgid "Authors"
+msgstr "Yazarlar"
+
+msgid "Total posts"
+msgstr "Toplam gönderi"
+
+msgid "Posts in 30 days"
+msgstr "30 gündeki gönderiler"
+
+msgid "Posts per author per month"
+msgstr "Ayda yazar başına gönderi"
+
+msgid "Likes in 30 days"
+msgstr "30 gündeki beğeniler"
+
+msgid "Dislikes in 30 days"
+msgstr "30 gündeki beğenmeme sayısı"
+
+msgid "Comments in 30 days"
+msgstr "30 gündeki yorumlar"
+
+msgid "пользователь"
+msgstr "kullanıcı"
+
+msgid "Подтвердите почту в Tambur"
+msgstr "Tambur e-postanızı doğrulayın"
+
+msgid "Здравствуйте, %(username)s!\n\nЧтобы завершить подтверждение почты, откройте секретную ссылку:\n%(verification_url)s\n\nСсылка секретная и привязана к вашему аккаунту.\nЕсли это были не вы, просто проигнорируйте это письмо."
+msgstr "Merhaba, %(username)s!\n\nE-posta doğrulamayı tamamlamak için bu gizli bağlantıyı açın:\n%(verification_url)s\n\nBağlantı gizlidir ve hesabınıza bağlıdır.\nBunu siz yapmadıysanız bu e-postayı yok sayın."
+
+msgid "<p>Здравствуйте, %(username)s!</p>"
+msgstr "<p>Merhaba, %(username)s!</p>"
+
+msgid "<p>Чтобы завершить подтверждение почты, откройте секретную ссылку:</p>"
+msgstr "<p>E-posta doğrulamayı tamamlamak için bu gizli bağlantıyı açın:</p>"
+
+msgid "Подтвердить почту"
+msgstr "E-postayı doğrula"
+
+msgid "<p>Ссылка секретная и привязана к вашему аккаунту.</p>"
+msgstr "<p>Bağlantı gizlidir ve hesabınıza bağlıdır.</p>"
+
+msgid "<p>Если это были не вы, просто проигнорируйте это письмо.</p>"
+msgstr "<p>Bunu siz yapmadıysanız bu e-postayı yok sayın.</p>"
+
+msgid "Ссылка подтверждения недействительна или устарела."
+msgstr "Doğrulama bağlantısı geçersiz veya süresi dolmuş."
+
+msgid "У аккаунта не указан email."
+msgstr "Bu hesap için e-posta belirtilmemiş."
+
+msgid "Восстановление доступа к Tambur"
+msgstr "Tambur erişimini kurtar"
+
+msgid "Здравствуйте, %(username)s!\n\nМы получили запрос на восстановление доступа к аккаунту.\nЧтобы задать новый пароль, откройте ссылку: %(reset_url)s\n\nЕсли вы не запрашивали восстановление, просто проигнорируйте это письмо."
+msgstr "Merhaba, %(username)s!\n\nHesap erişimini kurtarma isteği aldık.\nYeni bir şifre belirlemek için bu bağlantıyı açın: %(reset_url)s\n\nBunu siz istemediyseniz bu e-postayı yok sayın."
+
+msgid "<p>Мы получили запрос на восстановление доступа к аккаунту.</p>"
+msgstr "<p>Hesap erişimini kurtarma isteği aldık.</p>"
+
+msgid "Задать новый пароль"
+msgstr "Yeni şifre belirle"
+
+msgid "<p>Если вы не запрашивали восстановление, просто проигнорируйте это письмо.</p>"
+msgstr "<p>Bunu siz istemediyseniz bu e-postayı yok sayın.</p>"
+
+msgid "Введите корректный email."
+msgstr "Geçerli bir e-posta adresi girin."
+
+msgid "Регистрация по почте отключена. Используйте Telegram."
+msgstr "E-posta ile kayıt kapalı. Telegram kullanın."
+
+msgid "Укажите имя пользователя, email и пароль."
+msgstr "Kullanıcı adı, e-posta ve şifre girin."
+
+msgid "Пароль слишком короткий."
+msgstr "Şifre çok kısa."
+
+msgid "Пользователь с таким email уже существует."
+msgstr "Bu e-postaya sahip bir kullanıcı zaten var."
+
+msgid "Аккаунт с таким email уже существует. Восстановите пароль через подтверждение почты."
+msgstr "Bu e-postaya sahip bir hesap zaten var. Şifreyi e-posta doğrulamasıyla kurtarın."
+
+msgid "Пользователь с таким именем уже существует."
+msgstr "Bu ada sahip bir kullanıcı zaten var."
+
+msgid "Ссылка восстановления недействительна или устарела."
+msgstr "Kurtarma bağlantısı geçersiz veya süresi dolmuş."
+
+msgid "Введите email или имя пользователя и пароль."
+msgstr "E-posta veya kullanıcı adı ve şifre girin."
+
+msgid "К этому профилю уже привязан другой VK."
+msgstr "Bu profile zaten başka bir VK hesabı bağlı."
+

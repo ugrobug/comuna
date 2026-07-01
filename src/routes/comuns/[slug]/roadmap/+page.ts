@@ -16,7 +16,7 @@ export const load = async ({ fetch, params, url, parent }) => {
   const statsResponse = await fetch(statsUrl.toString())
   if (!statsResponse.ok) {
     if (statsResponse.status === 404) {
-      throw error(404, 'Сообщество не найдено')
+      throw error(404, 'site.errors.communityNotFound')
     }
     throw error(statsResponse.status, 'Не удалось загрузить дорожную карту')
   }

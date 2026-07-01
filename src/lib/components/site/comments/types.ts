@@ -1,10 +1,14 @@
 export type SiteComment = {
   id: number
   body: string
+  original_body?: string
+  original_language?: string
   created_at: string
   updated_at: string
   parent_id?: number | null
   is_deleted?: boolean
+  is_translated?: boolean
+  language?: string
   likes_count?: number
   liked_by_me?: boolean
   can_edit?: boolean

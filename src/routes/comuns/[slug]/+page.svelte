@@ -20,6 +20,8 @@
   import { env } from '$env/dynamic/public'
   import { userSettings } from '$lib/settings'
   import { deserializeEditorModel } from '$lib/util'
+  import { brandNameForLanguage } from '$lib/brand'
+  import { locale } from '$lib/translations'
 
   export let data
 
@@ -289,7 +291,7 @@
   const formatComunCount = (value?: number | null) =>
     new Intl.NumberFormat('ru-RU').format(Math.max(Number(value ?? 0) || 0, 0))
 
-  $: siteTitle = env.PUBLIC_SITE_TITLE || 'Тамбур'
+  $: siteTitle = brandNameForLanguage($locale)
   $: comunName = comun?.name || 'Сообщество'
   $: minimumAuthorRatingToPost = Math.max(Number(comun?.minimum_author_rating_to_post ?? 0) || 0, 0)
   $: comunCategories = comun?.categories ?? []

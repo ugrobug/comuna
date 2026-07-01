@@ -23,6 +23,8 @@
     type SiteUserPost,
   } from '$lib/siteAuth'
   import { userSettings } from '$lib/settings'
+  import { brandNameForLanguage } from '$lib/brand'
+  import { locale } from '$lib/translations'
 
   export let data
 
@@ -111,7 +113,7 @@
   const initials = (value?: string | null) =>
     (value || '?').trim().slice(0, 1).toUpperCase() || '?'
 
-  $: siteTitle = env.PUBLIC_SITE_TITLE || 'Тамбур'
+  $: siteTitle = brandNameForLanguage($locale)
   $: profilePath = profile?.id ? `/id${profile.id}` : $page.url.pathname
   $: title = profile ? `${userDisplayName(profile)} — ${siteTitle}` : siteTitle
   $: description = profile

@@ -1,4 +1,12 @@
 import type { Handle } from '@sveltejs/kit'
+import { brandNameForLanguage } from '$lib/brand'
+import {
+  languageFromAcceptLanguage,
+  languageFromPathname,
+  originalPostLanguage,
+  postLanguageLocales,
+  type PostLanguageCode,
+} from '$lib/postLanguages'
 
 const PRIORITY_HEAD_TAG_PATTERN =
   /<(?:meta|link)\b[^>]*(?:name="description"|rel="canonical"|property="og:[^"]+"|name="twitter:[^"]+")[^>]*>/gi
@@ -61,16 +69,43 @@ const prioritizePreviewHeadTags = (html: string) => {
   )
 }
 
+const escapeHtmlAttribute = (value: string) =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+
+const localizeAppShellHead = (html: string, language: PostLanguageCode) => {
+  const brandName = escapeHtmlAttribute(brandNameForLanguage(language))
+  const htmlLanguage = escapeHtmlAttribute(postLanguageLocales[language] || postLanguageLocales.ru)
+
+  return html
+    .replace(/<html\b([^>]*)\blang="[^"]*"/i, `<html$1lang="${htmlLanguage}"`)
+    .replace(
+      /<meta\s+name="application-name"\s+content="[^"]*"\s*\/?>/i,
+      `<meta name="application-name" content="${brandName}" />`
+    )
+    .replace(
+      /<meta\s+name="apple-mobile-web-app-title"\s+content="[^"]*"\s*\/?>/i,
+      `<meta name="apple-mobile-web-app-title" content="${brandName}" />`
+    )
+}
+
 export const handle: Handle = async ({ event, resolve }) => {
-  const shouldPrioritizePreviewHead = event.url.pathname.startsWith('/b/post/')
-  const response = await resolve(
-    event,
-    shouldPrioritizePreviewHead
-      ? {
-          transformPageChunk: ({ html }) => prioritizePreviewHeadTags(html),
-        }
-      : undefined
-  )
+  const language =
+    languageFromPathname(event.url.pathname) ||
+    languageFromAcceptLanguage(event.request.headers.get('Accept-Language')) ||
+    originalPostLanguage
+  const shouldPrioritizePreviewHead = /^\/(?:[a-z]{2}\/)?b\/post\//.test(event.url.pathname)
+  const response = await resolve(event, {
+    transformPageChunk: ({ html }) => {
+      const localizedHtml = localizeAppShellHead(html, language)
+      return shouldPrioritizePreviewHead
+        ? prioritizePreviewHeadTags(localizedHtml)
+        : localizedHtml
+    },
+  })
   const headers = new Headers(response.headers)
   for (const [name, value] of Object.entries(securityHeaders)) {
     headers.set(name, value)

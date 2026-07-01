@@ -1,12 +1,39 @@
 <script lang="ts">
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
+  import { browser } from '$app/environment'
   import { errorMessage } from '$lib/lemmy/error'
-  import { t } from '$lib/translations'
+  import { userSettings } from '$lib/settings.js'
+  import { aliases, loadTranslations, locale, t } from '$lib/translations'
   import { Button } from 'mono-svelte'
   import { Icon, XMark } from 'svelte-hero-icons'
+  import { onMount } from 'svelte'
+
+  const errorTranslationKeys: Record<string, string> = {
+    'Автор не найден': 'site.errors.authorNotFound',
+    'Пост не найден': 'site.errors.postNotFound',
+    'Пользователь не найден': 'site.errors.userNotFound',
+    'Сообщество не найдено': 'site.errors.communityNotFound',
+    'Тег не найден': 'site.errors.tagNotFound',
+    'Не удалось загрузить посты': 'site.errors.postsLoadFailed',
+  }
+
+  onMount(() => {
+    if (!browser) return
+    const selectedLocale = aliases.get($userSettings.language) ?? $userSettings.language
+    if (selectedLocale && selectedLocale !== $locale) {
+      loadTranslations(selectedLocale)
+    }
+  })
 
   function getError(message: string): { string: string; code: boolean } {
+    const translationKey = message.startsWith('site.errors.')
+      ? message
+      : errorTranslationKeys[message]
+    if (translationKey) {
+      return { string: $t(translationKey), code: false }
+    }
+
     try {
       return { string: errorMessage(JSON.parse(message)), code: false }
     } catch (e) {

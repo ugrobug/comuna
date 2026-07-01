@@ -2,6 +2,7 @@
   import { browser } from '$app/environment'
   import { portalTooltip } from '$lib/actions/portalTooltip'
   import { siteToken, siteUser } from '$lib/siteAuth'
+  import { t } from '$lib/translations'
 
   export let enabled = true
 
@@ -10,11 +11,11 @@
   const GUEST_DISMISS_KEY = 'comuna.keyboard-shortcuts-hint.dismissed.guest'
 
   const shortcuts = [
-    { key: 'W', hint: 'Плюсануть пост' },
-    { key: 'S', hint: 'Минусануть пост' },
-    { key: 'A', hint: 'Предыдущий пост' },
-    { key: 'D', hint: 'Следующий пост' },
-    { key: 'F', hint: 'Развернуть или свернуть пост' },
+    { key: 'W', hintKey: 'site.sidebar.keyboard.upvote' },
+    { key: 'S', hintKey: 'site.sidebar.keyboard.downvote' },
+    { key: 'A', hintKey: 'site.sidebar.keyboard.previous' },
+    { key: 'D', hintKey: 'site.sidebar.keyboard.next' },
+    { key: 'F', hintKey: 'site.sidebar.keyboard.expand' },
   ] as const
 
   let dismissed = false
@@ -87,19 +88,19 @@
   <div class="rounded-xl border border-slate-200/80 dark:border-zinc-800 bg-white/90 dark:bg-zinc-900/90 p-4 shadow-sm">
     <div class="flex flex-col gap-2">
       <h3 class="text-sm font-semibold text-slate-900 dark:text-zinc-100">
-        Управлять можно с клавиатуры
+        {$t('site.sidebar.keyboard.title')}
       </h3>
       <p class="text-xs text-slate-600 dark:text-zinc-400">
-        Работает в лентах: голосование, переход между постами и разворот текста.
+        {$t('site.sidebar.keyboard.description')}
       </p>
 
       <div class="mt-1 flex flex-wrap gap-2">
         {#each shortcuts as shortcut}
           <div>
             <kbd
-              use:portalTooltip={{ text: shortcut.hint }}
+              use:portalTooltip={{ text: $t(shortcut.hintKey) }}
               class="inline-flex items-center justify-center min-w-[2rem] h-8 px-2 rounded-lg border border-slate-300 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-sm font-semibold text-slate-900 dark:text-zinc-100 shadow-sm"
-              aria-label={`${shortcut.key}: ${shortcut.hint}`}
+              aria-label={`${shortcut.key}: ${$t(shortcut.hintKey)}`}
             >
               {shortcut.key}
             </kbd>
@@ -112,7 +113,7 @@
         class="mt-1 self-start text-xs font-medium text-slate-500 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-zinc-100 underline underline-offset-2"
         on:click={dismissHint}
       >
-        Больше не показывать
+        {$t('site.sidebar.keyboard.dismiss')}
       </button>
     </div>
   </div>

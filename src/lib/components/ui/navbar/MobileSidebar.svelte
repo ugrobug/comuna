@@ -74,10 +74,10 @@
   <div class="flex flex-col gap-1">
     {#if $siteUser}
       <SidebarButton href="/settings" on:click={handleNavigation} icon={Cog6Tooth}>
-        <span slot="label">Настройки</span>
+        <span slot="label">{$t('site.nav.settings')}</span>
       </SidebarButton>
       <SidebarButton href={`/id${$siteUser.id}`} on:click={handleNavigation} icon={UserCircle}>
-        <span slot="label">Профиль</span>
+        <span slot="label">{$t('site.nav.profile')}</span>
       </SidebarButton>
       <SidebarButton
         icon={ArrowLeftOnRectangle}
@@ -86,7 +86,7 @@
           handleNavigation();
         }}
       >
-        <span slot="label">Выйти</span>
+        <span slot="label">{$t('account.logout')}</span>
       </SidebarButton>
     {:else}
       <SidebarButton
@@ -95,7 +95,7 @@
           loginModalOpen = true;
         }}
       >
-        <span slot="label">Войти</span>
+        <span slot="label">{$t('account.login')}</span>
       </SidebarButton>
     {/if}
   </div>
@@ -106,7 +106,7 @@
       active={currentFeed === 'hot'}
       on:click={handleNavigation}
     >
-      <span slot="label">Горячее</span>
+      <span slot="label">{$t('site.nav.hot')}</span>
     </SidebarButton>
     <SidebarButton
       icon={UserGroup}
@@ -114,7 +114,7 @@
       active={currentFeed === 'mine'}
       on:click={handleNavigation}
     >
-      <span slot="label">Моя лента</span>
+      <span slot="label">{$t('site.nav.mine')}</span>
     </SidebarButton>
     <SidebarButton
       icon={Bookmark}
@@ -122,7 +122,7 @@
       active={currentFeed === 'favorites'}
       on:click={handleNavigation}
     >
-      <span slot="label">Избранное</span>
+      <span slot="label">{$t('site.nav.favorites')}</span>
     </SidebarButton>
   </div>
 
@@ -155,10 +155,10 @@
       <span
         class="px-2 py-1 text-sm font-normal text-slate-500 dark:text-zinc-200"
       >
-        Сообщества
+        {$t('site.nav.communities')}
       </span>
       <SidebarButton href="/comuns?create=1" on:click={handleNavigation} icon={Plus}>
-        <span slot="label">Создать сообщество</span>
+        <span slot="label">{$t('site.nav.createCommunity')}</span>
       </SidebarButton>
       {#each sidebarComuns as comun}
         <SidebarButton
@@ -176,7 +176,7 @@
         </SidebarButton>
       {/each}
       <SidebarButton href="/comuns" on:click={handleNavigation} icon={ChevronDown}>
-        <span slot="label">Все сообщества</span>
+        <span slot="label">{$t('site.nav.allCommunities')}</span>
       </SidebarButton>
   </div>
 
@@ -184,7 +184,7 @@
     <span
       class="px-2 py-1 text-sm font-normal text-slate-500 dark:text-zinc-200"
     >
-      Ресурсы
+      {$t('site.nav.resources')}
     </span>
     {#if env.PUBLIC_TELEGRAM_URL || env.PUBLIC_GITHUB_URL}
       <div class="flex items-center pl-2 gap-2">
@@ -206,28 +206,28 @@
         icon={InformationCircle}
         on:click={handleNavigation}
       >
-        <span slot="label">О Проекте</span>
+        <span slot="label">{$t('site.nav.aboutProject')}</span>
       </SidebarButton>
       <SidebarButton 
         href={PUBLIC_PROJECT_ADVRTISEMENT} 
         icon={Megaphone}
         on:click={handleNavigation}
       >
-        <span slot="label">Реклама</span>
+        <span slot="label">{$t('site.nav.advertisement')}</span>
       </SidebarButton>
       <SidebarButton 
         href={PUBLIC_PROJECT_AUTHORS} 
         icon={PencilSquare}
         on:click={handleNavigation}
       >
-        <span slot="label">Авторам</span>
+        <span slot="label">{$t('site.nav.authors')}</span>
       </SidebarButton>
       <SidebarButton 
         href={PUBLIC_PROJECT_RULES} 
         icon={ClipboardDocumentList}
         on:click={handleNavigation}
       >
-        <span slot="label">Правила</span>
+        <span slot="label">{$t('site.nav.rules')}</span>
       </SidebarButton>
     </div>
   </div>

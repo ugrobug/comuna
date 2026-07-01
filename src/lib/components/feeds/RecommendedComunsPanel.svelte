@@ -6,12 +6,13 @@
   import { subscribeToComunBySlug } from '$lib/settings'
   import { siteToken } from '$lib/siteAuth'
   import LoginModal from '$lib/components/auth/LoginModal.svelte'
+  import { t } from '$lib/translations'
 
   export let selectedSlugs: string[] = []
   export let recommendedSlugs: string[] = []
   export let limit = 6
-  export let title = 'Рекомендуемые сообщества'
-  export let description = 'Подпишитесь на несколько сообществ, чтобы собрать свою персональную ленту.'
+  export let title = ''
+  export let description = ''
 
   let sourceComuns: BackendComun[] = []
   let recommendedComuns: BackendComun[] = []
@@ -56,7 +57,7 @@
       )
       sourceComuns = payload.comuns ?? []
     } catch (loadError) {
-      error = loadError instanceof Error ? loadError.message : 'Ошибка загрузки рекомендаций'
+      error = loadError instanceof Error ? loadError.message : $t('site.sidebar.recommended.loadError')
     } finally {
       loaded = true
       loading = false
@@ -87,11 +88,11 @@
   <div class="flex flex-col gap-4">
     <div class="flex flex-col gap-2">
       <div class="text-base font-medium text-slate-800 dark:text-zinc-100">
-        {title}
+        {title || $t('site.sidebar.recommended.title')}
       </div>
-      {#if description}
+      {#if description || $t('site.sidebar.recommended.description')}
         <div class="text-sm text-slate-500 dark:text-zinc-400">
-          {description}
+          {description || $t('site.sidebar.recommended.description')}
         </div>
       {/if}
     </div>
@@ -142,7 +143,7 @@
                   ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-900/70 dark:bg-emerald-950/40 dark:text-emerald-300'
                   : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-900/70 dark:bg-blue-950/40 dark:text-blue-300'
               }`}
-              aria-label={selectedSlugSet.has(normalizeSlug(comun.slug)) ? `Отписаться от ${comun.name}` : `Подписаться на ${comun.name}`}
+              aria-label={selectedSlugSet.has(normalizeSlug(comun.slug)) ? $t('site.sidebar.recommended.unsubscribeFrom', { name: comun.name }) : $t('site.sidebar.recommended.subscribeTo', { name: comun.name })}
               aria-pressed={selectedSlugSet.has(normalizeSlug(comun.slug))}
               on:click={() => subscribeToComun(comun)}
             >
@@ -150,12 +151,12 @@
                 <svg class="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="none" aria-hidden="true">
                   <path d="M4.5 10.4 8.1 14 15.7 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
                 </svg>
-                <span>Вы подписаны</span>
+                <span>{$t('site.sidebar.recommended.subscribed')}</span>
               {:else}
                 <svg class="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="none" aria-hidden="true">
                   <path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
                 </svg>
-                <span>Подписаться</span>
+                <span>{$t('site.sidebar.recommended.subscribe')}</span>
               {/if}
             </button>
           </article>
@@ -163,11 +164,11 @@
       </div>
     {:else}
       <div class="text-sm text-slate-500 dark:text-zinc-400">
-        Рекомендации пока не загрузились.
+        {$t('site.sidebar.recommended.empty')}
       </div>
     {/if}
     <Button href="/comuns" color="ghost" class="w-full justify-center">
-      Смотреть все сообщества
+      {$t('site.sidebar.recommended.viewAll')}
     </Button>
   </div>
 </div>

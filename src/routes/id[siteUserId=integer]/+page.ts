@@ -13,7 +13,7 @@ export const load = async ({ params, fetch, url }) => {
   const response = await fetch(requestUrl.toString())
   if (!response.ok) {
     if (response.status === 404) {
-      throw error(404, 'Пользователь не найден')
+      throw error(404, 'site.errors.userNotFound')
     }
     throw error(response.status, 'Не удалось загрузить профиль пользователя')
   }

@@ -4,6 +4,7 @@
     musicReleaseStyleLabel,
     type MusicReleaseTemplate,
   } from '$lib/postTemplates'
+  import { t } from '$lib/translations'
 
   export let template: MusicReleaseTemplate
   export let fallbackTitle = ''
@@ -60,9 +61,9 @@
         const trackId = albumTrackMatch[2]
         return {
           provider: 'yandex_music',
-          providerLabel: 'Яндекс Музыка',
+          providerLabel: $t('site.template.music.yandexMusic'),
           embedUrl: buildYandexTrackEmbedUrl(trackId, albumId),
-          title: 'Плеер Яндекс Музыки',
+          title: $t('site.template.music.yandexPlayer'),
           height: 244,
         }
       }
@@ -73,9 +74,9 @@
         const albumId = hashTrackMatch[2]
         return {
           provider: 'yandex_music',
-          providerLabel: 'Яндекс Музыка',
+          providerLabel: $t('site.template.music.yandexMusic'),
           embedUrl: buildYandexTrackEmbedUrl(trackId, albumId),
-          title: 'Плеер Яндекс Музыки',
+          title: $t('site.template.music.yandexPlayer'),
           height: 244,
         }
       }
@@ -87,9 +88,9 @@
         if (albumId) {
           return {
             provider: 'yandex_music',
-            providerLabel: 'Яндекс Музыка',
+            providerLabel: $t('site.template.music.yandexMusic'),
             embedUrl: buildYandexTrackEmbedUrl(trackId, albumId),
-            title: 'Плеер Яндекс Музыки',
+            title: $t('site.template.music.yandexPlayer'),
             height: 244,
           }
         }
@@ -101,9 +102,9 @@
         const playlistId = playlistMatch[2]
         return {
           provider: 'yandex_music',
-          providerLabel: 'Яндекс Музыка',
+          providerLabel: $t('site.template.music.yandexMusic'),
           embedUrl: buildYandexPlaylistEmbedUrl(owner, playlistId),
-          title: 'Плейлист Яндекс Музыки',
+          title: $t('site.template.music.yandexPlaylist'),
           height: 340,
         }
       }
@@ -114,9 +115,9 @@
         const playlistId = iframePlaylistMatch[2]
         return {
           provider: 'yandex_music',
-          providerLabel: 'Яндекс Музыка',
+          providerLabel: $t('site.template.music.yandexMusic'),
           embedUrl: buildYandexPlaylistEmbedUrl(owner, playlistId),
-          title: 'Плейлист Яндекс Музыки',
+          title: $t('site.template.music.yandexPlaylist'),
           height: 340,
         }
       }
@@ -129,7 +130,7 @@
           provider: 'spotify',
           providerLabel: 'Spotify',
           embedUrl: `https://open.spotify.com/embed/track/${trackMatch[1]}?utm_source=comuna`,
-          title: 'Плеер Spotify',
+          title: $t('site.template.music.spotifyPlayer'),
           height: 152,
         }
       }
@@ -139,7 +140,7 @@
           provider: 'spotify',
           providerLabel: 'Spotify',
           embedUrl: `https://open.spotify.com/embed/album/${albumMatch[1]}?utm_source=comuna`,
-          title: 'Плеер Spotify',
+          title: $t('site.template.music.spotifyPlayer'),
           height: 352,
         }
       }
@@ -150,7 +151,7 @@
           provider: 'spotify',
           providerLabel: 'Spotify',
           embedUrl: `https://open.spotify.com/embed/playlist/${playlistMatch[1]}?utm_source=comuna`,
-          title: 'Плейлист Spotify',
+          title: $t('site.template.music.spotifyPlaylist'),
           height: 352,
         }
       }
@@ -161,7 +162,7 @@
         provider: 'soundcloud',
         providerLabel: 'SoundCloud',
         embedUrl: `https://w.soundcloud.com/player/?url=${encodeURIComponent(value)}&auto_play=false&hide_related=false&show_comments=false&show_user=true&show_reposts=false`,
-        title: 'Плеер SoundCloud',
+        title: $t('site.template.music.soundcloudPlayer'),
         height: 180,
       }
     }
@@ -195,7 +196,7 @@
   <div class="music-release-hero__body">
     {#if data.cover_image_url}
       <div class="music-release-hero__cover">
-        <img src={data.cover_image_url} alt={displayTitle || 'Обложка релиза'} loading="lazy" />
+        <img src={data.cover_image_url} alt={displayTitle || $t('site.template.music.cover')} loading="lazy" />
       </div>
     {/if}
 
@@ -205,7 +206,7 @@
           <span class="music-release-chip">{styleLabel}</span>
         {/if}
         {#if releaseDateLabel}
-          <span class="music-release-chip">Релиз: {releaseDateLabel}</span>
+          <span class="music-release-chip">{$t('site.template.music.release', { date: releaseDateLabel })}</span>
         {/if}
       </div>
 
@@ -220,21 +221,21 @@
       <div class="music-release-hero__meta">
         {#if locationLabel}
           <div class="music-release-meta-item">
-            <span class="music-release-meta-label">Группа</span>
+            <span class="music-release-meta-label">{$t('site.template.music.band')}</span>
             <span class="music-release-meta-value">{locationLabel}</span>
           </div>
         {/if}
 
         {#if normalizedAlbumUrl}
           <div class="music-release-meta-item">
-            <span class="music-release-meta-label">Ссылка на релиз</span>
+            <span class="music-release-meta-label">{$t('site.template.music.releaseLink')}</span>
             <a
               href={normalizedAlbumUrl}
               target="_blank"
               rel="nofollow noopener"
               class="music-release-meta-link"
             >
-              Открыть на {albumHost || 'площадке'}
+              {$t('site.template.music.openOn', { provider: albumHost || $t('site.template.music.platform') })}
             </a>
           </div>
         {/if}

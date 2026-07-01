@@ -28,7 +28,9 @@
   import { site } from '$lib/lemmy.js'
   import ExpandableImage from '$lib/components/ui/ExpandableImage.svelte'
   import { LINKED_INSTANCE_URL } from '$lib/instance'
-  import { locale } from '$lib/translations'
+  import { locale, t } from '$lib/translations'
+  import { brandNameForLanguage } from '$lib/brand'
+  import { normalizeInterfaceLanguage, postLanguageLocales, postLanguageOgLocales } from '$lib/postLanguages'
   import { getDefaultColors } from '$lib/ui/presets'
   import { env } from '$env/dynamic/public'
   import YandexMetrika from '$lib/components/YandexMetrika.svelte'
@@ -83,11 +85,16 @@
     const cleanPath = path.replace(/\/+$/, '')
     return `${siteBaseUrl}${cleanPath}`
   })()
-  $: defaultTitle = env.PUBLIC_SITE_TITLE || 'Тамбур'
-  $: defaultDescription = env.PUBLIC_SITE_DESCRIPTION || 'Публикуем лучшие посты из Telegram-каналов.'
-  $: siteTitle = $site?.site_view?.site?.name || defaultTitle
-  $: siteDescription = $site?.site_view?.site?.description || defaultDescription
-  $: isBackendPostRoute = $page.url.pathname.startsWith('/b/post/')
+  $: currentLanguage = normalizeInterfaceLanguage($locale) || 'ru'
+  $: defaultTitle = brandNameForLanguage(currentLanguage)
+  $: defaultDescription = $t('site.meta.defaultDescription')
+  $: siteTitle =
+    currentLanguage === 'ru' ? $site?.site_view?.site?.name || defaultTitle : defaultTitle
+  $: siteDescription =
+    currentLanguage === 'ru'
+      ? $site?.site_view?.site?.description || env.PUBLIC_SITE_DESCRIPTION || defaultDescription
+      : defaultDescription
+  $: isBackendPostRoute = /^\/(?:[a-z]{2}\/)?b\/post\//.test($page.url.pathname)
   $: keyboardShortcutsHintEnabled = new Set([
     '/',
     '/about',
@@ -126,7 +133,7 @@
         name: siteTitle,
         description: siteDescription,
         publisher: { '@id': `${siteBaseUrl}#organization` },
-        inLanguage: 'ru-RU',
+        inLanguage: postLanguageLocales[currentLanguage],
         potentialAction: {
           '@type': 'SearchAction',
           target: `${siteBaseUrl}/search?q={search_term_string}`,
@@ -169,8 +176,12 @@
     <!-- Telegram uses a short HTML prefix for link previews; avoid generic description on post pages. -->
     {#if !isBackendPostRoute}
       <meta name="description" content={siteDescription} />
+      <meta property="og:site_name" content={siteTitle} />
+      <meta property="og:locale" content={postLanguageOgLocales[currentLanguage]} />
     {/if}
-  <link rel="canonical" href={canonicalUrl} />
+  {#if !isBackendPostRoute}
+    <link rel="canonical" href={canonicalUrl} />
+  {/if}
   
   <!-- Добавляем мета-тег noindex для страниц inbox -->
   {#if $page.url.pathname.startsWith('/inbox')}
@@ -182,9 +193,10 @@
     <meta http-equiv="content-security-policy" content="upgrade-insecure-requests">
   {/if}
   
-  <!-- Добавляем alternate для языковых версий, если они есть -->
-  <link rel="alternate" hreflang="ru" href={canonicalUrl} />
-  <link rel="alternate" hreflang="x-default" href={canonicalUrl} />
+  {#if !isBackendPostRoute}
+    <link rel="alternate" hreflang="ru" href={canonicalUrl} />
+    <link rel="alternate" hreflang="x-default" href={canonicalUrl} />
+  {/if}
 
   {@html siteSchemaTag}
 </svelte:head>

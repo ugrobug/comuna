@@ -11,7 +11,7 @@ export const load = async ({ params, fetch, url }) => {
   const response = await fetch(requestUrl.toString())
   if (!response.ok) {
     if (response.status === 404) {
-      throw error(404, 'Тег не найден')
+      throw error(404, 'site.errors.tagNotFound')
     }
     throw error(response.status, 'Не удалось загрузить посты')
   }

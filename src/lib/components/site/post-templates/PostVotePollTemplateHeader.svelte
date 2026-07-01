@@ -15,6 +15,7 @@
     type PostVotePollTemplate,
     type PostVotePollTemplateItem,
   } from '$lib/postTemplates'
+  import { t } from '$lib/translations'
 
   export let template: PostVotePollTemplate
   export let fallbackTitle = ''
@@ -86,13 +87,7 @@
 
   const formatVoteCount = (count: number): string => {
     const safeCount = Math.max(0, Math.floor(count))
-    const mod10 = safeCount % 10
-    const mod100 = safeCount % 100
-    if (mod10 === 1 && mod100 !== 11) return `${safeCount} голос`
-    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
-      return `${safeCount} голоса`
-    }
-    return `${safeCount} голосов`
+    return $t('site.template.poll.votes', { count: safeCount })
   }
 
   const storageKeyForPoll = (postId: number | null): string => {
@@ -221,7 +216,7 @@
       .map((item) => [Number(item.post_id), item] as const)
       .filter(([postId]) => Number.isInteger(postId) && postId > 0)
   )
-  $: question = (data.question || fallbackTitle || 'Голосование за посты').trim()
+  $: question = (data.question || fallbackTitle || $t('site.template.poll.defaultQuestion')).trim()
 
   $: if (poll !== lastPollRef) {
     lastPollRef = poll
@@ -288,9 +283,9 @@
     }
     const postId = Number(option?.post_id ?? 0)
     if (Number.isInteger(postId) && postId > 0) {
-      return `Пост #${postId}`
+      return $t('site.template.poll.postNumber', { id: postId })
     }
-    return 'Пост'
+    return $t('site.template.poll.post')
   }
 
   const optionPath = (option: BackendPollOption): string => {
@@ -312,12 +307,12 @@
 
   const submitVote = async (selection: number[]) => {
     if (!allowPollVoting || !pollPostId) {
-      toast({ content: 'Голосовать можно только в посте на сайте', type: 'warning' })
+      toast({ content: $t('site.template.poll.votePublishedOnly'), type: 'warning' })
       return
     }
     const token = $siteToken
     if (!token) {
-      toast({ content: 'Необходимо зарегистрироваться', type: 'warning' })
+      toast({ content: $t('site.template.poll.loginRequired'), type: 'warning' })
       return
     }
 
@@ -344,7 +339,7 @@
         applyPollState(payload.poll as BackendPoll, optimisticPoll ?? previousPoll)
       }
       if (!response.ok || !payload?.ok) {
-        throw new Error(payload?.error || 'Не удалось проголосовать')
+        throw new Error(payload?.error || $t('site.template.poll.voteError'))
       }
       await refreshPollState(token)
     } catch (error) {
@@ -353,7 +348,7 @@
         persistPoll(localPoll)
       }
       toast({
-        content: (error as Error)?.message ?? 'Не удалось проголосовать',
+        content: (error as Error)?.message ?? $t('site.template.poll.voteError'),
         type: 'error',
       })
     } finally {
@@ -364,7 +359,7 @@
   const toggleOptionVote = async (optionIndex: number) => {
     if (!Number.isInteger(optionIndex) || optionIndex < 0) return
     if (isClosed) {
-      toast({ content: 'Голосование завершено', type: 'warning' })
+      toast({ content: $t('site.template.poll.finished'), type: 'warning' })
       return
     }
     if (voting || hasUserVote) return
@@ -391,13 +386,13 @@
   <div class="vote-poll-hero__bg"></div>
   <div class="vote-poll-hero__body">
     <div class="vote-poll-hero__head">
-      <div class="vote-poll-hero__badge">Голосование за посты</div>
+      <div class="vote-poll-hero__badge">{$t('site.template.poll.title')}</div>
       {#if deadlineLabel}
         <div class={`vote-poll-hero__deadline ${isClosed ? 'is-closed' : ''}`}>
           {#if isClosed}
-            Завершено: {deadlineLabel}
+            {$t('site.template.poll.finishedAt', { date: deadlineLabel })}
           {:else}
-            До: {deadlineLabel}
+            {$t('site.template.poll.until', { date: deadlineLabel })}
           {/if}
         </div>
       {/if}
@@ -413,11 +408,11 @@
       {/if}
       <span>
         {#if isClosed}
-          Опрос завершен
+          {$t('site.template.poll.finished')}
         {:else if showResults}
-          Вы уже проголосовали
+          {$t('site.template.poll.alreadyVoted')}
         {:else}
-          {allowsMultiple ? 'Можно выбрать несколько вариантов' : 'Один вариант ответа'}
+          {allowsMultiple ? $t('site.template.poll.multiple') : $t('site.template.poll.single')}
         {/if}
       </span>
     </div>
@@ -453,9 +448,9 @@
                 <span class={`vote-poll-item__progress-fill ${selected ? 'is-selected' : ''}`} style={`width: ${percent}%`}></span>
               </div>
               <div class="vote-poll-item__result-meta">
-                <span>{formatVoteCount(count)}</span>
+                <span>{$t('site.template.poll.votes', { count })}</span>
                 {#if selected}
-                  <span class="vote-poll-item__badge">Ваш голос</span>
+                  <span class="vote-poll-item__badge">{$t('site.template.poll.yourVote')}</span>
                 {/if}
               </div>
             {:else}
@@ -466,7 +461,7 @@
                   rel="noopener"
                   class="vote-poll-item__link"
                 >
-                  Открыть пост
+                  {$t('site.template.poll.openPost')}
                 </a>
                 <button
                   type="button"
@@ -474,7 +469,7 @@
                   disabled={voting || isClosed || !allowPollVoting || !pollPostId || restoreInFlight}
                   on:click|preventDefault|stopPropagation={() => toggleOptionVote(optionIndex)}
                 >
-                  Голосовать
+                  {$t('site.template.poll.vote')}
                 </button>
               </div>
             {/if}
@@ -485,13 +480,13 @@
 
     <div class="vote-poll-hero__status">
       {#if restoreInFlight && !showResults}
-        Проверяем ваш голос...
+        {$t('site.template.poll.checking')}
       {:else if isClosed}
-        Опрос завершен
+        {$t('site.template.poll.finished')}
       {:else if showResults}
-        Результаты обновлены
+        {$t('site.template.poll.updated')}
       {:else}
-        Выберите вариант, чтобы проголосовать
+        {$t('site.template.poll.chooseToVote')}
       {/if}
     </div>
   </div>

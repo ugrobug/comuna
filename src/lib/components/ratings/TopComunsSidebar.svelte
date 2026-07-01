@@ -6,6 +6,7 @@
   import { buildTopComunsUrl, type BackendTopComun } from '$lib/api/backend'
   import { cachedJson } from '$lib/api/publicCache'
   import { formatTopAuthorNumber } from '$lib/ratings/topAuthors'
+  import { t } from '$lib/translations'
 
   let comuns: BackendTopComun[] = []
   let loading = true
@@ -20,7 +21,7 @@
       )
       comuns = data.comuns ?? []
     } catch (e: unknown) {
-      error = e instanceof Error ? e.message : 'Неизвестная ошибка'
+      error = e instanceof Error ? e.message : $t('site.sidebar.unknownError')
     } finally {
       loading = false
     }
@@ -34,7 +35,7 @@
     href="/comuns"
     class="mb-2 text-base font-normal text-slate-900 transition-colors hover:text-blue-600 dark:text-zinc-200 dark:hover:text-blue-400"
   >
-    Топ сообществ
+    {$t('site.sidebar.ratings.topComuns')}
   </a>
 
   {#if loading}
@@ -49,7 +50,7 @@
     </div>
   {:else if comuns.length === 0}
     <div class="text-sm text-slate-500 dark:text-zinc-400">
-      Нет данных по сообществам
+      {$t('site.sidebar.ratings.noComuns')}
     </div>
   {:else}
     <div class="flex flex-col divide-y divide-slate-200 dark:divide-zinc-800">
@@ -79,7 +80,7 @@
                 {formatTopAuthorNumber(comun.rating ?? comun.score)}
               </span>
               <span class="flex items-center gap-1">
-                {formatTopAuthorNumber(comun.posts_count)} постов
+                {$t('site.sidebar.posts', { count: formatTopAuthorNumber(comun.posts_count) })}
               </span>
               <span class="flex items-center gap-1">
                 <Icon src={ChatBubbleLeftRight} size="14" class="text-sky-500" />
@@ -96,7 +97,7 @@
       rounding="xl"
       class="mt-3 w-full justify-center !text-sm"
     >
-      Все сообщества
+      {$t('site.sidebar.ratings.allComuns')}
     </Button>
   {/if}
 </div>

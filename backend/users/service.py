@@ -26,6 +26,7 @@ from django.http import HttpRequest, HttpResponse
 from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from django.utils import timezone
+from django.utils.translation import gettext as _
 from jwt import PyJWKClient
 from jwt.exceptions import InvalidTokenError, PyJWKClientError
 
@@ -409,14 +410,14 @@ def _delete_site_user_account(user: User) -> None:
 
 def _register_password_user(username: str, password: str, email: str = "") -> User:
     if not getattr(settings, "ALLOW_PASSWORD_REGISTRATION", False):
-        raise ValueError("Регистрация по почте отключена. Используйте Telegram.")
+        raise ValueError(_("Регистрация по почте отключена. Используйте Telegram."))
     email = (email or "").strip().lower()
     if not username or not password or not email:
-        raise ValueError("username, email and password are required")
+        raise ValueError(_("Укажите имя пользователя, email и пароль."))
     if "@" not in email:
-        raise ValueError("Введите корректный email.")
+        raise ValueError(_("Введите корректный email."))
     if len(password) < 8:
-        raise ValueError("пароль слишком короткий")
+        raise ValueError(_("Пароль слишком короткий."))
     try:
         validate_password(password)
     except ValidationError as exc:
@@ -425,13 +426,13 @@ def _register_password_user(username: str, password: str, email: str = "") -> Us
     existing_by_email = User.objects.filter(email__iexact=email).first()
     if existing_by_email:
         if existing_by_email.has_usable_password():
-            raise ValueError("email already exists")
+            raise ValueError(_("Пользователь с таким email уже существует."))
         raise ValueError(
-            "Аккаунт с таким email уже существует. Восстановите пароль через подтверждение почты."
+            _("Аккаунт с таким email уже существует. Восстановите пароль через подтверждение почты.")
         )
 
     if User.objects.filter(username__iexact=username).exists():
-        raise ValueError("username already exists")
+        raise ValueError(_("Пользователь с таким именем уже существует."))
     user = User.objects.create_user(username=username, email=email, password=password)
     _mark_email_unverified(user)
     return user
@@ -494,27 +495,34 @@ def _send_registration_email(user: User) -> bool:
     email = (getattr(user, "email", "") or "").strip()
     if not email:
         return False
-    username = (getattr(user, "username", "") or "").strip() or "пользователь"
+    username = (getattr(user, "username", "") or "").strip() or _("пользователь")
     verification_url = _email_verification_url(user)
     escaped_username = html.escape(username)
     escaped_url = html.escape(verification_url, quote=True)
     try:
         send_email(
-            subject="Подтвердите почту в Tambur",
+            subject=_("Подтвердите почту в Tambur"),
             to=email,
-            text=(
-                f"Здравствуйте, {username}!\n\n"
+            text=_(
+                "Здравствуйте, %(username)s!\n\n"
                 "Чтобы завершить подтверждение почты, откройте секретную ссылку:\n"
-                f"{verification_url}\n\n"
+                "%(verification_url)s\n\n"
                 "Ссылка секретная и привязана к вашему аккаунту.\n"
                 "Если это были не вы, просто проигнорируйте это письмо."
-            ),
+            )
+            % {"username": username, "verification_url": verification_url},
             html=(
-                f"<p>Здравствуйте, {escaped_username}!</p>"
-                "<p>Чтобы завершить подтверждение почты, откройте секретную ссылку:</p>"
-                f"<p><a href=\"{escaped_url}\">Подтвердить почту</a></p>"
-                "<p>Ссылка секретная и привязана к вашему аккаунту.</p>"
-                "<p>Если это были не вы, просто проигнорируйте это письмо.</p>"
+                _("<p>Здравствуйте, %(username)s!</p>") % {"username": escaped_username}
+                + _("<p>Чтобы завершить подтверждение почты, откройте секретную ссылку:</p>")
+                + (
+                    '<p><a href="%(url)s">%(label)s</a></p>'
+                    % {
+                        "url": escaped_url,
+                        "label": html.escape(_("Подтвердить почту")),
+                    }
+                )
+                + _("<p>Ссылка секретная и привязана к вашему аккаунту.</p>")
+                + _("<p>Если это были не вы, просто проигнорируйте это письмо.</p>")
             ),
         )
         return True
@@ -797,12 +805,12 @@ def _verify_email_by_secret(secret: str) -> User:
         user_id = force_str(urlsafe_base64_decode(uid))
         user = User.objects.get(pk=user_id, is_active=True)
     except Exception as exc:
-        raise ValueError("Ссылка подтверждения недействительна или устарела.") from exc
+        raise ValueError(_("Ссылка подтверждения недействительна или устарела.")) from exc
 
     if not default_token_generator.check_token(user, token):
-        raise ValueError("Ссылка подтверждения недействительна или устарела.")
+        raise ValueError(_("Ссылка подтверждения недействительна или устарела."))
     if not (getattr(user, "email", "") or "").strip():
-        raise ValueError("У аккаунта не указан email.")
+        raise ValueError(_("У аккаунта не указан email."))
 
     profile, _ = SiteUserProfile.objects.get_or_create(user=user)
     if profile.email_verified_at is None:
@@ -819,22 +827,29 @@ def _send_password_reset_email(user: User) -> bool:
     uid = urlsafe_base64_encode(force_bytes(user.pk))
     token = default_token_generator.make_token(user)
     reset_url = _site_url(f"/login_reset?uid={uid}&token={token}")
-    username = (getattr(user, "username", "") or "").strip() or "пользователь"
+    username = (getattr(user, "username", "") or "").strip() or _("пользователь")
     try:
         send_email(
-            subject="Восстановление доступа к Tambur",
+            subject=_("Восстановление доступа к Tambur"),
             to=email,
-            text=(
-                f"Здравствуйте, {username}!\n\n"
+            text=_(
+                "Здравствуйте, %(username)s!\n\n"
                 "Мы получили запрос на восстановление доступа к аккаунту.\n"
-                f"Чтобы задать новый пароль, откройте ссылку: {reset_url}\n\n"
+                "Чтобы задать новый пароль, откройте ссылку: %(reset_url)s\n\n"
                 "Если вы не запрашивали восстановление, просто проигнорируйте это письмо."
-            ),
+            )
+            % {"username": username, "reset_url": reset_url},
             html=(
-                f"<p>Здравствуйте, {username}!</p>"
-                "<p>Мы получили запрос на восстановление доступа к аккаунту.</p>"
-                f"<p><a href=\"{reset_url}\">Задать новый пароль</a></p>"
-                "<p>Если вы не запрашивали восстановление, просто проигнорируйте это письмо.</p>"
+                _("<p>Здравствуйте, %(username)s!</p>") % {"username": html.escape(username)}
+                + _("<p>Мы получили запрос на восстановление доступа к аккаунту.</p>")
+                + (
+                    '<p><a href="%(url)s">%(label)s</a></p>'
+                    % {
+                        "url": html.escape(reset_url, quote=True),
+                        "label": html.escape(_("Задать новый пароль")),
+                    }
+                )
+                + _("<p>Если вы не запрашивали восстановление, просто проигнорируйте это письмо.</p>")
             ),
         )
         return True
@@ -846,7 +861,7 @@ def _send_password_reset_email(user: User) -> bool:
 def _request_password_reset(email: str) -> bool:
     email = (email or "").strip().lower()
     if not email or "@" not in email:
-        raise ValueError("Введите корректный email.")
+        raise ValueError(_("Введите корректный email."))
 
     user = (
         User.objects.filter(email__iexact=email, is_active=True)
@@ -863,12 +878,12 @@ def _reset_password_by_token(uid: str, token: str, password: str) -> User:
         user_id = force_str(urlsafe_base64_decode(uid))
         user = User.objects.get(pk=user_id, is_active=True)
     except Exception as exc:
-        raise ValueError("Ссылка восстановления недействительна или устарела.") from exc
+        raise ValueError(_("Ссылка восстановления недействительна или устарела.")) from exc
 
     if not default_token_generator.check_token(user, token):
-        raise ValueError("Ссылка восстановления недействительна или устарела.")
+        raise ValueError(_("Ссылка восстановления недействительна или устарела."))
     if len(password or "") < 8:
-        raise ValueError("пароль слишком короткий")
+        raise ValueError(_("Пароль слишком короткий."))
     try:
         validate_password(password, user=user)
     except ValidationError as exc:
@@ -881,7 +896,7 @@ def _reset_password_by_token(uid: str, token: str, password: str) -> User:
 
 def _authenticate_password_user(username_or_email: str, password: str) -> User:
     if not username_or_email or not password:
-        raise ValueError("Введите email или имя пользователя и пароль.")
+        raise ValueError(_("Введите email или имя пользователя и пароль."))
 
     user = None
     if "@" in username_or_email:
@@ -1299,7 +1314,7 @@ def _upsert_vk_account(vk_user: dict, link_user: User | None = None) -> User:
         existing_user_account = VkAccount.objects.filter(user=user).first() if user else None
         if existing_user_account:
             if existing_user_account.vk_id != vk_id:
-                raise ValueError("К этому профилю уже привязан другой VK.")
+                raise ValueError(_("К этому профилю уже привязан другой VK."))
             account = existing_user_account
         if user:
             updates: list[str] = []

@@ -1,8 +1,11 @@
 <script>
-  import { env } from '$env/dynamic/public'
+  import { brandNameForLanguage } from '$lib/brand'
+  import { locale } from '$lib/translations'
 
   const heading = 'Политика в отношении обработки персональных данных'
-  const seoTitle = `${heading} — ${env.PUBLIC_SITE_TITLE || 'Тамбур'}`
+  $: siteTitle = brandNameForLanguage($locale)
+  $: seoTitle = `${heading} — ${siteTitle}`
+  $: seoDescription = `Политика в отношении обработки персональных данных ${siteTitle}.`
   const policyText = `Политика в отношении обработки персональных данных
 1. Общие положения
 Настоящая политика обработки персональных данных составлена в соответствии с требованиями Федерального закона от 27.07.2006. № 152-ФЗ «О персональных данных» (далее — Закон о персональных данных) и определяет порядок обработки персональных данных и меры по обеспечению безопасности персональных данных, предпринимаемые Кирьяновым Евгением Львовичем (далее — Оператор).
@@ -116,12 +119,12 @@
   <title>{seoTitle}</title>
   <meta
     name="description"
-    content="Политика в отношении обработки персональных данных Тамбур."
+    content={seoDescription}
   />
   <meta property="og:title" content={seoTitle} />
   <meta
     property="og:description"
-    content="Политика в отношении обработки персональных данных Тамбур."
+    content={seoDescription}
   />
   <meta property="og:type" content="website" />
 </svelte:head>

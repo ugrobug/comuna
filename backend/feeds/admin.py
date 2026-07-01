@@ -7,9 +7,14 @@ from django.utils.html import format_html_join
 
 from .models import (
     Author,
+    ComunTranslation,
+    ContentTranslationTask,
+    ContentTranslationRun,
+    ContentTranslationSettings,
     Post,
     PostComment,
     PostCommentLike,
+    PostCommentTranslation,
     PostLike,
     PostTranslation,
     PostViewSettings,
@@ -102,18 +107,17 @@ class PostAdmin(admin.ModelAdmin):
             return "Сохраните пост перед переводом"
         links = [
             (
-                reverse("admin:feeds_post_translate", args=[obj.pk, "tr"]),
-                "Перевести TR",
-            ),
-            (
-                reverse("admin:feeds_post_translate", args=[obj.pk, "id"]),
-                "Перевести ID",
-            ),
+                reverse("admin:feeds_post_translate", args=[obj.pk, language]),
+                f"Перевести {language.upper()}",
+            )
+            for language in SUPPORTED_TRANSLATION_LANGUAGES
+        ]
+        links.append(
             (
                 reverse("admin:feeds_post_translate", args=[obj.pk, "all"]),
                 "Перевести все",
-            ),
-        ]
+            )
+        )
         return format_html_join(" ", '<a class="button" href="{}">{}</a>', links)
 
     def translate_view(self, request: HttpRequest, object_id: str, language: str):
@@ -175,6 +179,52 @@ class PostTranslationAdmin(admin.ModelAdmin):
     search_fields = ("post__title", "title", "content")
     raw_id_fields = ("post",)
     readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(ContentTranslationSettings)
+class ContentTranslationSettingsAdmin(admin.ModelAdmin):
+    list_display = (
+        "enabled",
+        "post_daily_limit",
+        "comment_daily_limit",
+        "post_object_daily_limit",
+        "updated_at",
+    )
+
+
+@admin.register(ContentTranslationRun)
+class ContentTranslationRunAdmin(admin.ModelAdmin):
+    list_display = ("kind", "object_id", "task", "created_at")
+    list_filter = ("kind",)
+    search_fields = ("object_id",)
+    raw_id_fields = ("task",)
+    date_hierarchy = "created_at"
+
+
+@admin.register(PostCommentTranslation)
+class PostCommentTranslationAdmin(admin.ModelAdmin):
+    list_display = ("comment", "language", "status", "model", "updated_at")
+    list_filter = ("language", "status", "model")
+    search_fields = ("comment__body", "body", "comment__post__title")
+    raw_id_fields = ("comment",)
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(ComunTranslation)
+class ComunTranslationAdmin(admin.ModelAdmin):
+    list_display = ("comun", "language", "status", "model", "updated_at")
+    list_filter = ("language", "status", "model")
+    search_fields = ("comun__name", "product_description", "rules_text")
+    raw_id_fields = ("comun",)
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(ContentTranslationTask)
+class ContentTranslationTaskAdmin(admin.ModelAdmin):
+    list_display = ("kind", "object_id", "status", "scheduled_at", "attempts", "updated_at")
+    list_filter = ("kind", "status")
+    search_fields = ("object_id", "last_error")
+    readonly_fields = ("created_at", "updated_at", "locked_at")
 
 
 class TagRelationInline(admin.TabularInline):

@@ -1,0 +1,105 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: id\n"
+
+msgid "Site metrics"
+msgstr "Metrik situs"
+
+msgid "Authors"
+msgstr "Penulis"
+
+msgid "Total posts"
+msgstr "Total postingan"
+
+msgid "Posts in 30 days"
+msgstr "Postingan dalam 30 hari"
+
+msgid "Posts per author per month"
+msgstr "Postingan per penulis per bulan"
+
+msgid "Likes in 30 days"
+msgstr "Suka dalam 30 hari"
+
+msgid "Dislikes in 30 days"
+msgstr "Tidak suka dalam 30 hari"
+
+msgid "Comments in 30 days"
+msgstr "Komentar dalam 30 hari"
+
+msgid "пользователь"
+msgstr "pengguna"
+
+msgid "Подтвердите почту в Tambur"
+msgstr "Konfirmasi email Anda di Tambur"
+
+msgid "Здравствуйте, %(username)s!\n\nЧтобы завершить подтверждение почты, откройте секретную ссылку:\n%(verification_url)s\n\nСсылка секретная и привязана к вашему аккаунту.\nЕсли это были не вы, просто проигнорируйте это письмо."
+msgstr "Halo, %(username)s!\n\nUntuk menyelesaikan konfirmasi email, buka tautan rahasia ini:\n%(verification_url)s\n\nTautan ini rahasia dan terhubung ke akun Anda.\nJika ini bukan Anda, abaikan email ini."
+
+msgid "<p>Здравствуйте, %(username)s!</p>"
+msgstr "<p>Halo, %(username)s!</p>"
+
+msgid "<p>Чтобы завершить подтверждение почты, откройте секретную ссылку:</p>"
+msgstr "<p>Untuk menyelesaikan konfirmasi email, buka tautan rahasia ini:</p>"
+
+msgid "Подтвердить почту"
+msgstr "Konfirmasi email"
+
+msgid "<p>Ссылка секретная и привязана к вашему аккаунту.</p>"
+msgstr "<p>Tautan ini rahasia dan terhubung ke akun Anda.</p>"
+
+msgid "<p>Если это были не вы, просто проигнорируйте это письмо.</p>"
+msgstr "<p>Jika ini bukan Anda, abaikan email ini.</p>"
+
+msgid "Ссылка подтверждения недействительна или устарела."
+msgstr "Tautan konfirmasi tidak valid atau sudah kedaluwarsa."
+
+msgid "У аккаунта не указан email."
+msgstr "Akun ini tidak memiliki email."
+
+msgid "Восстановление доступа к Tambur"
+msgstr "Pulihkan akses ke Tambur"
+
+msgid "Здравствуйте, %(username)s!\n\nМы получили запрос на восстановление доступа к аккаунту.\nЧтобы задать новый пароль, откройте ссылку: %(reset_url)s\n\nЕсли вы не запрашивали восстановление, просто проигнорируйте это письмо."
+msgstr "Halo, %(username)s!\n\nKami menerima permintaan untuk memulihkan akses akun.\nUntuk membuat kata sandi baru, buka tautan ini: %(reset_url)s\n\nJika Anda tidak meminta ini, abaikan email ini."
+
+msgid "<p>Мы получили запрос на восстановление доступа к аккаунту.</p>"
+msgstr "<p>Kami menerima permintaan untuk memulihkan akses akun.</p>"
+
+msgid "Задать новый пароль"
+msgstr "Buat kata sandi baru"
+
+msgid "<p>Если вы не запрашивали восстановление, просто проигнорируйте это письмо.</p>"
+msgstr "<p>Jika Anda tidak meminta ini, abaikan email ini.</p>"
+
+msgid "Введите корректный email."
+msgstr "Masukkan email yang valid."
+
+msgid "Регистрация по почте отключена. Используйте Telegram."
+msgstr "Pendaftaran melalui email dinonaktifkan. Gunakan Telegram."
+
+msgid "Укажите имя пользователя, email и пароль."
+msgstr "Masukkan nama pengguna, email, dan kata sandi."
+
+msgid "Пароль слишком короткий."
+msgstr "Kata sandi terlalu pendek."
+
+msgid "Пользователь с таким email уже существует."
+msgstr "Pengguna dengan email ini sudah ada."
+
+msgid "Аккаунт с таким email уже существует. Восстановите пароль через подтверждение почты."
+msgstr "Akun dengan email ini sudah ada. Pulihkan kata sandi melalui konfirmasi email."
+
+msgid "Пользователь с таким именем уже существует."
+msgstr "Pengguna dengan nama ini sudah ada."
+
+msgid "Ссылка восстановления недействительна или устарела."
+msgstr "Tautan pemulihan tidak valid atau sudah kedaluwarsa."
+
+msgid "Введите email или имя пользователя и пароль."
+msgstr "Masukkan email atau nama pengguna dan kata sandi."
+
+msgid "К этому профилю уже привязан другой VK."
+msgstr "Akun VK lain sudah terhubung ke profil ini."
+

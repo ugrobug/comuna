@@ -10,6 +10,10 @@ from django.views.decorators.csrf import csrf_exempt
 
 from communities.models import Comun
 from feeds.models import Author, Post, PostComment, PostCommentLike, PostLike, PostViewSettings
+from feeds.translation_service import (
+    serialize_content_translation_settings,
+    update_content_translation_settings,
+)
 from my_feed.models import ComunSubscriptionEvent
 from ratings.service import (
     get_rating_settings,
@@ -348,6 +352,49 @@ def moderator_rating_settings_update(request: HttpRequest) -> HttpResponse:
     )
 
 
+def moderator_translation_settings(request: HttpRequest) -> HttpResponse:
+    if request.method != "GET":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    _user, auth_response = _staff_user_or_response(request)
+    if auth_response is not None:
+        return auth_response
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "settings": serialize_content_translation_settings(),
+        }
+    )
+
+
+@csrf_exempt
+def moderator_translation_settings_update(request: HttpRequest) -> HttpResponse:
+    if request.method not in {"PATCH", "POST"}:
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    _user, auth_response = _staff_user_or_response(request)
+    if auth_response is not None:
+        return auth_response
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+
+    try:
+        settings = update_content_translation_settings(payload)
+    except ValueError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "settings": serialize_content_translation_settings(settings),
+        }
+    )
+
+
 def _chat_report_queryset():
     return SiteChatReport.objects.select_related(
         "chat",
@@ -457,4 +504,6 @@ __all__ = [
     "moderator_post_view_setting_update",
     "moderator_rating_settings",
     "moderator_rating_settings_update",
+    "moderator_translation_settings",
+    "moderator_translation_settings_update",
 ]

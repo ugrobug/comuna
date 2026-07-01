@@ -1,0 +1,105 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: es\n"
+
+msgid "Site metrics"
+msgstr "Métricas del sitio"
+
+msgid "Authors"
+msgstr "Autores"
+
+msgid "Total posts"
+msgstr "Total de publicaciones"
+
+msgid "Posts in 30 days"
+msgstr "Publicaciones en 30 días"
+
+msgid "Posts per author per month"
+msgstr "Publicaciones por autor al mes"
+
+msgid "Likes in 30 days"
+msgstr "Me gusta en 30 días"
+
+msgid "Dislikes in 30 days"
+msgstr "No me gusta en 30 días"
+
+msgid "Comments in 30 days"
+msgstr "Comentarios en 30 días"
+
+msgid "пользователь"
+msgstr "usuario"
+
+msgid "Подтвердите почту в Tambur"
+msgstr "Confirma tu email en Tambur"
+
+msgid "Здравствуйте, %(username)s!\n\nЧтобы завершить подтверждение почты, откройте секретную ссылку:\n%(verification_url)s\n\nСсылка секретная и привязана к вашему аккаунту.\nЕсли это были не вы, просто проигнорируйте это письмо."
+msgstr "Hola, %(username)s!\n\nPara terminar la confirmación de tu email, abre este enlace secreto:\n%(verification_url)s\n\nEl enlace es secreto y está vinculado a tu cuenta.\nSi no fuiste tú, ignora este email."
+
+msgid "<p>Здравствуйте, %(username)s!</p>"
+msgstr "<p>Hola, %(username)s!</p>"
+
+msgid "<p>Чтобы завершить подтверждение почты, откройте секретную ссылку:</p>"
+msgstr "<p>Para terminar la confirmación de tu email, abre este enlace secreto:</p>"
+
+msgid "Подтвердить почту"
+msgstr "Confirmar email"
+
+msgid "<p>Ссылка секретная и привязана к вашему аккаунту.</p>"
+msgstr "<p>El enlace es secreto y está vinculado a tu cuenta.</p>"
+
+msgid "<p>Если это были не вы, просто проигнорируйте это письмо.</p>"
+msgstr "<p>Si no fuiste tú, ignora este email.</p>"
+
+msgid "Ссылка подтверждения недействительна или устарела."
+msgstr "El enlace de confirmación no es válido o ha caducado."
+
+msgid "У аккаунта не указан email."
+msgstr "Esta cuenta no tiene email."
+
+msgid "Восстановление доступа к Tambur"
+msgstr "Recuperar acceso a Tambur"
+
+msgid "Здравствуйте, %(username)s!\n\nМы получили запрос на восстановление доступа к аккаунту.\nЧтобы задать новый пароль, откройте ссылку: %(reset_url)s\n\nЕсли вы не запрашивали восстановление, просто проигнорируйте это письмо."
+msgstr "Hola, %(username)s!\n\nRecibimos una solicitud para recuperar el acceso a tu cuenta.\nPara establecer una nueva contraseña, abre este enlace: %(reset_url)s\n\nSi no solicitaste esto, ignora este email."
+
+msgid "<p>Мы получили запрос на восстановление доступа к аккаунту.</p>"
+msgstr "<p>Recibimos una solicitud para recuperar el acceso a tu cuenta.</p>"
+
+msgid "Задать новый пароль"
+msgstr "Establecer nueva contraseña"
+
+msgid "<p>Если вы не запрашивали восстановление, просто проигнорируйте это письмо.</p>"
+msgstr "<p>Si no solicitaste esto, ignora este email.</p>"
+
+msgid "Введите корректный email."
+msgstr "Introduce un email válido."
+
+msgid "Регистрация по почте отключена. Используйте Telegram."
+msgstr "El registro por email está desactivado. Usa Telegram."
+
+msgid "Укажите имя пользователя, email и пароль."
+msgstr "Introduce nombre de usuario, email y contraseña."
+
+msgid "Пароль слишком короткий."
+msgstr "La contraseña es demasiado corta."
+
+msgid "Пользователь с таким email уже существует."
+msgstr "Ya existe un usuario con este email."
+
+msgid "Аккаунт с таким email уже существует. Восстановите пароль через подтверждение почты."
+msgstr "Ya existe una cuenta con este email. Recupera la contraseña mediante confirmación por email."
+
+msgid "Пользователь с таким именем уже существует."
+msgstr "Ya existe un usuario con este nombre."
+
+msgid "Ссылка восстановления недействительна или устарела."
+msgstr "El enlace de recuperación no es válido o ha caducado."
+
+msgid "Введите email или имя пользователя и пароль."
+msgstr "Introduce email o nombre de usuario y contraseña."
+
+msgid "К этому профилю уже привязан другой VK."
+msgstr "Ya hay otra cuenta de VK vinculada a este perfil."
+

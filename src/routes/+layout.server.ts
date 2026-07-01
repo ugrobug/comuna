@@ -1,22 +1,16 @@
-import { aliases, loadTranslations, locales } from '$lib/translations.js'
-import { get } from 'svelte/store'
+import {
+  languageFromAcceptLanguage,
+  languageFromPathname,
+  originalPostLanguage,
+} from '$lib/postLanguages.js'
+import { loadTranslations } from '$lib/translations.js'
 
 export const load = async ({ url, request }) => {
-  const languages = request.headers.get('Accept-Language')?.split(',')
-  const availableLangs = get(locales)
+  const language =
+    languageFromPathname(url.pathname) ||
+    languageFromAcceptLanguage(request.headers.get('Accept-Language')) ||
+    originalPostLanguage
 
-  let preferredLanguage = 'en'
-
-  if (!languages) {
-    await loadTranslations(preferredLanguage)
-    return
-  }
-  for (const lang of languages.reverse()) {
-    const splitLang = lang.split(';')[0]
-    if (availableLangs.includes(splitLang) || aliases.get(splitLang)) {
-      preferredLanguage = aliases.get(splitLang) || splitLang
-    }
-  }
-  await loadTranslations(preferredLanguage)
-  return
+  await loadTranslations(language)
+  return { language }
 }

@@ -9,7 +9,7 @@ export const load = async ({ fetch, params, url, depends }) => {
   const comunResponse = await fetch(new URL(buildComunUrl(slug), url.origin).toString())
   if (!comunResponse.ok) {
     if (comunResponse.status === 404) {
-      throw error(404, 'Сообщество не найдено')
+      throw error(404, 'site.errors.communityNotFound')
     }
     throw error(comunResponse.status, 'Не удалось загрузить сообщество')
   }

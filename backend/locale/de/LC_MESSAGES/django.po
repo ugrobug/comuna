@@ -1,0 +1,105 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: de\n"
+
+msgid "Site metrics"
+msgstr "Website-Metriken"
+
+msgid "Authors"
+msgstr "Autoren"
+
+msgid "Total posts"
+msgstr "Beiträge insgesamt"
+
+msgid "Posts in 30 days"
+msgstr "Beiträge in 30 Tagen"
+
+msgid "Posts per author per month"
+msgstr "Beiträge pro Autor pro Monat"
+
+msgid "Likes in 30 days"
+msgstr "Likes in 30 Tagen"
+
+msgid "Dislikes in 30 days"
+msgstr "Dislikes in 30 Tagen"
+
+msgid "Comments in 30 days"
+msgstr "Kommentare in 30 Tagen"
+
+msgid "пользователь"
+msgstr "Benutzer"
+
+msgid "Подтвердите почту в Tambur"
+msgstr "E-Mail in Tambur bestätigen"
+
+msgid "Здравствуйте, %(username)s!\n\nЧтобы завершить подтверждение почты, откройте секретную ссылку:\n%(verification_url)s\n\nСсылка секретная и привязана к вашему аккаунту.\nЕсли это были не вы, просто проигнорируйте это письмо."
+msgstr "Hallo, %(username)s!\n\nUm die E-Mail-Bestätigung abzuschließen, öffnen Sie diesen geheimen Link:\n%(verification_url)s\n\nDer Link ist geheim und mit Ihrem Konto verknüpft.\nWenn Sie das nicht waren, ignorieren Sie diese E-Mail einfach."
+
+msgid "<p>Здравствуйте, %(username)s!</p>"
+msgstr "<p>Hallo, %(username)s!</p>"
+
+msgid "<p>Чтобы завершить подтверждение почты, откройте секретную ссылку:</p>"
+msgstr "<p>Um die E-Mail-Bestätigung abzuschließen, öffnen Sie diesen geheimen Link:</p>"
+
+msgid "Подтвердить почту"
+msgstr "E-Mail bestätigen"
+
+msgid "<p>Ссылка секретная и привязана к вашему аккаунту.</p>"
+msgstr "<p>Der Link ist geheim und mit Ihrem Konto verknüpft.</p>"
+
+msgid "<p>Если это были не вы, просто проигнорируйте это письмо.</p>"
+msgstr "<p>Wenn Sie das nicht waren, ignorieren Sie diese E-Mail einfach.</p>"
+
+msgid "Ссылка подтверждения недействительна или устарела."
+msgstr "Der Bestätigungslink ist ungültig oder abgelaufen."
+
+msgid "У аккаунта не указан email."
+msgstr "Für dieses Konto ist keine E-Mail-Adresse angegeben."
+
+msgid "Восстановление доступа к Tambur"
+msgstr "Zugriff auf Tambur wiederherstellen"
+
+msgid "Здравствуйте, %(username)s!\n\nМы получили запрос на восстановление доступа к аккаунту.\nЧтобы задать новый пароль, откройте ссылку: %(reset_url)s\n\nЕсли вы не запрашивали восстановление, просто проигнорируйте это письмо."
+msgstr "Hallo, %(username)s!\n\nWir haben eine Anfrage zur Wiederherstellung des Kontozugangs erhalten.\nUm ein neues Passwort festzulegen, öffnen Sie diesen Link: %(reset_url)s\n\nWenn Sie dies nicht angefordert haben, ignorieren Sie diese E-Mail einfach."
+
+msgid "<p>Мы получили запрос на восстановление доступа к аккаунту.</p>"
+msgstr "<p>Wir haben eine Anfrage zur Wiederherstellung des Kontozugangs erhalten.</p>"
+
+msgid "Задать новый пароль"
+msgstr "Neues Passwort festlegen"
+
+msgid "<p>Если вы не запрашивали восстановление, просто проигнорируйте это письмо.</p>"
+msgstr "<p>Wenn Sie dies nicht angefordert haben, ignorieren Sie diese E-Mail einfach.</p>"
+
+msgid "Введите корректный email."
+msgstr "Geben Sie eine gültige E-Mail-Adresse ein."
+
+msgid "Регистрация по почте отключена. Используйте Telegram."
+msgstr "Die Registrierung per E-Mail ist deaktiviert. Verwenden Sie Telegram."
+
+msgid "Укажите имя пользователя, email и пароль."
+msgstr "Geben Sie Benutzername, E-Mail und Passwort ein."
+
+msgid "Пароль слишком короткий."
+msgstr "Das Passwort ist zu kurz."
+
+msgid "Пользователь с таким email уже существует."
+msgstr "Ein Benutzer mit dieser E-Mail existiert bereits."
+
+msgid "Аккаунт с таким email уже существует. Восстановите пароль через подтверждение почты."
+msgstr "Ein Konto mit dieser E-Mail existiert bereits. Stellen Sie das Passwort über die E-Mail-Bestätigung wieder her."
+
+msgid "Пользователь с таким именем уже существует."
+msgstr "Ein Benutzer mit diesem Namen existiert bereits."
+
+msgid "Ссылка восстановления недействительна или устарела."
+msgstr "Der Wiederherstellungslink ist ungültig oder abgelaufen."
+
+msgid "Введите email или имя пользователя и пароль."
+msgstr "Geben Sie E-Mail oder Benutzername und Passwort ein."
+
+msgid "К этому профилю уже привязан другой VK."
+msgstr "Mit diesem Profil ist bereits ein anderes VK-Konto verknüpft."
+

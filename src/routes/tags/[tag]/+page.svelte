@@ -9,6 +9,8 @@
   import { buildTagPostsUrl } from '$lib/api/backend'
   import { userSettings } from '$lib/settings'
   import { normalizeTag } from '$lib/tags'
+  import { brandNameForLanguage } from '$lib/brand'
+  import { locale } from '$lib/translations'
 
   export let data
 
@@ -36,7 +38,7 @@
   $: tagKey = tagLemma
   $: isBlacklisted = Boolean(tagKey && $userSettings.tagRules?.[tagKey] === 'hide')
 
-  $: siteTitle = env.PUBLIC_SITE_TITLE || 'Тамбур'
+  $: siteTitle = brandNameForLanguage($locale)
   $: title = `Посты по тегу «${tagName}» — ${siteTitle}`
   $: description = `Посты по тегу «${tagName}» на ${siteTitle}.`
   $: canonicalUrl = new URL(

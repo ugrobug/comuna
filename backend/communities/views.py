@@ -42,6 +42,15 @@ from feeds.post_paths import slugify_title
 from editor import service as editor_service
 from feeds.models import (
     Author,
+    ComunTranslation,
+    POST_TRANSLATION_LANGUAGE_ENGLISH,
+    POST_TRANSLATION_LANGUAGE_FRENCH,
+    POST_TRANSLATION_LANGUAGE_GERMAN,
+    POST_TRANSLATION_LANGUAGE_INDONESIAN,
+    POST_TRANSLATION_LANGUAGE_PORTUGUESE,
+    POST_TRANSLATION_LANGUAGE_SPANISH,
+    POST_TRANSLATION_LANGUAGE_TURKISH,
+    POST_TRANSLATION_STATUS_TRANSLATED,
     Post,
     PostComment,
     PostCommentLike,
@@ -68,6 +77,17 @@ _COMUN_ACTIVITY_POINTS = {
     "poll_vote": 2,
     "favorite": 2,
     "read": 1,
+}
+_ORIGINAL_CONTENT_LANGUAGE = "ru"
+_PUBLIC_CONTENT_LANGUAGES = {
+    _ORIGINAL_CONTENT_LANGUAGE,
+    POST_TRANSLATION_LANGUAGE_ENGLISH,
+    POST_TRANSLATION_LANGUAGE_SPANISH,
+    POST_TRANSLATION_LANGUAGE_PORTUGUESE,
+    POST_TRANSLATION_LANGUAGE_GERMAN,
+    POST_TRANSLATION_LANGUAGE_FRENCH,
+    POST_TRANSLATION_LANGUAGE_TURKISH,
+    POST_TRANSLATION_LANGUAGE_INDONESIAN,
 }
 _EXTERNAL_URL_RE = re.compile(r"""https?://[^\s<>"')\]]+|www\.[^\s<>"')\]]+""", re.IGNORECASE)
 _INTERNAL_COMUNA_HOSTS = {
@@ -1109,6 +1129,28 @@ def _serialize_comun_rating(
     }
 
 
+def _normalize_content_language(value: str | None) -> str:
+    language = str(value or _ORIGINAL_CONTENT_LANGUAGE).strip().lower()
+    return language if language in _PUBLIC_CONTENT_LANGUAGES else _ORIGINAL_CONTENT_LANGUAGE
+
+
+def _comun_translation_for_language(
+    comun: Comun,
+    language: str | None,
+) -> ComunTranslation | None:
+    if not language or language == _ORIGINAL_CONTENT_LANGUAGE:
+        return None
+    return (
+        ComunTranslation.objects.filter(
+            comun=comun,
+            language=language,
+            status=POST_TRANSLATION_STATUS_TRANSLATED,
+        )
+        .order_by("-updated_at")
+        .first()
+    )
+
+
 def _serialize_comun(
     request: HttpRequest,
     comun: Comun,
@@ -1117,6 +1159,7 @@ def _serialize_comun(
     include_manage_fields: bool = False,
     include_options: bool = False,
     include_activity: bool = False,
+    language: str | None = None,
 ) -> dict:
     categories = _comun_categories_list(comun)
     roadmap_category_ids = set(community_service._parse_int_list(getattr(comun, "roadmap_category_ids", [])))
@@ -1138,14 +1181,25 @@ def _serialize_comun(
         if welcome_post and community_service._post_belongs_to_comun(comun, welcome_post):
             welcome_post_payload = editor_service._serialize_post_for_user(request, welcome_post, current_user)
 
+    content_language = _normalize_content_language(language)
+    translation = None if include_manage_fields else _comun_translation_for_language(comun, content_language)
+    is_translated = bool(translation)
+    product_description = comun.product_description
+    rules_text = comun.rules_text
+    if translation:
+        product_description = translation.product_description or product_description
+        rules_text = translation.rules_text or rules_text
+
     payload = {
         "id": comun.id,
         "name": comun.name,
         "slug": comun.slug,
         "website_url": comun.website_url,
         "logo_url": _comun_logo_url(request, comun),
-        "product_description": comun.product_description,
-        "rules_text": comun.rules_text,
+        "product_description": product_description,
+        "rules_text": rules_text,
+        "language": content_language if is_translated else _ORIGINAL_CONTENT_LANGUAGE,
+        "is_translated": is_translated,
         "target_audience": comun.target_audience,
         "glossary_enabled": bool(getattr(comun, "glossary_enabled", False)),
         "glossary_auto_link_enabled": bool(getattr(comun, "glossary_auto_link_enabled", False)),
@@ -2247,6 +2301,7 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
         include_settings = _request_flag(request, "include_settings")
         include_options = include_settings or _request_flag(request, "include_options")
         include_activity = _request_flag(request, "include_activity")
+        language = _normalize_content_language(request.GET.get("lang"))
         can_moderate = _comun_is_moderator(current_user, comun)
         return JsonResponse(
             {
@@ -2258,6 +2313,7 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
                     include_manage_fields=include_settings and can_moderate,
                     include_options=include_options and can_moderate,
                     include_activity=include_activity,
+                    language=language,
                 ),
             }
         )

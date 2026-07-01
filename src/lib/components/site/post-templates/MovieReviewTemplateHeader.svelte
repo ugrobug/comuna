@@ -8,6 +8,7 @@
     movieReviewWatchWhereLabels,
     type MovieReviewTemplate,
   } from '$lib/postTemplates'
+  import { t } from '$lib/translations'
 
   export let template: MovieReviewTemplate
   export let fallbackTitle = ''
@@ -43,7 +44,7 @@
   <div class="movie-review-hero__body">
     {#if data.poster_url}
       <div class="movie-review-hero__poster">
-        <img src={data.poster_url} alt={displayTitle || 'Постер'} loading="lazy" />
+        <img src={data.poster_url} alt={displayTitle || $t('site.template.movie.poster')} loading="lazy" />
       </div>
     {/if}
 
@@ -56,7 +57,7 @@
           <span class="movie-review-chip">{displayGenre}</span>
         {/if}
         {#if releaseLabel}
-          <span class="movie-review-chip">Премьера: {releaseLabel}</span>
+          <span class="movie-review-chip">{$t('site.template.movie.premiere', { date: releaseLabel })}</span>
         {/if}
       </div>
 
@@ -71,7 +72,7 @@
       <div class="movie-review-hero__meta">
         {#if watchWhereLabels.length}
           <div class="movie-review-meta-item">
-            <span class="movie-review-meta-label">Где посмотреть</span>
+            <span class="movie-review-meta-label">{$t('site.template.movie.watchWhere')}</span>
             <span class="movie-review-meta-value">{watchWhereLabels.join(', ')}</span>
           </div>
         {/if}
@@ -85,7 +86,7 @@
               rel="nofollow noopener"
               class="movie-review-meta-link"
             >
-              Открыть на {imdbHost || 'IMDb'}
+              {$t('site.template.movie.openOn', { provider: imdbHost || 'IMDb' })}
             </a>
           </div>
         {/if}
@@ -95,11 +96,11 @@
     {#if authorRatingBadgeText}
       <div
         class={`movie-review-rating-badge movie-review-rating-badge--${authorRatingTone}`}
-        title={`Оценка автора: ${authorRatingBadgeText}`}
-        aria-label={`Оценка автора: ${authorRatingBadgeText}`}
+        title={`${$t('site.template.movie.authorRating')}: ${authorRatingBadgeText}`}
+        aria-label={`${$t('site.template.movie.authorRating')}: ${authorRatingBadgeText}`}
       >
         <span class="movie-review-rating-badge__value">{authorRatingBadgeText}</span>
-        <span class="movie-review-rating-badge__label" aria-hidden="true">Оценка автора</span>
+        <span class="movie-review-rating-badge__label" aria-hidden="true">{$t('site.template.movie.authorRating')}</span>
       </div>
     {/if}
   </div>

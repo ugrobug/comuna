@@ -4,6 +4,7 @@
   import ErrorContainer, { clearErrorScope, pushError } from '$lib/components/error/ErrorContainer.svelte'
   import { page } from '$app/stores'
   import { register } from '$lib/siteAuth'
+  import { t } from '$lib/translations'
 
   export let onSuccess: () => void
   export let externalPrivacyAccepted: boolean | null = null
@@ -26,10 +27,10 @@
     try {
       const privacyAccepted = externalPrivacyAccepted ?? signupData.privacyAccepted
       if (signupData.password !== signupData.passwordConfirm) {
-        throw new Error('Пароли не совпадают')
+        throw new Error($t('site.authModal.passwordMismatch'))
       }
       if (!privacyAccepted) {
-        throw new Error('Нужно согласиться с политикой обработки персональных данных')
+        throw new Error($t('site.authModal.privacyRequired'))
       }
 
       await register({
@@ -41,11 +42,11 @@
         registration_path: registrationPath,
       })
 
-      toast({ content: 'Регистрация успешна. Мы отправили письмо на вашу почту.', type: 'success' })
+      toast({ content: $t('site.authModal.signupSuccess'), type: 'success' })
       onSuccess()
     } catch (error) {
       pushError({
-        message: (error as Error)?.message ?? 'Не удалось зарегистрироваться',
+        message: (error as Error)?.message ?? $t('site.authModal.signupError'),
         scope: $page.route.id!,
       })
     }
@@ -59,7 +60,7 @@
 
   <TextInput
     bind:value={signupData.username}
-    label="Имя пользователя"
+    label={$t('site.authModal.username')}
     placeholder="yourname"
     class="w-full"
     required
@@ -71,7 +72,7 @@
     id="email"
     type="email"
     bind:value={signupData.email}
-    label="Электронная почта"
+    label={$t('site.authModal.email')}
     class="w-full"
     required
   />
@@ -80,7 +81,7 @@
     <TextInput
       id="password"
       bind:value={signupData.password}
-      label="Пароль"
+      label={$t('site.authModal.password')}
       type="password"
       minlength={8}
       maxlength={60}
@@ -90,7 +91,7 @@
     <TextInput
       id="password_confirm"
       bind:value={signupData.passwordConfirm}
-      label="Повторите пароль"
+      label={$t('site.authModal.passwordConfirm')}
       type="password"
       minlength={8}
       maxlength={60}
@@ -108,14 +109,14 @@
         required
       />
       <span>
-        Я согласен с
+        {$t('site.authModal.privacyAgreePrefix')}
         <a
           href="/privacy"
           target="_blank"
           rel="noopener noreferrer"
           class="text-blue-600 hover:underline dark:text-blue-400"
         >
-          политикой обработки персональных данных
+          {$t('site.authModal.privacyPolicy')}
         </a>
       </span>
     </label>
@@ -128,6 +129,6 @@
     size="lg"
     submit
   >
-    Зарегистрироваться
+    {$t('site.authModal.signupSubmit')}
   </Button>
 </form>

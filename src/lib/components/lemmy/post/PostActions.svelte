@@ -268,14 +268,14 @@
     if (copied) {
       toast({ content: $t('toast.copied') })
     } else {
-      toast({ content: 'Не удалось скопировать ссылку', type: 'error' })
+      toast({ content: $t('site.postActions.copyError'), type: 'error' })
     }
   }
 
   async function setBackendVote(value: number) {
     if (!backendPostId) return
     if (!$siteToken) {
-      toast({ content: 'Войдите, чтобы голосовать', type: 'warning' })
+      toast({ content: $t('site.postActions.loginToVote'), type: 'warning' })
       return
     }
     backendVoting = true
@@ -290,12 +290,12 @@
       })
       const data = await response.json()
       if (!response.ok) {
-        throw new Error(data?.error || 'Не удалось проголосовать')
+        throw new Error(data?.error || $t('site.postActions.voteError'))
       }
       backendVote = typeof data.vote === 'number' ? data.vote : data.liked ? 1 : 0
       backendLikesCount = data.likes_count ?? backendLikesCount
     } catch (error) {
-      toast({ content: (error as Error)?.message ?? 'Не удалось проголосовать', type: 'error' })
+      toast({ content: (error as Error)?.message ?? $t('site.postActions.voteError'), type: 'error' })
     }
     backendVoting = false
   }
@@ -305,7 +305,7 @@
       typeof window === 'undefined'
         ? '/'
         : `${window.location.pathname}${window.location.search}${window.location.hash}`
-    toast({ content: 'Необходимо зарегистрироваться', type: 'warning' })
+    toast({ content: $t('site.postActions.loginRequired'), type: 'warning' })
     await goto(`/account?next=${encodeURIComponent(next)}`)
   }
 
@@ -333,17 +333,17 @@
         return
       }
       if (!response.ok) {
-        throw new Error(data?.error || 'Не удалось изменить избранное')
+        throw new Error(data?.error || $t('site.postActions.favoriteError'))
       }
       backendFavorited = Boolean(data?.favorited ?? data?.is_favorite)
       post.saved = backendFavorited
       toast({
-        content: backendFavorited ? 'Пост добавлен в избранное' : 'Пост удален из избранного',
+        content: backendFavorited ? $t('site.postActions.addedFavorite') : $t('site.postActions.removedFavorite'),
         type: 'success',
       })
     } catch (error) {
       toast({
-        content: (error as Error)?.message ?? 'Не удалось изменить избранное',
+        content: (error as Error)?.message ?? $t('site.postActions.favoriteError'),
         type: 'error',
       })
     } finally {
@@ -354,17 +354,17 @@
   const deleteBackendPost = async () => {
     if (!backendPostId) return
     if (!canDeleteBackendPost) {
-      toast({ content: 'Недостаточно прав', type: 'warning' })
+      toast({ content: $t('site.postActions.noRights'), type: 'warning' })
       return
     }
 
-    const confirmed = window.confirm('Удалить этот пост с сайта?')
+    const confirmed = window.confirm($t('site.postActions.deleteConfirm'))
     if (!confirmed) return
 
     deletingBackendPost = true
     try {
       await deleteUserPost(backendPostId)
-      toast({ content: 'Пост удален' })
+      toast({ content: $t('site.postActions.deleted') })
       dispatcher('deleted', { postId: backendPostId })
 
       if (
@@ -374,7 +374,7 @@
         await goto('/')
       }
     } catch (error) {
-      toast({ content: (error as Error)?.message || 'Не удалось удалить пост', type: 'error' })
+      toast({ content: (error as Error)?.message || $t('site.postActions.deleteError'), type: 'error' })
     } finally {
       deletingBackendPost = false
     }
@@ -394,13 +394,13 @@
       })
       const data = await response.json().catch(() => ({}))
       if (!response.ok) {
-        throw new Error(data?.error || 'Не удалось добавить пост в базу знаний')
+        throw new Error(data?.error || $t('site.postActions.knowledgeError'))
       }
-      toast({ content: 'Пост добавлен в базу знаний', type: 'success' })
+      toast({ content: $t('site.postActions.knowledgeAdded'), type: 'success' })
     } catch (error) {
       toast({
         content:
-          error instanceof Error ? error.message : 'Не удалось добавить пост в базу знаний',
+          error instanceof Error ? error.message : $t('site.postActions.knowledgeError'),
         type: 'error',
       })
     } finally {
@@ -422,14 +422,14 @@
       })
       const data = await response.json().catch(() => ({}))
       if (!response.ok) {
-        throw new Error(data?.error || 'Не удалось закрепить пост')
+        throw new Error(data?.error || $t('site.postActions.pinError'))
       }
       dispatcher('pinned', { postId: backendPostId, comunSlug: backendComunSlug })
       actionsMenuOpen = false
-      toast({ content: 'Пост закреплен как приветственный', type: 'success' })
+      toast({ content: $t('site.postActions.pinned'), type: 'success' })
     } catch (error) {
       toast({
-        content: error instanceof Error ? error.message : 'Не удалось закрепить пост',
+        content: error instanceof Error ? error.message : $t('site.postActions.pinError'),
         type: 'error',
       })
     } finally {
@@ -451,14 +451,14 @@
       })
       const data = await response.json().catch(() => ({}))
       if (!response.ok) {
-        throw new Error(data?.error || 'Не удалось открепить пост')
+        throw new Error(data?.error || $t('site.postActions.unpinError'))
       }
       dispatcher('unpinned', { postId: backendPostId, comunSlug: backendComunSlug })
       actionsMenuOpen = false
-      toast({ content: 'Пост откреплен', type: 'success' })
+      toast({ content: $t('site.postActions.unpinned'), type: 'success' })
     } catch (error) {
       toast({
-        content: error instanceof Error ? error.message : 'Не удалось открепить пост',
+        content: error instanceof Error ? error.message : $t('site.postActions.unpinError'),
         type: 'error',
       })
     } finally {
@@ -486,7 +486,7 @@
       })
       const data = await response.json().catch(() => ({}))
       if (!response.ok) {
-        throw new Error(data?.error || 'Не удалось изменить категорию')
+        throw new Error(data?.error || $t('site.postActions.categoryError'))
       }
       const assignedCategory = data?.assignment?.category ?? category
       const assignedCategoryId =
@@ -502,12 +502,14 @@
         categoryId: assignedCategoryId,
       })
       toast({
-        content: assignedCategory ? `Пост перенесен в «${assignedCategory.name}»` : 'Пост убран из категории',
+        content: assignedCategory
+          ? $t('site.postActions.categoryAssigned', { category: assignedCategory.name })
+          : $t('site.postActions.categoryRemoved'),
         type: 'success',
       })
     } catch (error) {
       toast({
-        content: error instanceof Error ? error.message : 'Не удалось изменить категорию',
+        content: error instanceof Error ? error.message : $t('site.postActions.categoryError'),
         type: 'error',
       })
     } finally {
@@ -560,7 +562,7 @@
         !text-inherit divide-x divide-slate-200 dark:divide-zinc-800
         {backendVoting ? 'animate-pulse opacity-75 pointer-events-none' : ''}"
         role="group"
-        aria-label="Голосование"
+        aria-label={$t('site.postActions.voting')}
       >
         <button
           on:click={() => setBackendVote(backendVote === 1 ? 0 : 1)}
@@ -570,7 +572,7 @@
             ? 'text-green-500 dark:text-green-400'
             : 'text-slate-500 dark:text-zinc-400 hover:text-green-500 dark:hover:text-green-400'}"
           aria-pressed={backendVote === 1}
-          aria-label="Плюс"
+          aria-label={$t('site.postActions.upvote')}
         >
           <Icon src={ChevronUp} size="20" micro />
         </button>
@@ -585,7 +587,7 @@
             ? 'text-red-500 dark:text-red-400'
             : 'text-slate-500 dark:text-zinc-400 hover:text-red-500 dark:hover:text-red-400'}"
           aria-pressed={backendVote === -1}
-          aria-label="Минус"
+          aria-label={$t('site.postActions.downvote')}
         >
           <Icon src={ChevronDown} size="20" micro />
         </button>
@@ -611,8 +613,8 @@
         rounding="pill"
         loading={backendFavoriteSaving}
         disabled={backendFavoriteSaving}
-        title={backendFavorited ? 'Убрать из избранного' : 'Добавить в избранное'}
-        aria-label={backendFavorited ? 'Убрать из избранного' : 'Добавить в избранное'}
+        title={backendFavorited ? $t('site.postActions.removeFavorite') : $t('site.postActions.addFavorite')}
+        aria-label={backendFavorited ? $t('site.postActions.removeFavorite') : $t('site.postActions.addFavorite')}
         animations={{ scale: true, large: true }}
       >
         <Icon
@@ -655,7 +657,7 @@
     {/if}
   {:else}
     <div class="flex sm:flex-row flex-row gap-2 items-end s-aVEWgsRpkTgD">
-      <span class="max-md:px-1.5 max-md:py-1.5 px-2.5 py-1 rounded-full text-xs font-medium flex items-center gap-1 ring-1 ring-inset bg-yellow-100 dark:bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 ring-yellow-400 dark:ring-yellow-500/30 h-8 w-8 flex items-center justify-center !p-0" title="Заморожено">
+      <span class="max-md:px-1.5 max-md:py-1.5 px-2.5 py-1 rounded-full text-xs font-medium flex items-center gap-1 ring-1 ring-inset bg-yellow-100 dark:bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 ring-yellow-400 dark:ring-yellow-500/30 h-8 w-8 flex items-center justify-center !p-0" title={$t('site.postActions.locked')}>
         <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14px" height="14px">
           <path fill-rule="evenodd" d="M8 1a3.5 3.5 0 0 0-3.5 3.5V7A1.5 1.5 0 0 0 3 8.5v5A1.5 1.5 0 0 0 4.5 15h7a1.5 1.5 0 0 0 1.5-1.5v-5A1.5 1.5 0 0 0 11.5 7V4.5A3.5 3.5 0 0 0 8 1Zm2 6V4.5a2 2 0 1 0-4 0V7h4Z" clip-rule="evenodd"></path>
         </svg>
@@ -668,8 +670,8 @@
   {#if isBackendPost}
     <div
       class="inline-flex items-center gap-1.5 h-full px-3 rounded-full text-slate-500 dark:text-zinc-400"
-      title="Просмотры"
-      aria-label="Просмотры"
+      title={$t('site.postActions.views')}
+      aria-label={$t('site.postActions.views')}
     >
       <Icon src={Eye} size="16" mini />
       <FormattedNumber number={backendViewsCount} />
@@ -801,19 +803,19 @@
         disabled={deletingBackendPost}
       >
         <Icon src={Trash} size="16" micro slot="prefix" />
-        {deletingBackendPost ? 'Удаление...' : 'Удалить пост'}
+        {deletingBackendPost ? $t('site.postActions.deleting') : $t('site.postActions.deletePost')}
       </MenuButton>
     {/if}
     {#if canAddToKnowledgeBase}
       <MenuButton on:click={addToKnowledgeBase} disabled={knowledgeBaseSaving}>
         <Icon src={Bookmark} size="16" micro slot="prefix" />
-        {knowledgeBaseSaving ? 'Добавляем...' : 'Добавить в базу знаний'}
+        {knowledgeBaseSaving ? $t('site.postActions.adding') : $t('site.postActions.addKnowledge')}
       </MenuButton>
     {/if}
     {#if canShowPinWelcomePost}
       <MenuButton on:click={pinWelcomePost} disabled={welcomePostSaving}>
         <Icon src={Star} size="16" micro slot="prefix" />
-        {welcomePostSaving ? 'Закрепляем...' : 'Закрепить пост'}
+        {welcomePostSaving ? $t('site.postActions.pinning') : $t('site.postActions.pin')}
       </MenuButton>
     {/if}
     {#if canUnpinWelcomePost}
@@ -823,7 +825,7 @@
         color="danger-subtle"
       >
         <Icon src={XMark} size="16" micro slot="prefix" />
-        {welcomePostSaving ? 'Открепляем...' : 'Открепить пост'}
+        {welcomePostSaving ? $t('site.postActions.unpinning') : $t('site.postActions.unpin')}
       </MenuButton>
     {/if}
     {#if canChangeComunCategory}
@@ -838,7 +840,7 @@
           <Icon src={ArrowsUpDown} size="16" micro />
         </span>
         <span class="min-w-0 flex-1 truncate">
-          {categorySaving ? 'Переносим...' : 'Изменить категорию'}
+          {categorySaving ? $t('site.postActions.moving') : $t('site.postActions.changeCategory')}
         </span>
         <Icon src={categoryMenuOpen ? ChevronUp : ChevronDown} size="14" micro />
       </button>
@@ -851,7 +853,7 @@
             disabled={categorySaving}
             on:click|stopPropagation={() => changeComunCategory(null)}
           >
-            Без категории
+            {$t('site.postActions.noCategory')}
           </button>
           {#each comunCategories as category (category.id)}
             <button

@@ -4,6 +4,7 @@
   import { env } from '$env/dynamic/public'
   import { toast } from 'mono-svelte'
   import { loginTelegram, refreshSiteUser, type TelegramAuthPayload } from '$lib/siteAuth'
+  import { locale, t } from '$lib/translations'
   import {
     forgetTelegramAuthContext,
     rememberTelegramAuthContext,
@@ -11,7 +12,7 @@
   } from '$lib/telegramAuthContext'
 
   export let onSuccess: (() => void) | null = null
-  export let label = 'Продолжить с Telegram'
+  export let label = ''
   export let helperText = ''
   export let active = true
   export let disabled = false
@@ -30,7 +31,7 @@
   let lastActive = active
   let lastDisabled = disabled
   let lastPrivacyAccepted = privacyAccepted
-  const disabledMessage = 'Сначала примите политику обработки персональных данных.'
+  $: disabledMessage = $t('site.authModal.acceptPrivacyFirst')
   const botName = (env.PUBLIC_TELEGRAM_LOGIN_BOT || '').replace(/^@/, '')
   const oidcClientId = env.PUBLIC_TELEGRAM_OIDC_CLIENT_ID || env.PUBLIC_TELEGRAM_LOGIN_CLIENT_ID || ''
   const oidcRedirectUri = env.PUBLIC_TELEGRAM_REDIRECT_URI || env.PUBLIC_TELEGRAM_OIDC_REDIRECT_URI || ''
@@ -78,7 +79,7 @@
         script.onload = null
         script.onerror = null
         script.remove()
-        reject(new Error('Telegram Login не загрузился'))
+        reject(new Error($t('site.authModal.telegramLoginLoadError')))
       }, 10000)
 
       script.async = true
@@ -87,19 +88,19 @@
       script.onload = () => {
         window.clearTimeout(timeout)
         const loaded = currentTelegramLogin()
-        loaded ? resolve(loaded) : reject(new Error('Telegram Login не загрузился'))
+        loaded ? resolve(loaded) : reject(new Error($t('site.authModal.telegramLoginLoadError')))
       }
       script.onerror = () => {
         window.clearTimeout(timeout)
         script.remove()
-        reject(new Error('Telegram Login не загрузился'))
+        reject(new Error($t('site.authModal.telegramLoginLoadError')))
       }
       document.head.appendChild(script)
     })
 
   const loadOidcScript = async () => {
     if (!browser) {
-      return Promise.reject(new Error('Telegram Login недоступен'))
+      return Promise.reject(new Error($t('site.authModal.telegramUnavailable')))
     }
     const current = currentTelegramLogin()
     if (current) {
@@ -128,7 +129,7 @@
           lastError = error
         }
       }
-      throw lastError instanceof Error ? lastError : new Error('Telegram Login не загрузился')
+      throw lastError instanceof Error ? lastError : new Error($t('site.authModal.telegramLoginLoadError'))
     })()
     return oidcScriptPromise
   }
@@ -147,7 +148,7 @@
       oidcReady = false
       scriptLoaded = false
       scriptFailed = true
-      oidcLoadError = (error as Error)?.message || 'Telegram Login не загрузился'
+      oidcLoadError = (error as Error)?.message || $t('site.authModal.telegramLoginLoadError')
     } finally {
       oidcLoading = false
     }
@@ -234,12 +235,12 @@
       if (event.data?.type !== TELEGRAM_AUTH_COMPLETE_EVENT) return
       if (event.data?.ok) {
         await refreshSiteUser()
-        toast({ content: 'Вы успешно вошли через Telegram', type: 'success' })
+        toast({ content: $t('site.authModal.telegramLoginSuccess'), type: 'success' })
         onSuccess?.()
         return
       }
       toast({
-        content: event.data?.error || 'Не удалось войти через Telegram',
+        content: event.data?.error || $t('site.authModal.telegramLoginError'),
         type: 'error',
       })
     }
@@ -256,11 +257,11 @@
           registration_path: registrationPath,
         })
         forgetTelegramAuthContext()
-        toast({ content: 'Вы успешно вошли через Telegram', type: 'success' })
+        toast({ content: $t('site.authModal.telegramLoginSuccess'), type: 'success' })
         onSuccess?.()
       } catch (error) {
         toast({
-          content: (error as Error)?.message ?? 'Не удалось войти через Telegram',
+          content: (error as Error)?.message ?? $t('site.authModal.telegramLoginError'),
           type: 'error',
         })
       } finally {
@@ -305,7 +306,7 @@
     }
     const clientId = Number(oidcClientId)
     if (!Number.isFinite(clientId)) {
-      toast({ content: 'Telegram Login настроен неверно', type: 'error' })
+      toast({ content: $t('site.authModal.telegramMisconfigured'), type: 'error' })
       return
     }
     const telegram = currentTelegramLogin()
@@ -314,7 +315,7 @@
         prepareOidcLogin()
       }
       toast({
-        content: oidcLoadError || 'Telegram Login загружается, попробуйте еще раз через пару секунд',
+        content: oidcLoadError || $t('site.authModal.telegramLoadingRetry'),
         type: oidcLoadError ? 'error' : 'info',
       })
       return
@@ -335,7 +336,7 @@
             {
               client_id: clientId,
               request_access: ['write', 'phone'],
-              lang: 'ru',
+              lang: ($locale || 'ru').split('-')[0],
             },
             resolve,
           )
@@ -344,12 +345,12 @@
       if (result.error) {
         throw new Error(
           result.error === 'missing id_token'
-            ? 'Telegram не вернул id_token. Проверьте настройки Telegram Login для tambur.pub.'
+            ? $t('site.authModal.telegramMissingIdTokenSettings')
             : result.error,
         )
       }
       if (!result.id_token) {
-        throw new Error('Telegram не вернул id_token')
+        throw new Error($t('site.authModal.telegramMissingIdToken'))
       }
       await loginTelegram({
         auth_intent: authIntent,
@@ -359,11 +360,11 @@
         registration_path: registrationPath,
       })
       forgetTelegramAuthContext()
-      toast({ content: 'Вы успешно вошли через Telegram', type: 'success' })
+      toast({ content: $t('site.authModal.telegramLoginSuccess'), type: 'success' })
       onSuccess?.()
     } catch (error) {
       toast({
-        content: (error as Error)?.message ?? 'Не удалось войти через Telegram',
+        content: (error as Error)?.message ?? $t('site.authModal.telegramLoginError'),
         type: 'error',
       })
     } finally {
@@ -377,13 +378,13 @@
     type="button"
     disabled
     class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-left text-sm text-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-500"
-    title="Telegram-вход временно недоступен"
+    title={$t('site.authModal.telegramUnavailableTitle')}
   >
     <span class="flex items-center gap-3">
       <span class="flex h-9 w-9 items-center justify-center rounded-full bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">
         <img src="/img/logos/telegram_logo.svg" alt="" class="h-5 w-5 object-contain" />
       </span>
-      <span class="font-medium">Telegram недоступен</span>
+      <span class="font-medium">{$t('site.authModal.telegramUnavailableShort')}</span>
     </span>
   </button>
 {:else if useOidc}
@@ -398,7 +399,7 @@
       class:hover:bg-slate-50={!disabled && !loading}
       class:dark:hover:border-zinc-600={!disabled && !loading}
       class:dark:hover:bg-zinc-800={!disabled && !loading}
-      title={label}
+      title={label || $t('site.authModal.continueTelegram')}
       on:click={handleOidcLogin}
     >
       <span class="flex items-center gap-3">
@@ -406,18 +407,20 @@
           <img src="/img/logos/telegram_logo.svg" alt="" class="h-5 w-5 object-contain" />
         </span>
         <span class="flex min-w-0 flex-col">
-          <span class="text-sm font-semibold text-slate-900 dark:text-zinc-100">{label}</span>
+          <span class="text-sm font-semibold text-slate-900 dark:text-zinc-100">
+            {label || $t('site.authModal.continueTelegram')}
+          </span>
           <span class="text-xs text-slate-500 dark:text-zinc-400">
-            {helperText || 'Telegram запросит номер телефона и разрешение на уведомления'}
+            {helperText || $t('site.authModal.telegramHelper')}
           </span>
         </span>
       </span>
     </button>
 
     {#if loading}
-      <p class="text-xs text-slate-500 dark:text-zinc-400">Вход через Telegram…</p>
+      <p class="text-xs text-slate-500 dark:text-zinc-400">{$t('site.authModal.telegramSigningIn')}</p>
     {:else if oidcLoading && !oidcReady}
-      <p class="text-xs text-slate-500 dark:text-zinc-400">Загружаем Telegram Login…</p>
+      <p class="text-xs text-slate-500 dark:text-zinc-400">{$t('site.authModal.telegramLoginLoading')}</p>
     {:else if oidcLoadError}
       <p class="text-xs text-red-600 dark:text-red-400">{oidcLoadError}</p>
     {/if}
@@ -432,7 +435,7 @@
         class:hover:bg-slate-50={!disabled}
         class:dark:hover:border-zinc-600={!disabled}
         class:dark:hover:bg-zinc-800={!disabled}
-        title={label}
+        title={label || $t('site.authModal.continueTelegram')}
         aria-hidden="true"
         on:click={() => {
           if (disabled && !loading) {
@@ -445,7 +448,9 @@
             <img src="/img/logos/telegram_logo.svg" alt="" class="h-5 w-5 object-contain" />
           </span>
           <span class="flex min-w-0 flex-col">
-            <span class="text-sm font-semibold text-slate-900 dark:text-zinc-100">{label}</span>
+            <span class="text-sm font-semibold text-slate-900 dark:text-zinc-100">
+              {label || $t('site.authModal.continueTelegram')}
+            </span>
             {#if helperText}
               <span class="text-xs text-slate-500 dark:text-zinc-400">{helperText}</span>
             {/if}
@@ -458,19 +463,19 @@
         class="telegram-widget-host"
         class:is-loading={loading}
         class:is-disabled={disabled}
-        aria-label={label}
+        aria-label={label || $t('site.authModal.continueTelegram')}
       ></div>
     </div>
 
     {#if loading}
-      <p class="text-xs text-slate-500 dark:text-zinc-400">Вход через Telegram…</p>
+      <p class="text-xs text-slate-500 dark:text-zinc-400">{$t('site.authModal.telegramSigningIn')}</p>
     {:else if scriptFailed}
       <p class="text-xs text-slate-500 dark:text-zinc-400">
-        Не удалось загрузить Telegram-вход. Проверьте блокировщики в браузере.
+        {$t('site.authModal.telegramWidgetLoadError')}
       </p>
     {:else if !scriptLoaded}
       <p class="text-xs text-slate-500 dark:text-zinc-400">
-        Загрузка Telegram-входа… Если кнопка не появилась, обновите страницу.
+        {$t('site.authModal.telegramWidgetLoading')}
       </p>
     {/if}
   </div>

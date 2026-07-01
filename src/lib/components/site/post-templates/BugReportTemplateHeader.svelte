@@ -17,6 +17,7 @@
     type BugReportTemplate,
     type BugReportStatus,
   } from '$lib/postTemplates'
+  import { t } from '$lib/translations'
 
   export let template: BugReportTemplate
   export let fallbackTitle = ''
@@ -51,8 +52,8 @@
   $: platformLabels = bugReportPlatformLabels(data.platforms)
   $: browserLabels = bugReportBrowserLabels(data.browsers)
   $: metaParts = [
-    platformLabels.length ? `Платформа: ${platformLabels.join(', ')}` : '',
-    browserLabels.length ? `Браузер: ${browserLabels.join(', ')}` : '',
+    platformLabels.length ? $t('site.template.bug.platform', { value: platformLabels.join(', ') }) : '',
+    browserLabels.length ? $t('site.template.bug.browser', { value: browserLabels.join(', ') }) : '',
   ].filter(Boolean)
   $: confirmationKey = `${Number(confirmation?.count ?? 0)}:${confirmation?.confirmed ? 1 : 0}`
   $: if (!confirmationSaving && confirmationKey !== lastConfirmationKey) {
@@ -89,7 +90,7 @@
     } catch (error) {
       console.error('Failed to update bug report status:', error)
       selectedStatus = normalizeBugReportTemplateData(template.data).status ?? 'review'
-      statusError = 'Не удалось обновить статус'
+      statusError = $t('site.template.bug.statusError')
     } finally {
       statusSaving = false
     }
@@ -123,7 +124,7 @@
       dispatch('confirmationchange', { confirmation: nextConfirmation })
     } catch (error) {
       console.error('Failed to confirm bug report:', error)
-      confirmationError = 'Не удалось отметить проблему'
+      confirmationError = $t('site.template.bug.confirmationError')
     } finally {
       confirmationSaving = false
     }
@@ -145,10 +146,10 @@
             value={selectedStatus}
             disabled={statusSaving}
             on:change={updateStatus}
-            aria-label="Статус баг-репорта"
+            aria-label={$t('site.template.bug.statusAria')}
           >
             {#each BUG_REPORT_STATUS_OPTIONS as option}
-              <option value={option.value}>{option.label}</option>
+              <option value={option.value}>{bugReportStatusLabel(option.value)}</option>
             {/each}
           </select>
         </label>
@@ -174,11 +175,11 @@
           on:click|stopPropagation|preventDefault={confirmSameProblem}
         >
           {#if isConfirmed}
-            Вы отметили эту проблему
+            {$t('site.template.bug.confirmed')}
           {:else if confirmationSaving}
-            Отмечаем...
+            {$t('site.template.bug.confirming')}
           {:else}
-            У меня та же проблема
+            {$t('site.template.bug.sameProblem')}
           {/if}
         </button>
         <span>{confirmationCount}</span>
@@ -191,14 +192,14 @@
     {#if !compact}
       {#if data.error_code}
         <div class="bug-report-card__code-wrap">
-          <div class="bug-report-card__meta-label">Код ошибки</div>
+          <div class="bug-report-card__meta-label">{$t('site.template.bug.errorCode')}</div>
           <pre class="bug-report-card__code"><code>{data.error_code}</code></pre>
         </div>
       {/if}
 
       {#if data.screenshot_url}
         <div class="bug-report-card__image-wrap">
-          <img src={data.screenshot_url} alt="Скриншот бага" class="bug-report-card__image" />
+          <img src={data.screenshot_url} alt={$t('site.template.bug.screenshot')} class="bug-report-card__image" />
         </div>
       {/if}
     {/if}

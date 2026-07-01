@@ -7,6 +7,7 @@ from my_feed.models import UserFeedSettings, default_feed_tag_rules
 User = get_user_model()
 
 VALID_HOME_FEEDS = {"hot", "mine"}
+VALID_INTERFACE_LANGUAGES = {"ru", "en", "es", "pt", "de", "fr", "tr", "id"}
 VALID_TAG_RULES = {"hide", "blur"}
 
 
@@ -53,6 +54,11 @@ def _normalize_tag_rules(value: object) -> dict[str, str]:
     return result
 
 
+def _normalize_interface_language(value: object) -> str:
+    language = str(value or "").strip().lower()
+    return language if language in VALID_INTERFACE_LANGUAGES else ""
+
+
 def _get_or_create_user_feed_settings(user: User) -> UserFeedSettings:
     settings, _created = UserFeedSettings.objects.get_or_create(user=user)
     return settings
@@ -71,6 +77,7 @@ def _feed_settings_have_customizations(settings: UserFeedSettings) -> bool:
             bool(settings.hidden_authors),
             not bool(settings.my_feed_hide_negative),
             dict(settings.tag_rules or {}) != default_rules,
+            bool(settings.interface_language),
         ]
     )
 
@@ -88,6 +95,7 @@ def _serialize_user_feed_settings(settings: UserFeedSettings) -> dict:
         "hidden_authors": _normalize_unique_string_list(settings.hidden_authors),
         "my_feed_hide_negative": bool(settings.my_feed_hide_negative),
         "tag_rules": _normalize_tag_rules(settings.tag_rules),
+        "interface_language": _normalize_interface_language(settings.interface_language),
         "updated_at": settings.updated_at.isoformat() if settings.updated_at else None,
     }
 
@@ -117,12 +125,15 @@ def _apply_user_feed_settings_payload(settings: UserFeedSettings, payload: dict)
         settings.my_feed_hide_negative = bool(payload.get("my_feed_hide_negative"))
     if "tag_rules" in payload:
         settings.tag_rules = _normalize_tag_rules(payload.get("tag_rules"))
+    if "interface_language" in payload:
+        settings.interface_language = _normalize_interface_language(payload.get("interface_language"))
     settings.save()
     return settings
 
 
 __all__ = [
     "VALID_HOME_FEEDS",
+    "VALID_INTERFACE_LANGUAGES",
     "VALID_TAG_RULES",
     "_apply_user_feed_settings_payload",
     "_feed_settings_have_customizations",

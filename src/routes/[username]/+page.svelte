@@ -6,6 +6,8 @@
   import { userSettings } from '$lib/settings'
   import { page } from '$app/stores'
   import { onDestroy, onMount } from 'svelte'
+  import { brandNameForLanguage } from '$lib/brand'
+  import { locale } from '$lib/translations'
 
   export let data
 
@@ -38,7 +40,7 @@
     authorUsername && hiddenAuthorKeys.has(authorUsername.toLowerCase())
   )
   $: visiblePosts = authorHiddenOnPortal ? [] : posts
-  $: siteTitle = env.PUBLIC_SITE_TITLE || 'Тамбур'
+  $: siteTitle = brandNameForLanguage($locale)
   $: authorName = data.author?.title ?? data.author?.username ?? ''
   $: title = authorName ? `${authorName} — ${siteTitle}` : siteTitle
   $: description =

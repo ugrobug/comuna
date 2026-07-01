@@ -10,14 +10,15 @@
   import { getSafeUrl } from '$lib/security/url'
   import { Icon, XMark } from 'svelte-hero-icons'
   import { composeCommentBody, splitCommentBodyImages } from './imageMarkdown'
+  import { t } from '$lib/translations'
   import type { SiteComment, SiteCommentMask } from './types'
 
   export let postId: number
   export let parentId: number | null = null
   export let commentId: number | null = null
   export let initialBody = ''
-  export let placeholder = 'Напишите комментарий...'
-  export let submitLabel = 'Отправить'
+  export let placeholder = ''
+  export let submitLabel = ''
   export let autoFocus = false
   export let showCancel = false
   export let commentMasks: SiteCommentMask[] = []
@@ -104,7 +105,7 @@
   async function uploadCommentImage(image: File) {
     if (!$siteToken) {
       showLoginModal = true
-      throw new Error('Войдите, чтобы загрузить изображение')
+      throw new Error($t('site.comments.errors.loginUpload'))
     }
     return uploadSiteImage(image)
   }
@@ -129,7 +130,7 @@
     }
     const body = composeCommentBody(value, imageUrls)
     if (!body) {
-      error = 'Введите текст комментария'
+      error = $t('site.comments.errors.empty')
       return
     }
 
@@ -161,7 +162,7 @@
 
       const data = await response.json()
       if (!response.ok) {
-        throw new Error(data?.error || 'Не удалось отправить комментарий')
+        throw new Error(data?.error || $t('site.comments.errors.submit'))
       }
 
       if (data?.comment) {
@@ -173,7 +174,7 @@
         }
       }
     } catch (err) {
-      error = (err as Error)?.message ?? 'Ошибка отправки'
+      error = (err as Error)?.message ?? $t('site.comments.errors.submitFallback')
     }
 
     loading = false
@@ -186,7 +187,7 @@
   {#if canChooseMask}
     <div class="flex flex-col gap-1">
       <label for={`comment-mask-${postId}-${parentId ?? 'root'}-${commentId ?? 'new'}`} class="text-xs font-medium text-slate-600 dark:text-zinc-400">
-        Писать как
+        {$t('site.comments.writeAs')}
       </label>
       <select
         id={`comment-mask-${postId}-${parentId ?? 'root'}-${commentId ?? 'new'}`}
@@ -194,20 +195,20 @@
         value={selectedMaskKey}
         on:change={handleMaskChange}
       >
-        <option value="">Мой аккаунт (@{$siteUser?.username})</option>
+        <option value="">{$t('site.comments.myAccount', { username: $siteUser?.username || '' })}</option>
         {#each commentMasks as mask}
           <option value={mask.key}>{mask.display_name || `@${mask.username}`}</option>
         {/each}
       </select>
       <p class="text-xs text-slate-500 dark:text-zinc-500">
-        Только для администраторов. Выбранная маска сохранится для следующих комментариев.
+        {$t('site.comments.maskHint')}
       </p>
     </div>
   {/if}
 
   <MarkdownEditor
     bind:value
-    placeholder={placeholder}
+    placeholder={placeholder || $t('site.comments.writePlaceholder')}
     rows={4}
     {autoFocus}
     tools={true}
@@ -227,14 +228,14 @@
           >
             <img
               src={previewUrl}
-              alt={`Изображение ${index + 1}`}
+              alt={$t('site.comments.imageAlt', { index: index + 1 })}
               class="h-full w-full object-cover"
             />
             <button
               type="button"
               class="absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-slate-700 shadow-sm transition hover:bg-white hover:text-rose-600 dark:bg-zinc-950/90 dark:text-zinc-200"
-              title="Удалить изображение"
-              aria-label="Удалить изображение"
+              title={$t('site.comments.removeImage')}
+              aria-label={$t('site.comments.removeImage')}
               on:click={() => removeImageUrl(imageUrl)}
               disabled={loading}
             >
@@ -256,7 +257,7 @@
         on:click={() => dispatch('cancel')}
         disabled={loading}
       >
-        Отмена
+        {$t('site.comments.cancel')}
       </Button>
     {/if}
     <Button
@@ -266,7 +267,7 @@
       loading={loading}
       disabled={loading}
     >
-      {submitLabel}
+      {submitLabel || $t('site.comments.submit')}
     </Button>
   </div>
 </div>

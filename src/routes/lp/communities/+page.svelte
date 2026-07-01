@@ -3,6 +3,8 @@
   import { env } from '$env/dynamic/public'
   import LoginModal from '$lib/components/auth/LoginModal.svelte'
   import EditorJS from '$lib/components/editor/EditorJS.svelte'
+  import { brandNameForLanguage } from '$lib/brand'
+  import { locale } from '$lib/translations'
   import type { TemplateEditorBlockType } from '$lib/postTemplates'
   import type { IconSource } from 'svelte-hero-icons'
   import {
@@ -36,10 +38,10 @@
     text: string
   }
 
-  const siteName = env.PUBLIC_SITE_TITLE || 'Тамбур'
-  const title = `Платформа для онлайн-сообществ — ${siteName}`
-  const description =
-    'Создайте сообщество на Тамбур и управляйте не только обсуждением, но и правилами участия: кто пишет, кто комментирует, какие типы постов доступны, по каким шаблонам публикуются материалы и как выглядит сама страница.'
+  $: siteName = brandNameForLanguage($locale)
+  $: title = `Платформа для онлайн-сообществ — ${siteName}`
+  $: description =
+    `Создайте сообщество на ${siteName} и управляйте не только обсуждением, но и правилами участия: кто пишет, кто комментирует, какие типы постов доступны, по каким шаблонам публикуются материалы и как выглядит сама страница.`
 
   const authorControls: LandingCard[] = [
     {

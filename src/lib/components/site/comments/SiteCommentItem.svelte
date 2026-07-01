@@ -9,6 +9,7 @@
   import { siteToken } from '$lib/siteAuth'
   import SiteCommentForm from './SiteCommentForm.svelte'
   import { normalizeCommentImageMarkdown } from './imageMarkdown'
+  import { locale, t } from '$lib/translations'
   import type { SiteComment, SiteCommentMask, SiteCommentNode } from './types'
 
   export let node: SiteCommentNode
@@ -29,6 +30,7 @@
   let liking = false
   let deleting = false
   let showLoginModal = false
+  let showOriginalComment = false
 
   $: isReply = depth > 0
   $: avatarSize = depth > 0 ? 28 : 36
@@ -60,9 +62,38 @@
   $: edited =
     node.comment.updated_at &&
     new Date(node.comment.updated_at).getTime() > commentDate.getTime()
-  $: renderedBody = normalizeCommentImageMarkdown(node.comment.body)
+
+  const formatLanguageName = (language: string, uiLocale: string) => {
+    const fallback = $t(`site.language.names.${language}`) || language.toUpperCase()
+    try {
+      const DisplayNames = (Intl as any).DisplayNames
+      if (!DisplayNames) return fallback
+      const label = new DisplayNames([uiLocale || 'ru'], { type: 'language' }).of(language)
+      if (!label) return fallback
+      return label.charAt(0).toLocaleUpperCase(uiLocale || 'ru') + label.slice(1)
+    } catch {
+      return fallback
+    }
+  }
+
+  $: originalCommentLanguage = node.comment.original_language || 'ru'
+  $: originalCommentLanguageLabel = formatLanguageName(originalCommentLanguage, $locale || 'ru')
+  $: canShowOriginalComment = Boolean(
+    node.comment.is_translated &&
+      node.comment.original_body &&
+      node.comment.original_body !== node.comment.body
+  )
+  $: displayBody =
+    showOriginalComment && canShowOriginalComment
+      ? node.comment.original_body || node.comment.body
+      : node.comment.body
+  $: if (!canShowOriginalComment && showOriginalComment) {
+    showOriginalComment = false
+  }
+  $: renderedBody = normalizeCommentImageMarkdown(displayBody)
 
   const setComment = (comment: SiteComment) => {
+    showOriginalComment = false
     node = { ...node, comment }
   }
 
@@ -159,12 +190,12 @@
         {/if}
         {#if isAuthor}
           <span class="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-600">
-            Автор
+            {$t('site.comments.authorBadge')}
           </span>
         {/if}
         <RelativeDate date={commentDate} />
         {#if edited}
-          <span class="text-[11px] text-slate-400">изменено</span>
+          <span class="text-[11px] text-slate-400">{$t('site.comments.edited')}</span>
         {/if}
       </div>
 
@@ -175,8 +206,8 @@
             {commentMasks}
             {submitUrl}
             commentId={node.comment.id}
-            initialBody={node.comment.body}
-            submitLabel="Сохранить"
+            initialBody={node.comment.original_body || node.comment.body}
+            submitLabel={$t('site.comments.save')}
             showCancel={true}
             autoFocus={true}
             on:comment={(event) => {
@@ -190,8 +221,21 @@
       {:else}
         <div class="mt-1.5 text-sm text-slate-800 dark:text-zinc-100">
           {#if isDeleted}
-            <span class="italic text-slate-500">Комментарий удален</span>
+            <span class="italic text-slate-500">{$t('site.comments.deleted')}</span>
           {:else}
+            {#if canShowOriginalComment}
+              <div class="mb-1.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-500 dark:text-zinc-400">
+                <span>{$t('site.comments.originalLanguagePrefix')} {originalCommentLanguageLabel}</span>
+                <span aria-hidden="true">-</span>
+                <button
+                  type="button"
+                  class="font-medium text-sky-700 transition hover:text-sky-800 hover:underline dark:text-sky-300 dark:hover:text-sky-200"
+                  on:click={() => (showOriginalComment = !showOriginalComment)}
+                >
+                  {showOriginalComment ? $t('site.comments.hideOriginal') : $t('site.comments.showOriginal')}
+                </button>
+              </div>
+            {/if}
             <Markdown source={renderedBody} />
           {/if}
         </div>
@@ -206,7 +250,7 @@
             disabled={isDeleted}
           >
             <Icon src={ChatBubbleOvalLeft} size="14" mini />
-            Ответить
+            {$t('site.comments.reply')}
           </button>
           <button
             type="button"
@@ -227,7 +271,7 @@
               on:click={() => (editing = !editing)}
             >
               <Icon src={PencilSquare} size="14" mini />
-              Редактировать
+              {$t('site.comments.edit')}
             </button>
             <button
               type="button"
@@ -236,7 +280,7 @@
               disabled={deleting}
             >
               <Icon src={Trash} size="14" mini />
-              Удалить
+              {$t('site.comments.delete')}
             </button>
           {/if}
         </div>
@@ -249,8 +293,8 @@
             {commentMasks}
             {submitUrl}
             parentId={node.comment.id}
-            placeholder="Ответить..."
-            submitLabel="Ответить"
+            placeholder={$t('site.comments.replyPlaceholder')}
+            submitLabel={$t('site.comments.reply')}
             showCancel={true}
             autoFocus={true}
             on:comment={(event) => {

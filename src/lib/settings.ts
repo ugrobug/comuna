@@ -1,12 +1,17 @@
 import type { CommentSortType, SortType } from 'lemmy-js-client'
 import { get, writable } from 'svelte/store'
 import { env } from '$env/dynamic/public'
-import { locale } from './translations'
+import { loadTranslations, locale } from './translations'
 import { browser } from '$app/environment'
 import type { Link } from './components/ui/navbar/link'
 import { buildAuthFeedSettingsUrl } from './api/backend'
 import { refreshSidebarComuns } from './communitySidebar'
 import { invalidateCachedJson } from './api/publicCache'
+
+const supportedInterfaceLanguages = new Set(['ru', 'en', 'es', 'pt', 'de', 'fr', 'tr', 'id'])
+
+const normalizeStoredLanguage = (value: unknown): string | null =>
+  typeof value === 'string' && supportedInterfaceLanguages.has(value) ? value : null
 
 export type View = 'card' | 'cozy' | 'list' | 'compact'
 
@@ -186,7 +191,7 @@ export const defaultSettings: Settings = {
   },
   infiniteScroll: true,
   homeFeed: 'hot',
-  language: 'ru',
+  language: null,
   myFeedAuthors: [],
   myFeedTags: [],
   myFeedComuns: [],
@@ -219,6 +224,7 @@ type BackendFeedSettings = {
   hidden_authors?: string[]
   my_feed_hide_negative?: boolean
   tag_rules?: Record<string, 'hide' | 'blur'>
+  interface_language?: string
 }
 
 const feedSettingsDefaults = () => ({
@@ -244,6 +250,7 @@ const feedSettingsSnapshot = (settings: Settings) =>
     hiddenAuthors: settings.hiddenAuthors ?? [],
     myFeedHideNegative: settings.myFeedHideNegative,
     tagRules: settings.tagRules ?? {},
+    language: settings.language ?? null,
   })
 
 const backendPayloadFromSettings = (settings: Settings) => ({
@@ -256,6 +263,7 @@ const backendPayloadFromSettings = (settings: Settings) => ({
   hidden_authors: settings.hiddenAuthors ?? [],
   my_feed_hide_negative: settings.myFeedHideNegative,
   tag_rules: settings.tagRules ?? {},
+  interface_language: settings.language ?? '',
 })
 
 const settingsFromBackendPayload = (settings: Settings, payload: BackendFeedSettings): Settings =>
@@ -270,6 +278,7 @@ const settingsFromBackendPayload = (settings: Settings, payload: BackendFeedSett
     hiddenAuthors: payload.hidden_authors ?? settings.hiddenAuthors,
     myFeedHideNegative: payload.my_feed_hide_negative ?? settings.myFeedHideNegative,
     tagRules: payload.tag_rules ?? settings.tagRules,
+    language: normalizeStoredLanguage(payload.interface_language) ?? settings.language,
   })
 
 let backendFeedSettingsToken: string | null = null
@@ -344,7 +353,11 @@ export const loadBackendFeedSettings = async (token: string | null) => {
 
     applyingBackendFeedSettings = true
     try {
-      userSettings.set(settingsFromBackendPayload(localSettings, payload.settings))
+      const nextSettings = settingsFromBackendPayload(localSettings, payload.settings)
+      if (nextSettings.language) {
+        await loadTranslations(nextSettings.language)
+      }
+      userSettings.set(nextSettings)
       lastBackendFeedSettingsSnapshot = feedSettingsSnapshot(get(userSettings))
       backendFeedSettingsHydrated = true
       feedSettingsHydrationState.set('ready')
@@ -485,7 +498,7 @@ const migrate = (settings: any): Settings => {
   if (typeof settings?.hideReadPosts !== 'boolean') {
     settings.hideReadPosts = defaultSettings.hideReadPosts
   }
-  settings.language = 'ru'
+  settings.language = normalizeStoredLanguage(settings.language)
   settings.dock = { ...defaultSettings.dock, pins: [] }
   settings.defaultSort = { ...defaultSettings.defaultSort }
   settings.showInstances = { ...defaultSettings.showInstances }

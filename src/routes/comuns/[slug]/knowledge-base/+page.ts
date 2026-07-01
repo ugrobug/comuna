@@ -5,7 +5,7 @@ export const load = async ({ fetch, parent, url }) => {
   const parentData = await parent()
   const comun = parentData.comun ?? null
   if (!comun?.slug) {
-    throw error(404, 'Сообщество не найдено')
+    throw error(404, 'site.errors.communityNotFound')
   }
 
   if (!comun?.knowledge_base_enabled && !comun?.can_moderate) {

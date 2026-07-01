@@ -1,4 +1,6 @@
 import { deserializeEditorModel } from '$lib/util'
+import { locale, t } from '$lib/translations'
+import { get } from 'svelte/store'
 
 export type BuiltinPostTemplateType =
   | 'movie_review'
@@ -688,6 +690,7 @@ const bugReportBrowserAliases: Record<string, string> = {
 }
 
 const trimOrEmpty = (value: unknown): string => (typeof value === 'string' ? value.trim() : '')
+const currentLocale = () => get(locale) || 'ru'
 
 const normalizeMovieReviewReleaseYear = (value: unknown): string => {
   const raw =
@@ -1086,18 +1089,18 @@ export const tweetTemplateMediaBlockCount = (content: string): number => {
 export const validateTweetTemplateContent = (content: string): string => {
   const characters = tweetTemplateCharacterCount(content)
   if (characters > TWEET_TEMPLATE_MAX_LENGTH) {
-    return `Твит не может быть длиннее ${TWEET_TEMPLATE_MAX_LENGTH} символов.`
+    return t.get('site.template.tweet.tooLong', { count: TWEET_TEMPLATE_MAX_LENGTH })
   }
   const mediaBlocks = tweetTemplateMediaBlockCount(content)
   if (mediaBlocks > 1) {
-    return 'В шаблоне «Твит» можно использовать только один медиаблок.'
+    return t.get('site.template.tweet.oneMedia')
   }
   return ''
 }
 
 export const movieReviewKindLabel = (kind: string | null | undefined): string => {
-  if (kind === 'series') return 'Сериал'
-  return 'Фильм'
+  if (kind === 'series') return t.get('site.template.movie.kind.series')
+  return t.get('site.template.movie.kind.movie')
 }
 
 export const movieReviewAuthorRatingValue = (value: unknown): number | null => {
@@ -1126,7 +1129,7 @@ export const movieReviewAuthorRatingTone = (
 export const movieReviewGenreLabel = (genre: string | null | undefined): string => {
   if (!genre) return ''
   const normalized = normalizeMovieReviewGenre(genre)
-  return genreLabelByValue.get(normalized) ?? genre
+  return t.get(`site.template.movie.genres.${normalized}`) || genreLabelByValue.get(normalized) || genre
 }
 
 export const movieReviewWatchProviderLabel = (provider: string | null | undefined): string => {
@@ -1143,13 +1146,13 @@ export const movieReviewWatchWhereLabels = (providers: unknown): string[] => {
 export const musicReleaseStyleLabel = (style: string | null | undefined): string => {
   if (!style) return ''
   const normalized = normalizeMusicReleaseStyle(style)
-  return musicReleaseStyleLabelByValue.get(normalized) ?? style
+  return t.get(`site.template.music.styles.${normalized}`) || musicReleaseStyleLabelByValue.get(normalized) || style
 }
 
 export const bugReportStatusLabel = (status: string | null | undefined): string => {
-  if (!status) return bugReportStatusLabelByValue.get('review') ?? 'Рассмотрение'
+  if (!status) return t.get('site.template.bug.statuses.review')
   const normalized = normalizeBugReportStatus(status)
-  return bugReportStatusLabelByValue.get(normalized) ?? status
+  return t.get(`site.template.bug.statuses.${normalized}`) || bugReportStatusLabelByValue.get(normalized) || status
 }
 
 export const bugReportStatusTone = (
@@ -1171,6 +1174,7 @@ export const bugReportPlatformLabel = (platform: string | null | undefined): str
 export const bugReportBrowserLabel = (browser: string | null | undefined): string => {
   if (!browser) return ''
   const normalized = bugReportBrowserAliases[browser.toLowerCase()] ?? browser
+  if (normalized === 'other') return t.get('site.template.bug.browserOther')
   return bugReportBrowserLabelByValue.get(normalized) ?? browser
 }
 
@@ -1196,7 +1200,7 @@ export const formatMusicReleaseDate = (value: string | null | undefined): string
   if (!value) return ''
   const timestamp = Date.parse(value)
   if (!Number.isFinite(timestamp)) return value
-  return new Date(timestamp).toLocaleDateString('ru-RU', {
+  return new Date(timestamp).toLocaleDateString(currentLocale(), {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
@@ -1208,17 +1212,17 @@ export const postVotePollOptionLabel = (item: PostVotePollTemplateItem): string 
   const looksSerialized =
     title.length >= 48 && !/\s/.test(title) && /^[A-Za-z0-9_+/=-]+$/.test(title)
   if (looksSerialized) {
-    return `Пост #${item.post_id}`
+    return t.get('site.template.poll.postNumber', { id: item.post_id })
   }
   if (title) return title
-  return `Пост #${item.post_id}`
+  return t.get('site.template.poll.postNumber', { id: item.post_id })
 }
 
 export const formatPostVotePollDeadline = (value: string | null | undefined): string => {
   if (!value) return ''
   const timestamp = Date.parse(value)
   if (!Number.isFinite(timestamp)) return value
-  return new Date(timestamp).toLocaleString('ru-RU', {
+  return new Date(timestamp).toLocaleString(currentLocale(), {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',

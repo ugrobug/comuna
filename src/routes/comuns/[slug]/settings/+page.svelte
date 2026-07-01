@@ -25,6 +25,8 @@
     type PostTemplateCode,
   } from '$lib/postTemplates'
   import { env } from '$env/dynamic/public'
+  import { brandNameForLanguage } from '$lib/brand'
+  import { locale } from '$lib/translations'
 
   export let data
 
@@ -1084,7 +1086,7 @@
     }
   })
 
-  $: siteTitle = env.PUBLIC_SITE_TITLE || 'Тамбур'
+  $: siteTitle = brandNameForLanguage($locale)
   $: pageTitle = comun?.name
     ? `Настройки сообщества ${comun.name} — ${siteTitle}`
     : `Настройки сообщества — ${siteTitle}`

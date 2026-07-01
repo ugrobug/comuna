@@ -10,6 +10,7 @@ import secrets
 import base64
 import time
 import inspect
+from typing import Sequence
 try:
     import pymorphy2
 except ImportError:  # optional dependency for lemmatization
@@ -26,7 +27,7 @@ from math import ceil
 from html import escape, unescape
 from xml.sax.saxutils import escape as xml_escape
 from django.db import transaction
-from django.db.models import Avg, Count, Exists, F, IntegerField, OuterRef, Q, Subquery, Sum, Value
+from django.db.models import Avg, Count, Exists, F, IntegerField, Max, OuterRef, Prefetch, Q, Subquery, Sum, Value
 from django.db.models.functions import Cast, Coalesce
 
 from django.conf import settings
@@ -119,8 +120,17 @@ from ratings.models import AuthorRatingEvent
 from .post_paths import build_post_public_path
 from .models import (
     Author,
+    POST_TRANSLATION_LANGUAGE_ENGLISH,
+    POST_TRANSLATION_LANGUAGE_FRENCH,
+    POST_TRANSLATION_LANGUAGE_GERMAN,
+    POST_TRANSLATION_LANGUAGE_INDONESIAN,
+    POST_TRANSLATION_LANGUAGE_PORTUGUESE,
+    POST_TRANSLATION_LANGUAGE_SPANISH,
+    POST_TRANSLATION_LANGUAGE_TURKISH,
+    POST_TRANSLATION_STATUS_TRANSLATED,
     Post,
     PostComment,
+    PostCommentTranslation,
     PostCommentLike,
     PostFavorite,
     PostLike,
@@ -128,6 +138,7 @@ from .models import (
     PublicFeedItem,
     StaticPageContent,
     Tag,
+    PostTranslation,
 )
 from .preview import build_post_preview, post_preview_has_more
 from notifications.service import (
@@ -163,6 +174,37 @@ _POST_THUMBNAIL_IMAGE_WIDTH = 640
 _LOCAL_WEBP_VARIANT_RE = re.compile(r"-(320|640|960|1280|1920)\.webp$", re.IGNORECASE)
 _IMAGE_URL_PATH_RE = re.compile(r"\.(?:jpe?g|png|webp|gif|avif)$", re.IGNORECASE)
 _COMUN_CREATION_MIN_AUTHOR_RATING = 0.0
+ORIGINAL_POST_LANGUAGE = "ru"
+TRANSLATED_POST_LANGUAGES = (
+    POST_TRANSLATION_LANGUAGE_ENGLISH,
+    POST_TRANSLATION_LANGUAGE_SPANISH,
+    POST_TRANSLATION_LANGUAGE_PORTUGUESE,
+    POST_TRANSLATION_LANGUAGE_GERMAN,
+    POST_TRANSLATION_LANGUAGE_FRENCH,
+    POST_TRANSLATION_LANGUAGE_TURKISH,
+    POST_TRANSLATION_LANGUAGE_INDONESIAN,
+)
+PUBLIC_POST_LANGUAGES = (ORIGINAL_POST_LANGUAGE, *TRANSLATED_POST_LANGUAGES)
+PUBLIC_POST_LANGUAGE_LOCALES = {
+    ORIGINAL_POST_LANGUAGE: "ru-RU",
+    POST_TRANSLATION_LANGUAGE_ENGLISH: "en",
+    POST_TRANSLATION_LANGUAGE_SPANISH: "es",
+    POST_TRANSLATION_LANGUAGE_PORTUGUESE: "pt",
+    POST_TRANSLATION_LANGUAGE_GERMAN: "de",
+    POST_TRANSLATION_LANGUAGE_FRENCH: "fr",
+    POST_TRANSLATION_LANGUAGE_TURKISH: "tr",
+    POST_TRANSLATION_LANGUAGE_INDONESIAN: "id",
+}
+PUBLIC_POST_OG_LOCALES = {
+    ORIGINAL_POST_LANGUAGE: "ru_RU",
+    POST_TRANSLATION_LANGUAGE_ENGLISH: "en_US",
+    POST_TRANSLATION_LANGUAGE_SPANISH: "es_ES",
+    POST_TRANSLATION_LANGUAGE_PORTUGUESE: "pt_PT",
+    POST_TRANSLATION_LANGUAGE_GERMAN: "de_DE",
+    POST_TRANSLATION_LANGUAGE_FRENCH: "fr_FR",
+    POST_TRANSLATION_LANGUAGE_TURKISH: "tr_TR",
+    POST_TRANSLATION_LANGUAGE_INDONESIAN: "id_ID",
+}
 _COMUN_ACTIVITY_POINTS = {
     "post": 10,
     "comment": 5,
@@ -581,14 +623,35 @@ def _serialize_comment_user(comment: PostComment) -> dict:
     }
 
 
-def _serialize_site_comment(comment: PostComment, *, liked_by_me: bool = False, likes_count: int = 0, can_edit: bool = False) -> dict:
+def _serialize_site_comment(
+    comment: PostComment,
+    *,
+    liked_by_me: bool = False,
+    likes_count: int = 0,
+    can_edit: bool = False,
+    translation: PostCommentTranslation | None = None,
+    language: str | None = None,
+) -> dict:
+    is_translated = bool(
+        translation
+        and not comment.is_deleted
+        and translation.status == POST_TRANSLATION_STATUS_TRANSLATED
+        and translation.body
+    )
+    body = "" if comment.is_deleted else _normalize_comment_body_images(comment.body)
+    if is_translated:
+        body = _normalize_comment_body_images(translation.body)
     return {
         "id": comment.id,
-        "body": "" if comment.is_deleted else _normalize_comment_body_images(comment.body),
+        "body": body,
+        "original_body": "" if comment.is_deleted else _normalize_comment_body_images(comment.body),
+        "original_language": ORIGINAL_POST_LANGUAGE,
         "created_at": comment.created_at.isoformat(),
         "updated_at": comment.updated_at.isoformat(),
         "parent_id": comment.parent_id,
         "is_deleted": comment.is_deleted,
+        "is_translated": is_translated,
+        "language": language if is_translated else ORIGINAL_POST_LANGUAGE,
         "likes_count": likes_count,
         "liked_by_me": liked_by_me,
         "can_edit": can_edit,
@@ -2457,6 +2520,78 @@ def _post_public_path(post: Post) -> str:
     return build_post_public_path(post.id, _post_display_title(post))
 
 
+def _normalize_post_language(value: str | None) -> str | None:
+    language = str(value or ORIGINAL_POST_LANGUAGE).strip().lower()
+    if language in PUBLIC_POST_LANGUAGES:
+        return language
+    return None
+
+
+def _localized_post_public_path(post: Post, language: str, title: str | None = None) -> str:
+    path = build_post_public_path(post.id, title or _post_display_title(post))
+    if language == ORIGINAL_POST_LANGUAGE:
+        return path
+    return f"/{language}{path}"
+
+
+def _translated_versions_for_post(post: Post) -> list[PostTranslation]:
+    prefetched = getattr(post, "_translated_versions", None)
+    if prefetched is not None:
+        return [
+            translation
+            for translation in prefetched
+            if translation.status == POST_TRANSLATION_STATUS_TRANSLATED
+        ]
+    return list(
+        post.translations.filter(status=POST_TRANSLATION_STATUS_TRANSLATED).order_by("language")
+    )
+
+
+def _translation_by_language(post: Post) -> dict[str, PostTranslation]:
+    return {
+        translation.language: translation
+        for translation in _translated_versions_for_post(post)
+        if translation.language in TRANSLATED_POST_LANGUAGES
+    }
+
+
+def _post_language_versions(post: Post) -> list[dict]:
+    versions = [
+        {
+            "language": ORIGINAL_POST_LANGUAGE,
+            "hreflang": ORIGINAL_POST_LANGUAGE,
+            "locale": PUBLIC_POST_LANGUAGE_LOCALES[ORIGINAL_POST_LANGUAGE],
+            "og_locale": PUBLIC_POST_OG_LOCALES[ORIGINAL_POST_LANGUAGE],
+            "path": _localized_post_public_path(post, ORIGINAL_POST_LANGUAGE),
+        }
+    ]
+    translations = _translation_by_language(post)
+    for language in TRANSLATED_POST_LANGUAGES:
+        translation = translations.get(language)
+        if translation is None:
+            continue
+        versions.append(
+            {
+                "language": language,
+                "hreflang": language,
+                "locale": PUBLIC_POST_LANGUAGE_LOCALES[language],
+                "og_locale": PUBLIC_POST_OG_LOCALES[language],
+                "path": _localized_post_public_path(post, language, translation.title),
+            }
+        )
+    return versions
+
+
+def _post_sitemap_lastmod(post: Post) -> dt_datetime | None:
+    candidates = [post.updated_at or post.created_at]
+    candidates.extend(
+        translation.updated_at
+        for translation in _translated_versions_for_post(post)
+        if translation.updated_at
+    )
+    return max((value for value in candidates if value), default=None)
+
+
 def _serialize_post_vote_poll_participations(
     post: Post,
     *,
@@ -2537,6 +2672,25 @@ def _favorite_post_ids_for_user(posts: list[Post], user: User | None) -> set[int
     )
 
 
+def _comment_translations_by_language(
+    comments: Sequence[PostComment],
+    language: str | None,
+) -> dict[int, PostCommentTranslation]:
+    if not language or language == ORIGINAL_POST_LANGUAGE:
+        return {}
+    comment_ids = [comment.id for comment in comments if comment and comment.id]
+    if not comment_ids:
+        return {}
+    return {
+        translation.comment_id: translation
+        for translation in PostCommentTranslation.objects.filter(
+            comment_id__in=comment_ids,
+            language=language,
+            status=POST_TRANSLATION_STATUS_TRANSLATED,
+        )
+    }
+
+
 @csrf_exempt
 @anonymous_cache(prefix="post-comments", seconds=60)
 def post_comments(request: HttpRequest, post_id: int) -> HttpResponse:
@@ -2553,12 +2707,14 @@ def post_comments(request: HttpRequest, post_id: int) -> HttpResponse:
 
     if request.method == "GET":
         user = _get_user_from_request(request)
-        comments = (
+        language = _normalize_post_language(request.GET.get("lang")) or ORIGINAL_POST_LANGUAGE
+        comments = list(
             PostComment.objects.filter(post=post)
             .select_related("user", "user__site_profile")
             .annotate(likes_count=Count("likes", distinct=True))
             .order_by("created_at")
         )
+        translations_by_comment_id = _comment_translations_by_language(comments, language)
         liked_ids = set()
         if user:
             liked_ids = set(
@@ -2572,6 +2728,8 @@ def post_comments(request: HttpRequest, post_id: int) -> HttpResponse:
                 liked_by_me=comment.id in liked_ids,
                 likes_count=comment.likes_count,
                 can_edit=_can_edit_site_comment(user, comment),
+                translation=translations_by_comment_id.get(comment.id),
+                language=language,
             )
             for comment in comments
         ]
@@ -3219,11 +3377,32 @@ def tag_posts(request: HttpRequest, tag: str) -> HttpResponse:
 
 @anonymous_cache(prefix="post-detail", seconds=120)
 def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
+    language = _normalize_post_language(request.GET.get("lang"))
+    if language is None:
+        return JsonResponse({"ok": False, "error": "unsupported language"}, status=404)
     try:
         now = timezone.now()
         post = (
             Post.objects.select_related("author")
-            .prefetch_related("tags")
+            .prefetch_related(
+                "tags",
+                Prefetch(
+                    "translations",
+                    queryset=PostTranslation.objects.filter(
+                        status=POST_TRANSLATION_STATUS_TRANSLATED
+                    ).only(
+                        "id",
+                        "post_id",
+                        "language",
+                        "title",
+                        "content",
+                        "preview_content",
+                        "status",
+                        "updated_at",
+                    ),
+                    to_attr="_translated_versions",
+                ),
+            )
             .filter(is_blocked=False, is_pending=False, author__is_blocked=False)
             .filter(_publish_ready_filter(now))
             .get(id=post_id)
@@ -3240,18 +3419,44 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
             },
             status=410,
         )
+    translations = _translation_by_language(post)
+    translation = None
+    translation_unavailable = False
+    if language != ORIGINAL_POST_LANGUAGE:
+        translation = translations.get(language)
+        if translation is None:
+            translation_unavailable = True
     current_user = _get_user_from_request(request)
-    content, poll_payload = _content_with_live_poll(post, current_user)
+    if translation_unavailable:
+        content, poll_payload = "", None
+    else:
+        content, poll_payload = _content_with_live_poll(post, current_user)
+    title = _post_display_title(post)
+    if translation is not None:
+        title = translation.title or title
+        content = translation.content or content
+    original_content, _original_poll_payload = _content_with_live_poll(post, current_user)
     template_payload = _serialize_post_template(post)
     author_channel_url, author_title = _author_display_fields(
         request, post.author, post.channel_url
     )
+    language_versions = _post_language_versions(post)
     return JsonResponse(
         {
             "ok": True,
             "post": {
                 "id": post.id,
-                "title": _post_display_title(post),
+                "title": title,
+                "original_title": _post_display_title(post),
+                "original_content": original_content,
+                "original_language": ORIGINAL_POST_LANGUAGE,
+                "language": language,
+                "language_locale": PUBLIC_POST_LANGUAGE_LOCALES[language],
+                "og_locale": PUBLIC_POST_OG_LOCALES[language],
+                "is_translated": language != ORIGINAL_POST_LANGUAGE,
+                "translation_unavailable": translation_unavailable,
+                "language_versions": language_versions,
+                "available_languages": [version["language"] for version in language_versions],
                 "template": template_payload,
                 "enabled_template_editor_blocks": _serialize_enabled_template_editor_blocks(template_payload),
                 "can_manage_bug_report_status": _user_can_manage_bug_report_status(current_user, post),
@@ -4051,17 +4256,39 @@ def search_content(request: HttpRequest) -> HttpResponse:
 SITEMAP_PAGE_SIZE = 5000
 
 
-def _sitemap_urlset(entries: list[tuple[str, str | None]]) -> HttpResponse:
+def _sitemap_xml_attr(value: str) -> str:
+    return xml_escape(value, {'"': "&quot;"})
+
+
+def _sitemap_urlset(entries: list[tuple[str, str | None] | dict]) -> HttpResponse:
     urls = []
-    for loc, lastmod in entries:
+    has_alternates = any(isinstance(entry, dict) and entry.get("alternates") for entry in entries)
+    for item in entries:
+        if isinstance(item, dict):
+            loc = item.get("loc", "")
+            lastmod = item.get("lastmod")
+            alternates = item.get("alternates") or []
+        else:
+            loc, lastmod = item
+            alternates = []
         entry = f"<url><loc>{xml_escape(loc)}</loc>"
         if lastmod:
             entry += f"<lastmod>{xml_escape(lastmod)}</lastmod>"
+        for alternate in alternates:
+            hreflang = _sitemap_xml_attr(str(alternate.get("hreflang") or ""))
+            href = _sitemap_xml_attr(str(alternate.get("href") or ""))
+            if hreflang and href:
+                entry += (
+                    f'<xhtml:link rel="alternate" hreflang="{hreflang}" href="{href}" />'
+                )
         entry += "</url>"
         urls.append(entry)
+    namespaces = 'xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"'
+    if has_alternates:
+        namespaces += ' xmlns:xhtml="http://www.w3.org/1999/xhtml"'
     body = (
         '<?xml version="1.0" encoding="UTF-8"?>'
-        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        f"<urlset {namespaces}>"
         + "".join(urls)
         + "</urlset>"
     )
@@ -4093,18 +4320,27 @@ def sitemap_xml(request: HttpRequest) -> HttpResponse:
         return f"{base_url}{path}"
 
     authors_lastmod = Author.objects.order_by("-updated_at").values_list("updated_at", flat=True).first()
-    posts_lastmod = (
+    posts_qs = (
         Post.objects.filter(is_blocked=False, is_pending=False, author__is_blocked=False)
         .filter(_publish_ready_filter(now))
-        .order_by("-updated_at")
-        .values_list("updated_at", flat=True)
-        .first()
     )
-    posts_count = (
-        Post.objects.filter(is_blocked=False, is_pending=False, author__is_blocked=False)
-        .filter(_publish_ready_filter(now))
-        .count()
+    posts_lastmod = posts_qs.order_by("-updated_at").values_list("updated_at", flat=True).first()
+    translations_lastmod = (
+        PostTranslation.objects.filter(
+            post__is_blocked=False,
+            post__is_pending=False,
+            post__author__is_blocked=False,
+            status=POST_TRANSLATION_STATUS_TRANSLATED,
+        )
+        .filter(post__in=posts_qs)
+        .aggregate(lastmod=Max("updated_at"))
+        .get("lastmod")
     )
+    posts_lastmod = max(
+        (value for value in (posts_lastmod, translations_lastmod) if value),
+        default=None,
+    )
+    posts_count = posts_qs.count()
     pages = max(1, ceil(posts_count / SITEMAP_PAGE_SIZE))
 
     entries: list[tuple[str, str | None]] = [
@@ -4165,14 +4401,45 @@ def sitemap_posts_xml(request: HttpRequest, page: int) -> HttpResponse:
     offset = (page - 1) * SITEMAP_PAGE_SIZE
     posts = (
         qs.only("id", "title", "updated_at", "created_at")
+        .prefetch_related(
+            Prefetch(
+                "translations",
+                queryset=PostTranslation.objects.filter(
+                    status=POST_TRANSLATION_STATUS_TRANSLATED
+                ).only(
+                    "id",
+                    "post_id",
+                    "language",
+                    "title",
+                    "status",
+                    "updated_at",
+                ),
+                to_attr="_translated_versions",
+            )
+        )
         .order_by("-updated_at", "-id")[offset : offset + SITEMAP_PAGE_SIZE]
     )
 
     entries = []
     for post in posts:
-        lastmod = _format_lastmod(post.updated_at or post.created_at)
-        path = _post_public_path(post)
-        entries.append((f"{base_url}{path}", lastmod))
+        lastmod = _format_lastmod(_post_sitemap_lastmod(post))
+        versions = _post_language_versions(post)
+        alternate_links = [
+            {"hreflang": version["hreflang"], "href": f"{base_url}{version['path']}"}
+            for version in versions
+        ]
+        russian_version = versions[0]
+        alternate_links.append(
+            {"hreflang": "x-default", "href": f"{base_url}{russian_version['path']}"}
+        )
+        for version in versions:
+            entries.append(
+                {
+                    "loc": f"{base_url}{version['path']}",
+                    "lastmod": lastmod,
+                    "alternates": alternate_links,
+                }
+            )
 
     return _sitemap_urlset(entries)
 

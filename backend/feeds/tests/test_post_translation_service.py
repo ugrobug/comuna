@@ -1,22 +1,37 @@
 from __future__ import annotations
 
+from datetime import timedelta
 from unittest.mock import patch
 
+from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
+from django.utils import timezone
 
 from feeds.models import (
     Author,
+    CONTENT_TRANSLATION_KIND_COMMENT,
+    CONTENT_TRANSLATION_KIND_COMUN,
+    CONTENT_TRANSLATION_KIND_POST,
+    CONTENT_TRANSLATION_TASK_STATUS_PENDING,
+    Comun,
+    ContentTranslationRun,
+    ContentTranslationSettings,
+    ContentTranslationTask,
     POST_TRANSLATION_STATUS_FAILED,
     POST_TRANSLATION_STATUS_PENDING,
     POST_TRANSLATION_STATUS_TRANSLATED,
     Post,
+    PostComment,
     PostTranslation,
 )
 from feeds.translation_service import (
     PostTranslationError,
+    process_translation_task,
     queue_post_translation,
     translate_post_to_language,
 )
+
+User = get_user_model()
 
 
 class FakeOpenRouterResponse:
@@ -37,6 +52,7 @@ class FakeOpenRouterResponse:
 class PostTranslationServiceTests(TestCase):
     def setUp(self) -> None:
         self.author = Author.objects.create(username="source")
+        self.user = User.objects.create_user(username="commenter")
         self.post = Post.objects.create(
             author=self.author,
             message_id=1,
@@ -117,3 +133,158 @@ class PostTranslationServiceTests(TestCase):
         self.assertIn(str(self.post.pk), command)
         self.assertIn("tr", command)
         self.assertIn("id", command)
+
+    def test_post_save_schedules_auto_translation_after_ten_minutes(self) -> None:
+        task = ContentTranslationTask.objects.get(
+            kind=CONTENT_TRANSLATION_KIND_POST,
+            object_id=self.post.pk,
+        )
+
+        self.assertEqual(task.status, CONTENT_TRANSLATION_TASK_STATUS_PENDING)
+        self.assertEqual(task.source_updated_at, self.post.updated_at)
+        self.assertGreaterEqual(task.scheduled_at, self.post.updated_at + timedelta(minutes=10))
+
+    def test_post_edit_reschedules_auto_translation(self) -> None:
+        original_task = ContentTranslationTask.objects.get(
+            kind=CONTENT_TRANSLATION_KIND_POST,
+            object_id=self.post.pk,
+        )
+
+        self.post.title = "Обновленный заголовок"
+        self.post.save(update_fields=["title", "updated_at"])
+        self.post.refresh_from_db()
+        task = ContentTranslationTask.objects.get(
+            kind=CONTENT_TRANSLATION_KIND_POST,
+            object_id=self.post.pk,
+        )
+
+        self.assertEqual(task.status, CONTENT_TRANSLATION_TASK_STATUS_PENDING)
+        self.assertGreater(task.source_updated_at, original_task.source_updated_at)
+        self.assertGreater(task.scheduled_at, original_task.scheduled_at)
+
+    def test_comment_save_schedules_auto_translation_after_one_minute(self) -> None:
+        comment = PostComment.objects.create(
+            post=self.post,
+            user=self.user,
+            body="Комментарий",
+        )
+        task = ContentTranslationTask.objects.get(
+            kind=CONTENT_TRANSLATION_KIND_COMMENT,
+            object_id=comment.pk,
+        )
+
+        self.assertEqual(task.status, CONTENT_TRANSLATION_TASK_STATUS_PENDING)
+        self.assertEqual(task.source_updated_at, comment.updated_at)
+        self.assertGreaterEqual(task.scheduled_at, comment.updated_at + timedelta(minutes=1))
+
+    def test_negative_comun_does_not_schedule_auto_translation(self) -> None:
+        comun = Comun.objects.create(
+            name="Минусовая комуна",
+            slug="negative-comun",
+            product_description="Описание",
+            rules_text="Правила",
+            rating_score=-1,
+        )
+
+        self.assertFalse(
+            ContentTranslationTask.objects.filter(
+                kind=CONTENT_TRANSLATION_KIND_COMUN,
+                object_id=comun.pk,
+            ).exists()
+        )
+
+    @patch("feeds.translation_service.translate_post_to_language")
+    def test_disabled_auto_translation_reschedules_without_openrouter(self, translate_mock) -> None:
+        ContentTranslationSettings.objects.update_or_create(
+            pk=1,
+            defaults={
+                "enabled": False,
+                "post_daily_limit": 200,
+                "comment_daily_limit": 1000,
+                "post_object_daily_limit": 3,
+            },
+        )
+        task = ContentTranslationTask.objects.get(
+            kind=CONTENT_TRANSLATION_KIND_POST,
+            object_id=self.post.pk,
+        )
+        task.scheduled_at = timezone.now() - timedelta(minutes=1)
+        task.save(update_fields=["scheduled_at"])
+
+        result = process_translation_task(task.pk)
+
+        self.assertEqual(result, "skipped")
+        task.refresh_from_db()
+        self.assertEqual(task.status, CONTENT_TRANSLATION_TASK_STATUS_PENDING)
+        self.assertIn("выключен", task.last_error)
+        self.assertFalse(ContentTranslationRun.objects.exists())
+        translate_mock.assert_not_called()
+
+    @patch("feeds.translation_service.translate_post_to_language")
+    def test_post_daily_translation_limit_reschedules_task(self, translate_mock) -> None:
+        ContentTranslationSettings.objects.update_or_create(
+            pk=1,
+            defaults={
+                "enabled": True,
+                "post_daily_limit": 1,
+                "comment_daily_limit": 1000,
+                "post_object_daily_limit": 3,
+            },
+        )
+        ContentTranslationRun.objects.create(
+            kind=CONTENT_TRANSLATION_KIND_POST,
+            object_id=999999,
+        )
+        task = ContentTranslationTask.objects.get(
+            kind=CONTENT_TRANSLATION_KIND_POST,
+            object_id=self.post.pk,
+        )
+        task.scheduled_at = timezone.now() - timedelta(minutes=1)
+        task.save(update_fields=["scheduled_at"])
+
+        result = process_translation_task(task.pk)
+
+        self.assertEqual(result, "skipped")
+        task.refresh_from_db()
+        self.assertEqual(task.status, CONTENT_TRANSLATION_TASK_STATUS_PENDING)
+        self.assertIn("Дневной лимит", task.last_error)
+        self.assertEqual(
+            ContentTranslationRun.objects.filter(object_id=self.post.pk).count(),
+            0,
+        )
+        translate_mock.assert_not_called()
+
+    @patch("feeds.translation_service.translate_post_to_language")
+    def test_one_post_translation_limit_uses_rolling_24_hours(self, translate_mock) -> None:
+        ContentTranslationSettings.objects.update_or_create(
+            pk=1,
+            defaults={
+                "enabled": True,
+                "post_daily_limit": 200,
+                "comment_daily_limit": 1000,
+                "post_object_daily_limit": 3,
+            },
+        )
+        for _ in range(3):
+            ContentTranslationRun.objects.create(
+                kind=CONTENT_TRANSLATION_KIND_POST,
+                object_id=self.post.pk,
+            )
+        task = ContentTranslationTask.objects.get(
+            kind=CONTENT_TRANSLATION_KIND_POST,
+            object_id=self.post.pk,
+        )
+        task.scheduled_at = timezone.now() - timedelta(minutes=1)
+        task.save(update_fields=["scheduled_at"])
+
+        result = process_translation_task(task.pk)
+
+        self.assertEqual(result, "skipped")
+        task.refresh_from_db()
+        self.assertEqual(task.status, CONTENT_TRANSLATION_TASK_STATUS_PENDING)
+        self.assertIn("24 часа", task.last_error)
+        self.assertEqual(
+            ContentTranslationRun.objects.filter(object_id=self.post.pk).count(),
+            3,
+        )
+        translate_mock.assert_not_called()

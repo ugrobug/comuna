@@ -5,6 +5,7 @@
   import { ChatBubbleLeftEllipsis, Icon } from 'svelte-hero-icons'
   import { buildBackendPostPath, buildRecentCommentsUrl } from '$lib/api/backend'
   import { cachedJson } from '$lib/api/publicCache'
+  import { t } from '$lib/translations'
 
   type RecentComment = {
     id: number
@@ -49,7 +50,7 @@
       )
       comments = data.comments ?? []
     } catch (e: unknown) {
-      error = e instanceof Error ? e.message : 'Неизвестная ошибка'
+      error = e instanceof Error ? e.message : $t('site.sidebar.unknownError')
     } finally {
       loading = false
     }
@@ -60,7 +61,7 @@
 
 <div class="flex flex-col gap-2 bg-white dark:bg-zinc-900 rounded-xl p-4">
   <span class="text-base font-normal text-slate-900 dark:text-zinc-200 mb-2">
-    Свежие комментарии
+    {$t('site.sidebar.comments.recent')}
   </span>
 
   {#if loading}
@@ -75,7 +76,7 @@
     </div>
   {:else if comments.length === 0}
     <div class="text-sm text-slate-500 dark:text-zinc-400">
-      Комментариев пока нет
+      {$t('site.sidebar.comments.empty')}
     </div>
   {:else}
     <div class="flex flex-col divide-y divide-slate-200 dark:divide-zinc-800">

@@ -79,6 +79,8 @@ from moderator.views import (
     moderator_post_view_settings,
     moderator_rating_settings,
     moderator_rating_settings_update,
+    moderator_translation_settings,
+    moderator_translation_settings_update,
 )
 from notifications.views import (
     auth_notification_read,
@@ -339,6 +341,16 @@ urlpatterns = [
         "api/moderator/rating-settings/update/",
         moderator_rating_settings_update,
         name="moderator-rating-settings-update",
+    ),
+    path(
+        "api/moderator/translation-settings/",
+        moderator_translation_settings,
+        name="moderator-translation-settings",
+    ),
+    path(
+        "api/moderator/translation-settings/update/",
+        moderator_translation_settings_update,
+        name="moderator-translation-settings-update",
     ),
     path("api/auth/posts/<int:post_id>/", user_post_update, name="auth-post-update"),
     path(

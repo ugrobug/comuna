@@ -1,0 +1,105 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: fr\n"
+
+msgid "Site metrics"
+msgstr "Métriques du site"
+
+msgid "Authors"
+msgstr "Auteurs"
+
+msgid "Total posts"
+msgstr "Total des publications"
+
+msgid "Posts in 30 days"
+msgstr "Publications en 30 jours"
+
+msgid "Posts per author per month"
+msgstr "Publications par auteur par mois"
+
+msgid "Likes in 30 days"
+msgstr "J’aime en 30 jours"
+
+msgid "Dislikes in 30 days"
+msgstr "Je n’aime pas en 30 jours"
+
+msgid "Comments in 30 days"
+msgstr "Commentaires en 30 jours"
+
+msgid "пользователь"
+msgstr "utilisateur"
+
+msgid "Подтвердите почту в Tambur"
+msgstr "Confirmez votre email dans Tambur"
+
+msgid "Здравствуйте, %(username)s!\n\nЧтобы завершить подтверждение почты, откройте секретную ссылку:\n%(verification_url)s\n\nСсылка секретная и привязана к вашему аккаунту.\nЕсли это были не вы, просто проигнорируйте это письмо."
+msgstr "Bonjour, %(username)s !\n\nPour terminer la confirmation de votre email, ouvrez ce lien secret :\n%(verification_url)s\n\nLe lien est secret et lié à votre compte.\nSi ce n’était pas vous, ignorez simplement cet email."
+
+msgid "<p>Здравствуйте, %(username)s!</p>"
+msgstr "<p>Bonjour, %(username)s !</p>"
+
+msgid "<p>Чтобы завершить подтверждение почты, откройте секретную ссылку:</p>"
+msgstr "<p>Pour terminer la confirmation de votre email, ouvrez ce lien secret :</p>"
+
+msgid "Подтвердить почту"
+msgstr "Confirmer l’email"
+
+msgid "<p>Ссылка секретная и привязана к вашему аккаунту.</p>"
+msgstr "<p>Le lien est secret et lié à votre compte.</p>"
+
+msgid "<p>Если это были не вы, просто проигнорируйте это письмо.</p>"
+msgstr "<p>Si ce n’était pas vous, ignorez simplement cet email.</p>"
+
+msgid "Ссылка подтверждения недействительна или устарела."
+msgstr "Le lien de confirmation est invalide ou a expiré."
+
+msgid "У аккаунта не указан email."
+msgstr "Aucun email n’est indiqué pour ce compte."
+
+msgid "Восстановление доступа к Tambur"
+msgstr "Récupérer l’accès à Tambur"
+
+msgid "Здравствуйте, %(username)s!\n\nМы получили запрос на восстановление доступа к аккаунту.\nЧтобы задать новый пароль, откройте ссылку: %(reset_url)s\n\nЕсли вы не запрашивали восстановление, просто проигнорируйте это письмо."
+msgstr "Bonjour, %(username)s !\n\nNous avons reçu une demande de récupération d’accès au compte.\nPour définir un nouveau mot de passe, ouvrez ce lien : %(reset_url)s\n\nSi vous n’avez pas demandé cela, ignorez simplement cet email."
+
+msgid "<p>Мы получили запрос на восстановление доступа к аккаунту.</p>"
+msgstr "<p>Nous avons reçu une demande de récupération d’accès au compte.</p>"
+
+msgid "Задать новый пароль"
+msgstr "Définir un nouveau mot de passe"
+
+msgid "<p>Если вы не запрашивали восстановление, просто проигнорируйте это письмо.</p>"
+msgstr "<p>Si vous n’avez pas demandé cela, ignorez simplement cet email.</p>"
+
+msgid "Введите корректный email."
+msgstr "Saisissez une adresse email valide."
+
+msgid "Регистрация по почте отключена. Используйте Telegram."
+msgstr "L’inscription par email est désactivée. Utilisez Telegram."
+
+msgid "Укажите имя пользователя, email и пароль."
+msgstr "Saisissez un nom d’utilisateur, un email et un mot de passe."
+
+msgid "Пароль слишком короткий."
+msgstr "Le mot de passe est trop court."
+
+msgid "Пользователь с таким email уже существует."
+msgstr "Un utilisateur avec cet email existe déjà."
+
+msgid "Аккаунт с таким email уже существует. Восстановите пароль через подтверждение почты."
+msgstr "Un compte avec cet email existe déjà. Récupérez le mot de passe via la confirmation par email."
+
+msgid "Пользователь с таким именем уже существует."
+msgstr "Un utilisateur avec ce nom existe déjà."
+
+msgid "Ссылка восстановления недействительна или устарела."
+msgstr "Le lien de récupération est invalide ou a expiré."
+
+msgid "Введите email или имя пользователя и пароль."
+msgstr "Saisissez un email ou un nom d’utilisateur et un mot de passe."
+
+msgid "К этому профилю уже привязан другой VK."
+msgstr "Un autre compte VK est déjà lié à ce profil."
+

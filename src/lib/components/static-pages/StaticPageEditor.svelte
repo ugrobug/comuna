@@ -5,8 +5,10 @@
   import LoginModal from '$lib/components/auth/LoginModal.svelte'
   import EditorJS from '$lib/components/editor/EditorJS.svelte'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
+  import { brandNameForLanguage } from '$lib/brand'
   import { normalizeStaticPageEditorValue } from '$lib/staticPageEditor'
   import { refreshSiteUser, siteUser, updateStaticPageContent } from '$lib/siteAuth'
+  import { locale } from '$lib/translations'
   import { Button, toast } from 'mono-svelte'
   import { onMount } from 'svelte'
 
@@ -23,7 +25,7 @@
     $page.url.pathname,
     (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '') + '/'
   ).toString()
-  $: seoTitle = `Редактирование: ${data.heading} — ${env.PUBLIC_SITE_TITLE || 'Тамбур'}`
+  $: seoTitle = `Редактирование: ${data.heading} — ${brandNameForLanguage($locale)}`
 
   onMount(async () => {
     await refreshSiteUser().catch(() => null)

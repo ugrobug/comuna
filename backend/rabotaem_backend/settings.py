@@ -159,9 +159,15 @@ PASSWORD_HASHERS = [
 LANGUAGE_CODE = "ru-ru"
 LANGUAGES = [
     ("ru", "Русский"),
+    ("en", "English"),
+    ("es", "Español"),
+    ("pt", "Português"),
+    ("de", "Deutsch"),
+    ("fr", "Français"),
     ("tr", "Türkçe"),
     ("id", "Bahasa Indonesia"),
 ]
+LOCALE_PATHS = [BASE_DIR / "locale"]
 TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True

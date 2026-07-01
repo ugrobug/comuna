@@ -20,11 +20,11 @@
     try {
       await requestPasswordReset(resetData.email.trim())
 
-      toast({ content: 'Если аккаунт найден, письмо для восстановления отправлено.', type: 'success' })
+      toast({ content: $t('site.authModal.resetSuccess'), type: 'success' })
       onBack()
     } catch (error) {
       pushError({
-        message: (error as Error)?.message ?? 'Не удалось отправить письмо',
+        message: (error as Error)?.message ?? $t('site.authModal.resetError'),
         scope: $page.route.id!,
       })
     }

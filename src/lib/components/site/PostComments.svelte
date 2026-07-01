@@ -3,6 +3,7 @@
   import { browser } from '$app/environment'
   import { buildPostCommentsUrl } from '$lib/api/backend'
   import { siteToken, siteUser } from '$lib/siteAuth'
+  import { locale, t } from '$lib/translations'
   import SiteCommentForm from '$lib/components/site/comments/SiteCommentForm.svelte'
   import SiteCommentItem from '$lib/components/site/comments/SiteCommentItem.svelte'
   import type { SiteComment, SiteCommentMask, SiteCommentNode } from '$lib/components/site/comments/types'
@@ -10,6 +11,7 @@
   export let postId: number
   export let postAuthor: string | null = null
   export let commentsUrl: string | null = null
+  export let language: string | null = null
 
   const dispatch = createEventDispatcher<{ comment: SiteComment }>()
   let comments: SiteComment[] = []
@@ -20,6 +22,10 @@
   let lastToken: string | null = null
   let lastPostId = postId
   let lastCommentsUrl = commentsUrl
+  let lastLanguage = ''
+  let mounted = false
+
+  $: effectiveCommentsLanguage = language || $locale || 'ru'
 
   const buildTree = (items: SiteComment[]): SiteCommentNode[] => {
     const nodes = new Map<number, SiteCommentNode>()
@@ -54,7 +60,7 @@
     loading = true
     error = ''
     try {
-      const response = await fetch(commentsUrl || buildPostCommentsUrl(postId), {
+      const response = await fetch(commentsUrl || buildPostCommentsUrl(postId, effectiveCommentsLanguage), {
         headers: $siteToken
           ? {
               Authorization: `Bearer ${$siteToken}`,
@@ -62,7 +68,7 @@
           : undefined,
       })
       if (!response.ok) {
-        throw new Error('Не удалось загрузить комментарии')
+        throw new Error($t('site.comments.errors.load'))
       }
       const data = await response.json()
       comments = normalizeList((data.comments ?? []) as SiteComment[])
@@ -72,7 +78,7 @@
           : []
       rebuildTree()
     } catch (err) {
-      error = (err as Error)?.message ?? 'Ошибка загрузки'
+      error = (err as Error)?.message ?? $t('site.comments.errors.loadFallback')
     }
     loading = false
   }
@@ -96,6 +102,8 @@
   }
 
   onMount(() => {
+    mounted = true
+    lastLanguage = effectiveCommentsLanguage
     loadComments()
   })
 
@@ -113,11 +121,16 @@
     lastCommentsUrl = commentsUrl
     loadComments()
   }
+
+  $: if (mounted && effectiveCommentsLanguage !== lastLanguage) {
+    lastLanguage = effectiveCommentsLanguage
+    loadComments()
+  }
 </script>
 
 <section id="comments" class="mt-10">
   <div class="flex items-center justify-between mb-5">
-    <h2 class="text-xl font-semibold">Комментарии</h2>
+    <h2 class="text-xl font-semibold">{$t('site.comments.title')}</h2>
     <span class="text-sm text-slate-500">{comments.filter((c) => !c.is_deleted).length}</span>
   </div>
 
@@ -126,9 +139,9 @@
   {/if}
 
   {#if loading}
-    <p class="text-sm text-slate-500">Загрузка...</p>
+    <p class="text-sm text-slate-500">{$t('site.comments.loading')}</p>
   {:else if comments.length === 0}
-    <p class="text-sm text-slate-500">Комментариев пока нет.</p>
+    <p class="text-sm text-slate-500">{$t('site.comments.empty')}</p>
   {:else}
     <ul class="flex flex-col gap-4">
       {#each commentTree as node (node.comment.id)}
@@ -149,7 +162,7 @@
   <div class="mt-8">
     {#if !$siteUser}
       <p class="text-sm text-slate-500 dark:text-zinc-400 mb-4">
-        Войдите, чтобы участвовать в обсуждении.
+        {$t('site.comments.loginPrompt')}
       </p>
     {/if}
 
@@ -157,7 +170,7 @@
       {postId}
       {commentMasks}
       submitUrl={commentsUrl}
-      placeholder="Поделитесь мнением..."
+      placeholder={$t('site.comments.placeholder')}
       on:comment={(event) => upsertComment(event.detail)}
     />
   </div>

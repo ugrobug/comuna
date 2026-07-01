@@ -30,6 +30,7 @@ class UserFeedSettings(models.Model):
     hidden_authors = models.JSONField(default=list, blank=True)
     my_feed_hide_negative = models.BooleanField(default=True)
     tag_rules = models.JSONField(default=default_feed_tag_rules, blank=True)
+    interface_language = models.CharField(max_length=8, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

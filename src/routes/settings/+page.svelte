@@ -3,6 +3,7 @@
   import NotificationSettingsPanel from '$lib/components/notifications/NotificationSettingsPanel.svelte'
   import { subscribeToComunBySlug } from '$lib/settings'
   import { defaultSettings, userSettings } from '$lib/settings'
+  import { interfaceLanguageOptions } from '$lib/interfaceLanguages'
   import Setting from './Setting.svelte'
   import { toast, Modal, TextArea, TextInput } from 'mono-svelte'
   import SiteProfileSettingsSection from '$lib/components/users/SiteProfileSettingsSection.svelte'
@@ -18,7 +19,7 @@
   import { Button, Select } from 'mono-svelte'
   import Section from './Section.svelte'
   import ToggleSetting from './ToggleSetting.svelte'
-  import { t } from '$lib/translations'
+  import { loadTranslations, t } from '$lib/translations'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import { profile } from '$lib/auth'
   import {
@@ -37,6 +38,7 @@
   } from '$lib/siteAuth'
   import { onMount } from 'svelte'
   import { colorScheme, inDarkColorScheme } from '$lib/ui/colors'
+  import { isPostLanguageCode, type PostLanguageCode } from '$lib/postLanguages'
   let importing = false
   let importText = ''
   let manualBlacklistTag = ''
@@ -54,10 +56,33 @@
   let channelVerificationCodeLoading = false
   let channelVerificationCodeError = ''
   let creatingComunByAuthorId: number | null = null
+  let selectedInterfaceLanguage = $userSettings.language ?? 'ru'
+  let syncedInterfaceLanguage = selectedInterfaceLanguage
   $: hiddenAuthors = $userSettings.hiddenAuthors ?? []
   $: blacklistedTags = Object.entries($userSettings.tagRules ?? {})
     .filter(([, rule]) => rule === 'hide')
     .map(([tag]) => tag)
+  $: {
+    const storedLanguage = $userSettings.language ?? 'ru'
+    if (storedLanguage !== syncedInterfaceLanguage) {
+      selectedInterfaceLanguage = storedLanguage
+      syncedInterfaceLanguage = storedLanguage
+    }
+  }
+
+  const changeInterfaceLanguage = async () => {
+    const language: PostLanguageCode = isPostLanguageCode(selectedInterfaceLanguage)
+      ? selectedInterfaceLanguage
+      : 'ru'
+
+    syncedInterfaceLanguage = language
+    selectedInterfaceLanguage = language
+    await loadTranslations(language)
+    userSettings.update((settings) => ({
+      ...settings,
+      language,
+    }))
+  }
 
   const removeBlacklistedTag = (tag: string) => {
     const nextRules = { ...($userSettings.tagRules ?? {}) }
@@ -153,7 +178,7 @@
     try {
       const uploadedUrl = await uploadSiteImage(file)
       siteProfileAvatarUrl = uploadedUrl
-      toast({ content: 'Аватар загружен. Нажмите «Сохранить»', type: 'success' })
+      toast({ content: $t('settings.siteProfile.avatarUploaded'), type: 'success' })
     } catch (error) {
       toast({
         content: (error as Error)?.message ?? 'Не удалось загрузить аватар',
@@ -166,7 +191,7 @@
 
   const saveSiteProfileSettings = async () => {
     if (!$siteUser) {
-      toast({ content: 'Нужна авторизация', type: 'error' })
+      toast({ content: $t('settings.siteProfile.authRequired'), type: 'error' })
       return
     }
     siteProfileSaving = true
@@ -178,13 +203,13 @@
       })
       toast({
         content: result.emailVerificationSent
-          ? 'Профиль обновлен. Проверьте почту и подтвердите email.'
-          : 'Профиль Тамбур обновлен',
+          ? $t('settings.siteProfile.updatedVerifyEmail')
+          : $t('settings.siteProfile.updated'),
         type: 'success',
       })
     } catch (error) {
       toast({
-        content: (error as Error)?.message ?? 'Не удалось обновить профиль',
+        content: (error as Error)?.message ?? $t('settings.siteProfile.updateFailed'),
         type: 'error',
       })
     } finally {
@@ -212,7 +237,7 @@
     try {
       await deleteSiteAccount()
       deleteProfileModalOpen = false
-      toast({ content: 'Профиль удален', type: 'success' })
+      toast({ content: $t('settings.siteProfile.deleted'), type: 'success' })
       await goto('/')
     } catch (error) {
       toast({
@@ -489,6 +514,17 @@
       <Select bind:value={$colorScheme}>
         <option value="light">Светлая</option>
         <option value="dark">Темная</option>
+      </Select>
+    </Setting>
+    <Setting>
+      <span slot="title">{$t('settings.app.lang.title')}</span>
+      <span slot="description">{$t('settings.app.lang.description')}</span>
+      <Select bind:value={selectedInterfaceLanguage} on:change={changeInterfaceLanguage}>
+        {#each interfaceLanguageOptions as language (language.code)}
+          <option value={language.code}>
+            {language.flag} {$t(`site.language.names.${language.code}`)}
+          </option>
+        {/each}
       </Select>
     </Setting>
     <Setting>

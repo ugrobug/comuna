@@ -8,6 +8,7 @@
     feedSettingsHydrationState,
     userSettings,
   } from '$lib/settings'
+  import { t } from '$lib/translations'
 
   export let posts: BackendPost[] = []
   export let loadingMore = false
@@ -50,7 +51,7 @@
 <div class="flex flex-col gap-4">
   <div class="flex items-center justify-between gap-3">
     <h1 class="text-2xl font-semibold text-slate-900 dark:text-zinc-100">
-      Моя лента
+      {$t('site.sidebar.myFeedSection.title')}
     </h1>
   </div>
 
@@ -58,22 +59,22 @@
     <RecommendedComunsPanel
       selectedSlugs={selectedMyFeedComuns}
       recommendedSlugs={defaultRecommendedComunSlugs}
-      title="Ваша лента пока не настроена"
-      description="Подпишитесь на сообщества или авторов, чтобы видеть их публикации здесь."
+      title={$t('site.sidebar.myFeedSection.setupTitle')}
+      description={$t('site.sidebar.myFeedSection.setupDescription')}
     />
   {:else}
     {#if !$feedSettingsHydrated && $feedSettingsHydrationState !== 'error'}
-      <div class="text-base text-slate-500 dark:text-zinc-400">Загружаем мою ленту...</div>
+      <div class="text-base text-slate-500 dark:text-zinc-400">{$t('site.sidebar.myFeedSection.loadingSettings')}</div>
     {:else if $feedSettingsHydrationState === 'error'}
       <div class="text-base text-rose-600 dark:text-rose-300">
-        Не удалось загрузить настройки ленты. Обновите страницу или попробуйте позже.
+        {$t('site.sidebar.myFeedSection.settingsError')}
       </div>
     {:else if !myFeedHasBaseSettings}
       <RecommendedComunsPanel
         selectedSlugs={selectedMyFeedComuns}
         recommendedSlugs={defaultRecommendedComunSlugs}
-        title="Ваша лента пока не настроена"
-        description="Подпишитесь на сообщества или авторов, чтобы видеть их публикации здесь."
+        title={$t('site.sidebar.myFeedSection.setupTitle')}
+        description={$t('site.sidebar.myFeedSection.setupDescription')}
       />
     {/if}
 
@@ -81,16 +82,16 @@
       {#if filteredPosts.length}
         <FeedPostsList posts={filteredPosts} {loadingMore} />
       {:else if loadingMore}
-        <div class="text-base text-slate-500 dark:text-zinc-400">Загружаем публикации...</div>
+        <div class="text-base text-slate-500 dark:text-zinc-400">{$t('site.sidebar.myFeedSection.loadingPosts')}</div>
       {:else if shouldShowRecommendations}
         <RecommendedComunsPanel
           selectedSlugs={selectedMyFeedComuns}
           recommendedSlugs={defaultRecommendedComunSlugs}
-          title="Пока нет постов в выбранных подписках"
-          description="Подпишитесь на новые сообщества, чтобы видеть больше постов."
+          title={$t('site.sidebar.myFeedSection.emptyTitle')}
+          description={$t('site.sidebar.myFeedSection.emptyDescription')}
         />
       {:else}
-        <div class="text-base text-slate-500">Пока нет публикаций.</div>
+        <div class="text-base text-slate-500">{$t('site.sidebar.myFeedSection.noPublications')}</div>
       {/if}
     {/if}
   {/if}

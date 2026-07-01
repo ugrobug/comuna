@@ -10,6 +10,7 @@
     type BackendComunCategory,
     type BackendPost,
   } from '$lib/api/backend'
+  import { t } from '$lib/translations'
 
   export let posts: BackendPost[] = []
   export let loadingMore = false
@@ -49,7 +50,7 @@
         userUrlOverride={backendPost.author?.username ? `/${backendPost.author.username}` : undefined}
         communityUrlOverride={backendPostCommunityPath(backendPost)}
         subscribeUrl={backendPost.channel_url ?? backendPost.author?.channel_url}
-        subscribeLabel="Подписаться"
+        subscribeLabel={$t('site.sidebar.recommended.subscribe')}
         hideSubscribe={isSpecialProjectPost(backendPost)}
         {comunCategories}
         {currentWelcomePostId}
@@ -61,6 +62,6 @@
     {/each}
   </div>
   {#if loadingMore}
-    <div class="text-sm text-slate-500">Загрузка...</div>
+    <div class="text-sm text-slate-500">{$t('site.sidebar.myFeedSection.loadingPosts')}</div>
   {/if}
 {/if}

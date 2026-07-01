@@ -11,9 +11,9 @@ export const load = async ({ params, fetch, url }) => {
   const response = await fetch(requestUrl.toString())
   if (!response.ok) {
     if (response.status === 404) {
-      throw error(404, 'Автор не найден')
+      throw error(404, 'site.errors.authorNotFound')
     }
-    throw error(response.status, 'Не удалось загрузить посты')
+    throw error(response.status, 'site.errors.postsLoadFailed')
   }
 
   const data = await response.json()
