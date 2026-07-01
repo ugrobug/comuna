@@ -102,10 +102,18 @@ AUTO_TRANSLATION_DELAYS = {
 }
 
 TRANSLATION_DISABLED_RETRY_DELAY = timedelta(minutes=15)
+POST_TRANSLATION_TITLE_MAX_LENGTH = 255
 
 
 def get_translation_language_label(language: str) -> str:
     return dict(POST_TRANSLATION_LANGUAGE_CHOICES).get(language, language)
+
+
+def _truncate_translation_title(value: str) -> str:
+    title = str(value or "").strip()
+    if len(title) <= POST_TRANSLATION_TITLE_MAX_LENGTH:
+        return title
+    return title[:POST_TRANSLATION_TITLE_MAX_LENGTH].rstrip()
 
 
 def get_content_translation_settings() -> ContentTranslationSettings:
@@ -217,7 +225,7 @@ def translate_post_to_language(post: Post, language: str) -> PostTranslation:
     try:
         response_payload = _request_openrouter_translation(post, target)
         translated_payload = _parse_translated_payload(response_payload)
-        translated_title = str(translated_payload.get("title", "") or "").strip()
+        translated_title = _truncate_translation_title(translated_payload.get("title", ""))
         translated_content = str(translated_payload.get("content", "") or "").strip()
         if (post.title or "").strip() and not translated_title:
             raise PostTranslationError("OpenRouter вернул пустой заголовок")
