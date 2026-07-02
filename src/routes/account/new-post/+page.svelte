@@ -436,7 +436,22 @@
   const submitCreatePostPayload = async (pending: PendingCreatePost) => {
     creating = true
     try {
-      await createComunPost(pending.comunSlug, pending.payload)
+      if (draftId) {
+        try {
+          await updateUserPost(draftId, {
+            ...pending.payload,
+            comun_slug: pending.comunSlug,
+            is_draft: false,
+          })
+        } catch (error) {
+          if (!isMissingDraftError(error)) throw error
+          draftId = null
+          draftShareToken = ''
+          await createComunPost(pending.comunSlug, pending.payload)
+        }
+      } else {
+        await createComunPost(pending.comunSlug, pending.payload)
+      }
       clearLocalDraftBuffer()
       draftId = null
       draftShareToken = ''

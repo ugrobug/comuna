@@ -774,7 +774,17 @@ export type BackendAuthor = {
   description?: string | null
   subscribers_count?: number
   posts_count?: number
+  site_user_id?: number | null
   notify_comments_enabled?: boolean
+}
+
+export const backendAuthorPath = (author: BackendAuthor | null | undefined): string | undefined => {
+  const siteUserId = Number(author?.site_user_id ?? 0)
+  if (Number.isFinite(siteUserId) && siteUserId > 0) {
+    return `/id${siteUserId}`
+  }
+  const username = String(author?.username ?? '').trim()
+  return username ? `/${username}` : undefined
 }
 
 export type BackendTag = {

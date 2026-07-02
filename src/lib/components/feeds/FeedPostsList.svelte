@@ -4,6 +4,7 @@
   import { feedKeyboardShortcuts } from '$lib/actions/feedKeyboardShortcuts'
   import {
     backendPostCommunityPath,
+    backendAuthorPath,
     backendPostToPostView,
     buildBackendPostPath,
     isSpecialProjectPost,
@@ -47,7 +48,7 @@
         {hideCommunity}
         {hideTitle}
         linkOverride={buildBackendPostPath(backendPost)}
-        userUrlOverride={backendPost.author?.username ? `/${backendPost.author.username}` : undefined}
+        userUrlOverride={backendAuthorPath(backendPost.author)}
         communityUrlOverride={backendPostCommunityPath(backendPost)}
         subscribeUrl={backendPost.channel_url ?? backendPost.author?.channel_url}
         subscribeLabel={$t('site.sidebar.recommended.subscribe')}

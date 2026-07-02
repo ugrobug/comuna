@@ -1385,8 +1385,12 @@ def _comun_source_filter(comun: Comun) -> Q | None:
     combined_filter = Q()
     has_source = False
 
-    telegram_source_author_id = getattr(comun, "telegram_source_author_id", None)
-    if telegram_source_author_id:
+    telegram_source_author = getattr(comun, "telegram_source_author", None)
+    telegram_source_author_id = getattr(telegram_source_author, "id", None)
+    if telegram_source_author_id and (
+        getattr(telegram_source_author, "channel_url", "")
+        or getattr(telegram_source_author, "channel_id", None) is not None
+    ):
         combined_filter |= Q(author_id=telegram_source_author_id)
         has_source = True
 

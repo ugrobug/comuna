@@ -6,6 +6,7 @@
   import Post from '$lib/components/lemmy/post/Post.svelte'
   import PostComments from '$lib/components/site/PostComments.svelte'
   import {
+    backendAuthorPath,
     backendPostCommunityPath,
     backendPostToPostView,
     buildBackendPostPath,
@@ -429,7 +430,7 @@
         showReadMore={false}
         showFullBody={true}
         linkOverride={canonicalPath}
-        userUrlOverride={postData.author?.username ? `/${postData.author.username}` : undefined}
+        userUrlOverride={backendAuthorPath(postData.author)}
         communityUrlOverride={backendPostCommunityPath(postData)}
         subscribeUrl={postData.channel_url ?? postData.author?.channel_url}
         subscribeLabel={$t('site.post.subscribe')}

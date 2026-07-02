@@ -919,12 +919,36 @@ def _comun_logo_url(request: HttpRequest | None, comun: Comun | None) -> str | N
     return None
 
 
+def _author_is_telegram_channel_source(author: Author | None) -> bool:
+    if not author:
+        return False
+    return bool(
+        getattr(author, "channel_url", "")
+        or getattr(author, "invite_url", "")
+        or getattr(author, "channel_id", None) is not None
+    )
+
+
+def _post_author_is_telegram_channel_source(post: Post | None) -> bool:
+    if not post or not getattr(post, "author_id", None):
+        return False
+    author = getattr(post, "author", None)
+    if author is None:
+        author = (
+            Author.objects.only("id", "channel_url", "invite_url", "channel_id")
+            .filter(id=post.author_id)
+            .first()
+        )
+    return _author_is_telegram_channel_source(author)
+
+
 def _comun_source_filter(comun: Comun) -> Q | None:
     combined_filter = Q()
     has_source = False
 
-    telegram_source_author_id = getattr(comun, "telegram_source_author_id", None)
-    if telegram_source_author_id:
+    telegram_source_author = getattr(comun, "telegram_source_author", None)
+    telegram_source_author_id = getattr(telegram_source_author, "id", None)
+    if telegram_source_author_id and _author_is_telegram_channel_source(telegram_source_author):
         combined_filter |= Q(author_id=telegram_source_author_id)
         has_source = True
 
@@ -943,7 +967,6 @@ def _telegram_channel_author_filter() -> Q:
         Q(author__channel_id__isnull=False)
         | Q(author__channel_url__gt="")
         | Q(author__invite_url__gt="")
-        | Q(author__telegram_source_comun__isnull=False)
     )
 
 
@@ -1410,7 +1433,7 @@ def _candidate_comun_ids_for_post(post: Post | None) -> list[int]:
     if comun_slug:
         combined_filter |= Q(slug=comun_slug)
         has_filter = True
-    if getattr(post, "author_id", None):
+    if getattr(post, "author_id", None) and _post_author_is_telegram_channel_source(post):
         combined_filter |= Q(telegram_source_author_id=post.author_id)
         has_filter = True
 

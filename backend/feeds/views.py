@@ -345,6 +345,33 @@ def _author_admin_fields_for_user(
         return {}
     return {"notify_comments_enabled": bool(author.notify_comments)}
 
+
+def _serialize_post_author(
+    request: HttpRequest | None,
+    user: User | None,
+    author: Author,
+    *,
+    channel_url: str | None,
+    title: str,
+    include_details: bool = False,
+) -> dict:
+    site_user = _site_user_for_personal_author(request, author)
+    site_user_id = int(site_user.id) if site_user else _site_user_id_for_author(author)
+    payload = {
+        "username": author.username,
+        "title": title,
+        "channel_url": channel_url,
+        "avatar_url": _author_avatar_for_display(request, author),
+        **_author_admin_fields_for_user(user, author),
+    }
+    if site_user_id:
+        payload["site_user_id"] = site_user_id
+    if include_details:
+        payload["description"] = author.description
+        payload["subscribers_count"] = author.subscribers_count
+    return payload
+
+
 def _site_user_id_for_author(author: Author | None) -> int | None:
     if not author:
         return None
@@ -3244,15 +3271,14 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
                 "views_count": _post_total_views(post, now),
                 "tags": _serialize_tags(post.tags.all()),
                 "is_favorite": post.id in favorite_post_ids,
-                "author": {
-                    "username": author.username,
-                    "title": author_title,
-                    "channel_url": author_channel_url,
-                    "avatar_url": _author_avatar_for_display(request, author),
-                    "description": author.description,
-                    "subscribers_count": author.subscribers_count,
-                    **_author_admin_fields_for_user(current_user, author),
-                },
+                "author": _serialize_post_author(
+                    request,
+                    current_user,
+                    author,
+                    channel_url=author_channel_url,
+                    title=author_title,
+                    include_details=True,
+                ),
             }
         )
 
@@ -3434,13 +3460,13 @@ def tag_posts(request: HttpRequest, tag: str) -> HttpResponse:
                 "views_count": _post_total_views(post, now),
                 "tags": _serialize_tags(post.tags.all()),
                 "is_favorite": post.id in favorite_post_ids,
-                "author": {
-                    "username": post.author.username,
-                    "title": author_title,
-                    "channel_url": author_channel_url,
-                    "avatar_url": _author_avatar_for_display(request, post.author),
-                    **_author_admin_fields_for_user(current_user, post.author),
-                },
+                "author": _serialize_post_author(
+                    request,
+                    current_user,
+                    post.author,
+                    channel_url=author_channel_url,
+                    title=author_title,
+                ),
             }
         )
 
@@ -3561,13 +3587,13 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
                     if current_user
                     else False
                 ),
-                "author": {
-                    "username": post.author.username,
-                    "title": author_title,
-                    "channel_url": author_channel_url,
-                    "avatar_url": _author_avatar_for_display(request, post.author),
-                    **_author_admin_fields_for_user(current_user, post.author),
-                },
+                "author": _serialize_post_author(
+                    request,
+                    current_user,
+                    post.author,
+                    channel_url=author_channel_url,
+                    title=author_title,
+                ),
             },
         }
     )
@@ -3870,13 +3896,13 @@ def favorites_feed(request: HttpRequest) -> HttpResponse:
                 "source_url": post.source_url,
                 "channel_url": author_channel_url,
                 "created_at": post.created_at.isoformat(),
-                "author": {
-                    "username": post.author.username,
-                    "title": author_title,
-                    "channel_url": author_channel_url,
-                    "avatar_url": _author_avatar_for_display(request, post.author),
-                    **_author_admin_fields_for_user(user, post.author),
-                },
+                "author": _serialize_post_author(
+                    request,
+                    user,
+                    post.author,
+                    channel_url=author_channel_url,
+                    title=author_title,
+                ),
                 "tags": _serialize_tags(post.tags.all()),
                 "is_favorite": post.id in favorite_post_ids,
                 "score": _post_rating_score(post),
@@ -3921,13 +3947,13 @@ def _serialize_backend_post_card(
         "source_url": post.source_url,
         "channel_url": author_channel_url,
         "created_at": post.created_at.isoformat(),
-        "author": {
-            "username": post.author.username,
-            "title": author_title,
-            "channel_url": author_channel_url,
-            "avatar_url": _author_avatar_for_display(request, post.author),
-            **_author_admin_fields_for_user(current_user, post.author),
-        },
+        "author": _serialize_post_author(
+            request,
+            current_user,
+            post.author,
+            channel_url=author_channel_url,
+            title=author_title,
+        ),
         "tags": _serialize_tags(post.tags.all()),
         "is_favorite": is_favorite,
         "score": _post_rating_score(post, author_rating=author_rating),
@@ -3970,13 +3996,13 @@ def _serialize_lightweight_post_card(
         "source_url": post.source_url,
         "channel_url": author_channel_url,
         "created_at": post.created_at.isoformat(),
-        "author": {
-            "username": post.author.username,
-            "title": author_title,
-            "channel_url": author_channel_url,
-            "avatar_url": _author_avatar_for_display(request, post.author),
-            **_author_admin_fields_for_user(current_user, post.author),
-        },
+        "author": _serialize_post_author(
+            request,
+            current_user,
+            post.author,
+            channel_url=author_channel_url,
+            title=author_title,
+        ),
         "tags": _serialize_tags(post.tags.all()),
         "is_favorite": is_favorite,
         "score": score_override if score_override is not None else _post_rating_score(post, author_rating=author_rating),
@@ -4256,15 +4282,14 @@ def search_content(request: HttpRequest) -> HttpResponse:
                     "views_count": _post_total_views(post, now),
                     "tags": _serialize_tags(post.tags.all()),
                     "is_favorite": post.id in favorite_post_ids,
-                    "author": {
-                        "username": post.author.username,
-                        "title": author_title,
-                        "channel_url": author_channel_url,
-                        "avatar_url": _author_avatar_for_display(request, post.author),
-                        "description": post.author.description,
-                        "subscribers_count": post.author.subscribers_count,
-                        **_author_admin_fields_for_user(current_user, post.author),
-                    },
+                    "author": _serialize_post_author(
+                        request,
+                        current_user,
+                        post.author,
+                        channel_url=author_channel_url,
+                        title=author_title,
+                        include_details=True,
+                    ),
                 }
             )
 
