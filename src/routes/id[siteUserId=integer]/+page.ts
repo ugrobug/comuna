@@ -15,7 +15,7 @@ export const load = async ({ params, fetch, url }) => {
     if (response.status === 404) {
       throw error(404, 'site.errors.userNotFound')
     }
-    throw error(response.status, 'Не удалось загрузить профиль пользователя')
+    throw error(response.status, 'site.publicUser.profileLoadFailed')
   }
 
   const payload = await response.json()

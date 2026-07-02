@@ -175,6 +175,11 @@
                 "label": "Delete account",
                 "deleteContent": "Delete content",
                 "warning": "This will delete ALL of your submissions."
+            },
+            "validation": {
+                "displayNameMaxLength": "Nama tampilan tidak boleh melebihi",
+                "displayNameTooLong": "Nama terlalu panjang. Gunakan nama yang lebih pendek",
+                "displayNamePattern": "Nama tampilan hanya boleh berisi huruf, angka, spasi, tanda hubung, dan garis bawah"
             }
         },
         "email": "Email",
@@ -599,7 +604,8 @@
         "add": "Add",
         "cancel": "Cancel",
         "send": "Send",
-        "general": "General"
+        "general": "General",
+        "optional": "Opsional"
     },
     "message": {
         "success": "Success",
@@ -799,6 +805,22 @@
             "reverseActions": {
                 "title": "Reverse action row",
                 "description": "Reverses the order of actions on posts and comments."
+            },
+            "theme": {
+                "title": "Tema gelap/terang",
+                "description": "Pilih tema terang atau gelap.",
+                "light": "Terang",
+                "dark": "Gelap"
+            },
+            "homeFeed": {
+                "title": "Halaman utama",
+                "description": "Pilih feed yang dibuka saat masuk ke situs.",
+                "hot": "Populer",
+                "mine": "Feed saya"
+            },
+            "hideReadPosts": {
+                "title": "Sembunyikan posting yang sudah dibaca",
+                "description": "Jika Anda sudah membuka posting, posting itu tidak akan muncul lagi di Populer atau Feed saya."
             }
         },
         "embeds": {
@@ -881,7 +903,88 @@
             "updatedVerifyEmail": "Profil diperbarui. Periksa email Anda dan konfirmasi.",
             "updated": "Profil Tambur diperbarui",
             "updateFailed": "Gagal memperbarui profil",
-            "deleted": "Profil dihapus"
+            "deleted": "Profil dihapus",
+            "title": "Profil Tambur",
+            "avatarUploadFailed": "Gagal mengunggah avatar",
+            "delete": "Hapus profil",
+            "deleteTitle": "Hapus profil",
+            "deleteWarning": "Saya mengonfirmasi penghapusan permanen semua data pribadi dan akun. Saya memahami bahwa posting, komunitas, dan komentar yang tidak dihapus akan tetap ada di situs tanpa terhubung ke pengguna.",
+            "deleteConfirm": "Saya mengerti dan mengonfirmasi.",
+            "deleting": "Menghapus...",
+            "deleteFailed": "Gagal menghapus profil",
+            "description": "Profil ini ditampilkan di komentar situs dan di halaman pengguna.",
+            "avatarAlt": "Avatar profil",
+            "displayNameLabel": "Nama tampilan di situs",
+            "displayNamePlaceholderPrefix": "Contoh:",
+            "emailVerifyPending": "Email harus diverifikasi. Setelah disimpan, kami akan mengirim tautan aktivasi.",
+            "emailVerified": "Email terverifikasi.",
+            "replaceAvatar": "Ganti avatar",
+            "uploadAvatar": "Unggah avatar",
+            "clearAvatar": "Hapus avatar",
+            "loading": "Memuat...",
+            "saving": "Menyimpan...",
+            "save": "Simpan",
+            "loginImmutablePrefix": "Login",
+            "loginImmutableSuffix": "tidak dapat diubah dan digunakan untuk masuk.",
+            "linkedAccounts": "Metode masuk tertaut",
+            "telegramLinked": "Telegram tertaut",
+            "vkLinked": "VK tertaut",
+            "linkTelegram": "Tautkan Telegram",
+            "linkTelegramHelper": "Tautkan Telegram ke profil saat ini",
+            "linkVk": "Tautkan VK",
+            "linkVkHelper": "Tautkan VK ke profil saat ini"
+        },
+        "notifications": {
+            "title": "Notifikasi"
+        },
+        "telegramChannels": {
+            "title": "Tautan kanal Telegram",
+            "createFailed": "Gagal membuat komunitas",
+            "created": "Komunitas dibuat",
+            "exists": "Komunitas sudah ada",
+            "codeFailed": "Gagal mendapatkan kode",
+            "adminConfirmTitle": "Konfirmasi admin kanal",
+            "adminConfirmDescription": "Dapatkan kode dan kirim ke bot. Bot akan mengonfirmasi bahwa Anda admin kanal.",
+            "getCode": "Dapatkan kode",
+            "sendCodeToBot": "Kirim kode ke bot Telegram -",
+            "confirmedTitle": "Kanal terkonfirmasi Anda",
+            "mode": "Mode",
+            "modeReview": "Peninjauan",
+            "modeAuto": "Publikasi otomatis",
+            "delay": "Jeda",
+            "delayDaysSuffix": "hari",
+            "noDelay": "tanpa jeda",
+            "comments": "Komentar",
+            "commentsNotify": "beri tahu",
+            "commentsSilent": "jangan beri tahu",
+            "rating": "Rating",
+            "inviteLink": "Tautan undangan",
+            "openCommunity": "Buka komunitas",
+            "communitySettings": "Pengaturan komunitas",
+            "createFromChannel": "Buat komunitas dari kanal",
+            "emptyConfirmed": "Belum ada kanal terkonfirmasi."
+        },
+        "myFeed": {
+            "title": "Feed saya",
+            "clearList": "Bersihkan daftar",
+            "hiddenAuthors": {
+                "title": "Penulis tersembunyi",
+                "description": "Posting dari penulis ini tidak ditampilkan di feed.",
+                "remove": "Hapus penulis tersembunyi:",
+                "empty": "Belum ada penulis tersembunyi."
+            },
+            "hideNegative": {
+                "title": "Jangan tampilkan posting dengan rating negatif",
+                "description": "Di Feed saya, sembunyikan publikasi dengan rating di bawah nol."
+            },
+            "blacklistedTags": {
+                "title": "Daftar hitam tag",
+                "description": "Posting dengan tag ini disembunyikan dari semua feed.",
+                "addLabel": "Tambahkan tag manual",
+                "placeholder": "Misalnya: yoga",
+                "remove": "Hapus tag dari daftar hitam:",
+                "empty": "Daftar hitam kosong."
+            }
         }
     },
     "error": {
@@ -1512,6 +1615,49 @@
             "defaultDescription": "Kami menerbitkan postingan terbaik dari kanal Telegram.",
             "homeTitle": "Postingan terbaru dan paling banyak dibahas dari kanal Telegram terbaik",
             "homeDescription": "Kami menerbitkan postingan terbaik dari kanal Telegram."
+        },
+        "publicUser": {
+            "user": "Pengguna",
+            "deletedUser": "Pengguna dihapus",
+            "deletedDescriptionPrefix": "Profil pengguna yang dihapus di",
+            "descriptionPrefix": "Profil pengguna",
+            "descriptionMiddle": "di",
+            "descriptionSuffix": "postingan dan komunitas.",
+            "genericDescriptionPrefix": "Profil pengguna di",
+            "posts": "Postingan",
+            "drafts": "Draf",
+            "channels": "Kanal",
+            "communities": "Komunitas",
+            "postsCount": "postingan",
+            "communitiesCount": "komunitas",
+            "channelsCount": "kanal",
+            "message": "Kirim pesan",
+            "opening": "Membuka...",
+            "roleCreator": "pembuat",
+            "roleSubscriber": "berlangganan",
+            "roleModerator": "moderator",
+            "emptyCommunities": "Belum ada komunitas.",
+            "emptyPosts": "Belum ada postingan.",
+            "emptyDrafts": "Belum ada draf.",
+            "loadingDrafts": "Memuat draf...",
+            "untitledDraft": "Tanpa judul",
+            "updated": "Diperbarui",
+            "editDraft": "Edit draf",
+            "deleteDraft": "Hapus draf",
+            "deleteDraftConfirm": "Hapus draf?",
+            "loadDraftsFailed": "Gagal memuat draf",
+            "deleteDraftFailed": "Gagal menghapus draf",
+            "openChatFailed": "Gagal membuka chat",
+            "profileLoadFailed": "Gagal memuat profil pengguna"
+        },
+        "authorProfile": {
+            "descriptionPrefix": "Postingan dan materi dari kanal Telegram",
+            "subscribers": "pelanggan",
+            "postsCount": "postingan",
+            "rating": "Rating",
+            "postsTitle": "Postingan",
+            "emptyPosts": "Belum ada postingan.",
+            "redirecting": "Mengalihkan..."
         }
     }
 }

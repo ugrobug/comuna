@@ -173,7 +173,12 @@
             },
             "banner": "Обложка",
             "scores": "Показать оценки",
-            "currentPassword": "Текущий пароль"
+            "currentPassword": "Текущий пароль",
+            "validation": {
+                "displayNameMaxLength": "Отображаемое имя не должно превышать",
+                "displayNameTooLong": "Имя слишком длинное. Используйте более короткое имя",
+                "displayNamePattern": "Отображаемое имя может содержать только буквы, цифры, пробелы, дефис и подчеркивание"
+            }
         },
         "email": "Электронная почта",
         "signup": {
@@ -595,7 +600,8 @@
         "cancel": "Отмена",
         "send": "Отправить",
         "general": "Основное",
-        "add": "Добавить"
+        "add": "Добавить",
+        "optional": "Необязательно"
     },
     "message": {
         "success": "Успех",
@@ -796,6 +802,22 @@
             "reverseActions": {
                 "title": "Кнопки под постом",
                 "description": "Меняет порядок кнопок действий в постах и комментариях на обратный."
+            },
+            "theme": {
+                "title": "Темная/светлая тема",
+                "description": "Выберите светлую или темную тему.",
+                "light": "Светлая",
+                "dark": "Темная"
+            },
+            "homeFeed": {
+                "title": "Главная страница",
+                "description": "Выберите, какая лента будет открываться при входе на сайт.",
+                "hot": "Горячее",
+                "mine": "Моя лента"
+            },
+            "hideReadPosts": {
+                "title": "Скрывать прочитанные",
+                "description": "Если вы уже открывали пост, он больше не будет показываться в «Горячем» и «Моей ленте»."
             }
         },
         "title": "Настройки",
@@ -904,7 +926,88 @@
             "updatedVerifyEmail": "Профиль обновлен. Проверьте почту и подтвердите email.",
             "updated": "Профиль Тамбур обновлен",
             "updateFailed": "Не удалось обновить профиль",
-            "deleted": "Профиль удален"
+            "deleted": "Профиль удален",
+            "title": "Профиль Тамбур",
+            "avatarUploadFailed": "Не удалось загрузить аватар",
+            "delete": "Удалить профиль",
+            "deleteTitle": "Удалить профиль",
+            "deleteWarning": "Я подтверждаю удаление всех персональных данных и учетной записи безвозвратно. Понимаю, что все неудаленные посты, сообщества и комментарии остаются на сайте без привязки к пользователю",
+            "deleteConfirm": "Я понимаю и подтверждаю.",
+            "deleting": "Удаляем...",
+            "deleteFailed": "Не удалось удалить профиль",
+            "description": "Это профиль, который отображается на сайте в комментариях и на странице пользователя.",
+            "avatarAlt": "Аватар профиля",
+            "displayNameLabel": "Имя отображаемое на сайте",
+            "displayNamePlaceholderPrefix": "Например:",
+            "emailVerifyPending": "Email нужно подтвердить. После сохранения мы отправим письмо с активационной ссылкой.",
+            "emailVerified": "Email подтвержден.",
+            "replaceAvatar": "Заменить аватарку",
+            "uploadAvatar": "Загрузить аватарку",
+            "clearAvatar": "Убрать аватарку",
+            "loading": "Загрузка...",
+            "saving": "Сохраняем...",
+            "save": "Сохранить",
+            "loginImmutablePrefix": "Логин",
+            "loginImmutableSuffix": "не меняется и используется для входа.",
+            "linkedAccounts": "Связанные способы входа",
+            "telegramLinked": "Telegram привязан",
+            "vkLinked": "VK привязан",
+            "linkTelegram": "Связать с Telegram",
+            "linkTelegramHelper": "Привязать Telegram к текущему профилю",
+            "linkVk": "Связать с VK",
+            "linkVkHelper": "Привязать VK к текущему профилю"
+        },
+        "notifications": {
+            "title": "Оповещения"
+        },
+        "telegramChannels": {
+            "title": "Привязка Telegram-каналов",
+            "createFailed": "Не удалось создать сообщество",
+            "created": "Сообщество создано",
+            "exists": "Сообщество уже существует",
+            "codeFailed": "Не удалось получить код",
+            "adminConfirmTitle": "Подтверждение админа канала",
+            "adminConfirmDescription": "Получите код и отправьте его в бота. Бот подтвердит, что вы администратор канала.",
+            "getCode": "Получить код",
+            "sendCodeToBot": "Отправьте код боту в Telegram -",
+            "confirmedTitle": "Ваши подтвержденные каналы",
+            "mode": "Режим",
+            "modeReview": "Согласование",
+            "modeAuto": "Автопубликация",
+            "delay": "Задержка",
+            "delayDaysSuffix": "дн.",
+            "noDelay": "без задержки",
+            "comments": "Комментарии",
+            "commentsNotify": "оповещать",
+            "commentsSilent": "не оповещать",
+            "rating": "Рейтинг",
+            "inviteLink": "Ссылка приглашения",
+            "openCommunity": "Открыть сообщество",
+            "communitySettings": "Настройки сообщества",
+            "createFromChannel": "Создать сообщество из канала",
+            "emptyConfirmed": "Пока нет подтвержденных каналов."
+        },
+        "myFeed": {
+            "title": "Моя лента",
+            "clearList": "Очистить список",
+            "hiddenAuthors": {
+                "title": "Скрытые авторы",
+                "description": "Посты этих авторов не показываются в лентах.",
+                "remove": "Убрать автора из скрытых:",
+                "empty": "Скрытых авторов пока нет."
+            },
+            "hideNegative": {
+                "title": "Не показывать посты с отрицательным рейтингом",
+                "description": "В моей ленте скрывать публикации с рейтингом ниже нуля."
+            },
+            "blacklistedTags": {
+                "title": "Черный список тегов",
+                "description": "Посты с этими тегами скрываются во всех лентах.",
+                "addLabel": "Добавить тег вручную",
+                "placeholder": "Например: йога",
+                "remove": "Удалить тег из черного списка:",
+                "empty": "Черный список пуст."
+            }
         }
     },
     "aria": {
@@ -1529,6 +1632,49 @@
             "defaultDescription": "Публикуем лучшие посты из Telegram-каналов.",
             "homeTitle": "Самые новые и обсуждаемые посты лучших telegram каналов",
             "homeDescription": "Публикуем лучшие посты из Telegram-каналов."
+        },
+        "publicUser": {
+            "user": "Пользователь",
+            "deletedUser": "Удаленный пользователь",
+            "deletedDescriptionPrefix": "Профиль удаленного пользователя на",
+            "descriptionPrefix": "Профиль пользователя",
+            "descriptionMiddle": "на",
+            "descriptionSuffix": "посты и сообщества.",
+            "genericDescriptionPrefix": "Профиль пользователя на",
+            "posts": "Посты",
+            "drafts": "Черновики",
+            "channels": "Каналы",
+            "communities": "Сообщества",
+            "postsCount": "постов",
+            "communitiesCount": "сообществ",
+            "channelsCount": "каналов",
+            "message": "Написать",
+            "opening": "Открываем...",
+            "roleCreator": "создатель",
+            "roleSubscriber": "подписан",
+            "roleModerator": "модератор",
+            "emptyCommunities": "Пока нет сообществ.",
+            "emptyPosts": "Пока нет публикаций.",
+            "emptyDrafts": "Пока нет черновиков.",
+            "loadingDrafts": "Загружаем черновики...",
+            "untitledDraft": "Без заголовка",
+            "updated": "Обновлен",
+            "editDraft": "Редактировать черновик",
+            "deleteDraft": "Удалить черновик",
+            "deleteDraftConfirm": "Удалить черновик?",
+            "loadDraftsFailed": "Не удалось загрузить черновики",
+            "deleteDraftFailed": "Не удалось удалить черновик",
+            "openChatFailed": "Не удалось открыть чат",
+            "profileLoadFailed": "Не удалось загрузить профиль пользователя"
+        },
+        "authorProfile": {
+            "descriptionPrefix": "Посты и материалы из Telegram-канала",
+            "subscribers": "подписчиков",
+            "postsCount": "постов",
+            "rating": "Рейтинг",
+            "postsTitle": "Посты",
+            "emptyPosts": "Пока нет публикаций.",
+            "redirecting": "Перенаправляем..."
         }
     }
 }

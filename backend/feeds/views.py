@@ -743,8 +743,18 @@ def _maybe_notify_author_comment(post: Post, comment: PostComment) -> None:
     telegram_bot._send_bot_message(int(author.admin_chat_id), text)
 
 
-def _site_comment_link(post: Post, comment: PostComment | None = None) -> str:
-    base_path = _post_public_path(post)
+def _site_comment_link(
+    post: Post,
+    comment: PostComment | None = None,
+    *,
+    language: str = ORIGINAL_POST_LANGUAGE,
+    title: str | None = None,
+) -> str:
+    base_path = (
+        _post_public_path(post)
+        if language == ORIGINAL_POST_LANGUAGE
+        else _localized_post_public_path(post, language, title)
+    )
     if comment and getattr(comment, "id", None):
         return f"{base_path}#site-comment-{comment.id}"
     return f"{base_path}#comments"
@@ -2556,6 +2566,8 @@ def _normalize_post_language(value: str | None) -> str | None:
 
 
 def _localized_post_public_path(post: Post, language: str, title: str | None = None) -> str:
+    if _special_project_redirect_path(post):
+        return "/s/book"
     path = build_post_public_path(post.id, title or _post_display_title(post))
     if language == ORIGINAL_POST_LANGUAGE:
         return path
@@ -3176,9 +3188,10 @@ def recent_comments(request: HttpRequest) -> HttpResponse:
         limit = min(max(int(limit_raw), 1), 20)
     except ValueError:
         limit = 5
+    language = _normalize_post_language(request.GET.get("lang")) or ORIGINAL_POST_LANGUAGE
 
     now = timezone.now()
-    comments = (
+    comments = list(
         PostComment.objects.filter(
             is_deleted=False,
             post__is_blocked=False,
@@ -3189,15 +3202,46 @@ def recent_comments(request: HttpRequest) -> HttpResponse:
         .select_related("user", "user__site_profile", "post", "post__author")
         .order_by("-created_at")[:limit]
     )
+    comment_translations = _comment_translations_by_language(comments, language)
+    post_translations: dict[int, PostTranslation] = {}
+    if language != ORIGINAL_POST_LANGUAGE:
+        post_ids = [comment.post_id for comment in comments if comment.post_id]
+        post_translations = {
+            translation.post_id: translation
+            for translation in PostTranslation.objects.filter(
+                post_id__in=post_ids,
+                language=language,
+                status=POST_TRANSLATION_STATUS_TRANSLATED,
+            )
+        }
 
     serialized = [
         {
-            "id": comment.id,
-            "body": comment.body,
-            "created_at": comment.created_at.isoformat(),
-            "user": _serialize_comment_user(comment),
-            "post": {"id": comment.post_id, "title": _post_display_title(comment.post)},
-            "link_url": _site_comment_link(comment.post, comment),
+            **_serialize_site_comment(
+                comment,
+                translation=comment_translations.get(comment.id),
+                language=language,
+            ),
+            "post": {
+                "id": comment.post_id,
+                "title": (
+                    post_translations[comment.post_id].title
+                    if comment.post_id in post_translations
+                    and post_translations[comment.post_id].title
+                    else _post_display_title(comment.post)
+                ),
+            },
+            "link_url": _site_comment_link(
+                comment.post,
+                comment,
+                language=language,
+                title=(
+                    post_translations[comment.post_id].title
+                    if comment.post_id in post_translations
+                    and post_translations[comment.post_id].title
+                    else None
+                ),
+            ),
         }
         for comment in comments
     ]

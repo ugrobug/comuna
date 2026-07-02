@@ -175,6 +175,11 @@
                 "label": "Delete account",
                 "deleteContent": "Delete content",
                 "warning": "This will delete ALL of your submissions."
+            },
+            "validation": {
+                "displayNameMaxLength": "Display name must not exceed",
+                "displayNameTooLong": "Name is too long. Use a shorter name",
+                "displayNamePattern": "Display name may contain only letters, numbers, spaces, hyphens, and underscores"
             }
         },
         "email": "Email",
@@ -599,7 +604,8 @@
         "add": "Add",
         "cancel": "Cancel",
         "send": "Send",
-        "general": "General"
+        "general": "General",
+        "optional": "Optional"
     },
     "message": {
         "success": "Success",
@@ -799,6 +805,22 @@
             "reverseActions": {
                 "title": "Reverse action row",
                 "description": "Reverses the order of actions on posts and comments."
+            },
+            "theme": {
+                "title": "Dark/light theme",
+                "description": "Choose the light or dark theme.",
+                "light": "Light",
+                "dark": "Dark"
+            },
+            "homeFeed": {
+                "title": "Home page",
+                "description": "Choose which feed opens when you enter the site.",
+                "hot": "Hot",
+                "mine": "My feed"
+            },
+            "hideReadPosts": {
+                "title": "Hide read posts",
+                "description": "If you have already opened a post, it will no longer appear in Hot or My feed."
             }
         },
         "embeds": {
@@ -881,7 +903,88 @@
             "updatedVerifyEmail": "Profile updated. Check your email and confirm it.",
             "updated": "Tambur profile updated",
             "updateFailed": "Failed to update profile",
-            "deleted": "Profile deleted"
+            "deleted": "Profile deleted",
+            "title": "Tambur profile",
+            "avatarUploadFailed": "Failed to upload avatar",
+            "delete": "Delete profile",
+            "deleteTitle": "Delete profile",
+            "deleteWarning": "I confirm permanent deletion of all personal data and the account. I understand that undeleted posts, communities, and comments remain on the site without being linked to the user.",
+            "deleteConfirm": "I understand and confirm.",
+            "deleting": "Deleting...",
+            "deleteFailed": "Failed to delete profile",
+            "description": "This profile is shown in site comments and on the user page.",
+            "avatarAlt": "Profile avatar",
+            "displayNameLabel": "Display name on the site",
+            "displayNamePlaceholderPrefix": "For example:",
+            "emailVerifyPending": "Email must be verified. After saving, we will send an activation link.",
+            "emailVerified": "Email verified.",
+            "replaceAvatar": "Replace avatar",
+            "uploadAvatar": "Upload avatar",
+            "clearAvatar": "Remove avatar",
+            "loading": "Loading...",
+            "saving": "Saving...",
+            "save": "Save",
+            "loginImmutablePrefix": "Login",
+            "loginImmutableSuffix": "cannot be changed and is used for sign-in.",
+            "linkedAccounts": "Linked sign-in methods",
+            "telegramLinked": "Telegram linked",
+            "vkLinked": "VK linked",
+            "linkTelegram": "Link Telegram",
+            "linkTelegramHelper": "Link Telegram to the current profile",
+            "linkVk": "Link VK",
+            "linkVkHelper": "Link VK to the current profile"
+        },
+        "notifications": {
+            "title": "Notifications"
+        },
+        "telegramChannels": {
+            "title": "Telegram channel links",
+            "createFailed": "Failed to create community",
+            "created": "Community created",
+            "exists": "Community already exists",
+            "codeFailed": "Failed to get code",
+            "adminConfirmTitle": "Channel admin confirmation",
+            "adminConfirmDescription": "Get a code and send it to the bot. The bot will confirm that you are a channel admin.",
+            "getCode": "Get code",
+            "sendCodeToBot": "Send the code to the Telegram bot -",
+            "confirmedTitle": "Your confirmed channels",
+            "mode": "Mode",
+            "modeReview": "Review",
+            "modeAuto": "Auto publishing",
+            "delay": "Delay",
+            "delayDaysSuffix": "days",
+            "noDelay": "no delay",
+            "comments": "Comments",
+            "commentsNotify": "notify",
+            "commentsSilent": "do not notify",
+            "rating": "Rating",
+            "inviteLink": "Invite link",
+            "openCommunity": "Open community",
+            "communitySettings": "Community settings",
+            "createFromChannel": "Create community from channel",
+            "emptyConfirmed": "No confirmed channels yet."
+        },
+        "myFeed": {
+            "title": "My feed",
+            "clearList": "Clear list",
+            "hiddenAuthors": {
+                "title": "Hidden authors",
+                "description": "Posts from these authors are hidden from feeds.",
+                "remove": "Remove hidden author:",
+                "empty": "No hidden authors yet."
+            },
+            "hideNegative": {
+                "title": "Hide posts with negative rating",
+                "description": "Hide posts with a rating below zero in My feed."
+            },
+            "blacklistedTags": {
+                "title": "Tag blacklist",
+                "description": "Posts with these tags are hidden from all feeds.",
+                "addLabel": "Add tag manually",
+                "placeholder": "For example: yoga",
+                "remove": "Remove tag from blacklist:",
+                "empty": "The blacklist is empty."
+            }
         }
     },
     "error": {
@@ -1512,6 +1615,49 @@
             "defaultDescription": "Publishing the best posts from Telegram channels.",
             "homeTitle": "The newest and most discussed posts from the best Telegram channels",
             "homeDescription": "Publishing the best posts from Telegram channels."
+        },
+        "publicUser": {
+            "user": "User",
+            "deletedUser": "Deleted user",
+            "deletedDescriptionPrefix": "Deleted user profile on",
+            "descriptionPrefix": "User profile",
+            "descriptionMiddle": "on",
+            "descriptionSuffix": "posts and communities.",
+            "genericDescriptionPrefix": "User profile on",
+            "posts": "Posts",
+            "drafts": "Drafts",
+            "channels": "Channels",
+            "communities": "Communities",
+            "postsCount": "posts",
+            "communitiesCount": "communities",
+            "channelsCount": "channels",
+            "message": "Message",
+            "opening": "Opening...",
+            "roleCreator": "creator",
+            "roleSubscriber": "subscribed",
+            "roleModerator": "moderator",
+            "emptyCommunities": "No communities yet.",
+            "emptyPosts": "No posts yet.",
+            "emptyDrafts": "No drafts yet.",
+            "loadingDrafts": "Loading drafts...",
+            "untitledDraft": "Untitled",
+            "updated": "Updated",
+            "editDraft": "Edit draft",
+            "deleteDraft": "Delete draft",
+            "deleteDraftConfirm": "Delete draft?",
+            "loadDraftsFailed": "Failed to load drafts",
+            "deleteDraftFailed": "Failed to delete draft",
+            "openChatFailed": "Failed to open chat",
+            "profileLoadFailed": "Failed to load user profile"
+        },
+        "authorProfile": {
+            "descriptionPrefix": "Posts and materials from Telegram channel",
+            "subscribers": "subscribers",
+            "postsCount": "posts",
+            "rating": "Rating",
+            "postsTitle": "Posts",
+            "emptyPosts": "No posts yet.",
+            "redirecting": "Redirecting..."
         }
     }
 }

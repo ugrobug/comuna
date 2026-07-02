@@ -145,7 +145,12 @@
                 "warning": "Dies wird ALLE deine Beiträge löschen."
             },
             "displayName": "Anzeigename",
-            "scores": "Stände anzeigen"
+            "scores": "Stände anzeigen",
+            "validation": {
+                "displayNameMaxLength": "Der Anzeigename darf nicht länger sein als",
+                "displayNameTooLong": "Der Name ist zu lang. Verwenden Sie einen kürzeren Namen",
+                "displayNamePattern": "Der Anzeigename darf nur Buchstaben, Zahlen, Leerzeichen, Bindestriche und Unterstriche enthalten"
+            }
         },
         "email": "E-Mail",
         "setup": "Einrichten",
@@ -504,7 +509,8 @@
         "disable": "Deaktivieren",
         "add": "Hinzufügen",
         "cancel": "Abbrechen",
-        "send": "Senden"
+        "send": "Senden",
+        "optional": "Optional"
     },
     "content": {
         "all": "Alles",
@@ -587,6 +593,22 @@
             "font": {
                 "title": "Schriftart",
                 "description": "Welche Schriftart Photon in der UI verwendet."
+            },
+            "theme": {
+                "title": "Dunkles/helles Design",
+                "description": "Wählen Sie das helle oder dunkle Design.",
+                "light": "Hell",
+                "dark": "Dunkel"
+            },
+            "homeFeed": {
+                "title": "Startseite",
+                "description": "Wählen Sie, welcher Feed beim Öffnen der Website angezeigt wird.",
+                "hot": "Angesagt",
+                "mine": "Mein Feed"
+            },
+            "hideReadPosts": {
+                "title": "Gelesene Beiträge ausblenden",
+                "description": "Wenn Sie einen Beitrag bereits geöffnet haben, erscheint er nicht mehr in Angesagt oder Mein Feed."
             }
         },
         "navigation": {
@@ -653,7 +675,88 @@
             "updatedVerifyEmail": "Profil aktualisiert. Prüfen und bestätigen Sie Ihre E-Mail.",
             "updated": "Tambur-Profil aktualisiert",
             "updateFailed": "Profil konnte nicht aktualisiert werden",
-            "deleted": "Profil gelöscht"
+            "deleted": "Profil gelöscht",
+            "title": "Tambur-Profil",
+            "avatarUploadFailed": "Avatar konnte nicht hochgeladen werden",
+            "delete": "Profil löschen",
+            "deleteTitle": "Profil löschen",
+            "deleteWarning": "Ich bestätige die unwiderrufliche Löschung aller personenbezogenen Daten und des Kontos. Mir ist bewusst, dass nicht gelöschte Beiträge, Communities und Kommentare ohne Verknüpfung mit dem Nutzer auf der Website bleiben.",
+            "deleteConfirm": "Ich verstehe und bestätige.",
+            "deleting": "Wird gelöscht...",
+            "deleteFailed": "Profil konnte nicht gelöscht werden",
+            "description": "Dieses Profil wird in Kommentaren und auf der Benutzerseite angezeigt.",
+            "avatarAlt": "Profilavatar",
+            "displayNameLabel": "Anzeigename auf der Website",
+            "displayNamePlaceholderPrefix": "Zum Beispiel:",
+            "emailVerifyPending": "Die E-Mail muss bestätigt werden. Nach dem Speichern senden wir einen Aktivierungslink.",
+            "emailVerified": "E-Mail bestätigt.",
+            "replaceAvatar": "Avatar ersetzen",
+            "uploadAvatar": "Avatar hochladen",
+            "clearAvatar": "Avatar entfernen",
+            "loading": "Laden...",
+            "saving": "Speichern...",
+            "save": "Speichern",
+            "loginImmutablePrefix": "Login",
+            "loginImmutableSuffix": "kann nicht geändert werden und wird zum Anmelden verwendet.",
+            "linkedAccounts": "Verknüpfte Anmeldemethoden",
+            "telegramLinked": "Telegram verknüpft",
+            "vkLinked": "VK verknüpft",
+            "linkTelegram": "Telegram verknüpfen",
+            "linkTelegramHelper": "Telegram mit dem aktuellen Profil verknüpfen",
+            "linkVk": "VK verknüpfen",
+            "linkVkHelper": "VK mit dem aktuellen Profil verknüpfen"
+        },
+        "notifications": {
+            "title": "Benachrichtigungen"
+        },
+        "telegramChannels": {
+            "title": "Telegram-Kanäle verknüpfen",
+            "createFailed": "Community konnte nicht erstellt werden",
+            "created": "Community erstellt",
+            "exists": "Community existiert bereits",
+            "codeFailed": "Code konnte nicht abgerufen werden",
+            "adminConfirmTitle": "Bestätigung als Kanaladministrator",
+            "adminConfirmDescription": "Erhalte einen Code und sende ihn an den Bot. Der Bot bestätigt, dass du Kanaladministrator bist.",
+            "getCode": "Code erhalten",
+            "sendCodeToBot": "Sende den Code an den Telegram-Bot -",
+            "confirmedTitle": "Deine bestätigten Kanäle",
+            "mode": "Modus",
+            "modeReview": "Prüfung",
+            "modeAuto": "Automatische Veröffentlichung",
+            "delay": "Verzögerung",
+            "delayDaysSuffix": "Tage",
+            "noDelay": "keine Verzögerung",
+            "comments": "Kommentare",
+            "commentsNotify": "benachrichtigen",
+            "commentsSilent": "nicht benachrichtigen",
+            "rating": "Bewertung",
+            "inviteLink": "Einladungslink",
+            "openCommunity": "Community öffnen",
+            "communitySettings": "Community-Einstellungen",
+            "createFromChannel": "Community aus Kanal erstellen",
+            "emptyConfirmed": "Noch keine bestätigten Kanäle."
+        },
+        "myFeed": {
+            "title": "Mein Feed",
+            "clearList": "Liste leeren",
+            "hiddenAuthors": {
+                "title": "Ausgeblendete Autoren",
+                "description": "Beiträge dieser Autoren werden in Feeds nicht angezeigt.",
+                "remove": "Ausgeblendeten Autor entfernen:",
+                "empty": "Noch keine ausgeblendeten Autoren."
+            },
+            "hideNegative": {
+                "title": "Beiträge mit negativer Bewertung ausblenden",
+                "description": "In Mein Feed Beiträge mit einer Bewertung unter null ausblenden."
+            },
+            "blacklistedTags": {
+                "title": "Tag-Blacklist",
+                "description": "Beiträge mit diesen Tags werden in allen Feeds ausgeblendet.",
+                "addLabel": "Tag manuell hinzufügen",
+                "placeholder": "Zum Beispiel: Yoga",
+                "remove": "Tag aus der Blacklist entfernen:",
+                "empty": "Die Blacklist ist leer."
+            }
         }
     },
     "site": {
@@ -1236,6 +1339,49 @@
             "defaultDescription": "Wir veröffentlichen die besten Beiträge aus Telegram-Kanälen.",
             "homeTitle": "Die neuesten und meistdiskutierten Beiträge der besten Telegram-Kanäle",
             "homeDescription": "Wir veröffentlichen die besten Beiträge aus Telegram-Kanälen."
+        },
+        "publicUser": {
+            "user": "Benutzer",
+            "deletedUser": "Gelöschter Benutzer",
+            "deletedDescriptionPrefix": "Profil eines gelöschten Benutzers auf",
+            "descriptionPrefix": "Benutzerprofil",
+            "descriptionMiddle": "auf",
+            "descriptionSuffix": "Beiträge und Communities.",
+            "genericDescriptionPrefix": "Benutzerprofil auf",
+            "posts": "Beiträge",
+            "drafts": "Entwürfe",
+            "channels": "Kanäle",
+            "communities": "Communities",
+            "postsCount": "Beiträge",
+            "communitiesCount": "Communities",
+            "channelsCount": "Kanäle",
+            "message": "Nachricht",
+            "opening": "Wird geöffnet...",
+            "roleCreator": "Ersteller",
+            "roleSubscriber": "abonniert",
+            "roleModerator": "Moderator",
+            "emptyCommunities": "Noch keine Communities.",
+            "emptyPosts": "Noch keine Beiträge.",
+            "emptyDrafts": "Noch keine Entwürfe.",
+            "loadingDrafts": "Entwürfe werden geladen...",
+            "untitledDraft": "Ohne Titel",
+            "updated": "Aktualisiert",
+            "editDraft": "Entwurf bearbeiten",
+            "deleteDraft": "Entwurf löschen",
+            "deleteDraftConfirm": "Entwurf löschen?",
+            "loadDraftsFailed": "Entwürfe konnten nicht geladen werden",
+            "deleteDraftFailed": "Entwurf konnte nicht gelöscht werden",
+            "openChatFailed": "Chat konnte nicht geöffnet werden",
+            "profileLoadFailed": "Benutzerprofil konnte nicht geladen werden"
+        },
+        "authorProfile": {
+            "descriptionPrefix": "Beiträge und Materialien aus dem Telegram-Kanal",
+            "subscribers": "Abonnenten",
+            "postsCount": "Beiträge",
+            "rating": "Bewertung",
+            "postsTitle": "Beiträge",
+            "emptyPosts": "Noch keine Beiträge.",
+            "redirecting": "Weiterleitung..."
         }
     }
 }

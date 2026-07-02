@@ -137,6 +137,11 @@
                 "totp": "TOTP",
                 "2fa": "A2F",
                 "paste": "Cola isto no teu autenticador."
+            },
+            "validation": {
+                "displayNameMaxLength": "O nome de exibição não deve exceder",
+                "displayNameTooLong": "O nome é longo demais. Use um nome mais curto",
+                "displayNamePattern": "O nome de exibição pode conter apenas letras, números, espaços, hífens e sublinhados"
             }
         },
         "signup": {
@@ -473,7 +478,8 @@
         "enable": "Ativar",
         "disable": "Desativar",
         "add": "Adicionar",
-        "send": "Enviar"
+        "send": "Enviar",
+        "optional": "Opcional"
     },
     "comment": {
         "actions": {
@@ -719,6 +725,22 @@
             "infiniteScroll": {
                 "title": "Listagem infinita",
                 "description": "Em vez de teres que passar de página, as publicações vão aparecendo à medida que andas para baixo."
+            },
+            "theme": {
+                "title": "Tema escuro/claro",
+                "description": "Escolha o tema claro ou escuro.",
+                "light": "Claro",
+                "dark": "Escuro"
+            },
+            "homeFeed": {
+                "title": "Página inicial",
+                "description": "Escolha qual feed será aberto ao entrar no site.",
+                "hot": "Em alta",
+                "mine": "Meu feed"
+            },
+            "hideReadPosts": {
+                "title": "Ocultar posts lidos",
+                "description": "Se você já abriu um post, ele não será mais exibido em Em alta ou Meu feed."
             }
         },
         "navigation": {
@@ -786,7 +808,88 @@
             "updatedVerifyEmail": "Perfil atualizado. Verifique seu email e confirme-o.",
             "updated": "Perfil do Tambur atualizado",
             "updateFailed": "Não foi possível atualizar o perfil",
-            "deleted": "Perfil excluído"
+            "deleted": "Perfil excluído",
+            "title": "Perfil Tambur",
+            "avatarUploadFailed": "Não foi possível enviar o avatar",
+            "delete": "Excluir perfil",
+            "deleteTitle": "Excluir perfil",
+            "deleteWarning": "Confirmo a exclusão permanente de todos os dados pessoais e da conta. Entendo que publicações, comunidades e comentários não excluídos permanecerão no site sem vínculo com o usuário.",
+            "deleteConfirm": "Entendo e confirmo.",
+            "deleting": "Excluindo...",
+            "deleteFailed": "Não foi possível excluir o perfil",
+            "description": "Este perfil aparece nos comentários do site e na página do usuário.",
+            "avatarAlt": "Avatar do perfil",
+            "displayNameLabel": "Nome exibido no site",
+            "displayNamePlaceholderPrefix": "Por exemplo:",
+            "emailVerifyPending": "O email precisa ser verificado. Após salvar, enviaremos um link de ativação.",
+            "emailVerified": "Email verificado.",
+            "replaceAvatar": "Substituir avatar",
+            "uploadAvatar": "Enviar avatar",
+            "clearAvatar": "Remover avatar",
+            "loading": "Carregando...",
+            "saving": "Salvando...",
+            "save": "Salvar",
+            "loginImmutablePrefix": "O login",
+            "loginImmutableSuffix": "não muda e é usado para entrar.",
+            "linkedAccounts": "Métodos de login vinculados",
+            "telegramLinked": "Telegram vinculado",
+            "vkLinked": "VK vinculado",
+            "linkTelegram": "Vincular Telegram",
+            "linkTelegramHelper": "Vincular Telegram ao perfil atual",
+            "linkVk": "Vincular VK",
+            "linkVkHelper": "Vincular VK ao perfil atual"
+        },
+        "notifications": {
+            "title": "Notificações"
+        },
+        "telegramChannels": {
+            "title": "Vinculação de canais do Telegram",
+            "createFailed": "Não foi possível criar a comunidade",
+            "created": "Comunidade criada",
+            "exists": "A comunidade já existe",
+            "codeFailed": "Não foi possível obter o código",
+            "adminConfirmTitle": "Confirmação de administrador do canal",
+            "adminConfirmDescription": "Receba um código e envie-o ao bot. O bot confirmará que você é administrador do canal.",
+            "getCode": "Obter código",
+            "sendCodeToBot": "Envie o código ao bot do Telegram -",
+            "confirmedTitle": "Seus canais confirmados",
+            "mode": "Modo",
+            "modeReview": "Revisão",
+            "modeAuto": "Publicação automática",
+            "delay": "Atraso",
+            "delayDaysSuffix": "dias",
+            "noDelay": "sem atraso",
+            "comments": "Comentários",
+            "commentsNotify": "notificar",
+            "commentsSilent": "não notificar",
+            "rating": "Classificação",
+            "inviteLink": "Link de convite",
+            "openCommunity": "Abrir comunidade",
+            "communitySettings": "Configurações da comunidade",
+            "createFromChannel": "Criar comunidade a partir do canal",
+            "emptyConfirmed": "Ainda não há canais confirmados."
+        },
+        "myFeed": {
+            "title": "Meu feed",
+            "clearList": "Limpar lista",
+            "hiddenAuthors": {
+                "title": "Autores ocultos",
+                "description": "Posts desses autores não aparecem nos feeds.",
+                "remove": "Remover autor oculto:",
+                "empty": "Ainda não há autores ocultos."
+            },
+            "hideNegative": {
+                "title": "Não mostrar posts com avaliação negativa",
+                "description": "No Meu feed, ocultar publicações com avaliação abaixo de zero."
+            },
+            "blacklistedTags": {
+                "title": "Lista negra de tags",
+                "description": "Posts com essas tags são ocultados em todos os feeds.",
+                "addLabel": "Adicionar tag manualmente",
+                "placeholder": "Por exemplo: yoga",
+                "remove": "Remover tag da lista negra:",
+                "empty": "A lista negra está vazia."
+            }
         }
     },
     "site": {
@@ -1369,6 +1472,49 @@
             "defaultDescription": "Publicamos os melhores posts de canais do Telegram.",
             "homeTitle": "Os posts mais recentes e comentados dos melhores canais do Telegram",
             "homeDescription": "Publicamos os melhores posts de canais do Telegram."
+        },
+        "publicUser": {
+            "user": "Usuário",
+            "deletedUser": "Usuário excluído",
+            "deletedDescriptionPrefix": "Perfil de usuário excluído em",
+            "descriptionPrefix": "Perfil do usuário",
+            "descriptionMiddle": "em",
+            "descriptionSuffix": "publicações e comunidades.",
+            "genericDescriptionPrefix": "Perfil do usuário em",
+            "posts": "Publicações",
+            "drafts": "Rascunhos",
+            "channels": "Canais",
+            "communities": "Comunidades",
+            "postsCount": "publicações",
+            "communitiesCount": "comunidades",
+            "channelsCount": "canais",
+            "message": "Enviar mensagem",
+            "opening": "Abrindo...",
+            "roleCreator": "criador",
+            "roleSubscriber": "inscrito",
+            "roleModerator": "moderador",
+            "emptyCommunities": "Ainda não há comunidades.",
+            "emptyPosts": "Ainda não há publicações.",
+            "emptyDrafts": "Ainda não há rascunhos.",
+            "loadingDrafts": "Carregando rascunhos...",
+            "untitledDraft": "Sem título",
+            "updated": "Atualizado",
+            "editDraft": "Editar rascunho",
+            "deleteDraft": "Excluir rascunho",
+            "deleteDraftConfirm": "Excluir rascunho?",
+            "loadDraftsFailed": "Falha ao carregar rascunhos",
+            "deleteDraftFailed": "Falha ao excluir rascunho",
+            "openChatFailed": "Falha ao abrir chat",
+            "profileLoadFailed": "Falha ao carregar perfil do usuário"
+        },
+        "authorProfile": {
+            "descriptionPrefix": "Publicações e materiais do canal do Telegram",
+            "subscribers": "inscritos",
+            "postsCount": "publicações",
+            "rating": "Classificação",
+            "postsTitle": "Publicações",
+            "emptyPosts": "Ainda não há publicações.",
+            "redirecting": "Redirecionando..."
         }
     }
 }

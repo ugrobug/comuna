@@ -181,7 +181,7 @@
       toast({ content: $t('settings.siteProfile.avatarUploaded'), type: 'success' })
     } catch (error) {
       toast({
-        content: (error as Error)?.message ?? 'Не удалось загрузить аватар',
+        content: (error as Error)?.message ?? $t('settings.siteProfile.avatarUploadFailed'),
         type: 'error',
       })
     } finally {
@@ -217,9 +217,6 @@
     }
   }
 
-  const deleteProfileWarning =
-    'Я подтверждаю удаление всех персональных данных и учетной записи безвозвратно. Понимаю, что все неудаленные посты, сообщества и комментарии остаются на сайте без привязки к пользователю'
-
   const openDeleteProfileModal = () => {
     deleteProfileConfirmed = false
     deleteProfileModalOpen = true
@@ -241,7 +238,7 @@
       await goto('/')
     } catch (error) {
       toast({
-        content: (error as Error)?.message ?? 'Не удалось удалить профиль',
+        content: (error as Error)?.message ?? $t('settings.siteProfile.deleteFailed'),
         type: 'error',
       })
     } finally {
@@ -250,7 +247,7 @@
   }
 
   const authHeaders = () => {
-    if (!$siteToken) throw new Error('Нужна авторизация')
+    if (!$siteToken) throw new Error($t('settings.siteProfile.authRequired'))
     return {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${$siteToken}`,
@@ -272,18 +269,20 @@
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok || !payload?.comun?.slug) {
-        throw new Error(payload?.error || 'Не удалось создать сообщество')
+        throw new Error(payload?.error || $t('settings.telegramChannels.createFailed'))
       }
       subscribeToComunBySlug(payload.comun.slug)
       await refreshSiteUser()
       toast({
-        content: payload?.created === false ? 'Сообщество уже существует' : 'Сообщество создано',
+        content: payload?.created === false
+          ? $t('settings.telegramChannels.exists')
+          : $t('settings.telegramChannels.created'),
         type: 'success',
       })
       await goto(`/comuns/${payload.comun.slug}/settings`)
     } catch (error) {
       toast({
-        content: (error as Error)?.message ?? 'Не удалось создать сообщество',
+        content: (error as Error)?.message ?? $t('settings.telegramChannels.createFailed'),
         type: 'error',
       })
     } finally {
@@ -298,7 +297,7 @@
       channelVerificationCode = await fetchVerificationCode()
     } catch (error) {
       channelVerificationCodeError =
-        (error as Error)?.message ?? 'Не удалось получить код'
+        (error as Error)?.message ?? $t('settings.telegramChannels.codeFailed')
     } finally {
       channelVerificationCodeLoading = false
     }
@@ -353,10 +352,10 @@
       <div class="flex flex-col gap-4">
         <div>
           <h2 class="text-xl font-semibold text-slate-950 dark:text-zinc-50">
-            Удалить профиль
+            {$t('settings.siteProfile.deleteTitle')}
           </h2>
           <p class="mt-2 text-sm leading-6 text-slate-600 dark:text-zinc-300">
-            {deleteProfileWarning}
+            {$t('settings.siteProfile.deleteWarning')}
           </p>
         </div>
         <label class="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 dark:border-zinc-800 dark:bg-zinc-950/40 dark:text-zinc-200">
@@ -366,7 +365,7 @@
             bind:checked={deleteProfileConfirmed}
             disabled={deleteProfileDeleting}
           />
-          <span>Я понимаю и подтверждаю.</span>
+          <span>{$t('settings.siteProfile.deleteConfirm')}</span>
         </label>
         <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button
@@ -375,7 +374,7 @@
             on:click={closeDeleteProfileModal}
             disabled={deleteProfileDeleting}
           >
-            Отмена
+            {$t('common.cancel')}
           </button>
           <button
             type="button"
@@ -383,7 +382,7 @@
             on:click={deleteSiteProfile}
             disabled={!deleteProfileConfirmed || deleteProfileDeleting}
           >
-            {deleteProfileDeleting ? 'Удаляем...' : 'Удалить'}
+            {deleteProfileDeleting ? $t('settings.siteProfile.deleting') : $t('settings.siteProfile.delete')}
           </button>
         </div>
       </div>
@@ -440,7 +439,7 @@
   {#if $siteUser}
     <Button href="#notifications" size="sm" class="text-xs" rounding="pill">
       <Icon src={ArrowTopRightOnSquare} size="14" micro />
-      Оповещения
+      {$t('settings.notifications.title')}
     </Button>
   {/if}
   <Button href="#app" size="sm" class="text-xs" rounding="pill">
@@ -469,7 +468,7 @@
     </Section>
   {/if}
   {#if $siteUser}
-    <Section id="comuna-profile" title="Профиль Тамбур">
+    <Section id="comuna-profile" title={$t('settings.siteProfile.title')}>
       <SiteProfileSettingsSection
         siteUser={$siteUser}
         bind:displayName={siteProfileDisplayName}
@@ -485,7 +484,7 @@
     </Section>
   {/if}
   {#if $siteUser}
-    <Section id="linked-channels" title="Привязка Telegram-каналов">
+    <Section id="linked-channels" title={$t('settings.telegramChannels.title')}>
       <TelegramChannelsSection
         siteUser={$siteUser}
         verificationCode={channelVerificationCode}
@@ -498,7 +497,7 @@
     </Section>
   {/if}
   {#if $siteUser}
-    <Section id="notifications" title="Оповещения">
+    <Section id="notifications" title={$t('settings.notifications.title')}>
       <NotificationSettingsPanel />
     </Section>
   {/if}
@@ -509,11 +508,11 @@
       description={$t('settings.app.postsInNewTab.description')}
     />
     <Setting>
-      <span slot="title">Темная/светлая тема</span>
-      <span slot="description">Выберите светлую или темную тему.</span>
+      <span slot="title">{$t('settings.app.theme.title')}</span>
+      <span slot="description">{$t('settings.app.theme.description')}</span>
       <Select bind:value={$colorScheme}>
-        <option value="light">Светлая</option>
-        <option value="dark">Темная</option>
+        <option value="light">{$t('settings.app.theme.light')}</option>
+        <option value="dark">{$t('settings.app.theme.dark')}</option>
       </Select>
     </Setting>
     <Setting>
@@ -528,25 +527,25 @@
       </Select>
     </Setting>
     <Setting>
-      <span slot="title">Главная страница</span>
-      <span slot="description">Выберите, какая лента будет открываться при входе на сайт.</span>
+      <span slot="title">{$t('settings.app.homeFeed.title')}</span>
+      <span slot="description">{$t('settings.app.homeFeed.description')}</span>
       <Select bind:value={$userSettings.homeFeed}>
-        <option value="hot">Горячее</option>
-        <option value="mine">Моя лента</option>
+        <option value="hot">{$t('settings.app.homeFeed.hot')}</option>
+        <option value="mine">{$t('settings.app.homeFeed.mine')}</option>
       </Select>
     </Setting>
     <ToggleSetting
       bind:checked={$userSettings.hideReadPosts}
-      title="Скрывать прочитанные"
-      description="Если вы уже открывали пост, он больше не будет показываться в «Горячем» и «Моей ленте»."
+      title={$t('settings.app.hideReadPosts.title')}
+      description={$t('settings.app.hideReadPosts.description')}
     />
   </Section>
 
-  <Section id="my-feed" title="Моя лента">
+  <Section id="my-feed" title={$t('settings.myFeed.title')}>
     <Setting itemsClass="!flex-col !items-start">
-      <span slot="title">Скрытые авторы</span>
+      <span slot="title">{$t('settings.myFeed.hiddenAuthors.title')}</span>
       <span slot="description">
-        Посты этих авторов не показываются в лентах.
+        {$t('settings.myFeed.hiddenAuthors.description')}
       </span>
       {#if hiddenAuthors.length}
         <div class="flex flex-wrap gap-2">
@@ -556,7 +555,7 @@
               <button
                 type="button"
                 class="text-slate-500 hover:text-slate-700 dark:text-zinc-400 dark:hover:text-zinc-200"
-                aria-label={`Убрать автора ${username} из скрытых`}
+                aria-label={`${$t('settings.myFeed.hiddenAuthors.remove')} ${username}`}
                 on:click={() => removeHiddenAuthor(username)}
               >
                 ×
@@ -565,34 +564,34 @@
           {/each}
         </div>
         <Button size="sm" color="ghost" on:click={clearHiddenAuthors}>
-          Очистить список
+          {$t('settings.myFeed.clearList')}
         </Button>
       {:else}
-        <span class="text-sm text-slate-500 dark:text-zinc-400">Скрытых авторов пока нет.</span>
+        <span class="text-sm text-slate-500 dark:text-zinc-400">{$t('settings.myFeed.hiddenAuthors.empty')}</span>
       {/if}
     </Setting>
     <ToggleSetting
       bind:checked={$userSettings.myFeedHideNegative}
-      title="Не показывать посты с отрицательным рейтингом"
-      description="В моей ленте скрывать публикации с рейтингом ниже нуля."
+      title={$t('settings.myFeed.hideNegative.title')}
+      description={$t('settings.myFeed.hideNegative.description')}
     />
     <Setting itemsClass="!flex-col !items-start">
-      <span slot="title">Черный список тегов</span>
+      <span slot="title">{$t('settings.myFeed.blacklistedTags.title')}</span>
       <span slot="description">
-        Посты с этими тегами скрываются во всех лентах.
+        {$t('settings.myFeed.blacklistedTags.description')}
       </span>
       <div class="flex flex-wrap items-end gap-2">
         <TextInput
-          label="Добавить тег вручную"
+          label={$t('settings.myFeed.blacklistedTags.addLabel')}
           bind:value={manualBlacklistTag}
-          placeholder="Например: йога"
+          placeholder={$t('settings.myFeed.blacklistedTags.placeholder')}
         />
         <Button size="sm" color="secondary" on:click={addBlacklistedTag}>
-          Добавить
+          {$t('common.add')}
         </Button>
         {#if blacklistedTags.length}
           <Button size="sm" color="ghost" on:click={clearBlacklistedTags}>
-            Очистить список
+            {$t('settings.myFeed.clearList')}
           </Button>
         {/if}
       </div>
@@ -604,7 +603,7 @@
               <button
                 type="button"
                 class="text-slate-500 hover:text-slate-700 dark:text-zinc-400 dark:hover:text-zinc-200"
-                aria-label={`Удалить тег ${tag} из черного списка`}
+                aria-label={`${$t('settings.myFeed.blacklistedTags.remove')} ${tag}`}
                 on:click={() => removeBlacklistedTag(tag)}
               >
                 ×
@@ -613,7 +612,7 @@
           {/each}
         </div>
       {:else}
-        <span class="text-sm text-slate-500 dark:text-zinc-400">Черный список пуст.</span>
+        <span class="text-sm text-slate-500 dark:text-zinc-400">{$t('settings.myFeed.blacklistedTags.empty')}</span>
       {/if}
     </Setting>
   </Section>
@@ -623,7 +622,7 @@
       class="mt-2 inline-flex w-fit items-center justify-center rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700"
       on:click={openDeleteProfileModal}
     >
-      Удалить профиль
+      {$t('settings.siteProfile.delete')}
     </button>
   {/if}
 </div>

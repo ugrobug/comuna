@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { SiteUser } from '$lib/siteAuth'
+  import { t } from '$lib/translations'
   import { Button } from 'mono-svelte'
   import { createEventDispatcher } from 'svelte'
 
@@ -17,9 +18,9 @@
 
 <div class="flex flex-col gap-4">
   <div class="rounded-xl border border-slate-200 dark:border-zinc-800 p-4">
-    <h3 class="text-base font-semibold mb-2">Подтверждение админа канала</h3>
+    <h3 class="text-base font-semibold mb-2">{$t('settings.telegramChannels.adminConfirmTitle')}</h3>
     <p class="text-sm text-slate-500 dark:text-zinc-400">
-      Получите код и отправьте его в бота. Бот подтвердит, что вы администратор канала.
+      {$t('settings.telegramChannels.adminConfirmDescription')}
     </p>
     <div class="mt-4 flex flex-wrap items-center gap-3">
       <Button
@@ -29,7 +30,7 @@
         loading={verificationCodeLoading}
         disabled={verificationCodeLoading}
       >
-        Получить код
+        {$t('settings.telegramChannels.getCode')}
       </Button>
       {#if verificationCode}
         <div class="rounded-lg bg-slate-100 dark:bg-zinc-900 px-4 py-2 text-sm font-mono">
@@ -41,12 +42,12 @@
       <p class="text-sm text-red-600 mt-3">{verificationCodeError}</p>
     {/if}
     <p class="text-sm text-slate-500 dark:text-zinc-400 mt-4">
-      Отправьте код боту в Telegram — @comuna_tg_bot.
+      {$t('settings.telegramChannels.sendCodeToBot')} @comuna_tg_bot.
     </p>
   </div>
 
   <div class="rounded-xl border border-slate-200 dark:border-zinc-800 p-4">
-    <h3 class="text-base font-semibold mb-2">Ваши подтвержденные каналы</h3>
+    <h3 class="text-base font-semibold mb-2">{$t('settings.telegramChannels.confirmedTitle')}</h3>
     {#if siteUser?.is_author && siteUser.authors.length}
       <ul class="flex flex-col gap-3 text-sm">
         {#each siteUser.authors as author}
@@ -58,14 +59,14 @@
               {/if}
             </div>
             <div class="text-xs text-slate-500 dark:text-zinc-400">
-              Режим: {author.auto_publish === false ? 'Согласование' : 'Автопубликация'}
+              {$t('settings.telegramChannels.mode')}: {author.auto_publish === false ? $t('settings.telegramChannels.modeReview') : $t('settings.telegramChannels.modeAuto')}
               <span class="mx-1">•</span>
-              Задержка: {author.publish_delay_days ? `${author.publish_delay_days} дн.` : 'без задержки'}
+              {$t('settings.telegramChannels.delay')}: {author.publish_delay_days ? `${author.publish_delay_days} ${$t('settings.telegramChannels.delayDaysSuffix')}` : $t('settings.telegramChannels.noDelay')}
               <span class="mx-1">•</span>
-              Комментарии: {author.notify_comments ? 'оповещать' : 'не оповещать'}
+              {$t('settings.telegramChannels.comments')}: {author.notify_comments ? $t('settings.telegramChannels.commentsNotify') : $t('settings.telegramChannels.commentsSilent')}
               {#if author.author_rating !== undefined}
                 <span class="mx-1">•</span>
-                Рейтинг: {author.author_rating}
+                {$t('settings.telegramChannels.rating')}: {author.author_rating}
               {/if}
             </div>
             {#if author.invite_url}
@@ -75,7 +76,7 @@
                 target="_blank"
                 rel="noreferrer"
               >
-                Ссылка приглашения
+                {$t('settings.telegramChannels.inviteLink')}
               </a>
             {/if}
             <div class="mt-2 flex flex-wrap items-center gap-2">
@@ -84,13 +85,13 @@
                   class="inline-flex items-center rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
                   href={`/comuns/${author.linked_comun_slug}`}
                 >
-                  {author.linked_comun_name ? `Открыть сообщество ${author.linked_comun_name}` : 'Открыть сообщество'}
+                  {author.linked_comun_name ? `${$t('settings.telegramChannels.openCommunity')} ${author.linked_comun_name}` : $t('settings.telegramChannels.openCommunity')}
                 </a>
                 <a
                   class="inline-flex items-center rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
                   href={`/comuns/${author.linked_comun_slug}/settings`}
                 >
-                  Настройки сообщества
+                  {$t('settings.telegramChannels.communitySettings')}
                 </a>
               {:else}
                 <Button
@@ -99,7 +100,7 @@
                   loading={creatingComunByAuthorId === author.id}
                   disabled={creatingComunByAuthorId !== null}
                 >
-                  Создать сообщество из канала
+                  {$t('settings.telegramChannels.createFromChannel')}
                 </Button>
               {/if}
             </div>
@@ -107,7 +108,7 @@
         {/each}
       </ul>
     {:else}
-      <p class="text-sm text-slate-500 dark:text-zinc-400">Пока нет подтвержденных каналов.</p>
+      <p class="text-sm text-slate-500 dark:text-zinc-400">{$t('settings.telegramChannels.emptyConfirmed')}</p>
     {/if}
   </div>
 </div>

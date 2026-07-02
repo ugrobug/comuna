@@ -167,6 +167,11 @@
                 "label": "Hesabı sil",
                 "deleteContent": "İçeriği sil",
                 "warning": "Bu, TÜM gönderimlerinizi silecektir."
+            },
+            "validation": {
+                "displayNameMaxLength": "Görünen ad şu karakter sayısını aşmamalıdır:",
+                "displayNameTooLong": "Ad çok uzun. Daha kısa bir ad kullanın",
+                "displayNamePattern": "Görünen ad yalnızca harf, rakam, boşluk, tire ve alt çizgi içerebilir"
             }
         },
         "email": "E-posta",
@@ -578,7 +583,8 @@
         "add": "Ekle",
         "cancel": "İptal et",
         "send": "Gönder",
-        "general": "Genel"
+        "general": "Genel",
+        "optional": "İsteğe bağlı"
     },
     "message": {
         "success": "Başarı",
@@ -778,6 +784,22 @@
             "reverseActions": {
                 "title": "Ters işlem satırı",
                 "description": "Gönderiler ve yorumlardaki eylemlerin sırasını tersine çevirir."
+            },
+            "theme": {
+                "title": "Koyu/açık tema",
+                "description": "Açık veya koyu temayı seçin.",
+                "light": "Açık",
+                "dark": "Koyu"
+            },
+            "homeFeed": {
+                "title": "Ana sayfa",
+                "description": "Siteye girildiğinde hangi akışın açılacağını seçin.",
+                "hot": "Popüler",
+                "mine": "Akışım"
+            },
+            "hideReadPosts": {
+                "title": "Okunmuş gönderileri gizle",
+                "description": "Bir gönderiyi zaten açtıysanız Popüler veya Akışım içinde artık gösterilmez."
             }
         },
         "embeds": {
@@ -860,7 +882,88 @@
             "updatedVerifyEmail": "Profil güncellendi. E-postanızı kontrol edip doğrulayın.",
             "updated": "Tambur profili güncellendi",
             "updateFailed": "Profil güncellenemedi",
-            "deleted": "Profil silindi"
+            "deleted": "Profil silindi",
+            "title": "Tambur profili",
+            "avatarUploadFailed": "Avatar yüklenemedi",
+            "delete": "Profili sil",
+            "deleteTitle": "Profili sil",
+            "deleteWarning": "Tüm kişisel verilerin ve hesabın kalıcı olarak silinmesini onaylıyorum. Silinmeyen gönderilerin, toplulukların ve yorumların kullanıcıyla bağlantısı olmadan sitede kalacağını anlıyorum.",
+            "deleteConfirm": "Anlıyorum ve onaylıyorum.",
+            "deleting": "Siliniyor...",
+            "deleteFailed": "Profil silinemedi",
+            "description": "Bu profil sitedeki yorumlarda ve kullanıcı sayfasında gösterilir.",
+            "avatarAlt": "Profil avatarı",
+            "displayNameLabel": "Sitede görünen ad",
+            "displayNamePlaceholderPrefix": "Örneğin:",
+            "emailVerifyPending": "E-posta doğrulanmalı. Kaydettikten sonra aktivasyon bağlantısı göndereceğiz.",
+            "emailVerified": "E-posta doğrulandı.",
+            "replaceAvatar": "Avatarı değiştir",
+            "uploadAvatar": "Avatar yükle",
+            "clearAvatar": "Avatarı kaldır",
+            "loading": "Yükleniyor...",
+            "saving": "Kaydediliyor...",
+            "save": "Kaydet",
+            "loginImmutablePrefix": "Giriş adı",
+            "loginImmutableSuffix": "değiştirilemez ve oturum açmak için kullanılır.",
+            "linkedAccounts": "Bağlı giriş yöntemleri",
+            "telegramLinked": "Telegram bağlı",
+            "vkLinked": "VK bağlı",
+            "linkTelegram": "Telegram bağla",
+            "linkTelegramHelper": "Telegramı mevcut profile bağla",
+            "linkVk": "VK bağla",
+            "linkVkHelper": "VKyı mevcut profile bağla"
+        },
+        "notifications": {
+            "title": "Bildirimler"
+        },
+        "telegramChannels": {
+            "title": "Telegram kanallarını bağlama",
+            "createFailed": "Topluluk oluşturulamadı",
+            "created": "Topluluk oluşturuldu",
+            "exists": "Topluluk zaten var",
+            "codeFailed": "Kod alınamadı",
+            "adminConfirmTitle": "Kanal yöneticisi doğrulaması",
+            "adminConfirmDescription": "Bir kod alın ve bota gönderin. Bot kanal yöneticisi olduğunuzu doğrular.",
+            "getCode": "Kod al",
+            "sendCodeToBot": "Kodu Telegram botuna gönderin -",
+            "confirmedTitle": "Doğrulanmış kanallarınız",
+            "mode": "Mod",
+            "modeReview": "Onay",
+            "modeAuto": "Otomatik yayınlama",
+            "delay": "Gecikme",
+            "delayDaysSuffix": "gün",
+            "noDelay": "gecikme yok",
+            "comments": "Yorumlar",
+            "commentsNotify": "bildir",
+            "commentsSilent": "bildirme",
+            "rating": "Puan",
+            "inviteLink": "Davet bağlantısı",
+            "openCommunity": "Topluluğu aç",
+            "communitySettings": "Topluluk ayarları",
+            "createFromChannel": "Kanaldan topluluk oluştur",
+            "emptyConfirmed": "Henüz doğrulanmış kanal yok."
+        },
+        "myFeed": {
+            "title": "Akışım",
+            "clearList": "Listeyi temizle",
+            "hiddenAuthors": {
+                "title": "Gizli yazarlar",
+                "description": "Bu yazarların gönderileri akışlarda gösterilmez.",
+                "remove": "Gizli yazarı kaldır:",
+                "empty": "Henüz gizli yazar yok."
+            },
+            "hideNegative": {
+                "title": "Negatif puanlı gönderileri gösterme",
+                "description": "Akışımda puanı sıfırın altında olan gönderileri gizle."
+            },
+            "blacklistedTags": {
+                "title": "Etiket kara listesi",
+                "description": "Bu etiketlere sahip gönderiler tüm akışlarda gizlenir.",
+                "addLabel": "Etiketi manuel ekle",
+                "placeholder": "Örneğin: yoga",
+                "remove": "Etiketi kara listeden kaldır:",
+                "empty": "Kara liste boş."
+            }
         }
     },
     "error": {
@@ -1488,6 +1591,49 @@
             "defaultDescription": "Telegram kanallarındaki en iyi gönderileri yayımlıyoruz.",
             "homeTitle": "En iyi Telegram kanallarından en yeni ve en çok tartışılan gönderiler",
             "homeDescription": "Telegram kanallarındaki en iyi gönderileri yayımlıyoruz."
+        },
+        "publicUser": {
+            "user": "Kullanıcı",
+            "deletedUser": "Silinmiş kullanıcı",
+            "deletedDescriptionPrefix": "Silinmiş kullanıcı profili:",
+            "descriptionPrefix": "Kullanıcı profili",
+            "descriptionMiddle": "üzerinde",
+            "descriptionSuffix": "gönderiler ve topluluklar.",
+            "genericDescriptionPrefix": "Kullanıcı profili:",
+            "posts": "Gönderiler",
+            "drafts": "Taslaklar",
+            "channels": "Kanallar",
+            "communities": "Topluluklar",
+            "postsCount": "gönderi",
+            "communitiesCount": "topluluk",
+            "channelsCount": "kanal",
+            "message": "Mesaj yaz",
+            "opening": "Açılıyor...",
+            "roleCreator": "oluşturan",
+            "roleSubscriber": "abone",
+            "roleModerator": "moderatör",
+            "emptyCommunities": "Henüz topluluk yok.",
+            "emptyPosts": "Henüz gönderi yok.",
+            "emptyDrafts": "Henüz taslak yok.",
+            "loadingDrafts": "Taslaklar yükleniyor...",
+            "untitledDraft": "Başlıksız",
+            "updated": "Güncellendi",
+            "editDraft": "Taslağı düzenle",
+            "deleteDraft": "Taslağı sil",
+            "deleteDraftConfirm": "Taslak silinsin mi?",
+            "loadDraftsFailed": "Taslaklar yüklenemedi",
+            "deleteDraftFailed": "Taslak silinemedi",
+            "openChatFailed": "Sohbet açılamadı",
+            "profileLoadFailed": "Kullanıcı profili yüklenemedi"
+        },
+        "authorProfile": {
+            "descriptionPrefix": "Telegram kanalından gönderiler ve içerikler",
+            "subscribers": "abone",
+            "postsCount": "gönderi",
+            "rating": "Puan",
+            "postsTitle": "Gönderiler",
+            "emptyPosts": "Henüz gönderi yok.",
+            "redirecting": "Yönlendiriliyor..."
         }
     }
 }

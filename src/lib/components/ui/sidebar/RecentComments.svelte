@@ -5,6 +5,7 @@
   import { ChatBubbleLeftEllipsis, Icon } from 'svelte-hero-icons'
   import { buildBackendPostPath, buildRecentCommentsUrl } from '$lib/api/backend'
   import { cachedJson } from '$lib/api/publicCache'
+  import { userSettings } from '$lib/settings'
   import { t } from '$lib/translations'
 
   type RecentComment = {
@@ -28,6 +29,9 @@
   let comments: RecentComment[] = []
   let loading = true
   let error: string | null = null
+  let mounted = false
+  let loadedLanguage = ''
+  $: currentLanguage = $userSettings.language ?? 'ru'
 
   const buildPostLink = (comment: RecentComment) =>
     comment.link_url || `${buildBackendPostPath(comment.post)}#comments`
@@ -41,11 +45,14 @@
   const commentUserLabel = (comment: RecentComment) =>
     (comment.user.display_name || '').trim() || comment.user.username
 
-  async function fetchRecentComments() {
+  async function fetchRecentComments(language = currentLanguage) {
+    loadedLanguage = language
+    loading = true
+    error = null
     try {
       const data = await cachedJson<{ comments?: RecentComment[] }>(
-        'public:recent-comments:5',
-        buildRecentCommentsUrl(5),
+        `public:recent-comments:5:${language}`,
+        buildRecentCommentsUrl(5, language),
         { ttlMs: 30_000 }
       )
       comments = data.comments ?? []
@@ -56,7 +63,14 @@
     }
   }
 
-  onMount(fetchRecentComments)
+  onMount(() => {
+    mounted = true
+    void fetchRecentComments()
+  })
+
+  $: if (mounted && currentLanguage !== loadedLanguage) {
+    void fetchRecentComments(currentLanguage)
+  }
 </script>
 
 <div class="flex flex-col gap-2 bg-white dark:bg-zinc-900 rounded-xl p-4">

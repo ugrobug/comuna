@@ -49,8 +49,9 @@ export const buildCommentLikeUrl = (id: number | string): string => {
   return `${getBackendBaseUrl()}/api/comments/${encodeURIComponent(id)}/like/`
 }
 
-export const buildRecentCommentsUrl = (limit = 5): string => {
+export const buildRecentCommentsUrl = (limit = 5, language?: string | null): string => {
   const params = new URLSearchParams({ limit: String(limit) })
+  if (language && language !== 'ru') params.set('lang', language)
   return `${getBackendBaseUrl()}/api/comments/recent/?${params.toString()}`
 }
 

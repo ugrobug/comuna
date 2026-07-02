@@ -37,14 +37,14 @@
     try {
       if (formData.display_name) {
         if (formData.display_name.length > DISPLAY_NAME_MAX_LENGTH) {
-          throw new Error(`Отображаемое имя не должно превышать ${DISPLAY_NAME_MAX_LENGTH} символов`);
+          throw new Error(`${$t('form.profile.validation.displayNameMaxLength')} ${DISPLAY_NAME_MAX_LENGTH}`);
         }
         const byteLength = getByteLength(formData.display_name);
         if (byteLength > DISPLAY_NAME_MAX_BYTES) {
-          throw new Error(`Имя слишком длинное. Используйте более короткое имя`);
+          throw new Error($t('form.profile.validation.displayNameTooLong'));
         }
         if (!DISPLAY_NAME_REGEX.test(formData.display_name)) {
-          throw new Error('Отображаемое имя может содержать только буквы, цифры, пробелы, дефис и подчеркивание');
+          throw new Error($t('form.profile.validation.displayNamePattern'));
         }
       }
 
@@ -88,10 +88,10 @@
     <TextInput
       label={$t('form.profile.displayName')}
       bind:value={formData.display_name}
-      placeholder="Optional"
+      placeholder={$t('common.optional')}
       maxlength={DISPLAY_NAME_MAX_LENGTH}
       pattern={DISPLAY_NAME_REGEX.source}
-      title="Используйте только буквы, цифры, пробелы, дефис и подчеркивание"
+      title={$t('form.profile.validation.displayNamePattern')}
     />
     <MarkdownEditor
       images={false}

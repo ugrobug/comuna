@@ -7,7 +7,7 @@
   import { page } from '$app/stores'
   import { onDestroy, onMount } from 'svelte'
   import { brandNameForLanguage } from '$lib/brand'
-  import { locale } from '$lib/translations'
+  import { locale, t } from '$lib/translations'
 
   export let data
 
@@ -32,7 +32,7 @@
 
   const formatNumber = (value: number | undefined) => {
     if (!value && value !== 0) return '—'
-    return value.toLocaleString('ru-RU')
+    return value.toLocaleString($locale || 'ru')
   }
 
   $: authorUsername = data.author?.username ?? ''
@@ -45,7 +45,7 @@
   $: title = authorName ? `${authorName} — ${siteTitle}` : siteTitle
   $: description =
     data.author?.description ||
-    (authorName ? `Посты и материалы из Telegram-канала ${authorName}.` : '')
+    (authorName ? `${$t('site.authorProfile.descriptionPrefix')} ${authorName}.` : '')
   $: canonicalUrl = new URL(
     $page.url.pathname,
     (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '') + '/'
@@ -151,14 +151,14 @@
         </div>
         <div class="flex flex-wrap items-center gap-3 text-sm text-slate-600 dark:text-zinc-400">
           <span class="px-4 py-2 rounded-full bg-slate-100 dark:bg-zinc-800">
-            {formatNumber(data.author?.subscribers_count)} подписчиков
+            {formatNumber(data.author?.subscribers_count)} {$t('site.authorProfile.subscribers')}
           </span>
           <span class="px-4 py-2 rounded-full bg-slate-100 dark:bg-zinc-800">
-            {formatNumber(data.author?.posts_count)} постов
+            {formatNumber(data.author?.posts_count)} {$t('site.authorProfile.postsCount')}
           </span>
           {#if data.author?.author_rating !== undefined}
             <span class="px-4 py-2 rounded-full bg-slate-100 dark:bg-zinc-800">
-              Рейтинг {formatNumber(data.author?.author_rating)}
+              {$t('site.authorProfile.rating')} {formatNumber(data.author?.author_rating)}
             </span>
           {/if}
         </div>
@@ -171,12 +171,12 @@
     </div>
   </section>
 
-  <div class="text-lg font-semibold text-slate-900 dark:text-zinc-100">Посты</div>
+  <div class="text-lg font-semibold text-slate-900 dark:text-zinc-100">{$t('site.authorProfile.postsTitle')}</div>
 
   {#if visiblePosts?.length}
     <FeedPostsList posts={visiblePosts} {loadingMore} />
   {:else}
-    <div class="text-base text-slate-500">Пока нет публикаций.</div>
+    <div class="text-base text-slate-500">{$t('site.authorProfile.emptyPosts')}</div>
   {/if}
 </div>
 

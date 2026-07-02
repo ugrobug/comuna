@@ -162,7 +162,12 @@
                 "warning": "Cette opération supprimera TOUTES vos publications."
             },
             "avatar": "Avatar",
-            "email": "Email"
+            "email": "Email",
+            "validation": {
+                "displayNameMaxLength": "Le nom affiché ne doit pas dépasser",
+                "displayNameTooLong": "Le nom est trop long. Utilisez un nom plus court",
+                "displayNamePattern": "Le nom affiché ne peut contenir que des lettres, chiffres, espaces, traits d’union et tirets bas"
+            }
         },
         "email": "Adresse E-mail",
         "setup": "Activer",
@@ -536,6 +541,22 @@
             "duplicateTitles": {
                 "title": "Masquer les titres ou corps en double",
                 "description": "Masque le titre et le corps de l'article s'ils sont identiques à ceux du lien."
+            },
+            "theme": {
+                "title": "Thème sombre/clair",
+                "description": "Choisissez le thème clair ou sombre.",
+                "light": "Clair",
+                "dark": "Sombre"
+            },
+            "homeFeed": {
+                "title": "Page d’accueil",
+                "description": "Choisissez le fil qui s’ouvre à l’arrivée sur le site.",
+                "hot": "Populaire",
+                "mine": "Mon fil"
+            },
+            "hideReadPosts": {
+                "title": "Masquer les publications lues",
+                "description": "Si vous avez déjà ouvert une publication, elle n’apparaîtra plus dans Populaire ni dans Mon fil."
             }
         },
         "title": "Paramètres",
@@ -644,7 +665,88 @@
             "updatedVerifyEmail": "Profil mis à jour. Vérifiez votre email et confirmez-le.",
             "updated": "Profil Tambur mis à jour",
             "updateFailed": "Impossible de mettre à jour le profil",
-            "deleted": "Profil supprimé"
+            "deleted": "Profil supprimé",
+            "title": "Profil Tambur",
+            "avatarUploadFailed": "Impossible de téléverser l’avatar",
+            "delete": "Supprimer le profil",
+            "deleteTitle": "Supprimer le profil",
+            "deleteWarning": "Je confirme la suppression définitive de toutes les données personnelles et du compte. Je comprends que les publications, communautés et commentaires non supprimés resteront sur le site sans lien avec l’utilisateur.",
+            "deleteConfirm": "Je comprends et je confirme.",
+            "deleting": "Suppression...",
+            "deleteFailed": "Impossible de supprimer le profil",
+            "description": "Ce profil est affiché dans les commentaires du site et sur la page utilisateur.",
+            "avatarAlt": "Avatar du profil",
+            "displayNameLabel": "Nom affiché sur le site",
+            "displayNamePlaceholderPrefix": "Par exemple :",
+            "emailVerifyPending": "L’e-mail doit être confirmé. Après l’enregistrement, nous enverrons un lien d’activation.",
+            "emailVerified": "E-mail confirmé.",
+            "replaceAvatar": "Remplacer l’avatar",
+            "uploadAvatar": "Importer un avatar",
+            "clearAvatar": "Retirer l’avatar",
+            "loading": "Chargement...",
+            "saving": "Enregistrement...",
+            "save": "Enregistrer",
+            "loginImmutablePrefix": "L’identifiant",
+            "loginImmutableSuffix": "ne change pas et sert à se connecter.",
+            "linkedAccounts": "Méthodes de connexion liées",
+            "telegramLinked": "Telegram lié",
+            "vkLinked": "VK lié",
+            "linkTelegram": "Lier Telegram",
+            "linkTelegramHelper": "Lier Telegram au profil actuel",
+            "linkVk": "Lier VK",
+            "linkVkHelper": "Lier VK au profil actuel"
+        },
+        "notifications": {
+            "title": "Notifications"
+        },
+        "telegramChannels": {
+            "title": "Liaison des canaux Telegram",
+            "createFailed": "Impossible de créer la communauté",
+            "created": "Communauté créée",
+            "exists": "La communauté existe déjà",
+            "codeFailed": "Impossible d’obtenir le code",
+            "adminConfirmTitle": "Confirmation d’administrateur de chaîne",
+            "adminConfirmDescription": "Obtenez un code et envoyez-le au bot. Le bot confirmera que vous êtes administrateur de la chaîne.",
+            "getCode": "Obtenir le code",
+            "sendCodeToBot": "Envoyez le code au bot Telegram -",
+            "confirmedTitle": "Vos chaînes confirmées",
+            "mode": "Mode",
+            "modeReview": "Validation",
+            "modeAuto": "Publication automatique",
+            "delay": "Délai",
+            "delayDaysSuffix": "jours",
+            "noDelay": "sans délai",
+            "comments": "Commentaires",
+            "commentsNotify": "notifier",
+            "commentsSilent": "ne pas notifier",
+            "rating": "Note",
+            "inviteLink": "Lien d’invitation",
+            "openCommunity": "Ouvrir la communauté",
+            "communitySettings": "Paramètres de la communauté",
+            "createFromChannel": "Créer une communauté depuis la chaîne",
+            "emptyConfirmed": "Aucune chaîne confirmée pour le moment."
+        },
+        "myFeed": {
+            "title": "Mon fil",
+            "clearList": "Vider la liste",
+            "hiddenAuthors": {
+                "title": "Auteurs masqués",
+                "description": "Les publications de ces auteurs ne s’affichent pas dans les fils.",
+                "remove": "Retirer l’auteur masqué:",
+                "empty": "Aucun auteur masqué pour le moment."
+            },
+            "hideNegative": {
+                "title": "Masquer les publications avec une note négative",
+                "description": "Dans Mon fil, masquer les publications avec une note inférieure à zéro."
+            },
+            "blacklistedTags": {
+                "title": "Liste noire des tags",
+                "description": "Les publications avec ces tags sont masquées dans tous les fils.",
+                "addLabel": "Ajouter un tag manuellement",
+                "placeholder": "Par exemple: yoga",
+                "remove": "Retirer le tag de la liste noire:",
+                "empty": "La liste noire est vide."
+            }
         }
     },
     "comment": {
@@ -792,7 +894,8 @@
         "cancel": "Annuler",
         "send": "Envoyer",
         "debug": "Déboguer",
-        "general": "Général"
+        "general": "Général",
+        "optional": "Facultatif"
     },
     "message": {
         "success": "Succès",
@@ -1463,6 +1566,49 @@
             "defaultDescription": "Nous publions les meilleurs posts des chaînes Telegram.",
             "homeTitle": "Les posts les plus récents et les plus discutés des meilleures chaînes Telegram",
             "homeDescription": "Nous publions les meilleurs posts des chaînes Telegram."
+        },
+        "publicUser": {
+            "user": "Utilisateur",
+            "deletedUser": "Utilisateur supprimé",
+            "deletedDescriptionPrefix": "Profil utilisateur supprimé sur",
+            "descriptionPrefix": "Profil utilisateur",
+            "descriptionMiddle": "sur",
+            "descriptionSuffix": "publications et communautés.",
+            "genericDescriptionPrefix": "Profil utilisateur sur",
+            "posts": "Publications",
+            "drafts": "Brouillons",
+            "channels": "Chaînes",
+            "communities": "Communautés",
+            "postsCount": "publications",
+            "communitiesCount": "communautés",
+            "channelsCount": "chaînes",
+            "message": "Écrire",
+            "opening": "Ouverture...",
+            "roleCreator": "créateur",
+            "roleSubscriber": "abonné",
+            "roleModerator": "modérateur",
+            "emptyCommunities": "Aucune communauté pour le moment.",
+            "emptyPosts": "Aucune publication pour le moment.",
+            "emptyDrafts": "Aucun brouillon pour le moment.",
+            "loadingDrafts": "Chargement des brouillons...",
+            "untitledDraft": "Sans titre",
+            "updated": "Mis à jour",
+            "editDraft": "Modifier le brouillon",
+            "deleteDraft": "Supprimer le brouillon",
+            "deleteDraftConfirm": "Supprimer le brouillon ?",
+            "loadDraftsFailed": "Impossible de charger les brouillons",
+            "deleteDraftFailed": "Impossible de supprimer le brouillon",
+            "openChatFailed": "Impossible d’ouvrir le chat",
+            "profileLoadFailed": "Impossible de charger le profil utilisateur"
+        },
+        "authorProfile": {
+            "descriptionPrefix": "Publications et contenus de la chaîne Telegram",
+            "subscribers": "abonnés",
+            "postsCount": "publications",
+            "rating": "Note",
+            "postsTitle": "Publications",
+            "emptyPosts": "Aucune publication pour le moment.",
+            "redirecting": "Redirection..."
         }
     }
 }

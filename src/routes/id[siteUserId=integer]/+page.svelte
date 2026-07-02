@@ -24,7 +24,7 @@
   } from '$lib/siteAuth'
   import { userSettings } from '$lib/settings'
   import { brandNameForLanguage } from '$lib/brand'
-  import { locale } from '$lib/translations'
+  import { locale, t } from '$lib/translations'
 
   export let data
 
@@ -98,12 +98,12 @@
 
   const formatNumber = (value: number | undefined) => {
     if (!value && value !== 0) return '—'
-    return value.toLocaleString('ru-RU')
+    return value.toLocaleString($locale || 'ru')
   }
 
   const userDisplayName = (user: BackendPublicSiteUser | null) => {
-    if (!user) return 'Пользователь'
-    if (user.is_deleted) return 'Удаленный пользователь'
+    if (!user) return $t('site.publicUser.user')
+    if (user.is_deleted) return $t('site.publicUser.deletedUser')
     const displayName = (user.display_name || '').trim()
     if (displayName) return displayName
     const fullName = [user.first_name, user.last_name].filter(Boolean).join(' ').trim()
@@ -118,9 +118,9 @@
   $: title = profile ? `${userDisplayName(profile)} — ${siteTitle}` : siteTitle
   $: description = profile
     ? profile.is_deleted
-      ? `Профиль удаленного пользователя на ${siteTitle}.`
-      : `Профиль пользователя @${profile.username} на ${siteTitle}: посты и сообщества.`
-    : `Профиль пользователя на ${siteTitle}.`
+      ? `${$t('site.publicUser.deletedDescriptionPrefix')} ${siteTitle}.`
+      : `${$t('site.publicUser.descriptionPrefix')} @${profile.username} ${$t('site.publicUser.descriptionMiddle')} ${siteTitle}: ${$t('site.publicUser.descriptionSuffix')}`
+    : `${$t('site.publicUser.genericDescriptionPrefix')} ${siteTitle}.`
   $: canonicalUrl = new URL(
     profilePath,
     (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '') + '/'
@@ -216,7 +216,7 @@
       ownerPosts = collected
       ownerPostsLoaded = true
     } catch (error) {
-      ownerPostsError = (error as Error)?.message ?? 'Не удалось загрузить черновики'
+      ownerPostsError = (error as Error)?.message ?? $t('site.publicUser.loadDraftsFailed')
     } finally {
       ownerPostsLoading = false
     }
@@ -231,7 +231,7 @@
 
   const removeDraft = async (draft: SiteUserPost) => {
     if (deletingDraftId === draft.id) return
-    const shouldDelete = confirm('Удалить черновик?')
+    const shouldDelete = confirm($t('site.publicUser.deleteDraftConfirm'))
     if (!shouldDelete) return
     deletingDraftId = draft.id
     ownerPostsError = ''
@@ -239,7 +239,7 @@
       await deleteUserPost(draft.id)
       ownerPosts = ownerPosts.filter((item) => item.id !== draft.id)
     } catch (error) {
-      ownerPostsError = (error as Error)?.message ?? 'Не удалось удалить черновик'
+      ownerPostsError = (error as Error)?.message ?? $t('site.publicUser.deleteDraftFailed')
     } finally {
       deletingDraftId = null
     }
@@ -257,7 +257,7 @@
       const chat = await createSiteChat(profile.id)
       await goto(`/chats/${chat.id}`)
     } catch (error) {
-      chatError = (error as Error)?.message ?? 'Не удалось открыть чат'
+      chatError = (error as Error)?.message ?? $t('site.publicUser.openChatFailed')
     } finally {
       chatOpening = false
     }
@@ -298,14 +298,14 @@
         {/if}
         <div class="flex flex-wrap gap-2 text-sm">
           <span class="px-3 py-1.5 rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300">
-            {formatNumber(profile?.posts_count)} постов
+            {formatNumber(profile?.posts_count)} {$t('site.publicUser.postsCount')}
           </span>
           <span class="px-3 py-1.5 rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300">
-            {formatNumber(profile?.comuns_count)} сообществ
+            {formatNumber(profile?.comuns_count)} {$t('site.publicUser.communitiesCount')}
           </span>
           {#if profile?.authors_count}
             <span class="px-3 py-1.5 rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300">
-              {formatNumber(profile?.authors_count)} каналов
+              {formatNumber(profile?.authors_count)} {$t('site.publicUser.channelsCount')}
             </span>
           {/if}
         </div>
@@ -317,7 +317,7 @@
               on:click={openChat}
               disabled={chatOpening}
             >
-              {chatOpening ? 'Открываем...' : 'Написать'}
+              {chatOpening ? $t('site.publicUser.opening') : $t('site.publicUser.message')}
             </button>
             {#if chatError}
               <div class="text-sm text-red-600 dark:text-red-300">{chatError}</div>
@@ -330,7 +330,7 @@
 
   {#if authors.length}
     <section class="flex flex-col gap-3">
-      <div class="text-lg font-semibold text-slate-900 dark:text-zinc-100">Каналы</div>
+      <div class="text-lg font-semibold text-slate-900 dark:text-zinc-100">{$t('site.publicUser.channels')}</div>
       <div class="grid gap-3 sm:grid-cols-2">
         {#each authors as author}
           <a
@@ -368,7 +368,7 @@
   {/if}
 
   <section class="flex flex-col gap-3">
-    <div class="text-lg font-semibold text-slate-900 dark:text-zinc-100">Сообщества</div>
+    <div class="text-lg font-semibold text-slate-900 dark:text-zinc-100">{$t('site.publicUser.communities')}</div>
     {#if comuns.length}
       <div class="grid gap-3 sm:grid-cols-2">
         {#each comuns as comun}
@@ -391,7 +391,7 @@
                   <div class="font-semibold text-slate-900 dark:text-zinc-100 truncate">{comun.name}</div>
                   {#if comun.role}
                     <span class="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300">
-                      {comun.role === 'creator' ? 'создатель' : comun.role === 'subscriber' ? 'подписан' : 'модератор'}
+                      {comun.role === 'creator' ? $t('site.publicUser.roleCreator') : comun.role === 'subscriber' ? $t('site.publicUser.roleSubscriber') : $t('site.publicUser.roleModerator')}
                     </span>
                   {/if}
                 </div>
@@ -416,7 +416,7 @@
       </div>
     {:else}
       <div class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-4 text-sm text-slate-500 dark:text-zinc-400">
-        Пока нет сообществ.
+        {$t('site.publicUser.emptyCommunities')}
       </div>
     {/if}
   </section>
@@ -432,7 +432,7 @@
         }`}
         on:click={() => (profileTab = 'posts')}
       >
-        Посты
+        {$t('site.publicUser.posts')}
       </button>
       {#if isOwnProfile}
         <button
@@ -444,7 +444,7 @@
           }`}
           on:click={() => (profileTab = 'drafts')}
         >
-          Черновики
+          {$t('site.publicUser.drafts')}
         </button>
       {/if}
     </div>
@@ -452,11 +452,11 @@
       <FeedPostsList posts={visiblePosts} {loadingMore} />
     {:else if profileTab === 'posts'}
       <div class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-4 text-sm text-slate-500 dark:text-zinc-400">
-        Пока нет публикаций.
+        {$t('site.publicUser.emptyPosts')}
       </div>
     {:else if ownerPostsLoading}
       <div class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-4 text-sm text-slate-500 dark:text-zinc-400">
-        Загружаем черновики...
+        {$t('site.publicUser.loadingDrafts')}
       </div>
     {:else if ownerPostsError}
       <div class="rounded-2xl border border-red-200 dark:border-red-900/40 bg-white/95 dark:bg-zinc-900/85 p-4 text-sm text-red-600 dark:text-red-300">
@@ -472,11 +472,11 @@
                   href={draftViewHref(draft)}
                   class="text-lg font-semibold text-slate-900 transition-colors hover:text-slate-700 hover:underline dark:text-zinc-100 dark:hover:text-zinc-200 break-words"
                 >
-                  {draft.title || 'Без заголовка'}
+                  {draft.title || $t('site.publicUser.untitledDraft')}
                 </a>
                 <div class="mt-1 text-sm text-slate-500 dark:text-zinc-400">
                   <span>
-                    Обновлён {new Intl.DateTimeFormat('ru-RU', {
+                    {$t('site.publicUser.updated')} {new Intl.DateTimeFormat($locale || 'ru', {
                       day: '2-digit',
                       month: '2-digit',
                       hour: '2-digit',
@@ -489,8 +489,8 @@
                 <a
                   href={draftEditHref(draft)}
                   class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-700 transition-colors hover:bg-slate-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
-                  aria-label="Редактировать черновик"
-                  title="Редактировать черновик"
+                  aria-label={$t('site.publicUser.editDraft')}
+                  title={$t('site.publicUser.editDraft')}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M12 20h9" />
@@ -500,8 +500,8 @@
                 <button
                   type="button"
                   class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-red-200 bg-red-50 text-red-600 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300 dark:hover:bg-red-900/50"
-                  aria-label="Удалить черновик"
-                  title="Удалить черновик"
+                  aria-label={$t('site.publicUser.deleteDraft')}
+                  title={$t('site.publicUser.deleteDraft')}
                   on:click={() => removeDraft(draft)}
                   disabled={deletingDraftId === draft.id}
                 >
@@ -520,7 +520,7 @@
       </div>
     {:else}
       <div class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-4 text-sm text-slate-500 dark:text-zinc-400">
-        Пока нет черновиков.
+        {$t('site.publicUser.emptyDrafts')}
       </div>
     {/if}
   </section>
