@@ -278,6 +278,18 @@ class WhereFilmedImportTests(TestCase):
         self.assertIn("movie-960.webp", translation.content)
         self.assertIn("en", post.raw_data["wherefilmed"]["translation_languages"])
         self.assertIn("translations", post.raw_data["wherefilmed"])
+        from feeds.views import _serialize_localized_post_template
+
+        ru_template = _serialize_localized_post_template(post, "ru")
+        en_template = _serialize_localized_post_template(post, "en")
+        es_template = _serialize_localized_post_template(post, "es")
+        self.assertEqual(ru_template["data"]["title"], "Дружба")
+        self.assertEqual(ru_template["data"]["genre"], "drama")
+        self.assertEqual(en_template["data"]["title"], "Friendship")
+        self.assertEqual(en_template["data"]["genre"], "Drama")
+        self.assertEqual(es_template["data"]["title"], "Amistad")
+        self.assertEqual(es_template["data"]["genre"], "Drama")
+        self.assertEqual(en_template["data"]["original_title"], "Friendship")
 
     @patch("feeds.wherefilmed_import._download_image")
     def test_v2_repeated_upsert_does_not_create_duplicate(self, download_image):

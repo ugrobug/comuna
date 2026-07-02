@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import hmac
 import hashlib
@@ -2582,6 +2583,86 @@ def _post_language_versions(post: Post) -> list[dict]:
     return versions
 
 
+def _localized_template_text(value: object, max_length: int = 255) -> str:
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if max_length > 0 and len(text) > max_length:
+        text = text[:max_length].strip()
+    return text
+
+
+def _wherefilmed_translation_snapshot(post: Post) -> dict:
+    raw_data = post.raw_data if isinstance(post.raw_data, dict) else {}
+    wherefilmed = raw_data.get("wherefilmed")
+    if not isinstance(wherefilmed, dict):
+        return {}
+    translations = wherefilmed.get("translations")
+    return translations if isinstance(translations, dict) else {}
+
+
+def _wherefilmed_movie_translation(snapshot: dict, language: str) -> dict:
+    movie_translations = snapshot.get("movie")
+    if not isinstance(movie_translations, dict):
+        return {}
+    movie_translation = movie_translations.get(language)
+    return movie_translation if isinstance(movie_translation, dict) else {}
+
+
+def _wherefilmed_reference_title(snapshot: dict, key: str, language: str) -> str:
+    for container_key in ("references", "top_level_references"):
+        container = snapshot.get(container_key)
+        if not isinstance(container, dict):
+            continue
+        items = container.get(key)
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            translations = item.get("translations")
+            if not isinstance(translations, dict):
+                continue
+            translated_item = translations.get(language)
+            if not isinstance(translated_item, dict):
+                continue
+            title = _localized_template_text(translated_item.get("title"), 80)
+            if title:
+                return title
+    return ""
+
+
+def _serialize_localized_post_template(post: Post, language: str) -> dict | None:
+    template_payload = _serialize_post_template(post)
+    if language == ORIGINAL_POST_LANGUAGE or not isinstance(template_payload, dict):
+        return template_payload
+    template_type = str(template_payload.get("type") or "").strip()
+    if template_type != _POST_TEMPLATE_TYPE_MOVIE_REVIEW:
+        return template_payload
+
+    snapshot = _wherefilmed_translation_snapshot(post)
+    if not snapshot:
+        return template_payload
+
+    localized_data: dict[str, str] = {}
+    movie_translation = _wherefilmed_movie_translation(snapshot, language)
+    title = _localized_template_text(movie_translation.get("title")) if movie_translation else ""
+    if title:
+        localized_data["title"] = title
+    genre = _wherefilmed_reference_title(snapshot, "genres", language)
+    if genre:
+        localized_data["genre"] = genre
+
+    if not localized_data:
+        return template_payload
+
+    localized_template = copy.deepcopy(template_payload)
+    data = localized_template.get("data")
+    if not isinstance(data, dict):
+        data = {}
+        localized_template["data"] = data
+    data.update(localized_data)
+    return localized_template
+
+
 def _post_sitemap_lastmod(post: Post) -> dt_datetime | None:
     candidates = [post.updated_at or post.created_at]
     candidates.extend(
@@ -3436,7 +3517,7 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
         title = translation.title or title
         content = translation.content or content
     original_content, _original_poll_payload = _content_with_live_poll(post, current_user)
-    template_payload = _serialize_post_template(post)
+    template_payload = _serialize_localized_post_template(post, language)
     author_channel_url, author_title = _author_display_fields(
         request, post.author, post.channel_url
     )
