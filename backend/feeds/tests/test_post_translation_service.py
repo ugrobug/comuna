@@ -90,6 +90,10 @@ class PostTranslationServiceTests(TestCase):
         request_payload = post_mock.call_args.kwargs["json"]
         self.assertEqual(request_payload["model"], "deepseek/deepseek-v4-flash")
         self.assertEqual(request_payload["response_format"], {"type": "json_object"})
+        self.assertEqual(
+            request_payload["reasoning"],
+            {"effort": "none", "exclude": True},
+        )
 
     @patch("feeds.translation_service.requests.post")
     def test_failed_openrouter_response_marks_translation_failed(self, post_mock) -> None:

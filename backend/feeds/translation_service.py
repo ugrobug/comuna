@@ -907,6 +907,10 @@ def _request_openrouter_json_translation(
         ],
         "temperature": 0.2,
         "response_format": {"type": "json_object"},
+        "reasoning": {
+            "effort": "none",
+            "exclude": True,
+        },
     }
 
     try:
