@@ -110,6 +110,7 @@ export interface Settings {
   myFeedComunCategories: Record<string, string[]>
   hiddenAuthors: string[]
   myFeedHideNegative: boolean
+  keyboardShortcutsHintDismissed: boolean
   useRtl: boolean
   translator: string | undefined
   parseTags: boolean
@@ -198,6 +199,7 @@ export const defaultSettings: Settings = {
   myFeedComunCategories: {},
   hiddenAuthors: [],
   myFeedHideNegative: true,
+  keyboardShortcutsHintDismissed: false,
   useRtl: false,
   translator: undefined,
   parseTags: true,
@@ -225,6 +227,7 @@ type BackendFeedSettings = {
   my_feed_hide_negative?: boolean
   tag_rules?: Record<string, 'hide' | 'blur'>
   interface_language?: string
+  keyboard_shortcuts_hint_dismissed?: boolean
 }
 
 const feedSettingsDefaults = () => ({
@@ -236,6 +239,7 @@ const feedSettingsDefaults = () => ({
   myFeedComunCategories: { ...defaultSettings.myFeedComunCategories },
   hiddenAuthors: [...defaultSettings.hiddenAuthors],
   myFeedHideNegative: defaultSettings.myFeedHideNegative,
+  keyboardShortcutsHintDismissed: defaultSettings.keyboardShortcutsHintDismissed,
   tagRules: { ...defaultSettings.tagRules },
 })
 
@@ -249,6 +253,7 @@ const feedSettingsSnapshot = (settings: Settings) =>
     myFeedComunCategories: settings.myFeedComunCategories ?? {},
     hiddenAuthors: settings.hiddenAuthors ?? [],
     myFeedHideNegative: settings.myFeedHideNegative,
+    keyboardShortcutsHintDismissed: settings.keyboardShortcutsHintDismissed,
     tagRules: settings.tagRules ?? {},
     language: settings.language ?? null,
   })
@@ -262,6 +267,7 @@ const backendPayloadFromSettings = (settings: Settings) => ({
   my_feed_comun_categories: settings.myFeedComunCategories ?? {},
   hidden_authors: settings.hiddenAuthors ?? [],
   my_feed_hide_negative: settings.myFeedHideNegative,
+  keyboard_shortcuts_hint_dismissed: settings.keyboardShortcutsHintDismissed,
   tag_rules: settings.tagRules ?? {},
   interface_language: settings.language ?? '',
 })
@@ -277,6 +283,8 @@ const settingsFromBackendPayload = (settings: Settings, payload: BackendFeedSett
     myFeedComunCategories: payload.my_feed_comun_categories ?? settings.myFeedComunCategories,
     hiddenAuthors: payload.hidden_authors ?? settings.hiddenAuthors,
     myFeedHideNegative: payload.my_feed_hide_negative ?? settings.myFeedHideNegative,
+    keyboardShortcutsHintDismissed:
+      payload.keyboard_shortcuts_hint_dismissed ?? settings.keyboardShortcutsHintDismissed,
     tagRules: payload.tag_rules ?? settings.tagRules,
     language: normalizeStoredLanguage(payload.interface_language) ?? settings.language,
   })
@@ -290,7 +298,6 @@ let lastCommunitySubscriptionSnapshot = ''
 
 const invalidateCommunityChromeCaches = () => {
   invalidateCachedJson('public:sidebar-comuns')
-  invalidateCachedJson('public:top-comuns')
   refreshSidebarComuns().catch((error) => {
     console.error('Failed to refresh sidebar communities:', error)
   })
@@ -494,6 +501,9 @@ const migrate = (settings: any): Settings => {
   }
   if (typeof settings?.myFeedHideNegative !== 'boolean') {
     settings.myFeedHideNegative = defaultSettings.myFeedHideNegative
+  }
+  if (typeof settings?.keyboardShortcutsHintDismissed !== 'boolean') {
+    settings.keyboardShortcutsHintDismissed = defaultSettings.keyboardShortcutsHintDismissed
   }
   if (typeof settings?.hideReadPosts !== 'boolean') {
     settings.hideReadPosts = defaultSettings.hideReadPosts

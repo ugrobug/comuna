@@ -150,39 +150,45 @@
   md:relative fixed top-0 left-0 right-0 md:top-0 md:bottom-auto"
   style={$$props.style}
 >
-  <div class="w-full max-w-screen-sm xl:max-w-[1280px] mx-auto px-3 sm:px-4 xl:px-0 md:py-2 py-1">
+  <div class="w-full mx-auto px-[30px] md:px-0 md:py-2 py-1">
     <!-- Единый навбар для всех устройств -->
     <div class="grid navbar-desktop-grid items-center w-full">
       <!-- 1 колонка: гамбургер, логотип -->
-      <div class="flex items-center pl-0 xl:pl-4 gap-2 min-w-[80px]">
+      <div class="flex min-w-0 items-center pl-0 md:pl-[30px] gap-2">
         <!-- Кнопка гамбургера только на мобилках -->
         <button
-          class="md:hidden w-10 h-10 rounded-full flex items-center justify-center hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
+          class="md:hidden w-10 h-10 shrink-0 rounded-full flex items-center justify-center hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
           title="Меню"
           on:click={toggleSidebar}
         >
           <Icon src={Bars3} size="18" class="w-4 h-4" />
         </button>
-        <div 
-          class="logo cursor-pointer"
+        <div
+          class="logo min-w-0 cursor-pointer"
           on:click={goToHome}
           role="button"
           tabindex="0"
           on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && goToHome()}
         >
-          <span class="text-xl font-medium tracking-tight font-roboto text-slate-900 dark:text-white">
+          <span class="block truncate text-xl font-medium tracking-tight font-roboto text-slate-900 dark:text-white">
             {brandName}
           </span>
         </div>
       </div>
-      <!-- 2 колонка: админка и модерация -->
-      <div class="flex flex-row items-center gap-2 justify-center w-full">
+      <!-- 2 колонка: поиск -->
+      <div class="hidden md:flex items-center justify-center w-full">
+        <div class="w-full max-w-[500px]">
+          <HeaderSearch />
+        </div>
+      </div>
+      <!-- 3 колонка: все остальные элементы -->
+      <div class="flex min-w-0 flex-row pr-0 md:pr-[30px] items-center gap-1.5 md:gap-2 w-full justify-end">
         {#if $profile?.user && isAdmin($profile.user)}
           <NavButton
             href="/admin"
             label={$t('nav.admin')}
             icon={ServerStack}
-            class="relative"
+            class="relative hidden md:flex"
             isSelectedFilter={(path) => path.startsWith('/admin')}
           >
             {#if ($notifications.applications ?? 0) > 0}
@@ -194,7 +200,7 @@
           <NavButton
             href="/moderation"
             label={$t('nav.moderation')}
-            class="relative"
+            class="relative hidden md:flex"
           >
             {#if ($notifications.reports ?? 0) > 0}
               <div class="rounded-full w-2 h-2 bg-red-500 absolute -top-1 -left-1"></div>
@@ -222,12 +228,6 @@
             </button>
           </div>
         {/if}
-      </div>
-      <!-- 3 колонка: все остальные элементы -->
-      <div class="flex flex-row xl:pr-4 items-center gap-2 w-full justify-end">
-        <div class="hidden md:block w-56 lg:w-64 xl:w-72">
-          <HeaderSearch />
-        </div>
         <div class="hidden md:block">
           <LanguageSwitcher />
         </div>
@@ -322,7 +322,7 @@
         {/if}
       </div>
     </div>
-    <div class="md:hidden mt-2">
+    <div class="md:hidden mt-2 w-full min-w-0">
       <HeaderSearch compact />
     </div>
   </div>
@@ -479,7 +479,8 @@
 
 <style>
   .navbar-desktop-grid {
-    grid-template-columns: 1fr 3fr 1fr;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 0.5rem;
     display: grid;
     width: 100%;
   }
@@ -487,37 +488,24 @@
   /* Адаптивные размеры для мобильных устройств */
   /* Удалено: .logo img, .logo svg — не используется, всё через Tailwind */
 
-  @media (max-width: 1279px) {
-    nav > div {
-      max-width: 960px;
-    }
-  }
-
-  @media (max-width: 767px) {
-    nav > div {
-      max-width: none;
-    }
-  }
-
-  @media (max-width: 639px) {
-    nav > div {
-      max-width: 640px;
+  @media (min-width: 768px) {
+    .navbar-desktop-grid {
+      grid-template-columns: minmax(120px, 1fr) minmax(320px, 500px) minmax(120px, 1fr);
+      column-gap: 1rem;
     }
   }
 
   @media (min-width: 1280px) {
     nav > div {
-      max-width: 1280px;
+      max-width: none;
     }
     
     .navbar-desktop-grid > *:first-child {
-      max-width: 15rem;
-      justify-self: end;
+      justify-self: start;
       width: 100%;
     }
     .navbar-desktop-grid > *:last-child {
-      max-width: 20rem;
-      justify-self: start;
+      justify-self: end;
       width: 100%;
     }
   }

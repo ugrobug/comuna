@@ -1,7 +1,6 @@
 import { browser } from '$app/environment'
 import { env } from '$env/dynamic/public'
 import { profile } from '$lib/auth.js'
-import CommunityCard from '$lib/components/lemmy/community/CommunityCard.svelte'
 import { getClient } from '$lib/lemmy.js'
 import { awaitIfServer } from '$lib/promise.js'
 import { SSR_ENABLED, userSettings } from '$lib/settings.js'
@@ -114,14 +113,6 @@ export async function load({ params, url, fetch }) {
     post: post,
     commentSort: sort,
     comments: (await awaitIfServer(comments)).data,
-    slots: {
-      sidebar: {
-        component: CommunityCard,
-        props: {
-          community_view: post.community_view,
-        },
-      },
-    },
     recommendations: {
       communityPosts,
       globalPosts,

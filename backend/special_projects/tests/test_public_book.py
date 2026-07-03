@@ -539,12 +539,6 @@ class PublicBookTests(TestCase):
         self.assertEqual(detail_response.status_code, 410)
         self.assertEqual(detail_response.json()["redirect_url"], "/s/book#comments")
 
-        recent_response = self.client.get(reverse("recent-comments"))
-        self.assertEqual(recent_response.status_code, 200)
-        recent_comment = recent_response.json()["comments"][0]
-        self.assertEqual(recent_comment["id"], comment.id)
-        self.assertEqual(recent_comment["link_url"], f"/s/book#site-comment-{comment.id}")
-
     def test_admin_stats_payload_counts_anonymous_contributors_and_registrations(self):
         users = [
             self.make_user("top-one", telegram=True),

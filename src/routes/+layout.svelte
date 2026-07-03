@@ -24,7 +24,6 @@
   import { Forward, Icon } from 'svelte-hero-icons'
   import { routes } from '$lib/util.js'
   import Shell from '$lib/components/ui/layout/Shell.svelte'
-  import SiteCard from '$lib/components/lemmy/SiteCard.svelte'
   import { site } from '$lib/lemmy.js'
   import ExpandableImage from '$lib/components/ui/ExpandableImage.svelte'
   import { LINKED_INSTANCE_URL } from '$lib/instance'
@@ -95,15 +94,6 @@
       ? $site?.site_view?.site?.description || env.PUBLIC_SITE_DESCRIPTION || defaultDescription
       : defaultDescription
   $: isBackendPostRoute = /^\/(?:[a-z]{2}\/)?b\/post\//.test($page.url.pathname)
-  $: keyboardShortcutsHintEnabled = new Set([
-    '/',
-    '/about',
-    '/[username]',
-    '/tags/[tag]',
-    '/c/[name]',
-    '/post/[slug]',
-    '/profile/voted/[type]',
-  ]).has($page.route.id ?? '')
   const toJsonLd = (value: unknown) =>
     JSON.stringify(value)
       .replace(/</g, '\\u003c')
@@ -244,64 +234,4 @@
     <slot />
   </main>
   <Navbar slot="navbar" let:style={s} let:class={c} class={c} style={s} />
-  
-  <svelte:fragment slot="suffix" let:class={c} let:style={s}>
-    {#if !isFullBleedRoute && !$page.data.hideSidebar}
-      <div 
-        class={c}
-        style={s}
-      >
-        <div class="flex flex-col gap-4 h-[calc(100vh-4rem)] sticky top-16 p-4">
-          <!-- Прокручиваемый контент сайдбара -->
-          <div class="flex flex-col gap-4 flex-1 min-h-0 overflow-auto hover:scrollbar scrollbar-hidden">
-            <!-- CommunityCard или SiteCard -->
-            {#if $page.data.slots?.sidebar?.component}
-              <div class="flex-shrink-0">
-                <svelte:component
-                  this={$page.data.slots.sidebar.component}
-                  {...$page.data.slots.sidebar.props}
-                />
-              </div>
-            {/if}
-            
-            {#if !$page.data.slots?.sidebar?.component}
-              {#await import('$lib/components/ui/sidebar/DefaultSidebarWidgets.svelte') then { default: DefaultSidebarWidgets }}
-                <DefaultSidebarWidgets {keyboardShortcutsHintEnabled} />
-              {/await}
-            {/if}
-          </div>
-        </div>
-      </div>
-    {/if}
-  </svelte:fragment>
 </Shell>
-
-<style>
-  /* Базовые стили для скрытия полосы прокрутки */
-  .scrollbar-hidden::-webkit-scrollbar {
-    width: 0.25rem;
-    background: transparent;
-  }
-  
-  .scrollbar-hidden::-webkit-scrollbar-thumb {
-    background: transparent;
-  }
-
-  /* Показываем полосу прокрутки при наведении */
-  .hover\:scrollbar:hover::-webkit-scrollbar-thumb {
-    background: rgb(203 213 225 / 0.3); /* slate-200 с прозрачностью */
-    border-radius: 0.25rem;
-  }
-
-  .dark .hover\:scrollbar:hover::-webkit-scrollbar-thumb {
-    background: rgb(39 39 42 / 0.3); /* zinc-800 с прозрачностью */
-  }
-
-  .hover\:scrollbar:hover::-webkit-scrollbar-thumb:hover {
-    background: rgb(203 213 225 / 0.5);
-  }
-
-  .dark .hover\:scrollbar:hover::-webkit-scrollbar-thumb:hover {
-    background: rgb(39 39 42 / 0.5);
-  }
-</style>

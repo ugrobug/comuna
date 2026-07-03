@@ -142,7 +142,7 @@
     />
   {:else}
     {#if data.results?.communities?.length && (data.type === 'All' || data.type === 'Communities')}
-      <div class="mt-4 mb-2 text-sm uppercase tracking-wide text-slate-500">Сообщества</div>
+      <div class="mt-4 mb-2 text-sm uppercase tracking-wide text-slate-500">{$t('content.communities')}</div>
       <div class="flex flex-col gap-3">
         {#each data.results.communities as comun}
           <a
@@ -171,7 +171,7 @@
     {/if}
 
     {#if data.results?.posts?.length && (data.type === 'All' || data.type === 'Posts')}
-      <div class="mt-6 mb-2 text-sm uppercase tracking-wide text-slate-500">Посты</div>
+      <div class="mt-6 mb-2 text-sm uppercase tracking-wide text-slate-500">{$t('content.posts')}</div>
       <div class="flex flex-col gap-4">
         {#each data.results.posts as item (item.post.post.id)}
           <Post
@@ -185,7 +185,7 @@
     {/if}
 
     {#if data.results?.authors?.length && (data.type === 'All' || data.type === 'Users')}
-      <div class="mt-6 mb-2 text-sm uppercase tracking-wide text-slate-500">Авторы</div>
+      <div class="mt-6 mb-2 text-sm uppercase tracking-wide text-slate-500">{$t('content.users')}</div>
       <div class="flex flex-col gap-3">
         {#each data.results.authors as author}
           <a

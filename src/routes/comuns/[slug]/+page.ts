@@ -6,9 +6,26 @@ const PAGE_SIZE = 10
 export const load = async ({ fetch, params, url, parent }) => {
   const slug = params.slug
   const category = url.searchParams.get('category') || ''
+  const hasCategoriesFilter = url.searchParams.has('categories')
+  const categorySlugs = hasCategoriesFilter
+    ? (url.searchParams.get('categories') || '')
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean)
+    : category
+      ? [category]
+      : []
   const parentData = await parent()
 
-  const postsUrl = new URL(buildComunPostsUrl(slug, { categorySlug: category || undefined }), url.origin)
+  const postsUrl = new URL(
+    buildComunPostsUrl(
+      slug,
+      hasCategoriesFilter
+        ? { categorySlugs }
+        : { categorySlug: category || undefined }
+    ),
+    url.origin
+  )
   postsUrl.searchParams.set('limit', String(PAGE_SIZE))
   const postsResponse = await fetch(postsUrl.toString())
   if (!postsResponse.ok) {
@@ -23,6 +40,12 @@ export const load = async ({ fetch, params, url, parent }) => {
     comun: parentData.comun ?? postsPayload?.comun ?? null,
     posts: postsPayload?.posts ?? [],
     selectedCategory: postsPayload?.selected_category ?? null,
+    selectedCategorySlugs: Array.isArray(postsPayload?.selected_category_slugs)
+      ? postsPayload.selected_category_slugs
+      : categorySlugs,
+    categoryFilterExplicit: Boolean(
+      postsPayload?.category_filter_explicit ?? (hasCategoriesFilter || Boolean(category))
+    ),
     categoryCounts: postsPayload?.category_counts ?? [],
     totalCount:
       typeof postsPayload?.total_count === 'number' ? Number(postsPayload.total_count) : null,

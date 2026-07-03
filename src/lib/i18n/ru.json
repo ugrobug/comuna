@@ -17,7 +17,6 @@
         "write": "Написать",
         "communities": "Сообщества",
         "search": "Поиск",
-        "popular_communities": "Сообщества",
         "show_all": "Показать все",
         "recent_posts": "Лучшее в этом месяце",
         "create": {
@@ -1501,7 +1500,7 @@
             "createCommunity": "Создать сообщество",
             "allCommunities": "Все сообщества",
             "showAll": "Показать все",
-            "resources": "Ресурсы",
+            "resources": "О нас",
             "aboutProject": "О Проекте",
             "advertisement": "Реклама",
             "authors": "Авторам",
@@ -1522,15 +1521,7 @@
             "ratings": {
                 "topAuthorsMonth": "Топ авторов за месяц",
                 "noAuthorsMonth": "Нет данных за месяц",
-                "fullRating": "Весь рейтинг",
-                "topComuns": "Топ сообществ",
-                "noComuns": "Нет данных по сообществам",
-                "allComuns": "Все сообщества",
-                "bestThisMonth": "Лучшее в этом месяце"
-            },
-            "comments": {
-                "recent": "Свежие комментарии",
-                "empty": "Комментариев пока нет"
+                "fullRating": "Весь рейтинг"
             },
             "keyboard": {
                 "title": "Управлять можно с клавиатуры",
@@ -1566,8 +1557,7 @@
                 "profileUsername": "Профиль @{{username}}",
                 "creator": "Создатель",
                 "collapse": "Свернуть",
-                "expandMore": "Раскрыть еще {{count}}",
-                "topPosts": "Лучшие посты сообщества"
+                "expandMore": "Раскрыть еще {{count}}"
             }
         },
         "authModal": {

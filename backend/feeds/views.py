@@ -30,6 +30,7 @@ from xml.sax.saxutils import escape as xml_escape
 from django.db import transaction
 from django.db.models import Avg, Count, Exists, F, IntegerField, Max, OuterRef, Prefetch, Q, Subquery, Sum, Value
 from django.db.models.functions import Cast, Coalesce
+from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
 
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse
@@ -3181,74 +3182,6 @@ def post_favorite(request: HttpRequest, post_id: int) -> HttpResponse:
     )
 
 
-@anonymous_cache(prefix="recent-comments", seconds=30)
-def recent_comments(request: HttpRequest) -> HttpResponse:
-    limit_raw = request.GET.get("limit", "5")
-    try:
-        limit = min(max(int(limit_raw), 1), 20)
-    except ValueError:
-        limit = 5
-    language = _normalize_post_language(request.GET.get("lang")) or ORIGINAL_POST_LANGUAGE
-
-    now = timezone.now()
-    comments = list(
-        PostComment.objects.filter(
-            is_deleted=False,
-            post__is_blocked=False,
-            post__is_pending=False,
-            post__author__is_blocked=False,
-        )
-        .filter(Q(post__publish_at__isnull=True) | Q(post__publish_at__lte=now))
-        .select_related("user", "user__site_profile", "post", "post__author")
-        .order_by("-created_at")[:limit]
-    )
-    comment_translations = _comment_translations_by_language(comments, language)
-    post_translations: dict[int, PostTranslation] = {}
-    if language != ORIGINAL_POST_LANGUAGE:
-        post_ids = [comment.post_id for comment in comments if comment.post_id]
-        post_translations = {
-            translation.post_id: translation
-            for translation in PostTranslation.objects.filter(
-                post_id__in=post_ids,
-                language=language,
-                status=POST_TRANSLATION_STATUS_TRANSLATED,
-            )
-        }
-
-    serialized = [
-        {
-            **_serialize_site_comment(
-                comment,
-                translation=comment_translations.get(comment.id),
-                language=language,
-            ),
-            "post": {
-                "id": comment.post_id,
-                "title": (
-                    post_translations[comment.post_id].title
-                    if comment.post_id in post_translations
-                    and post_translations[comment.post_id].title
-                    else _post_display_title(comment.post)
-                ),
-            },
-            "link_url": _site_comment_link(
-                comment.post,
-                comment,
-                language=language,
-                title=(
-                    post_translations[comment.post_id].title
-                    if comment.post_id in post_translations
-                    and post_translations[comment.post_id].title
-                    else None
-                ),
-            ),
-        }
-        for comment in comments
-    ]
-
-    return JsonResponse({"ok": True, "comments": serialized})
-
-
 @anonymous_cache(prefix="author-posts", seconds=45)
 def author_posts(request: HttpRequest, username: str) -> HttpResponse:
     try:
@@ -4221,6 +4154,44 @@ def _search_comun_result_rank(item: dict, query: str) -> tuple[int, float, str]:
     return (8, -rating_score, name)
 
 
+SEARCH_CONFIG = "simple"
+
+
+def _search_prefix_query(raw_query: str) -> SearchQuery | None:
+    terms = [
+        term.lower()
+        for term in re.findall(r"\w+", raw_query or "", flags=re.UNICODE)
+        if term.strip()
+    ]
+    if not terms:
+        return None
+    raw_tsquery = " & ".join(f"{term}:*" for term in terms[:8])
+    return SearchQuery(raw_tsquery, config=SEARCH_CONFIG, search_type="raw")
+
+
+def _post_search_vector() -> SearchVector:
+    return SearchVector("title", "content", config=SEARCH_CONFIG)
+
+
+def _author_search_vector() -> SearchVector:
+    return SearchVector("username", "title", "description", config=SEARCH_CONFIG)
+
+
+def _comun_search_vector() -> SearchVector:
+    return SearchVector(
+        "name",
+        "slug",
+        "product_description",
+        "target_audience",
+        "rules_text",
+        config=SEARCH_CONFIG,
+    )
+
+
+def _user_search_vector() -> SearchVector:
+    return SearchVector("username", "first_name", "last_name", config=SEARCH_CONFIG)
+
+
 @anonymous_cache(prefix="search", seconds=30)
 def search_content(request: HttpRequest) -> HttpResponse:
     query = (request.GET.get("q") or "").strip()
@@ -4256,6 +4227,22 @@ def search_content(request: HttpRequest) -> HttpResponse:
         page = 1
 
     offset = (page - 1) * limit
+    search_query = _search_prefix_query(query)
+    if search_query is None:
+        return JsonResponse(
+            {
+                "ok": True,
+                "query": query,
+                "page": page,
+                "limit": limit,
+                "posts": [],
+                "authors": [],
+                "communities": [],
+                "total_posts": 0,
+                "total_authors": 0,
+                "total_communities": 0,
+            }
+        )
 
     posts: list[dict] = []
     authors: list[dict] = []
@@ -4265,38 +4252,43 @@ def search_content(request: HttpRequest) -> HttpResponse:
     total_communities = 0
 
     if type_filter in ("all", "communities"):
-        comun_query = (
-            Q(name__icontains=query)
-            | Q(slug__icontains=query)
-            | Q(product_description__icontains=query)
-            | Q(target_audience__icontains=query)
+        comun_vector = _comun_search_vector()
+        comun_qs = (
+            Comun.objects.filter(is_active=True)
+            .annotate(search_vector=comun_vector)
+            .filter(search_vector=search_query)
+            .annotate(search_rank=SearchRank(comun_vector, search_query))
+            .order_by("-search_rank", "-rating_score", "name")
         )
-        comun_qs = Comun.objects.filter(is_active=True).filter(comun_query).order_by("name")
-        serialized_comuns = [
+        total_communities = comun_qs.count()
+        communities.extend(
             _serialize_search_comun_result(request, comun)
-            for comun in comun_qs
-        ]
-        serialized_comuns.sort(key=lambda item: _search_comun_result_rank(item, query))
-        total_communities = len(serialized_comuns)
-        communities.extend(serialized_comuns[offset : offset + limit])
+            for comun in comun_qs[offset : offset + limit]
+        )
 
     if type_filter in ("all", "posts"):
-        post_query = Q(title__icontains=query) | Q(content__icontains=query)
-        post_query |= Q(author__username__icontains=query) | Q(
-            author__title__icontains=query
+        author_vector = _author_search_vector()
+        matching_author_ids = (
+            Author.objects.filter(is_blocked=False)
+            .annotate(search_vector=author_vector)
+            .filter(search_vector=search_query)
+            .values("id")
         )
         now = timezone.now()
+        post_vector = _post_search_vector()
         posts_qs = (
             Post.objects.filter(
-                post_query,
                 is_blocked=False,
                 is_pending=False,
                 author__is_blocked=False,
             )
             .filter(_publish_ready_filter(now))
+            .annotate(search_vector=post_vector)
+            .filter(Q(search_vector=search_query) | Q(author_id__in=Subquery(matching_author_ids)))
+            .annotate(search_rank=SearchRank(post_vector, search_query))
             .select_related("author")
             .prefetch_related("tags")
-            .order_by("-created_at" if sort == "new" else "-created_at")
+            .order_by("-created_at" if sort == "new" else "-search_rank", "-created_at")
         )
         total_posts = posts_qs.count()
         posts_page = list(posts_qs[offset : offset + limit])
@@ -4338,20 +4330,18 @@ def search_content(request: HttpRequest) -> HttpResponse:
             )
 
     if type_filter in ("all", "users", "authors"):
+        author_vector = _author_search_vector()
         authors_qs = (
             Author.objects.filter(is_blocked=False)
-            .filter(
-                Q(username__icontains=query)
-                | Q(title__icontains=query)
-                | Q(description__icontains=query)
-            )
-
-            .order_by("username")
+            .annotate(search_vector=author_vector)
+            .filter(search_vector=search_query)
+            .annotate(search_rank=SearchRank(author_vector, search_query))
+            .order_by("-search_rank", "username")
         )
         combined_author_results: list[dict] = []
         seen_usernames: set[str] = set()
 
-        for author in authors_qs:
+        for author in authors_qs[: offset + limit + 10]:
             serialized = _serialize_search_author_result(request, author)
             normalized_username = str(serialized.get("username") or "").strip().lower()
             if not normalized_username or normalized_username in seen_usernames:
@@ -4360,19 +4350,17 @@ def search_content(request: HttpRequest) -> HttpResponse:
             combined_author_results.append(serialized)
 
         if type_filter in ("all", "users"):
+            user_vector = _user_search_vector()
             users_qs = (
                 User.objects.filter(is_active=True)
-                .filter(
-                    Q(username__icontains=query)
-                    | Q(first_name__icontains=query)
-                    | Q(last_name__icontains=query)
-                    | Q(site_profile__display_name__icontains=query)
-                )
+                .annotate(search_vector=user_vector)
+                .filter(search_vector=search_query)
+                .annotate(search_rank=SearchRank(user_vector, search_query))
                 .select_related("site_profile", "telegram_account", "vk_account")
-                .order_by("username")
+                .order_by("-search_rank", "username")
                 .distinct()
             )
-            for user in users_qs:
+            for user in users_qs[: offset + limit + 10]:
                 normalized_username = (user.username or "").strip().lower()
                 if not normalized_username or normalized_username in seen_usernames:
                     continue
@@ -4381,10 +4369,9 @@ def search_content(request: HttpRequest) -> HttpResponse:
                     _serialize_search_site_user_result(request, user)
                 )
 
-        combined_author_results.sort(
-            key=lambda item: _search_author_result_rank(item, query)
-        )
-        total_authors = len(combined_author_results)
+        total_authors = authors_qs.count()
+        if type_filter in ("all", "users"):
+            total_authors += users_qs.count()
         authors.extend(combined_author_results[offset : offset + limit])
 
     return JsonResponse(

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { browser } from '$app/environment'
   import { portalTooltip } from '$lib/actions/portalTooltip'
+  import { feedSettingsHydrated, userSettings } from '$lib/settings'
   import { siteToken, siteUser } from '$lib/siteAuth'
   import { t } from '$lib/translations'
 
@@ -68,6 +69,12 @@
     } catch {
       // ignore storage failures (private mode / blocked storage)
     }
+    if ($siteUser?.id || hasAuthenticatedSession()) {
+      userSettings.update((settings) => ({
+        ...settings,
+        keyboardShortcutsHintDismissed: true,
+      }))
+    }
   }
 
   function dismissHint() {
@@ -82,9 +89,22 @@
       dismissed = readDismissed()
     }
   }
+
+  $: if (browser && ($siteUser?.id || hasAuthenticatedSession()) && $userSettings.keyboardShortcutsHintDismissed) {
+    dismissed = true
+    initializedForIdentity = currentIdentity()
+    try {
+      localStorage.setItem(AUTH_PENDING_DISMISS_KEY, '1')
+      if ($siteUser?.id) {
+        localStorage.setItem(`${AUTH_DISMISS_PREFIX}${$siteUser.id}`, '1')
+      }
+    } catch {
+      // ignore storage failures
+    }
+  }
 </script>
 
-{#if enabled && !dismissed}
+{#if enabled && !dismissed && (!hasAuthenticatedSession() || $feedSettingsHydrated)}
   <div class="rounded-xl border border-slate-200/80 dark:border-zinc-800 bg-white/90 dark:bg-zinc-900/90 p-4 shadow-sm">
     <div class="flex flex-col gap-2">
       <h3 class="text-sm font-semibold text-slate-900 dark:text-zinc-100">

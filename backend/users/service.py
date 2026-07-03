@@ -675,6 +675,10 @@ def _merge_feed_settings(target: User, source: User) -> None:
         **(source_settings.tag_rules or {}),
         **(target_settings.tag_rules or {}),
     }
+    target_settings.keyboard_shortcuts_hint_dismissed = (
+        target_settings.keyboard_shortcuts_hint_dismissed
+        or source_settings.keyboard_shortcuts_hint_dismissed
+    )
     target_settings.save()
     source_settings.delete()
     next_target_settings = {

@@ -286,7 +286,6 @@ def auth_feed_settings(request: HttpRequest) -> HttpResponse:
             user_id=user.id,
         )
         bump_public_cache_prefix("comuns-sidebar")
-        bump_public_cache_prefix("top-comuns")
     return JsonResponse(
         {
             "ok": True,

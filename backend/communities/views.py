@@ -1734,8 +1734,6 @@ def comun_create_from_telegram_channel(request: HttpRequest) -> HttpResponse:
     comun.moderators.add(current_user)
     bump_public_cache_prefix("comuns-catalog")
     bump_public_cache_prefix("comuns-sidebar")
-    bump_public_cache_prefix("comun-sidebar-detail")
-    bump_public_cache_prefix("top-comuns")
     comun = (
         Comun.objects.filter(id=comun.id)
         .select_related("creator", "welcome_post", "telegram_source_author")
@@ -1966,8 +1964,6 @@ def comuns_list_create(request: HttpRequest) -> HttpResponse:
     comun.save()
     bump_public_cache_prefix("comuns-catalog")
     bump_public_cache_prefix("comuns-sidebar")
-    bump_public_cache_prefix("comun-sidebar-detail")
-    bump_public_cache_prefix("top-comuns")
 
     comun = (
         Comun.objects.filter(id=comun.id)
@@ -2505,13 +2501,11 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
             comun.welcome_post = None
 
     comun.save()
-    bump_public_cache_prefix("comun-sidebar-detail")
     if moderator_subscriptions_need_sync:
         moderator_auto_subscribed_count = community_service._ensure_comun_moderators_subscribed(comun)
         if moderator_auto_subscribed_count:
             bump_public_cache_prefix("comuns-catalog")
             bump_public_cache_prefix("comuns-sidebar")
-            bump_public_cache_prefix("top-comuns")
 
     if "category_ids" in body or "category_names" in body:
         if "category_ids" in body:
@@ -2733,32 +2727,6 @@ def comun_settings_options(request: HttpRequest, slug: str) -> HttpResponse:
         return JsonResponse({"ok": True, "type": "authors", "items": items})
 
     return JsonResponse({"ok": False, "error": "invalid option type"}, status=400)
-
-
-@anonymous_cache(prefix="comun-sidebar-detail", seconds=86_400)
-def comun_sidebar_detail(request: HttpRequest, slug: str) -> HttpResponse:
-    if request.method != "GET":
-        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
-
-    current_user = user_views._get_user_from_request(request)
-    try:
-        comun = (
-            Comun.objects.filter(slug=slug)
-            .select_related("creator", "creator__site_profile")
-            .get()
-        )
-    except Comun.DoesNotExist:
-        return JsonResponse({"ok": False, "error": "comun not found"}, status=404)
-
-    if not comun.is_active and not _comun_is_moderator(current_user, comun):
-        return JsonResponse({"ok": False, "error": "comun not found"}, status=404)
-
-    return JsonResponse(
-        {
-            "ok": True,
-            "comun": _serialize_comun_sidebar(request, comun),
-        }
-    )
 
 
 def comun_welcome_post_options(request: HttpRequest, slug: str) -> HttpResponse:
@@ -3039,14 +3007,35 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
         offset = 0
 
     selected_category_slug = str(request.GET.get("category") or "").strip()
+    has_categories_filter = "categories" in request.GET
+    selected_category_slugs: list[str] = []
+    if has_categories_filter:
+        seen_category_slugs = set()
+        for raw_value in request.GET.getlist("categories"):
+            for raw_slug in str(raw_value or "").split(","):
+                category_slug = raw_slug.strip()
+                if category_slug and category_slug not in seen_category_slugs:
+                    selected_category_slugs.append(category_slug)
+                    seen_category_slugs.add(category_slug)
+    elif selected_category_slug:
+        selected_category_slugs = [selected_category_slug]
+
     selected_category = None
-    if selected_category_slug:
-        selected_category = _active_comun_category_queryset(comun).filter(slug=selected_category_slug).first()
-        if not selected_category:
-            return JsonResponse({"ok": False, "error": "category not found"}, status=404)
+    selected_categories = []
 
     now = timezone.now()
     visible_categories = _comun_categories_list(comun)
+    visible_category_by_slug = {category.slug: category for category in visible_categories}
+    category_filter_explicit = has_categories_filter or bool(selected_category_slug)
+    if category_filter_explicit:
+        for category_slug in selected_category_slugs:
+            category = visible_category_by_slug.get(category_slug)
+            if not category:
+                return JsonResponse({"ok": False, "error": "category not found"}, status=404)
+            selected_categories.append(category)
+        if len(selected_categories) == 1:
+            selected_category = selected_categories[0]
+
     all_posts_query = _comun_posts_base_queryset(comun, now)
     if comun.welcome_post_id:
         all_posts_query = all_posts_query.exclude(id=comun.welcome_post_id)
@@ -3078,7 +3067,16 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
     )
 
     base_query = all_posts_query
-    if selected_category:
+    if category_filter_explicit:
+        selected_category_ids = [category.id for category in selected_categories]
+        if not selected_category_ids:
+            base_query = base_query.none()
+        else:
+            base_query = base_query.filter(
+                comun_category_assignments__comun_id=comun.id,
+                comun_category_assignments__category_id__in=selected_category_ids,
+            )
+    elif selected_category:
         base_query = base_query.filter(
             comun_category_assignments__comun_id=comun.id,
             comun_category_assignments__category_id=selected_category.id,
@@ -3125,6 +3123,8 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
             "comun": _serialize_comun(request, comun, current_user=current_user),
             "posts": serialized_posts,
             "selected_category": (_serialize_comun_category(selected_category, comun) if selected_category else None),
+            "selected_category_slugs": [category.slug for category in selected_categories],
+            "category_filter_explicit": category_filter_explicit,
             "total_count": total_count,
             "category_counts": category_counts_payload,
             "uncategorized_count": uncategorized_count,
@@ -3671,7 +3671,6 @@ __all__ = [
     "comun_detail_manage",
     "comun_glossary_image_upload",
     "comun_settings_options",
-    "comun_sidebar_detail",
     "comun_post_category_update",
     "comun_posts",
     "comun_welcome_post_options",

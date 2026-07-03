@@ -38,6 +38,7 @@
   let lastMyFeedKey = ''
   let scrollRaf: number | null = null
   let myFeedSectionModulePromise: Promise<LazyModule> | null = null
+  let showFeedKeyboardShortcutsHint = false
 
   const buildPageUrl = (currentOffset: number, limit = pageSize) => {
     let baseUrl = buildHomeFeedUrl({
@@ -194,6 +195,7 @@
   $: hideReadPosts = ($userSettings.hideReadPosts ?? false) && !!$siteUser
   $: effectiveHideRead = hideReadPosts && !readOnly
   $: visiblePosts = posts.filter(isAuthorVisible) as BackendPost[]
+  $: showFeedKeyboardShortcutsHint = feedType === 'hot' || feedType === 'mine'
 
   $: if (feedType === 'mine' && browser && !myFeedSectionModulePromise) {
     myFeedSectionModulePromise = import('$lib/components/feeds/MyFeedSection.svelte')
@@ -351,7 +353,12 @@
   {#if feedType === 'mine'}
     {#if myFeedSectionModulePromise}
       {#await myFeedSectionModulePromise then module}
-        <svelte:component this={module.default} {posts} {loadingMore} />
+        <svelte:component
+          this={module.default}
+          {posts}
+          {loadingMore}
+          showKeyboardShortcutsHint={showFeedKeyboardShortcutsHint}
+        />
       {/await}
     {/if}
   {:else if feedType === 'favorites' && !$siteUser}
@@ -359,7 +366,11 @@
       После регистрации вы сможете добавлять посты в избранное и видеть их в отдельной ленте.
     </div>
   {:else if visiblePosts.length}
-    <FeedPostsList posts={visiblePosts} {loadingMore} />
+    <FeedPostsList
+      posts={visiblePosts}
+      {loadingMore}
+      showKeyboardShortcutsHint={showFeedKeyboardShortcutsHint}
+    />
   {:else}
     <div class="text-base text-slate-500">Пока нет публикаций.</div>
   {/if}

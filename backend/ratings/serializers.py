@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any
 
 from django.http import HttpRequest
-from django.db.models import Sum
 
 from rabotaem_backend.media_urls import public_url
 from ratings.service import author_rating_value
@@ -58,44 +57,6 @@ def serialize_top_author_item(
     return item
 
 
-def serialize_top_comun_item(
-    comun: Any,
-    *,
-    request: HttpRequest | None = None,
-) -> dict[str, Any]:
-    from communities import service as community_service
-
-    posts_count = 0
-    comments_count = 0
-    try:
-        base_posts = community_service._comun_posts_base_queryset(comun)
-        posts_count = base_posts.count()
-        comments_count = int(
-            base_posts.aggregate(total=Sum("comments_count")).get("total")
-            or 0
-        )
-    except Exception:
-        posts_count = 0
-        comments_count = 0
-    try:
-        rating_value = round(float(getattr(comun, "rating_score", 0) or 0), 2)
-    except (TypeError, ValueError):
-        rating_value = 0.0
-    return {
-        "id": getattr(comun, "id", None),
-        "slug": getattr(comun, "slug", ""),
-        "name": getattr(comun, "name", ""),
-        "title": getattr(comun, "name", ""),
-        "logo_url": community_service._comun_logo_url(request, comun),
-        "avatar_url": community_service._comun_logo_url(request, comun),
-        "rating": rating_value,
-        "score": rating_value,
-        "posts_count": posts_count,
-        "comments_count": comments_count,
-    }
-
-
 __all__ = [
-    "serialize_top_comun_item",
     "serialize_top_author_item",
 ]

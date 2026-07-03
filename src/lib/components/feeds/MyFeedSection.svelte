@@ -12,6 +12,7 @@
 
   export let posts: BackendPost[] = []
   export let loadingMore = false
+  export let showKeyboardShortcutsHint = false
 
   const defaultRecommendedComunSlugs = [
     'Music',
@@ -80,7 +81,7 @@
 
     {#if $feedSettingsHydrated && $feedSettingsHydrationState !== 'error' && myFeedHasBaseSettings}
       {#if filteredPosts.length}
-        <FeedPostsList posts={filteredPosts} {loadingMore} />
+        <FeedPostsList posts={filteredPosts} {loadingMore} {showKeyboardShortcutsHint} />
       {:else if loadingMore}
         <div class="text-base text-slate-500 dark:text-zinc-400">{$t('site.sidebar.myFeedSection.loadingPosts')}</div>
       {:else if shouldShowRecommendations}

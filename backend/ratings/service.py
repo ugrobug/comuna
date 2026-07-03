@@ -445,23 +445,6 @@ def list_top_authors(
     return normalized_period, authors, total_authors
 
 
-def list_top_comuns(
-    *,
-    limit: int | None = 5,
-) -> tuple[list[object], int]:
-    Comun = _comun_model()
-    queryset = (
-        Comun.objects.filter(is_active=True)
-        .exclude(slug__iexact="faq")
-        .select_related("creator", "telegram_source_author")
-        .prefetch_related("categories")
-        .order_by("-rating_score", "sort_order", "name")
-    )
-    total_comuns = queryset.count()
-    comuns = list(queryset if limit is None else queryset[:limit])
-    return comuns, total_comuns
-
-
 __all__ = [
     "apply_author_rating_delta",
     "author_rating_value",
@@ -474,7 +457,6 @@ __all__ = [
     "format_rating_value",
     "get_rating_settings",
     "home_feed_community_day_key",
-    "list_top_comuns",
     "list_top_authors",
     "normalize_top_authors_period",
     "parse_top_authors_limit",

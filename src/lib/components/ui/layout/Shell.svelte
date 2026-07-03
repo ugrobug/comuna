@@ -141,11 +141,6 @@
       {$contentPadding.class} main"
       style="grid-area: main"
     />
-    <slot
-      name="suffix"
-      class="shell-suffix max-xl:hidden w-full sticky top-0 left-0 max-h-screen bg-slate-50 dark:bg-zinc-950 z-40 {sidePadding.class}"
-      style="grid-area: suffix;"
-    />
   </div>
 </div>
 
@@ -193,10 +188,25 @@
   }
 
   @media (min-width: 768px) {
+    .content.limit-width:not(.full-bleed) {
+      max-width: none;
+    }
+
     .content:not(.full-bleed) {
-      grid-template-columns: 1fr 2fr;
-      justify-items: end start;
-      grid-template-areas: 'sidebar main';
+      grid-template-columns: minmax(calc(30px + 14rem + 30px), 1fr) minmax(0, min(60vw, 52rem)) minmax(24px, 1fr);
+      justify-items: stretch;
+      grid-template-areas: '. main .';
+    }
+
+    :global(.content:not(.full-bleed) > .shell-sidebar) {
+      grid-area: auto !important;
+      position: fixed !important;
+      left: 30px;
+      top: 72px !important;
+      z-index: 40;
+      width: 14rem !important;
+      max-height: calc(100vh - 72px);
+      overflow-y: auto;
     }
   }
 
@@ -205,26 +215,25 @@
       width: 100%;
     }
 
+    .content.limit-width:not(.full-bleed) {
+      max-width: none;
+    }
+
     .content:not(.full-bleed) {
-      grid-template-columns: 20% 60% 20%;
-      justify-items: end center start;
-      grid-template-areas: 'sidebar main suffix';
+      grid-template-columns: minmax(calc(30px + 17.25rem + 30px), 1fr) minmax(0, 55.5rem) minmax(24px, 1fr);
+      justify-items: stretch;
+      grid-template-areas: '. main .';
     }
 
     .content.limit-width:not(.full-bleed) {
-      grid-template-columns: 1fr 3fr 1fr;
+      grid-template-columns: minmax(calc(30px + 17.25rem + 30px), 1fr) minmax(0, 55.5rem) minmax(24px, 1fr);
     }
 
+    :global(.content:not(.full-bleed) > .shell-sidebar),
     :global(.content.limit-width:not(.full-bleed) > .shell-sidebar) {
-      max-width: 15rem;
-      justify-self: end;
-      width: 100%;
-    }
-
-    :global(.content.limit-width:not(.full-bleed) > .shell-suffix) {
-      max-width: 20rem;
+      max-width: 17.25rem;
       justify-self: start;
-      width: 100%;
+      width: 17.25rem !important;
     }
 
     .main {

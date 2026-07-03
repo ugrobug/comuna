@@ -51,7 +51,6 @@
             "contextual": "On this page"
         },
         "write": "Write",
-        "popular_communities": "Popular Communities",
         "show_all": "Show All",
         "best": "Best",
         "recent_posts": "Top This Month"
@@ -1484,7 +1483,7 @@
             "createCommunity": "Buat komunitas",
             "allCommunities": "Semua komunitas",
             "showAll": "Tampilkan semua",
-            "resources": "Sumber daya",
+            "resources": "Tentang kami",
             "aboutProject": "Tentang proyek",
             "advertisement": "Iklan",
             "authors": "Untuk penulis",
@@ -1505,15 +1504,7 @@
             "ratings": {
                 "topAuthorsMonth": "Penulis teratas bulan ini",
                 "noAuthorsMonth": "Tidak ada data bulan ini",
-                "fullRating": "Peringkat lengkap",
-                "topComuns": "Komunitas teratas",
-                "noComuns": "Tidak ada data komunitas",
-                "allComuns": "Semua komunitas",
-                "bestThisMonth": "Terbaik bulan ini"
-            },
-            "comments": {
-                "recent": "Komentar terbaru",
-                "empty": "Belum ada komentar"
+                "fullRating": "Peringkat lengkap"
             },
             "keyboard": {
                 "title": "Anda bisa menggunakan keyboard",
@@ -1549,8 +1540,7 @@
                 "profileUsername": "Profil @{{username}}",
                 "creator": "Pembuat",
                 "collapse": "Ciutkan",
-                "expandMore": "Tampilkan {{count}} lagi",
-                "topPosts": "Postingan teratas komunitas"
+                "expandMore": "Tampilkan {{count}} lagi"
             }
         },
         "authModal": {

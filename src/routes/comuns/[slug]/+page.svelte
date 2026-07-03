@@ -9,6 +9,9 @@
   import FeedPostsList from '$lib/components/feeds/FeedPostsList.svelte'
   import {
     buildBackendPostPath,
+    buildComunGlossaryPath,
+    buildComunKnowledgeBasePath,
+    buildComunRoadmapPath,
     buildComunPostsUrl,
     buildComunSettingsOptionsUrl,
     buildComunUrl,
@@ -16,12 +19,13 @@
     type BackendComunCategory,
     type BackendPost,
   } from '$lib/api/backend'
-  import { refreshSiteUser, siteToken, siteUser, uploadSiteImage } from '$lib/siteAuth'
+  import { createSiteChat, refreshSiteUser, siteToken, siteUser, uploadSiteImage } from '$lib/siteAuth'
   import { env } from '$env/dynamic/public'
   import { userSettings } from '$lib/settings'
   import { deserializeEditorModel } from '$lib/util'
   import { brandNameForLanguage } from '$lib/brand'
   import { locale } from '$lib/translations'
+  import { ChatBubbleLeftRight, ChevronDown, GlobeAlt, Icon } from 'svelte-hero-icons'
 
   export let data
 
@@ -29,6 +33,25 @@
   let comun: BackendComun | null = data.comun ?? null
   let posts: BackendPost[] = data.posts ?? []
   let selectedCategorySlug = data.selectedCategory?.slug ?? data.initialCategorySlug ?? ''
+  const normalizeCategorySlugList = (values: unknown): string[] => {
+    if (!Array.isArray(values)) return []
+    const seen = new Set<string>()
+    const result: string[] = []
+    for (const value of values) {
+      const slug = String(value ?? '').trim()
+      if (slug && !seen.has(slug)) {
+        seen.add(slug)
+        result.push(slug)
+      }
+    }
+    return result
+  }
+  let selectedCategorySlugs = normalizeCategorySlugList(
+    data.selectedCategorySlugs ??
+      (selectedCategorySlug ? [selectedCategorySlug] : [])
+  )
+  let categoryFilterExplicit = Boolean(data.categoryFilterExplicit ?? selectedCategorySlug)
+  let lastCategoryFilterDataSignature = ''
   let hasMore = posts.length === pageSize
   let loadingMore = false
   let loadingCategory = false
@@ -49,6 +72,10 @@
   let autoSettingsOpenHandled = false
   let wantsSettingsOpenFromUrl = false
   let settingsCategoryOptions: BackendComunCategory[] = []
+  let categoryFilterOpen = false
+  let categoryFilterElement: HTMLDivElement | null = null
+  let comunHeaderDetailsOpen = false
+  let lastComunHeaderDetailsSlug = ''
   type ComunUserOption = { id: number; username: string; display_name?: string | null }
   let settingsUserOptions: ComunUserOption[] = []
   let settingsUserSearchTimer: ReturnType<typeof setTimeout> | null = null
@@ -91,6 +118,13 @@
     loading: boolean
     error: string | null
     posts: BackendPost[]
+  }
+  type ComunModeratorMember = {
+    id?: number | null
+    username?: string | null
+    display_name?: string | null
+    is_deleted?: boolean
+    isCreator?: boolean
   }
 
   const ROADMAP_STAGE_DEFINITIONS: RoadmapStageDefinition[] = [
@@ -159,6 +193,9 @@
   let roadmapPreviewRequestSeq = 0
   let publicRoadmapModalOpen = false
   let publicRoadmapBodyOverflowBeforeOpen: string | null = null
+  let openingModeratorChatId: number | null = null
+  let moderatorMenuOpen = false
+  let moderatorMenuCloseTimer: ReturnType<typeof setTimeout> | null = null
 
   $: if (data?.posts && data.posts !== lastPostsRef) {
     lastPostsRef = data.posts
@@ -169,6 +206,30 @@
   $: if (data?.comun && data.comun !== lastComunRef) {
     lastComunRef = data.comun
     comun = data.comun ?? null
+  }
+  $: if ((comun?.slug ?? '') !== lastComunHeaderDetailsSlug) {
+    lastComunHeaderDetailsSlug = comun?.slug ?? ''
+    comunHeaderDetailsOpen = false
+  }
+  $: incomingCategoryFilterSlugs = normalizeCategorySlugList(
+    data?.selectedCategorySlugs ??
+      (data?.selectedCategory?.slug
+        ? [data.selectedCategory.slug]
+        : data?.initialCategorySlug
+          ? [data.initialCategorySlug]
+          : [])
+  )
+  $: incomingCategoryFilterExplicit = Boolean(
+    data?.categoryFilterExplicit ??
+      data?.selectedCategory?.slug ??
+      data?.initialCategorySlug
+  )
+  $: incomingCategoryFilterSignature = `${incomingCategoryFilterExplicit ? '1' : '0'}:${incomingCategoryFilterSlugs.join(',')}`
+  $: if (incomingCategoryFilterSignature !== lastCategoryFilterDataSignature) {
+    lastCategoryFilterDataSignature = incomingCategoryFilterSignature
+    categoryFilterExplicit = incomingCategoryFilterExplicit
+    selectedCategorySlugs = incomingCategoryFilterSlugs
+    selectedCategorySlug = incomingCategoryFilterSlugs.length === 1 ? incomingCategoryFilterSlugs[0] : ''
   }
   $: if (Array.isArray(data?.categoryCounts) && data.categoryCounts !== lastCategoryCountsRef) {
     lastCategoryCountsRef = data.categoryCounts
@@ -236,7 +297,7 @@
     const { postId, category, categoryId } = event.detail
     posts = posts
       .map((post) => (post.id === postId ? applyPostCategory(post, category, categoryId) : post))
-      .filter((post) => !selectedCategorySlug || post.comun_category?.slug === selectedCategorySlug)
+      .filter((post) => !categoryFilterExplicit || selectedCategorySlugSet.has(post.comun_category?.slug ?? ''))
     if (comun?.welcome_post?.id === postId) {
       comun = {
         ...comun,
@@ -306,6 +367,11 @@
   $: myFeedComunSlugs = ($userSettings.myFeedComuns ?? []).map((slug) => slug.trim()).filter(Boolean)
   $: myFeedComunCategoryMap = $userSettings.myFeedComunCategories ?? {}
   $: currentComunSlug = (comun?.slug ?? '').trim()
+  $: hasComunHeaderDetails = Boolean(
+    (comun?.product_description ?? '').trim() ||
+      (comun?.target_audience ?? '').trim() ||
+      (comun?.rules_text ?? '').trim()
+  )
   $: isSubscribedToComun = !!currentComunSlug && myFeedComunSlugs.includes(currentComunSlug)
   $: initialComunSubscribed = Boolean(comun?.is_subscribed)
   $: baseComunSubscribersCount = Math.max(Number(comun?.subscribers_count ?? 0) || 0, 0)
@@ -316,7 +382,47 @@
       (!isSubscribedToComun && initialComunSubscribed ? 1 : 0)
   )
   $: comunAuthorsCount = Math.max(Number(comun?.authors_count ?? 0) || 0, 0)
+  $: comunCreator = comun?.creator ?? null
+  $: comunModeratorList = (() => {
+    const seen = new Set<number>()
+    const result: ComunModeratorMember[] = []
+    if (comunCreator?.id) {
+      seen.add(comunCreator.id)
+      result.push({ ...comunCreator, isCreator: true })
+    } else if (comunCreator?.username || comunCreator?.display_name) {
+      result.push({ ...comunCreator, isCreator: true })
+    }
+    for (const moderator of comun?.moderators ?? []) {
+      if (moderator?.id && seen.has(moderator.id)) continue
+      if (moderator?.id) seen.add(moderator.id)
+      result.push({
+        id: moderator.id,
+        username: moderator.username,
+        display_name: moderator.display_name,
+        is_deleted: moderator.is_deleted,
+        isCreator: comunCreator?.id === moderator.id,
+      })
+    }
+    return result
+  })()
+  $: comunModeratorsCount = Math.max(
+    Number(comun?.moderators_count ?? comunModeratorList.length) || 0,
+    0
+  )
   $: comunCategorySlugs = comunCategories.map((category) => category.slug).filter(Boolean)
+  $: selectedCategorySlugSet = new Set<string>(
+    categoryFilterExplicit ? selectedCategorySlugs : comunCategorySlugs
+  )
+  $: categoryFilterSelectedCount = categoryFilterExplicit
+    ? selectedCategorySlugs.filter((slug) => comunCategorySlugs.includes(slug)).length
+    : comunCategorySlugs.length
+  $: categoryFilterAllSelected =
+    !categoryFilterExplicit || categoryFilterSelectedCount === comunCategorySlugs.length
+  $: categoryFilterLabel = categoryFilterAllSelected
+    ? 'Все категории'
+    : categoryFilterSelectedCount
+      ? `Все категории (${categoryFilterSelectedCount}/${comunCategorySlugs.length})`
+      : 'Все категории (0)'
   $: hasExplicitComunCategorySelection =
     !!currentComunSlug && Object.prototype.hasOwnProperty.call(myFeedComunCategoryMap, currentComunSlug)
   $: subscribedComunCategorySlugs = new Set<string>(
@@ -332,8 +438,20 @@
   $: title = `${comunName} — ${siteTitle}`
   $: description =
     comun?.product_description || `Посты и обсуждения продукта «${comunName}» на ${siteTitle}.`
+  $: comunWebsiteUrl = externalUrl(comun?.website_url)
+  $: comunGlossaryPath = comun?.slug ? buildComunGlossaryPath(comun.slug) : '/comuns'
+  $: comunKnowledgeBasePath = comun?.slug ? buildComunKnowledgeBasePath(comun.slug) : '/comuns'
+  $: comunRoadmapPath = comun?.slug ? buildComunRoadmapPath(comun.slug) : '/comuns'
+  $: canonicalPath = (() => {
+    const params = new URLSearchParams()
+    if (categoryFilterExplicit) {
+      params.set('categories', selectedCategorySlugs.join(','))
+    }
+    const query = params.toString()
+    return `${$page.url.pathname}${query ? `?${query}` : ''}`
+  })()
   $: canonicalUrl = new URL(
-    $page.url.pathname + (selectedCategorySlug ? `?category=${encodeURIComponent(selectedCategorySlug)}` : ''),
+    canonicalPath,
     (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '') + '/'
   ).toString()
   $: roadmapEnabled = Boolean(comun?.roadmap_enabled ?? false)
@@ -366,6 +484,14 @@
   const comunInitial = (name?: string | null) =>
     (name ?? '').trim().slice(0, 1).toUpperCase() || 'C'
 
+  const externalUrl = (value?: string | null) => {
+    const raw = (value ?? '').trim()
+    if (!raw) return ''
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) return raw
+    if (raw.startsWith('//')) return `https:${raw}`
+    return `https://${raw.replace(/^\/+/, '')}`
+  }
+
   const openPublicRoadmapModal = () => {
     if (!comun?.slug) return
     publicRoadmapModalOpen = true
@@ -383,6 +509,9 @@
   const onWindowKeydown = (event: KeyboardEvent) => {
     if (event.key === 'Escape' && publicRoadmapModalOpen) {
       closePublicRoadmapModal()
+    }
+    if (event.key === 'Escape' && categoryFilterOpen) {
+      categoryFilterOpen = false
     }
   }
 
@@ -428,6 +557,49 @@
     if (displayName) return displayName
     const username = (user?.username ?? '').trim()
     return username ? `@${username}` : 'Пользователь'
+  }
+
+  const openModeratorChat = async (moderator: ComunModeratorMember) => {
+    const moderatorId = Number(moderator?.id ?? 0)
+    if (!moderatorId || moderator.is_deleted || openingModeratorChatId) return
+    if ($siteUser?.id && Number($siteUser.id) === moderatorId) return
+    if (!$siteToken) {
+      const next = encodeURIComponent(`${$page.url.pathname}${$page.url.search}`)
+      await goto(`/account?next=${next}`)
+      return
+    }
+    openingModeratorChatId = moderatorId
+    try {
+      const chat = await createSiteChat(moderatorId)
+      await goto(`/chats/${chat.id}`)
+    } catch (error) {
+      toast({
+        content: error instanceof Error ? error.message : 'Не удалось открыть чат',
+        type: 'error',
+      })
+    } finally {
+      openingModeratorChatId = null
+    }
+  }
+
+  const clearModeratorMenuCloseTimer = () => {
+    if (!moderatorMenuCloseTimer) return
+    clearTimeout(moderatorMenuCloseTimer)
+    moderatorMenuCloseTimer = null
+  }
+
+  const openModeratorMenu = () => {
+    if (!comunModeratorList.length) return
+    clearModeratorMenuCloseTimer()
+    moderatorMenuOpen = true
+  }
+
+  const closeModeratorMenuWithDelay = () => {
+    clearModeratorMenuCloseTimer()
+    moderatorMenuCloseTimer = setTimeout(() => {
+      moderatorMenuOpen = false
+      moderatorMenuCloseTimer = null
+    }, 450)
   }
 
   const isSuggestionsComunCategory = (category?: BackendComunCategory | null) =>
@@ -869,8 +1041,11 @@
 
   const buildPostsUrl = (offset: number) => {
     if (!comun?.slug) return ''
+    const categoryOptions = categoryFilterExplicit
+      ? { categorySlugs: selectedCategorySlugs }
+      : undefined
     const url = new URL(
-      buildComunPostsUrl(comun.slug, { categorySlug: selectedCategorySlug || undefined }),
+      buildComunPostsUrl(comun.slug, categoryOptions),
       $page.url.origin
     )
     url.searchParams.set('limit', String(pageSize))
@@ -948,16 +1123,54 @@
     })
   }
 
-  const setCategoryFilter = async (slug: string) => {
-    if (slug === selectedCategorySlug) return
-    selectedCategorySlug = slug
+  const buildCategoryFilterPath = (explicit: boolean, slugs: string[]) => {
+    const params = new URLSearchParams($page.url.search)
+    params.delete('category')
+    params.delete('categories')
+    if (explicit) {
+      params.set('categories', slugs.join(','))
+    }
+    const query = params.toString()
+    return `${$page.url.pathname}${query ? `?${query}` : ''}`
+  }
+
+  const setCategorySelection = async (nextSlugs: string[], explicit = true) => {
+    const allowedSlugs = new Set(comunCategorySlugs)
+    const normalized = normalizeCategorySlugList(nextSlugs).filter((slug) => allowedSlugs.has(slug))
+    const nextExplicit = explicit && normalized.length !== comunCategorySlugs.length
+    const nextSelectedSlugs = nextExplicit ? normalized : []
+    const nextSignature = `${nextExplicit ? '1' : '0'}:${nextSelectedSlugs.join(',')}`
+    const currentSignature = `${categoryFilterExplicit ? '1' : '0'}:${selectedCategorySlugs.join(',')}`
+    if (nextSignature === currentSignature) return
+    categoryFilterExplicit = nextExplicit
+    selectedCategorySlugs = nextSelectedSlugs
+    selectedCategorySlug = nextSelectedSlugs.length === 1 ? nextSelectedSlugs[0] : ''
     hasMore = true
-    await goto(
-      slug ? `${$page.url.pathname}?category=${encodeURIComponent(slug)}` : $page.url.pathname,
-      { replaceState: true, noScroll: true, keepFocus: true }
-    )
+    await goto(buildCategoryFilterPath(nextExplicit, nextSelectedSlugs), {
+      replaceState: true,
+      noScroll: true,
+      keepFocus: true,
+    })
     await loadPosts(true)
     if (browser) window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const toggleCategoryFilter = (slug: string) => {
+    if (!slug) return
+    const next = new Set<string>(categoryFilterExplicit ? selectedCategorySlugs : comunCategorySlugs)
+    if (next.has(slug)) next.delete(slug)
+    else next.add(slug)
+    void setCategorySelection(Array.from(next), true)
+  }
+
+  const resetCategoryFilter = () => {
+    void setCategorySelection([], false)
+  }
+
+  const onWindowMousedown = (event: MouseEvent) => {
+    if (!categoryFilterOpen) return
+    if (categoryFilterElement?.contains(event.target as Node)) return
+    categoryFilterOpen = false
   }
 
   const refreshComunManage = async () => {
@@ -1230,12 +1443,14 @@
     maybeLoadMore()
     window.addEventListener('scroll', onScroll, { passive: true })
     window.addEventListener('keydown', onWindowKeydown)
+    window.addEventListener('mousedown', onWindowMousedown)
   })
 
   onDestroy(() => {
     if (browser) {
       window.removeEventListener('scroll', onScroll)
       window.removeEventListener('keydown', onWindowKeydown)
+      window.removeEventListener('mousedown', onWindowMousedown)
       if (scrollRaf !== null) {
         window.cancelAnimationFrame(scrollRaf)
         scrollRaf = null
@@ -1244,6 +1459,7 @@
         clearTimeout(settingsUserSearchTimer)
         settingsUserSearchTimer = null
       }
+      clearModeratorMenuCloseTimer()
       if (publicRoadmapBodyOverflowBeforeOpen !== null) {
         document.body.style.overflow = publicRoadmapBodyOverflowBeforeOpen
         publicRoadmapBodyOverflowBeforeOpen = null
@@ -1253,7 +1469,7 @@
 </script>
 
 <div class="flex flex-col gap-6 max-w-4xl">
-  <section class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 overflow-visible">
+  <section class="relative rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 overflow-visible">
     <div class="p-5 sm:p-6 flex flex-col gap-4">
       <div class="flex flex-wrap items-start justify-between gap-4">
         <div class="flex items-start gap-4 min-w-0">
@@ -1276,6 +1492,72 @@
             <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-600 dark:text-zinc-400">
               <span>Подписчиков: {formatComunCount(comunSubscribersCount)}</span>
               <span>Авторов: {formatComunCount(comunAuthorsCount)}</span>
+              <span
+                class="relative inline-flex items-center"
+                on:mouseenter={openModeratorMenu}
+                on:mouseleave={closeModeratorMenuWithDelay}
+                on:focusin={openModeratorMenu}
+                on:focusout={closeModeratorMenuWithDelay}
+                role="presentation"
+              >
+                <button
+                  type="button"
+                  class="text-sm text-slate-600 underline decoration-slate-300 decoration-dotted underline-offset-4 transition hover:text-slate-900 dark:text-zinc-400 dark:decoration-zinc-600 dark:hover:text-zinc-100"
+                  aria-haspopup="menu"
+                  aria-expanded={moderatorMenuOpen}
+                  disabled={!comunModeratorList.length}
+                >
+                  Модераторов: {formatComunCount(comunModeratorsCount)}
+                </button>
+                {#if comunModeratorList.length && moderatorMenuOpen}
+                  <div
+                    class="absolute left-0 top-full z-40 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-slate-200 bg-white p-2 shadow-xl dark:border-zinc-800 dark:bg-zinc-950"
+                    on:mouseenter={openModeratorMenu}
+                    on:mouseleave={closeModeratorMenuWithDelay}
+                    role="presentation"
+                  >
+                    <div class="px-2 pb-2 pt-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-zinc-400">
+                      Модераторы
+                    </div>
+                    <div class="flex max-h-72 flex-col gap-1 overflow-y-auto">
+                      {#each comunModeratorList as moderator}
+                        {@const moderatorId = Number(moderator?.id ?? 0)}
+                        {@const isSelfModerator = Boolean($siteUser?.id && moderatorId === Number($siteUser.id))}
+                        <div class="flex items-center gap-2 rounded-xl px-2 py-2 hover:bg-slate-50 dark:hover:bg-zinc-900">
+                          <a
+                            href={moderatorId && !moderator.is_deleted ? `/id${moderatorId}` : undefined}
+                            class="min-w-0 flex-1 {moderatorId && !moderator.is_deleted ? 'hover:underline' : 'pointer-events-none'}"
+                          >
+                            <span class="block truncate text-sm font-medium text-slate-900 dark:text-zinc-100">
+                              {userDisplayName(moderator)}
+                            </span>
+                            <span class="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-slate-500 dark:text-zinc-400">
+                              {#if moderator.username && !moderator.is_deleted}
+                                <span class="truncate">@{moderator.username}</span>
+                              {/if}
+                              {#if moderator.isCreator}
+                                <span class="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:bg-zinc-800 dark:text-zinc-300">
+                                  Создатель
+                                </span>
+                              {/if}
+                            </span>
+                          </a>
+                          <button
+                            type="button"
+                            class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 text-slate-600 transition hover:bg-slate-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900 dark:hover:text-blue-300"
+                            title={isSelfModerator ? 'Это вы' : 'Написать модератору'}
+                            aria-label={isSelfModerator ? 'Это вы' : 'Написать модератору'}
+                            disabled={!moderatorId || moderator.is_deleted || isSelfModerator || openingModeratorChatId === moderatorId}
+                            on:click={() => openModeratorChat(moderator)}
+                          >
+                            <Icon src={ChatBubbleLeftRight} size="16" mini />
+                          </button>
+                        </div>
+                      {/each}
+                    </div>
+                  </div>
+                {/if}
+              </span>
             </div>
           </div>
         </div>
@@ -1342,44 +1624,158 @@
         </div>
       </div>
 
-      {#if comun?.product_description}
-        <div class="text-sm leading-relaxed text-slate-700 dark:text-zinc-300 whitespace-pre-line">
-          {comun.product_description}
-        </div>
-      {/if}
+      {#if hasComunHeaderDetails && comunHeaderDetailsOpen}
+        <div class="border-t border-slate-200 pt-4 dark:border-zinc-800">
+            <div class="flex flex-col gap-3">
+              {#if comun?.product_description}
+                <div class="whitespace-pre-line text-sm leading-relaxed text-slate-700 dark:text-zinc-300">
+                  {comun.product_description}
+                </div>
+              {/if}
 
-      {#if comun?.target_audience}
-        <div class="text-sm text-slate-600 dark:text-zinc-400 whitespace-pre-line">
-          <span class="font-medium text-slate-800 dark:text-zinc-200">Для кого:</span>
-          {comun.target_audience}
-        </div>
-      {/if}
+              {#if comun?.target_audience}
+                <div class="border-t border-slate-200 pt-3 text-sm text-slate-600 dark:border-zinc-800 dark:text-zinc-400">
+                  <span class="font-medium text-slate-800 dark:text-zinc-200">Для кого:</span>
+                  <span class="whitespace-pre-line"> {comun.target_audience}</span>
+                </div>
+              {/if}
 
-      {#if hasComunCategories}
-        <div class="flex flex-wrap gap-2 pt-1">
-          <button
-            type="button"
-            class="rounded-full px-3 py-1.5 text-sm border transition-colors {selectedCategorySlug ? 'border-slate-200 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800/60' : 'border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300'}"
-            on:click={() => setCategoryFilter('')}
-            disabled={loadingCategory}
-          >
-            Все
-          </button>
-          {#each comunCategories as category}
-            <button
-              type="button"
-              class="rounded-full px-3 py-1.5 text-sm border transition-colors {selectedCategorySlug === category.slug ? 'border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300' : 'border-slate-200 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800/60'}"
-              on:click={() => setCategoryFilter(category.slug)}
-              disabled={loadingCategory}
-              title={category.description || category.name}
-            >
-              {category.name}
-            </button>
-          {/each}
+              {#if comun?.rules_text}
+                <div class="border-t border-slate-200 pt-3 dark:border-zinc-800">
+                  <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-zinc-400">
+                    Правила сообщества
+                  </div>
+                  <div class="mt-2 whitespace-pre-line text-sm leading-relaxed text-slate-700 dark:text-zinc-300">
+                    {comun.rules_text}
+                  </div>
+                </div>
+              {/if}
+            </div>
         </div>
       {/if}
     </div>
+
+    {#if hasComunHeaderDetails}
+      <button
+        type="button"
+        class="comun-header-expand-button"
+        aria-expanded={comunHeaderDetailsOpen}
+        aria-label={comunHeaderDetailsOpen ? 'Скрыть описание сообщества' : 'Показать описание сообщества'}
+        on:click={() => {
+          comunHeaderDetailsOpen = !comunHeaderDetailsOpen
+        }}
+      >
+        <Icon
+          src={ChevronDown}
+          size="20"
+          mini
+          class="transition-transform {comunHeaderDetailsOpen ? 'rotate-180' : ''}"
+        />
+      </button>
+    {/if}
   </section>
+
+  {#if hasComunCategories || comunWebsiteUrl || comun?.glossary_enabled || comun?.knowledge_base_enabled || comun?.roadmap_enabled}
+    <div class="flex flex-wrap items-center gap-2">
+      {#if hasComunCategories}
+        <div class="relative" bind:this={categoryFilterElement}>
+          <button
+            type="button"
+            class="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm transition-colors {categoryFilterAllSelected ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-950/30 dark:text-blue-300' : 'border-slate-200 bg-white/95 text-slate-700 hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900/85 dark:text-zinc-200 dark:hover:bg-zinc-800/60'}"
+            on:click={() => (categoryFilterOpen = !categoryFilterOpen)}
+            disabled={loadingCategory}
+            aria-expanded={categoryFilterOpen}
+            aria-haspopup="menu"
+          >
+            <span>{categoryFilterLabel}</span>
+            <Icon src={ChevronDown} size="16" mini class="text-slate-500 dark:text-zinc-400" />
+          </button>
+          {#if categoryFilterOpen}
+            <div class="absolute left-0 top-full z-30 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-slate-200 bg-white p-3 shadow-xl dark:border-zinc-800 dark:bg-zinc-950">
+              <div class="mb-2 flex items-center justify-between gap-3">
+                <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-zinc-400">
+                  Категории
+                </div>
+                <button
+                  type="button"
+                  class="text-xs font-medium text-blue-700 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-200"
+                  on:click={resetCategoryFilter}
+                  disabled={loadingCategory}
+                >
+                  Все категории
+                </button>
+              </div>
+              <div class="flex max-h-72 flex-col gap-1 overflow-y-auto pr-1">
+                {#each comunCategories as category}
+                  <label
+                    class="flex cursor-pointer items-center gap-3 rounded-xl px-2 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:text-zinc-200 dark:hover:bg-zinc-900"
+                    title={category.description || category.name}
+                  >
+                    <input
+                      type="checkbox"
+                      class="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-900"
+                      checked={selectedCategorySlugSet.has(category.slug)}
+                      disabled={loadingCategory}
+                      on:change={() => toggleCategoryFilter(category.slug)}
+                    />
+                    <span class="min-w-0 flex-1 truncate">{category.name}</span>
+                    {#if typeof categoryCountById.get(category.id) === 'number'}
+                      <span class="text-xs text-slate-400 dark:text-zinc-500">
+                        {formatComunCount(categoryCountById.get(category.id))}
+                      </span>
+                    {/if}
+                  </label>
+                {/each}
+              </div>
+            </div>
+          {/if}
+        </div>
+      {/if}
+      {#if comun?.knowledge_base_enabled}
+        <a
+          href={comunKnowledgeBasePath}
+          class="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white/95 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900/85 dark:text-zinc-200 dark:hover:bg-zinc-800/60"
+        >
+          База знаний
+        </a>
+      {/if}
+      {#if comun?.glossary_enabled}
+        <a
+          href={comunGlossaryPath}
+          class="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white/95 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900/85 dark:text-zinc-200 dark:hover:bg-zinc-800/60"
+        >
+          Глоссарий
+        </a>
+      {/if}
+      {#if comun?.roadmap_enabled}
+        <a
+          href={comunRoadmapPath}
+          class="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white/95 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900/85 dark:text-zinc-200 dark:hover:bg-zinc-800/60"
+        >
+          Дорожная карта
+        </a>
+      {/if}
+      {#if comunWebsiteUrl}
+        <span class="group/website relative inline-flex">
+          <a
+            href={comunWebsiteUrl}
+            target="_blank"
+            rel="nofollow noopener noreferrer"
+            class="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-700 transition hover:bg-slate-50 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:border-zinc-800 dark:bg-zinc-900/85 dark:text-zinc-200 dark:hover:bg-zinc-800/60 dark:hover:text-blue-300 dark:focus:ring-offset-zinc-950"
+            aria-label="Сайт сообщества"
+          >
+            <Icon src={GlobeAlt} size="16" mini />
+          </a>
+          <span
+            class="pointer-events-none absolute left-1/2 top-full z-30 mt-2 -translate-x-1/2 whitespace-nowrap rounded-lg bg-slate-950 px-2.5 py-1.5 text-xs font-medium text-white opacity-0 shadow-lg transition group-hover/website:opacity-100 group-focus-within/website:opacity-100 dark:bg-zinc-100 dark:text-zinc-950"
+            role="tooltip"
+          >
+            Сайт сообщества
+          </span>
+        </span>
+      {/if}
+    </div>
+  {/if}
 
   <ComunRoadmapModal
     open={roadmapModalVisible}
@@ -1429,7 +1825,11 @@
   {:else}
     <div class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-6 text-slate-600 dark:text-zinc-400">
       <div class="flex flex-col gap-4">
-        <div>В этом сообществе пока нет публикаций.</div>
+        <div>
+          {categoryFilterExplicit
+            ? 'В выбранных категориях пока нет публикаций.'
+            : 'В этом сообществе пока нет публикаций.'}
+        </div>
       </div>
     </div>
   {/if}
@@ -1753,5 +2153,44 @@
   :global(.dark) .comun-logo-fallback {
     background: hsl(var(--comun-h, 220) 35% 20%);
     color: hsl(var(--comun-h, 220) 78% 72%);
+  }
+
+  .comun-header-expand-button {
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    display: inline-flex;
+    width: 2.25rem;
+    height: 2.25rem;
+    align-items: center;
+    justify-content: center;
+    transform: translate(-50%, 50%);
+    border-radius: 999px;
+    border: 1px solid rgb(226 232 240);
+    background: rgb(255 255 255 / 0.96);
+    color: rgb(51 65 85);
+    box-shadow: 0 6px 18px rgb(15 23 42 / 0.12);
+    transition:
+      transform 0.15s ease,
+      box-shadow 0.15s ease,
+      border-color 0.15s ease;
+  }
+
+  .comun-header-expand-button:hover {
+    transform: translate(-50%, 50%) translateY(1px);
+    border-color: rgb(203 213 225);
+    box-shadow: 0 8px 24px rgb(15 23 42 / 0.16);
+  }
+
+  .comun-header-expand-button:focus-visible {
+    outline: 2px solid rgb(59 130 246);
+    outline-offset: 3px;
+  }
+
+  :global(.dark) .comun-header-expand-button {
+    border-color: rgb(63 63 70);
+    background: rgb(24 24 27 / 0.96);
+    color: rgb(228 228 231);
+    box-shadow: 0 6px 18px rgb(0 0 0 / 0.3);
   }
 </style>

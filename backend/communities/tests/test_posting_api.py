@@ -143,6 +143,61 @@ class ComunPostingApiTests(TestCase):
         self.assertEqual(update_response.status_code, 400, update_response.content.decode())
         self.assertEqual(update_response.json()["error"], "post does not belong to comun")
 
+    def test_comun_posts_can_filter_multiple_categories(self):
+        author = Author.objects.create(username="category-filter-author", title="Category Author")
+        second_category = ComunCategory.objects.create(
+            comun=self.comun,
+            name="Новости",
+            slug="novosti",
+        )
+        self.comun.categories.add(second_category)
+        unselected_category = ComunCategory.objects.create(
+            comun=self.comun,
+            name="Архив",
+            slug="archive",
+        )
+        self.comun.categories.add(unselected_category)
+
+        posts = []
+        for index, category in enumerate([self.category, second_category, unselected_category], start=1):
+            post = Post.objects.create(
+                author=author,
+                message_id=9000 + index,
+                title=f"Пост {category.slug}",
+                content="{}",
+                raw_data={"source": "manual_comun", "comun_slug": self.comun.slug},
+                is_pending=False,
+                is_blocked=False,
+            )
+            ComunPostCategoryAssignment.objects.create(
+                comun=self.comun,
+                post=post,
+                category=category,
+                assigned_by=self.user,
+            )
+            posts.append(post)
+
+        response = self.client.get(
+            reverse("comun-posts", kwargs={"slug": self.comun.slug}),
+            {"categories": f"{self.category.slug},{second_category.slug}"},
+        )
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        payload = response.json()
+        self.assertTrue(payload["category_filter_explicit"])
+        self.assertEqual(payload["selected_category_slugs"], [self.category.slug, second_category.slug])
+        self.assertEqual({post["id"] for post in payload["posts"]}, {posts[0].id, posts[1].id})
+
+        empty_response = self.client.get(
+            reverse("comun-posts", kwargs={"slug": self.comun.slug}),
+            {"categories": ""},
+        )
+        self.assertEqual(empty_response.status_code, 200, empty_response.content.decode())
+        empty_payload = empty_response.json()
+        self.assertTrue(empty_payload["category_filter_explicit"])
+        self.assertEqual(empty_payload["selected_category_slugs"], [])
+        self.assertEqual(empty_payload["posts"], [])
+        self.assertEqual(empty_payload["total_count"], 0)
+
     def test_welcome_post_options_returns_recent_comun_posts_and_searches_all_comun_titles(self):
         author = Author.objects.create(username="welcome-author", title="Welcome Author")
         local_posts = [
@@ -369,35 +424,6 @@ class ComunPostingApiTests(TestCase):
         self.assertEqual(first_comun["tags"][0]["name"], sidebar_tag.name)
         self.assertTrue(first_comun["can_moderate"])
 
-    def test_comun_sidebar_detail_returns_light_payload_without_activity(self):
-        self.comun.rules_text = "Правила для правого сайдбара"
-        self.comun.glossary_enabled = True
-        self.comun.roadmap_enabled = True
-        self.comun.knowledge_base_enabled = True
-        self.comun.save(
-            update_fields=[
-                "rules_text",
-                "glossary_enabled",
-                "roadmap_enabled",
-                "knowledge_base_enabled",
-            ]
-        )
-        self.comun.moderators.add(self.user)
-
-        response = self.client.get(
-            reverse("comun-sidebar-detail", kwargs={"slug": self.comun.slug})
-        )
-
-        self.assertEqual(response.status_code, 200, response.content.decode())
-        payload = response.json()
-        comun = payload["comun"]
-        self.assertEqual(comun["slug"], self.comun.slug)
-        self.assertEqual(comun["rules_text"], "Правила для правого сайдбара")
-        self.assertTrue(comun["glossary_enabled"])
-        self.assertTrue(comun["roadmap_enabled"])
-        self.assertTrue(comun["knowledge_base_enabled"])
-        self.assertEqual(comun["creator"]["id"], self.user.id)
-        self.assertEqual(comun["moderators"][0]["id"], self.user.id)
         self.assertNotIn("activity", comun)
         self.assertNotIn("welcome_post", comun)
         self.assertNotIn("tags", comun)

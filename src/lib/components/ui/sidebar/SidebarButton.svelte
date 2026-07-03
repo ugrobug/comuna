@@ -19,7 +19,7 @@
 
 <a
   class:active={active}
-  class="flex items-center px-2 h-10 text-base font-normal rounded-lg group hover:bg-white dark:hover:bg-zinc-900 {isExpandable ? 'pl-4' : ''} {$$props.class} {selected ? 'rounded-2xl' : ''}"
+  class="flex min-w-0 items-center px-2 h-10 text-base font-normal rounded-lg group hover:bg-white dark:hover:bg-zinc-900 {isExpandable ? 'pl-4' : ''} {$$props.class} {selected ? 'rounded-2xl' : ''}"
   href={href}
   class:bg-white={selected}
   class:dark:bg-zinc-800={selected}
@@ -68,7 +68,10 @@
 
 
   .sidebar-item__text {
+    flex: 1 1 auto;
     margin-left: 12px;
+    min-width: 0;
+    max-width: 100%;
     font-size: 16px;
     font-weight: normal;
     overflow: hidden;

@@ -34,11 +34,16 @@
     type: 'post' | 'author' | 'community'
   }
 
+  type SuggestionGroup = {
+    type: Suggestion['type']
+    items: Suggestion[]
+  }
+
   export let compact = false
   export let placeholder: string | undefined = undefined
 
   let query = ''
-  let suggestions: Suggestion[] = []
+  let suggestionGroups: SuggestionGroup[] = []
   let loading = false
   let open = false
   let searchTimer: ReturnType<typeof setTimeout> | undefined
@@ -51,7 +56,7 @@
     return `${normalized.slice(0, max).trim()}...`
   }
 
-  const buildSuggestions = (payload: SearchPayload): Suggestion[] => {
+  const buildSuggestionGroups = (payload: SearchPayload): SuggestionGroup[] => {
     const communities = (payload.communities ?? []).slice(0, 3).map((community) => ({
       key: `community-${community.id}`,
       href: `/comuns/${encodeURIComponent(community.slug)}`,
@@ -79,7 +84,11 @@
       type: 'author' as const,
     }))
 
-    return [...communities, ...posts, ...authors].slice(0, 8)
+    return [
+      { type: 'community' as const, items: communities },
+      { type: 'post' as const, items: posts },
+      { type: 'author' as const, items: authors },
+    ].filter((group) => group.items.length)
   }
 
   const runSearch = async (rawQuery: string) => {
@@ -88,7 +97,7 @@
 
     if (normalized.length < 2) {
       loading = false
-      suggestions = []
+      suggestionGroups = []
       open = false
       return
     }
@@ -97,13 +106,13 @@
     open = true
 
     try {
-      const response = await fetch(buildSearchUrl(normalized, 1, 6, 'Posts', 'New'))
+      const response = await fetch(buildSearchUrl(normalized, 1, 5, 'All', 'New'))
       if (!response.ok) throw new Error(`HTTP ${response.status}`)
       const payload = (await response.json()) as SearchPayload
       if (currentRequest !== requestId) return
-      suggestions = buildSuggestions(payload)
+      suggestionGroups = buildSuggestionGroups(payload)
     } catch {
-      if (currentRequest === requestId) suggestions = []
+      if (currentRequest === requestId) suggestionGroups = []
     } finally {
       if (currentRequest === requestId) loading = false
     }
@@ -113,7 +122,7 @@
     if (searchTimer) clearTimeout(searchTimer)
     const normalized = query.trim()
     if (normalized.length < 2) {
-      suggestions = []
+      suggestionGroups = []
       loading = false
       open = false
       return
@@ -127,7 +136,7 @@
     const normalized = query.trim()
     if (!normalized) return
     open = false
-    await goto(`/search?q=${encodeURIComponent(normalized)}&type=Posts`)
+    await goto(`/search?q=${encodeURIComponent(normalized)}&type=All`)
   }
 
   const selectSuggestion = () => {
@@ -151,6 +160,7 @@
     author: $t('content.users'),
     community: $t('content.communities'),
   }
+  $: suggestionsCount = suggestionGroups.reduce((total, group) => total + group.items.length, 0)
 
   $: if (query !== undefined) {
     scheduleSearch()
@@ -192,7 +202,7 @@
     />
   </form>
 
-  {#if open && (loading || suggestions.length || query.trim().length >= 2)}
+  {#if open && (loading || suggestionsCount || query.trim().length >= 2)}
     <div
       class="absolute left-0 right-0 top-full z-[160] mt-2 overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-xl dark:border-zinc-800 dark:bg-zinc-900"
     >
@@ -201,34 +211,39 @@
           <span class="h-3 w-3 rounded-full border-2 border-slate-300 border-t-primary-500 animate-spin"></span>
           {$t('nav.search')}
         </div>
-      {:else if suggestions.length}
+      {:else if suggestionsCount}
         <div class="max-h-[70vh] overflow-y-auto py-1">
-          {#each suggestions as suggestion (suggestion.key)}
-            <a
-              href={suggestion.href}
-              class="flex min-w-0 items-center gap-2 px-3 py-2.5 transition hover:bg-slate-50 dark:hover:bg-zinc-800"
-              on:click={selectSuggestion}
-            >
-              <div class="flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-100 text-slate-500 dark:bg-zinc-800 dark:text-zinc-400">
-                {#if suggestion.image}
-                  <img src={suggestion.image} alt="" class="h-full w-full object-cover" />
-                {:else}
-                  <Icon src={iconForType(suggestion.type)} size="18" mini />
-                {/if}
+          {#each suggestionGroups as group (group.type)}
+            <section class="py-1">
+              <div class="px-3 pb-1 pt-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-zinc-500">
+                {typeLabel[group.type]}
               </div>
-              <div class="min-w-0 flex-1">
-                <div class="truncate text-sm font-medium text-slate-900 dark:text-zinc-100">
-                  {suggestion.title}
-                </div>
-                <div class="flex min-w-0 items-center gap-1.5 text-xs text-slate-500 dark:text-zinc-400">
-                  <span>{typeLabel[suggestion.type]}</span>
-                  {#if suggestion.description}
-                    <span aria-hidden="true">-</span>
-                    <span class="truncate">{suggestion.description}</span>
-                  {/if}
-                </div>
-              </div>
-            </a>
+              {#each group.items as suggestion (suggestion.key)}
+                <a
+                  href={suggestion.href}
+                  class="flex min-w-0 items-center gap-2 px-3 py-2.5 transition hover:bg-slate-50 dark:hover:bg-zinc-800"
+                  on:click={selectSuggestion}
+                >
+                  <div class="flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-100 text-slate-500 dark:bg-zinc-800 dark:text-zinc-400">
+                    {#if suggestion.image}
+                      <img src={suggestion.image} alt="" class="h-full w-full object-cover" />
+                    {:else}
+                      <Icon src={iconForType(suggestion.type)} size="18" mini />
+                    {/if}
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <div class="truncate text-sm font-medium text-slate-900 dark:text-zinc-100">
+                      {suggestion.title}
+                    </div>
+                    {#if suggestion.description}
+                      <div class="truncate text-xs text-slate-500 dark:text-zinc-400">
+                        {suggestion.description}
+                      </div>
+                    {/if}
+                  </div>
+                </a>
+              {/each}
+            </section>
           {/each}
         </div>
       {:else}

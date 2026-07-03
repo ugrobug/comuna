@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { browser } from '$app/environment'
   import { createEventDispatcher } from 'svelte'
+  import { onDestroy, onMount } from 'svelte'
   import Post from '$lib/components/lemmy/post/Post.svelte'
   import { feedKeyboardShortcuts } from '$lib/actions/feedKeyboardShortcuts'
   import {
@@ -12,9 +14,11 @@
     type BackendPost,
   } from '$lib/api/backend'
   import { t } from '$lib/translations'
+  import KeyboardShortcutsHint from '$lib/components/ui/sidebar/KeyboardShortcutsHint.svelte'
 
   export let posts: BackendPost[] = []
   export let loadingMore = false
+  export let showKeyboardShortcutsHint = false
   export let hideCommunity = false
   export let hideTitle = false
   export let comunCategories: BackendComunCategory[] = []
@@ -23,6 +27,12 @@
     'feed-shortcut-post rounded-2xl border border-slate-200/80 bg-white/95 px-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/85 sm:px-5'
 
   const dispatch = createEventDispatcher()
+  let isDesktop = false
+  let desktopMediaQuery: MediaQueryList | null = null
+
+  const updateDesktopState = () => {
+    isDesktop = Boolean(desktopMediaQuery?.matches)
+  }
 
   const handleHide = (index: number, event: CustomEvent) => {
     posts = posts.toSpliced(index, 1)
@@ -32,6 +42,18 @@
   const forward = (event: CustomEvent) => {
     dispatch(event.type, event.detail)
   }
+
+  onMount(() => {
+    if (!browser) return
+    desktopMediaQuery = window.matchMedia('(min-width: 1024px)')
+    updateDesktopState()
+    desktopMediaQuery.addEventListener('change', updateDesktopState)
+  })
+
+  onDestroy(() => {
+    desktopMediaQuery?.removeEventListener('change', updateDesktopState)
+    desktopMediaQuery = null
+  })
 </script>
 
 {#if posts.length}
@@ -60,6 +82,9 @@
         on:pinned={forward}
         on:unpinned={forward}
       />
+      {#if showKeyboardShortcutsHint && isDesktop && index === 0 && posts.length > 1}
+        <KeyboardShortcutsHint />
+      {/if}
     {/each}
   </div>
   {#if loadingMore}

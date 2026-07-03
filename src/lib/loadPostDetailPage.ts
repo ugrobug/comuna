@@ -1,10 +1,9 @@
-import ComunSidebarInfo from '$lib/components/ui/sidebar/ComunSidebarInfo.svelte'
-import { buildComunSidebarUrl, buildPostDetailUrl } from '$lib/api/backend'
+import { buildPostDetailUrl } from '$lib/api/backend'
 import { buildLocalizedPostPath, normalizePostLanguage } from '$lib/postLanguages'
 import { slugifyTitle } from '$lib/util/slug'
 import { error, redirect } from '@sveltejs/kit'
 
-export const loadPostDetailPage = async ({ params, fetch, url }) => {
+export const loadPostDetailPage = async ({ params, fetch }) => {
   const rawId = params.id
   const id = Number(rawId.split('-')[0])
   if (!Number.isInteger(id) || id <= 0) {
@@ -27,21 +26,6 @@ export const loadPostDetailPage = async ({ params, fetch, url }) => {
   }
 
   const data = await response.json()
-  const comunSlug = data.post?.comun?.slug || data.post?.comun_slug || ''
-  let sidebarComun = data.post?.comun ?? null
-
-  if (comunSlug) {
-    try {
-      const comunResponse = await fetch(new URL(buildComunSidebarUrl(comunSlug), url.origin).toString())
-      if (comunResponse.ok) {
-        const comunPayload = await comunResponse.json()
-        sidebarComun = comunPayload?.comun ?? sidebarComun
-      }
-    } catch {
-      sidebarComun = data.post?.comun ?? null
-    }
-  }
-
   const languageVersions = Array.isArray(data.post?.language_versions)
     ? data.post.language_versions
     : []
@@ -56,15 +40,5 @@ export const loadPostDetailPage = async ({ params, fetch, url }) => {
     languageVersions,
     canonicalId,
     canonicalPath,
-    slots: sidebarComun
-      ? {
-          sidebar: {
-            component: ComunSidebarInfo,
-            props: {
-              comun: sidebarComun,
-            },
-          },
-        }
-      : undefined,
   }
 }

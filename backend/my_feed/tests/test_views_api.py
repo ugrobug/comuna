@@ -207,6 +207,7 @@ class UserFeedSettingsApiTests(TestCase):
                     "my_feed_authors": ["chosen-author", "chosen-author"],
                     "my_feed_hide_negative": False,
                     "tag_rules": {"noise": "hide", "nsfw": "blur", "bad": "drop"},
+                    "keyboard_shortcuts_hint_dismissed": True,
                 }
             ),
             content_type="application/json",
@@ -219,6 +220,7 @@ class UserFeedSettingsApiTests(TestCase):
         self.assertEqual(payload["settings"]["my_feed_authors"], ["chosen-author"])
         self.assertFalse(payload["settings"]["my_feed_hide_negative"])
         self.assertEqual(payload["settings"]["tag_rules"], {"noise": "hide", "nsfw": "blur"})
+        self.assertTrue(payload["settings"]["keyboard_shortcuts_hint_dismissed"])
 
         response = self.client.get(reverse("auth-feed-settings"), **self.auth_headers)
         self.assertEqual(response.status_code, 200, response.content.decode())

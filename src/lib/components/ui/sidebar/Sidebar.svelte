@@ -16,17 +16,13 @@
   } from 'svelte-hero-icons'
   import { notifications, profile } from '$lib/auth.js'
   import SidebarButton from '$lib/components/ui/sidebar/SidebarButton.svelte'
-  import CommunityList from '$lib/components/ui/sidebar/CommunityList.svelte'
   import { Badge } from 'mono-svelte'
   import { t } from '$lib/translations'
   import { page } from '$app/stores'
   import { onMount } from 'svelte'
-  import { getTopCommunities, getFederatedCommunities } from '$lib/api/communities'
-  import CommunityIcon from '$lib/components/ui/CommunityIcon.svelte'
   import { Icon } from 'svelte-hero-icons'
   import LoginModal from '$lib/components/auth/LoginModal.svelte'
   import { env } from '$env/dynamic/public'
-  import { HAS_LEMMY_INSTANCE } from '$lib/instance'
   import type { BackendComun } from '$lib/api/backend'
   import { feedSettingsHydrated, userSettings } from '$lib/settings'
   import { siteToken, siteUser } from '$lib/siteAuth'
@@ -38,34 +34,11 @@
   const PUBLIC_PROJECT_AUTHORS = env.PUBLIC_PROJECT_AUTHORS || '/authors';
   const PUBLIC_PROJECT_RULES = env.PUBLIC_PROJECT_RULES || '/rules';
 
-  let topCommunities: Array<{
-    name: string;
-    icon: string | null;
-    url: string;
-    subscribers: number;
-  }> = [];
-  
-  let displayedCommunitiesCount = 20; // Показываем первые 20 локальных
-  let hasMoreCommunities = false; // Флаг наличия дополнительных сообществ
-  let allLocalCommunities: Array<{
-    name: string;
-    icon: string | null;
-    url: string;
-    subscribers: number;
-  }> = [];
-  
-  let federatedCommunities: Array<{
-    name: string;
-    icon: string | null;
-    url: string;
-    subscribers: number;
-  }> = [];
-  
-  let showFederated = false; // Флаг показа федерациях сообществ
-
   let loginModalOpen = false;
   let sidebarComuns: BackendComun[] = [];
   let sidebarComunsTotal = 0;
+  let communitiesOpen = true;
+  let resourcesOpen = true;
 
   function handleAuthRequired(e: MouseEvent) {
     if (!$profile?.jwt) {
@@ -73,67 +46,7 @@
       loginModalOpen = true;
     }
   }
-  
-  function loadMoreCommunities() {
-    if (!showFederated) {
-      // Если еще не показываем федерация, сначала показываем все локальные
-      if (displayedCommunitiesCount < allLocalCommunities.length) {
-        // Показываем все локальные сообщества (без повторений)
-        topCommunities = allLocalCommunities;
-        displayedCommunitiesCount = allLocalCommunities.length;
-        hasMoreCommunities = true; // Еще есть федерация
-      } else {
-        // Показываем федерация сообщества
-        showFederated = true;
-        loadFederatedCommunities();
-      }
-    } else {
-      // Уже показываем федерация, добавляем еще
-      const currentFederatedCount = displayedCommunitiesCount - allLocalCommunities.length;
-      const newFederatedCount = currentFederatedCount + 10;
-      
-      // Показываем все локальные + больше федерация
-      const federatedToShow = federatedCommunities.slice(0, newFederatedCount);
-      topCommunities = [...allLocalCommunities, ...federatedToShow];
-      displayedCommunitiesCount = allLocalCommunities.length + newFederatedCount;
-      
-      hasMoreCommunities = newFederatedCount < federatedCommunities.length;
-    }
-  }
-  
-  async function loadFederatedCommunities() {
-    federatedCommunities = await getFederatedCommunities();
-    
-    // Показываем все локальные + первые 10 федерация
-    const federatedToShow = federatedCommunities.slice(0, 10);
-    topCommunities = [...allLocalCommunities, ...federatedToShow];
-    displayedCommunitiesCount = allLocalCommunities.length + 10;
-    hasMoreCommunities = 10 < federatedCommunities.length;
-  }
-
-  function updateDisplayedCommunities() {
-    if (showFederated) {
-      // Показываем все локальные + часть федерация
-      const totalCommunities = [...allLocalCommunities, ...federatedCommunities];
-      topCommunities = totalCommunities.slice(0, displayedCommunitiesCount);
-      hasMoreCommunities = displayedCommunitiesCount < totalCommunities.length;
-    } else {
-      // Показываем только локальные
-      topCommunities = allLocalCommunities.slice(0, displayedCommunitiesCount);
-      hasMoreCommunities = displayedCommunitiesCount < allLocalCommunities.length || allLocalCommunities.length > 0;
-    }
-  }
-
-  onMount(async () => {
-    if (HAS_LEMMY_INSTANCE) {
-      // Загружаем сообщества только если настроен инстанс Lemmy
-      allLocalCommunities = await getTopCommunities();
-      
-      // Показываем первые 20 локальных сообществ
-      topCommunities = allLocalCommunities.slice(0, displayedCommunitiesCount);
-      // Кнопка показывается, если есть больше локальных ИЛИ есть федерация сообщества
-      hasMoreCommunities = allLocalCommunities.length > displayedCommunitiesCount || allLocalCommunities.length > 0;
-    }
+  onMount(() => {
     void loadSidebarComuns();
   });
 
@@ -154,6 +67,31 @@
     font-size: 16px !important;
     font-weight: 400 !important;
   }
+
+  .sidebar-section-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    border-radius: 8px;
+  }
+
+  .sidebar-section-toggle:hover {
+    background: rgba(148, 163, 184, 0.12);
+  }
+
+  :global(.dark) .sidebar-section-toggle:hover {
+    background: rgba(63, 63, 70, 0.7);
+  }
+
+  .sidebar-section-chevron {
+    transition: transform 0.18s ease;
+  }
+
+  .sidebar-section-chevron.expanded {
+    transform: rotate(180deg);
+  }
+
   .telegram-btn {
     display: inline-flex;
     align-items: center;
@@ -217,11 +155,22 @@
   {/if}
 
   <div class="flex flex-col gap-2">
-      <span
-        class="px-2 py-1 text-sm font-normal text-slate-500 dark:text-zinc-200"
+      <button
+        type="button"
+        class="sidebar-section-toggle px-2 py-1 text-sm font-normal text-slate-500 dark:text-zinc-200"
+        aria-expanded={communitiesOpen}
+        aria-controls="sidebar-communities-section"
+        on:click={() => (communitiesOpen = !communitiesOpen)}
       >
-        {$t('site.sidebar.communities')}
-      </span>
+        <span>{$t('site.sidebar.communities')}</span>
+        <Icon
+          src={ChevronDown}
+          size="18"
+          class="sidebar-section-chevron {communitiesOpen ? 'expanded' : ''}"
+        />
+      </button>
+    {#if communitiesOpen}
+      <div id="sidebar-communities-section" class="flex flex-col gap-1">
       <SidebarButton href="/comuns?create=1" icon={Plus}>
         <span slot="label">{$t('site.sidebar.createCommunity')}</span>
       </SidebarButton>
@@ -234,7 +183,7 @@
               <Icon src={DocumentText} size="20" />
             {/if}
           </div>
-          <span slot="label">{comun.name}</span>
+          <span slot="label" class="block min-w-0 truncate" title={comun.name}>{comun.name}</span>
         </SidebarButton>
       {/each}
           {#if sidebarComunsTotal > 10}
@@ -242,48 +191,27 @@
               <span slot="label">{$t('site.sidebar.allCommunities')}</span>
             </SidebarButton>
       {/if}
+      </div>
+    {/if}
   </div>
 
-  {#if HAS_LEMMY_INSTANCE}
-    <div class="flex flex-col gap-2">
-      {#if $profile?.jwt}
-        <span 
-          class="px-2 py-1 text-sm font-normal text-slate-500 dark:text-zinc-200"
-        >
-          {$t('nav.popular_communities')}
-        </span>
-      {/if}
-      
-      {#each topCommunities as community}
-        <SidebarButton href={community.url}>
-          <div slot="icon" class="w-7 h-7">
-            <CommunityIcon name={community.name} icon={community.icon} />
-          </div>
-          <span slot="label">
-            {community.name}
-          </span>
-        </SidebarButton>
-      {/each}
-      
-      <!-- Отладка: {hasMoreCommunities} -->
-      {#if hasMoreCommunities}
-        <SidebarButton 
-          on:click={loadMoreCommunities} 
-          icon={ChevronDown}
-          href="javascript:void(0)"
-        >
-          <span slot="label">{$t('site.sidebar.showAll')}</span>
-        </SidebarButton>
-      {/if}
-    </div>
-  {/if}
-
   <div class="flex flex-col gap-2">
-    <span
-      class="px-2 py-1 text-sm font-normal text-slate-500 dark:text-zinc-200"
+    <button
+      type="button"
+      class="sidebar-section-toggle px-2 py-1 text-sm font-normal text-slate-500 dark:text-zinc-200"
+      aria-expanded={resourcesOpen}
+      aria-controls="sidebar-resources-section"
+      on:click={() => (resourcesOpen = !resourcesOpen)}
     >
-      {$t('site.sidebar.resources')}
-    </span>
+      <span>{$t('site.sidebar.resources')}</span>
+      <Icon
+        src={ChevronDown}
+        size="18"
+        class="sidebar-section-chevron {resourcesOpen ? 'expanded' : ''}"
+      />
+    </button>
+    {#if resourcesOpen}
+    <div id="sidebar-resources-section" class="flex flex-col gap-2">
     {#if env.PUBLIC_TELEGRAM_URL || env.PUBLIC_GITHUB_URL}
       <div class="flex items-center pl-2 gap-2">
         {#if env.PUBLIC_TELEGRAM_URL}
@@ -312,6 +240,8 @@
         <span slot="label">{$t('site.sidebar.rules')}</span>
       </SidebarButton>
     </div>
+    </div>
+    {/if}
   </div>
 
   <LoginModal bind:open={loginModalOpen} />

@@ -13,7 +13,6 @@ from communities.views import (
     comun_post_category_update,
     comun_posts,
     comun_settings_options,
-    comun_sidebar_detail,
     comun_telegram_submission_detail,
     comun_telegram_submissions,
     comun_welcome_post_options,
@@ -47,7 +46,6 @@ from feeds.views import (
     post_like,
     post_read,
     post_view,
-    recent_comments,
     search_content,
     sitemap_authors_xml,
     sitemap_posts_xml,
@@ -89,7 +87,7 @@ from notifications.views import (
     auth_notifications,
     auth_notifications_read_all,
 )
-from ratings.views import top_authors, top_authors_month, top_comuns, top_comuns_month
+from ratings.views import top_authors, top_authors_month
 from special_projects.views import (
     film_journey_admin_film_detail,
     film_journey_admin_films,
@@ -168,7 +166,6 @@ urlpatterns = [
     path("api/posts/<int:post_id>/view/", post_view, name="post-view"),
     path("api/comments/<int:comment_id>/", comment_detail, name="comment-detail"),
     path("api/comments/<int:comment_id>/like/", comment_like, name="comment-like"),
-    path("api/comments/recent/", recent_comments, name="recent-comments"),
     path("api/content-pages/<slug:slug>/", content_page_manage, name="content-page-manage"),
     path("api/home/", home_feed, name="home-feed"),
     path("api/home/favorites/", favorites_feed, name="favorites-feed"),
@@ -182,8 +179,6 @@ urlpatterns = [
         comun_create_from_telegram_channel,
         name="comun-create-from-telegram-channel",
     ),
-    path("api/comuns/top/", top_comuns, name="top-comuns"),
-    path("api/comuns/top-month/", top_comuns_month, name="top-comuns-month"),
     path(
         "api/comuns/<slug:slug>/knowledge-base/",
         comun_knowledge_base,
@@ -208,11 +203,6 @@ urlpatterns = [
         "api/comuns/<slug:slug>/telegram-submissions/<int:submission_id>/",
         comun_telegram_submission_detail,
         name="comun-telegram-submission-detail",
-    ),
-    path(
-        "api/comuns/<slug:slug>/sidebar/",
-        comun_sidebar_detail,
-        name="comun-sidebar-detail",
     ),
     path(
         "api/comuns/<slug:slug>/settings-options/",

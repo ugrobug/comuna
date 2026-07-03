@@ -51,7 +51,6 @@
             "contextual": "On this page"
         },
         "write": "Write",
-        "popular_communities": "Popular Communities",
         "show_all": "Show All",
         "best": "Best",
         "recent_posts": "Top This Month"
@@ -1484,7 +1483,7 @@
             "createCommunity": "Create community",
             "allCommunities": "All communities",
             "showAll": "Show all",
-            "resources": "Resources",
+            "resources": "About us",
             "aboutProject": "About project",
             "advertisement": "Advertising",
             "authors": "For authors",
@@ -1505,15 +1504,7 @@
             "ratings": {
                 "topAuthorsMonth": "Top authors this month",
                 "noAuthorsMonth": "No data this month",
-                "fullRating": "Full rating",
-                "topComuns": "Top communities",
-                "noComuns": "No community data",
-                "allComuns": "All communities",
-                "bestThisMonth": "Best this month"
-            },
-            "comments": {
-                "recent": "Recent comments",
-                "empty": "No comments yet"
+                "fullRating": "Full rating"
             },
             "keyboard": {
                 "title": "You can use the keyboard",
@@ -1549,8 +1540,7 @@
                 "profileUsername": "@{{username}} profile",
                 "creator": "Creator",
                 "collapse": "Collapse",
-                "expandMore": "Show {{count}} more",
-                "topPosts": "Top community posts"
+                "expandMore": "Show {{count}} more"
             }
         },
         "authModal": {

@@ -1460,7 +1460,7 @@
             "createCommunity": "Topluluk oluştur",
             "allCommunities": "Tüm topluluklar",
             "showAll": "Tümünü göster",
-            "resources": "Kaynaklar",
+            "resources": "Hakkımızda",
             "aboutProject": "Proje hakkında",
             "advertisement": "Reklam",
             "authors": "Yazarlar için",
@@ -1481,15 +1481,7 @@
             "ratings": {
                 "topAuthorsMonth": "Ayın en iyi yazarları",
                 "noAuthorsMonth": "Bu ay veri yok",
-                "fullRating": "Tüm sıralama",
-                "topComuns": "En iyi topluluklar",
-                "noComuns": "Topluluk verisi yok",
-                "allComuns": "Tüm topluluklar",
-                "bestThisMonth": "Bu ayın en iyileri"
-            },
-            "comments": {
-                "recent": "Son yorumlar",
-                "empty": "Henüz yorum yok"
+                "fullRating": "Tüm sıralama"
             },
             "keyboard": {
                 "title": "Klavye ile kontrol edebilirsiniz",
@@ -1525,8 +1517,7 @@
                 "profileUsername": "@{{username}} profili",
                 "creator": "Kurucu",
                 "collapse": "Daralt",
-                "expandMore": "{{count}} kişi daha göster",
-                "topPosts": "Topluluğun en iyi gönderileri"
+                "expandMore": "{{count}} kişi daha göster"
             }
         },
         "authModal": {

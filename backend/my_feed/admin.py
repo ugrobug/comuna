@@ -10,6 +10,7 @@ class UserFeedSettingsAdmin(admin.ModelAdmin):
         "home_feed",
         "hide_read_posts",
         "my_feed_hide_negative",
+        "keyboard_shortcuts_hint_dismissed",
         "updated_at",
     )
     search_fields = ("user__username", "user__email")
@@ -25,6 +26,7 @@ class UserFeedSettingsAdmin(admin.ModelAdmin):
         "hidden_authors",
         "my_feed_hide_negative",
         "tag_rules",
+        "keyboard_shortcuts_hint_dismissed",
         "created_at",
         "updated_at",
     )

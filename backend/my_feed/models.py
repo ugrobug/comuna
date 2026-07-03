@@ -31,6 +31,7 @@ class UserFeedSettings(models.Model):
     my_feed_hide_negative = models.BooleanField(default=True)
     tag_rules = models.JSONField(default=default_feed_tag_rules, blank=True)
     interface_language = models.CharField(max_length=8, blank=True, default="")
+    keyboard_shortcuts_hint_dismissed = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

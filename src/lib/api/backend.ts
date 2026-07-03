@@ -49,12 +49,6 @@ export const buildCommentLikeUrl = (id: number | string): string => {
   return `${getBackendBaseUrl()}/api/comments/${encodeURIComponent(id)}/like/`
 }
 
-export const buildRecentCommentsUrl = (limit = 5, language?: string | null): string => {
-  const params = new URLSearchParams({ limit: String(limit) })
-  if (language && language !== 'ru') params.set('lang', language)
-  return `${getBackendBaseUrl()}/api/comments/recent/?${params.toString()}`
-}
-
 export const buildPostLikeUrl = (id: number | string): string => {
   return `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/like/`
 }
@@ -156,10 +150,6 @@ export const buildComunUrl = (
   const query = params.toString()
   const base = `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/`
   return query ? `${base}?${query}` : base
-}
-
-export const buildComunSidebarUrl = (slug: string): string => {
-  return `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/sidebar/`
 }
 
 export const buildComunSettingsOptionsUrl = (
@@ -267,11 +257,14 @@ export const buildComunPostsUrl = (
   slug: string,
   options?: {
     categorySlug?: string
+    categorySlugs?: string[]
   }
 ): string => {
   const base = `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/posts/`
   const params = new URLSearchParams()
-  if (options?.categorySlug) {
+  if (options && 'categorySlugs' in options) {
+    params.set('categories', (options.categorySlugs ?? []).join(','))
+  } else if (options?.categorySlug) {
     params.set('category', options.categorySlug)
   }
   const query = params.toString()
@@ -716,19 +709,6 @@ export type BackendTopAuthor = {
   all_time_posts?: number
 }
 
-export type BackendTopComun = {
-  id: number
-  slug: string
-  name: string
-  title?: string | null
-  logo_url?: string | null
-  avatar_url?: string | null
-  rating: number
-  score?: number
-  posts_count: number
-  comments_count: number
-}
-
 export const buildTopAuthorsUrl = (options?: {
   period?: BackendTopAuthorPeriod
   limit?: number | 'all'
@@ -744,14 +724,6 @@ export const buildTopAuthorsUrl = (options?: {
 export const buildTopAuthorsMonthUrl = (limit = 5): string => {
   const params = new URLSearchParams({ limit: String(limit) })
   return `${getBackendBaseUrl()}/api/authors/top-month/?${params.toString()}`
-}
-
-export const buildTopComunsUrl = (options?: { limit?: number | 'all' }): string => {
-  const params = new URLSearchParams()
-  if (options?.limit !== undefined) {
-    params.set('limit', String(options.limit))
-  }
-  return `${getBackendBaseUrl()}/api/comuns/top/?${params.toString()}`
 }
 
 export const buildStaticPageContentUrl = (slug: string): string => {
@@ -839,16 +811,6 @@ export type BackendComunRating = {
   upvotes: number
   downvotes: number
   user_vote?: number
-}
-
-export type BackendComunTopPost = {
-  id: number
-  title: string
-  path?: string | null
-  created_at?: string | null
-  comments_count?: number
-  rating?: number
-  author?: BackendAuthor | null
 }
 
 export type BackendComunCustomTemplateBlock = {
@@ -980,7 +942,6 @@ export type BackendComun = {
   welcome_post_id?: number | null
   welcome_post_ref?: string
   welcome_post?: BackendPost | null
-  top_posts?: BackendComunTopPost[]
   activity?: BackendComunActivity | null
   options?: {
     categories?: BackendComunCategory[]

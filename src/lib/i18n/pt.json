@@ -1341,7 +1341,7 @@
             "createCommunity": "Criar comunidade",
             "allCommunities": "Todas as comunidades",
             "showAll": "Mostrar tudo",
-            "resources": "Recursos",
+            "resources": "Sobre nós",
             "aboutProject": "Sobre o projeto",
             "advertisement": "Publicidade",
             "authors": "Para autores",
@@ -1362,15 +1362,7 @@
             "ratings": {
                 "topAuthorsMonth": "Top autores do mês",
                 "noAuthorsMonth": "Sem dados este mês",
-                "fullRating": "Ranking completo",
-                "topComuns": "Top comunidades",
-                "noComuns": "Sem dados de comunidades",
-                "allComuns": "Todas as comunidades",
-                "bestThisMonth": "Melhor do mês"
-            },
-            "comments": {
-                "recent": "Comentários recentes",
-                "empty": "Ainda não há comentários"
+                "fullRating": "Ranking completo"
             },
             "keyboard": {
                 "title": "Você pode usar o teclado",
@@ -1406,8 +1398,7 @@
                 "profileUsername": "Perfil @{{username}}",
                 "creator": "Criador",
                 "collapse": "Recolher",
-                "expandMore": "Mostrar mais {{count}}",
-                "topPosts": "Melhores posts da comunidade"
+                "expandMore": "Mostrar mais {{count}}"
             }
         },
         "authModal": {
