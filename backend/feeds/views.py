@@ -4255,6 +4255,13 @@ def _user_search_vector() -> SearchVector:
     return SearchVector("username", "first_name", "last_name", config=SEARCH_CONFIG)
 
 
+def _page_with_next(queryset, offset: int, limit: int) -> tuple[list, int]:
+    items = list(queryset[offset : offset + limit + 1])
+    page_items = items[:limit]
+    total_hint = offset + len(page_items) + (1 if len(items) > limit else 0)
+    return page_items, total_hint
+
+
 @anonymous_cache(prefix="search", seconds=30)
 def search_content(request: HttpRequest) -> HttpResponse:
     query = (request.GET.get("q") or "").strip()
@@ -4323,10 +4330,10 @@ def search_content(request: HttpRequest) -> HttpResponse:
             .annotate(search_rank=SearchRank(comun_vector, search_query))
             .order_by("-search_rank", "-rating_score", "name")
         )
-        total_communities = comun_qs.count()
+        comun_page, total_communities = _page_with_next(comun_qs, offset, limit)
         communities.extend(
             _serialize_search_comun_result(request, comun)
-            for comun in comun_qs[offset : offset + limit]
+            for comun in comun_page
         )
 
     if type_filter in ("all", "posts"):
@@ -4353,8 +4360,7 @@ def search_content(request: HttpRequest) -> HttpResponse:
             .prefetch_related("tags")
             .order_by("-created_at" if sort == "new" else "-search_rank", "-created_at")
         )
-        total_posts = posts_qs.count()
-        posts_page = list(posts_qs[offset : offset + limit])
+        posts_page, total_posts = _page_with_next(posts_qs, offset, limit)
         favorite_post_ids = _favorite_post_ids_for_user(posts_page, current_user)
         for post in posts_page:
             _content, poll_payload = _content_with_live_poll(post, current_user)
@@ -4432,10 +4438,10 @@ def search_content(request: HttpRequest) -> HttpResponse:
                     _serialize_search_site_user_result(request, user)
                 )
 
-        total_authors = authors_qs.count()
-        if type_filter in ("all", "users"):
-            total_authors += users_qs.count()
         authors.extend(combined_author_results[offset : offset + limit])
+        total_authors = offset + len(authors) + (
+            1 if len(combined_author_results) > offset + limit else 0
+        )
 
     return JsonResponse(
         {
