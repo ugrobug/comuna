@@ -33,7 +33,8 @@
   export const calculatePadding = (
     panel: boolean,
     top: boolean,
-    content: boolean
+    content: boolean,
+    screenWidth = 1000
   ): {
     top: number
     bottom: number
@@ -52,7 +53,10 @@
     } else {
       if (!content) return { top: 0, class: '', bottom: 0 }
 
-      if (top) return { top: 72, class: '!pt-18', bottom: 0 } // Уменьшили с 96px до 72px
+      if (top) {
+        if (screenWidth < 768) return { top: 112, class: '!pt-28', bottom: 0 }
+        return { top: 72, class: '!pt-18', bottom: 0 } // Уменьшили с 96px до 72px
+      }
       else return { top: 0, class: '!pb-24', bottom: 96 }
     }
 
@@ -65,8 +69,8 @@
       set(calculateDockProperties($settings.dock, $screenWidth))
     })
   export let contentPadding: Readable<ReturnType<typeof calculatePadding>> =
-    derived(dockProps, ($dockProps, set) =>
-      set(calculatePadding($dockProps.noGap, $dockProps.top, true))
+    derived([dockProps, screenWidth], ([$dockProps, $screenWidth], set) =>
+      set(calculatePadding($dockProps.noGap, $dockProps.top, true, $screenWidth))
     )
 </script>
 
@@ -82,7 +86,7 @@
 
   $: title = route ? routes[(route.id as keyof typeof routes) ?? ''] : ''
 
-  $: sidePadding = calculatePadding($dockProps.noGap, $dockProps.top, false)
+  $: sidePadding = calculatePadding($dockProps.noGap, $dockProps.top, false, $screenWidth)
   $: topPanel = $dockProps.noGap && $dockProps.top
 </script>
 

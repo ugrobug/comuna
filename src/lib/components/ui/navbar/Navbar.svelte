@@ -6,11 +6,11 @@
     isAdmin,
   } from '$lib/components/lemmy/moderation/moderation.js'
   import Avatar from '$lib/components/ui/Avatar.svelte'
+  import HeaderSearch from '$lib/components/ui/navbar/HeaderSearch.svelte'
   import { site } from '$lib/lemmy.js'
   import { Button, Menu, MenuButton, MenuDivider } from 'mono-svelte'
   import {
     Icon,
-    MagnifyingGlass,
     PencilSquare,
     Plus,
     ServerStack,
@@ -208,15 +208,6 @@
             />
           </NavButton>
         {/if}
-        {#if $siteUser?.is_staff}
-          <NavButton
-            href="/moderator"
-            label={$t('site.nav.moderator')}
-            icon={ChartBar}
-            class="relative"
-            isSelectedFilter={(path) => path.startsWith('/moderator')}
-          />
-        {/if}
         {#if randomTagline}
           <div class="w-full flex items-center justify-center gap-2 hidden md:flex">
             <div class="text-sm font-light text-center">
@@ -234,15 +225,12 @@
       </div>
       <!-- 3 колонка: все остальные элементы -->
       <div class="flex flex-row xl:pr-4 items-center gap-2 w-full justify-end">
-        <!-- Поиск -->
-        <button
-          class="w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
-          title={$t('nav.search')}
-          on:click={() => window.location.href = '/search'}
-        >
-          <Icon src={MagnifyingGlass} size="18" class="w-4 h-4 md:w-[18px] md:h-[18px]" />
-        </button>
-        <LanguageSwitcher />
+        <div class="hidden md:block w-56 lg:w-64 xl:w-72">
+          <HeaderSearch />
+        </div>
+        <div class="hidden md:block">
+          <LanguageSwitcher />
+        </div>
         <!-- Кнопка создания/входа -->
         {#if $profile?.jwt}
           <Menu placement="bottom-end">
@@ -334,6 +322,9 @@
         {/if}
       </div>
     </div>
+    <div class="md:hidden mt-2">
+      <HeaderSearch compact />
+    </div>
   </div>
 </nav>
 
@@ -344,7 +335,7 @@
     type="button"
     tabindex="-1"
     class="fixed left-0 right-0 z-[9999] bg-black/30 md:hidden transition-opacity duration-300"
-    style="pointer-events: auto; top: 56px; height: calc(100vh - 56px);"
+    style="pointer-events: auto; top: 104px; height: calc(100vh - 104px);"
     on:click={toggleSidebar}
     aria-label={$t('site.nav.closeMenu')}
   >

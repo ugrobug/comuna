@@ -55,7 +55,6 @@ export async function load({ url, fetch }): Promise<any> {
       linkOverride: buildBackendPostPath(backendPost),
       authorUsername: backendPost.author?.username,
       communityUrl: backendPostCommunityPath(backendPost),
-      channelUrl: backendPost.channel_url ?? backendPost.author?.channel_url,
     }))
 
     const authors = payload.authors ?? []

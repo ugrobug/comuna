@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import Avatar from '$lib/components/ui/Avatar.svelte'
-  import RelativeDate from '$lib/components/util/RelativeDate.svelte'
   import { ChatBubbleLeftEllipsis, Icon } from 'svelte-hero-icons'
   import { buildBackendPostPath, buildRecentCommentsUrl } from '$lib/api/backend'
   import { cachedJson } from '$lib/api/publicCache'
@@ -111,8 +110,6 @@
                 <span class="font-medium text-slate-900 dark:text-zinc-200">
                   {commentUserLabel(comment)}
                 </span>
-                <span>•</span>
-                <RelativeDate date={new Date(comment.created_at)} />
               </div>
               <div class="text-sm text-slate-700 dark:text-zinc-300">
                 {previewBody(comment.body)}

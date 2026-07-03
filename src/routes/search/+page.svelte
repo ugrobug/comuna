@@ -179,7 +179,6 @@
             linkOverride={item.linkOverride}
             userUrlOverride={item.authorUsername ? `/${item.authorUsername}` : undefined}
             communityUrlOverride={item.communityUrl}
-            subscribeUrl={item.channelUrl}
           />
         {/each}
       </div>

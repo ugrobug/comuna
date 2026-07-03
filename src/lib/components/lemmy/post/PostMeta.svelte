@@ -1,12 +1,12 @@
 <script lang="ts">
   import { locale, t } from '$lib/translations'
   import Avatar from '$lib/components/ui/Avatar.svelte'
-  import { Badge, Popover, Button } from 'mono-svelte'
+  import { Badge } from 'mono-svelte'
   import UserLink from '$lib/components/lemmy/user/UserLink.svelte'
   import RelativeDate, {
     formatRelativeDate,
   } from '$lib/components/util/RelativeDate.svelte'
-  import type { Community, Person, SubscribedType } from 'lemmy-js-client'
+  import type { Community, Person } from 'lemmy-js-client'
   import {
     Bookmark,
     ExclamationTriangle,
@@ -14,28 +14,11 @@
     LockClosed,
     RocketLaunch,
     Trash,
-    PaperAirplane,
-    Bell,
-    BellSlash,
   } from 'svelte-hero-icons'
-  import { getInstance, getClient } from '$lib/lemmy.js'
-  import ShieldIcon from '../moderation/ShieldIcon.svelte'
   import { userSettings, type View } from '$lib/settings'
   import Markdown from '$lib/components/markdown/Markdown.svelte'
-  import CommunityHeader from '../community/CommunityHeader.svelte'
-  import { publishedToDate } from '$lib/components/util/date'
   import { postLink } from './helpers'
-  import { toast } from 'mono-svelte'
-  import { Plus, Check } from 'svelte-hero-icons'
-  import { profile } from '$lib/auth'
-  import { siteUser } from '$lib/siteAuth'
   import { communityLink as buildCommunityLink } from '$lib/lemmy/generic'
-  import { addSubscription } from '$lib/lemmy/user'
-  import { client } from '$lib/lemmy'
-  import Subscribe from '../../../../routes/communities/Subscribe.svelte'
-  import LoginModal from '$lib/components/auth/LoginModal.svelte'
-  import { EyeSlash } from 'svelte-hero-icons'
-  import { portalTooltip } from '$lib/actions/portalTooltip'
 
   export let community: Community | undefined = undefined
   export let user: Person | undefined = undefined
@@ -46,14 +29,9 @@
   export let edited: string | undefined = undefined
   export let view: View = 'cozy'
   $: void edited
-  export let subscribed: SubscribedType | undefined = undefined
   export let userUrlOverride: string | undefined = undefined
   export let communityUrlOverride: string | undefined = undefined
-  export let subscribeUrl: string | undefined = undefined
-  export let subscribeLabel: string = ''
-  export let hideSubscribe: boolean = false
   export let disableUserLink: boolean = false
-  export let authorNotifyCommentsEnabled: boolean | undefined = undefined
   export let backendPostMeta: boolean = false
 
   // Badges
@@ -69,21 +47,6 @@
   }
 
 
-  let popoverOpen = false
-  let showLoginModal = false
-  $: authorUsername = (user?.name ?? '').trim()
-  $: authorKey = authorUsername.toLowerCase()
-  $: hiddenAuthorKeys = new Set(
-    ($userSettings.hiddenAuthors ?? []).map((value) => value.toLowerCase())
-  )
-  $: authorHidden = Boolean(authorKey && hiddenAuthorKeys.has(authorKey))
-  $: hiddenActionLabel = authorHidden ? $t('site.postMeta.showAuthor') : $t('site.postMeta.hideAuthor')
-  $: showAdminNotifyCommentsIcon = Boolean(
-    $siteUser?.is_staff && authorUsername && typeof authorNotifyCommentsEnabled === 'boolean'
-  )
-  $: notifyCommentsLabel = authorNotifyCommentsEnabled
-    ? $t('site.postMeta.notifyOn')
-    : $t('site.postMeta.notifyOff')
   $: authorDisplayName = (user?.display_name || user?.name || '').trim()
   $: communityDisplayName = (community?.title || community?.name || '').trim()
   $: authorAvatarUrl = (user?.avatar || '').trim()
@@ -210,75 +173,7 @@
     return formatDatePastYear(date);
   }
 
-  function handleSubscribeClick(subscribe: () => Promise<any>) {
-    if (!$profile?.jwt) {
-      showLoginModal = true;
-      return;
-    }
-    
-    subscribe().then(res => {
-      if (res) {
-        subscribed = res.community_view.subscribed;
-        toast({
-          content: subscribed === 'Subscribed' 
-            ? $t('toast.subscribed') 
-            : $t('toast.unsubscribed'),
-          type: 'success'
-        });
-      }
-    }).catch(error => {
-      toast({
-        content: $t('toast.error.subscribe'),
-        type: 'error'
-      });
-    });
-  }
-
-  const toggleHiddenAuthor = () => {
-    if (!$siteUser) {
-      toast({
-        content: $t('site.postMeta.loginRequired'),
-        type: 'warning',
-      })
-      return
-    }
-    if (!authorUsername) return
-
-    const nextHidden = new Set($userSettings.hiddenAuthors ?? [])
-    const existingHidden = Array.from(nextHidden).find(
-      (value) => value.toLowerCase() === authorKey
-    )
-    if (existingHidden) {
-      nextHidden.delete(existingHidden)
-      toast({
-        content: $t('site.postMeta.authorVisible'),
-        type: 'success',
-      })
-    } else {
-      nextHidden.add(authorUsername)
-      toast({
-        content: $t('site.postMeta.authorHidden'),
-        type: 'success',
-      })
-    }
-
-    const nextMyFeed = new Set($userSettings.myFeedAuthors ?? [])
-    const existingMyFeed = Array.from(nextMyFeed).find(
-      (value) => value.toLowerCase() === authorKey
-    )
-    if (existingMyFeed && !existingHidden) {
-      nextMyFeed.delete(existingMyFeed)
-    }
-
-    $userSettings = {
-      ...$userSettings,
-      hiddenAuthors: Array.from(nextHidden),
-      myFeedAuthors: Array.from(nextMyFeed),
-    }
-  }
 </script>
-
-<LoginModal bind:open={showLoginModal} />
 
 <!-- 
   @component
@@ -454,109 +349,6 @@
           outline
           class="text-slate-500 dark:text-zinc-400 self-center h-8 flex items-center" 
         />
-      {/if}
-	      {#if community && !hideSubscribe}
-	        {#if subscribeUrl}
-	            <Button
-	              size="square-md"
-	              color="primary"
-	              class="ml-2 max-sm:hidden h-8 w-8 !min-h-[2rem] !min-w-[2rem] !px-0 dark:!bg-primary-900 dark:!text-white dark:!border-transparent dark:hover:!brightness-110 action-tooltip"
-	              href={subscribeUrl}
-	              target="_blank"
-	              rel="nofollow noopener"
-	              title={subscribeLabel || $t('site.postMeta.subscribe')}
-	              aria-label={subscribeLabel || $t('site.postMeta.subscribe')}
-                data-tooltip={subscribeLabel || $t('site.postMeta.subscribe')}
-	            >
-	              <span class="inline-flex items-center justify-center text-white">
-	                <img src="/img/logos/telegram_logo.svg" alt="Telegram" class="w-4 h-4" />
-	              </span>
-	          </Button>
-        {:else}
-        <Subscribe community={{
-          community,
-          subscribed: subscribed || 'NotSubscribed',
-          blocked: false,
-          counts: {
-            community_id: community.id,
-            subscribers: 0,
-            subscribers_local: 0,
-            posts: 0,
-            comments: 0,
-            published: "",
-            users_active_day: 0,
-            users_active_week: 0,
-            users_active_month: 0,
-            users_active_half_year: 0
-          },
-          banned_from_community: false
-        }}>
-          <svelte:fragment let:subscribe let:subscribing>
-            <!-- Кнопка для десктопа -->
-            <Button
-              size="sm"
-              color={subscribed === 'Subscribed' ? 'secondary' : 'primary'}
-              class="ml-2 max-sm:hidden h-8 !min-h-[2rem]"
-              on:click={() => handleSubscribeClick(subscribe)}
-              disabled={subscribing}
-            >
-              {subscribed === 'Subscribed' ? $t('cards.community.subscribed') : $t('cards.community.subscribe')}
-            </Button>
-
-            <!-- Иконка для мобильных -->
-            <button
-              class="hidden max-sm:flex items-center justify-center w-8 h-8 rounded-full transition-colors ml-2
-              {subscribed === 'Subscribed' 
-                ? 'bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400' 
-                : 'bg-primary-100 dark:bg-primary-900 text-primary-900 dark:text-primary-100'}"
-              on:click={() => handleSubscribeClick(subscribe)}
-              disabled={subscribing}
-              title={subscribed === 'Subscribed' ? $t('cards.community.subscribed') : $t('cards.community.subscribe')}
-              aria-label={subscribed === 'Subscribed' ? $t('cards.community.subscribed') : $t('cards.community.subscribe')}
-            >
-              <Icon 
-                src={subscribed === 'Subscribed' ? Check : Plus} 
-                size="18"
-                mini
-              />
-              <span class="sr-only">
-                {subscribed === 'Subscribed' ? $t('cards.community.subscribed') : $t('cards.community.subscribe')}
-              </span>
-            </button>
-          </svelte:fragment>
-        </Subscribe>
-        {/if}
-      {/if}
-      {#if authorUsername}
-        {#if showAdminNotifyCommentsIcon}
-          <div
-            use:portalTooltip={{ text: notifyCommentsLabel }}
-            class="inline-flex items-center justify-center h-8 w-8 rounded-full border action-tooltip
-            {authorNotifyCommentsEnabled
-              ? 'border-emerald-300 bg-emerald-50 text-emerald-600 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
-              : 'border-amber-300 bg-amber-50 text-amber-600 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-300'}"
-            aria-label={notifyCommentsLabel}
-            data-tooltip={notifyCommentsLabel}
-            role="img"
-          >
-            <Icon src={authorNotifyCommentsEnabled ? Bell : BellSlash} size="16" mini />
-            <span class="sr-only">{notifyCommentsLabel}</span>
-          </div>
-        {/if}
-        <button
-          type="button"
-          use:portalTooltip={{ text: hiddenActionLabel }}
-          class="inline-flex items-center justify-center h-8 w-8 rounded-full border transition-colors action-tooltip
-          {authorHidden
-            ? 'border-rose-300 bg-rose-50 text-rose-600 dark:border-rose-700 dark:bg-rose-950 dark:text-rose-300'
-            : 'border-slate-300 bg-white text-slate-600 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300'}"
-          aria-label={hiddenActionLabel}
-          data-tooltip={hiddenActionLabel}
-          on:click={toggleHiddenAuthor}
-        >
-          <Icon src={EyeSlash} size="16" mini />
-          <span class="sr-only">{hiddenActionLabel}</span>
-        </button>
       {/if}
     </div>
     <slot name="badges" />

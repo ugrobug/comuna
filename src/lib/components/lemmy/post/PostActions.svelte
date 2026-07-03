@@ -133,6 +133,13 @@
   $: resolvedCommunityLink = communityUrlOverride ?? communityLink(post.community)
   $: backendCanManage = Boolean((post?.creator as any)?.can_manage_backend)
   $: backendCreatorUsername = (post.creator?.name ?? '').trim().toLowerCase()
+  $: authorUsername = (post.creator?.name ?? '').trim()
+  $: authorKey = authorUsername.toLowerCase()
+  $: hiddenAuthorKeys = new Set(
+    ($userSettings.hiddenAuthors ?? []).map((value) => value.toLowerCase())
+  )
+  $: authorHidden = Boolean(authorKey && hiddenAuthorKeys.has(authorKey))
+  $: hiddenActionLabel = authorHidden ? $t('site.postMeta.showAuthor') : $t('site.postMeta.hideAuthor')
   $: backendOwnedAuthorUsernames = $siteUser
     ? [
         ($siteUser.username ?? '').trim().toLowerCase(),
@@ -307,6 +314,50 @@
         : `${window.location.pathname}${window.location.search}${window.location.hash}`
     toast({ content: $t('site.postActions.loginRequired'), type: 'warning' })
     await goto(`/account?next=${encodeURIComponent(next)}`)
+  }
+
+  const toggleHiddenAuthor = () => {
+    if (!$siteUser) {
+      toast({
+        content: $t('site.postMeta.loginRequired'),
+        type: 'warning',
+      })
+      return
+    }
+    if (!authorUsername) return
+
+    const nextHidden = new Set($userSettings.hiddenAuthors ?? [])
+    const existingHidden = Array.from(nextHidden).find(
+      (value) => value.toLowerCase() === authorKey
+    )
+    if (existingHidden) {
+      nextHidden.delete(existingHidden)
+      toast({
+        content: $t('site.postMeta.authorVisible'),
+        type: 'success',
+      })
+    } else {
+      nextHidden.add(authorUsername)
+      toast({
+        content: $t('site.postMeta.authorHidden'),
+        type: 'success',
+      })
+    }
+
+    const nextMyFeed = new Set($userSettings.myFeedAuthors ?? [])
+    const existingMyFeed = Array.from(nextMyFeed).find(
+      (value) => value.toLowerCase() === authorKey
+    )
+    if (existingMyFeed && !existingHidden) {
+      nextMyFeed.delete(existingMyFeed)
+    }
+
+    $userSettings = {
+      ...$userSettings,
+      hiddenAuthors: Array.from(nextHidden),
+      myFeedAuthors: Array.from(nextMyFeed),
+    }
+    actionsMenuOpen = false
   }
 
   const toggleBackendFavorite = async () => {
@@ -737,7 +788,7 @@
     bind:open={actionsMenuOpen}
     placement="bottom"
     containerClass="overflow-auto max-h-[400px]"
-    class="h-8"
+    class="post-actions-menu h-8 absolute top-3 right-3 z-20"
     targetClass="h-full"
     title={$t('post.actions.more.label')}
   >
@@ -780,6 +831,12 @@
     <MenuDivider>
       {$t('post.actions.more.actions')}
     </MenuDivider>
+    {#if authorUsername}
+      <MenuButton on:click={toggleHiddenAuthor} color={authorHidden ? 'danger-subtle' : undefined}>
+        <Icon src={EyeSlash} size="16" micro slot="prefix" />
+        {hiddenActionLabel}
+      </MenuButton>
+    {/if}
     {#if canManageBackendPost && backendPostId}
       <MenuButton link href={`/account/edit-post/${backendPostId}`}>
         <Icon src={PencilSquare} size="16" micro slot="prefix" />
@@ -999,6 +1056,13 @@
 </footer>
 
 <style lang="postcss">
+  :global(.post-actions-menu) {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    z-index: 20;
+  }
+
   .category-toggle {
     @apply flex w-full min-h-[36px] items-center gap-1.5 rounded-lg px-2 text-left text-sm font-normal !text-slate-900 transition duration-100 hover:bg-slate-100 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-70 dark:!text-zinc-200 hover:dark:bg-zinc-800/70;
   }

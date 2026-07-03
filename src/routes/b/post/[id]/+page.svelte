@@ -13,7 +13,6 @@
     buildPostDetailUrl,
     buildPostReadUrl,
     buildPostViewUrl,
-    isSpecialProjectPost,
   } from '$lib/api/backend'
   import { refreshSiteUser, siteToken } from '$lib/siteAuth'
   import { parseSerializedEditorModel, looksLikeSerializedEditorModel } from '$lib/util'
@@ -481,9 +480,6 @@
         linkOverride={canonicalPath}
         userUrlOverride={backendAuthorPath(postData.author)}
         communityUrlOverride={backendPostCommunityPath(postData)}
-        subscribeUrl={postData.channel_url ?? postData.author?.channel_url}
-        subscribeLabel={$t('site.post.subscribe')}
-        hideSubscribe={isSpecialProjectPost(postData)}
       />
     </div>
 

@@ -7,7 +7,7 @@
   import { userSettings } from '$lib/settings.js'
   import PostLink from '$lib/components/lemmy/post/link/PostLink.svelte'
   import PostMeta from '$lib/components/lemmy/post/PostMeta.svelte'
-  import { Badge, Button, Material, toast } from 'mono-svelte'
+  import { Badge, Material, toast } from 'mono-svelte'
   import Markdown from '$lib/components/markdown/Markdown.svelte'
   import ExpandableImage from '$lib/components/ui/ExpandableImage.svelte'
   import {
@@ -26,7 +26,6 @@
   import PostMedia from '$lib/components/lemmy/post/media/PostMedia.svelte'
   import PostMediaCompact from '$lib/components/lemmy/post/media/PostMediaCompact.svelte'
   import PostBody from './PostBody.svelte'
-  import { profile } from '$lib/auth'
   import { getTagKey, getTagName, normalizeTag, type TagItem } from '$lib/tags'
   import {
     buildPostReadUrl,
@@ -54,9 +53,6 @@
   export let showFullBody: boolean = false
   export let communityUrlOverride: string | undefined = undefined
   export let userUrlOverride: string | undefined = undefined
-  export let subscribeUrl: string | null | undefined = undefined
-  export let subscribeLabel: string = ''
-  export let hideSubscribe: boolean = false
   export let disableUserLink: boolean | undefined = undefined
   export let comunCategories: BackendComunCategory[] = []
   export let currentWelcomePostId: number | null | undefined = undefined
@@ -116,9 +112,6 @@
     isBackendPost && !showFullBody && backendTemplate?.type === 'bug_report'
   )
   $: backendViewsValue = ((post.counts as { views?: number }).views ?? 0)
-  $: backendAuthorNotifyCommentsEnabled = (
-    post.creator as { comuna_notify_comments?: boolean }
-  ).comuna_notify_comments
   $: autoDisableUserLink =
     disableUserLink ??
     (communityName.toLowerCase() === 'comuna' ||
@@ -294,11 +287,6 @@
       admin: post.creator_is_admin,
       moderator: post.creator_is_moderator,
     }}
-    subscribed={$profile?.user?.follows
-      .map((c) => c.community.id)
-      .includes(post.community.id)
-      ? 'Subscribed'
-      : 'NotSubscribed'}
     id={post.post.id}
     read={readOverride ?? post.read}
     style="grid-area: meta;"
@@ -307,11 +295,7 @@
     {communityUrlOverride}
     {userUrlOverride}
     disableUserLink={autoDisableUserLink}
-    subscribeUrl={subscribeUrl ?? undefined}
-    {subscribeLabel}
-    {hideSubscribe}
     backendPostMeta={isBackendPost}
-    authorNotifyCommentsEnabled={isBackendPost ? backendAuthorNotifyCommentsEnabled : undefined}
   >
     <slot name="badges" slot="badges" />
   </PostMeta>
@@ -420,21 +404,6 @@
                 #{getTagName(tag)}
               </a>
             {/each}
-          </div>
-        {/if}
-        {#if subscribeUrl && !hideSubscribe}
-          <div class="mt-4">
-            <Button
-              size="sm"
-              color="primary"
-              href={subscribeUrl}
-              target="_blank"
-              rel="nofollow noopener"
-              class="h-10 !min-h-[2.5rem] max-w-max !px-4 inline-flex items-center gap-2 whitespace-nowrap dark:!bg-primary-900 dark:!text-white dark:!border-transparent dark:hover:!brightness-110"
-            >
-              <img src="/img/logos/telegram_logo.svg" alt="Telegram" class="w-4 h-4" />
-              <span class="text-white whitespace-nowrap">{$t('site.postCard.subscribeTelegram')}</span>
-            </Button>
           </div>
         {/if}
       </div>
