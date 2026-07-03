@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import io
 import json
 import hmac
 import hashlib
@@ -36,7 +37,7 @@ from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 from django.contrib.auth import get_user_model
 
 from communities import views as community_views
@@ -173,6 +174,7 @@ _FAKE_VIEWS_RAMP_SECONDS = 48 * 60 * 60
 _IMAGE_VARIANT_WIDTHS = (320, 640, 960, 1280, 1920)
 _POST_PREVIEW_IMAGE_WIDTH = 1280
 _POST_THUMBNAIL_IMAGE_WIDTH = 640
+_POST_SOCIAL_IMAGE_SIZE = (1200, 630)
 _LOCAL_WEBP_VARIANT_RE = re.compile(r"-(320|640|960|1280|1920)\.webp$", re.IGNORECASE)
 _IMAGE_URL_PATH_RE = re.compile(r"\.(?:jpe?g|png|webp|gif|avif)$", re.IGNORECASE)
 _COMUN_CREATION_MIN_AUTHOR_RATING = 0.0
@@ -1354,9 +1356,16 @@ def _serialize_post_preview_image_fields(
         post,
         template_payload=template_payload,
     )
+    social_image_url = None
+    if preview_image_url and media_storage_path_from_url(preview_image_url, request=request):
+        social_image_url = site_absolute_url(
+            f"/api/posts/{post.id}/social-image.jpg",
+            request=request,
+        )
     return {
         "preview_image_url": preview_image_url,
         "thumbnail_url": thumbnail_url,
+        "social_image_url": social_image_url,
     }
 
 
@@ -3574,6 +3583,60 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
             },
         }
     )
+
+
+@anonymous_cache(prefix="post-social-image", seconds=3600)
+def post_social_image(request: HttpRequest, post_id: int) -> HttpResponse:
+    try:
+        now = timezone.now()
+        post = (
+            Post.objects.select_related("author")
+            .filter(is_blocked=False, is_pending=False, author__is_blocked=False)
+            .filter(_publish_ready_filter(now))
+            .get(id=post_id)
+        )
+    except Post.DoesNotExist:
+        return HttpResponse(status=404)
+
+    template_payload = _serialize_post_template(post)
+    preview_image_url, _thumbnail_url = _extract_post_preview_image_urls(
+        request,
+        post,
+        template_payload=template_payload,
+    )
+    storage_path = media_storage_path_from_url(preview_image_url or "", request=request)
+    if not storage_path:
+        return HttpResponse(status=404)
+
+    try:
+        with default_storage.open(storage_path, "rb") as source:
+            with Image.open(source) as opened:
+                image = ImageOps.exif_transpose(opened)
+                image.load()
+    except (OSError, ValueError, UnidentifiedImageError):
+        return HttpResponse(status=404)
+
+    if image.mode in {"RGBA", "LA"} or (
+        image.mode == "P" and "transparency" in getattr(image, "info", {})
+    ):
+        canvas = Image.new("RGB", image.size, "white")
+        canvas.paste(image.convert("RGBA"), mask=image.convert("RGBA").getchannel("A"))
+        image = canvas
+    elif image.mode != "RGB":
+        image = image.convert("RGB")
+
+    social_image = ImageOps.fit(
+        image,
+        _POST_SOCIAL_IMAGE_SIZE,
+        method=Image.Resampling.LANCZOS,
+        centering=(0.5, 0.5),
+    )
+    output = io.BytesIO()
+    social_image.save(output, format="JPEG", quality=88, optimize=True, progressive=True)
+    response = HttpResponse(output.getvalue(), content_type="image/jpeg")
+    response["Cache-Control"] = "public, max-age=86400"
+    response["Content-Disposition"] = f'inline; filename="post-{post_id}-social.jpg"'
+    return response
 
 
 @csrf_exempt

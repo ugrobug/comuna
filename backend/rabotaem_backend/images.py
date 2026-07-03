@@ -46,7 +46,9 @@ def _save_webp_variant(image: Image.Image, path: str, width: int) -> SavedImageV
 
     output = io.BytesIO()
     variant_image.save(output, format="WEBP", quality=82, method=6)
-    saved_path = default_storage.save(path, ContentFile(output.getvalue()))
+    content = ContentFile(output.getvalue())
+    content.content_type = "image/webp"
+    saved_path = default_storage.save(path, content)
     return SavedImageVariant(width=target_width, path=saved_path, url=_storage_url(saved_path))
 
 

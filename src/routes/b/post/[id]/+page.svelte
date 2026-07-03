@@ -245,6 +245,7 @@
   $: firstImage = extractFirstImage(postData?.content || '')
   $: ogImage = firstValidUrl(
     [
+      postData?.social_image_url,
       postData?.preview_image_url,
       templatePoster,
       firstImage,
