@@ -4363,7 +4363,9 @@ def search_content(request: HttpRequest) -> HttpResponse:
             .filter(search_vector=search_query)
         )
         if sort == "new":
-            text_post_ids = list(text_posts_qs.values_list("id", flat=True)[:candidate_limit])
+            text_post_ids = list(
+                text_posts_qs.order_by().values_list("id", flat=True)[:candidate_limit]
+            )
             text_posts = (
                 base_posts_qs.filter(id__in=text_post_ids)
                 .select_related("author")
