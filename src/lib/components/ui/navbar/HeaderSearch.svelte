@@ -97,7 +97,7 @@
     open = true
 
     try {
-      const response = await fetch(buildSearchUrl(normalized, 1, 6, 'All', 'New'))
+      const response = await fetch(buildSearchUrl(normalized, 1, 6, 'Posts', 'New'))
       if (!response.ok) throw new Error(`HTTP ${response.status}`)
       const payload = (await response.json()) as SearchPayload
       if (currentRequest !== requestId) return
@@ -127,7 +127,7 @@
     const normalized = query.trim()
     if (!normalized) return
     open = false
-    await goto(`/search?q=${encodeURIComponent(normalized)}`)
+    await goto(`/search?q=${encodeURIComponent(normalized)}&type=Posts`)
   }
 
   const selectSuggestion = () => {
