@@ -29,7 +29,7 @@ from math import ceil
 from html import escape, unescape
 from xml.sax.saxutils import escape as xml_escape
 from django.db import transaction
-from django.db.models import Avg, Count, Exists, F, IntegerField, Max, OuterRef, Prefetch, Q, Subquery, Sum, Value
+from django.db.models import Avg, Count, Exists, F, IntegerField, Max, OuterRef, Prefetch, Q, Sum, Value
 from django.db.models.functions import Cast, Coalesce
 from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
 
@@ -4338,29 +4338,81 @@ def search_content(request: HttpRequest) -> HttpResponse:
 
     if type_filter in ("all", "posts"):
         author_vector = _author_search_vector()
-        matching_author_ids = (
+        matching_author_ids = list(
             Author.objects.filter(is_blocked=False)
             .annotate(search_vector=author_vector)
             .filter(search_vector=search_query)
-            .values("id")
+            .values_list("id", flat=True)[:50]
         )
         now = timezone.now()
         post_vector = _post_search_vector()
-        posts_qs = (
+        base_posts_qs = (
             Post.objects.filter(
                 is_blocked=False,
                 is_pending=False,
                 author__is_blocked=False,
             )
             .filter(_publish_ready_filter(now))
+        )
+        candidate_limit = min(max(offset + limit + 1, limit + 1) * 4, 200)
+        post_candidates_by_id: dict[int, Post] = {}
+
+        text_posts_qs = (
+            base_posts_qs
             .annotate(search_vector=post_vector)
-            .filter(Q(search_vector=search_query) | Q(author_id__in=Subquery(matching_author_ids)))
-            .annotate(search_rank=SearchRank(post_vector, search_query))
+            .filter(search_vector=search_query)
+        )
+        if sort == "new":
+            text_post_ids = list(text_posts_qs.values_list("id", flat=True)[:candidate_limit])
+            text_posts = (
+                base_posts_qs.filter(id__in=text_post_ids)
+                .select_related("author")
+                .prefetch_related("tags")
+            )
+        else:
+            text_posts = (
+                text_posts_qs.annotate(search_rank=SearchRank(post_vector, search_query))
+                .select_related("author")
+                .prefetch_related("tags")
+                .order_by("-search_rank", "-created_at")[:candidate_limit]
+            )
+        for post in text_posts:
+            post_candidates_by_id[post.id] = post
+
+        if matching_author_ids:
+            author_posts = (
+                base_posts_qs.filter(author_id__in=matching_author_ids)
+                .select_related("author")
+                .prefetch_related("tags")
+                .order_by("-created_at")[:candidate_limit]
+            )
+            for post in author_posts:
+                post_candidates_by_id.setdefault(post.id, post)
+
+        post_candidates = list(post_candidates_by_id.values())
+        if sort == "new":
+            post_candidates.sort(key=lambda post: post.created_at, reverse=True)
+        else:
+            post_candidates.sort(
+                key=lambda post: (
+                    getattr(post, "search_rank", 0) or 0,
+                    post.created_at,
+                ),
+                reverse=True,
+            )
+
+        posts_page = post_candidates[offset : offset + limit]
+        total_posts = offset + len(posts_page) + (
+            1 if len(post_candidates) > offset + limit else 0
+        )
+        posts_page_ids = [post.id for post in posts_page]
+        posts_page = list(
+            base_posts_qs.filter(id__in=posts_page_ids)
             .select_related("author")
             .prefetch_related("tags")
-            .order_by("-created_at" if sort == "new" else "-search_rank", "-created_at")
         )
-        posts_page, total_posts = _page_with_next(posts_qs, offset, limit)
+        posts_by_id = {post.id: post for post in posts_page}
+        posts_page = [posts_by_id[post_id] for post_id in posts_page_ids if post_id in posts_by_id]
         favorite_post_ids = _favorite_post_ids_for_user(posts_page, current_user)
         for post in posts_page:
             _content, poll_payload = _content_with_live_poll(post, current_user)
