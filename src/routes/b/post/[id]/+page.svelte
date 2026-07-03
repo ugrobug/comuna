@@ -32,8 +32,47 @@
     value.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
 
   const extractFirstImage = (value: string) => {
-    const match = value.match(/<img[^>]+src=["']([^"']+)["']/i)
+    const raw = (value || '').trim()
+    if (!raw) return null
+
+    const editorPayload = parseSerializedEditorModel(raw)
+    if (editorPayload) {
+      const additional = editorPayload?.additional || {}
+      const additionalImage =
+        additional.previewImage || additional.preview_image_url || additional.cover_image_url
+      if (typeof additionalImage === 'string' && additionalImage.trim()) {
+        return additionalImage.trim()
+      }
+
+      const blocks = Array.isArray(editorPayload.blocks) ? editorPayload.blocks : []
+      for (const block of blocks) {
+        const type = String(block?.type || '').toLowerCase()
+        const data = block?.data || {}
+        if (type === 'image') {
+          const imageUrl = data?.file?.url || data?.url
+          if (typeof imageUrl === 'string' && imageUrl.trim()) return imageUrl.trim()
+        }
+        if (type === 'gallery') {
+          const imageUrl = data?.images?.[0]?.url || data?.images?.[0]?.file?.url
+          if (typeof imageUrl === 'string' && imageUrl.trim()) return imageUrl.trim()
+        }
+        if (type === 'imagecompare' || type === 'compare') {
+          const imageUrl = data?.before?.url || data?.after?.url
+          if (typeof imageUrl === 'string' && imageUrl.trim()) return imageUrl.trim()
+        }
+      }
+    }
+
+    const match = raw.match(/<img[^>]+src=["']([^"']+)["']/i)
     return match ? match[1] : null
+  }
+
+  const firstValidUrl = (values: Array<string | null | undefined>, baseUrl: string) => {
+    for (const value of values) {
+      const absolute = ensureAbsoluteUrl(value, baseUrl)
+      if (isPreviewImageCandidate(absolute)) return absolute
+    }
+    return ''
   }
 
   const buildDescription = (value: string, max = 200) => {
@@ -205,8 +244,15 @@
         ? (postData?.template?.data?.cover_image_url ?? '')
         : ''
   $: firstImage = extractFirstImage(postData?.content || '')
-  $: firstImageAbsolute = ensureAbsoluteUrl(templatePoster || firstImage || '', siteBaseUrl)
-  $: ogImage = isPreviewImageCandidate(firstImageAbsolute) ? firstImageAbsolute : ''
+  $: ogImage = firstValidUrl(
+    [
+      postData?.preview_image_url,
+      templatePoster,
+      firstImage,
+      postData?.thumbnail_url,
+    ],
+    siteBaseUrl
+  )
   $: ogImageType = imageMimeByExtension(ogImage)
   $: postDescription = buildDescription(postData?.content || '')
   $: metaDescription = translationUnavailable
@@ -220,6 +266,7 @@
     : postTitle
       ? `${postTitle} — ${siteTitle}`
       : siteTitle
+  $: ogImageAlt = socialTitle || siteTitle
   $: articleSchema =
     postData && !translationUnavailable
       ? toJsonLd({
@@ -360,6 +407,7 @@
     <meta property="og:image:secure_url" content={ogImage} />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content={ogImageAlt} />
     {#if ogImageType}
       <meta property="og:image:type" content={ogImageType} />
     {/if}
@@ -375,6 +423,7 @@
   <meta name="twitter:description" content={metaDescription} />
   {#if ogImage}
     <meta name="twitter:image" content={ogImage} />
+    <meta name="twitter:image:alt" content={ogImageAlt} />
   {/if}
 
   {@html articleSchemaTag}
