@@ -1358,8 +1358,12 @@ def _serialize_post_preview_image_fields(
     )
     social_image_url = None
     if preview_image_url and media_storage_path_from_url(preview_image_url, request=request):
+        social_image_version = getattr(post, "updated_at", None) or getattr(post, "created_at", None)
+        social_image_query = ""
+        if social_image_version:
+            social_image_query = f"?v={int(social_image_version.timestamp())}"
         social_image_url = site_absolute_url(
-            f"/api/posts/{post.id}/social-image.jpg",
+            f"/api/posts/{post.id}/social-image.jpg{social_image_query}",
             request=request,
         )
     return {
@@ -3632,7 +3636,7 @@ def post_social_image(request: HttpRequest, post_id: int) -> HttpResponse:
         centering=(0.5, 0.5),
     )
     output = io.BytesIO()
-    social_image.save(output, format="JPEG", quality=88, optimize=True, progressive=True)
+    social_image.save(output, format="JPEG", quality=88, optimize=True)
     response = HttpResponse(output.getvalue(), content_type="image/jpeg")
     response["Cache-Control"] = "public, max-age=86400"
     response["Content-Disposition"] = f'inline; filename="post-{post_id}-social.jpg"'

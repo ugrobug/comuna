@@ -1531,16 +1531,13 @@
                             <span class="block truncate text-sm font-medium text-slate-900 dark:text-zinc-100">
                               {userDisplayName(moderator)}
                             </span>
-                            <span class="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-slate-500 dark:text-zinc-400">
-                              {#if moderator.username && !moderator.is_deleted}
-                                <span class="truncate">@{moderator.username}</span>
-                              {/if}
-                              {#if moderator.isCreator}
+                            {#if moderator.isCreator}
+                              <span class="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-slate-500 dark:text-zinc-400">
                                 <span class="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:bg-zinc-800 dark:text-zinc-300">
                                   Создатель
                                 </span>
-                              {/if}
-                            </span>
+                              </span>
+                            {/if}
                           </a>
                           <button
                             type="button"
@@ -1676,12 +1673,12 @@
   </section>
 
   {#if hasComunCategories || comunWebsiteUrl || comun?.glossary_enabled || comun?.knowledge_base_enabled || comun?.roadmap_enabled}
-    <div class="flex flex-wrap items-center gap-2">
+    <div class="flex items-center gap-2">
       {#if hasComunCategories}
-        <div class="relative" bind:this={categoryFilterElement}>
+        <div class="relative shrink-0" bind:this={categoryFilterElement}>
           <button
             type="button"
-            class="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm transition-colors {categoryFilterAllSelected ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-950/30 dark:text-blue-300' : 'border-slate-200 bg-white/95 text-slate-700 hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900/85 dark:text-zinc-200 dark:hover:bg-zinc-800/60'}"
+            class="inline-flex items-center gap-2 whitespace-nowrap rounded-full border px-3 py-1.5 text-sm transition-colors {categoryFilterAllSelected ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-700 dark:bg-blue-950/30 dark:text-blue-300' : 'border-slate-200 bg-white/95 text-slate-700 hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900/85 dark:text-zinc-200 dark:hover:bg-zinc-800/60'}"
             on:click={() => (categoryFilterOpen = !categoryFilterOpen)}
             disabled={loadingCategory}
             aria-expanded={categoryFilterOpen}
@@ -1731,10 +1728,11 @@
           {/if}
         </div>
       {/if}
+      <div class="community-resource-actions min-w-0 flex-1">
       {#if comun?.knowledge_base_enabled}
         <a
           href={comunKnowledgeBasePath}
-          class="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white/95 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900/85 dark:text-zinc-200 dark:hover:bg-zinc-800/60"
+          class="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-full border border-slate-200 bg-white/95 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900/85 dark:text-zinc-200 dark:hover:bg-zinc-800/60"
         >
           База знаний
         </a>
@@ -1742,7 +1740,7 @@
       {#if comun?.glossary_enabled}
         <a
           href={comunGlossaryPath}
-          class="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white/95 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900/85 dark:text-zinc-200 dark:hover:bg-zinc-800/60"
+          class="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-full border border-slate-200 bg-white/95 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900/85 dark:text-zinc-200 dark:hover:bg-zinc-800/60"
         >
           Глоссарий
         </a>
@@ -1750,13 +1748,13 @@
       {#if comun?.roadmap_enabled}
         <a
           href={comunRoadmapPath}
-          class="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white/95 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900/85 dark:text-zinc-200 dark:hover:bg-zinc-800/60"
+          class="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-full border border-slate-200 bg-white/95 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900/85 dark:text-zinc-200 dark:hover:bg-zinc-800/60"
         >
           Дорожная карта
         </a>
       {/if}
       {#if comunWebsiteUrl}
-        <span class="group/website relative inline-flex">
+        <span class="group/website relative inline-flex shrink-0">
           <a
             href={comunWebsiteUrl}
             target="_blank"
@@ -1774,6 +1772,7 @@
           </span>
         </span>
       {/if}
+      </div>
     </div>
   {/if}
 
@@ -2153,6 +2152,21 @@
   :global(.dark) .comun-logo-fallback {
     background: hsl(var(--comun-h, 220) 35% 20%);
     color: hsl(var(--comun-h, 220) 78% 72%);
+  }
+
+  .community-resource-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    padding-bottom: 0.125rem;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .community-resource-actions::-webkit-scrollbar {
+    display: none;
   }
 
   .comun-header-expand-button {

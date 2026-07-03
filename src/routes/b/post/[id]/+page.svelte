@@ -391,12 +391,15 @@
   {/each}
   {#if translationUnavailable}
     <meta name="robots" content="noindex, follow" />
+  {:else}
+    <meta name="robots" content="max-image-preview:large" />
   {/if}
   <meta name="description" content={metaDescription} />
 
   <meta property="og:locale" content={postData?.og_locale || 'ru_RU'} />
   <meta property="og:site_name" content={siteTitle} />
   <meta property="og:type" content="article" />
+  <meta property="og:ttl" content="600" />
   <meta property="og:url" content={canonicalUrl} />
   {#if socialTitle}
     <meta property="og:title" content={socialTitle} />

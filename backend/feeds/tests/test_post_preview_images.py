@@ -1,12 +1,13 @@
 import json
 import base64
+from datetime import datetime, timezone as dt_timezone
 from unittest.mock import patch
 
 from django.test import SimpleTestCase, override_settings
 
 from feeds.models import Post
 from feeds.preview import build_post_preview
-from feeds.views import _extract_post_preview_image_urls
+from feeds.views import _extract_post_preview_image_urls, _serialize_post_preview_image_fields
 
 
 @override_settings(SITE_BASE_URL="https://tambur.pub", MEDIA_URL="/media/", MEDIA_PUBLIC_URL_MODE="legacy")
@@ -75,6 +76,21 @@ class PostPreviewImageTests(SimpleTestCase):
 
         self.assertEqual(preview_url, "https://tambur.pub/media/uploads/post/stored-1280.webp")
         self.assertEqual(thumbnail_url, "https://tambur.pub/media/uploads/post/stored-640.webp")
+
+    def test_social_image_url_is_versioned_by_post_update_time(self) -> None:
+        updated_at = datetime(2026, 7, 3, 10, 28, 2, tzinfo=dt_timezone.utc)
+        post = Post(
+            id=20026,
+            preview_image_url="/media/uploads/post/stored-1280.webp",
+            updated_at=updated_at,
+        )
+
+        preview = _serialize_post_preview_image_fields(None, post)
+
+        self.assertEqual(
+            preview["social_image_url"],
+            "https://tambur.pub/api/posts/20026/social-image.jpg?v=1783074482",
+        )
 
     def test_builds_small_preview_from_base64_editor_content(self) -> None:
         payload = {

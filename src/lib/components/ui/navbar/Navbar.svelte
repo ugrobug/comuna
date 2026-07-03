@@ -37,7 +37,6 @@
   import CommandsWrapper from './commands/CommandsWrapper.svelte'
   import { optimizeImageURL } from '$lib/components/lemmy/post/helpers'
   import LoginModal from '$lib/components/auth/LoginModal.svelte'
-  import LanguageSwitcher from './LanguageSwitcher.svelte'
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
   import { env } from '$env/dynamic/public';
@@ -154,7 +153,7 @@
     <!-- Единый навбар для всех устройств -->
     <div class="grid navbar-desktop-grid items-center w-full">
       <!-- 1 колонка: гамбургер, логотип -->
-      <div class="flex min-w-0 items-center pl-0 md:pl-[30px] gap-2">
+      <div class="navbar-brand-cell flex min-w-0 items-center pl-0 gap-2">
         <!-- Кнопка гамбургера только на мобилках -->
         <button
           class="md:hidden w-10 h-10 shrink-0 rounded-full flex items-center justify-center hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
@@ -228,9 +227,6 @@
             </button>
           </div>
         {/if}
-        <div class="hidden md:block">
-          <LanguageSwitcher />
-        </div>
         <!-- Кнопка создания/входа -->
         {#if $profile?.jwt}
           <Menu placement="bottom-end">
@@ -492,6 +488,10 @@
     .navbar-desktop-grid {
       grid-template-columns: minmax(120px, 1fr) minmax(320px, 500px) minmax(120px, 1fr);
       column-gap: 1rem;
+    }
+
+    .navbar-brand-cell {
+      padding-left: 64px;
     }
   }
 

@@ -9,9 +9,14 @@ import {
 } from '$lib/postLanguages'
 
 const PRIORITY_HEAD_TAG_PATTERN =
-  /<(?:meta|link)\b[^>]*(?:name="description"|rel="canonical"|property="og:[^"]+"|name="twitter:[^"]+")[^>]*>/gi
+  /<(?:meta|link)\b[^>]*(?:name="description"|name="robots"|rel="canonical"|property="og:[^"]+"|name="twitter:[^"]+")[^>]*>/gi
+
+const TITLE_TAG_PATTERN = /<title\b[^>]*>[\s\S]*?<\/title>/i
 
 const STYLESHEET_LINK_PATTERN = /<link\b[^>]*rel="stylesheet"[^>]*>/i
+
+const SOCIAL_CRAWLER_USER_AGENT_PATTERN =
+  /\b(?:TelegramBot|Twitterbot|facebookexternalhit|Facebot|WhatsApp|Slackbot|Discordbot|LinkedInBot|Pinterest|vkShare|SkypeUriPreview|Applebot)\b/i
 
 const securityHeaders = {
   'Content-Security-Policy': [
@@ -69,6 +74,21 @@ const prioritizePreviewHeadTags = (html: string) => {
   )
 }
 
+const buildSocialCrawlerHtml = (html: string) => {
+  const titleTag = html.match(TITLE_TAG_PATTERN)?.[0] || ''
+  const priorityTags = html.match(PRIORITY_HEAD_TAG_PATTERN) || []
+  const hasRobotsTag = priorityTags.some((tag) => /\bname="robots"/i.test(tag))
+  const robotsTag = hasRobotsTag ? '' : '<meta name="robots" content="max-image-preview:large">'
+  const headTags = [
+    '<meta charset="utf-8">',
+    titleTag,
+    robotsTag,
+    ...priorityTags,
+  ].filter(Boolean)
+
+  return `<!doctype html><html><head>${headTags.join('')}</head><body></body></html>`
+}
+
 const escapeHtmlAttribute = (value: string) =>
   value
     .replace(/&/g, '&amp;')
@@ -98,6 +118,9 @@ export const handle: Handle = async ({ event, resolve }) => {
     languageFromAcceptLanguage(event.request.headers.get('Accept-Language')) ||
     originalPostLanguage
   const shouldPrioritizePreviewHead = /^\/(?:[a-z]{2}\/)?b\/post\//.test(event.url.pathname)
+  const isSocialCrawler =
+    shouldPrioritizePreviewHead &&
+    SOCIAL_CRAWLER_USER_AGENT_PATTERN.test(event.request.headers.get('User-Agent') || '')
   const response = await resolve(event, {
     transformPageChunk: ({ html }) => {
       const localizedHtml = localizeAppShellHead(html, language)
@@ -109,6 +132,24 @@ export const handle: Handle = async ({ event, resolve }) => {
   const headers = new Headers(response.headers)
   for (const [name, value] of Object.entries(securityHeaders)) {
     headers.set(name, value)
+  }
+  if (
+    isSocialCrawler &&
+    response.status >= 200 &&
+    response.status < 400 &&
+    response.headers.get('content-type')?.includes('text/html')
+  ) {
+    const html = await response.text()
+    headers.delete('content-length')
+    headers.delete('etag')
+    headers.delete('link')
+    headers.set('content-type', 'text/html; charset=utf-8')
+    headers.set('cache-control', 'public, max-age=300, stale-while-revalidate=300')
+    return new Response(buildSocialCrawlerHtml(html), {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    })
   }
   return new Response(response.body, {
     status: response.status,
