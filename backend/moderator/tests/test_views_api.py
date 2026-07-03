@@ -13,8 +13,12 @@ from feeds.models import (
     Post,
     PostComment,
     PostCommentLike,
+    PostCommentTranslation,
     PostLike,
+    PostTranslation,
     PostViewSettings,
+    POST_TRANSLATION_STATUS_FAILED,
+    POST_TRANSLATION_STATUS_TRANSLATED,
 )
 from my_feed.models import ComunSubscriptionEvent
 from users import chat_service
@@ -217,6 +221,91 @@ class ModeratorAnalyticsApiTests(TestCase):
         )
         self.assertEqual(data["breakdown"]["post_likes"], 1)
         self.assertEqual(data["breakdown"]["comment_likes"], 1)
+
+    def test_translation_settings_returns_content_coverage(self):
+        author = Author.objects.create(username="coverage-channel")
+        translated_post = Post.objects.create(
+            author=author,
+            message_id=10,
+            title="Translated post",
+        )
+        untranslated_post = Post.objects.create(
+            author=author,
+            message_id=11,
+            title="Untranslated post",
+        )
+        failed_post = Post.objects.create(
+            author=author,
+            message_id=12,
+            title="Failed post",
+        )
+        blocked_post = Post.objects.create(
+            author=author,
+            message_id=13,
+            title="Blocked post",
+            is_blocked=True,
+        )
+        translated_comment = PostComment.objects.create(
+            post=translated_post,
+            user=self.user,
+            body="Translated comment",
+        )
+        untranslated_comment = PostComment.objects.create(
+            post=untranslated_post,
+            user=self.user,
+            body="Untranslated comment",
+        )
+        deleted_comment = PostComment.objects.create(
+            post=translated_post,
+            user=self.user,
+            body="Deleted comment",
+            is_deleted=True,
+        )
+
+        PostTranslation.objects.create(
+            post=translated_post,
+            language="en",
+            title="Translated",
+            status=POST_TRANSLATION_STATUS_TRANSLATED,
+        )
+        PostTranslation.objects.create(
+            post=translated_post,
+            language="es",
+            title="Traducido",
+            status=POST_TRANSLATION_STATUS_TRANSLATED,
+        )
+        PostTranslation.objects.create(
+            post=failed_post,
+            language="en",
+            status=POST_TRANSLATION_STATUS_FAILED,
+        )
+        PostTranslation.objects.create(
+            post=blocked_post,
+            language="en",
+            status=POST_TRANSLATION_STATUS_TRANSLATED,
+        )
+        PostCommentTranslation.objects.create(
+            comment=translated_comment,
+            language="en",
+            body="Translated comment",
+            status=POST_TRANSLATION_STATUS_TRANSLATED,
+        )
+        PostCommentTranslation.objects.create(
+            comment=deleted_comment,
+            language="en",
+            body="Deleted translated comment",
+            status=POST_TRANSLATION_STATUS_TRANSLATED,
+        )
+
+        response = self.client.get(reverse("moderator-translation-settings"), **self.staff_headers)
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["ok"])
+        coverage = data["settings"]["coverage"]
+        self.assertEqual(coverage["posts"], {"total": 3, "translated": 1})
+        self.assertEqual(coverage["comments"], {"total": 2, "translated": 1})
+        self.assertEqual(coverage["translation_rows"], {"posts": 2, "comments": 1})
 
     def test_view_settings_can_be_listed_and_updated_by_staff(self):
         author = Author.objects.create(username="channel")

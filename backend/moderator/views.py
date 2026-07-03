@@ -9,7 +9,17 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
 from communities.models import Comun
-from feeds.models import Author, Post, PostComment, PostCommentLike, PostLike, PostViewSettings
+from feeds.models import (
+    Author,
+    POST_TRANSLATION_STATUS_TRANSLATED,
+    Post,
+    PostComment,
+    PostCommentLike,
+    PostCommentTranslation,
+    PostLike,
+    PostTranslation,
+    PostViewSettings,
+)
 from feeds.translation_service import (
     serialize_content_translation_settings,
     update_content_translation_settings,
@@ -360,10 +370,13 @@ def moderator_translation_settings(request: HttpRequest) -> HttpResponse:
     if auth_response is not None:
         return auth_response
 
+    settings = serialize_content_translation_settings()
+    settings["coverage"] = _content_translation_coverage()
+
     return JsonResponse(
         {
             "ok": True,
-            "settings": serialize_content_translation_settings(),
+            "settings": settings,
         }
     )
 
@@ -387,12 +400,58 @@ def moderator_translation_settings_update(request: HttpRequest) -> HttpResponse:
     except ValueError as exc:
         return JsonResponse({"ok": False, "error": str(exc)}, status=400)
 
+    settings_payload = serialize_content_translation_settings(settings)
+    settings_payload["coverage"] = _content_translation_coverage()
+
     return JsonResponse(
         {
             "ok": True,
-            "settings": serialize_content_translation_settings(settings),
+            "settings": settings_payload,
         }
     )
+
+
+def _content_translation_coverage() -> dict:
+    public_posts = _public_posts_queryset()
+    public_comments = PostComment.objects.filter(
+        is_deleted=False,
+        post__is_blocked=False,
+        post__is_pending=False,
+        post__author__is_blocked=False,
+    )
+    return {
+        "posts": {
+            "total": public_posts.count(),
+            "translated": public_posts.filter(
+                translations__status=POST_TRANSLATION_STATUS_TRANSLATED,
+            )
+            .distinct()
+            .count(),
+        },
+        "comments": {
+            "total": public_comments.count(),
+            "translated": public_comments.filter(
+                translations__status=POST_TRANSLATION_STATUS_TRANSLATED,
+            )
+            .distinct()
+            .count(),
+        },
+        "translation_rows": {
+            "posts": PostTranslation.objects.filter(
+                status=POST_TRANSLATION_STATUS_TRANSLATED,
+                post__is_blocked=False,
+                post__is_pending=False,
+                post__author__is_blocked=False,
+            ).count(),
+            "comments": PostCommentTranslation.objects.filter(
+                status=POST_TRANSLATION_STATUS_TRANSLATED,
+                comment__is_deleted=False,
+                comment__post__is_blocked=False,
+                comment__post__is_pending=False,
+                comment__post__author__is_blocked=False,
+            ).count(),
+        },
+    }
 
 
 def _chat_report_queryset():

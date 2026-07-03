@@ -117,6 +117,20 @@
     comment_daily_limit: number
     post_object_daily_limit: number
     updated_at?: string | null
+    coverage?: {
+      posts?: {
+        total?: number
+        translated?: number
+      }
+      comments?: {
+        total?: number
+        translated?: number
+      }
+      translation_rows?: {
+        posts?: number
+        comments?: number
+      }
+    }
     usage?: {
       day_start?: string
       post_used?: number
@@ -346,6 +360,12 @@
   ]
 
   const formatNumber = (value: number) => new Intl.NumberFormat('ru-RU').format(value)
+  const formatCoveragePercent = (translated?: number, total?: number) => {
+    const safeTranslated = Number(translated ?? 0)
+    const safeTotal = Number(total ?? 0)
+    if (!safeTotal) return '0%'
+    return `${Math.round((safeTranslated / safeTotal) * 100)}%`
+  }
   const formatDate = (value: string) =>
     new Intl.DateTimeFormat('ru-RU', {
       day: '2-digit',
@@ -1055,6 +1075,33 @@
           {/each}
         </div>
       {:else if translationSettings}
+        <div class="translation-coverage-grid">
+          <div class="translation-coverage-card">
+            <span>Статьи на сайте</span>
+            <strong>
+              {formatNumber(translationSettings.coverage?.posts?.translated ?? 0)} / {formatNumber(translationSettings.coverage?.posts?.total ?? 0)}
+            </strong>
+            <small>
+              Уже переведено {formatCoveragePercent(
+                translationSettings.coverage?.posts?.translated,
+                translationSettings.coverage?.posts?.total
+              )} статей.
+            </small>
+          </div>
+          <div class="translation-coverage-card">
+            <span>Комментарии на сайте</span>
+            <strong>
+              {formatNumber(translationSettings.coverage?.comments?.translated ?? 0)} / {formatNumber(translationSettings.coverage?.comments?.total ?? 0)}
+            </strong>
+            <small>
+              Уже переведено {formatCoveragePercent(
+                translationSettings.coverage?.comments?.translated,
+                translationSettings.coverage?.comments?.total
+              )} комментариев.
+            </small>
+          </div>
+        </div>
+
         <div class="formula-strip">
           <span>
             Статьи сегодня: {formatNumber(translationSettings.usage?.post_used ?? 0)} / {formatNumber(translationSettings.post_daily_limit)}
@@ -1776,6 +1823,40 @@
     font-size: 13px;
   }
 
+  .translation-coverage-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+
+  .translation-coverage-card {
+    border: 1px solid rgb(226 232 240);
+    border-radius: 8px;
+    background: rgb(248 250 252);
+    padding: 14px;
+    display: grid;
+    gap: 6px;
+  }
+
+  .translation-coverage-card span {
+    color: rgb(71 85 105);
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .translation-coverage-card strong {
+    color: rgb(15 23 42);
+    font-size: 24px;
+    line-height: 1.15;
+  }
+
+  .translation-coverage-card small {
+    color: rgb(100 116 139);
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
   .rating-settings-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2062,6 +2143,20 @@
     color: rgb(212 212 216);
   }
 
+  :global(.dark) .translation-coverage-card {
+    border-color: rgb(63 63 70);
+    background: rgb(39 39 42);
+  }
+
+  :global(.dark) .translation-coverage-card span,
+  :global(.dark) .translation-coverage-card small {
+    color: rgb(161 161 170);
+  }
+
+  :global(.dark) .translation-coverage-card strong {
+    color: rgb(244 244 245);
+  }
+
   :global(.dark) .translation-toggle-row span {
     color: rgb(252 165 165);
   }
@@ -2093,6 +2188,10 @@
     }
 
     .rating-settings-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .translation-coverage-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
@@ -2154,6 +2253,10 @@
     }
 
     .rating-settings-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .translation-coverage-grid {
       grid-template-columns: 1fr;
     }
 
