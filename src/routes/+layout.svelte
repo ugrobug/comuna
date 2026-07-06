@@ -85,6 +85,7 @@
     return `${siteBaseUrl}${cleanPath}`
   })()
   $: currentLanguage = normalizeInterfaceLanguage($locale) || 'ru'
+  $: shouldLoadAdsense = currentLanguage !== 'ru'
   $: defaultTitle = brandNameForLanguage(currentLanguage)
   $: defaultDescription = $t('site.meta.defaultDescription')
   $: siteTitle =
@@ -189,6 +190,13 @@
   {/if}
 
   {@html siteSchemaTag}
+  {#if shouldLoadAdsense}
+    <script
+      async
+      src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1110344676156197"
+      crossorigin="anonymous"
+    ></script>
+  {/if}
 </svelte:head>
 
 <Button
