@@ -3082,7 +3082,7 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
             comun_category_assignments__category_id=selected_category.id,
         )
 
-    total_count = base_query.count()
+    total_count = base_query.count() if category_filter_explicit else all_total_count
 
     posts = list(
         base_query.select_related("author")

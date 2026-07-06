@@ -325,6 +325,7 @@ class ComunPostCategoryAssignment(models.Model):
         indexes = [
             models.Index(fields=["category", "post"], name="compost_cat_post_idx"),
             models.Index(fields=["post", "comun"], name="compost_post_comun_idx"),
+            models.Index(fields=["comun", "category", "post"], name="compost_comun_cat_post_idx"),
         ]
         verbose_name = "Категория поста в комуне"
         verbose_name_plural = "Категории постов в коммунах"
