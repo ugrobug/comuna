@@ -19,6 +19,7 @@ from feeds.models import (
     PostLike,
     PostTranslation,
     PostViewSettings,
+    ContentTranslationTask,
 )
 from feeds.translation_service import (
     serialize_content_translation_settings,
@@ -372,6 +373,7 @@ def moderator_translation_settings(request: HttpRequest) -> HttpResponse:
 
     settings = serialize_content_translation_settings()
     settings["coverage"] = _content_translation_coverage()
+    settings["queue"] = _content_translation_queue()
 
     return JsonResponse(
         {
@@ -402,6 +404,7 @@ def moderator_translation_settings_update(request: HttpRequest) -> HttpResponse:
 
     settings_payload = serialize_content_translation_settings(settings)
     settings_payload["coverage"] = _content_translation_coverage()
+    settings_payload["queue"] = _content_translation_queue()
 
     return JsonResponse(
         {
@@ -451,6 +454,16 @@ def _content_translation_coverage() -> dict:
                 comment__post__author__is_blocked=False,
             ).count(),
         },
+    }
+
+
+def _content_translation_queue() -> dict:
+    pending = ContentTranslationTask.objects.filter(status="pending")
+    return {
+        "pending": pending.count(),
+        "pending_posts": pending.filter(kind="post").count(),
+        "pending_comments": pending.filter(kind="comment").count(),
+        "pending_comuns": pending.filter(kind="comun").count(),
     }
 
 

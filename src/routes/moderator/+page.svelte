@@ -131,6 +131,12 @@
         comments?: number
       }
     }
+    queue?: {
+      pending?: number
+      pending_posts?: number
+      pending_comments?: number
+      pending_comuns?: number
+    }
     usage?: {
       day_start?: string
       post_used?: number
@@ -1098,6 +1104,15 @@
                 translationSettings.coverage?.comments?.translated,
                 translationSettings.coverage?.comments?.total
               )} комментариев.
+            </small>
+          </div>
+          <div class="translation-coverage-card">
+            <span>Ожидают в очереди</span>
+            <strong>{formatNumber(translationSettings.queue?.pending ?? 0)}</strong>
+            <small>
+              Статьи: {formatNumber(translationSettings.queue?.pending_posts ?? 0)},
+              комментарии: {formatNumber(translationSettings.queue?.pending_comments ?? 0)},
+              сообщества: {formatNumber(translationSettings.queue?.pending_comuns ?? 0)}.
             </small>
           </div>
         </div>

@@ -1,0 +1,191 @@
+from __future__ import annotations
+
+from datetime import datetime, timezone as datetime_timezone
+
+from django.core.management.base import BaseCommand
+from django.utils import timezone
+
+from feeds.models import (
+    CONTENT_TRANSLATION_KIND_POST,
+    CONTENT_TRANSLATION_TASK_STATUS_PENDING,
+    CONTENT_TRANSLATION_TASK_STATUS_RUNNING,
+    CONTENT_TRANSLATION_TASK_STATUS_DONE,
+    POST_TRANSLATION_STATUS_TRANSLATED,
+    ContentTranslationTask,
+    Post,
+)
+from feeds.translation_service import (
+    SUPPORTED_TRANSLATION_LANGUAGES,
+    _post_is_translatable,
+    _scheduled_at_for,
+)
+
+
+WHEREFILMED_PRIORITY_AT = datetime(2000, 1, 1, tzinfo=datetime_timezone.utc)
+WHEREFILMED_PRIORITY_LANGUAGES = {"tr", "id"}
+
+
+class Command(BaseCommand):
+    help = "Queue automatic translation tasks for translatable posts with missing translations."
+
+    def add_arguments(self, parser):
+        parser.add_argument("--dry-run", action="store_true")
+        parser.add_argument("--limit", type=int, default=0)
+
+    def handle(self, *args, **options):
+        dry_run = bool(options["dry_run"])
+        limit = max(int(options["limit"] or 0), 0)
+        now = timezone.now()
+        stats = {
+            "scanned": 0,
+            "eligible": 0,
+            "missing_translations": 0,
+            "created": 0,
+            "reset": 0,
+            "already_queued": 0,
+            "prioritized_wherefilmed": 0,
+            "wherefilmed_missing_tr_id": 0,
+            "skipped_not_translatable": 0,
+        }
+
+        queryset = (
+            Post.objects.select_related("author")
+            .prefetch_related("translations")
+            .filter(
+                is_blocked=False,
+                is_pending=False,
+                author__is_blocked=False,
+            )
+            .order_by("id")
+        )
+        if limit:
+            queryset = queryset[:limit]
+
+        for post in queryset.iterator(chunk_size=500):
+            stats["scanned"] += 1
+            if not _post_is_translatable(post):
+                stats["skipped_not_translatable"] += 1
+                continue
+
+            stats["eligible"] += 1
+            missing_languages = _missing_post_translation_languages(post)
+            if not missing_languages:
+                continue
+
+            stats["missing_translations"] += 1
+            is_wherefilmed = _is_wherefilmed_post(post)
+            is_wherefilmed_priority = is_wherefilmed and bool(
+                WHEREFILMED_PRIORITY_LANGUAGES.intersection(missing_languages)
+            )
+            if is_wherefilmed_priority:
+                stats["wherefilmed_missing_tr_id"] += 1
+
+            scheduled_at = _scheduled_at_for(post, CONTENT_TRANSLATION_KIND_POST)
+            if is_wherefilmed_priority and scheduled_at <= now:
+                scheduled_at = WHEREFILMED_PRIORITY_AT
+
+            task = ContentTranslationTask.objects.filter(
+                kind=CONTENT_TRANSLATION_KIND_POST,
+                object_id=post.pk,
+            ).first()
+
+            if task and task.status in {
+                CONTENT_TRANSLATION_TASK_STATUS_PENDING,
+                CONTENT_TRANSLATION_TASK_STATUS_RUNNING,
+            }:
+                if (
+                    is_wherefilmed_priority
+                    and task.status == CONTENT_TRANSLATION_TASK_STATUS_PENDING
+                    and task.scheduled_at != scheduled_at
+                ):
+                    stats["prioritized_wherefilmed"] += 1
+                    if not dry_run:
+                        task.scheduled_at = scheduled_at
+                        task.source_updated_at = post.updated_at
+                        task.last_error = ""
+                        task.save(
+                            update_fields=[
+                                "scheduled_at",
+                                "source_updated_at",
+                                "last_error",
+                                "updated_at",
+                            ]
+                        )
+                stats["already_queued"] += 1
+                continue
+
+            if task and task.status == CONTENT_TRANSLATION_TASK_STATUS_DONE:
+                stats["reset"] += 1
+            elif task:
+                stats["reset"] += 1
+            else:
+                stats["created"] += 1
+
+            if dry_run:
+                continue
+
+            if task is None:
+                ContentTranslationTask.objects.create(
+                    kind=CONTENT_TRANSLATION_KIND_POST,
+                    object_id=post.pk,
+                    status=CONTENT_TRANSLATION_TASK_STATUS_PENDING,
+                    scheduled_at=scheduled_at,
+                    source_updated_at=post.updated_at,
+                    last_error="",
+                    locked_at=None,
+                )
+                continue
+
+            task.status = CONTENT_TRANSLATION_TASK_STATUS_PENDING
+            task.scheduled_at = scheduled_at
+            task.source_updated_at = post.updated_at
+            task.last_error = ""
+            task.locked_at = None
+            task.save(
+                update_fields=[
+                    "status",
+                    "scheduled_at",
+                    "source_updated_at",
+                    "last_error",
+                    "locked_at",
+                    "updated_at",
+                ]
+            )
+
+        prefix = "DRY_RUN " if dry_run else ""
+        self.stdout.write(
+            prefix
+            + " ".join(f"{key}={value}" for key, value in stats.items())
+        )
+
+
+def _missing_post_translation_languages(post: Post) -> set[str]:
+    translations = {
+        translation.language: translation
+        for translation in post.translations.all()
+    }
+    missing: set[str] = set()
+    for language in SUPPORTED_TRANSLATION_LANGUAGES:
+        translation = translations.get(language)
+        if not _post_translation_is_current(post, translation):
+            missing.add(language)
+    return missing
+
+
+def _post_translation_is_current(post: Post, translation) -> bool:
+    if not translation or translation.status != POST_TRANSLATION_STATUS_TRANSLATED:
+        return False
+    if (post.title or "").strip() and not (translation.title or "").strip():
+        return False
+    if (post.content or "").strip() and not (translation.content or "").strip():
+        return False
+    return not post.updated_at or translation.updated_at >= post.updated_at
+
+
+def _is_wherefilmed_post(post: Post) -> bool:
+    author = getattr(post, "author", None)
+    if author and author.username == "wherefilmed":
+        return True
+    raw_data = post.raw_data if isinstance(post.raw_data, dict) else {}
+    wherefilmed = raw_data.get("wherefilmed")
+    return isinstance(wherefilmed, dict) and wherefilmed.get("source_site") == "wherefilmed"

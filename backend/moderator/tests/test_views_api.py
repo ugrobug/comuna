@@ -17,6 +17,7 @@ from feeds.models import (
     PostLike,
     PostTranslation,
     PostViewSettings,
+    ContentTranslationTask,
     POST_TRANSLATION_STATUS_FAILED,
     POST_TRANSLATION_STATUS_TRANSLATED,
 )
@@ -261,6 +262,22 @@ class ModeratorAnalyticsApiTests(TestCase):
             body="Deleted comment",
             is_deleted=True,
         )
+        ContentTranslationTask.objects.update_or_create(
+            kind="post",
+            object_id=untranslated_post.pk,
+            defaults={
+                "status": "pending",
+                "scheduled_at": timezone.now(),
+            },
+        )
+        ContentTranslationTask.objects.update_or_create(
+            kind="comment",
+            object_id=untranslated_comment.pk,
+            defaults={
+                "status": "pending",
+                "scheduled_at": timezone.now(),
+            },
+        )
 
         PostTranslation.objects.create(
             post=translated_post,
@@ -306,6 +323,15 @@ class ModeratorAnalyticsApiTests(TestCase):
         self.assertEqual(coverage["posts"], {"total": 3, "translated": 1})
         self.assertEqual(coverage["comments"], {"total": 2, "translated": 1})
         self.assertEqual(coverage["translation_rows"], {"posts": 2, "comments": 1})
+        self.assertEqual(
+            data["settings"]["queue"],
+            {
+                "pending": 2,
+                "pending_posts": 1,
+                "pending_comments": 1,
+                "pending_comuns": 0,
+            },
+        )
 
     def test_view_settings_can_be_listed_and_updated_by_staff(self):
         author = Author.objects.create(username="channel")
