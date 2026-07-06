@@ -320,8 +320,28 @@ class ModeratorAnalyticsApiTests(TestCase):
         data = response.json()
         self.assertTrue(data["ok"])
         coverage = data["settings"]["coverage"]
-        self.assertEqual(coverage["posts"], {"total": 3, "translated": 1})
-        self.assertEqual(coverage["comments"], {"total": 2, "translated": 1})
+        self.assertEqual(
+            coverage["posts"],
+            {
+                "total": 3,
+                "translated": 1,
+                "fully_translated": 0,
+                "translation_rows": 2,
+                "target_translation_rows": 21,
+                "target_languages": 7,
+            },
+        )
+        self.assertEqual(
+            coverage["comments"],
+            {
+                "total": 2,
+                "translated": 1,
+                "fully_translated": 0,
+                "translation_rows": 1,
+                "target_translation_rows": 14,
+                "target_languages": 7,
+            },
+        )
         self.assertEqual(coverage["translation_rows"], {"posts": 2, "comments": 1})
         self.assertEqual(
             data["settings"]["queue"],

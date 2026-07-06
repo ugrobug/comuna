@@ -121,10 +121,18 @@
       posts?: {
         total?: number
         translated?: number
+        fully_translated?: number
+        translation_rows?: number
+        target_translation_rows?: number
+        target_languages?: number
       }
       comments?: {
         total?: number
         translated?: number
+        fully_translated?: number
+        translation_rows?: number
+        target_translation_rows?: number
+        target_languages?: number
       }
       translation_rows?: {
         posts?: number
@@ -366,12 +374,6 @@
   ]
 
   const formatNumber = (value: number) => new Intl.NumberFormat('ru-RU').format(value)
-  const formatCoveragePercent = (translated?: number, total?: number) => {
-    const safeTranslated = Number(translated ?? 0)
-    const safeTotal = Number(total ?? 0)
-    if (!safeTotal) return '0%'
-    return `${Math.round((safeTranslated / safeTotal) * 100)}%`
-  }
   const formatDate = (value: string) =>
     new Intl.DateTimeFormat('ru-RU', {
       day: '2-digit',
@@ -1083,27 +1085,23 @@
       {:else if translationSettings}
         <div class="translation-coverage-grid">
           <div class="translation-coverage-card">
-            <span>Статьи на сайте</span>
+            <span>Языковые версии статей</span>
             <strong>
-              {formatNumber(translationSettings.coverage?.posts?.translated ?? 0)} / {formatNumber(translationSettings.coverage?.posts?.total ?? 0)}
+              {formatNumber(translationSettings.coverage?.posts?.translation_rows ?? 0)} / {formatNumber(translationSettings.coverage?.posts?.target_translation_rows ?? 0)}
             </strong>
             <small>
-              Уже переведено {formatCoveragePercent(
-                translationSettings.coverage?.posts?.translated,
-                translationSettings.coverage?.posts?.total
-              )} статей.
+              Полностью: {formatNumber(translationSettings.coverage?.posts?.fully_translated ?? 0)} из {formatNumber(translationSettings.coverage?.posts?.total ?? 0)}.
+              С любым переводом: {formatNumber(translationSettings.coverage?.posts?.translated ?? 0)}.
             </small>
           </div>
           <div class="translation-coverage-card">
-            <span>Комментарии на сайте</span>
+            <span>Языковые версии комментариев</span>
             <strong>
-              {formatNumber(translationSettings.coverage?.comments?.translated ?? 0)} / {formatNumber(translationSettings.coverage?.comments?.total ?? 0)}
+              {formatNumber(translationSettings.coverage?.comments?.translation_rows ?? 0)} / {formatNumber(translationSettings.coverage?.comments?.target_translation_rows ?? 0)}
             </strong>
             <small>
-              Уже переведено {formatCoveragePercent(
-                translationSettings.coverage?.comments?.translated,
-                translationSettings.coverage?.comments?.total
-              )} комментариев.
+              Полностью: {formatNumber(translationSettings.coverage?.comments?.fully_translated ?? 0)} из {formatNumber(translationSettings.coverage?.comments?.total ?? 0)}.
+              С любым переводом: {formatNumber(translationSettings.coverage?.comments?.translated ?? 0)}.
             </small>
           </div>
           <div class="translation-coverage-card">

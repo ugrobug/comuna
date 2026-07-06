@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, time, timedelta
 
-from django.db.models import Q, Sum
+from django.db.models import Count, Q, Sum
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -11,6 +11,7 @@ from django.views.decorators.csrf import csrf_exempt
 from communities.models import Comun
 from feeds.models import (
     Author,
+    POST_TRANSLATION_LANGUAGE_CHOICES,
     POST_TRANSLATION_STATUS_TRANSLATED,
     Post,
     PostComment,
@@ -422,37 +423,76 @@ def _content_translation_coverage() -> dict:
         post__is_pending=False,
         post__author__is_blocked=False,
     )
+    target_languages = [language for language, _label in POST_TRANSLATION_LANGUAGE_CHOICES]
+    target_language_count = len(target_languages)
+    translated_posts = public_posts.filter(
+        translations__status=POST_TRANSLATION_STATUS_TRANSLATED,
+        translations__language__in=target_languages,
+    ).distinct()
+    translated_comments = public_comments.filter(
+        translations__status=POST_TRANSLATION_STATUS_TRANSLATED,
+        translations__language__in=target_languages,
+    ).distinct()
+    translated_post_rows = PostTranslation.objects.filter(
+        status=POST_TRANSLATION_STATUS_TRANSLATED,
+        language__in=target_languages,
+        post__is_blocked=False,
+        post__is_pending=False,
+        post__author__is_blocked=False,
+    ).count()
+    translated_comment_rows = PostCommentTranslation.objects.filter(
+        status=POST_TRANSLATION_STATUS_TRANSLATED,
+        language__in=target_languages,
+        comment__is_deleted=False,
+        comment__post__is_blocked=False,
+        comment__post__is_pending=False,
+        comment__post__author__is_blocked=False,
+    ).count()
+    total_posts = public_posts.count()
+    total_comments = public_comments.count()
+
     return {
         "posts": {
-            "total": public_posts.count(),
-            "translated": public_posts.filter(
-                translations__status=POST_TRANSLATION_STATUS_TRANSLATED,
+            "total": total_posts,
+            "translated": translated_posts.count(),
+            "fully_translated": public_posts.annotate(
+                translated_language_count=Count(
+                    "translations__language",
+                    filter=Q(
+                        translations__status=POST_TRANSLATION_STATUS_TRANSLATED,
+                        translations__language__in=target_languages,
+                    ),
+                    distinct=True,
+                )
             )
-            .distinct()
+            .filter(translated_language_count=target_language_count)
             .count(),
+            "translation_rows": translated_post_rows,
+            "target_translation_rows": total_posts * target_language_count,
+            "target_languages": target_language_count,
         },
         "comments": {
-            "total": public_comments.count(),
-            "translated": public_comments.filter(
-                translations__status=POST_TRANSLATION_STATUS_TRANSLATED,
+            "total": total_comments,
+            "translated": translated_comments.count(),
+            "fully_translated": public_comments.annotate(
+                translated_language_count=Count(
+                    "translations__language",
+                    filter=Q(
+                        translations__status=POST_TRANSLATION_STATUS_TRANSLATED,
+                        translations__language__in=target_languages,
+                    ),
+                    distinct=True,
+                )
             )
-            .distinct()
+            .filter(translated_language_count=target_language_count)
             .count(),
+            "translation_rows": translated_comment_rows,
+            "target_translation_rows": total_comments * target_language_count,
+            "target_languages": target_language_count,
         },
         "translation_rows": {
-            "posts": PostTranslation.objects.filter(
-                status=POST_TRANSLATION_STATUS_TRANSLATED,
-                post__is_blocked=False,
-                post__is_pending=False,
-                post__author__is_blocked=False,
-            ).count(),
-            "comments": PostCommentTranslation.objects.filter(
-                status=POST_TRANSLATION_STATUS_TRANSLATED,
-                comment__is_deleted=False,
-                comment__post__is_blocked=False,
-                comment__post__is_pending=False,
-                comment__post__author__is_blocked=False,
-            ).count(),
+            "posts": translated_post_rows,
+            "comments": translated_comment_rows,
         },
     }
 
