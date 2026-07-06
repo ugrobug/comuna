@@ -14,3 +14,6 @@ backend/secrets/
 deploy/secrets/
 *firebase-adminsdk*.json
 deploy/.env*
+*.sql
+*.dump
+*.backup

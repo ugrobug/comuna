@@ -476,37 +476,69 @@ def process_due_translation_tasks(*, limit: int = 20) -> dict[str, int]:
     stats = {"processed": 0, "done": 0, "failed": 0, "skipped": 0}
     now = timezone.now()
     _reset_stale_running_translation_tasks(now)
-    task_ids = list(
-        ContentTranslationTask.objects.filter(
-            status=CONTENT_TRANSLATION_TASK_STATUS_PENDING,
-            scheduled_at__lte=now,
-        )
-        .order_by("scheduled_at", "id")
-        .values_list("id", flat=True)[:limit]
-    )
+    task_ids = _claim_due_translation_task_ids(limit=limit, now=now)
     for task_id in task_ids:
-        result = process_translation_task(task_id)
+        result = _process_claimed_translation_task(task_id)
         stats["processed"] += 1
         stats[result] = stats.get(result, 0) + 1
     return stats
 
 
 def process_translation_task(task_id: int) -> str:
+    task_id = _claim_translation_task_id(task_id)
+    if task_id is None:
+        return "skipped"
+    return _process_claimed_translation_task(task_id)
+
+
+def _claim_due_translation_task_ids(*, limit: int, now) -> list[int]:
+    with transaction.atomic():
+        tasks = list(
+            ContentTranslationTask.objects.select_for_update(skip_locked=True)
+            .filter(
+                status=CONTENT_TRANSLATION_TASK_STATUS_PENDING,
+                scheduled_at__lte=now,
+            )
+            .order_by("scheduled_at", "id")[:limit]
+        )
+        _mark_translation_tasks_running(tasks)
+        return [task.pk for task in tasks]
+
+
+def _claim_translation_task_id(task_id: int) -> int | None:
     with transaction.atomic():
         try:
             task = ContentTranslationTask.objects.select_for_update().get(pk=task_id)
         except ContentTranslationTask.DoesNotExist:
-            return "skipped"
+            return None
         if task.status != CONTENT_TRANSLATION_TASK_STATUS_PENDING:
-            return "skipped"
+            return None
         if task.scheduled_at > timezone.now():
-            return "skipped"
+            return None
+        _mark_translation_tasks_running([task])
+        return task.pk
+
+
+def _mark_translation_tasks_running(tasks: list[ContentTranslationTask]) -> None:
+    if not tasks:
+        return
+    locked_at = timezone.now()
+    for task in tasks:
         task.status = CONTENT_TRANSLATION_TASK_STATUS_RUNNING
-        task.locked_at = timezone.now()
+        task.locked_at = locked_at
         task.attempts = int(task.attempts or 0) + 1
         task.last_error = ""
-        task.save(update_fields=["status", "locked_at", "attempts", "last_error", "updated_at"])
+        task.updated_at = locked_at
+    ContentTranslationTask.objects.bulk_update(
+        tasks,
+        ["status", "locked_at", "attempts", "last_error", "updated_at"],
+    )
 
+
+def _process_claimed_translation_task(task_id: int) -> str:
+    task = ContentTranslationTask.objects.filter(pk=task_id).first()
+    if not task or task.status != CONTENT_TRANSLATION_TASK_STATUS_RUNNING:
+        return "skipped"
     try:
         _process_translation_task_payload(task)
     except AutoTranslationRescheduled:
@@ -907,6 +939,10 @@ def _request_openrouter_json_translation(
         ],
         "temperature": 0.2,
         "response_format": {"type": "json_object"},
+        "provider": {
+            "sort": "throughput",
+            "require_parameters": True,
+        },
         "reasoning": {
             "effort": "none",
             "exclude": True,

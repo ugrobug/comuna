@@ -12,6 +12,7 @@ from feeds.models import (
     CONTENT_TRANSLATION_KIND_COMMENT,
     CONTENT_TRANSLATION_KIND_COMUN,
     CONTENT_TRANSLATION_KIND_POST,
+    CONTENT_TRANSLATION_TASK_STATUS_DONE,
     CONTENT_TRANSLATION_TASK_STATUS_PENDING,
     Comun,
     ContentTranslationRun,
@@ -26,6 +27,7 @@ from feeds.models import (
 )
 from feeds.translation_service import (
     PostTranslationError,
+    process_due_translation_tasks,
     process_translation_task,
     queue_post_translation,
     translate_post_to_language,
@@ -93,6 +95,10 @@ class PostTranslationServiceTests(TestCase):
         self.assertEqual(
             request_payload["reasoning"],
             {"effort": "none", "exclude": True},
+        )
+        self.assertEqual(
+            request_payload["provider"],
+            {"sort": "throughput", "require_parameters": True},
         )
 
     @patch("feeds.translation_service.requests.post")
@@ -195,6 +201,40 @@ class PostTranslationServiceTests(TestCase):
                 kind=CONTENT_TRANSLATION_KIND_COMUN,
                 object_id=comun.pk,
             ).exists()
+        )
+
+    @patch("feeds.translation_service.translate_post_to_language")
+    def test_process_due_translation_tasks_claims_due_batch(self, translate_mock) -> None:
+        second_post = Post.objects.create(
+            author=self.author,
+            message_id=2,
+            title="Второй заголовок",
+            content="<p>Второй абзац</p>",
+        )
+        due_at = timezone.now() - timedelta(minutes=1)
+        ContentTranslationTask.objects.filter(
+            kind=CONTENT_TRANSLATION_KIND_POST,
+            object_id__in=[self.post.pk, second_post.pk],
+        ).update(scheduled_at=due_at)
+
+        stats = process_due_translation_tasks(limit=1)
+
+        self.assertEqual(stats["processed"], 1)
+        self.assertEqual(stats["done"], 1)
+        self.assertEqual(translate_mock.call_count, 7)
+        self.assertEqual(
+            ContentTranslationTask.objects.filter(
+                kind=CONTENT_TRANSLATION_KIND_POST,
+                status=CONTENT_TRANSLATION_TASK_STATUS_DONE,
+            ).count(),
+            1,
+        )
+        self.assertEqual(
+            ContentTranslationTask.objects.filter(
+                kind=CONTENT_TRANSLATION_KIND_POST,
+                status=CONTENT_TRANSLATION_TASK_STATUS_PENDING,
+            ).count(),
+            1,
         )
 
     @patch("feeds.translation_service.translate_post_to_language")

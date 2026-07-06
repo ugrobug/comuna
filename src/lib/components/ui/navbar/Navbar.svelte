@@ -260,6 +260,9 @@
           </Menu>
         {:else}
           {#if $siteUser}
+            {#await import('$lib/components/notifications/NotificationBellMenu.svelte') then { default: NotificationBellMenu }}
+              <NotificationBellMenu />
+            {/await}
             <Button
               color="primary"
               class="!rounded-full font-normal py-2 px-4 !text-base md:py-2 md:px-4 dark:!bg-primary-900 dark:!text-white dark:!border-transparent dark:hover:!brightness-110"
@@ -267,9 +270,6 @@
             >
               {$t('site.nav.write')}
             </Button>
-            {#await import('$lib/components/notifications/NotificationBellMenu.svelte') then { default: NotificationBellMenu }}
-              <NotificationBellMenu />
-            {/await}
             <Menu placement="bottom-end">
               <button
                 slot="target"

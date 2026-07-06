@@ -94,7 +94,7 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile.backend
     restart: unless-stopped
-    command: sh -c "while true; do python -u manage.py process_translation_tasks --limit 20 --run-timeout 720 || true; sleep 30; done"
+    command: sh -c "worker() { while true; do python -u manage.py process_translation_tasks --limit 50 --run-timeout 720 || true; sleep 10; done; }; worker & worker & wait"
     env_file:
       - .env.backend
     depends_on:
