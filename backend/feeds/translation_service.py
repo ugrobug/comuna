@@ -112,10 +112,66 @@ POST_TRANSLATION_TITLE_MAX_LENGTH = 255
 COMUN_TRANSLATION_NAME_MAX_LENGTH = 160
 STATIC_PAGE_TRANSLATION_TITLE_MAX_LENGTH = 160
 CONTENT_TRANSLATION_TASK_STALE_AFTER = timedelta(minutes=12)
+TRANSLATION_PROVIDER_DEEPSEEK = "deepseek"
+TRANSLATION_PROVIDER_OPENROUTER = "openrouter"
 
 
 def get_translation_language_label(language: str) -> str:
     return dict(POST_TRANSLATION_LANGUAGE_CHOICES).get(language, language)
+
+
+def _translation_provider() -> str:
+    provider = str(getattr(settings, "CONTENT_TRANSLATION_PROVIDER", "") or "").strip().lower()
+    return provider or TRANSLATION_PROVIDER_OPENROUTER
+
+
+def _translation_model() -> str:
+    provider = _translation_provider()
+    if provider == TRANSLATION_PROVIDER_DEEPSEEK:
+        model = str(getattr(settings, "DEEPSEEK_TRANSLATION_MODEL", "") or "").strip()
+        if not model:
+            model = str(getattr(settings, "CONTENT_TRANSLATION_MODEL", "") or "").strip()
+        if model.startswith("deepseek/"):
+            model = model.split("/", 1)[1]
+        return model or "deepseek-v4-flash"
+
+    model = str(getattr(settings, "CONTENT_TRANSLATION_MODEL", "") or "").strip()
+    if model:
+        return model
+    return str(getattr(settings, "OPENROUTER_TRANSLATION_MODEL", "") or "").strip()
+
+
+def _translation_provider_label() -> str:
+    return "DeepSeek" if _translation_provider() == TRANSLATION_PROVIDER_DEEPSEEK else "OpenRouter"
+
+
+def _translation_api_config() -> tuple[str, str, str]:
+    provider = _translation_provider()
+    if provider == TRANSLATION_PROVIDER_DEEPSEEK:
+        api_key = str(getattr(settings, "DEEPSEEK_API_KEY", "") or "").strip()
+        api_url = str(getattr(settings, "DEEPSEEK_API_URL", "") or "").strip()
+        model = _translation_model()
+        if not api_key:
+            raise PostTranslationError("DEEPSEEK_API_KEY не задан в окружении backend")
+        if not api_url:
+            raise PostTranslationError("DEEPSEEK_API_URL не задан")
+        if not model:
+            raise PostTranslationError("DEEPSEEK_TRANSLATION_MODEL не задан")
+        return api_key, api_url, model
+
+    if provider != TRANSLATION_PROVIDER_OPENROUTER:
+        raise PostTranslationError(f"Провайдер перевода не поддерживается: {provider}")
+
+    api_key = str(getattr(settings, "OPENROUTER_API_KEY", "") or "").strip()
+    api_url = str(getattr(settings, "OPENROUTER_API_URL", "") or "").strip()
+    model = _translation_model()
+    if not api_key:
+        raise PostTranslationError("OPENROUTER_API_KEY не задан в окружении backend")
+    if not api_url:
+        raise PostTranslationError("OPENROUTER_API_URL не задан")
+    if not model:
+        raise PostTranslationError("OPENROUTER_TRANSLATION_MODEL не задан")
+    return api_key, api_url, model
 
 
 def _truncate_translation_title(value: str) -> str:
@@ -239,7 +295,7 @@ def translate_post_to_language(post: Post, language: str) -> PostTranslation:
         raise PostTranslationError(f"Язык перевода не поддерживается: {language}")
 
     translation, _ = PostTranslation.objects.get_or_create(post=post, language=language)
-    model = str(getattr(settings, "OPENROUTER_TRANSLATION_MODEL", "") or "").strip()
+    model = str(_translation_model() or "").strip()
     translation.status = POST_TRANSLATION_STATUS_PENDING
     translation.model = model
     translation.error_message = ""
@@ -306,7 +362,7 @@ def translate_comment_to_language(comment: PostComment, language: str) -> PostCo
         comment=comment,
         language=language,
     )
-    model = str(getattr(settings, "OPENROUTER_TRANSLATION_MODEL", "") or "").strip()
+    model = str(_translation_model() or "").strip()
     translation.status = POST_TRANSLATION_STATUS_PENDING
     translation.model = model
     translation.error_message = ""
@@ -470,7 +526,7 @@ def translate_comun_to_language(comun: Comun, language: str) -> ComunTranslation
         raise AutoTranslationSkipped("Переводимый контент сообщества пуст")
 
     translation, _ = ComunTranslation.objects.get_or_create(comun=comun, language=language)
-    model = str(getattr(settings, "OPENROUTER_TRANSLATION_MODEL", "") or "").strip()
+    model = str(_translation_model() or "").strip()
     translation.status = POST_TRANSLATION_STATUS_PENDING
     translation.model = model
     translation.error_message = ""
@@ -615,7 +671,7 @@ def translate_static_page_to_language(page: StaticPageContent, language: str) ->
 
     source_payload = _static_page_translation_source_payload(page)
     translation, _ = StaticPageTranslation.objects.get_or_create(page=page, language=language)
-    model = str(getattr(settings, "OPENROUTER_TRANSLATION_MODEL", "") or "").strip()
+    model = str(_translation_model() or "").strip()
     translation.status = POST_TRANSLATION_STATUS_PENDING
     translation.model = model
     translation.error_message = ""
@@ -690,7 +746,7 @@ def queue_post_translation(post: Post, languages: list[str]) -> list[PostTransla
     if not normalized_languages:
         return []
 
-    model = str(getattr(settings, "OPENROUTER_TRANSLATION_MODEL", "") or "").strip()
+    model = str(_translation_model() or "").strip()
     translations: list[PostTranslation] = []
     for language in normalized_languages:
         translation, _ = PostTranslation.objects.get_or_create(
@@ -1297,27 +1353,20 @@ def _request_openrouter_json_translation(
     *,
     system_prompt: str,
 ) -> dict[str, Any]:
-    api_key = str(getattr(settings, "OPENROUTER_API_KEY", "") or "").strip()
-    if not api_key:
-        raise PostTranslationError("OPENROUTER_API_KEY не задан в окружении backend")
-
-    api_url = str(getattr(settings, "OPENROUTER_API_URL", "") or "").strip()
-    model = str(getattr(settings, "OPENROUTER_TRANSLATION_MODEL", "") or "").strip()
-    if not api_url:
-        raise PostTranslationError("OPENROUTER_API_URL не задан")
-    if not model:
-        raise PostTranslationError("OPENROUTER_TRANSLATION_MODEL не задан")
-
+    provider = _translation_provider()
+    provider_label = _translation_provider_label()
+    api_key, api_url, model = _translation_api_config()
     site_base_url = str(getattr(settings, "SITE_BASE_URL", "") or "").strip()
     app_title = str(getattr(settings, "OPENROUTER_APP_TITLE", "") or "Tambur").strip()
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
         "X-Title": app_title,
-        "X-OpenRouter-Title": app_title,
     }
     if site_base_url:
         headers["HTTP-Referer"] = site_base_url
+    if provider == TRANSLATION_PROVIDER_OPENROUTER:
+        headers["X-OpenRouter-Title"] = app_title
 
     payload = {
         "model": model,
@@ -1333,39 +1382,45 @@ def _request_openrouter_json_translation(
         ],
         "temperature": 0.2,
         "response_format": {"type": "json_object"},
-        "provider": {
+    }
+    if provider == TRANSLATION_PROVIDER_OPENROUTER:
+        payload["provider"] = {
             "sort": "throughput",
             "require_parameters": True,
-        },
-        "reasoning": {
+        }
+        payload["reasoning"] = {
             "effort": "none",
             "exclude": True,
-        },
-    }
+        }
+    elif provider == TRANSLATION_PROVIDER_DEEPSEEK:
+        payload["thinking"] = {"type": "disabled"}
 
     try:
         response = requests.post(api_url, headers=headers, json=payload, timeout=90)
     except requests.RequestException as exc:
-        raise PostTranslationError(f"Ошибка запроса OpenRouter: {exc}") from exc
+        raise PostTranslationError(f"Ошибка запроса {provider_label}: {exc}") from exc
 
     try:
         response_payload = response.json()
     except ValueError as exc:
-        raise PostTranslationError(f"OpenRouter вернул не JSON, HTTP {response.status_code}") from exc
+        raise PostTranslationError(f"{provider_label} вернул не JSON, HTTP {response.status_code}") from exc
 
     if response.status_code >= 400:
-        raise PostTranslationError(_extract_openrouter_error(response_payload, response.status_code))
+        raise PostTranslationError(
+            _extract_translation_provider_error(response_payload, response.status_code)
+        )
 
     return response_payload
 
 
-def _extract_openrouter_error(response_payload: dict[str, Any], status_code: int) -> str:
+def _extract_translation_provider_error(response_payload: dict[str, Any], status_code: int) -> str:
+    provider_label = _translation_provider_label()
     error = response_payload.get("error")
     if isinstance(error, dict):
         message = str(error.get("message") or "").strip()
         if message:
-            return f"OpenRouter HTTP {status_code}: {message[:1000]}"
-    return f"OpenRouter HTTP {status_code}"
+            return f"{provider_label} HTTP {status_code}: {message[:1000]}"
+    return f"{provider_label} HTTP {status_code}"
 
 
 def _parse_translated_payload(

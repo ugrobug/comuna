@@ -283,6 +283,8 @@ PUSH_APNS_USE_SANDBOX = (
     else os.environ.get("PUSH_APNS_USE_SANDBOX", "0") == "1"
 )
 SITE_BASE_URL = os.environ.get("SITE_BASE_URL", "http://localhost:5173")
+CONTENT_TRANSLATION_PROVIDER = os.environ.get("CONTENT_TRANSLATION_PROVIDER", "openrouter").strip().lower()
+CONTENT_TRANSLATION_MODEL = os.environ.get("CONTENT_TRANSLATION_MODEL", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 OPENROUTER_API_URL = os.environ.get(
     "OPENROUTER_API_URL",
@@ -293,6 +295,15 @@ OPENROUTER_TRANSLATION_MODEL = os.environ.get(
     "deepseek/deepseek-v4-flash",
 )
 OPENROUTER_APP_TITLE = os.environ.get("OPENROUTER_APP_TITLE", "Tambur")
+DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
+DEEPSEEK_API_URL = os.environ.get(
+    "DEEPSEEK_API_URL",
+    "https://api.deepseek.com/chat/completions",
+)
+DEEPSEEK_TRANSLATION_MODEL = os.environ.get(
+    "DEEPSEEK_TRANSLATION_MODEL",
+    CONTENT_TRANSLATION_MODEL or "deepseek-v4-flash",
+)
 WHEREFILMED_IMPORT_TOKEN = os.environ.get(
     "WHEREFILMED_IMPORT_TOKEN",
     os.environ.get("TAMBUR_EXPORT_TOKEN", ""),

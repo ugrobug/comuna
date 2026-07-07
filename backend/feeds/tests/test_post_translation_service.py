@@ -101,6 +101,47 @@ class PostTranslationServiceTests(TestCase):
             {"sort": "throughput", "require_parameters": True},
         )
 
+    @override_settings(
+        CONTENT_TRANSLATION_PROVIDER="deepseek",
+        DEEPSEEK_API_KEY="deepseek-test-key",
+        DEEPSEEK_API_URL="https://api.deepseek.test/chat/completions",
+        DEEPSEEK_TRANSLATION_MODEL="deepseek-v4-flash",
+    )
+    @patch("feeds.translation_service.requests.post")
+    def test_translate_post_to_language_uses_deepseek_direct_payload(self, post_mock) -> None:
+        post_mock.return_value = FakeOpenRouterResponse(
+            200,
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "content": (
+                                '{"title": "Baslik", "content": "<p>Ilk paragraf</p>"}'
+                            )
+                        }
+                    }
+                ]
+            },
+        )
+
+        translation = translate_post_to_language(self.post, "tr")
+
+        self.assertEqual(translation.status, POST_TRANSLATION_STATUS_TRANSLATED)
+        self.assertEqual(translation.model, "deepseek-v4-flash")
+        post_mock.assert_called_once()
+        self.assertEqual(
+            post_mock.call_args.args[0],
+            "https://api.deepseek.test/chat/completions",
+        )
+        request_payload = post_mock.call_args.kwargs["json"]
+        self.assertEqual(request_payload["model"], "deepseek-v4-flash")
+        self.assertEqual(request_payload["response_format"], {"type": "json_object"})
+        self.assertEqual(request_payload["thinking"], {"type": "disabled"})
+        self.assertNotIn("provider", request_payload)
+        self.assertNotIn("reasoning", request_payload)
+        request_headers = post_mock.call_args.kwargs["headers"]
+        self.assertNotIn("X-OpenRouter-Title", request_headers)
+
     @patch("feeds.translation_service.requests.post")
     def test_failed_openrouter_response_marks_translation_failed(self, post_mock) -> None:
         post_mock.return_value = FakeOpenRouterResponse(
