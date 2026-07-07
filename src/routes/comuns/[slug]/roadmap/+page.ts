@@ -7,11 +7,12 @@ export const load = async ({ fetch, params, url, parent }) => {
   const slug = params.slug
   const parentData = await parent()
   const comun = parentData.comun ?? null
+  const language = parentData.language ?? 'ru'
   if (comun && comun.roadmap_enabled === false) {
     throw error(404, 'Дорожная карта отключена')
   }
 
-  const statsUrl = new URL(buildComunPostsUrl(slug), url.origin)
+  const statsUrl = new URL(buildComunPostsUrl(slug, { language }), url.origin)
   statsUrl.searchParams.set('limit', '1')
   const statsResponse = await fetch(statsUrl.toString())
   if (!statsResponse.ok) {
@@ -42,6 +43,7 @@ export const load = async ({ fetch, params, url, parent }) => {
           buildComunPostsUrl(slug, { categorySlug }),
           url.origin
         )
+        previewUrl.searchParams.set('lang', language)
         previewUrl.searchParams.set('limit', String(PREVIEW_LIMIT))
         previewUrl.searchParams.set('offset', '0')
         const response = await fetch(previewUrl.toString())

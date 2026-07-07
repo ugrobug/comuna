@@ -1491,6 +1491,12 @@
             "communityNotFound": "Сообщество не найдено",
             "tagNotFound": "Тег не найден"
         },
+        "feed": {
+            "readOnlyNotice": "Показываем только прочитанные посты",
+            "returnToFeed": "Вернуться",
+            "readPostsHidden": "Прочитанные посты скрыты",
+            "showReadPosts": "Показать"
+        },
         "sidebar": {
             "hot": "Горячее",
             "myFeed": "Моя лента",

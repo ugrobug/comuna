@@ -2335,6 +2335,7 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
         return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
 
     moderator_subscriptions_need_sync = False
+    comun_translation_content_changed = False
 
     if "name" in body:
         if not _comun_can_manage_moderators(current_user, comun):
@@ -2508,6 +2509,7 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
             bump_public_cache_prefix("comuns-sidebar")
 
     if "category_ids" in body or "category_names" in body:
+        comun_translation_content_changed = True
         if "category_ids" in body:
             selected_categories: dict[int, ComunCategory] = {
                 category.id: category
@@ -2602,6 +2604,7 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
         comun.blocked_tags.set(Tag.objects.filter(id__in=blocked_tag_ids, is_active=True))
 
     if "glossary_terms" in body:
+        comun_translation_content_changed = True
         _sync_comun_glossary_terms(comun, body.get("glossary_terms"))
 
     if "custom_templates" in body:
@@ -2620,6 +2623,10 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
         .prefetch_related("moderators", "excluded_authors", "categories", "tags", "blocked_tags")
         .get()
     )
+    if comun_translation_content_changed:
+        from feeds.translation_service import schedule_comun_auto_translation
+
+        schedule_comun_auto_translation(comun)
     return JsonResponse(
         {
             "ok": True,
@@ -2995,6 +3002,21 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
     if request.method != "GET":
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
 
+    language = _normalize_content_language(request.GET.get("lang"))
+    comun_translation = _comun_translation_for_language(comun, language)
+    category_translations = community_serializers._translation_items_by_id(
+        comun_translation.categories if comun_translation else []
+    )
+
+    def serialize_category(category: ComunCategory | None):
+        if not category:
+            return None
+        return _serialize_comun_category(
+            category,
+            comun,
+            translation=category_translations.get(category.id),
+        )
+
     limit_raw = request.GET.get("limit", "10")
     try:
         limit = min(max(int(limit_raw), 1), 200)
@@ -3110,7 +3132,7 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
         )
         assignment = assignments.get(post.id)
         if assignment and assignment.category_id:
-            item["comun_category"] = _serialize_comun_category(assignment.category, comun)
+            item["comun_category"] = serialize_category(assignment.category)
             item["comun_category_id"] = assignment.category_id
         else:
             item["comun_category"] = None
@@ -3120,9 +3142,9 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
     return JsonResponse(
         {
             "ok": True,
-            "comun": _serialize_comun(request, comun, current_user=current_user),
+            "comun": _serialize_comun(request, comun, current_user=current_user, language=language),
             "posts": serialized_posts,
-            "selected_category": (_serialize_comun_category(selected_category, comun) if selected_category else None),
+            "selected_category": serialize_category(selected_category),
             "selected_category_slugs": [category.slug for category in selected_categories],
             "category_filter_explicit": category_filter_explicit,
             "total_count": total_count,

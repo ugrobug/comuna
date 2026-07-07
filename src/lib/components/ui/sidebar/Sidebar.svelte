@@ -17,7 +17,8 @@
   import { notifications, profile } from '$lib/auth.js'
   import SidebarButton from '$lib/components/ui/sidebar/SidebarButton.svelte'
   import { Badge } from 'mono-svelte'
-  import { t } from '$lib/translations'
+  import { locale, t } from '$lib/translations'
+  import { normalizeInterfaceLanguage, originalPostLanguage } from '$lib/postLanguages'
   import { page } from '$app/stores'
   import { onMount } from 'svelte'
   import { Icon } from 'svelte-hero-icons'
@@ -33,6 +34,12 @@
     env.PUBLIC_PROJECT_ADVRTISEMENT || '/advertisement';
   const PUBLIC_PROJECT_AUTHORS = env.PUBLIC_PROJECT_AUTHORS || '/authors';
   const PUBLIC_PROJECT_RULES = env.PUBLIC_PROJECT_RULES || '/rules';
+
+  const localizedProjectPath = (path: string) => {
+    const language = normalizeInterfaceLanguage($locale) ?? originalPostLanguage
+    if (language === originalPostLanguage || !path.startsWith('/')) return path
+    return `/${language}${path}`
+  }
 
   let loginModalOpen = false;
   let sidebarComuns: BackendComun[] = [];
@@ -59,6 +66,10 @@
   );
   $: sidebarComuns = sidebarComunsSelection.items;
   $: sidebarComunsTotal = sidebarComunsSelection.total;
+  $: projectAboutPath = localizedProjectPath(PUBLIC_PROJECT_ABOUT);
+  $: projectAdvertisementPath = localizedProjectPath(PUBLIC_PROJECT_ADVRTISEMENT);
+  $: projectAuthorsPath = localizedProjectPath(PUBLIC_PROJECT_AUTHORS);
+  $: projectRulesPath = localizedProjectPath(PUBLIC_PROJECT_RULES);
 
 </script>
 
@@ -227,16 +238,16 @@
       </div>
     {/if}
     <div class="flex flex-col gap-1">
-      <SidebarButton href={PUBLIC_PROJECT_ABOUT} icon={InformationCircle}>
+      <SidebarButton href={projectAboutPath} icon={InformationCircle}>
         <span slot="label">{$t('site.sidebar.aboutProject')}</span>
       </SidebarButton>
-      <SidebarButton href={PUBLIC_PROJECT_ADVRTISEMENT} icon={Megaphone}>
+      <SidebarButton href={projectAdvertisementPath} icon={Megaphone}>
         <span slot="label">{$t('site.sidebar.advertisement')}</span>
       </SidebarButton>
-      <SidebarButton href={PUBLIC_PROJECT_AUTHORS} icon={PencilSquare}>
+      <SidebarButton href={projectAuthorsPath} icon={PencilSquare}>
         <span slot="label">{$t('site.sidebar.authors')}</span>
       </SidebarButton>
-      <SidebarButton href={PUBLIC_PROJECT_RULES} icon={ClipboardDocumentList}>
+      <SidebarButton href={projectRulesPath} icon={ClipboardDocumentList}>
         <span slot="label">{$t('site.sidebar.rules')}</span>
       </SidebarButton>
     </div>

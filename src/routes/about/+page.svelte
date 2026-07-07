@@ -10,7 +10,8 @@
   export let data
 
   const meta = EDITABLE_STATIC_PAGE_META.about
-  $: title = `${meta.heading} — ${brandNameForLanguage($locale)}`
+  $: pageHeading = data?.pageTitle || meta.heading
+  $: title = `${pageHeading} — ${brandNameForLanguage($locale)}`
   $: canonicalUrl = new URL(
     $page.url.pathname,
     (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '') + '/'
@@ -19,10 +20,10 @@
 
 <div class="flex max-w-3xl flex-col gap-6">
   <Header pageHeader>
-    <h1 class="text-2xl font-bold">{meta.heading}</h1>
+    <h1 class="text-2xl font-bold">{pageHeading}</h1>
   </Header>
 
-  <StaticPageArticle heading={meta.heading} pageContent={data?.pageContent ?? ''} />
+  <StaticPageArticle heading={pageHeading} pageContent={data?.pageContent ?? ''} />
 </div>
 
 <svelte:head>

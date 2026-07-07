@@ -1362,6 +1362,12 @@
             "communityNotFound": "Comunidad no encontrada",
             "tagNotFound": "Etiqueta no encontrada"
         },
+        "feed": {
+            "readOnlyNotice": "Mostrando solo publicaciones leídas",
+            "returnToFeed": "Volver",
+            "readPostsHidden": "Las publicaciones leídas están ocultas",
+            "showReadPosts": "Mostrar"
+        },
         "sidebar": {
             "hot": "Popular",
             "myFeed": "Mi feed",

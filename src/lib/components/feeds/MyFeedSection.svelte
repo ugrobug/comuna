@@ -56,7 +56,9 @@
     </h1>
   </div>
 
-  {#if !$siteUser}
+  {#if filteredPosts.length}
+    <FeedPostsList posts={filteredPosts} {loadingMore} {showKeyboardShortcutsHint} />
+  {:else if !$siteUser}
     <RecommendedComunsPanel
       selectedSlugs={selectedMyFeedComuns}
       recommendedSlugs={defaultRecommendedComunSlugs}
@@ -80,9 +82,7 @@
     {/if}
 
     {#if $feedSettingsHydrated && $feedSettingsHydrationState !== 'error' && myFeedHasBaseSettings}
-      {#if filteredPosts.length}
-        <FeedPostsList posts={filteredPosts} {loadingMore} {showKeyboardShortcutsHint} />
-      {:else if loadingMore}
+      {#if loadingMore}
         <div class="text-base text-slate-500 dark:text-zinc-400">{$t('site.sidebar.myFeedSection.loadingPosts')}</div>
       {:else if shouldShowRecommendations}
         <RecommendedComunsPanel

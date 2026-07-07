@@ -7,11 +7,12 @@
   export let data
 
   const meta = EDITABLE_STATIC_PAGE_META.authors
-  $: seoTitle = `${meta.heading} — ${brandNameForLanguage($locale)}`
+  $: pageHeading = data?.pageTitle || meta.heading
+  $: seoTitle = `${pageHeading} — ${brandNameForLanguage($locale)}`
 </script>
 
 <div class="flex max-w-3xl flex-col gap-6">
-  <StaticPageArticle heading={meta.heading} pageContent={data?.pageContent ?? ''} />
+  <StaticPageArticle heading={pageHeading} pageContent={data?.pageContent ?? ''} />
 </div>
 
 <svelte:head>

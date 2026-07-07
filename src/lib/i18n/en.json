@@ -1474,6 +1474,12 @@
             "communityNotFound": "Community not found",
             "tagNotFound": "Tag not found"
         },
+        "feed": {
+            "readOnlyNotice": "Showing only read posts",
+            "returnToFeed": "Back",
+            "readPostsHidden": "Read posts are hidden",
+            "showReadPosts": "Show"
+        },
         "sidebar": {
             "hot": "Hot",
             "myFeed": "My feed",

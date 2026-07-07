@@ -258,6 +258,7 @@ export const buildComunPostsUrl = (
   options?: {
     categorySlug?: string
     categorySlugs?: string[]
+    language?: string
   }
 ): string => {
   const base = `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/posts/`
@@ -267,6 +268,7 @@ export const buildComunPostsUrl = (
   } else if (options?.categorySlug) {
     params.set('category', options.categorySlug)
   }
+  if (options?.language && options.language !== 'ru') params.set('lang', options.language)
   const query = params.toString()
   return query ? `${base}?${query}` : base
 }
@@ -726,8 +728,20 @@ export const buildTopAuthorsMonthUrl = (limit = 5): string => {
   return `${getBackendBaseUrl()}/api/authors/top-month/?${params.toString()}`
 }
 
-export const buildStaticPageContentUrl = (slug: string): string => {
-  return `${getBackendBaseUrl()}/api/content-pages/${encodeURIComponent(slug)}/`
+export type BackendStaticPageLanguageVersion = {
+  language: string
+  hreflang?: string
+  path: string
+  is_original?: boolean
+}
+
+export const buildStaticPageContentUrl = (slug: string, options?: { language?: string }): string => {
+  const url = new URL(`${getBackendBaseUrl()}/api/content-pages/${encodeURIComponent(slug)}/`)
+  const language = String(options?.language || '').trim().toLowerCase()
+  if (language && language !== 'ru') {
+    url.searchParams.set('lang', language)
+  }
+  return url.toString()
 }
 
 const stableId = (input: string): number => {
@@ -888,6 +902,14 @@ export type BackendComun = {
   product_description?: string | null
   rules_text?: string | null
   target_audience?: string | null
+  language?: string
+  is_translated?: boolean
+  language_versions?: Array<{
+    language: string
+    hreflang?: string
+    path: string
+    is_original?: boolean
+  }>
   glossary_enabled?: boolean
   glossary_auto_link_enabled?: boolean
   roadmap_enabled?: boolean

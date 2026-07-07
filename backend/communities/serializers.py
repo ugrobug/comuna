@@ -75,6 +75,52 @@ def _comun_translation_for_language(
     )
 
 
+def _translation_items_by_id(raw_items: object) -> dict[int, dict]:
+    if not isinstance(raw_items, list):
+        return {}
+    result: dict[int, dict] = {}
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        try:
+            item_id = int(item.get("id") or 0)
+        except (TypeError, ValueError):
+            continue
+        if item_id > 0:
+            result[item_id] = item
+    return result
+
+
+def _translated_versions_for_comun(comun: Comun) -> list[ComunTranslation]:
+    return list(
+        comun.translations.filter(status=POST_TRANSLATION_STATUS_TRANSLATED).order_by("language")
+    )
+
+
+def _comun_language_versions(comun: Comun) -> list[dict]:
+    versions = [
+        {
+            "language": ORIGINAL_CONTENT_LANGUAGE,
+            "hreflang": ORIGINAL_CONTENT_LANGUAGE,
+            "path": f"/comuns/{comun.slug}",
+            "is_original": True,
+        }
+    ]
+    for translation in _translated_versions_for_comun(comun):
+        language = translation.language
+        if language not in PUBLIC_CONTENT_LANGUAGES or language == ORIGINAL_CONTENT_LANGUAGE:
+            continue
+        versions.append(
+            {
+                "language": language,
+                "hreflang": language,
+                "path": f"/{language}/comuns/{comun.slug}",
+                "is_original": False,
+            }
+        )
+    return versions
+
+
 def _site_user_is_deleted(user: User | None) -> bool:
     if not user:
         return False
@@ -112,13 +158,18 @@ def _serialize_site_user_summary(user: User | None, user_id: int | None = None) 
     }
 
 
-def _serialize_comun_glossary_term(term: ComunGlossaryTerm, request: HttpRequest | None = None) -> dict:
+def _serialize_comun_glossary_term(
+    term: ComunGlossaryTerm,
+    request: HttpRequest | None = None,
+    translation: dict | None = None,
+) -> dict:
+    translated_term = translation or {}
     return {
         "id": term.id,
-        "term": term.term,
-        "term_en": getattr(term, "term_en", "") or "",
+        "term": translated_term.get("term") or term.term,
+        "term_en": translated_term.get("term_en") or getattr(term, "term_en", "") or "",
         "slug": term.slug,
-        "definition": term.definition,
+        "definition": translated_term.get("definition") or term.definition,
         "image_url": community_service._media_url(request, getattr(term, "image", None)),
         "sort_order": term.sort_order,
     }
@@ -200,13 +251,15 @@ def _serialize_comun_category(
     comun: Comun | None = None,
     *,
     can_post: bool | None = None,
+    translation: dict | None = None,
 ) -> dict:
     category_allowed_template_types = community_service._allowed_template_overrides_for_comun_category(category)
+    translated_category = translation or {}
     payload = {
         "id": category.id,
-        "name": category.name,
+        "name": translated_category.get("name") or category.name,
         "slug": category.slug,
-        "description": category.description,
+        "description": translated_category.get("description") or category.description,
         "sort_order": category.sort_order,
         "only_moderators_can_post": bool(getattr(category, "only_moderators_can_post", False)),
         "hide_from_home": bool(getattr(category, "hide_from_home", False)),
@@ -441,15 +494,21 @@ def _serialize_comun(
     content_language = _normalize_content_language(language)
     translation = None if include_manage_fields else _comun_translation_for_language(comun, content_language)
     is_translated = bool(translation)
+    category_translations = _translation_items_by_id(translation.categories if translation else [])
+    glossary_term_translations = _translation_items_by_id(translation.glossary_terms if translation else [])
+    name = comun.name
     product_description = comun.product_description
+    target_audience = comun.target_audience
     rules_text = comun.rules_text
     if translation:
+        name = translation.name or name
         product_description = translation.product_description or product_description
+        target_audience = translation.target_audience or target_audience
         rules_text = translation.rules_text or rules_text
 
     payload = {
         "id": comun.id,
-        "name": comun.name,
+        "name": name,
         "slug": comun.slug,
         "website_url": comun.website_url,
         "logo_url": community_service._comun_logo_url(request, comun),
@@ -457,16 +516,29 @@ def _serialize_comun(
         "rules_text": rules_text,
         "language": content_language if is_translated else ORIGINAL_CONTENT_LANGUAGE,
         "is_translated": is_translated,
-        "target_audience": comun.target_audience,
+        "language_versions": _comun_language_versions(comun),
+        "target_audience": target_audience,
         "glossary_enabled": bool(getattr(comun, "glossary_enabled", False)),
         "glossary_auto_link_enabled": bool(getattr(comun, "glossary_auto_link_enabled", False)),
         "roadmap_enabled": bool(getattr(comun, "roadmap_enabled", False)),
         "knowledge_base_enabled": bool(getattr(comun, "knowledge_base_enabled", False)),
         "roadmap_category_ids": [category.id for category in roadmap_categories],
         "roadmap_categories": [
-            _serialize_comun_category(category, comun) for category in roadmap_categories
+            _serialize_comun_category(
+                category,
+                comun,
+                translation=category_translations.get(category.id),
+            )
+            for category in roadmap_categories
         ],
-        "glossary_terms": [_serialize_comun_glossary_term(term, request=request) for term in glossary_terms],
+        "glossary_terms": [
+            _serialize_comun_glossary_term(
+                term,
+                request=request,
+                translation=glossary_term_translations.get(term.id),
+            )
+            for term in glossary_terms
+        ],
         "glossary_terms_count": len(glossary_terms),
         "minimum_author_rating_to_post": community_service._comun_minimum_author_rating_value(comun),
         "only_moderators_can_post": bool(getattr(comun, "only_moderators_can_post", False)),
@@ -490,6 +562,7 @@ def _serialize_comun(
                 category,
                 comun,
                 can_post=category_can_post_by_id.get(category.id),
+                translation=category_translations.get(category.id),
             )
             for category in categories
         ],

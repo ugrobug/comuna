@@ -25,6 +25,7 @@
   import { deserializeEditorModel } from '$lib/util'
   import { brandNameForLanguage } from '$lib/brand'
   import { locale } from '$lib/translations'
+  import { normalizeInterfaceLanguage } from '$lib/postLanguages'
   import { ChatBubbleLeftRight, ChevronDown, GlobeAlt, Icon } from 'svelte-hero-icons'
 
   export let data
@@ -89,6 +90,9 @@
     if (!settingsDraft) return
     settingsDraft = { ...settingsDraft, ...patch }
   }
+
+  const localizeContentPath = (path: string, language: string) =>
+    language && language !== 'ru' ? `/${language}${path}` : path
 
   type ComunCategoryCount = {
     category_id?: number | null
@@ -196,6 +200,21 @@
   let openingModeratorChatId: number | null = null
   let moderatorMenuOpen = false
   let moderatorMenuCloseTimer: ReturnType<typeof setTimeout> | null = null
+  let loadedContentLanguage = String(data?.language || 'ru')
+  let loadingContentLanguage = ''
+  let contentLanguageRequestSeq = 0
+  $: desiredContentLanguage =
+    normalizeInterfaceLanguage($locale) || String(data?.language || 'ru')
+  $: contentLanguage = desiredContentLanguage
+  $: if (
+    browser &&
+    comun?.slug &&
+    desiredContentLanguage &&
+    desiredContentLanguage !== loadedContentLanguage &&
+    desiredContentLanguage !== loadingContentLanguage
+  ) {
+    void reloadContentLanguage(desiredContentLanguage)
+  }
 
   $: if (data?.posts && data.posts !== lastPostsRef) {
     lastPostsRef = data.posts
@@ -439,16 +458,44 @@
   $: description =
     comun?.product_description || `Посты и обсуждения продукта «${comunName}» на ${siteTitle}.`
   $: comunWebsiteUrl = externalUrl(comun?.website_url)
-  $: comunGlossaryPath = comun?.slug ? buildComunGlossaryPath(comun.slug) : '/comuns'
-  $: comunKnowledgeBasePath = comun?.slug ? buildComunKnowledgeBasePath(comun.slug) : '/comuns'
-  $: comunRoadmapPath = comun?.slug ? buildComunRoadmapPath(comun.slug) : '/comuns'
+  $: comunGlossaryPath = comun?.slug ? localizeContentPath(buildComunGlossaryPath(comun.slug), contentLanguage) : '/comuns'
+  $: comunKnowledgeBasePath = comun?.slug ? localizeContentPath(buildComunKnowledgeBasePath(comun.slug), contentLanguage) : '/comuns'
+  $: comunRoadmapPath = comun?.slug ? localizeContentPath(buildComunRoadmapPath(comun.slug), contentLanguage) : '/comuns'
+  $: languageVersions = Array.isArray(comun?.language_versions) ? comun.language_versions : []
+  $: russianVersion = languageVersions.find((version) => version?.language === 'ru')
+  $: alternateLinks = [
+    ...languageVersions
+      .filter((version) => version?.hreflang && version?.path)
+      .map((version) => ({
+        hreflang: version.hreflang,
+        href: new URL(
+          version.path,
+          (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '') + '/'
+        ).toString(),
+      })),
+    ...(russianVersion?.path
+      ? [
+          {
+            hreflang: 'x-default',
+            href: new URL(
+              russianVersion.path,
+              (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '') + '/'
+            ).toString(),
+          },
+        ]
+      : []),
+  ]
   $: canonicalPath = (() => {
     const params = new URLSearchParams()
     if (categoryFilterExplicit) {
       params.set('categories', selectedCategorySlugs.join(','))
     }
     const query = params.toString()
-    return `${$page.url.pathname}${query ? `?${query}` : ''}`
+    const basePath =
+      contentLanguage === 'ru' || comun?.is_translated
+        ? $page.url.pathname
+        : `/comuns/${comun?.slug ?? data?.slug ?? ''}`
+    return `${basePath}${query ? `?${query}` : ''}`
   })()
   $: canonicalUrl = new URL(
     canonicalPath,
@@ -846,7 +893,7 @@
       const results = await Promise.all(
         stagesSnapshot.map(async (stage) => {
           const url = new URL(
-            buildComunPostsUrl(slug, { categorySlug: stage.category.slug }),
+            buildComunPostsUrl(slug, { categorySlug: stage.category.slug, language: contentLanguage }),
             $page.url.origin
           )
           url.searchParams.set('limit', String(ROADMAP_PREVIEW_FETCH_LIMIT))
@@ -1039,11 +1086,11 @@
     }, 250)
   }
 
-  const buildPostsUrl = (offset: number) => {
+  const buildPostsUrl = (offset: number, language = contentLanguage) => {
     if (!comun?.slug) return ''
     const categoryOptions = categoryFilterExplicit
-      ? { categorySlugs: selectedCategorySlugs }
-      : undefined
+      ? { categorySlugs: selectedCategorySlugs, language }
+      : { language }
     const url = new URL(
       buildComunPostsUrl(comun.slug, categoryOptions),
       $page.url.origin
@@ -1051,6 +1098,37 @@
     url.searchParams.set('limit', String(pageSize))
     url.searchParams.set('offset', String(offset))
     return url.toString()
+  }
+
+  const reloadContentLanguage = async (language: string) => {
+    const slug = (comun?.slug ?? data?.slug ?? '').trim()
+    if (!slug) return
+    const requestId = ++contentLanguageRequestSeq
+    loadingContentLanguage = language
+    try {
+      const comunUrl = new URL(buildComunUrl(slug, { language }), $page.url.origin)
+      const postsUrl = buildPostsUrl(0, language)
+      const [comunResponse, postsResponse] = await Promise.all([
+        fetch(comunUrl.toString(), { cache: 'no-store' }),
+        postsUrl ? fetch(postsUrl, { cache: 'no-store' }) : Promise.resolve(null),
+      ])
+      if (requestId !== contentLanguageRequestSeq) return
+      const comunPayload = await comunResponse.json().catch(() => ({}))
+      if (comunResponse.ok && comunPayload?.comun) {
+        comun = comunPayload.comun
+      }
+      if (postsResponse?.ok) {
+        const postsPayload = await postsResponse.json().catch(() => ({}))
+        applyPostsPayload(postsPayload, true)
+      }
+      loadedContentLanguage = language
+    } catch (error) {
+      console.error('Failed to reload community content language', error)
+    } finally {
+      if (requestId === contentLanguageRequestSeq) {
+        loadingContentLanguage = ''
+      }
+    }
   }
 
   const applyPostsPayload = (payload: any, reset = false) => {
@@ -2141,6 +2219,9 @@
     <meta name="twitter:card" content="summary_large_image" />
   {/if}
   <link rel="canonical" href={canonicalUrl} />
+  {#each alternateLinks as alternate (alternate.hreflang)}
+    <link rel="alternate" hreflang={alternate.hreflang} href={alternate.href} />
+  {/each}
 </svelte:head>
 
 <style>

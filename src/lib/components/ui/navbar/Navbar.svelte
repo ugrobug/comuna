@@ -33,6 +33,7 @@
   import NavButton from './NavButton.svelte'
   import { LINKED_INSTANCE_URL } from '$lib/instance'
   import { locale, t } from '$lib/translations'
+  import { normalizeInterfaceLanguage, originalPostLanguage } from '$lib/postLanguages'
   import { brandNameForLanguage } from '$lib/brand'
   import CommandsWrapper from './commands/CommandsWrapper.svelte'
   import { optimizeImageURL } from '$lib/components/lemmy/post/helpers'
@@ -62,6 +63,12 @@
     env.PUBLIC_PROJECT_ADVRTISEMENT || '/advertisement';
   const PUBLIC_PROJECT_AUTHORS = env.PUBLIC_PROJECT_AUTHORS || '/authors';
   const PUBLIC_PROJECT_RULES = env.PUBLIC_PROJECT_RULES || '/rules';
+
+  const localizedProjectPath = (path: string) => {
+    const language = normalizeInterfaceLanguage($locale) ?? originalPostLanguage
+    if (language === originalPostLanguage || !path.startsWith('/')) return path
+    return `/${language}${path}`
+  }
   
   // Переменная для случайного слогана
   let randomTagline = '';
@@ -80,6 +87,10 @@
   let promptOpen: boolean = false
   let loginModalOpen = false
   let sidebarOpen = false;
+  $: projectAboutPath = localizedProjectPath(PUBLIC_PROJECT_ABOUT);
+  $: projectAdvertisementPath = localizedProjectPath(PUBLIC_PROJECT_ADVRTISEMENT);
+  $: projectAuthorsPath = localizedProjectPath(PUBLIC_PROJECT_AUTHORS);
+  $: projectRulesPath = localizedProjectPath(PUBLIC_PROJECT_RULES);
   function toggleSidebar() {
     sidebarOpen = !sidebarOpen;
   }
@@ -453,16 +464,16 @@
           </div>
         {/if}
         <div class="flex flex-col gap-1">
-          <SidebarButton href={PUBLIC_PROJECT_ABOUT} icon={InformationCircle} on:click={() => { sidebarOpen = false; }}>
+          <SidebarButton href={projectAboutPath} icon={InformationCircle} on:click={() => { sidebarOpen = false; }}>
             <span slot="label">{$t('site.nav.aboutProject')}</span>
           </SidebarButton>
-          <SidebarButton href={PUBLIC_PROJECT_ADVRTISEMENT} icon={Megaphone} on:click={() => { sidebarOpen = false; }}>
+          <SidebarButton href={projectAdvertisementPath} icon={Megaphone} on:click={() => { sidebarOpen = false; }}>
             <span slot="label">{$t('site.nav.advertisement')}</span>
           </SidebarButton>
-          <SidebarButton href={PUBLIC_PROJECT_AUTHORS} icon={PencilSquare} on:click={() => { sidebarOpen = false; }}>
+          <SidebarButton href={projectAuthorsPath} icon={PencilSquare} on:click={() => { sidebarOpen = false; }}>
             <span slot="label">{$t('site.nav.authors')}</span>
           </SidebarButton>
-          <SidebarButton href={PUBLIC_PROJECT_RULES} icon={ClipboardDocumentList} on:click={() => { sidebarOpen = false; }}>
+          <SidebarButton href={projectRulesPath} icon={ClipboardDocumentList} on:click={() => { sidebarOpen = false; }}>
             <span slot="label">{$t('site.nav.rules')}</span>
           </SidebarButton>
         </div>

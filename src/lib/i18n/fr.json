@@ -1426,6 +1426,12 @@
             "communityNotFound": "Communauté introuvable",
             "tagNotFound": "Tag introuvable"
         },
+        "feed": {
+            "readOnlyNotice": "Affichage uniquement des publications lues",
+            "returnToFeed": "Retour",
+            "readPostsHidden": "Les publications lues sont masquées",
+            "showReadPosts": "Afficher"
+        },
         "sidebar": {
             "hot": "Populaire",
             "myFeed": "Mon fil",

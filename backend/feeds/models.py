@@ -554,8 +554,12 @@ class ComunTranslation(models.Model):
         choices=POST_TRANSLATION_LANGUAGE_CHOICES,
         db_index=True,
     )
+    name = models.CharField(max_length=160, blank=True)
     product_description = models.TextField(blank=True)
+    target_audience = models.TextField(blank=True)
     rules_text = models.TextField(blank=True)
+    categories = models.JSONField(default=list, blank=True)
+    glossary_terms = models.JSONField(default=list, blank=True)
     status = models.CharField(
         max_length=16,
         choices=POST_TRANSLATION_STATUS_CHOICES,
@@ -586,13 +590,58 @@ class ComunTranslation(models.Model):
         return f"{self.comun_id}:{self.language}"
 
 
+class StaticPageTranslation(models.Model):
+    page = models.ForeignKey(
+        StaticPageContent,
+        on_delete=models.CASCADE,
+        related_name="translations",
+    )
+    language = models.CharField(
+        max_length=8,
+        choices=POST_TRANSLATION_LANGUAGE_CHOICES,
+        db_index=True,
+    )
+    status = models.CharField(
+        max_length=16,
+        choices=POST_TRANSLATION_STATUS_CHOICES,
+        default=POST_TRANSLATION_STATUS_PENDING,
+        db_index=True,
+    )
+    title = models.CharField(max_length=160, blank=True)
+    content = models.TextField(blank=True)
+    model = models.CharField(max_length=160, blank=True)
+    error_message = models.TextField(blank=True)
+    raw_response = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["page_id", "language"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["page", "language"],
+                name="unique_static_page_translation_language",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["language", "status"], name="static_page_tr_lang_st_idx"),
+        ]
+        verbose_name = "Перевод статичной страницы"
+        verbose_name_plural = "Переводы статичных страниц"
+
+    def __str__(self) -> str:
+        return f"{self.page_id}:{self.language}"
+
+
 CONTENT_TRANSLATION_KIND_POST = "post"
 CONTENT_TRANSLATION_KIND_COMMENT = "comment"
 CONTENT_TRANSLATION_KIND_COMUN = "comun"
+CONTENT_TRANSLATION_KIND_STATIC_PAGE = "static_page"
 CONTENT_TRANSLATION_KIND_CHOICES = (
     (CONTENT_TRANSLATION_KIND_POST, "Пост"),
     (CONTENT_TRANSLATION_KIND_COMMENT, "Комментарий"),
     (CONTENT_TRANSLATION_KIND_COMUN, "Сообщество"),
+    (CONTENT_TRANSLATION_KIND_STATIC_PAGE, "Статичная страница"),
 )
 
 CONTENT_TRANSLATION_TASK_STATUS_PENDING = "pending"

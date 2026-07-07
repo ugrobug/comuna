@@ -19,6 +19,7 @@ from .models import (
     PostTranslation,
     PostViewSettings,
     StaticPageContent,
+    StaticPageTranslation,
     Tag,
     TagRelation,
     TagRelationType,
@@ -214,9 +215,25 @@ class PostCommentTranslationAdmin(admin.ModelAdmin):
 class ComunTranslationAdmin(admin.ModelAdmin):
     list_display = ("comun", "language", "status", "model", "updated_at")
     list_filter = ("language", "status", "model")
-    search_fields = ("comun__name", "product_description", "rules_text")
+    search_fields = ("comun__name", "name", "product_description", "target_audience", "rules_text")
     raw_id_fields = ("comun",)
     readonly_fields = ("created_at", "updated_at")
+    fields = (
+        "comun",
+        "language",
+        "status",
+        "name",
+        "product_description",
+        "target_audience",
+        "rules_text",
+        "categories",
+        "glossary_terms",
+        "model",
+        "error_message",
+        "raw_response",
+        "created_at",
+        "updated_at",
+    )
 
 
 @admin.register(ContentTranslationTask)
@@ -262,6 +279,26 @@ class StaticPageContentAdmin(admin.ModelAdmin):
     search_fields = ("slug", "title")
     readonly_fields = ("created_at", "updated_at")
     fields = ("slug", "title", "content", "updated_by", "created_at", "updated_at")
+
+
+@admin.register(StaticPageTranslation)
+class StaticPageTranslationAdmin(admin.ModelAdmin):
+    list_display = ("page", "language", "status", "model", "updated_at")
+    list_filter = ("language", "status")
+    search_fields = ("page__slug", "title", "content", "error_message")
+    readonly_fields = ("created_at", "updated_at")
+    fields = (
+        "page",
+        "language",
+        "status",
+        "title",
+        "content",
+        "model",
+        "error_message",
+        "raw_response",
+        "created_at",
+        "updated_at",
+    )
 
 
 @admin.register(PostViewSettings)

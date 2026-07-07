@@ -1199,6 +1199,12 @@
             "communityNotFound": "Community nicht gefunden",
             "tagNotFound": "Tag nicht gefunden"
         },
+        "feed": {
+            "readOnlyNotice": "Es werden nur gelesene Beiträge angezeigt",
+            "returnToFeed": "Zurück",
+            "readPostsHidden": "Gelesene Beiträge sind ausgeblendet",
+            "showReadPosts": "Anzeigen"
+        },
         "sidebar": {
             "hot": "Aktuell",
             "myFeed": "Mein Feed",

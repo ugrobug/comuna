@@ -1474,6 +1474,12 @@
             "communityNotFound": "Komunitas tidak ditemukan",
             "tagNotFound": "Tag tidak ditemukan"
         },
+        "feed": {
+            "readOnlyNotice": "Hanya menampilkan postingan yang sudah dibaca",
+            "returnToFeed": "Kembali",
+            "readPostsHidden": "Postingan yang sudah dibaca disembunyikan",
+            "showReadPosts": "Tampilkan"
+        },
         "sidebar": {
             "hot": "Populer",
             "myFeed": "Feed saya",

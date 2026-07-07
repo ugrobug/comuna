@@ -140,6 +140,7 @@ from .models import (
     PostRead,
     PublicFeedItem,
     StaticPageContent,
+    StaticPageTranslation,
     Tag,
     PostTranslation,
 )
@@ -396,24 +397,83 @@ def _site_user_id_for_author(author: Author | None) -> int | None:
     return int(matching_user.id) if matching_user else None
 
 
-def _serialize_static_page_content(page: StaticPageContent | None, slug: str) -> dict:
+def _static_page_translation_for_language(
+    page: StaticPageContent | None,
+    language: str | None,
+) -> StaticPageTranslation | None:
+    if not page or not page.pk or not language or language == ORIGINAL_POST_LANGUAGE:
+        return None
+    return StaticPageTranslation.objects.filter(
+        page=page,
+        language=language,
+        status=POST_TRANSLATION_STATUS_TRANSLATED,
+    ).first()
+
+
+def _static_page_language_versions(page: StaticPageContent | None) -> list[dict]:
+    normalized_slug = str(getattr(page, "slug", "") or "").strip().lower()
+    if not page or not normalized_slug:
+        return []
+    versions = [
+        {
+            "language": ORIGINAL_POST_LANGUAGE,
+            "hreflang": "ru",
+            "path": f"/{normalized_slug}",
+            "is_original": True,
+        }
+    ]
+    translated_languages = list(
+        page.translations.filter(status=POST_TRANSLATION_STATUS_TRANSLATED)
+        .order_by("language")
+        .values_list("language", flat=True)
+    )
+    for language in translated_languages:
+        if language == ORIGINAL_POST_LANGUAGE:
+            continue
+        versions.append(
+            {
+                "language": language,
+                "hreflang": language,
+                "path": f"/{language}/{normalized_slug}",
+                "is_original": False,
+            }
+        )
+    return versions
+
+
+def _serialize_static_page_content(
+    page: StaticPageContent | None,
+    slug: str,
+    *,
+    language: str | None = None,
+) -> dict:
     normalized_slug = str(slug or "").strip().lower()
     fallback_title = _EDITABLE_STATIC_PAGE_TITLES.get(normalized_slug, normalized_slug)
+    normalized_language = language or ORIGINAL_POST_LANGUAGE
     if not page:
         return {
             "slug": normalized_slug,
             "title": fallback_title,
             "content": "",
             "exists": False,
+            "language": normalized_language,
+            "is_translated": False,
+            "language_versions": [],
             "updated_at": None,
             "updated_by": None,
         }
     updated_by = page.updated_by
+    translation = _static_page_translation_for_language(page, normalized_language)
+    title = translation.title if translation else page.title
+    content = translation.content if translation else page.content
     return {
         "slug": page.slug,
-        "title": page.title or fallback_title,
-        "content": rewrite_public_media_urls(page.content or ""),
+        "title": title or fallback_title,
+        "content": rewrite_public_media_urls(content or ""),
         "exists": True,
+        "language": normalized_language,
+        "is_translated": bool(translation),
+        "language_versions": _static_page_language_versions(page),
         "updated_at": page.updated_at.isoformat() if page.updated_at else None,
         "updated_by": (
             {
@@ -2526,9 +2586,15 @@ def content_page_manage(request: HttpRequest, slug: str) -> HttpResponse:
         .filter(slug=page_slug)
         .first()
     )
+    language = _normalize_post_language(request.GET.get("lang")) or ORIGINAL_POST_LANGUAGE
 
     if request.method == "GET":
-        return JsonResponse({"ok": True, "page": _serialize_static_page_content(page, page_slug)})
+        return JsonResponse(
+            {
+                "ok": True,
+                "page": _serialize_static_page_content(page, page_slug, language=language),
+            }
+        )
 
     if request.method not in ("PATCH", "POST"):
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
@@ -2563,7 +2629,16 @@ def content_page_manage(request: HttpRequest, slug: str) -> HttpResponse:
     page.updated_by = user
     page.save()
 
-    return JsonResponse({"ok": True, "page": _serialize_static_page_content(page, page_slug)})
+    return JsonResponse(
+        {
+            "ok": True,
+            "page": _serialize_static_page_content(
+                page,
+                page_slug,
+                language=ORIGINAL_POST_LANGUAGE,
+            ),
+        }
+    )
 
 
 def _post_public_path(post: Post) -> str:

@@ -39,6 +39,7 @@
   let scrollRaf: number | null = null
   let myFeedSectionModulePromise: Promise<LazyModule> | null = null
   let showFeedKeyboardShortcutsHint = false
+  let reusedInitialServerFeed = false
 
   const buildPageUrl = (currentOffset: number, limit = pageSize) => {
     let baseUrl = buildHomeFeedUrl({
@@ -181,6 +182,16 @@
   $: feedParam = $page.url.searchParams.get('feed')
   $: readParam = $page.url.searchParams.get('read')
   $: readOnly = readParam === '1' || readParam === 'true' || readParam === 'yes'
+  $: serverSelectedAuthenticatedFeed =
+    Boolean(
+      data?.authenticated &&
+        data?.serverLoadedFeed &&
+        !feedParam &&
+        data?.feedType &&
+        data.feedType !== 'hot'
+    )
+  $: waitForServerFeedHydration =
+    browser && serverSelectedAuthenticatedFeed && !$feedSettingsHydrated
 
   $: selectedMyFeedComuns = $userSettings.myFeedComuns ?? []
   $: selectedMyFeedAuthors = $userSettings.myFeedAuthors ?? []
@@ -218,7 +229,7 @@
     }
   }
 
-  $: if (!feedParam) {
+  $: if (!feedParam && !waitForServerFeedHydration) {
     const preferredFeed = $userSettings.homeFeed ?? 'hot'
     if (preferredFeed !== feedType) {
       feedType = preferredFeed
@@ -269,33 +280,67 @@
   }
 
   $: if (feedType === 'mine') {
-    const authKey = $siteUser ? 'auth' : 'anon'
-    const hydrationKey = $siteUser ? ($feedSettingsHydrated ? 'settings-ready' : 'settings-loading') : 'no-settings'
-    const key = `${authKey}:${hydrationKey}:${selectedMyFeedComuns.join(',')}:${selectedMyFeedAuthors.join(',')}:${JSON.stringify(selectedMyFeedComunCategories)}:${hideNegativeMyFeed ? 'no-negative' : 'all'}:${readOnly ? 'only-read' : effectiveHideRead ? 'hide-read' : 'all-read'}`
-    if (key !== lastMyFeedKey) {
-      lastMyFeedKey = key
-      posts = []
-      offset = 0
-      hasMore = false
-      loadingMore = false
-      if (canLoadMyFeed) {
-        hasMore = true
-        void loadMore()
+    if (waitForServerFeedHydration) {
+      // Keep the SSR-selected feed visible until saved feed settings hydrate.
+    } else {
+      const authKey = $siteUser ? 'auth' : 'anon'
+      const hydrationKey = $siteUser
+        ? ($feedSettingsHydrated ? 'settings-ready' : 'settings-loading')
+        : 'no-settings'
+      const key = `${authKey}:${hydrationKey}:${selectedMyFeedComuns.join(',')}:${selectedMyFeedAuthors.join(',')}:${JSON.stringify(selectedMyFeedComunCategories)}:${hideNegativeMyFeed ? 'no-negative' : 'all'}:${readOnly ? 'only-read' : effectiveHideRead ? 'hide-read' : 'all-read'}`
+      if (key !== lastMyFeedKey) {
+        lastMyFeedKey = key
+        const canReuseServerInitialFeed =
+          !reusedInitialServerFeed &&
+          serverSelectedAuthenticatedFeed &&
+          data?.feedType === 'mine' &&
+          data?.serverLoadedFeed
+        if (canReuseServerInitialFeed) {
+          reusedInitialServerFeed = true
+          offset = posts.length
+          hasMore = posts.length === pageSize
+          loadingMore = false
+        } else {
+          posts = []
+          offset = 0
+          hasMore = false
+          loadingMore = false
+        }
+        if (canLoadMyFeed && !canReuseServerInitialFeed) {
+          hasMore = true
+          void loadMore()
+        }
       }
     }
   }
 
   $: if (feedType === 'favorites') {
-    const authKey = $siteUser ? 'auth' : 'anon'
-    const key = `favorites:${authKey}`
-    if (key !== lastMyFeedKey) {
-      lastMyFeedKey = key
-      posts = []
-      offset = 0
-      hasMore = !!$siteUser
-      loadingMore = false
-      if ($siteUser && browser) {
-        void loadMore()
+    if (waitForServerFeedHydration) {
+      // Keep the SSR-selected feed visible until saved feed settings hydrate.
+    } else {
+      const authKey = $siteUser ? 'auth' : 'anon'
+      const key = `favorites:${authKey}`
+      if (key !== lastMyFeedKey) {
+        lastMyFeedKey = key
+        const canReuseServerInitialFeed =
+          !reusedInitialServerFeed &&
+          serverSelectedAuthenticatedFeed &&
+          data?.feedType === 'favorites' &&
+          data?.serverLoadedFeed
+        if (canReuseServerInitialFeed) {
+          reusedInitialServerFeed = true
+          offset = posts.length
+          hasMore = posts.length === pageSize
+          loadingMore = false
+        } else {
+          posts = []
+          offset = 0
+          hasMore = !!$siteUser
+          loadingMore = false
+        }
+        if ($siteUser && browser && !canReuseServerInitialFeed) {
+          void loadMore()
+        }
       }
     }
   }
@@ -325,27 +370,27 @@
   {#if $siteUser && readOnly && feedType !== 'favorites'}
     <div class="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900">
       <div class="text-sm text-slate-600 dark:text-zinc-300">
-        Показываем только прочитанные посты
+        {$t('site.feed.readOnlyNotice')}
       </div>
       <button
         type="button"
         class="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
         on:click={closeReadPosts}
       >
-        Вернуться
+        {$t('site.feed.returnToFeed')}
       </button>
     </div>
   {:else if $siteUser && feedType !== 'favorites' && effectiveHideRead}
     <div class="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900">
       <div class="text-sm text-slate-600 dark:text-zinc-300">
-        Прочитанные посты скрыты
+        {$t('site.feed.readPostsHidden')}
       </div>
       <button
         type="button"
         class="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
         on:click={openReadPosts}
       >
-        Показать
+        {$t('site.feed.showReadPosts')}
       </button>
     </div>
   {/if}

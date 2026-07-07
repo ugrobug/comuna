@@ -49,6 +49,7 @@
   let pendingGlossarySubmissionsError = ''
   let pendingGlossarySubmissionsLoadedFor = ''
   let reviewingGlossarySubmissionId: number | null = null
+  $: contentLanguage = String(data?.language || 'ru')
 
   const portalToBody = (node: HTMLElement) => {
     if (typeof document === 'undefined') return
@@ -456,7 +457,7 @@
 
   const refreshComun = async () => {
     if (!comun?.slug) return
-    const response = await fetch(buildComunUrl(comun.slug), {
+    const response = await fetch(buildComunUrl(comun.slug, { language: contentLanguage }), {
       headers: $siteToken ? { Authorization: `Bearer ${$siteToken}` } : undefined,
       cache: 'no-store',
     })

@@ -1451,6 +1451,12 @@
             "communityNotFound": "Topluluk bulunamadı",
             "tagNotFound": "Etiket bulunamadı"
         },
+        "feed": {
+            "readOnlyNotice": "Yalnızca okunmuş gönderiler gösteriliyor",
+            "returnToFeed": "Geri dön",
+            "readPostsHidden": "Okunmuş gönderiler gizli",
+            "showReadPosts": "Göster"
+        },
         "sidebar": {
             "hot": "Popüler",
             "myFeed": "Akışım",

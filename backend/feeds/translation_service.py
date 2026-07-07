@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import re
 import subprocess
@@ -11,11 +12,13 @@ import requests
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
+from communities.models import ComunCategory, ComunGlossaryTerm
 
 from feeds.models import (
     CONTENT_TRANSLATION_KIND_COMMENT,
     CONTENT_TRANSLATION_KIND_COMUN,
     CONTENT_TRANSLATION_KIND_POST,
+    CONTENT_TRANSLATION_KIND_STATIC_PAGE,
     CONTENT_TRANSLATION_TASK_STATUS_DONE,
     CONTENT_TRANSLATION_TASK_STATUS_FAILED,
     CONTENT_TRANSLATION_TASK_STATUS_PENDING,
@@ -41,6 +44,8 @@ from feeds.models import (
     PostComment,
     PostCommentTranslation,
     PostTranslation,
+    StaticPageContent,
+    StaticPageTranslation,
 )
 from feeds.preview import build_post_preview
 
@@ -99,10 +104,13 @@ AUTO_TRANSLATION_DELAYS = {
     CONTENT_TRANSLATION_KIND_POST: timedelta(minutes=10),
     CONTENT_TRANSLATION_KIND_COMMENT: timedelta(minutes=1),
     CONTENT_TRANSLATION_KIND_COMUN: timedelta(minutes=5),
+    CONTENT_TRANSLATION_KIND_STATIC_PAGE: timedelta(minutes=5),
 }
 
 TRANSLATION_DISABLED_RETRY_DELAY = timedelta(minutes=15)
 POST_TRANSLATION_TITLE_MAX_LENGTH = 255
+COMUN_TRANSLATION_NAME_MAX_LENGTH = 160
+STATIC_PAGE_TRANSLATION_TITLE_MAX_LENGTH = 160
 CONTENT_TRANSLATION_TASK_STALE_AFTER = timedelta(minutes=12)
 
 
@@ -115,6 +123,20 @@ def _truncate_translation_title(value: str) -> str:
     if len(title) <= POST_TRANSLATION_TITLE_MAX_LENGTH:
         return title
     return title[:POST_TRANSLATION_TITLE_MAX_LENGTH].rstrip()
+
+
+def _truncate_comun_name(value: str) -> str:
+    name = str(value or "").strip()
+    if len(name) <= COMUN_TRANSLATION_NAME_MAX_LENGTH:
+        return name
+    return name[:COMUN_TRANSLATION_NAME_MAX_LENGTH].rstrip()
+
+
+def _truncate_static_page_title(value: str) -> str:
+    title = str(value or "").strip()
+    if len(title) <= STATIC_PAGE_TRANSLATION_TITLE_MAX_LENGTH:
+        return title
+    return title[:STATIC_PAGE_TRANSLATION_TITLE_MAX_LENGTH].rstrip()
 
 
 def get_content_translation_settings() -> ContentTranslationSettings:
@@ -337,6 +359,105 @@ def translate_comment_to_language(comment: PostComment, language: str) -> PostCo
     return translation
 
 
+def _comun_translation_source_payload(comun: Comun) -> dict[str, Any]:
+    categories = [
+        {
+            "id": category.id,
+            "name": category.name or "",
+            "description": category.description or "",
+        }
+        for category in _comun_translation_categories(comun)
+    ]
+    glossary_terms = [
+        {
+            "id": term.id,
+            "term": term.term or "",
+            "term_en": term.term_en or "",
+            "definition": term.definition or "",
+        }
+        for term in _comun_translation_glossary_terms(comun)
+    ]
+    return {
+        "name": comun.name or "",
+        "product_description": comun.product_description or "",
+        "target_audience": comun.target_audience or "",
+        "rules_text": comun.rules_text or "",
+        "categories": categories,
+        "glossary_terms": glossary_terms,
+    }
+
+
+def _normalize_translation_items(raw_items: object, *, keys: tuple[str, ...]) -> list[dict[str, Any]]:
+    if not isinstance(raw_items, list):
+        return []
+    normalized: list[dict[str, Any]] = []
+    seen_ids: set[int] = set()
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        try:
+            item_id = int(item.get("id") or 0)
+        except (TypeError, ValueError):
+            continue
+        if item_id <= 0 or item_id in seen_ids:
+            continue
+        seen_ids.add(item_id)
+        normalized_item: dict[str, Any] = {"id": item_id}
+        for key in keys:
+            normalized_item[key] = str(item.get(key) or "").strip()
+        normalized.append(normalized_item)
+    return normalized
+
+
+def _source_item_has_text(item: object, keys: tuple[str, ...]) -> bool:
+    if not isinstance(item, dict):
+        return False
+    return any(str(item.get(key) or "").strip() for key in keys)
+
+
+def _validate_translated_items(
+    source_items: object,
+    translated_items: list[dict[str, Any]],
+    *,
+    keys: tuple[str, ...],
+    error_message: str,
+) -> None:
+    if not isinstance(source_items, list):
+        return
+    translated_by_id = _translation_items_by_id(translated_items)
+    for source_item in source_items:
+        if not isinstance(source_item, dict) or not _source_item_has_text(source_item, keys):
+            continue
+        try:
+            item_id = int(source_item.get("id") or 0)
+        except (TypeError, ValueError):
+            continue
+        if item_id <= 0:
+            continue
+        translated_item = translated_by_id.get(item_id)
+        if not translated_item:
+            raise PostTranslationError(error_message)
+        for key in keys:
+            if str(source_item.get(key) or "").strip() and not str(translated_item.get(key) or "").strip():
+                raise PostTranslationError(error_message)
+
+
+def _translation_items_by_id(raw_items: object) -> dict[int, dict[str, Any]]:
+    if not isinstance(raw_items, list):
+        return {}
+    result: dict[int, dict[str, Any]] = {}
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        try:
+            item_id = int(item.get("id") or 0)
+        except (TypeError, ValueError):
+            continue
+        if item_id > 0:
+            result[item_id] = item
+    return result
+
+
 def translate_comun_to_language(comun: Comun, language: str) -> ComunTranslation:
     language = str(language or "").strip().lower()
     target = SUPPORTED_TRANSLATION_LANGUAGES.get(language)
@@ -344,8 +465,9 @@ def translate_comun_to_language(comun: Comun, language: str) -> ComunTranslation
         raise PostTranslationError(f"Язык перевода не поддерживается: {language}")
     if _comun_has_negative_rating(comun):
         raise AutoTranslationSkipped("Сообщество имеет отрицательный рейтинг")
-    if not (comun.product_description or "").strip() and not (comun.rules_text or "").strip():
-        raise AutoTranslationSkipped("Описание и правила сообщества пустые")
+    source_payload = _comun_translation_source_payload(comun)
+    if not _comun_translation_source_has_text(source_payload):
+        raise AutoTranslationSkipped("Переводимый контент сообщества пуст")
 
     translation, _ = ComunTranslation.objects.get_or_create(comun=comun, language=language)
     model = str(getattr(settings, "OPENROUTER_TRANSLATION_MODEL", "") or "").strip()
@@ -360,39 +482,190 @@ def translate_comun_to_language(comun: Comun, language: str) -> ComunTranslation
                 "source_language": "Russian",
                 "target_language": target["target"],
                 "target_locale": target["locale"],
-                "community": {
-                    "product_description": comun.product_description or "",
-                    "rules_text": comun.rules_text or "",
-                },
+                "community": source_payload,
             },
             system_prompt=(
-                "You are a professional localization editor. Translate Tambur community profile text "
-                "from Russian. Return only valid JSON with keys product_description and rules_text. "
-                "Preserve markdown, lists, URLs, code blocks, placeholders, and formatting. Translate "
-                "only human-readable Russian text. Do not add commentary."
+                "You are a professional localization editor. Translate Tambur community content from "
+                "Russian. Return only valid JSON with keys name, product_description, target_audience, "
+                "rules_text, categories, and glossary_terms. categories must be an array of objects "
+                "with id, name, description. glossary_terms must be an array of objects with id, term, "
+                "term_en, definition. Preserve ids exactly. Preserve markdown, lists, URLs, code blocks, "
+                "placeholders, and formatting. Translate only human-readable Russian text. Do not add "
+                "commentary."
             ),
         )
         translated_payload = _parse_translated_payload(
             response_payload,
-            keys=("product_description", "rules_text"),
+            keys=("name", "product_description", "target_audience", "rules_text"),
         )
+        raw_translated_payload = _parse_translated_json_payload(response_payload)
+        translated_name = _truncate_comun_name(translated_payload.get("name", ""))
         translated_description = str(translated_payload.get("product_description", "") or "").strip()
+        translated_target_audience = str(translated_payload.get("target_audience", "") or "").strip()
         translated_rules = str(translated_payload.get("rules_text", "") or "").strip()
+        translated_categories = _normalize_translation_items(
+            raw_translated_payload.get("categories"),
+            keys=("name", "description"),
+        )
+        translated_glossary_terms = _normalize_translation_items(
+            raw_translated_payload.get("glossary_terms"),
+            keys=("term", "term_en", "definition"),
+        )
+        if (comun.name or "").strip() and not translated_name:
+            raise PostTranslationError("OpenRouter вернул пустое название сообщества")
         if (comun.product_description or "").strip() and not translated_description:
             raise PostTranslationError("OpenRouter вернул пустое описание сообщества")
+        if (comun.target_audience or "").strip() and not translated_target_audience:
+            raise PostTranslationError("OpenRouter вернул пустой текст целевой аудитории")
         if (comun.rules_text or "").strip() and not translated_rules:
             raise PostTranslationError("OpenRouter вернул пустые правила сообщества")
+        _validate_translated_items(
+            source_payload.get("categories"),
+            translated_categories,
+            keys=("name", "description"),
+            error_message="OpenRouter вернул неполные категории сообщества",
+        )
+        _validate_translated_items(
+            source_payload.get("glossary_terms"),
+            translated_glossary_terms,
+            keys=("term", "definition"),
+            error_message="OpenRouter вернул неполные термины глоссария",
+        )
 
+        translation.name = translated_name
         translation.product_description = translated_description
+        translation.target_audience = translated_target_audience
         translation.rules_text = translated_rules
+        translation.categories = translated_categories
+        translation.glossary_terms = translated_glossary_terms
         translation.status = POST_TRANSLATION_STATUS_TRANSLATED
         translation.error_message = ""
         translation.raw_response = response_payload
         translation.model = model
         translation.save(
             update_fields=[
+                "name",
                 "product_description",
+                "target_audience",
                 "rules_text",
+                "categories",
+                "glossary_terms",
+                "status",
+                "error_message",
+                "raw_response",
+                "model",
+                "updated_at",
+            ]
+        )
+    except Exception as exc:
+        message = str(exc)[:2000]
+        translation.status = POST_TRANSLATION_STATUS_FAILED
+        translation.error_message = message
+        translation.save(update_fields=["status", "error_message", "updated_at"])
+        if isinstance(exc, PostTranslationError):
+            raise
+        raise PostTranslationError(message) from exc
+
+    return translation
+
+
+def _decode_static_page_editor_payload(value: str) -> dict[str, Any] | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+
+    candidates = [raw]
+    try:
+        decoded = base64.b64decode(raw, validate=True).decode("utf-8")
+        candidates.append(decoded)
+    except (ValueError, UnicodeDecodeError):
+        pass
+
+    for candidate in candidates:
+        try:
+            payload = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict) and isinstance(payload.get("blocks"), list):
+            return payload
+    return None
+
+
+def _encode_static_page_editor_payload(payload: dict[str, Any]) -> str:
+    raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    return base64.b64encode(raw.encode("utf-8")).decode("ascii")
+
+
+def _static_page_translation_source_payload(page: StaticPageContent) -> dict[str, Any]:
+    editor_payload = _decode_static_page_editor_payload(page.content or "")
+    return {
+        "title": page.title or "",
+        "content": editor_payload if editor_payload is not None else page.content or "",
+        "content_format": "editorjs" if editor_payload is not None else "text",
+    }
+
+
+def translate_static_page_to_language(page: StaticPageContent, language: str) -> StaticPageTranslation:
+    language = str(language or "").strip().lower()
+    target = SUPPORTED_TRANSLATION_LANGUAGES.get(language)
+    if target is None:
+        raise PostTranslationError(f"Язык перевода не поддерживается: {language}")
+    if not _static_page_is_translatable(page):
+        raise AutoTranslationSkipped("Статичная страница недоступна для перевода")
+
+    source_payload = _static_page_translation_source_payload(page)
+    translation, _ = StaticPageTranslation.objects.get_or_create(page=page, language=language)
+    model = str(getattr(settings, "OPENROUTER_TRANSLATION_MODEL", "") or "").strip()
+    translation.status = POST_TRANSLATION_STATUS_PENDING
+    translation.model = model
+    translation.error_message = ""
+    translation.save(update_fields=["status", "model", "error_message", "updated_at"])
+
+    try:
+        response_payload = _request_openrouter_json_translation(
+            {
+                "source_language": "Russian",
+                "target_language": target["target"],
+                "target_locale": target["locale"],
+                "static_page": source_payload,
+            },
+            system_prompt=(
+                "You are a professional localization editor. Translate Tambur static pages from Russian. "
+                "Return only valid JSON with keys title and content. If content is an EditorJS object, "
+                "return content as the same EditorJS object shape and preserve every block type, id, URL, "
+                "media URL, embed, code block, placeholder, and non-text field. Translate only "
+                "human-readable Russian text inside title and content. Do not add commentary."
+            ),
+        )
+        raw_translated_payload = _parse_translated_json_payload(response_payload)
+        translated_payload = _parse_translated_payload(response_payload, keys=("title",))
+        translated_title = _truncate_static_page_title(translated_payload.get("title", ""))
+        if (page.title or "").strip() and not translated_title:
+            raise PostTranslationError("OpenRouter вернул пустой заголовок статичной страницы")
+
+        raw_translated_content = raw_translated_payload.get("content")
+        if source_payload["content_format"] == "editorjs":
+            if not isinstance(raw_translated_content, dict) or not isinstance(
+                raw_translated_content.get("blocks"), list
+            ):
+                raise PostTranslationError("OpenRouter вернул статичную страницу не в формате EditorJS")
+            translated_content = _encode_static_page_editor_payload(raw_translated_content)
+        else:
+            translated_content = str(raw_translated_content or "").strip()
+
+        if (page.content or "").strip() and not translated_content:
+            raise PostTranslationError("OpenRouter вернул пустое содержимое статичной страницы")
+
+        translation.title = translated_title
+        translation.content = translated_content
+        translation.status = POST_TRANSLATION_STATUS_TRANSLATED
+        translation.error_message = ""
+        translation.raw_response = response_payload
+        translation.model = model
+        translation.save(
+            update_fields=[
+                "title",
+                "content",
                 "status",
                 "error_message",
                 "raw_response",
@@ -464,11 +737,24 @@ def schedule_comun_auto_translation(comun: Comun) -> ContentTranslationTask | No
     if not _comun_is_translatable(comun):
         _delete_auto_translation_task(CONTENT_TRANSLATION_KIND_COMUN, comun.pk)
         return None
+    source_updated_at = _comun_source_updated_at(comun)
     return _schedule_auto_translation_task(
         CONTENT_TRANSLATION_KIND_COMUN,
         comun.pk,
-        source_updated_at=comun.updated_at if hasattr(comun, "updated_at") else timezone.now(),
+        source_updated_at=source_updated_at,
         scheduled_at=timezone.now() + AUTO_TRANSLATION_DELAYS[CONTENT_TRANSLATION_KIND_COMUN],
+    )
+
+
+def schedule_static_page_auto_translation(page: StaticPageContent) -> ContentTranslationTask | None:
+    if not _static_page_is_translatable(page):
+        _delete_auto_translation_task(CONTENT_TRANSLATION_KIND_STATIC_PAGE, page.pk)
+        return None
+    return _schedule_auto_translation_task(
+        CONTENT_TRANSLATION_KIND_STATIC_PAGE,
+        page.pk,
+        source_updated_at=page.updated_at,
+        scheduled_at=(page.updated_at or timezone.now()) + AUTO_TRANSLATION_DELAYS[CONTENT_TRANSLATION_KIND_STATIC_PAGE],
     )
 
 
@@ -762,7 +1048,53 @@ def _comment_is_translatable(comment: PostComment) -> bool:
 def _comun_is_translatable(comun: Comun) -> bool:
     if not comun.pk or not comun.is_active or _comun_has_negative_rating(comun):
         return False
-    return bool((comun.product_description or "").strip() or (comun.rules_text or "").strip())
+    return _comun_translation_source_has_text(_comun_translation_source_payload(comun))
+
+
+def _static_page_is_translatable(page: StaticPageContent) -> bool:
+    if not page.pk:
+        return False
+    return bool((page.title or "").strip() or (page.content or "").strip())
+
+
+def _comun_translation_categories(comun: Comun) -> list[ComunCategory]:
+    if not comun.pk:
+        return []
+    return list(
+        ComunCategory.objects.filter(comun_id=comun.pk, is_active=True)
+        .order_by("sort_order", "name", "id")
+        .only("id", "name", "description", "updated_at")
+    )
+
+
+def _comun_translation_glossary_terms(comun: Comun) -> list[ComunGlossaryTerm]:
+    if not comun.pk or not getattr(comun, "glossary_enabled", False):
+        return []
+    return list(
+        ComunGlossaryTerm.objects.filter(comun_id=comun.pk, is_active=True)
+        .order_by("sort_order", "term", "id")
+        .only("id", "term", "term_en", "definition", "updated_at")
+    )
+
+
+def _comun_translation_source_has_text(source_payload: dict[str, Any]) -> bool:
+    for key in ("name", "product_description", "target_audience", "rules_text"):
+        if str(source_payload.get(key) or "").strip():
+            return True
+    for category in source_payload.get("categories") or []:
+        if _source_item_has_text(category, ("name", "description")):
+            return True
+    for term in source_payload.get("glossary_terms") or []:
+        if _source_item_has_text(term, ("term", "term_en", "definition")):
+            return True
+    return False
+
+
+def _comun_source_updated_at(comun: Comun):
+    timestamps = [getattr(comun, "updated_at", None)]
+    timestamps.extend(category.updated_at for category in _comun_translation_categories(comun))
+    timestamps.extend(term.updated_at for term in _comun_translation_glossary_terms(comun))
+    return max((timestamp for timestamp in timestamps if timestamp), default=timezone.now())
 
 
 def _comun_has_negative_rating(comun: Comun | None) -> bool:
@@ -819,12 +1151,24 @@ def _process_translation_task_payload(task: ContentTranslationTask) -> None:
         comun = Comun.objects.filter(pk=task.object_id).first()
         if not comun or not _comun_is_translatable(comun):
             raise AutoTranslationSkipped("Сообщество недоступно для перевода")
-        _raise_if_task_is_stale(task, comun.updated_at)
+        _raise_if_task_is_stale(task, _comun_source_updated_at(comun))
         _reserve_translation_budget(task)
         for language in SUPPORTED_TRANSLATION_LANGUAGES:
             if _comun_translation_is_current(comun, language):
                 continue
             translate_comun_to_language(comun, language)
+        return
+
+    if task.kind == CONTENT_TRANSLATION_KIND_STATIC_PAGE:
+        page = StaticPageContent.objects.filter(pk=task.object_id).first()
+        if not page or not _static_page_is_translatable(page):
+            raise AutoTranslationSkipped("Статичная страница недоступна для перевода")
+        _raise_if_task_is_stale(task, page.updated_at)
+        _reserve_translation_budget(task)
+        for language in SUPPORTED_TRANSLATION_LANGUAGES:
+            if _static_page_translation_is_current(page, language):
+                continue
+            translate_static_page_to_language(page, language)
         return
 
     raise AutoTranslationSkipped(f"Неизвестный тип задачи: {task.kind}")
@@ -858,13 +1202,63 @@ def _comun_translation_is_current(comun: Comun, language: str) -> bool:
     translation = ComunTranslation.objects.filter(comun=comun, language=language).first()
     if not translation or translation.status != POST_TRANSLATION_STATUS_TRANSLATED:
         return False
+    if (comun.name or "").strip() and not (translation.name or "").strip():
+        return False
     if (comun.product_description or "").strip() and not (
         translation.product_description or ""
     ).strip():
         return False
+    if (comun.target_audience or "").strip() and not (
+        translation.target_audience or ""
+    ).strip():
+        return False
     if (comun.rules_text or "").strip() and not (translation.rules_text or "").strip():
         return False
-    return _translation_updated_after_source(translation, comun.updated_at)
+    translated_categories = _translation_items_by_id(translation.categories)
+    for category in _comun_translation_categories(comun):
+        if not _source_item_has_text(
+            {"name": category.name, "description": category.description},
+            ("name", "description"),
+        ):
+            continue
+        category_translation = translated_categories.get(category.id)
+        if not category_translation:
+            return False
+        if (category.name or "").strip() and not (category_translation.get("name") or "").strip():
+            return False
+        if (category.description or "").strip() and not (
+            category_translation.get("description") or ""
+        ).strip():
+            return False
+
+    translated_terms = _translation_items_by_id(translation.glossary_terms)
+    for term in _comun_translation_glossary_terms(comun):
+        if not _source_item_has_text(
+            {"term": term.term, "term_en": term.term_en, "definition": term.definition},
+            ("term", "term_en", "definition"),
+        ):
+            continue
+        term_translation = translated_terms.get(term.id)
+        if not term_translation:
+            return False
+        if (term.term or "").strip() and not (term_translation.get("term") or "").strip():
+            return False
+        if (term.definition or "").strip() and not (
+            term_translation.get("definition") or ""
+        ).strip():
+            return False
+    return _translation_updated_after_source(translation, _comun_source_updated_at(comun))
+
+
+def _static_page_translation_is_current(page: StaticPageContent, language: str) -> bool:
+    translation = StaticPageTranslation.objects.filter(page=page, language=language).first()
+    if not translation or translation.status != POST_TRANSLATION_STATUS_TRANSLATED:
+        return False
+    if (page.title or "").strip() and not (translation.title or "").strip():
+        return False
+    if (page.content or "").strip() and not (translation.content or "").strip():
+        return False
+    return _translation_updated_after_source(translation, page.updated_at)
 
 
 def _raise_if_task_is_stale(task: ContentTranslationTask, source_updated_at) -> None:
@@ -979,6 +1373,11 @@ def _parse_translated_payload(
     *,
     keys: tuple[str, ...] = ("title", "content"),
 ) -> dict[str, str]:
+    payload = _parse_translated_json_payload(response_payload)
+    return {key: str(payload.get(key, "") or "") for key in keys}
+
+
+def _parse_translated_json_payload(response_payload: dict[str, Any]) -> dict[str, Any]:
     try:
         message = response_payload["choices"][0]["message"]
     except (KeyError, IndexError, TypeError) as exc:
@@ -995,7 +1394,7 @@ def _parse_translated_payload(
 
     if not isinstance(payload, dict):
         raise PostTranslationError("OpenRouter вернул не JSON-объект")
-    return {key: str(payload.get(key, "") or "") for key in keys}
+    return payload
 
 
 def _normalize_openrouter_content(content: Any) -> str:

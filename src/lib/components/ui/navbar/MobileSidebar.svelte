@@ -18,7 +18,8 @@
   import { notifications, profile } from '$lib/auth.js'
   import SidebarButton from '$lib/components/ui/sidebar/SidebarButton.svelte'
   import { Badge } from 'mono-svelte'
-  import { t } from '$lib/translations'
+  import { locale, t } from '$lib/translations'
+  import { normalizeInterfaceLanguage, originalPostLanguage } from '$lib/postLanguages'
   import { page } from '$app/stores'
   import { onMount } from 'svelte'
   import { Icon } from 'svelte-hero-icons'
@@ -38,9 +39,19 @@
   const PUBLIC_PROJECT_AUTHORS = env.PUBLIC_PROJECT_AUTHORS || '/authors';
   const PUBLIC_PROJECT_RULES = env.PUBLIC_PROJECT_RULES || '/rules';
 
+  const localizedProjectPath = (path: string) => {
+    const language = normalizeInterfaceLanguage($locale) ?? originalPostLanguage
+    if (language === originalPostLanguage || !path.startsWith('/')) return path
+    return `/${language}${path}`
+  }
+
   let loginModalOpen = false;
   let sidebarComuns: BackendComun[] = [];
   let sidebarComunsTotal = 0;
+  $: projectAboutPath = localizedProjectPath(PUBLIC_PROJECT_ABOUT);
+  $: projectAdvertisementPath = localizedProjectPath(PUBLIC_PROJECT_ADVRTISEMENT);
+  $: projectAuthorsPath = localizedProjectPath(PUBLIC_PROJECT_AUTHORS);
+  $: projectRulesPath = localizedProjectPath(PUBLIC_PROJECT_RULES);
 
   function handleAuthRequired(e: MouseEvent) {
     if (!$profile?.jwt) {
@@ -202,28 +213,28 @@
     {/if}
     <div class="flex flex-col gap-1">
       <SidebarButton 
-        href={PUBLIC_PROJECT_ABOUT} 
+        href={projectAboutPath}
         icon={InformationCircle}
         on:click={handleNavigation}
       >
         <span slot="label">{$t('site.nav.aboutProject')}</span>
       </SidebarButton>
       <SidebarButton 
-        href={PUBLIC_PROJECT_ADVRTISEMENT} 
+        href={projectAdvertisementPath}
         icon={Megaphone}
         on:click={handleNavigation}
       >
         <span slot="label">{$t('site.nav.advertisement')}</span>
       </SidebarButton>
       <SidebarButton 
-        href={PUBLIC_PROJECT_AUTHORS} 
+        href={projectAuthorsPath}
         icon={PencilSquare}
         on:click={handleNavigation}
       >
         <span slot="label">{$t('site.nav.authors')}</span>
       </SidebarButton>
       <SidebarButton 
-        href={PUBLIC_PROJECT_RULES} 
+        href={projectRulesPath}
         icon={ClipboardDocumentList}
         on:click={handleNavigation}
       >

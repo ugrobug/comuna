@@ -1332,6 +1332,12 @@
             "communityNotFound": "Comunidade não encontrada",
             "tagNotFound": "Tag não encontrada"
         },
+        "feed": {
+            "readOnlyNotice": "Mostrando apenas posts lidos",
+            "returnToFeed": "Voltar",
+            "readPostsHidden": "Posts lidos estão ocultos",
+            "showReadPosts": "Mostrar"
+        },
         "sidebar": {
             "hot": "Em alta",
             "myFeed": "Meu feed",

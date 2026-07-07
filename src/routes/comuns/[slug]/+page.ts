@@ -16,13 +16,14 @@ export const load = async ({ fetch, params, url, parent }) => {
       ? [category]
       : []
   const parentData = await parent()
+  const language = parentData.language ?? 'ru'
 
   const postsUrl = new URL(
     buildComunPostsUrl(
       slug,
       hasCategoriesFilter
-        ? { categorySlugs }
-        : { categorySlug: category || undefined }
+        ? { categorySlugs, language }
+        : { categorySlug: category || undefined, language }
     ),
     url.origin
   )
