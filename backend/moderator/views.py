@@ -8,9 +8,14 @@ from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
-from communities.models import Comun
+from communities.models import Comun, ComunCategory, ComunGlossaryTerm
 from feeds.models import (
     Author,
+    CONTENT_TRANSLATION_KIND_COMMENT,
+    CONTENT_TRANSLATION_KIND_COMUN,
+    CONTENT_TRANSLATION_KIND_POST,
+    CONTENT_TRANSLATION_KIND_STATIC_PAGE,
+    ComunTranslation,
     POST_TRANSLATION_LANGUAGE_CHOICES,
     POST_TRANSLATION_STATUS_TRANSLATED,
     Post,
@@ -21,6 +26,8 @@ from feeds.models import (
     PostTranslation,
     PostViewSettings,
     ContentTranslationTask,
+    StaticPageContent,
+    StaticPageTranslation,
 )
 from feeds.translation_service import (
     serialize_content_translation_settings,
@@ -423,6 +430,10 @@ def _content_translation_coverage() -> dict:
         post__is_pending=False,
         post__author__is_blocked=False,
     )
+    public_comuns = Comun.objects.filter(is_active=True)
+    public_categories = ComunCategory.objects.filter(is_active=True, comun__is_active=True)
+    public_terms = ComunGlossaryTerm.objects.filter(is_active=True, comun__is_active=True)
+    static_pages = StaticPageContent.objects.all()
     target_languages = [language for language, _label in POST_TRANSLATION_LANGUAGE_CHOICES]
     target_language_count = len(target_languages)
     translated_posts = public_posts.filter(
@@ -448,14 +459,41 @@ def _content_translation_coverage() -> dict:
         comment__post__is_pending=False,
         comment__post__author__is_blocked=False,
     ).count()
+    translated_comun_rows = ComunTranslation.objects.filter(
+        status=POST_TRANSLATION_STATUS_TRANSLATED,
+        language__in=target_languages,
+        comun__is_active=True,
+    ).count()
+    translated_static_page_rows = StaticPageTranslation.objects.filter(
+        status=POST_TRANSLATION_STATUS_TRANSLATED,
+        language__in=target_languages,
+    ).count()
     total_posts = public_posts.count()
     total_comments = public_comments.count()
+    total_comuns = public_comuns.count()
+    total_categories = public_categories.count()
+    total_terms = public_terms.count()
+    total_static_pages = static_pages.count()
 
-    return {
-        "posts": {
-            "total": total_posts,
-            "translated": translated_posts.count(),
-            "fully_translated": public_posts.annotate(
+    translated_category_rows = _translated_comun_item_rows(
+        source_ids=set(public_categories.values_list("id", flat=True)),
+        field="categories",
+        target_languages=target_languages,
+    )
+    translated_term_rows = _translated_comun_item_rows(
+        source_ids=set(public_terms.values_list("id", flat=True)),
+        field="glossary_terms",
+        target_languages=target_languages,
+    )
+
+    breakdown = {
+        "posts": _coverage_breakdown_item(
+            translated=translated_post_rows,
+            target=total_posts * target_language_count,
+            queued=0,
+            total=total_posts,
+            translated_objects=translated_posts.count(),
+            fully_translated=public_posts.annotate(
                 translated_language_count=Count(
                     "translations__language",
                     filter=Q(
@@ -467,6 +505,109 @@ def _content_translation_coverage() -> dict:
             )
             .filter(translated_language_count=target_language_count)
             .count(),
+            target_languages=target_language_count,
+        ),
+        "comments": _coverage_breakdown_item(
+            translated=translated_comment_rows,
+            target=total_comments * target_language_count,
+            queued=0,
+            total=total_comments,
+            translated_objects=translated_comments.count(),
+            fully_translated=public_comments.annotate(
+                translated_language_count=Count(
+                    "translations__language",
+                    filter=Q(
+                        translations__status=POST_TRANSLATION_STATUS_TRANSLATED,
+                        translations__language__in=target_languages,
+                    ),
+                    distinct=True,
+                )
+            )
+            .filter(translated_language_count=target_language_count)
+            .count(),
+            target_languages=target_language_count,
+        ),
+        "comuns": _coverage_breakdown_item(
+            translated=translated_comun_rows,
+            target=total_comuns * target_language_count,
+            queued=0,
+            total=total_comuns,
+            translated_objects=public_comuns.filter(
+                translations__status=POST_TRANSLATION_STATUS_TRANSLATED,
+                translations__language__in=target_languages,
+            )
+            .distinct()
+            .count(),
+            fully_translated=public_comuns.annotate(
+                translated_language_count=Count(
+                    "translations__language",
+                    filter=Q(
+                        translations__status=POST_TRANSLATION_STATUS_TRANSLATED,
+                        translations__language__in=target_languages,
+                    ),
+                    distinct=True,
+                )
+            )
+            .filter(translated_language_count=target_language_count)
+            .count(),
+            target_languages=target_language_count,
+        ),
+        "categories": _coverage_breakdown_item(
+            translated=translated_category_rows,
+            target=total_categories * target_language_count,
+            queued=0,
+            total=total_categories,
+            target_languages=target_language_count,
+        ),
+        "terms": _coverage_breakdown_item(
+            translated=translated_term_rows,
+            target=total_terms * target_language_count,
+            queued=0,
+            total=total_terms,
+            target_languages=target_language_count,
+        ),
+        "static_pages": _coverage_breakdown_item(
+            translated=translated_static_page_rows,
+            target=total_static_pages * target_language_count,
+            queued=0,
+            total=total_static_pages,
+            translated_objects=static_pages.filter(
+                translations__status=POST_TRANSLATION_STATUS_TRANSLATED,
+                translations__language__in=target_languages,
+            )
+            .distinct()
+            .count(),
+            fully_translated=static_pages.annotate(
+                translated_language_count=Count(
+                    "translations__language",
+                    filter=Q(
+                        translations__status=POST_TRANSLATION_STATUS_TRANSLATED,
+                        translations__language__in=target_languages,
+                    ),
+                    distinct=True,
+                )
+            )
+            .filter(translated_language_count=target_language_count)
+            .count(),
+            target_languages=target_language_count,
+        ),
+    }
+
+    translated_total = sum(item["translated"] for item in breakdown.values())
+    target_total = sum(item["target"] for item in breakdown.values())
+
+    return {
+        "summary": {
+            "translated": translated_total,
+            "target": target_total,
+            "percent": round((translated_total / target_total) * 100, 2) if target_total else 0,
+            "target_languages": target_language_count,
+        },
+        "breakdown": breakdown,
+        "posts": {
+            "total": total_posts,
+            "translated": translated_posts.count(),
+            "fully_translated": breakdown["posts"]["fully_translated"],
             "translation_rows": translated_post_rows,
             "target_translation_rows": total_posts * target_language_count,
             "target_languages": target_language_count,
@@ -474,18 +615,7 @@ def _content_translation_coverage() -> dict:
         "comments": {
             "total": total_comments,
             "translated": translated_comments.count(),
-            "fully_translated": public_comments.annotate(
-                translated_language_count=Count(
-                    "translations__language",
-                    filter=Q(
-                        translations__status=POST_TRANSLATION_STATUS_TRANSLATED,
-                        translations__language__in=target_languages,
-                    ),
-                    distinct=True,
-                )
-            )
-            .filter(translated_language_count=target_language_count)
-            .count(),
+            "fully_translated": breakdown["comments"]["fully_translated"],
             "translation_rows": translated_comment_rows,
             "target_translation_rows": total_comments * target_language_count,
             "target_languages": target_language_count,
@@ -493,17 +623,87 @@ def _content_translation_coverage() -> dict:
         "translation_rows": {
             "posts": translated_post_rows,
             "comments": translated_comment_rows,
+            "comuns": translated_comun_rows,
+            "categories": translated_category_rows,
+            "terms": translated_term_rows,
+            "static_pages": translated_static_page_rows,
         },
     }
 
 
+def _coverage_breakdown_item(
+    *,
+    translated: int,
+    target: int,
+    queued: int,
+    total: int,
+    target_languages: int,
+    translated_objects: int | None = None,
+    fully_translated: int | None = None,
+) -> dict:
+    return {
+        "translated": translated,
+        "target": target,
+        "queued": queued,
+        "total": total,
+        "translated_objects": translated_objects,
+        "fully_translated": fully_translated,
+        "target_languages": target_languages,
+        "percent": round((translated / target) * 100, 2) if target else 0,
+    }
+
+
+def _translated_comun_item_rows(
+    *,
+    source_ids: set[int],
+    field: str,
+    target_languages: list[str],
+) -> int:
+    if not source_ids:
+        return 0
+    translated_rows = 0
+    translations = ComunTranslation.objects.filter(
+        status=POST_TRANSLATION_STATUS_TRANSLATED,
+        language__in=target_languages,
+        comun__is_active=True,
+    ).values_list(field, flat=True)
+    for items in translations:
+        if not isinstance(items, list):
+            continue
+        seen_ids: set[int] = set()
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            try:
+                item_id = int(item.get("id"))
+            except (TypeError, ValueError):
+                continue
+            if item_id in source_ids and item_id not in seen_ids:
+                seen_ids.add(item_id)
+        translated_rows += len(seen_ids)
+    return translated_rows
+
+
 def _content_translation_queue() -> dict:
     pending = ContentTranslationTask.objects.filter(status="pending")
+    pending_posts = pending.filter(kind=CONTENT_TRANSLATION_KIND_POST).count()
+    pending_comments = pending.filter(kind=CONTENT_TRANSLATION_KIND_COMMENT).count()
+    pending_comuns = pending.filter(kind=CONTENT_TRANSLATION_KIND_COMUN).count()
+    pending_static_pages = pending.filter(kind=CONTENT_TRANSLATION_KIND_STATIC_PAGE).count()
     return {
         "pending": pending.count(),
-        "pending_posts": pending.filter(kind="post").count(),
-        "pending_comments": pending.filter(kind="comment").count(),
-        "pending_comuns": pending.filter(kind="comun").count(),
+        "pending_posts": pending_posts,
+        "pending_comments": pending_comments,
+        "pending_comuns": pending_comuns,
+        "pending_static_pages": pending_static_pages,
+        "breakdown": {
+            "posts": pending_posts,
+            "comments": pending_comments,
+            "comuns": pending_comuns,
+            "categories": 0,
+            "terms": 0,
+            "static_pages": pending_static_pages,
+        },
     }
 
 

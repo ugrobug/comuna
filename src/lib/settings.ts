@@ -7,6 +7,7 @@ import type { Link } from './components/ui/navbar/link'
 import { buildAuthFeedSettingsUrl } from './api/backend'
 import { refreshSidebarComuns } from './communitySidebar'
 import { invalidateCachedJson } from './api/publicCache'
+import { normalizeInterfaceLanguage, originalPostLanguage } from './postLanguages'
 
 const supportedInterfaceLanguages = new Set(['ru', 'en', 'es', 'pt', 'de', 'fr', 'tr', 'id'])
 
@@ -104,6 +105,7 @@ export interface Settings {
   infiniteScroll: boolean
   homeFeed: 'hot' | 'mine'
   language: string | null
+  languageManuallySelected: boolean
   myFeedAuthors: string[]
   myFeedTags: string[]
   myFeedComuns: string[]
@@ -193,6 +195,7 @@ export const defaultSettings: Settings = {
   infiniteScroll: true,
   homeFeed: 'hot',
   language: null,
+  languageManuallySelected: false,
   myFeedAuthors: [],
   myFeedTags: [],
   myFeedComuns: [],
@@ -227,6 +230,7 @@ type BackendFeedSettings = {
   my_feed_hide_negative?: boolean
   tag_rules?: Record<string, 'hide' | 'blur'>
   interface_language?: string
+  interface_language_manual?: boolean
   keyboard_shortcuts_hint_dismissed?: boolean
 }
 
@@ -256,6 +260,7 @@ const feedSettingsSnapshot = (settings: Settings) =>
     keyboardShortcutsHintDismissed: settings.keyboardShortcutsHintDismissed,
     tagRules: settings.tagRules ?? {},
     language: settings.language ?? null,
+    languageManuallySelected: Boolean(settings.languageManuallySelected),
   })
 
 const backendPayloadFromSettings = (settings: Settings) => ({
@@ -269,11 +274,14 @@ const backendPayloadFromSettings = (settings: Settings) => ({
   my_feed_hide_negative: settings.myFeedHideNegative,
   keyboard_shortcuts_hint_dismissed: settings.keyboardShortcutsHintDismissed,
   tag_rules: settings.tagRules ?? {},
-  interface_language: settings.language ?? '',
+  interface_language: settings.languageManuallySelected ? (settings.language ?? '') : '',
+  interface_language_manual: Boolean(settings.languageManuallySelected && settings.language),
 })
 
-const settingsFromBackendPayload = (settings: Settings, payload: BackendFeedSettings): Settings =>
-  migrate({
+const settingsFromBackendPayload = (settings: Settings, payload: BackendFeedSettings): Settings => {
+  const backendLanguage = normalizeStoredLanguage(payload.interface_language)
+  const hasManualLanguage = Boolean(payload.interface_language_manual && backendLanguage)
+  return migrate({
     ...settings,
     homeFeed: payload.home_feed ?? settings.homeFeed,
     hideReadPosts: payload.hide_read_posts ?? settings.hideReadPosts,
@@ -286,8 +294,10 @@ const settingsFromBackendPayload = (settings: Settings, payload: BackendFeedSett
     keyboardShortcutsHintDismissed:
       payload.keyboard_shortcuts_hint_dismissed ?? settings.keyboardShortcutsHintDismissed,
     tagRules: payload.tag_rules ?? settings.tagRules,
-    language: normalizeStoredLanguage(payload.interface_language) ?? settings.language,
+    language: hasManualLanguage ? backendLanguage : null,
+    languageManuallySelected: hasManualLanguage,
   })
+}
 
 let backendFeedSettingsToken: string | null = null
 let backendFeedSettingsHydrated = false
@@ -361,7 +371,7 @@ export const loadBackendFeedSettings = async (token: string | null) => {
     applyingBackendFeedSettings = true
     try {
       const nextSettings = settingsFromBackendPayload(localSettings, payload.settings)
-      if (nextSettings.language) {
+      if (nextSettings.languageManuallySelected && nextSettings.language) {
         await loadTranslations(nextSettings.language)
       }
       userSettings.set(nextSettings)
@@ -509,6 +519,10 @@ const migrate = (settings: any): Settings => {
     settings.hideReadPosts = defaultSettings.hideReadPosts
   }
   settings.language = normalizeStoredLanguage(settings.language)
+  settings.languageManuallySelected = Boolean(settings.languageManuallySelected && settings.language)
+  if (!settings.languageManuallySelected) {
+    settings.language = null
+  }
   settings.dock = { ...defaultSettings.dock, pins: [] }
   settings.defaultSort = { ...defaultSettings.defaultSort }
   settings.showInstances = { ...defaultSettings.showInstances }
@@ -577,9 +591,16 @@ userSettings.subscribe((settings) => {
     )
     scheduleBackendFeedSettingsSave(settings)
   }
-  if (settings.language) {
+  if (settings.languageManuallySelected && settings.language) {
     locale.set(settings.language)
   } else {
-    if (browser) locale.set(navigator?.language)
+    if (browser) {
+      const deviceLanguage = (
+        navigator?.languages?.map((language) => normalizeInterfaceLanguage(language)).find(Boolean) ??
+        normalizeInterfaceLanguage(navigator?.language) ??
+        originalPostLanguage
+      )
+      locale.set(deviceLanguage)
+    }
   }
 })

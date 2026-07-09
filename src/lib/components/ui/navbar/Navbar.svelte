@@ -61,6 +61,7 @@
   const PUBLIC_PROJECT_ABOUT = env.PUBLIC_PROJECT_ABOUT || '/about';
   const PUBLIC_PROJECT_ADVRTISEMENT =
     env.PUBLIC_PROJECT_ADVRTISEMENT || '/advertisement';
+  const PUBLIC_PROJECT_APPS = env.PUBLIC_PROJECT_APPS || '/apps';
   const PUBLIC_PROJECT_AUTHORS = env.PUBLIC_PROJECT_AUTHORS || '/authors';
   const PUBLIC_PROJECT_RULES = env.PUBLIC_PROJECT_RULES || '/rules';
 
@@ -89,6 +90,7 @@
   let sidebarOpen = false;
   $: projectAboutPath = localizedProjectPath(PUBLIC_PROJECT_ABOUT);
   $: projectAdvertisementPath = localizedProjectPath(PUBLIC_PROJECT_ADVRTISEMENT);
+  $: projectAppsPath = localizedProjectPath(PUBLIC_PROJECT_APPS);
   $: projectAuthorsPath = localizedProjectPath(PUBLIC_PROJECT_AUTHORS);
   $: projectRulesPath = localizedProjectPath(PUBLIC_PROJECT_RULES);
   function toggleSidebar() {
@@ -152,7 +154,7 @@
 
 <CommandsWrapper bind:open={promptOpen} />
 <nav
-  class="flex flex-row gap-2 items-center w-full mx-auto z-[1000] box-border p-0.5
+  class="flex flex-row gap-2 items-center w-full mx-auto z-[1000] box-border p-0 md:p-0.5
   @container backdrop-blur-xl 
   bg-slate-50/80 dark:bg-zinc-950/80
   pointer-events-auto overflow-visible
@@ -160,15 +162,19 @@
   md:relative fixed top-0 left-0 right-0 md:top-0 md:bottom-auto"
   style={$$props.style}
 >
-  <div class="w-full mx-auto px-[30px] md:px-0 md:py-2 py-1">
+  <div class="w-full mx-auto px-0 md:py-2 py-1">
     <!-- Единый навбар для всех устройств -->
     <div class="grid navbar-desktop-grid items-center w-full">
       <!-- 1 колонка: гамбургер, логотип -->
       <div class="navbar-brand-cell flex min-w-0 items-center pl-0 gap-2">
         <!-- Кнопка гамбургера только на мобилках -->
         <button
+          type="button"
           class="md:hidden w-10 h-10 shrink-0 rounded-full flex items-center justify-center hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
           title="Меню"
+          aria-label={$t('site.nav.sideMenu')}
+          aria-controls="mobile-site-menu"
+          aria-expanded={sidebarOpen}
           on:click={toggleSidebar}
         >
           <Icon src={Bars3} size="18" class="w-4 h-4" />
@@ -338,20 +344,22 @@
 <LoginModal bind:open={loginModalOpen} />
 
 {#if sidebarOpen}
-  <button
-    type="button"
-    tabindex="-1"
-    class="fixed left-0 right-0 z-[9999] bg-black/30 md:hidden transition-opacity duration-300"
-    style="pointer-events: auto; top: 104px; height: calc(100vh - 104px);"
-    on:click={toggleSidebar}
-    aria-label={$t('site.nav.closeMenu')}
+  <div
+    class="fixed left-0 right-0 z-[9999] md:hidden"
+    style="pointer-events: auto; top: 112px; height: calc(100dvh - 112px);"
   >
-    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+    <button
+      type="button"
+      tabindex="-1"
+      class="absolute inset-0 bg-black/30 transition-opacity duration-300"
+      on:click={() => (sidebarOpen = false)}
+      aria-label={$t('site.nav.closeMenu')}
+    ></button>
     <aside
-      class="absolute left-0 top-0 bottom-0 w-3/4 h-full bg-white dark:bg-zinc-900 shadow-lg flex flex-col items-start justify-start overflow-y-auto p-4 gap-2 transform transition-transform duration-300"
+      id="mobile-site-menu"
+      class="absolute left-0 top-0 bottom-0 w-[min(82vw,20rem)] h-full bg-white dark:bg-zinc-900 shadow-lg flex flex-col items-start justify-start overflow-y-auto p-4 gap-2 transform transition-transform duration-300"
       class:translate-x-0={sidebarOpen}
       class:-translate-x-full={!sidebarOpen}
-      on:click|stopPropagation
       aria-label={$t('site.nav.sideMenu')}
     >
       <!-- Контент меню с отступом сверху -->
@@ -470,6 +478,9 @@
           <SidebarButton href={projectAdvertisementPath} icon={Megaphone} on:click={() => { sidebarOpen = false; }}>
             <span slot="label">{$t('site.nav.advertisement')}</span>
           </SidebarButton>
+          <SidebarButton href={projectAppsPath} icon={DocumentText} on:click={() => { sidebarOpen = false; }}>
+            <span slot="label">{$t('site.nav.apps')}</span>
+          </SidebarButton>
           <SidebarButton href={projectAuthorsPath} icon={PencilSquare} on:click={() => { sidebarOpen = false; }}>
             <span slot="label">{$t('site.nav.authors')}</span>
           </SidebarButton>
@@ -481,7 +492,7 @@
 
 	      </div>
 	      </aside>
-    </button>
+  </div>
 {/if}
 
 <style>

@@ -36,6 +36,7 @@
   const PUBLIC_PROJECT_ABOUT = env.PUBLIC_PROJECT_ABOUT || '/about';
   const PUBLIC_PROJECT_ADVRTISEMENT =
     env.PUBLIC_PROJECT_ADVRTISEMENT || '/advertisement';
+  const PUBLIC_PROJECT_APPS = env.PUBLIC_PROJECT_APPS || '/apps';
   const PUBLIC_PROJECT_AUTHORS = env.PUBLIC_PROJECT_AUTHORS || '/authors';
   const PUBLIC_PROJECT_RULES = env.PUBLIC_PROJECT_RULES || '/rules';
 
@@ -50,6 +51,7 @@
   let sidebarComunsTotal = 0;
   $: projectAboutPath = localizedProjectPath(PUBLIC_PROJECT_ABOUT);
   $: projectAdvertisementPath = localizedProjectPath(PUBLIC_PROJECT_ADVRTISEMENT);
+  $: projectAppsPath = localizedProjectPath(PUBLIC_PROJECT_APPS);
   $: projectAuthorsPath = localizedProjectPath(PUBLIC_PROJECT_AUTHORS);
   $: projectRulesPath = localizedProjectPath(PUBLIC_PROJECT_RULES);
 
@@ -225,6 +227,13 @@
         on:click={handleNavigation}
       >
         <span slot="label">{$t('site.nav.advertisement')}</span>
+      </SidebarButton>
+      <SidebarButton
+        href={projectAppsPath}
+        icon={DocumentText}
+        on:click={handleNavigation}
+      >
+        <span slot="label">{$t('site.nav.apps')}</span>
       </SidebarButton>
       <SidebarButton 
         href={projectAuthorsPath}

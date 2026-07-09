@@ -77,7 +77,7 @@ def _feed_settings_have_customizations(settings: UserFeedSettings) -> bool:
             bool(settings.hidden_authors),
             not bool(settings.my_feed_hide_negative),
             dict(settings.tag_rules or {}) != default_rules,
-            bool(settings.interface_language),
+            bool(settings.interface_language_manual and settings.interface_language),
             bool(settings.keyboard_shortcuts_hint_dismissed),
         ]
     )
@@ -96,7 +96,12 @@ def _serialize_user_feed_settings(settings: UserFeedSettings) -> dict:
         "hidden_authors": _normalize_unique_string_list(settings.hidden_authors),
         "my_feed_hide_negative": bool(settings.my_feed_hide_negative),
         "tag_rules": _normalize_tag_rules(settings.tag_rules),
-        "interface_language": _normalize_interface_language(settings.interface_language),
+        "interface_language": (
+            _normalize_interface_language(settings.interface_language)
+            if settings.interface_language_manual
+            else ""
+        ),
+        "interface_language_manual": bool(settings.interface_language_manual),
         "keyboard_shortcuts_hint_dismissed": bool(settings.keyboard_shortcuts_hint_dismissed),
         "updated_at": settings.updated_at.isoformat() if settings.updated_at else None,
     }
@@ -129,6 +134,10 @@ def _apply_user_feed_settings_payload(settings: UserFeedSettings, payload: dict)
         settings.tag_rules = _normalize_tag_rules(payload.get("tag_rules"))
     if "interface_language" in payload:
         settings.interface_language = _normalize_interface_language(payload.get("interface_language"))
+    if "interface_language_manual" in payload:
+        settings.interface_language_manual = bool(payload.get("interface_language_manual"))
+        if not settings.interface_language_manual:
+            settings.interface_language = ""
     if "keyboard_shortcuts_hint_dismissed" in payload:
         settings.keyboard_shortcuts_hint_dismissed = bool(
             payload.get("keyboard_shortcuts_hint_dismissed")

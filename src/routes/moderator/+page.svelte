@@ -137,13 +137,45 @@
       translation_rows?: {
         posts?: number
         comments?: number
+        comuns?: number
+        categories?: number
+        terms?: number
+        static_pages?: number
       }
+      summary?: {
+        translated?: number
+        target?: number
+        percent?: number
+        target_languages?: number
+      }
+      breakdown?: Record<
+        string,
+        {
+          translated?: number
+          target?: number
+          queued?: number
+          total?: number
+          translated_objects?: number | null
+          fully_translated?: number | null
+          target_languages?: number
+          percent?: number
+        }
+      >
     }
     queue?: {
       pending?: number
       pending_posts?: number
       pending_comments?: number
       pending_comuns?: number
+      pending_static_pages?: number
+      breakdown?: {
+        posts?: number
+        comments?: number
+        comuns?: number
+        categories?: number
+        terms?: number
+        static_pages?: number
+      }
     }
     usage?: {
       day_start?: string
@@ -374,6 +406,39 @@
   ]
 
   const formatNumber = (value: number) => new Intl.NumberFormat('ru-RU').format(value)
+  const formatPercent = (value: number) =>
+    `${new Intl.NumberFormat('ru-RU', {
+      maximumFractionDigits: 1,
+    }).format(Number.isFinite(value) ? value : 0)}%`
+
+  const translationBreakdownLabels: Record<string, string> = {
+    posts: 'Статьи',
+    comments: 'Комментарии',
+    comuns: 'Сообщества',
+    categories: 'Рубрики',
+    terms: 'Термины',
+    static_pages: 'Статичные страницы',
+  }
+  const translationBreakdownOrder = [
+    'posts',
+    'comments',
+    'comuns',
+    'categories',
+    'terms',
+    'static_pages',
+  ]
+
+  $: translationBreakdownRows = translationBreakdownOrder.map((key) => {
+    const item = translationSettings?.coverage?.breakdown?.[key] ?? {}
+    return {
+      key,
+      label: translationBreakdownLabels[key] ?? key,
+      translated: Number(item.translated ?? 0),
+      target: Number(item.target ?? 0),
+      queued: Number(translationSettings?.queue?.breakdown?.[key] ?? item.queued ?? 0),
+      percent: Number(item.percent ?? 0),
+    }
+  })
   const formatDate = (value: string) =>
     new Intl.DateTimeFormat('ru-RU', {
       day: '2-digit',
@@ -1083,35 +1148,33 @@
           {/each}
         </div>
       {:else if translationSettings}
-        <div class="translation-coverage-grid">
-          <div class="translation-coverage-card">
-            <span>Языковые версии статей</span>
-            <strong>
-              {formatNumber(translationSettings.coverage?.posts?.translation_rows ?? 0)} / {formatNumber(translationSettings.coverage?.posts?.target_translation_rows ?? 0)}
-            </strong>
-            <small>
-              Полностью: {formatNumber(translationSettings.coverage?.posts?.fully_translated ?? 0)} из {formatNumber(translationSettings.coverage?.posts?.total ?? 0)}.
-              С любым переводом: {formatNumber(translationSettings.coverage?.posts?.translated ?? 0)}.
-            </small>
+        <div class="translation-summary-card">
+          <div class="translation-summary-main">
+            <div>
+              <span>Всего</span>
+              <strong>
+                {formatNumber(translationSettings.coverage?.summary?.translated ?? 0)}
+                / {formatNumber(translationSettings.queue?.pending ?? 0)}
+              </strong>
+              <small>переведено / в очереди</small>
+            </div>
+            <div>
+              <span>Общее покрытие</span>
+              <strong>{formatPercent(translationSettings.coverage?.summary?.percent ?? 0)}</strong>
+              <small>
+                {formatNumber(translationSettings.coverage?.summary?.translated ?? 0)}
+                из {formatNumber(translationSettings.coverage?.summary?.target ?? 0)} языковых версий
+              </small>
+            </div>
           </div>
-          <div class="translation-coverage-card">
-            <span>Языковые версии комментариев</span>
-            <strong>
-              {formatNumber(translationSettings.coverage?.comments?.translation_rows ?? 0)} / {formatNumber(translationSettings.coverage?.comments?.target_translation_rows ?? 0)}
-            </strong>
-            <small>
-              Полностью: {formatNumber(translationSettings.coverage?.comments?.fully_translated ?? 0)} из {formatNumber(translationSettings.coverage?.comments?.total ?? 0)}.
-              С любым переводом: {formatNumber(translationSettings.coverage?.comments?.translated ?? 0)}.
-            </small>
-          </div>
-          <div class="translation-coverage-card">
-            <span>Ожидают в очереди</span>
-            <strong>{formatNumber(translationSettings.queue?.pending ?? 0)}</strong>
-            <small>
-              Статьи: {formatNumber(translationSettings.queue?.pending_posts ?? 0)},
-              комментарии: {formatNumber(translationSettings.queue?.pending_comments ?? 0)},
-              сообщества: {formatNumber(translationSettings.queue?.pending_comuns ?? 0)}.
-            </small>
+          <div class="translation-breakdown-list">
+            {#each translationBreakdownRows as row (row.key)}
+              <div class="translation-breakdown-row">
+                <span>{row.label}</span>
+                <strong>{formatNumber(row.translated)} / {formatNumber(row.queued)}</strong>
+                <small>{formatPercent(row.percent)}</small>
+              </div>
+            {/each}
           </div>
         </div>
 
@@ -1836,38 +1899,80 @@
     font-size: 13px;
   }
 
-  .translation-coverage-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
-    margin-bottom: 14px;
-  }
-
-  .translation-coverage-card {
+  .translation-summary-card {
     border: 1px solid rgb(226 232 240);
     border-radius: 8px;
     background: rgb(248 250 252);
-    padding: 14px;
+    padding: 16px;
     display: grid;
-    gap: 6px;
+    gap: 14px;
+    margin-bottom: 14px;
   }
 
-  .translation-coverage-card span {
+  .translation-summary-main {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .translation-summary-main > div {
+    display: grid;
+    gap: 5px;
+    min-width: 0;
+  }
+
+  .translation-summary-main span {
     color: rgb(71 85 105);
     font-size: 13px;
     font-weight: 600;
   }
 
-  .translation-coverage-card strong {
+  .translation-summary-main strong {
     color: rgb(15 23 42);
     font-size: 24px;
     line-height: 1.15;
   }
 
-  .translation-coverage-card small {
+  .translation-summary-main small {
     color: rgb(100 116 139);
     font-size: 12px;
     line-height: 1.35;
+  }
+
+  .translation-breakdown-list {
+    display: grid;
+    gap: 6px;
+    border-top: 1px solid rgb(226 232 240);
+    padding-top: 12px;
+  }
+
+  .translation-breakdown-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 10px;
+    align-items: center;
+    color: rgb(100 116 139);
+    font-size: 12px;
+  }
+
+  .translation-breakdown-row span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .translation-breakdown-row strong {
+    color: rgb(51 65 85);
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .translation-breakdown-row small {
+    color: rgb(100 116 139);
+    font-size: 12px;
+    min-width: 42px;
+    text-align: right;
   }
 
   .rating-settings-grid {
@@ -2156,18 +2261,25 @@
     color: rgb(212 212 216);
   }
 
-  :global(.dark) .translation-coverage-card {
+  :global(.dark) .translation-summary-card {
     border-color: rgb(63 63 70);
     background: rgb(39 39 42);
   }
 
-  :global(.dark) .translation-coverage-card span,
-  :global(.dark) .translation-coverage-card small {
+  :global(.dark) .translation-summary-main span,
+  :global(.dark) .translation-summary-main small,
+  :global(.dark) .translation-breakdown-row,
+  :global(.dark) .translation-breakdown-row small {
     color: rgb(161 161 170);
   }
 
-  :global(.dark) .translation-coverage-card strong {
+  :global(.dark) .translation-summary-main strong,
+  :global(.dark) .translation-breakdown-row strong {
     color: rgb(244 244 245);
+  }
+
+  :global(.dark) .translation-breakdown-list {
+    border-color: rgb(63 63 70);
   }
 
   :global(.dark) .translation-toggle-row span {
@@ -2201,10 +2313,6 @@
     }
 
     .rating-settings-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .translation-coverage-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
@@ -2269,8 +2377,13 @@
       grid-template-columns: 1fr;
     }
 
-    .translation-coverage-grid {
+    .translation-summary-main,
+    .translation-breakdown-row {
       grid-template-columns: 1fr;
+    }
+
+    .translation-breakdown-row small {
+      text-align: left;
     }
 
     .view-settings-search,

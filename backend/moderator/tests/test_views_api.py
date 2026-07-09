@@ -7,9 +7,10 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from communities.models import Comun
+from communities.models import Comun, ComunCategory, ComunGlossaryTerm
 from feeds.models import (
     Author,
+    ComunTranslation,
     Post,
     PostComment,
     PostCommentLike,
@@ -17,6 +18,8 @@ from feeds.models import (
     PostLike,
     PostTranslation,
     PostViewSettings,
+    StaticPageContent,
+    StaticPageTranslation,
     ContentTranslationTask,
     POST_TRANSLATION_STATUS_FAILED,
     POST_TRANSLATION_STATUS_TRANSLATED,
@@ -262,6 +265,23 @@ class ModeratorAnalyticsApiTests(TestCase):
             body="Deleted comment",
             is_deleted=True,
         )
+        comun = Comun.objects.create(name="Coverage comun", slug="coverage-comun")
+        category = ComunCategory.objects.create(
+            comun=comun,
+            name="Coverage category",
+            slug="coverage-category",
+        )
+        term = ComunGlossaryTerm.objects.create(
+            comun=comun,
+            term="Coverage term",
+            slug="coverage-term",
+            definition="Definition",
+        )
+        static_page = StaticPageContent.objects.create(
+            slug="coverage-page",
+            title="Coverage page",
+            content="Coverage page content",
+        )
         ContentTranslationTask.objects.update_or_create(
             kind="post",
             object_id=untranslated_post.pk,
@@ -273,6 +293,22 @@ class ModeratorAnalyticsApiTests(TestCase):
         ContentTranslationTask.objects.update_or_create(
             kind="comment",
             object_id=untranslated_comment.pk,
+            defaults={
+                "status": "pending",
+                "scheduled_at": timezone.now(),
+            },
+        )
+        ContentTranslationTask.objects.update_or_create(
+            kind="comun",
+            object_id=comun.pk,
+            defaults={
+                "status": "pending",
+                "scheduled_at": timezone.now(),
+            },
+        )
+        ContentTranslationTask.objects.update_or_create(
+            kind="static_page",
+            object_id=static_page.pk,
             defaults={
                 "status": "pending",
                 "scheduled_at": timezone.now(),
@@ -313,6 +349,21 @@ class ModeratorAnalyticsApiTests(TestCase):
             body="Deleted translated comment",
             status=POST_TRANSLATION_STATUS_TRANSLATED,
         )
+        ComunTranslation.objects.create(
+            comun=comun,
+            language="en",
+            name="Coverage comun",
+            categories=[{"id": category.pk, "name": "Coverage category"}],
+            glossary_terms=[{"id": term.pk, "term": "Coverage term", "definition": "Definition"}],
+            status=POST_TRANSLATION_STATUS_TRANSLATED,
+        )
+        StaticPageTranslation.objects.create(
+            page=static_page,
+            language="en",
+            title="Coverage page",
+            content="Coverage page content",
+            status=POST_TRANSLATION_STATUS_TRANSLATED,
+        )
 
         response = self.client.get(reverse("moderator-translation-settings"), **self.staff_headers)
 
@@ -342,14 +393,48 @@ class ModeratorAnalyticsApiTests(TestCase):
                 "target_languages": 7,
             },
         )
-        self.assertEqual(coverage["translation_rows"], {"posts": 2, "comments": 1})
+        self.assertEqual(
+            coverage["summary"],
+            {
+                "translated": 7,
+                "target": 63,
+                "percent": 11.11,
+                "target_languages": 7,
+            },
+        )
+        self.assertEqual(coverage["breakdown"]["posts"]["translated"], 2)
+        self.assertEqual(coverage["breakdown"]["comments"]["translated"], 1)
+        self.assertEqual(coverage["breakdown"]["comuns"]["translated"], 1)
+        self.assertEqual(coverage["breakdown"]["categories"]["translated"], 1)
+        self.assertEqual(coverage["breakdown"]["terms"]["translated"], 1)
+        self.assertEqual(coverage["breakdown"]["static_pages"]["translated"], 1)
+        self.assertEqual(
+            coverage["translation_rows"],
+            {
+                "posts": 2,
+                "comments": 1,
+                "comuns": 1,
+                "categories": 1,
+                "terms": 1,
+                "static_pages": 1,
+            },
+        )
         self.assertEqual(
             data["settings"]["queue"],
             {
-                "pending": 2,
+                "pending": 4,
                 "pending_posts": 1,
                 "pending_comments": 1,
-                "pending_comuns": 0,
+                "pending_comuns": 1,
+                "pending_static_pages": 1,
+                "breakdown": {
+                    "posts": 1,
+                    "comments": 1,
+                    "comuns": 1,
+                    "categories": 0,
+                    "terms": 0,
+                    "static_pages": 1,
+                },
             },
         )
 

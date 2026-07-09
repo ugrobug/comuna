@@ -19,7 +19,7 @@
   import { Button, Select } from 'mono-svelte'
   import Section from './Section.svelte'
   import ToggleSetting from './ToggleSetting.svelte'
-  import { loadTranslations, t } from '$lib/translations'
+  import { loadTranslations, locale, t } from '$lib/translations'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import { profile } from '$lib/auth'
   import {
@@ -38,7 +38,7 @@
   } from '$lib/siteAuth'
   import { onMount } from 'svelte'
   import { colorScheme, inDarkColorScheme } from '$lib/ui/colors'
-  import { isPostLanguageCode, type PostLanguageCode } from '$lib/postLanguages'
+  import { isPostLanguageCode, normalizeInterfaceLanguage, type PostLanguageCode } from '$lib/postLanguages'
   let importing = false
   let importText = ''
   let manualBlacklistTag = ''
@@ -56,14 +56,18 @@
   let channelVerificationCodeLoading = false
   let channelVerificationCodeError = ''
   let creatingComunByAuthorId: number | null = null
-  let selectedInterfaceLanguage = $userSettings.language ?? 'ru'
+  let selectedInterfaceLanguage =
+    ($userSettings.languageManuallySelected ? $userSettings.language : normalizeInterfaceLanguage($locale)) ?? 'ru'
   let syncedInterfaceLanguage = selectedInterfaceLanguage
   $: hiddenAuthors = $userSettings.hiddenAuthors ?? []
   $: blacklistedTags = Object.entries($userSettings.tagRules ?? {})
     .filter(([, rule]) => rule === 'hide')
     .map(([tag]) => tag)
   $: {
-    const storedLanguage = $userSettings.language ?? 'ru'
+    const storedLanguage =
+      ($userSettings.languageManuallySelected
+        ? $userSettings.language
+        : normalizeInterfaceLanguage($locale)) ?? 'ru'
     if (storedLanguage !== syncedInterfaceLanguage) {
       selectedInterfaceLanguage = storedLanguage
       syncedInterfaceLanguage = storedLanguage
@@ -81,6 +85,7 @@
     userSettings.update((settings) => ({
       ...settings,
       language,
+      languageManuallySelected: true,
     }))
   }
 

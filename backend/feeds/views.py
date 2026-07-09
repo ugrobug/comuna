@@ -258,6 +258,7 @@ _COMUN_EXTERNAL_LINKS_FORBIDDEN_ERROR = (
 _EDITABLE_STATIC_PAGE_TITLES = {
     "about": "О проекте",
     "advertisement": "Реклама",
+    "apps": "Приложения",
     "authors": "Авторам",
     "privacy": "Политика обработки персональных данных",
     "rules": "Правила",
@@ -4705,6 +4706,7 @@ def sitemap_static_xml(request: HttpRequest) -> HttpResponse:
         "/authors",
         "/about",
         "/advertisement",
+        "/apps",
         "/privacy",
         "/rules",
     ]

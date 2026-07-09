@@ -10,6 +10,8 @@ class UserFeedSettingsAdmin(admin.ModelAdmin):
         "home_feed",
         "hide_read_posts",
         "my_feed_hide_negative",
+        "interface_language",
+        "interface_language_manual",
         "keyboard_shortcuts_hint_dismissed",
         "updated_at",
     )
@@ -26,6 +28,8 @@ class UserFeedSettingsAdmin(admin.ModelAdmin):
         "hidden_authors",
         "my_feed_hide_negative",
         "tag_rules",
+        "interface_language",
+        "interface_language_manual",
         "keyboard_shortcuts_hint_dismissed",
         "created_at",
         "updated_at",

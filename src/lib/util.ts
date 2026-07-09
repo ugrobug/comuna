@@ -129,6 +129,7 @@ export const routes = {
   '/inbox': 'Inbox',
   '/saved': 'Saved',
   '/about': 'About',
+  '/apps': 'Apps',
   '/privacy': 'Privacy Policy',
   '/profile/user': 'Profile',
   '/profile/settings': 'Profile Settings',

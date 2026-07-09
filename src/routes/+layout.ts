@@ -13,23 +13,23 @@ export const ssr = (env.PUBLIC_SSR_ENABLED?.toLowerCase() ?? 'true') !== 'false'
 
 export const load = async ({ url, data }) => {
   const routeLocale = languageFromPathname(url.pathname)
-  const savedLocale = browser ? get(userSettings)?.language : null
-  const browserLocale = browser ? navigator?.language : null
+  const settings = browser ? get(userSettings) : null
+  const savedLocale =
+    settings?.languageManuallySelected ? normalizeInterfaceLanguage(settings.language) : null
+  const browserLocale = browser
+    ? (navigator?.languages
+        ?.map((language) => normalizeInterfaceLanguage(language))
+        .find(Boolean) ??
+      normalizeInterfaceLanguage(navigator?.language))
+    : null
   const normalizedLocale =
-    routeLocale ??
-    normalizeInterfaceLanguage(savedLocale) ??
-    normalizeInterfaceLanguage(browserLocale) ??
+    savedLocale ??
+    browserLocale ??
     normalizeInterfaceLanguage(data?.language) ??
+    routeLocale ??
     originalPostLanguage
 
   await loadTranslations(normalizedLocale)
-
-  if (browser && (!savedLocale || routeLocale || savedLocale !== normalizedLocale)) {
-    userSettings.update((settings) => ({
-      ...settings,
-      language: normalizedLocale,
-    }))
-  }
 
   return
 }

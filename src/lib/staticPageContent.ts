@@ -1,4 +1,4 @@
-export type EditableStaticPageSlug = 'about' | 'advertisement' | 'authors' | 'rules'
+export type EditableStaticPageSlug = 'about' | 'advertisement' | 'apps' | 'authors' | 'rules'
 
 export const EDITABLE_STATIC_PAGE_META: Record<
   EditableStaticPageSlug,
@@ -16,6 +16,11 @@ export const EDITABLE_STATIC_PAGE_META: Record<
     heading: 'Реклама',
     description:
       'Рекламные возможности на Тамбур: спонсорские блоки, интеграции и спецпроекты.',
+  },
+  apps: {
+    heading: 'Приложения',
+    description:
+      'Скачайте мобильное приложение Тамбур в Google Play или RuStore.',
   },
   authors: {
     heading: 'Авторам',
@@ -74,6 +79,14 @@ const DEFAULT_BLOCKS: Record<EditableStaticPageSlug, Array<Record<string, any>>>
     header('Как связаться'),
     paragraph('Напишите нам, и мы подберем оптимальный формат под ваши цели.'),
   ],
+  apps: [
+    paragraph(
+      'Читайте ленту, статьи и сообщества Тамбура в мобильном приложении.'
+    ),
+    paragraph(
+      '<span style="display:flex; flex-wrap:wrap; gap:12px; align-items:center;"><a href="https://play.google.com/store/apps/details?id=ru.comuna.mobile" target="_blank" rel="noopener noreferrer" style="display:inline-flex; align-items:center; justify-content:center; min-height:44px; padding:0 18px; border-radius:10px; background:#111827; color:#ffffff; font-weight:600; text-decoration:none;">Google Play</a><a href="https://www.rustore.ru/catalog/app/ru.comuna.mobile?_rsc=tf3rt" target="_blank" rel="noopener noreferrer" style="display:inline-flex; align-items:center; justify-content:center; min-height:44px; padding:0 18px; border-radius:10px; background:#0f766e; color:#ffffff; font-weight:600; text-decoration:none;">RuStore</a></span>'
+    ),
+  ],
   authors: [
     paragraph(
       'Telegram-каналы почти не попадают в поисковую выдачу. Люди ищут темы в Google и Яндексе, но ваши посты там не видят.'
@@ -107,6 +120,7 @@ const DEFAULT_BLOCKS: Record<EditableStaticPageSlug, Array<Record<string, any>>>
 export const DEFAULT_STATIC_PAGE_CONTENT: Record<EditableStaticPageSlug, string> = {
   about: encodeEditorPayload({ blocks: DEFAULT_BLOCKS.about }),
   advertisement: encodeEditorPayload({ blocks: DEFAULT_BLOCKS.advertisement }),
+  apps: encodeEditorPayload({ blocks: DEFAULT_BLOCKS.apps }),
   authors: encodeEditorPayload({ blocks: DEFAULT_BLOCKS.authors }),
   rules: encodeEditorPayload({ blocks: DEFAULT_BLOCKS.rules }),
 }

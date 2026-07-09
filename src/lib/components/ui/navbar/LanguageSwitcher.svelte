@@ -52,6 +52,7 @@
       userSettings.update((settings) => ({
         ...settings,
         language,
+        languageManuallySelected: true,
       }))
 
       const target = getLanguageHref(language)

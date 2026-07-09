@@ -226,6 +226,41 @@ class UserFeedSettingsApiTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content.decode())
         self.assertTrue(response.json()["has_customizations"])
 
+    def test_auth_feed_settings_language_requires_manual_flag(self):
+        response = self.client.patch(
+            reverse("auth-feed-settings"),
+            data=json.dumps(
+                {
+                    "interface_language": "de",
+                    "interface_language_manual": False,
+                }
+            ),
+            content_type="application/json",
+            **self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        payload = response.json()
+        self.assertEqual(payload["settings"]["interface_language"], "")
+        self.assertFalse(payload["settings"]["interface_language_manual"])
+
+        response = self.client.patch(
+            reverse("auth-feed-settings"),
+            data=json.dumps(
+                {
+                    "interface_language": "es",
+                    "interface_language_manual": True,
+                }
+            ),
+            content_type="application/json",
+            **self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        payload = response.json()
+        self.assertEqual(payload["settings"]["interface_language"], "es")
+        self.assertTrue(payload["settings"]["interface_language_manual"])
+
     def test_auth_feed_settings_updates_cached_comun_subscribers_count(self):
         response = self.client.patch(
             reverse("auth-feed-settings"),
