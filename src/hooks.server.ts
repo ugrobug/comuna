@@ -133,6 +133,13 @@ export const handle: Handle = async ({ event, resolve }) => {
   for (const [name, value] of Object.entries(securityHeaders)) {
     headers.set(name, value)
   }
+  if (shouldPrioritizePreviewHead) {
+    const vary = headers.get('vary')
+    const varyValues = vary?.split(',').map((value) => value.trim().toLowerCase()) || []
+    if (!varyValues.includes('user-agent')) {
+      headers.set('vary', vary ? `${vary}, User-Agent` : 'User-Agent')
+    }
+  }
   if (
     isSocialCrawler &&
     response.status >= 200 &&
