@@ -13,6 +13,8 @@ const PRIORITY_HEAD_TAG_PATTERN =
 
 const TITLE_TAG_PATTERN = /<title\b[^>]*>[\s\S]*?<\/title>/i
 
+const TITLE_CONTENT_PATTERN = /<title\b[^>]*>([\s\S]*?)<\/title>/i
+
 const STYLESHEET_LINK_PATTERN = /<link\b[^>]*rel="stylesheet"[^>]*>/i
 
 const SOCIAL_CRAWLER_USER_AGENT_PATTERN =
@@ -74,8 +76,9 @@ const prioritizePreviewHeadTags = (html: string) => {
   )
 }
 
-const buildSocialCrawlerHtml = (html: string) => {
+export const buildSocialCrawlerHtml = (html: string) => {
   const titleTag = html.match(TITLE_TAG_PATTERN)?.[0] || ''
+  const titleContent = titleTag.match(TITLE_CONTENT_PATTERN)?.[1]?.trim() || ''
   const priorityTags = html.match(PRIORITY_HEAD_TAG_PATTERN) || []
   const hasRobotsTag = priorityTags.some((tag) => /\bname="robots"/i.test(tag))
   const robotsTag = hasRobotsTag ? '' : '<meta name="robots" content="max-image-preview:large">'
@@ -86,7 +89,19 @@ const buildSocialCrawlerHtml = (html: string) => {
     ...priorityTags,
   ].filter(Boolean)
 
-  return `<!doctype html><html><head>${headTags.join('')}</head><body></body></html>`
+  const descriptionTag = priorityTags.find((tag) =>
+    /(?:\bproperty="og:description"|\bname="description")/i.test(tag)
+  )
+  const descriptionContent = descriptionTag?.match(/\bcontent="([^"]*)"/i)?.[1]?.trim() || ''
+  const imageTag = priorityTags.find((tag) => /\bproperty="og:image"/i.test(tag))
+  const imageUrl = imageTag?.match(/\bcontent="([^"]*)"/i)?.[1]?.trim() || ''
+  const bodyParts = [
+    titleContent ? `<h1>${titleContent}</h1>` : '',
+    descriptionContent ? `<p>${descriptionContent}</p>` : '',
+    imageUrl ? `<img src="${imageUrl}" alt="">` : '',
+  ].filter(Boolean)
+
+  return `<!doctype html><html><head>${headTags.join('')}</head><body><main><article>${bodyParts.join('')}</article></main></body></html>`
 }
 
 const escapeHtmlAttribute = (value: string) =>
@@ -147,12 +162,13 @@ export const handle: Handle = async ({ event, resolve }) => {
     response.headers.get('content-type')?.includes('text/html')
   ) {
     const html = await response.text()
-    headers.delete('content-length')
+    const crawlerHtml = buildSocialCrawlerHtml(html)
     headers.delete('etag')
     headers.delete('link')
     headers.set('content-type', 'text/html; charset=utf-8')
+    headers.set('content-length', String(new TextEncoder().encode(crawlerHtml).byteLength))
     headers.set('cache-control', 'public, max-age=300, stale-while-revalidate=300')
-    return new Response(buildSocialCrawlerHtml(html), {
+    return new Response(crawlerHtml, {
       status: response.status,
       statusText: response.statusText,
       headers,
