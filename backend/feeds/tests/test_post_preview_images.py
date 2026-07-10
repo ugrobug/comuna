@@ -77,7 +77,7 @@ class PostPreviewImageTests(SimpleTestCase):
         self.assertEqual(preview_url, "https://tambur.pub/media/uploads/post/stored-1280.webp")
         self.assertEqual(thumbnail_url, "https://tambur.pub/media/uploads/post/stored-640.webp")
 
-    def test_social_image_url_is_versioned_by_post_update_time(self) -> None:
+    def test_social_image_uses_public_preview_url_without_backend_processing(self) -> None:
         updated_at = datetime(2026, 7, 3, 10, 28, 2, tzinfo=dt_timezone.utc)
         post = Post(
             id=20026,
@@ -89,8 +89,18 @@ class PostPreviewImageTests(SimpleTestCase):
 
         self.assertEqual(
             preview["social_image_url"],
-            "https://tambur.pub/api/posts/20026/social-image.jpg?v=1783074482",
+            "https://tambur.pub/media/uploads/post/stored-1280.webp",
         )
+
+    @patch("django.core.files.storage.default_storage.exists")
+    def test_unknown_image_filename_does_not_probe_remote_storage(self, storage_exists) -> None:
+        post = Post(preview_image_url="/media/uploads/post/original.jpg")
+
+        preview_url, thumbnail_url = _extract_post_preview_image_urls(None, post)
+
+        self.assertEqual(preview_url, "https://tambur.pub/media/uploads/post/original.jpg")
+        self.assertEqual(thumbnail_url, "https://tambur.pub/media/uploads/post/original.jpg")
+        storage_exists.assert_not_called()
 
     def test_builds_small_preview_from_base64_editor_content(self) -> None:
         payload = {

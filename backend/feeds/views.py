@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import copy
-import io
 import json
 import hmac
 import hashlib
@@ -18,7 +17,6 @@ try:
 except ImportError:  # optional dependency for lemmatization
     pymorphy2 = None
 from django.core.files.base import ContentFile
-from django.core.files.storage import default_storage
 from django.utils.text import get_valid_filename
 import urllib.error
 import urllib.parse
@@ -34,10 +32,9 @@ from django.db.models.functions import Cast, Coalesce
 from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
 
 from django.conf import settings
-from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.http import HttpRequest, HttpResponse, HttpResponseRedirect, JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
-from PIL import Image, ImageOps, UnidentifiedImageError
 from django.contrib.auth import get_user_model
 
 from communities import views as community_views
@@ -175,7 +172,6 @@ _FAKE_VIEWS_RAMP_SECONDS = 48 * 60 * 60
 _IMAGE_VARIANT_WIDTHS = (320, 640, 960, 1280, 1920)
 _POST_PREVIEW_IMAGE_WIDTH = 1280
 _POST_THUMBNAIL_IMAGE_WIDTH = 640
-_POST_SOCIAL_IMAGE_SIZE = (1200, 630)
 _LOCAL_WEBP_VARIANT_RE = re.compile(r"-(320|640|960|1280|1920)\.webp$", re.IGNORECASE)
 _IMAGE_URL_PATH_RE = re.compile(r"\.(?:jpe?g|png|webp|gif|avif)$", re.IGNORECASE)
 _COMUN_CREATION_MIN_AUTHOR_RATING = 0.0
@@ -1219,27 +1215,8 @@ def _local_webp_variant_url(
             request=request,
         )
 
-    storage_path = _media_storage_path_from_url(value)
-    if not storage_path:
-        return value
-
-    root, ext = os.path.splitext(storage_path)
-    if ext.lower() == ".gif":
-        return value
-
-    candidate_widths = sorted(
-        _IMAGE_VARIANT_WIDTHS,
-        key=lambda width: (abs(width - target_width), -width),
-    )
-    for width in candidate_widths:
-        candidate_path = f"{root}-{width}.webp"
-        try:
-            if not default_storage.exists(candidate_path):
-                continue
-        except Exception:
-            continue
-        return public_media_url(candidate_path, request=request) or value
-
+    # Variant discovery must not perform remote storage requests while serving
+    # public pages. Unknown filenames are returned unchanged.
     return value
 
 
@@ -1417,20 +1394,10 @@ def _serialize_post_preview_image_fields(
         post,
         template_payload=template_payload,
     )
-    social_image_url = None
-    if preview_image_url and media_storage_path_from_url(preview_image_url, request=request):
-        social_image_version = getattr(post, "updated_at", None) or getattr(post, "created_at", None)
-        social_image_query = ""
-        if social_image_version:
-            social_image_query = f"?v={int(social_image_version.timestamp())}"
-        social_image_url = site_absolute_url(
-            f"/api/posts/{post.id}/social-image.jpg{social_image_query}",
-            request=request,
-        )
     return {
         "preview_image_url": preview_image_url,
         "thumbnail_url": thumbnail_url,
-        "social_image_url": social_image_url,
+        "social_image_url": preview_image_url,
     }
 
 
@@ -3688,34 +3655,12 @@ def post_social_image(request: HttpRequest, post_id: int) -> HttpResponse:
     if not storage_path:
         return HttpResponse(status=404)
 
-    try:
-        with default_storage.open(storage_path, "rb") as source:
-            with Image.open(source) as opened:
-                image = ImageOps.exif_transpose(opened)
-                image.load()
-    except (OSError, ValueError, UnidentifiedImageError):
+    image_url = public_media_url(preview_image_url, request=request)
+    if not image_url:
         return HttpResponse(status=404)
 
-    if image.mode in {"RGBA", "LA"} or (
-        image.mode == "P" and "transparency" in getattr(image, "info", {})
-    ):
-        canvas = Image.new("RGB", image.size, "white")
-        canvas.paste(image.convert("RGBA"), mask=image.convert("RGBA").getchannel("A"))
-        image = canvas
-    elif image.mode != "RGB":
-        image = image.convert("RGB")
-
-    social_image = ImageOps.fit(
-        image,
-        _POST_SOCIAL_IMAGE_SIZE,
-        method=Image.Resampling.LANCZOS,
-        centering=(0.5, 0.5),
-    )
-    output = io.BytesIO()
-    social_image.save(output, format="JPEG", quality=88, optimize=True)
-    response = HttpResponse(output.getvalue(), content_type="image/jpeg")
+    response = HttpResponseRedirect(image_url)
     response["Cache-Control"] = "public, max-age=86400"
-    response["Content-Disposition"] = f'inline; filename="post-{post_id}-social.jpg"'
     return response
 
 
