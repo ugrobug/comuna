@@ -1,10 +1,6 @@
 <script lang="ts">
   import { notifications, profile } from '$lib/auth.js'
-  import ShieldIcon from '$lib/components/lemmy/moderation/ShieldIcon.svelte'
-  import {
-    amModOfAny,
-    isAdmin,
-  } from '$lib/components/lemmy/moderation/moderation.js'
+  import { isAdmin } from '$lib/components/lemmy/moderation/moderation.js'
   import Avatar from '$lib/components/ui/Avatar.svelte'
   import HeaderSearch from '$lib/components/ui/navbar/HeaderSearch.svelte'
   import { site } from '$lib/lemmy.js'
@@ -210,24 +206,6 @@
             {#if ($notifications.applications ?? 0) > 0}
               <div class="rounded-full w-2 h-2 bg-red-500 absolute -top-1 -left-1"></div>
             {/if}
-          </NavButton>
-        {/if}
-        {#if amModOfAny($profile?.user)}
-          <NavButton
-            href="/moderation"
-            label={$t('nav.moderation')}
-            class="relative hidden md:flex"
-          >
-            {#if ($notifications.reports ?? 0) > 0}
-              <div class="rounded-full w-2 h-2 bg-red-500 absolute -top-1 -left-1"></div>
-            {/if}
-            <ShieldIcon
-              let:size
-              let:isSelected
-              slot="icon"
-              filled={isSelected}
-              width={size}
-            />
           </NavButton>
         {/if}
         {#if randomTagline}

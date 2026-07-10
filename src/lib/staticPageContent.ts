@@ -1,3 +1,5 @@
+import type { PostLanguageCode } from '$lib/postLanguages'
+
 export type EditableStaticPageSlug = 'about' | 'advertisement' | 'apps' | 'authors' | 'rules'
 
 export const EDITABLE_STATIC_PAGE_META: Record<
@@ -52,6 +54,55 @@ const encodeEditorPayload = (payload: unknown): string => {
 const paragraph = (text: string) => ({ type: 'paragraph', data: { text } })
 const header = (text: string, level = 2) => ({ type: 'header', data: { text, level } })
 
+const APP_STORE_LINKS =
+  '<span style="display:flex; flex-wrap:wrap; gap:12px; align-items:center;"><a href="https://play.google.com/store/apps/details?id=ru.comuna.mobile" target="_blank" rel="noopener noreferrer" style="display:inline-flex; align-items:center; justify-content:center; min-height:44px; padding:0 18px; border-radius:10px; background:#111827; color:#ffffff; font-weight:600; text-decoration:none;">Google Play</a><a href="https://www.rustore.ru/catalog/app/ru.comuna.mobile?_rsc=tf3rt" target="_blank" rel="noopener noreferrer" style="display:inline-flex; align-items:center; justify-content:center; min-height:44px; padding:0 18px; border-radius:10px; background:#0f766e; color:#ffffff; font-weight:600; text-decoration:none;">RuStore</a></span>'
+
+export const APPS_PAGE_LOCALIZATION: Record<
+  PostLanguageCode,
+  { title: string; description: string; intro: string }
+> = {
+  ru: {
+    title: 'Приложения',
+    description: 'Скачайте мобильное приложение Тамбур в Google Play или RuStore.',
+    intro: 'Читайте ленту, статьи и сообщества Тамбура в мобильном приложении.',
+  },
+  en: {
+    title: 'Apps',
+    description: 'Download the Tambur mobile app from Google Play or RuStore.',
+    intro: 'Read your feed, articles, and Tambur communities in the mobile app.',
+  },
+  es: {
+    title: 'Aplicaciones',
+    description: 'Descarga la aplicación móvil de Tambur desde Google Play o RuStore.',
+    intro: 'Lee tu feed, artículos y comunidades de Tambur en la aplicación móvil.',
+  },
+  pt: {
+    title: 'Aplicativos',
+    description: 'Baixe o aplicativo móvel do Tambur no Google Play ou no RuStore.',
+    intro: 'Leia seu feed, artigos e comunidades do Tambur no aplicativo móvel.',
+  },
+  de: {
+    title: 'Apps',
+    description: 'Lade die Tambur-App bei Google Play oder RuStore herunter.',
+    intro: 'Lies deinen Feed, Artikel und Tambur-Communitys in der mobilen App.',
+  },
+  fr: {
+    title: 'Applications',
+    description: "Téléchargez l'application mobile Tambur sur Google Play ou RuStore.",
+    intro: "Consultez votre fil, les articles et les communautés Tambur dans l'application mobile.",
+  },
+  tr: {
+    title: 'Uygulamalar',
+    description: "Tambur mobil uygulamasını Google Play veya RuStore'dan indirin.",
+    intro: 'Akışınızı, makaleleri ve Tambur topluluklarını mobil uygulamada okuyun.',
+  },
+  id: {
+    title: 'Aplikasi',
+    description: 'Unduh aplikasi seluler Tambur dari Google Play atau RuStore.',
+    intro: 'Baca feed, artikel, dan komunitas Tambur melalui aplikasi seluler.',
+  },
+}
+
 const DEFAULT_BLOCKS: Record<EditableStaticPageSlug, Array<Record<string, any>>> = {
   about: [
     paragraph(
@@ -80,12 +131,8 @@ const DEFAULT_BLOCKS: Record<EditableStaticPageSlug, Array<Record<string, any>>>
     paragraph('Напишите нам, и мы подберем оптимальный формат под ваши цели.'),
   ],
   apps: [
-    paragraph(
-      'Читайте ленту, статьи и сообщества Тамбура в мобильном приложении.'
-    ),
-    paragraph(
-      '<span style="display:flex; flex-wrap:wrap; gap:12px; align-items:center;"><a href="https://play.google.com/store/apps/details?id=ru.comuna.mobile" target="_blank" rel="noopener noreferrer" style="display:inline-flex; align-items:center; justify-content:center; min-height:44px; padding:0 18px; border-radius:10px; background:#111827; color:#ffffff; font-weight:600; text-decoration:none;">Google Play</a><a href="https://www.rustore.ru/catalog/app/ru.comuna.mobile?_rsc=tf3rt" target="_blank" rel="noopener noreferrer" style="display:inline-flex; align-items:center; justify-content:center; min-height:44px; padding:0 18px; border-radius:10px; background:#0f766e; color:#ffffff; font-weight:600; text-decoration:none;">RuStore</a></span>'
-    ),
+    paragraph(APPS_PAGE_LOCALIZATION.ru.intro),
+    paragraph(APP_STORE_LINKS),
   ],
   authors: [
     paragraph(
@@ -127,3 +174,23 @@ export const DEFAULT_STATIC_PAGE_CONTENT: Record<EditableStaticPageSlug, string>
 
 export const getDefaultStaticPageContent = (slug: EditableStaticPageSlug): string =>
   DEFAULT_STATIC_PAGE_CONTENT[slug]
+
+export const getLocalizedDefaultStaticPage = (
+  slug: EditableStaticPageSlug,
+  language: PostLanguageCode
+): { title: string; content: string } => {
+  if (slug !== 'apps' || language === 'ru') {
+    return {
+      title: EDITABLE_STATIC_PAGE_META[slug].heading,
+      content: getDefaultStaticPageContent(slug),
+    }
+  }
+
+  const localized = APPS_PAGE_LOCALIZATION[language]
+  return {
+    title: localized.title,
+    content: encodeEditorPayload({
+      blocks: [paragraph(localized.intro), paragraph(APP_STORE_LINKS)],
+    }),
+  }
+}

@@ -119,7 +119,6 @@ export const routes = {
   '/settings': 'Settings',
   '/communities': 'Communities',
   '/search': 'Search',
-  '/moderation': 'Moderation',
   '/create/post': 'Create post',
   get '/c/[name]'() {
     return get(page)?.data?.community?.community_view?.community?.title

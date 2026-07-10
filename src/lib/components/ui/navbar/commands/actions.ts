@@ -1,10 +1,7 @@
 import { goto } from '$app/navigation'
 import { page } from '$app/stores'
 import { setUserID, type Profile } from '$lib/auth'
-import {
-  amModOfAny,
-  isAdmin,
-} from '$lib/components/lemmy/moderation/moderation'
+import { isAdmin } from '$lib/components/lemmy/moderation/moderation'
 import { resumables, type ResumableItem } from '$lib/lemmy/item'
 import { t } from '$lib/translations'
 import { colorScheme } from '$lib/ui/colors'
@@ -20,7 +17,6 @@ import {
   Newspaper,
   PencilSquare,
   ServerStack,
-  ShieldCheck,
   UserCircle,
   UserGroup,
   type IconSource,
@@ -87,15 +83,6 @@ export function getGroups(
           name: t.get('nav.communities'),
           icon: GlobeAlt,
         },
-        ...(amModOfAny(profile.user)
-          ? [
-              {
-                href: '/moderation',
-                name: t.get('nav.moderation'),
-                icon: ShieldCheck,
-              },
-            ]
-          : []),
         ...(profile.user && isAdmin(profile.user)
           ? [
               {

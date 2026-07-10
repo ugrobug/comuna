@@ -736,12 +736,10 @@ export type BackendStaticPageLanguageVersion = {
 }
 
 export const buildStaticPageContentUrl = (slug: string, options?: { language?: string }): string => {
-  const url = new URL(`${getBackendBaseUrl()}/api/content-pages/${encodeURIComponent(slug)}/`)
+  const base = `${getBackendBaseUrl()}/api/content-pages/${encodeURIComponent(slug)}/`
   const language = String(options?.language || '').trim().toLowerCase()
-  if (language && language !== 'ru') {
-    url.searchParams.set('lang', language)
-  }
-  return url.toString()
+  if (!language || language === 'ru') return base
+  return `${base}?${new URLSearchParams({ lang: language }).toString()}`
 }
 
 const stableId = (input: string): number => {

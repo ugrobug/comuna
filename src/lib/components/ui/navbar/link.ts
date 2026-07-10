@@ -9,7 +9,6 @@ import {
   GlobeAmericas,
   GlobeAlt,
   MagnifyingGlass,
-  ShieldCheck,
   ServerStack,
   PencilSquare,
   MapPin,
@@ -66,10 +65,6 @@ export const getDefaultLinks = (): Link[] => [
     label: t.get('nav.search'),
   },
   {
-    url: '/moderation',
-    label: t.get('moderation.label'),
-  },
-  {
     url: '/admin',
     label: t.get('admin.label'),
   },
@@ -105,8 +100,6 @@ export const iconOfLink = (url: string): IconSource => {
       return GlobeAlt
     case '/search':
       return MagnifyingGlass
-    case '/moderation':
-      return ShieldCheck
     case '/admin':
       return ServerStack
     case '/settings':

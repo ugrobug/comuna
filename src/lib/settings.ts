@@ -69,7 +69,6 @@ export interface Settings {
     presets: Preset[]
   }
   randomPlaceholders: boolean
-  modlogCardView: boolean | undefined
   debugInfo: boolean
   expandImages: boolean
 
@@ -161,7 +160,6 @@ export const defaultSettings: Settings = {
     ],
   },
   randomPlaceholders: false,
-  modlogCardView: toBool(env.PUBLIC_MODLOG_CARD_VIEW) ?? undefined,
   debugInfo: toBool(env.PUBLIC_DEBUG_INFO) ?? false,
   expandImages: toBool(env.PUBLIC_EXPAND_IMAGES) ?? true,
   // @ts-ignore

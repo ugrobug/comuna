@@ -1,13 +1,14 @@
 <script>
   import StaticPageArticle from '$lib/components/static-pages/StaticPageArticle.svelte'
   import { brandNameForLanguage } from '$lib/brand'
-  import { EDITABLE_STATIC_PAGE_META } from '$lib/staticPageContent'
+  import { APPS_PAGE_LOCALIZATION } from '$lib/staticPageContent'
+  import { normalizePostLanguage } from '$lib/postLanguages'
   import { locale } from '$lib/translations'
 
   export let data
 
-  const meta = EDITABLE_STATIC_PAGE_META.apps
-  $: pageHeading = data?.pageTitle || meta.heading
+  $: meta = APPS_PAGE_LOCALIZATION[normalizePostLanguage(data?.language)]
+  $: pageHeading = data?.pageTitle || meta.title
   $: seoTitle = `${pageHeading} — ${brandNameForLanguage($locale)}`
 </script>
 

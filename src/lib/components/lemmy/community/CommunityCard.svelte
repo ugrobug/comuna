@@ -99,7 +99,6 @@
     Fire,
     Icon,
     InformationCircle,
-    Newspaper,
     NoSymbol,
     Plus,
   } from 'svelte-hero-icons'
@@ -226,11 +225,6 @@
               <Icon src={EllipsisHorizontal} size="15" mini slot="prefix" />
             </Button>
             
-            <MenuButton href="/modlog?community={community_view.community.id}">
-              <Icon src={Newspaper} size="15" mini />
-              {$t('cards.community.modlog')}
-            </MenuButton>
-
             <MenuButton
               color="danger-subtle"
               size="lg"
