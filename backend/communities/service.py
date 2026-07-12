@@ -1542,6 +1542,14 @@ def _favorite_post_ids_for_user(posts: list[Post], user: User | None) -> set[int
     return _feeds_views()._favorite_post_ids_for_user(posts, user)
 
 
+def _filter_posts_for_language(queryset, language: str):
+    return _feeds_views()._filter_posts_for_language(queryset, language)
+
+
+def _post_translation_prefetch(language: str):
+    return _feeds_views()._post_translation_prefetch(language)
+
+
 def _serialize_backend_post_card(
     request: HttpRequest,
     post: Post,
@@ -1549,6 +1557,7 @@ def _serialize_backend_post_card(
     *,
     now=None,
     is_favorite: bool = False,
+    language: str = "ru",
 ) -> dict:
     return _feeds_views()._serialize_backend_post_card(
         request,
@@ -1556,6 +1565,7 @@ def _serialize_backend_post_card(
         user,
         now=now,
         is_favorite=is_favorite,
+        language=language,
     )
 
 

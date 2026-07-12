@@ -3061,6 +3061,7 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
     all_posts_query = _comun_posts_base_queryset(comun, now)
     if comun.welcome_post_id:
         all_posts_query = all_posts_query.exclude(id=comun.welcome_post_id)
+    all_posts_query = community_service._filter_posts_for_language(all_posts_query, language)
 
     all_total_count = all_posts_query.count()
     category_count_rows = (
@@ -3106,9 +3107,13 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
 
     total_count = base_query.count() if category_filter_explicit else all_total_count
 
+    post_prefetches = ["tags"]
+    translation_prefetch = community_service._post_translation_prefetch(language)
+    if translation_prefetch:
+        post_prefetches.append(translation_prefetch)
     posts = list(
         base_query.select_related("author")
-        .prefetch_related("tags")
+        .prefetch_related(*post_prefetches)
         .distinct()
         .order_by("-created_at")[offset : offset + limit]
     )
@@ -3129,6 +3134,7 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
             current_user,
             now=now,
             is_favorite=post.id in favorite_post_ids,
+            language=language,
         )
         assignment = assignments.get(post.id)
         if assignment and assignment.category_id:

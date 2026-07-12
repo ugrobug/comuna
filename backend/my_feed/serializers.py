@@ -18,6 +18,7 @@ def _serialize_feed_post_card(
     *,
     now,
     is_favorite: bool = False,
+    language: str = "ru",
 ) -> dict:
     return _fv()._serialize_backend_post_card(
         request,
@@ -25,6 +26,7 @@ def _serialize_feed_post_card(
         current_user,
         now=now,
         is_favorite=is_favorite,
+        language=language,
     )
 
 

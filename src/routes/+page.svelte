@@ -46,9 +46,10 @@
       hideRead: effectiveHideRead,
       onlyRead: readOnly,
       card: true,
+      language: currentLanguage,
     })
     if (feedType === 'favorites') {
-      baseUrl = buildFavoritesFeedUrl()
+      baseUrl = buildFavoritesFeedUrl({ language: currentLanguage })
     } else if (feedType === 'mine') {
       baseUrl = $siteUser
         ? buildMyFeedUrl(
@@ -58,7 +59,8 @@
             undefined,
             hideNegativeMyFeed,
             effectiveHideRead,
-            readOnly
+            readOnly,
+            currentLanguage
           )
         : buildMyFeedUrl(
             selectedMyFeedAuthors,
@@ -67,7 +69,8 @@
             selectedMyFeedComunCategories,
             hideNegativeMyFeed,
             effectiveHideRead,
-            readOnly
+            readOnly,
+            currentLanguage
           )
     }
     const url = new URL(baseUrl, $page.url.origin)
@@ -257,6 +260,7 @@
       feedType,
       readOnly ? 'only-read' : effectiveHideRead ? 'hide-read' : 'all',
       hideNegativeMyFeed ? 'hide-neg' : 'show-neg',
+      currentLanguage,
     ].join('|')
     if (lastFeedKey === null) {
       lastFeedKey = feedKey
@@ -287,7 +291,7 @@
       const hydrationKey = $siteUser
         ? ($feedSettingsHydrated ? 'settings-ready' : 'settings-loading')
         : 'no-settings'
-      const key = `${authKey}:${hydrationKey}:${selectedMyFeedComuns.join(',')}:${selectedMyFeedAuthors.join(',')}:${JSON.stringify(selectedMyFeedComunCategories)}:${hideNegativeMyFeed ? 'no-negative' : 'all'}:${readOnly ? 'only-read' : effectiveHideRead ? 'hide-read' : 'all-read'}`
+      const key = `${authKey}:${hydrationKey}:${currentLanguage}:${selectedMyFeedComuns.join(',')}:${selectedMyFeedAuthors.join(',')}:${JSON.stringify(selectedMyFeedComunCategories)}:${hideNegativeMyFeed ? 'no-negative' : 'all'}:${readOnly ? 'only-read' : effectiveHideRead ? 'hide-read' : 'all-read'}`
       if (key !== lastMyFeedKey) {
         lastMyFeedKey = key
         const canReuseServerInitialFeed =
@@ -319,7 +323,7 @@
       // Keep the SSR-selected feed visible until saved feed settings hydrate.
     } else {
       const authKey = $siteUser ? 'auth' : 'anon'
-      const key = `favorites:${authKey}`
+      const key = `favorites:${authKey}:${currentLanguage}`
       if (key !== lastMyFeedKey) {
         lastMyFeedKey = key
         const canReuseServerInitialFeed =

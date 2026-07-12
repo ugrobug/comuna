@@ -1376,11 +1376,19 @@ def _post_card_preview_content(post: Post) -> str:
     )
 
 
-def _post_card_preview_payload(post: Post) -> dict[str, object]:
-    preview_content = _post_card_preview_content(post)
+def _post_card_preview_payload(
+    post: Post,
+    translation: PostTranslation | None = None,
+) -> dict[str, object]:
+    preview_content = (
+        rewrite_public_media_urls(translation.preview_content)
+        if translation and (translation.preview_content or "").strip()
+        else _post_card_preview_content(post)
+    )
+    full_content = translation.content if translation else post.content
     return {
         "content": preview_content,
-        "has_full_content": post_preview_has_more(post.content or "", preview_content),
+        "has_full_content": post_preview_has_more(full_content or "", preview_content),
     }
 
 
@@ -2622,6 +2630,40 @@ def _normalize_post_language(value: str | None) -> str | None:
     return None
 
 
+def _request_post_language(request: HttpRequest) -> str:
+    return _normalize_post_language(request.GET.get("lang")) or ORIGINAL_POST_LANGUAGE
+
+
+def _filter_posts_for_language(queryset, language: str, *, prefix: str = ""):
+    if language == ORIGINAL_POST_LANGUAGE:
+        return queryset
+    return queryset.filter(
+        **{
+            f"{prefix}translations__language": language,
+            f"{prefix}translations__status": POST_TRANSLATION_STATUS_TRANSLATED,
+        }
+    ).distinct()
+
+
+def _post_translation_prefetch(language: str, *, prefix: str = "") -> Prefetch | None:
+    if language == ORIGINAL_POST_LANGUAGE:
+        return None
+    return Prefetch(
+        f"{prefix}translations",
+        queryset=PostTranslation.objects.filter(
+            language=language,
+            status=POST_TRANSLATION_STATUS_TRANSLATED,
+        ),
+        to_attr="_translated_versions",
+    )
+
+
+def _feed_post_translation(post: Post, language: str) -> PostTranslation | None:
+    if language == ORIGINAL_POST_LANGUAGE:
+        return None
+    return _translation_by_language(post).get(language)
+
+
 def _localized_post_public_path(post: Post, language: str, title: str | None = None) -> str:
     if _special_project_redirect_path(post):
         return "/s/book"
@@ -3714,6 +3756,7 @@ def post_view(request: HttpRequest, post_id: int) -> HttpResponse:
 
 @anonymous_cache(prefix="home-feed", seconds=45)
 def home_feed(request: HttpRequest) -> HttpResponse:
+    language = _request_post_language(request)
     limit_raw = request.GET.get("limit", "10")
     try:
         limit = min(max(int(limit_raw), 1), 200)
@@ -3735,6 +3778,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
             limit=limit,
             offset=offset,
             now=now,
+            language=language,
         )
         if materialized_response is not None:
             return materialized_response
@@ -3769,6 +3813,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
         .filter(has_hidden_home_tag=False)
         .exclude(id__in=hidden_home_comun_category_post_ids)
     )
+    base_query = _filter_posts_for_language(base_query, language)
     if hidden_home_comun_slugs:
         hidden_home_comun_post_ids = Post.objects.filter(
             raw_data__source="manual_comun",
@@ -3788,10 +3833,13 @@ def home_feed(request: HttpRequest) -> HttpResponse:
         base_query = base_query.annotate(recently_read=Exists(recent_read_marker))
 
     if only_read:
+        posts_page_query = base_query.filter(recently_read=True).select_related("author")
+        prefetches = ["tags"]
+        translation_prefetch = _post_translation_prefetch(language)
+        if translation_prefetch:
+            prefetches.append(translation_prefetch)
         posts_page = list(
-            base_query.filter(recently_read=True)
-            .select_related("author")
-            .prefetch_related("tags")
+            posts_page_query.prefetch_related(*prefetches)
             .order_by("-created_at")[offset : offset + limit]
         )
         favorite_post_ids = _favorite_post_ids_for_user(posts_page, current_user)
@@ -3807,6 +3855,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
                         now=now,
                         is_favorite=post.id in favorite_post_ids,
                         author_rating=author_rating,
+                        language=language,
                     )
                 )
                 continue
@@ -3818,6 +3867,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
                     now=now,
                     is_favorite=post.id in favorite_post_ids,
                     author_rating=author_rating,
+                    language=language,
                 )
             )
         return JsonResponse({"ok": True, "posts": serialized})
@@ -3825,9 +3875,13 @@ def home_feed(request: HttpRequest) -> HttpResponse:
     posts_query = base_query
     if hide_read and read_user:
         posts_query = posts_query.filter(recently_read=False)
+    prefetches = ["tags"]
+    translation_prefetch = _post_translation_prefetch(language)
+    if translation_prefetch:
+        prefetches.append(translation_prefetch)
     posts = list(
         posts_query.select_related("author")
-        .prefetch_related("tags")
+        .prefetch_related(*prefetches)
         .order_by("-created_at")[:fetch_size]
     )
     favorite_post_ids = _favorite_post_ids_for_user(posts, current_user)
@@ -3878,6 +3932,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
                     now=now,
                     is_favorite=post.id in favorite_post_ids,
                     author_rating=author_rating,
+                    language=language,
                 )
             )
         else:
@@ -3889,6 +3944,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
                     now=now,
                     is_favorite=post.id in favorite_post_ids,
                     author_rating=author_rating,
+                    language=language,
                 )
             )
         last_author_id = post.author_id
@@ -3905,6 +3961,7 @@ def favorites_feed(request: HttpRequest) -> HttpResponse:
     user = _get_user_from_request(request)
     if not user:
         return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    language = _request_post_language(request)
 
     limit_raw = request.GET.get("limit", "10")
     try:
@@ -3930,8 +3987,15 @@ def favorites_feed(request: HttpRequest) -> HttpResponse:
         )
         .filter(Q(post__publish_at__isnull=True) | Q(post__publish_at__lte=now))
         .filter(Q(post__author__shadow_banned=False) | Q(post__author__force_home=True))
-        .select_related("post__author")
-        .prefetch_related("post__tags")
+    )
+    favorites_qs = _filter_posts_for_language(favorites_qs, language, prefix="post__")
+    favorite_prefetches = ["post__tags"]
+    translation_prefetch = _post_translation_prefetch(language, prefix="post__")
+    if translation_prefetch:
+        favorite_prefetches.append(translation_prefetch)
+    favorites_qs = (
+        favorites_qs.select_related("post__author")
+        .prefetch_related(*favorite_prefetches)
         .order_by("-created_at")
     )
 
@@ -3943,6 +4007,7 @@ def favorites_feed(request: HttpRequest) -> HttpResponse:
 
     serialized = []
     for post in posts:
+        translation = _feed_post_translation(post, language)
         _content, poll_payload = _content_with_live_poll(post, user)
         template_payload = _serialize_post_template(post)
         author_channel_url, author_title = _author_display_fields(
@@ -3951,11 +4016,17 @@ def favorites_feed(request: HttpRequest) -> HttpResponse:
         serialized.append(
             {
                 "id": post.id,
-                "title": _post_display_title(post),
+                "title": (
+                    translation.title or _post_display_title(post)
+                    if translation
+                    else _post_display_title(post)
+                ),
+                "language": language,
+                "is_translated": translation is not None,
                 "template": template_payload,
                 "bug_report_confirmation": _serialize_bug_report_confirmation(post, user),
                 "comun": community_service._serialize_post_comun(request, post, user),
-                **_post_card_preview_payload(post),
+                **_post_card_preview_payload(post, translation),
                 "poll": poll_payload,
                 **_serialize_post_preview_image_fields(request, post, template_payload),
                 "source_url": post.source_url,
@@ -3989,22 +4060,30 @@ def _serialize_backend_post_card(
     now=None,
     is_favorite: bool = False,
     author_rating: int | float = 0,
+    language: str = ORIGINAL_POST_LANGUAGE,
 ) -> dict:
     now = now or timezone.now()
     _content, poll_payload = _content_with_live_poll(post, current_user)
+    translation = _feed_post_translation(post, language)
     template_payload = _serialize_post_template(post)
     author_channel_url, author_title = _author_display_fields(
         request, post.author, post.channel_url
     )
     return {
         "id": post.id,
-        "title": _post_display_title(post),
+        "title": (
+            translation.title or _post_display_title(post)
+            if translation
+            else _post_display_title(post)
+        ),
+        "language": language,
+        "is_translated": translation is not None,
         "template": template_payload,
         "enabled_template_editor_blocks": _serialize_enabled_template_editor_blocks(template_payload),
         "can_manage_bug_report_status": _user_can_manage_bug_report_status(current_user, post),
         "bug_report_confirmation": _serialize_bug_report_confirmation(post, current_user),
         "comun": community_service._serialize_post_comun(request, post, current_user),
-        **_post_card_preview_payload(post),
+        **_post_card_preview_payload(post, translation),
         "poll": poll_payload,
         "post_ratings": _serialize_post_ratings(post, current_user),
         "post_rating": _serialize_post_rating(post, current_user, template_payload=template_payload),
@@ -4038,22 +4117,30 @@ def _serialize_lightweight_post_card(
     is_favorite: bool = False,
     author_rating: int | float = 0,
     score_override: int | float | None = None,
+    language: str = ORIGINAL_POST_LANGUAGE,
 ) -> dict:
     now = now or timezone.now()
     _content, poll_payload = _content_with_live_poll(post, current_user)
+    translation = _feed_post_translation(post, language)
     template_payload = _serialize_post_template(post)
     author_channel_url, author_title = _author_display_fields(
         request, post.author, post.channel_url
     )
     return {
         "id": post.id,
-        "title": _post_display_title(post),
+        "title": (
+            translation.title or _post_display_title(post)
+            if translation
+            else _post_display_title(post)
+        ),
+        "language": language,
+        "is_translated": translation is not None,
         "template": template_payload,
         "enabled_template_editor_blocks": _serialize_enabled_template_editor_blocks(template_payload),
         "can_manage_bug_report_status": _user_can_manage_bug_report_status(current_user, post),
         "bug_report_confirmation": _serialize_bug_report_confirmation(post, current_user),
         "comun": community_service._serialize_post_comun(request, post, current_user),
-        **_post_card_preview_payload(post),
+        **_post_card_preview_payload(post, translation),
         "poll": poll_payload,
         "post_ratings": _serialize_post_ratings(post, current_user),
         "post_rating": _serialize_post_rating(post, current_user, template_payload=template_payload),
@@ -4084,11 +4171,17 @@ def _materialized_home_feed_response(
     limit: int,
     offset: int,
     now=None,
+    language: str = ORIGINAL_POST_LANGUAGE,
 ) -> HttpResponse | None:
+    items_query = PublicFeedItem.objects.filter(feed=PublicFeedItem.FEED_HOME)
+    items_query = _filter_posts_for_language(items_query, language, prefix="post__")
+    prefetches = ["post__tags"]
+    translation_prefetch = _post_translation_prefetch(language, prefix="post__")
+    if translation_prefetch:
+        prefetches.append(translation_prefetch)
     items = list(
-        PublicFeedItem.objects.filter(feed=PublicFeedItem.FEED_HOME)
-        .select_related("post", "post__author")
-        .prefetch_related("post__tags")
+        items_query.select_related("post", "post__author")
+        .prefetch_related(*prefetches)
         .order_by("rank")
     )
     if not items:
@@ -4129,6 +4222,7 @@ def _materialized_home_feed_response(
             None,
             now=now,
             score_override=score,
+            language=language,
         )
         for item, score in visible_items[offset : offset + limit]
     ]

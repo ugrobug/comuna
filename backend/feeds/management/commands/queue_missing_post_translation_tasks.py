@@ -5,6 +5,8 @@ from datetime import datetime, timezone as datetime_timezone
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
+from communities.models import Comun
+
 from feeds.models import (
     CONTENT_TRANSLATION_KIND_POST,
     CONTENT_TRANSLATION_TASK_STATUS_PENDING,
@@ -16,7 +18,6 @@ from feeds.models import (
 )
 from feeds.translation_service import (
     SUPPORTED_TRANSLATION_LANGUAGES,
-    _post_is_translatable,
     _scheduled_at_for,
 )
 
@@ -36,6 +37,16 @@ class Command(BaseCommand):
         dry_run = bool(options["dry_run"])
         limit = max(int(options["limit"] or 0), 0)
         now = timezone.now()
+        negative_comuns = Comun.objects.filter(is_active=True, rating_score__lt=0).exclude(
+            slug__iexact="faq"
+        )
+        negative_comun_slugs = set(negative_comuns.values_list("slug", flat=True))
+        negative_source_author_ids = set(
+            negative_comuns.exclude(telegram_source_author_id__isnull=True).values_list(
+                "telegram_source_author_id",
+                flat=True,
+            )
+        )
         stats = {
             "scanned": 0,
             "eligible": 0,
@@ -63,7 +74,12 @@ class Command(BaseCommand):
 
         for post in queryset.iterator(chunk_size=500):
             stats["scanned"] += 1
-            if not _post_is_translatable(post):
+            if not _post_is_translatable_for_backfill(
+                post,
+                now=now,
+                negative_comun_slugs=negative_comun_slugs,
+                negative_source_author_ids=negative_source_author_ids,
+            ):
                 stats["skipped_not_translatable"] += 1
                 continue
 
@@ -170,6 +186,26 @@ def _missing_post_translation_languages(post: Post) -> set[str]:
         if not _post_translation_is_current(post, translation):
             missing.add(language)
     return missing
+
+
+def _post_is_translatable_for_backfill(
+    post: Post,
+    *,
+    now,
+    negative_comun_slugs: set[str],
+    negative_source_author_ids: set[int],
+) -> bool:
+    if not post.pk or post.is_blocked or post.is_pending:
+        return False
+    if post.publish_at and post.publish_at > now:
+        return True
+    if not (post.title or "").strip() and not (post.content or "").strip():
+        return False
+    raw_data = post.raw_data if isinstance(post.raw_data, dict) else {}
+    comun_slug = str(raw_data.get("comun_slug") or "").strip()
+    if comun_slug and comun_slug in negative_comun_slugs:
+        return False
+    return post.author_id not in negative_source_author_ids
 
 
 def _post_translation_is_current(post: Post, translation) -> bool:

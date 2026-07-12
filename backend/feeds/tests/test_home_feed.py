@@ -4,11 +4,61 @@ from django.test import TestCase
 from django.urls import reverse
 
 from communities.models import Comun
-from feeds.models import Author, Post, PublicFeedItem
+from feeds.models import Author, Post, PostTranslation, PublicFeedItem
 from ratings.models import RatingSettings
 
 
 class HomeFeedTests(TestCase):
+    def test_english_feed_only_returns_translated_posts_with_localized_cards(self):
+        author = Author.objects.create(username="localized-author")
+        translated_post = Post.objects.create(
+            author=author,
+            message_id=1001,
+            title="Русский заголовок",
+            content="<p>Русский текст</p>",
+            rating=2,
+            is_pending=False,
+            is_blocked=False,
+        )
+        untranslated_post = Post.objects.create(
+            author=author,
+            message_id=1002,
+            title="Только русский",
+            content="<p>Без перевода</p>",
+            rating=2,
+            is_pending=False,
+            is_blocked=False,
+        )
+        PostTranslation.objects.create(
+            post=translated_post,
+            language="en",
+            title="English title",
+            content="<p>English text</p>",
+            preview_content="<p>English preview</p>",
+            status="translated",
+        )
+        for rank, post in enumerate((translated_post, untranslated_post), start=1):
+            PublicFeedItem.objects.create(
+                feed=PublicFeedItem.FEED_HOME,
+                post=post,
+                rank=rank,
+                score=2,
+                post_created_at=post.created_at,
+                author_id_snapshot=author.id,
+            )
+
+        response = self.client.get(
+            reverse("home-feed"),
+            {"card": "1", "limit": "10", "lang": "en"},
+        )
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        posts = response.json()["posts"]
+        self.assertEqual([post["id"] for post in posts], [translated_post.id])
+        self.assertEqual(posts[0]["title"], "English title")
+        self.assertEqual(posts[0]["content"], "<p>English preview</p>")
+        self.assertEqual(posts[0]["language"], "en")
+
     def test_materialized_home_feed_hides_current_negative_rating_posts(self):
         negative_author = Author.objects.create(username="negative-author")
         positive_author = Author.objects.create(username="positive-author")

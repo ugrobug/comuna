@@ -296,6 +296,7 @@ def auth_feed_settings(request: HttpRequest) -> HttpResponse:
 
 
 def my_feed(request: HttpRequest) -> HttpResponse:
+    language = _fv()._request_post_language(request)
     limit_raw = request.GET.get("limit", "10")
     try:
         limit = min(max(int(limit_raw), 1), 200)
@@ -441,6 +442,7 @@ def my_feed(request: HttpRequest) -> HttpResponse:
         .filter(_fv()._publish_ready_filter(now))
         .filter(Q(author__shadow_banned=False) | Q(author__force_home=True))
     )
+    base_query = _fv()._filter_posts_for_language(base_query, language)
     if hide_negative:
         base_query = base_query.filter(rating__gte=0)
     if has_tag_selection or has_comun_selection:
@@ -476,7 +478,7 @@ def my_feed(request: HttpRequest) -> HttpResponse:
         elif hide_read:
             posts_query = posts_query.filter(recently_read=False)
 
-    index_posts = _my_feed_posts_from_source_index(
+    index_posts = None if language != "ru" else _my_feed_posts_from_source_index(
         author_ids=sorted(set(author_ids)),
         comun_ids=sorted(set(index_comun_ids)),
         comun_category_ids=sorted(set(index_comun_category_ids)),
@@ -492,9 +494,13 @@ def my_feed(request: HttpRequest) -> HttpResponse:
         limit=limit,
     )
     if index_posts is None:
+        prefetches = ["tags"]
+        translation_prefetch = _fv()._post_translation_prefetch(language)
+        if translation_prefetch:
+            prefetches.append(translation_prefetch)
         posts = list(
             posts_query.select_related("author")
-            .prefetch_related("tags")
+            .prefetch_related(*prefetches)
             .order_by("-created_at")[offset : offset + limit]
         )
     else:
@@ -508,6 +514,7 @@ def my_feed(request: HttpRequest) -> HttpResponse:
             current_user,
             now=now,
             is_favorite=post.id in favorite_post_ids,
+            language=language,
         )
         for post in posts
     ]

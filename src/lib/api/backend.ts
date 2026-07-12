@@ -594,8 +594,8 @@ export const buildLandingPageAdminImageUrl = (id: number | string): string => {
 }
 
 export const buildBackendPostPath = (
-  post: { id: number; title: string },
-  language = 'ru'
+  post: { id: number; title: string; language?: string },
+  language = post.language || 'ru'
 ): string => {
   const slug = slugifyTitle(post.title)
   const path = slug ? `/b/post/${post.id}-${slug}` : `/b/post/${post.id}`
@@ -606,6 +606,7 @@ export const buildHomeFeedUrl = (options?: {
   hideRead?: boolean
   onlyRead?: boolean
   card?: boolean
+  language?: string
 }): string => {
   const base = `${getBackendBaseUrl()}/api/home/`
   const params = new URLSearchParams()
@@ -617,6 +618,9 @@ export const buildHomeFeedUrl = (options?: {
   if (options?.card) {
     params.set('card', '1')
   }
+  if (options?.language && options.language !== 'ru') {
+    params.set('lang', options.language)
+  }
   const query = params.toString()
   return query ? `${base}?${query}` : base
 }
@@ -624,6 +628,7 @@ export const buildHomeFeedUrl = (options?: {
 export const buildFavoritesFeedUrl = (options?: {
   hideRead?: boolean
   onlyRead?: boolean
+  language?: string
 }): string => {
   const base = `${getBackendBaseUrl()}/api/home/favorites/`
   const params = new URLSearchParams()
@@ -631,6 +636,9 @@ export const buildFavoritesFeedUrl = (options?: {
     params.set('only_read', '1')
   } else if (options?.hideRead) {
     params.set('hide_read', '1')
+  }
+  if (options?.language && options.language !== 'ru') {
+    params.set('lang', options.language)
   }
   const query = params.toString()
   return query ? `${base}?${query}` : base
@@ -643,7 +651,8 @@ export const buildMyFeedUrl = (
   comunCategories?: Record<string, string[]>,
   hideNegative?: boolean,
   hideRead: boolean = false,
-  onlyRead: boolean = false
+  onlyRead: boolean = false,
+  language: string = 'ru'
 ): string => {
   const base = `${getBackendBaseUrl()}/api/home/my/`
   const params = new URLSearchParams()
@@ -666,6 +675,9 @@ export const buildMyFeedUrl = (
     params.set('only_read', '1')
   } else if (hideRead) {
     params.set('hide_read', '1')
+  }
+  if (language !== 'ru') {
+    params.set('lang', language)
   }
   const query = params.toString()
   return query ? `${base}?${query}` : base

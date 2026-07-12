@@ -4,6 +4,12 @@ import {
   buildHomeFeedUrl,
   buildMyFeedUrl,
 } from '$lib/api/backend'
+import {
+  languageFromAcceptLanguage,
+  languageFromPathname,
+  normalizeInterfaceLanguage,
+  originalPostLanguage,
+} from '$lib/postLanguages'
 import type { PageServerLoad } from './$types'
 
 const PAGE_SIZE = 10
@@ -39,7 +45,12 @@ const loadFeedSettings = async (
   return { authenticated: false, settings: null }
 }
 
-const buildInitialFeedUrl = (feedType: FeedType, settings: Record<string, any> | null, readOnly: boolean) => {
+const buildInitialFeedUrl = (
+  feedType: FeedType,
+  settings: Record<string, any> | null,
+  readOnly: boolean,
+  language: string
+) => {
   const hideRead = Boolean(settings?.hide_read_posts) && !readOnly
 
   if (feedType === 'mine') {
@@ -52,7 +63,8 @@ const buildInitialFeedUrl = (feedType: FeedType, settings: Record<string, any> |
         ? Boolean(settings.my_feed_hide_negative)
         : undefined,
       hideRead,
-      readOnly
+      readOnly,
+      language
     )
   }
 
@@ -60,6 +72,7 @@ const buildInitialFeedUrl = (feedType: FeedType, settings: Record<string, any> |
     return buildFavoritesFeedUrl({
       hideRead,
       onlyRead: readOnly,
+      language,
     })
   }
 
@@ -67,6 +80,7 @@ const buildInitialFeedUrl = (feedType: FeedType, settings: Record<string, any> |
     hideRead,
     onlyRead: readOnly,
     card: true,
+    language,
   })
 }
 
@@ -78,6 +92,11 @@ export const load: PageServerLoad = async ({ fetch, request, url }) => {
   const { authenticated, settings } = await loadFeedSettings(fetch, cookieHeader)
   const savedFeedType = normalizeFeedType(settings?.home_feed)
   const feedType = explicitFeedType ?? savedFeedType ?? 'hot'
+  const language =
+    normalizeInterfaceLanguage(settings?.interface_language) ||
+    languageFromPathname(url.pathname) ||
+    languageFromAcceptLanguage(request.headers.get('accept-language')) ||
+    originalPostLanguage
 
   let posts: any[] = []
   let serverLoadedFeed = false
@@ -85,7 +104,10 @@ export const load: PageServerLoad = async ({ fetch, request, url }) => {
 
   if (shouldLoadAuthenticatedFeed) {
     try {
-      const requestUrl = new URL(buildInitialFeedUrl(feedType, settings, readOnly), url.origin)
+      const requestUrl = new URL(
+        buildInitialFeedUrl(feedType, settings, readOnly, language),
+        url.origin
+      )
       requestUrl.searchParams.set('limit', String(PAGE_SIZE))
       const response = await fetch(requestUrl.toString(), {
         headers:
