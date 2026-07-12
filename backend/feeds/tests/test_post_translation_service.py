@@ -13,6 +13,7 @@ from feeds.models import (
     CONTENT_TRANSLATION_KIND_COMUN,
     CONTENT_TRANSLATION_KIND_POST,
     CONTENT_TRANSLATION_TASK_STATUS_DONE,
+    CONTENT_TRANSLATION_TASK_STATUS_FAILED,
     CONTENT_TRANSLATION_TASK_STATUS_PENDING,
     Comun,
     ContentTranslationRun,
@@ -277,6 +278,27 @@ class PostTranslationServiceTests(TestCase):
             ).count(),
             1,
         )
+
+    @patch("feeds.translation_service.translate_post_to_language")
+    def test_process_due_translation_tasks_retries_old_failed_tasks(self, translate_mock) -> None:
+        task = ContentTranslationTask.objects.get(
+            kind=CONTENT_TRANSLATION_KIND_POST,
+            object_id=self.post.pk,
+        )
+        retry_before = timezone.now() - timedelta(minutes=16)
+        ContentTranslationTask.objects.filter(pk=task.pk).update(
+            status=CONTENT_TRANSLATION_TASK_STATUS_FAILED,
+            scheduled_at=retry_before,
+            updated_at=retry_before,
+            last_error="DeepSeek timeout",
+        )
+
+        stats = process_due_translation_tasks(limit=1)
+
+        self.assertEqual(stats["processed"], 1)
+        self.assertEqual(stats["done"], 1)
+        task.refresh_from_db()
+        self.assertEqual(task.status, CONTENT_TRANSLATION_TASK_STATUS_DONE)
 
     @patch("feeds.translation_service.translate_post_to_language")
     def test_disabled_auto_translation_reschedules_without_openrouter(self, translate_mock) -> None:

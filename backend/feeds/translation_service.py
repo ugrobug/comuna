@@ -112,6 +112,7 @@ POST_TRANSLATION_TITLE_MAX_LENGTH = 255
 COMUN_TRANSLATION_NAME_MAX_LENGTH = 160
 STATIC_PAGE_TRANSLATION_TITLE_MAX_LENGTH = 160
 CONTENT_TRANSLATION_TASK_STALE_AFTER = timedelta(minutes=12)
+CONTENT_TRANSLATION_TASK_FAILED_RETRY_AFTER = timedelta(minutes=15)
 TRANSLATION_PROVIDER_DEEPSEEK = "deepseek"
 TRANSLATION_PROVIDER_OPENROUTER = "openrouter"
 
@@ -818,6 +819,7 @@ def process_due_translation_tasks(*, limit: int = 20) -> dict[str, int]:
     stats = {"processed": 0, "done": 0, "failed": 0, "skipped": 0}
     now = timezone.now()
     _reset_stale_running_translation_tasks(now)
+    _reset_retryable_failed_translation_tasks(now)
     task_ids = _claim_due_translation_task_ids(limit=limit, now=now)
     for task_id in task_ids:
         result = _process_claimed_translation_task(task_id)
@@ -917,6 +919,19 @@ def _reset_stale_running_translation_tasks(now) -> int:
         status=CONTENT_TRANSLATION_TASK_STATUS_PENDING,
         locked_at=None,
         last_error="Задача возвращена в очередь после таймаута обработчика",
+        updated_at=now,
+    )
+
+
+def _reset_retryable_failed_translation_tasks(now) -> int:
+    retry_before = now - CONTENT_TRANSLATION_TASK_FAILED_RETRY_AFTER
+    return ContentTranslationTask.objects.filter(
+        status=CONTENT_TRANSLATION_TASK_STATUS_FAILED,
+        updated_at__lt=retry_before,
+    ).update(
+        status=CONTENT_TRANSLATION_TASK_STATUS_PENDING,
+        scheduled_at=now,
+        locked_at=None,
         updated_at=now,
     )
 
