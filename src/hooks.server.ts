@@ -15,6 +15,9 @@ const TITLE_TAG_PATTERN = /<title\b[^>]*>[\s\S]*?<\/title>/i
 
 const TITLE_CONTENT_PATTERN = /<title\b[^>]*>([\s\S]*?)<\/title>/i
 
+const SOCIAL_IMAGE_META_PATTERN =
+  /(?:\bproperty="og:image(?:[^"]*)?"|\bname="twitter:(?:image(?:[^"]*)?|card)")/i
+
 const STYLESHEET_LINK_PATTERN = /<link\b[^>]*rel="stylesheet"[^>]*>/i
 
 const SOCIAL_CRAWLER_USER_AGENT_PATTERN =
@@ -80,25 +83,23 @@ export const buildSocialCrawlerHtml = (html: string) => {
   const titleTag = html.match(TITLE_TAG_PATTERN)?.[0] || ''
   const titleContent = titleTag.match(TITLE_CONTENT_PATTERN)?.[1]?.trim() || ''
   const priorityTags = html.match(PRIORITY_HEAD_TAG_PATTERN) || []
-  const hasRobotsTag = priorityTags.some((tag) => /\bname="robots"/i.test(tag))
+  const crawlerPriorityTags = priorityTags.filter((tag) => !SOCIAL_IMAGE_META_PATTERN.test(tag))
+  const hasRobotsTag = crawlerPriorityTags.some((tag) => /\bname="robots"/i.test(tag))
   const robotsTag = hasRobotsTag ? '' : '<meta name="robots" content="max-image-preview:large">'
   const headTags = [
     '<meta charset="utf-8">',
     titleTag,
     robotsTag,
-    ...priorityTags,
+    ...crawlerPriorityTags,
   ].filter(Boolean)
 
-  const descriptionTag = priorityTags.find((tag) =>
+  const descriptionTag = crawlerPriorityTags.find((tag) =>
     /(?:\bproperty="og:description"|\bname="description")/i.test(tag)
   )
   const descriptionContent = descriptionTag?.match(/\bcontent="([^"]*)"/i)?.[1]?.trim() || ''
-  const imageTag = priorityTags.find((tag) => /\bproperty="og:image"/i.test(tag))
-  const imageUrl = imageTag?.match(/\bcontent="([^"]*)"/i)?.[1]?.trim() || ''
   const bodyParts = [
     titleContent ? `<h1>${titleContent}</h1>` : '',
     descriptionContent ? `<p>${descriptionContent}</p>` : '',
-    imageUrl ? `<img src="${imageUrl}" alt="">` : '',
   ].filter(Boolean)
 
   return `<!doctype html><html><head>${headTags.join('')}</head><body><main><article>${bodyParts.join('')}</article></main></body></html>`

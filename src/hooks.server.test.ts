@@ -19,9 +19,9 @@ describe('buildSocialCrawlerHtml', () => {
     )
     expect(crawlerHtml).toContain('<h1>Post title - Tambur</h1>')
     expect(crawlerHtml).toContain('<p>Short post preview</p>')
-    expect(crawlerHtml).toContain(
-      '<img src="https://media.tambur.pub/post.webp" alt="">'
-    )
+    expect(crawlerHtml).not.toContain('og:image')
+    expect(crawlerHtml).not.toContain('media.tambur.pub')
+    expect(crawlerHtml).not.toContain('<img')
     expect(crawlerHtml).not.toContain('Application shell')
   })
 })
