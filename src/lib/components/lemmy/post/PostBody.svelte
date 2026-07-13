@@ -5,7 +5,6 @@
   import { ChevronDown, Icon } from 'svelte-hero-icons'
   import { browser } from '$app/environment'
   import { afterUpdate, createEventDispatcher, onMount, tick } from 'svelte'
-  import { page } from '$app/stores'
   import {
     parseSerializedEditorModel,
     looksLikeSerializedEditorModel,
@@ -45,7 +44,8 @@
   import { renderQuoteBlockHtml } from '$lib/quoteBlock'
   import { sanitizePostHtml as sanitizePostHtmlUniversal } from '$lib/security/html'
   import { getSafeUrl, isExternalUrl } from '$lib/security/url'
-  import { t } from '$lib/translations'
+  import { locale, t } from '$lib/translations'
+  import { normalizeInterfaceLanguage, originalPostLanguage } from '$lib/postLanguages'
   
   let DOMPurify: any
   let purifyConfigured = false
@@ -132,6 +132,7 @@
   export let canExpandPreview = false
   export let externalPreviewImageUrl: string | null | undefined = null
   export let ratingVoteUrl: string | null = null
+  $: contentLanguage = normalizeInterfaceLanguage($locale) ?? originalPostLanguage
   $: void view
   $: void clickThrough
   
@@ -590,7 +591,7 @@
 
     pollRestoreInFlight = true
     try {
-      const response = await fetch(buildPostDetailUrl(postId), {
+      const response = await fetch(buildPostDetailUrl(postId, contentLanguage), {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -980,7 +981,7 @@
     fullBodyLoadFailed = false
     try {
       const token = $siteToken
-      const response = await fetch(buildPostDetailUrl(postId), {
+      const response = await fetch(buildPostDetailUrl(postId, contentLanguage), {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       })
       const payload = await response.json().catch(() => null)
@@ -3410,7 +3411,7 @@
 
   // Сбрасываем состояние превью только при смене исходного контента/режима отображения
   $: {
-    const nextBodySourceKey = `${postId ?? ''}:${body}`
+    const nextBodySourceKey = `${contentLanguage}:${postId ?? ''}:${body}`
     if (nextBodySourceKey !== bodySourceKey) {
       bodySourceKey = nextBodySourceKey
       fullBody = null
