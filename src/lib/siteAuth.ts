@@ -603,6 +603,8 @@ export type SocialAuthProvider = 'google' | 'apple'
 export type SocialAuthPayload = {
   auth_intent: 'login' | 'signup'
   credential: string
+  code?: string
+  nonce?: string
   user?: Record<string, unknown>
   privacy_accepted?: boolean
   registration_source?: string

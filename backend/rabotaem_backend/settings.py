@@ -270,10 +270,22 @@ TELEGRAM_AUTH_ALLOWED_ORIGINS = _csv_env(
 )
 GOOGLE_OAUTH_CLIENT_ID = os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "").strip()
 APPLE_OAUTH_CLIENT_ID = os.environ.get("APPLE_OAUTH_CLIENT_ID", "").strip()
+APPLE_OAUTH_CLIENT_IDS = _csv_env("APPLE_OAUTH_CLIENT_IDS")
+if APPLE_OAUTH_CLIENT_ID and APPLE_OAUTH_CLIENT_ID not in APPLE_OAUTH_CLIENT_IDS:
+    APPLE_OAUTH_CLIENT_IDS.insert(0, APPLE_OAUTH_CLIENT_ID)
+APPLE_OAUTH_TEAM_ID = os.environ.get("APPLE_OAUTH_TEAM_ID", "").strip()
+APPLE_OAUTH_KEY_ID = os.environ.get("APPLE_OAUTH_KEY_ID", "").strip()
+APPLE_OAUTH_PRIVATE_KEY = os.environ.get("APPLE_OAUTH_PRIVATE_KEY", "").strip()
+APPLE_OAUTH_PRIVATE_KEY_FILE = os.environ.get("APPLE_OAUTH_PRIVATE_KEY_FILE", "").strip()
+APPLE_OAUTH_REDIRECT_URI = os.environ.get("APPLE_OAUTH_REDIRECT_URI", "").strip()
 APPLE_OAUTH_ISSUER = os.environ.get("APPLE_OAUTH_ISSUER", "https://appleid.apple.com").strip()
 APPLE_OAUTH_JWKS_URL = os.environ.get(
     "APPLE_OAUTH_JWKS_URL",
     "https://appleid.apple.com/auth/keys",
+).strip()
+APPLE_OAUTH_TOKEN_URL = os.environ.get(
+    "APPLE_OAUTH_TOKEN_URL",
+    "https://appleid.apple.com/auth/token",
 ).strip()
 AUTH_COUNTRY_LOOKUP_URL = os.environ.get(
     "AUTH_COUNTRY_LOOKUP_URL",

@@ -1454,9 +1454,134 @@ def _authenticate_google_payload(payload: dict) -> dict:
     }
 
 
-def _authenticate_apple_payload(payload: dict) -> dict:
-    credential = str(payload.get("credential") or payload.get("id_token") or "").strip()
-    client_id = str(getattr(settings, "APPLE_OAUTH_CLIENT_ID", "") or "").strip()
+def _apple_allowed_client_ids() -> tuple[str, ...]:
+    primary_client_id = str(getattr(settings, "APPLE_OAUTH_CLIENT_ID", "") or "").strip()
+    configured = getattr(settings, "APPLE_OAUTH_CLIENT_IDS", ()) or ()
+    if isinstance(configured, str):
+        configured = configured.split(",")
+    client_ids = [primary_client_id]
+    client_ids.extend(str(value or "").strip() for value in configured)
+    return tuple(dict.fromkeys(value for value in client_ids if value))
+
+
+def _apple_private_key() -> str:
+    raw_key = str(getattr(settings, "APPLE_OAUTH_PRIVATE_KEY", "") or "").strip()
+    if raw_key:
+        return raw_key.replace("\\n", "\n")
+
+    key_file = str(getattr(settings, "APPLE_OAUTH_PRIVATE_KEY_FILE", "") or "").strip()
+    if not key_file:
+        return ""
+    try:
+        with open(key_file, "r", encoding="utf-8") as handle:
+            return handle.read().strip()
+    except (OSError, UnicodeError) as exc:
+        logger.error("Apple OAuth private key could not be read: %s", exc)
+        return ""
+
+
+def _apple_client_secret(client_id: str) -> str:
+    team_id = str(getattr(settings, "APPLE_OAUTH_TEAM_ID", "") or "").strip()
+    key_id = str(getattr(settings, "APPLE_OAUTH_KEY_ID", "") or "").strip()
+    private_key = _apple_private_key()
+    issuer = str(getattr(settings, "APPLE_OAUTH_ISSUER", "https://appleid.apple.com") or "").strip()
+    if not client_id or not team_id or not key_id or not private_key or not issuer:
+        raise ValueError(_("Apple-вход не настроен."))
+
+    now = int(timezone.now().timestamp())
+    try:
+        return jwt.encode(
+            {
+                "iss": team_id,
+                "iat": now,
+                "exp": now + 5 * 60,
+                "aud": issuer,
+                "sub": client_id,
+            },
+            private_key,
+            algorithm="ES256",
+            headers={"kid": key_id},
+        )
+    except (InvalidTokenError, ValueError, TypeError) as exc:
+        logger.error("Apple OAuth client secret could not be created", exc_info=True)
+        raise ValueError(_("Apple-вход не настроен.")) from exc
+
+
+def _apple_token_audience(credential: str) -> str:
+    allowed_client_ids = _apple_allowed_client_ids()
+    if not credential or not allowed_client_ids:
+        raise ValueError(_("Apple-вход не настроен."))
+    try:
+        claims = jwt.decode(
+            credential,
+            options={
+                "verify_signature": False,
+                "verify_exp": False,
+                "verify_iat": False,
+                "verify_aud": False,
+                "verify_iss": False,
+            },
+            algorithms=["RS256"],
+        )
+    except (InvalidTokenError, ValueError, TypeError) as exc:
+        raise ValueError(_("Не удалось проверить вход через Apple.")) from exc
+
+    raw_audience = claims.get("aud")
+    audiences = raw_audience if isinstance(raw_audience, list) else [raw_audience]
+    for audience in audiences:
+        client_id = str(audience or "").strip()
+        if client_id in allowed_client_ids:
+            return client_id
+    raise ValueError(_("Некорректный Apple-аккаунт."))
+
+
+def _exchange_apple_authorization_code(code: str, client_id: str) -> str:
+    token_url = str(getattr(settings, "APPLE_OAUTH_TOKEN_URL", "") or "").strip()
+    if not code or not token_url:
+        raise ValueError(_("Apple-вход не настроен."))
+
+    form = {
+        "client_id": client_id,
+        "client_secret": _apple_client_secret(client_id),
+        "code": code,
+        "grant_type": "authorization_code",
+    }
+    primary_client_id = str(getattr(settings, "APPLE_OAUTH_CLIENT_ID", "") or "").strip()
+    redirect_uri = str(getattr(settings, "APPLE_OAUTH_REDIRECT_URI", "") or "").strip()
+    if client_id == primary_client_id and redirect_uri:
+        form["redirect_uri"] = redirect_uri
+
+    request = urllib.request.Request(
+        token_url,
+        data=urllib.parse.urlencode(form).encode("utf-8"),
+        headers={
+            "Accept": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": "TamburAuth/1.0",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=8) as response:
+            token_payload = json.loads(response.read(1024 * 1024).decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        logger.warning("Apple authorization code exchange failed with HTTP %s", exc.code)
+        raise ValueError(_("Не удалось проверить вход через Apple.")) from exc
+    except (OSError, UnicodeError, json.JSONDecodeError, urllib.error.URLError) as exc:
+        logger.warning("Apple authorization code exchange failed: %s", type(exc).__name__)
+        raise ValueError(_("Не удалось проверить вход через Apple.")) from exc
+
+    if not isinstance(token_payload, dict):
+        logger.warning("Apple authorization code exchange returned an invalid response")
+        raise ValueError(_("Не удалось проверить вход через Apple."))
+    exchanged_id_token = str(token_payload.get("id_token") or "").strip()
+    if not exchanged_id_token:
+        logger.warning("Apple authorization code exchange returned no id_token")
+        raise ValueError(_("Не удалось проверить вход через Apple."))
+    return exchanged_id_token
+
+
+def _verify_apple_identity_token(credential: str, client_id: str) -> dict:
     jwks_url = str(getattr(settings, "APPLE_OAUTH_JWKS_URL", "") or "").strip()
     issuer = str(getattr(settings, "APPLE_OAUTH_ISSUER", "https://appleid.apple.com") or "").strip()
     if not credential or not client_id or not jwks_url:
@@ -1476,6 +1601,37 @@ def _authenticate_apple_payload(payload: dict) -> dict:
     except (InvalidTokenError, PyJWKClientError, ValueError, TypeError) as exc:
         logger.warning("Apple id_token validation failed", exc_info=True)
         raise ValueError(_("Не удалось проверить вход через Apple.")) from exc
+    return claims
+
+
+def _apple_nonce_matches(claims: dict, nonce: str) -> bool:
+    token_nonce = str(claims.get("nonce") or "")
+    hashed_nonce = hashlib.sha256(nonce.encode("utf-8")).hexdigest()
+    return secrets.compare_digest(token_nonce, nonce) or secrets.compare_digest(
+        token_nonce,
+        hashed_nonce,
+    )
+
+
+def _authenticate_apple_payload(payload: dict) -> dict:
+    credential = str(payload.get("credential") or payload.get("id_token") or "").strip()
+    authorization_code = str(payload.get("code") or payload.get("authorization_code") or "").strip()
+    nonce = str(payload.get("nonce") or "").strip()
+    if not credential or not authorization_code or not nonce:
+        raise ValueError(_("Не удалось проверить вход через Apple."))
+
+    client_id = _apple_token_audience(credential)
+    submitted_claims = _verify_apple_identity_token(credential, client_id)
+    if not _apple_nonce_matches(submitted_claims, nonce):
+        raise ValueError(_("Не удалось проверить вход через Apple."))
+    exchanged_credential = _exchange_apple_authorization_code(authorization_code, client_id)
+    if _apple_token_audience(exchanged_credential) != client_id:
+        raise ValueError(_("Не удалось проверить вход через Apple."))
+    claims = _verify_apple_identity_token(exchanged_credential, client_id)
+    if str(submitted_claims.get("sub") or "").strip() != str(claims.get("sub") or "").strip():
+        raise ValueError(_("Не удалось проверить вход через Apple."))
+    if not _apple_nonce_matches(claims, nonce):
+        raise ValueError(_("Не удалось проверить вход через Apple."))
 
     subject = str(claims.get("sub") or "").strip()
     email = _normalize_email(claims.get("email"))

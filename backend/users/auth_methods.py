@@ -4,6 +4,7 @@ import hashlib
 import ipaddress
 import json
 import logging
+import os
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -17,6 +18,26 @@ from rabotaem_backend.rate_limit import client_ip
 logger = logging.getLogger(__name__)
 
 _UNKNOWN_COUNTRY = "--"
+
+
+def _apple_oauth_configured() -> bool:
+    private_key = str(getattr(settings, "APPLE_OAUTH_PRIVATE_KEY", "") or "").strip()
+    private_key_file = str(getattr(settings, "APPLE_OAUTH_PRIVATE_KEY_FILE", "") or "").strip()
+    has_private_key = bool(private_key)
+    if private_key_file and not has_private_key:
+        try:
+            has_private_key = os.path.isfile(private_key_file)
+        except OSError:
+            has_private_key = False
+    return all(
+        [
+            str(getattr(settings, "APPLE_OAUTH_CLIENT_ID", "") or "").strip(),
+            str(getattr(settings, "APPLE_OAUTH_TEAM_ID", "") or "").strip(),
+            str(getattr(settings, "APPLE_OAUTH_KEY_ID", "") or "").strip(),
+            str(getattr(settings, "APPLE_OAUTH_REDIRECT_URI", "") or "").strip(),
+            has_private_key,
+        ]
+    )
 
 
 def _normalized_ip(request: HttpRequest) -> str:
@@ -98,7 +119,7 @@ def auth_methods_for_request(request: HttpRequest) -> dict[str, object]:
         "email": bool(getattr(settings, "ALLOW_PASSWORD_REGISTRATION", False)),
         "vk": bool(str(getattr(settings, "VK_APP_ID", "") or "").strip()),
         "google": bool(str(getattr(settings, "GOOGLE_OAUTH_CLIENT_ID", "") or "").strip()),
-        "apple": bool(str(getattr(settings, "APPLE_OAUTH_CLIENT_ID", "") or "").strip()),
+        "apple": _apple_oauth_configured(),
         "telegram": bool(str(getattr(settings, "TELEGRAM_OIDC_CLIENT_ID", "") or "").strip()),
     }
     allowed = {

@@ -20,6 +20,7 @@
   let loading = false
   let loadFailed = false
   let expectedState = ''
+  let expectedNonce = ''
   const clientId = String(env.PUBLIC_APPLE_CLIENT_ID || '').trim()
   let scriptPromise: Promise<any> | null = null
 
@@ -58,11 +59,13 @@
     try {
       const apple = await loadAppleScript()
       expectedState = crypto.randomUUID()
+      expectedNonce = crypto.randomUUID()
       apple.init({
         clientId,
         scope: 'name email',
         redirectURI: redirectUri(),
         state: expectedState,
+        nonce: expectedNonce,
         usePopup: true,
       })
       ready = true
@@ -93,10 +96,15 @@
         throw new Error($t('site.authModal.appleLoginError'))
       }
       const credential = String(result?.authorization?.id_token || '').trim()
-      if (!credential) throw new Error($t('site.authModal.appleLoginError'))
+      const code = String(result?.authorization?.code || '').trim()
+      if (!credential || !code || !expectedNonce) {
+        throw new Error($t('site.authModal.appleLoginError'))
+      }
       await loginSocial('apple', {
         auth_intent: authIntent,
         credential,
+        code,
+        nonce: expectedNonce,
         user: result?.user,
         privacy_accepted: privacyAccepted,
         registration_source: registrationSource,

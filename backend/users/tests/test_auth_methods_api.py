@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
+from users import service as user_service
 from users.models import SiteUserProfile, SocialAccount
 
 User = get_user_model()
@@ -19,6 +20,10 @@ User = get_user_model()
     TELEGRAM_OIDC_CLIENT_ID="telegram-client",
     GOOGLE_OAUTH_CLIENT_ID="google-client",
     APPLE_OAUTH_CLIENT_ID="apple-client",
+    APPLE_OAUTH_TEAM_ID="apple-team",
+    APPLE_OAUTH_KEY_ID="apple-key",
+    APPLE_OAUTH_PRIVATE_KEY="fake-private-key",
+    APPLE_OAUTH_REDIRECT_URI="https://example.test/auth/apple/callback",
     AUTH_COUNTRY_LOOKUP_URL="https://country.test/{ip}",
 )
 class AuthMethodsApiTests(TestCase):
@@ -261,3 +266,81 @@ class SocialAuthApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         account = SocialAccount.objects.get(provider="google", subject="unverified-google-subject")
         self.assertNotEqual(account.user_id, unverified_user.id)
+
+
+@override_settings(
+    APPLE_OAUTH_CLIENT_ID="pub.tambur.web",
+    APPLE_OAUTH_CLIENT_IDS=["pub.tambur.web", "ru.comuna.mobile"],
+)
+class AppleAuthenticationTests(TestCase):
+    @patch("users.service._verify_apple_identity_token")
+    @patch("users.service._exchange_apple_authorization_code")
+    @patch("users.service._apple_token_audience")
+    def test_authorization_code_is_exchanged_and_both_tokens_are_verified(
+        self,
+        token_audience: Mock,
+        exchange_code: Mock,
+        verify_token: Mock,
+    ) -> None:
+        token_audience.side_effect = ["pub.tambur.web", "pub.tambur.web"]
+        exchange_code.return_value = "exchanged-id-token"
+        verify_token.side_effect = [
+            {"sub": "apple-subject", "nonce": "browser-nonce"},
+            {
+                "sub": "apple-subject",
+                "email": "reader@example.com",
+                "email_verified": True,
+                "nonce": "browser-nonce",
+            },
+        ]
+
+        identity = user_service._authenticate_apple_payload(
+            {
+                "credential": "browser-id-token",
+                "code": "one-time-code",
+                "nonce": "browser-nonce",
+                "user": {"name": {"firstName": "Apple", "lastName": "Reader"}},
+            }
+        )
+
+        exchange_code.assert_called_once_with("one-time-code", "pub.tambur.web")
+        self.assertEqual(
+            verify_token.call_args_list,
+            [
+                call("browser-id-token", "pub.tambur.web"),
+                call("exchanged-id-token", "pub.tambur.web"),
+            ],
+        )
+        self.assertEqual(identity["subject"], "apple-subject")
+        self.assertEqual(identity["first_name"], "Apple")
+
+    def test_authorization_code_is_required(self) -> None:
+        with self.assertRaises(ValueError):
+            user_service._authenticate_apple_payload({"credential": "browser-id-token"})
+
+    @patch("users.service._verify_apple_identity_token")
+    @patch("users.service._apple_token_audience", return_value="pub.tambur.web")
+    def test_nonce_mismatch_is_rejected(self, _token_audience: Mock, verify_token: Mock) -> None:
+        verify_token.return_value = {"sub": "apple-subject", "nonce": "different-nonce"}
+
+        with self.assertRaises(ValueError):
+            user_service._authenticate_apple_payload(
+                {
+                    "credential": "browser-id-token",
+                    "code": "one-time-code",
+                    "nonce": "browser-nonce",
+                }
+            )
+
+    @patch("users.service.jwt.decode")
+    def test_mobile_bundle_id_is_an_allowed_audience(self, decode: Mock) -> None:
+        decode.return_value = {"aud": "ru.comuna.mobile"}
+
+        self.assertEqual(user_service._apple_token_audience("signed-token"), "ru.comuna.mobile")
+
+    @patch("users.service.jwt.decode")
+    def test_unknown_audience_is_rejected(self, decode: Mock) -> None:
+        decode.return_value = {"aud": "malicious-client"}
+
+        with self.assertRaises(ValueError):
+            user_service._apple_token_audience("signed-token")
