@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { page } from '$app/stores'
   import Markdown from '$lib/components/markdown/Markdown.svelte'
   import type { View } from '$lib/settings'
   import { toast } from 'mono-svelte'
@@ -45,7 +46,11 @@
   import { sanitizePostHtml as sanitizePostHtmlUniversal } from '$lib/security/html'
   import { getSafeUrl, isExternalUrl } from '$lib/security/url'
   import { locale, t } from '$lib/translations'
-  import { normalizeInterfaceLanguage, originalPostLanguage } from '$lib/postLanguages'
+  import {
+    languageFromPathname,
+    normalizeInterfaceLanguage,
+    originalPostLanguage,
+  } from '$lib/postLanguages'
   
   let DOMPurify: any
   let purifyConfigured = false
@@ -132,7 +137,10 @@
   export let canExpandPreview = false
   export let externalPreviewImageUrl: string | null | undefined = null
   export let ratingVoteUrl: string | null = null
-  $: contentLanguage = normalizeInterfaceLanguage($locale) ?? originalPostLanguage
+  $: contentLanguage =
+    languageFromPathname($page.url.pathname) ??
+    normalizeInterfaceLanguage($locale) ??
+    originalPostLanguage
   $: void view
   $: void clickThrough
   
