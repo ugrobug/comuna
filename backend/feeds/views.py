@@ -11,6 +11,7 @@ import secrets
 import base64
 import time
 import inspect
+from io import BytesIO
 from typing import Sequence
 try:
     import pymorphy2
@@ -36,6 +37,7 @@ from django.http import HttpRequest, HttpResponse, HttpResponseRedirect, JsonRes
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth import get_user_model
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from communities import views as community_views
 from communities import service as community_service
@@ -172,6 +174,8 @@ _FAKE_VIEWS_RAMP_SECONDS = 48 * 60 * 60
 _IMAGE_VARIANT_WIDTHS = (320, 640, 960, 1280, 1920)
 _POST_PREVIEW_IMAGE_WIDTH = 1280
 _POST_THUMBNAIL_IMAGE_WIDTH = 640
+_SOCIAL_IMAGE_MAX_BYTES = 12 * 1024 * 1024
+_SOCIAL_IMAGE_MAX_SIZE = (1200, 1200)
 _LOCAL_WEBP_VARIANT_RE = re.compile(r"-(320|640|960|1280|1920)\.webp$", re.IGNORECASE)
 _IMAGE_URL_PATH_RE = re.compile(r"\.(?:jpe?g|png|webp|gif|avif)$", re.IGNORECASE)
 _COMUN_CREATION_MIN_AUTHOR_RATING = 0.0
@@ -1402,10 +1406,16 @@ def _serialize_post_preview_image_fields(
         post,
         template_payload=template_payload,
     )
+    social_image_url = preview_image_url
+    if preview_image_url and post.pk:
+        social_image_url = site_absolute_url(
+            f"/api/posts/{post.pk}/social-image.jpg",
+            request=request,
+        )
     return {
         "preview_image_url": preview_image_url,
         "thumbnail_url": thumbnail_url,
-        "social_image_url": preview_image_url,
+        "social_image_url": social_image_url,
     }
 
 
@@ -3701,8 +3711,34 @@ def post_social_image(request: HttpRequest, post_id: int) -> HttpResponse:
     if not image_url:
         return HttpResponse(status=404)
 
-    response = HttpResponseRedirect(image_url)
+    try:
+        upstream_request = urllib.request.Request(
+            image_url,
+            headers={"User-Agent": "TamburSocialPreview/1.0"},
+        )
+        with urllib.request.urlopen(upstream_request, timeout=12) as upstream:
+            content_length = int(upstream.headers.get("Content-Length") or 0)
+            if content_length > _SOCIAL_IMAGE_MAX_BYTES:
+                return HttpResponse(status=413)
+            source_bytes = upstream.read(_SOCIAL_IMAGE_MAX_BYTES + 1)
+        if len(source_bytes) > _SOCIAL_IMAGE_MAX_BYTES:
+            return HttpResponse(status=413)
+        with Image.open(BytesIO(source_bytes)) as source_image:
+            image = ImageOps.exif_transpose(source_image)
+            image.thumbnail(_SOCIAL_IMAGE_MAX_SIZE, Image.Resampling.LANCZOS)
+            if image.mode != "RGB":
+                rgba_image = image.convert("RGBA")
+                background = Image.new("RGB", rgba_image.size, "white")
+                background.paste(rgba_image, mask=rgba_image.getchannel("A"))
+                image = background
+            output = BytesIO()
+            image.save(output, format="JPEG", quality=88, optimize=True)
+    except (OSError, ValueError, urllib.error.URLError, UnidentifiedImageError):
+        return HttpResponse(status=502)
+
+    response = HttpResponse(output.getvalue(), content_type="image/jpeg")
     response["Cache-Control"] = "public, max-age=86400"
+    response["Content-Length"] = str(len(response.content))
     return response
 
 

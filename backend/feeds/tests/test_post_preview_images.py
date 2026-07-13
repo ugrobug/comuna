@@ -77,7 +77,7 @@ class PostPreviewImageTests(SimpleTestCase):
         self.assertEqual(preview_url, "https://tambur.pub/media/uploads/post/stored-1280.webp")
         self.assertEqual(thumbnail_url, "https://tambur.pub/media/uploads/post/stored-640.webp")
 
-    def test_social_image_uses_public_preview_url_without_backend_processing(self) -> None:
+    def test_social_image_uses_jpeg_proxy_endpoint(self) -> None:
         updated_at = datetime(2026, 7, 3, 10, 28, 2, tzinfo=dt_timezone.utc)
         post = Post(
             id=20026,
@@ -89,7 +89,7 @@ class PostPreviewImageTests(SimpleTestCase):
 
         self.assertEqual(
             preview["social_image_url"],
-            "https://tambur.pub/media/uploads/post/stored-1280.webp",
+            "https://tambur.pub/api/posts/20026/social-image.jpg",
         )
 
     @patch("django.core.files.storage.default_storage.exists")
