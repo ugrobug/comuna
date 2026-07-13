@@ -268,6 +268,25 @@ TELEGRAM_AUTH_ALLOWED_ORIGINS = _csv_env(
     "TELEGRAM_AUTH_ALLOWED_ORIGINS",
     "https://app1299099924-login.tg.dev",
 )
+GOOGLE_OAUTH_CLIENT_ID = os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "").strip()
+APPLE_OAUTH_CLIENT_ID = os.environ.get("APPLE_OAUTH_CLIENT_ID", "").strip()
+APPLE_OAUTH_ISSUER = os.environ.get("APPLE_OAUTH_ISSUER", "https://appleid.apple.com").strip()
+APPLE_OAUTH_JWKS_URL = os.environ.get(
+    "APPLE_OAUTH_JWKS_URL",
+    "https://appleid.apple.com/auth/keys",
+).strip()
+AUTH_COUNTRY_LOOKUP_URL = os.environ.get(
+    "AUTH_COUNTRY_LOOKUP_URL",
+    "https://api.country.is/{ip}",
+).strip()
+AUTH_COUNTRY_LOOKUP_TIMEOUT_SECONDS = float(
+    os.environ.get("AUTH_COUNTRY_LOOKUP_TIMEOUT_SECONDS", "2")
+)
+AUTH_COUNTRY_CACHE_SECONDS = int(os.environ.get("AUTH_COUNTRY_CACHE_SECONDS", str(24 * 60 * 60)))
+AUTH_COUNTRY_FAILURE_CACHE_SECONDS = int(
+    os.environ.get("AUTH_COUNTRY_FAILURE_CACHE_SECONDS", str(5 * 60))
+)
+AUTH_LOCAL_COUNTRY_CODE = os.environ.get("AUTH_LOCAL_COUNTRY_CODE", "").strip().upper()
 PUSH_FCM_PROJECT_ID = os.environ.get("PUSH_FCM_PROJECT_ID", "")
 PUSH_FCM_SERVICE_ACCOUNT_JSON = os.environ.get("PUSH_FCM_SERVICE_ACCOUNT_JSON", "")
 PUSH_FCM_SERVICE_ACCOUNT_FILE = os.environ.get("PUSH_FCM_SERVICE_ACCOUNT_FILE", "")

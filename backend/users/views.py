@@ -9,6 +9,7 @@ from django.views.decorators.csrf import csrf_exempt
 
 from rabotaem_backend.rate_limit import is_rate_limited
 from telegram_integration import views as telegram_views
+from users.auth_methods import auth_methods_for_request
 from users import chat_service
 from users import serializers as user_serializers
 from users import service as user_service
@@ -62,6 +63,16 @@ def _rate_limit_response() -> JsonResponse:
         {"ok": False, "error": "Слишком много попыток. Попробуйте позже."},
         status=429,
     )
+
+
+def auth_methods(request: HttpRequest) -> HttpResponse:
+    if request.method != "GET":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    response = JsonResponse({"ok": True, **auth_methods_for_request(request)})
+    response["Cache-Control"] = "private, no-store, max-age=0"
+    response["Pragma"] = "no-cache"
+    response["Vary"] = "X-Real-IP, X-Forwarded-For"
+    return response
 
 
 @csrf_exempt
@@ -475,6 +486,47 @@ def vk_auth(request: HttpRequest) -> HttpResponse:
     return _auth_success_response(user, request)
 
 
+@csrf_exempt
+def social_auth(request: HttpRequest, provider: str) -> HttpResponse:
+    provider = str(provider or "").strip().lower()
+    if provider not in {"google", "apple"}:
+        return JsonResponse({"ok": False, "error": "unknown provider"}, status=404)
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    if is_rate_limited(request, scope=f"auth_{provider}", limit=20, window_seconds=300):
+        return _rate_limit_response()
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+
+    try:
+        identity = user_service._authenticate_social_payload(provider, payload)
+        current_user = _get_user_from_request(request)
+        creates_new_user = user_service._social_login_will_create_new_user(identity) and not current_user
+        if creates_new_user and not _is_registration_intent(payload):
+            return JsonResponse(
+                {
+                    "ok": False,
+                    "error": "Аккаунт не найден. Переключитесь на вкладку регистрации.",
+                },
+                status=409,
+            )
+        if creates_new_user and not _is_privacy_accepted(payload.get("privacy_accepted")):
+            return JsonResponse({"ok": False, "error": _PRIVACY_CONSENT_ERROR}, status=400)
+        user = user_service._upsert_social_account(identity, link_user=current_user)
+        if creates_new_user:
+            user_service._remember_registration_source(
+                user,
+                payload.get("registration_source"),
+                payload.get("registration_path"),
+            )
+    except ValueError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+
+    return _auth_success_response(user, request, {"provider": provider})
+
+
 telegram_auth = telegram_views.telegram_auth
 
 
@@ -491,6 +543,7 @@ __all__ = [
     "auth_chat_report_block",
     "auth_chats",
     "auth_me",
+    "auth_methods",
     "author_verification_code",
     "login_user",
     "logout_user",
@@ -498,6 +551,7 @@ __all__ = [
     "password_reset_request",
     "public_user_profile",
     "register_user",
+    "social_auth",
     "telegram_auth",
     "verify_email",
     "vk_auth",

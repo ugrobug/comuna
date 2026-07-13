@@ -43,6 +43,7 @@ from users.models import (
     SiteAuthToken,
     SiteChat,
     SiteUserProfile,
+    SocialAccount,
     TelegramAccount,
     VkAccount,
 )
@@ -54,6 +55,7 @@ _TOKEN_MAX_AGE = int(getattr(settings, "SITE_AUTH_TOKEN_MAX_AGE_SECONDS", 60 * 6
 _AUTH_COOKIE_NAME = str(getattr(settings, "SITE_AUTH_COOKIE_NAME", "comuna_site_token") or "comuna_site_token")
 _COOKIE_AUTH_SENTINEL = "__cookie__"
 _VK_JWKS_CLIENTS: dict[str, PyJWKClient] = {}
+_APPLE_JWKS_CLIENTS: dict[str, PyJWKClient] = {}
 DELETED_USER_DISPLAY_NAME = "Удаленный пользователь"
 
 
@@ -646,6 +648,24 @@ def _merge_vk_accounts(target: User, source: User) -> None:
     source_account.delete()
 
 
+def _merge_social_accounts(target: User, source: User) -> None:
+    for source_account in SocialAccount.objects.filter(user=source).order_by("id"):
+        target_account = SocialAccount.objects.filter(
+            user=target,
+            provider=source_account.provider,
+        ).first()
+        if target_account:
+            if target_account.subject != source_account.subject:
+                raise ValueError(
+                    _("К этому профилю уже привязан другой аккаунт %(provider)s.")
+                    % {"provider": source_account.get_provider_display()}
+                )
+            source_account.delete()
+            continue
+        source_account.user = target
+        source_account.save(update_fields=["user", "updated_at"])
+
+
 def _merge_feed_settings(target: User, source: User) -> None:
     UserFeedSettings = _model_class("feeds", "UserFeedSettings")
     source_settings = UserFeedSettings.objects.filter(user=source).first()
@@ -730,6 +750,7 @@ def _merge_user_accounts(target: User, source: User, *, reason: str = "") -> Use
         _merge_site_profiles(target, source)
         _merge_telegram_accounts(target, source)
         _merge_vk_accounts(target, source)
+        _merge_social_accounts(target, source)
         _merge_feed_settings(target, source)
         _merge_notification_preferences(target, source)
 
@@ -770,7 +791,6 @@ def _merge_user_accounts(target: User, source: User, *, reason: str = "") -> Use
         _model_class("special_projects", "SpecialProjectLetterSuggestion").objects.filter(submitted_by=source).update(submitted_by=target)
         _model_class("special_projects", "SpecialProjectLetterSuggestion").objects.filter(reviewed_by=source).update(reviewed_by=target)
         _model_class("special_projects", "SpecialProjectGeneratedPhrase").objects.filter(generated_by=source).update(generated_by=target)
-        _model_class("special_projects", "PublicBookWord").objects.filter(submitted_by=source).update(submitted_by=target)
         _model_class("special_projects", "PublicBookBlockedWord").objects.filter(created_by=source).update(created_by=target)
 
         source.email = ""
@@ -1392,6 +1412,201 @@ def _vk_login_will_create_new_user(vk_user: dict) -> bool:
     ) is None
 
 
+def _verified_boolean_claim(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in {"1", "true", "yes"}
+
+
+def _authenticate_google_payload(payload: dict) -> dict:
+    credential = str(payload.get("credential") or payload.get("id_token") or "").strip()
+    client_id = str(getattr(settings, "GOOGLE_OAUTH_CLIENT_ID", "") or "").strip()
+    if not credential or not client_id:
+        raise ValueError(_("Google-вход не настроен."))
+
+    try:
+        from google.auth.transport import requests as google_requests
+        from google.oauth2 import id_token as google_id_token
+
+        claims = google_id_token.verify_oauth2_token(
+            credential,
+            google_requests.Request(),
+            client_id,
+        )
+    except Exception as exc:
+        logger.warning("Google id_token validation failed", exc_info=True)
+        raise ValueError(_("Не удалось проверить вход через Google.")) from exc
+
+    issuer = str(claims.get("iss") or "")
+    subject = str(claims.get("sub") or "").strip()
+    email = _normalize_email(claims.get("email"))
+    if issuer not in {"accounts.google.com", "https://accounts.google.com"} or not subject:
+        raise ValueError(_("Некорректный Google-аккаунт."))
+    if not email or not _verified_boolean_claim(claims.get("email_verified")):
+        raise ValueError(_("Google не подтвердил адрес электронной почты."))
+    return {
+        "provider": SocialAccount.PROVIDER_GOOGLE,
+        "subject": subject,
+        "email": email,
+        "first_name": str(claims.get("given_name") or "").strip(),
+        "last_name": str(claims.get("family_name") or "").strip(),
+        "avatar_url": str(claims.get("picture") or "").strip(),
+    }
+
+
+def _authenticate_apple_payload(payload: dict) -> dict:
+    credential = str(payload.get("credential") or payload.get("id_token") or "").strip()
+    client_id = str(getattr(settings, "APPLE_OAUTH_CLIENT_ID", "") or "").strip()
+    jwks_url = str(getattr(settings, "APPLE_OAUTH_JWKS_URL", "") or "").strip()
+    issuer = str(getattr(settings, "APPLE_OAUTH_ISSUER", "https://appleid.apple.com") or "").strip()
+    if not credential or not client_id or not jwks_url:
+        raise ValueError(_("Apple-вход не настроен."))
+
+    try:
+        jwks_client = _APPLE_JWKS_CLIENTS.setdefault(jwks_url, PyJWKClient(jwks_url, timeout=5))
+        signing_key = jwks_client.get_signing_key_from_jwt(credential)
+        claims = jwt.decode(
+            credential,
+            signing_key.key,
+            audience=client_id,
+            issuer=issuer,
+            algorithms=["RS256"],
+            options={"require": ["exp", "iat", "iss", "sub", "aud"]},
+        )
+    except (InvalidTokenError, PyJWKClientError, ValueError, TypeError) as exc:
+        logger.warning("Apple id_token validation failed", exc_info=True)
+        raise ValueError(_("Не удалось проверить вход через Apple.")) from exc
+
+    subject = str(claims.get("sub") or "").strip()
+    email = _normalize_email(claims.get("email"))
+    if not subject:
+        raise ValueError(_("Некорректный Apple-аккаунт."))
+    if email and not _verified_boolean_claim(claims.get("email_verified")):
+        raise ValueError(_("Apple не подтвердил адрес электронной почты."))
+
+    raw_user = payload.get("user") if isinstance(payload.get("user"), dict) else {}
+    raw_name = raw_user.get("name") if isinstance(raw_user.get("name"), dict) else {}
+    return {
+        "provider": SocialAccount.PROVIDER_APPLE,
+        "subject": subject,
+        "email": email,
+        "first_name": str(raw_name.get("firstName") or "").strip()[:255],
+        "last_name": str(raw_name.get("lastName") or "").strip()[:255],
+        "avatar_url": "",
+    }
+
+
+def _authenticate_social_payload(provider: str, payload: dict) -> dict:
+    if provider == SocialAccount.PROVIDER_GOOGLE:
+        return _authenticate_google_payload(payload)
+    if provider == SocialAccount.PROVIDER_APPLE:
+        return _authenticate_apple_payload(payload)
+    raise ValueError(_("Неизвестный способ входа."))
+
+
+def _social_login_will_create_new_user(identity: dict) -> bool:
+    provider = str(identity.get("provider") or "")
+    subject = str(identity.get("subject") or "")
+    if SocialAccount.objects.filter(provider=provider, subject=subject).exists():
+        return False
+    return _find_user_by_verified_email(str(identity.get("email") or "")) is None
+
+
+def _find_user_by_verified_email(email: str) -> User | None:
+    normalized_email = _normalize_email(email)
+    if not normalized_email:
+        return None
+    return (
+        User.objects.filter(
+            email__iexact=normalized_email,
+            site_profile__email_verified_at__isnull=False,
+        )
+        .order_by("id")
+        .first()
+    )
+
+
+@transaction.atomic
+def _upsert_social_account(identity: dict, link_user: User | None = None) -> User:
+    provider = str(identity.get("provider") or "").strip()
+    subject = str(identity.get("subject") or "").strip()
+    email = _normalize_email(identity.get("email"))
+    first_name = str(identity.get("first_name") or "").strip()[:255]
+    last_name = str(identity.get("last_name") or "").strip()[:255]
+    avatar_url = str(identity.get("avatar_url") or "").strip()[:500]
+    if provider not in {SocialAccount.PROVIDER_GOOGLE, SocialAccount.PROVIDER_APPLE} or not subject:
+        raise ValueError(_("Некорректный внешний аккаунт."))
+
+    account = SocialAccount.objects.select_for_update().select_related("user").filter(
+        provider=provider,
+        subject=subject,
+    ).first()
+    if account:
+        user = account.user
+        if link_user and user.id != link_user.id:
+            user = _merge_user_accounts(link_user, user, reason=f"{provider}_link")
+            account = SocialAccount.objects.get(provider=provider, subject=subject)
+    else:
+        user = link_user or _find_user_by_verified_email(email)
+        existing_user_account = (
+            SocialAccount.objects.filter(user=user, provider=provider).first() if user else None
+        )
+        if existing_user_account:
+            raise ValueError(
+                _("К этому профилю уже привязан другой аккаунт %(provider)s.")
+                % {"provider": provider.title()}
+            )
+        if user is None:
+            email_name = email.split("@", 1)[0] if email else ""
+            base_username = email_name or first_name or provider
+            user = User.objects.create_user(
+                username=_generate_unique_username(base_username, subject[-12:]),
+                email=email or None,
+            )
+            user.set_unusable_password()
+        update_fields: list[str] = []
+        if email and not _normalize_email(user.email):
+            user.email = email
+            update_fields.append("email")
+        if first_name and not user.first_name:
+            user.first_name = first_name
+            update_fields.append("first_name")
+        if last_name and not user.last_name:
+            user.last_name = last_name
+            update_fields.append("last_name")
+        if not user.has_usable_password():
+            user.set_unusable_password()
+            update_fields.append("password")
+        if update_fields:
+            user.save(update_fields=list(dict.fromkeys(update_fields)))
+        account = SocialAccount.objects.create(
+            user=user,
+            provider=provider,
+            subject=subject,
+            email=email,
+            first_name=first_name,
+            last_name=last_name,
+            avatar_url=avatar_url,
+        )
+
+    account.email = email or account.email
+    account.first_name = first_name or account.first_name
+    account.last_name = last_name or account.last_name
+    account.avatar_url = avatar_url or account.avatar_url
+    account.save(update_fields=["email", "first_name", "last_name", "avatar_url", "updated_at"])
+
+    if email and _normalize_email(user.email) == email:
+        profile, _ = SiteUserProfile.objects.get_or_create(user=user)
+        if profile.email_verified_at is None:
+            profile.email_verified_at = timezone.now()
+            profile.save(update_fields=["email_verified_at", "updated_at"])
+    if avatar_url:
+        from users.avatar_media import cache_external_avatar_for_user
+
+        cache_external_avatar_for_user(user, avatar_url, source=provider)
+    return user
+
+
 def _fetch_vk_json(method: str, payload: dict) -> dict | None:
     url = f"https://api.vk.com/method/{method}"
     data = urllib.parse.urlencode(payload)
@@ -1491,6 +1706,7 @@ _build_telegram_login_redirect_html = telegram_service.build_telegram_login_redi
 __all__ = [
     "_authenticate_password_user",
     "_authenticate_vk_payload",
+    "_authenticate_social_payload",
     "_build_public_user_profile_payload",
     "_build_telegram_login_redirect_html",
     "_clear_auth_cookie",
@@ -1521,6 +1737,8 @@ __all__ = [
     "_update_site_profile",
     "_upsert_telegram_account",
     "_upsert_vk_account",
+    "_upsert_social_account",
     "_validate_telegram_login",
     "_vk_login_will_create_new_user",
+    "_social_login_will_create_new_user",
 ]

@@ -159,6 +159,16 @@ export type SiteStaticPageContent = {
   } | null
 }
 
+export type AuthMethodName = 'email' | 'vk' | 'google' | 'apple' | 'telegram'
+
+export type AuthMethodAvailability = {
+  country_code: string | null
+  region: 'russia' | 'international' | 'unknown'
+  methods: Record<AuthMethodName, boolean>
+  allowed_methods: Record<AuthMethodName, boolean>
+  configured_methods: Record<AuthMethodName, boolean>
+}
+
 export type VotePollPostCandidate = PostVotePollTemplateItem
 
 const TOKEN_KEY = 'comuna.site.token'
@@ -401,6 +411,19 @@ export const login = async (username: string, password: string) => {
   return data.user as SiteUser
 }
 
+export const fetchAuthMethods = async () => {
+  const response = await fetch(buildUrl('/api/auth/methods/'), {
+    cache: 'no-store',
+    credentials: 'include',
+    headers: { Accept: 'application/json' },
+  })
+  const data = await parseApiResponse(response)
+  if (!response.ok || !data?.methods) {
+    throw new Error(data?.error || 'Не удалось определить способы входа')
+  }
+  return data as AuthMethodAvailability
+}
+
 export const register = async (payload: {
   username: string
   email: string
@@ -563,6 +586,46 @@ export const loginVK = async (payload: VkAuthPayload) => {
   const data = await parseApiResponse(response)
   if (!response.ok || !data?.token) {
     throw new Error(data?.error || 'Не удалось войти через VK')
+  }
+
+  saveToken(data.token)
+  siteToken.set(data.token)
+  siteUser.set(data.user)
+  syncSidebarComunsForAuthState(data.user as SiteUser)
+  loadBackendFeedSettings(data.token).catch((error) => {
+    console.error('Failed to load feed settings:', error)
+  })
+  return data.user as SiteUser
+}
+
+export type SocialAuthProvider = 'google' | 'apple'
+
+export type SocialAuthPayload = {
+  auth_intent: 'login' | 'signup'
+  credential: string
+  user?: Record<string, unknown>
+  privacy_accepted?: boolean
+  registration_source?: string
+  registration_path?: string
+}
+
+export const loginSocial = async (
+  provider: SocialAuthProvider,
+  payload: SocialAuthPayload,
+) => {
+  const token = get(siteToken)
+  const response = await fetch(buildUrl(`/api/auth/${provider}/`), {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(payload),
+  })
+  const data = await parseApiResponse(response)
+  if (!response.ok || !data?.token) {
+    throw new Error(data?.error || `Не удалось войти через ${provider}`)
   }
 
   saveToken(data.token)

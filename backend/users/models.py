@@ -60,6 +60,44 @@ class VkAccount(models.Model):
         return f"vk:{self.vk_id}"
 
 
+class SocialAccount(models.Model):
+    PROVIDER_GOOGLE = "google"
+    PROVIDER_APPLE = "apple"
+    PROVIDER_CHOICES = (
+        (PROVIDER_GOOGLE, "Google"),
+        (PROVIDER_APPLE, "Apple"),
+    )
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="social_accounts")
+    provider = models.CharField(max_length=20, choices=PROVIDER_CHOICES)
+    subject = models.CharField(max_length=255)
+    email = models.EmailField(blank=True, max_length=254)
+    first_name = models.CharField(blank=True, max_length=255)
+    last_name = models.CharField(blank=True, max_length=255)
+    avatar_url = models.URLField(blank=True, max_length=500)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = "feeds"
+        constraints = [
+            models.UniqueConstraint(
+                fields=("provider", "subject"),
+                name="feeds_social_provider_subject_uniq",
+            ),
+            models.UniqueConstraint(
+                fields=("user", "provider"),
+                name="feeds_social_user_provider_uniq",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=("email",), name="feeds_social_email_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.provider}:{self.subject}"
+
+
 class SiteUserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="site_profile")
     display_name = models.CharField(max_length=120, blank=True)
@@ -252,6 +290,7 @@ __all__ = [
     "SiteChatParticipantState",
     "SiteChatReport",
     "SiteUserProfile",
+    "SocialAccount",
     "TelegramAccount",
     "VkAccount",
 ]

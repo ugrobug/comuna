@@ -823,5 +823,6 @@ from users.models import (
     AuthorAdmin,
     AuthorVerificationCode,
     SiteUserProfile,
+    SocialAccount,
     VkAccount,
 )

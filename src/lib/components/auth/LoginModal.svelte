@@ -1,10 +1,17 @@
 <script lang="ts">
   import { toast } from 'mono-svelte'
   import { Button, TextInput, Modal } from 'mono-svelte'
+  import { browser } from '$app/environment'
   import ErrorContainer, { clearErrorScope, pushError } from '$lib/components/error/ErrorContainer.svelte'
   import { page } from '$app/stores'
   import VkLoginButton from './VkLoginButton.svelte'
-  import { login } from '$lib/siteAuth'
+  import GoogleLoginButton from './GoogleLoginButton.svelte'
+  import AppleLoginButton from './AppleLoginButton.svelte'
+  import {
+    fetchAuthMethods,
+    login,
+    type AuthMethodAvailability,
+  } from '$lib/siteAuth'
   import type { ComponentType } from 'svelte'
   import SignupForm from './SignupForm.svelte'
   import ResetPasswordForm from './ResetPasswordForm.svelte'
@@ -21,6 +28,9 @@
   let authMode: 'login' | 'signup' | 'reset' = initialMode
   let wasOpen = false
   let telegramButtonModulePromise: Promise<{ default: ComponentType }> | null = null
+  let authMethods: AuthMethodAvailability | null = null
+  let authMethodsLoading = false
+  let authMethodsRequestId = 0
   let signupPrivacyAccepted = false
   let signupMethod: 'options' | 'email' = 'options'
 
@@ -66,6 +76,7 @@
   }
 
   function handleModalClose() {
+    authMethodsRequestId += 1
     open = false
     authMode = initialMode
     loginData = {
@@ -77,11 +88,37 @@
     signupMethod = 'options'
   }
 
-  $: if (open && !wasOpen) {
+  async function loadAvailableAuthMethods() {
+    const requestId = ++authMethodsRequestId
+    authMethods = null
+    authMethodsLoading = true
+    try {
+      const response = await fetchAuthMethods()
+      if (requestId !== authMethodsRequestId) return
+      authMethods = response
+      if (response.methods.telegram) {
+        telegramButtonModulePromise ??= import('$lib/components/telegram/TelegramLoginButton.svelte')
+      }
+    } catch (error) {
+      console.error('Failed to load auth methods', error)
+      if (requestId !== authMethodsRequestId) return
+      authMethods = {
+        country_code: null,
+        region: 'unknown',
+        methods: { email: true, vk: false, google: false, apple: false, telegram: false },
+        allowed_methods: { email: true, vk: false, google: false, apple: false, telegram: false },
+        configured_methods: { email: true, vk: false, google: false, apple: false, telegram: false },
+      }
+    } finally {
+      if (requestId === authMethodsRequestId) authMethodsLoading = false
+    }
+  }
+
+  $: if (browser && open && !wasOpen) {
     authMode = initialMode
     signupMethod = 'options'
     wasOpen = true
-    telegramButtonModulePromise ??= import('$lib/components/telegram/TelegramLoginButton.svelte')
+    void loadAvailableAuthMethods()
   }
 
   $: if (!open && wasOpen) {
@@ -91,6 +128,14 @@
   $: if (authMode !== 'signup' && signupMethod !== 'options') {
     signupMethod = 'options'
   }
+
+  $: hasSocialMethods = Boolean(
+    authMethods &&
+      (authMethods.methods.vk ||
+        authMethods.methods.google ||
+        authMethods.methods.apple ||
+        authMethods.methods.telegram),
+  )
 
   const requireSignupPrivacyAcceptance = (onAccepted: () => void) => {
     if (signupPrivacyAccepted) {
@@ -147,7 +192,34 @@
 
     {#if authMode === 'login'}
       <div class="mt-4 flex flex-col gap-3">
-        {#if telegramButtonModulePromise}
+        {#if authMethodsLoading}
+          <p class="py-2 text-center text-sm text-slate-500 dark:text-zinc-400">
+            {$t('site.authModal.loadingMethods')}
+          </p>
+        {/if}
+        {#if authMethods?.methods.google}
+          <GoogleLoginButton
+            onSuccess={handleSuccessfulAuth}
+            active={open}
+            authIntent="login"
+            privacyAccepted={false}
+            registrationSource=""
+            registrationPath=""
+            label={$t('site.authModal.loginGoogle')}
+          />
+        {/if}
+        {#if authMethods?.methods.apple}
+          <AppleLoginButton
+            onSuccess={handleSuccessfulAuth}
+            active={open}
+            authIntent="login"
+            privacyAccepted={false}
+            registrationSource=""
+            registrationPath=""
+            label={$t('site.authModal.loginApple')}
+          />
+        {/if}
+        {#if authMethods?.methods.telegram && telegramButtonModulePromise}
           {#await telegramButtonModulePromise then module}
             <svelte:component
               this={module.default}
@@ -161,21 +233,25 @@
             />
           {/await}
         {/if}
-        <VkLoginButton
-          onSuccess={handleSuccessfulAuth}
-          authIntent="login"
-          privacyAccepted={false}
-          registrationSource=""
-          registrationPath=""
-          label={$t('site.authModal.loginVk')}
-        />
+        {#if authMethods?.methods.vk}
+          <VkLoginButton
+            onSuccess={handleSuccessfulAuth}
+            authIntent="login"
+            privacyAccepted={false}
+            registrationSource=""
+            registrationPath=""
+            label={$t('site.authModal.loginVk')}
+          />
+        {/if}
       </div>
 
-      <div class="flex items-center gap-3 text-xs text-slate-400 dark:text-zinc-500 mt-4">
-        <span class="h-px flex-1 bg-slate-200 dark:bg-zinc-800"></span>
-        {$t('site.authModal.orEmail')}
-        <span class="h-px flex-1 bg-slate-200 dark:bg-zinc-800"></span>
-      </div>
+      {#if hasSocialMethods}
+        <div class="flex items-center gap-3 text-xs text-slate-400 dark:text-zinc-500 mt-4">
+          <span class="h-px flex-1 bg-slate-200 dark:bg-zinc-800"></span>
+          {$t('site.authModal.orEmail')}
+          <span class="h-px flex-1 bg-slate-200 dark:bg-zinc-800"></span>
+        </div>
+      {/if}
 
       <form on:submit|preventDefault={handleLogin} class="flex flex-col gap-5 mt-3">
         <ErrorContainer class="pt-2" scope={$page.route.id} />
@@ -276,7 +352,36 @@
             </span>
             <span>{$t('site.authModal.signupEmail')}</span>
           </button>
-          {#if telegramButtonModulePromise}
+          {#if authMethodsLoading}
+            <p class="py-2 text-center text-sm text-slate-500 dark:text-zinc-400">
+              {$t('site.authModal.loadingMethods')}
+            </p>
+          {/if}
+          {#if authMethods?.methods.google}
+            <GoogleLoginButton
+              onSuccess={handleSuccessfulAuth}
+              active={open}
+              authIntent="signup"
+              disabled={!signupPrivacyAccepted}
+              privacyAccepted={signupPrivacyAccepted}
+              registrationSource={registrationSource}
+              registrationPath={registrationPath}
+              label={$t('site.authModal.signupGoogle')}
+            />
+          {/if}
+          {#if authMethods?.methods.apple}
+            <AppleLoginButton
+              onSuccess={handleSuccessfulAuth}
+              active={open}
+              authIntent="signup"
+              disabled={!signupPrivacyAccepted}
+              privacyAccepted={signupPrivacyAccepted}
+              registrationSource={registrationSource}
+              registrationPath={registrationPath}
+              label={$t('site.authModal.signupApple')}
+            />
+          {/if}
+          {#if authMethods?.methods.telegram && telegramButtonModulePromise}
             {#await telegramButtonModulePromise then module}
               <svelte:component
                 this={module.default}
@@ -291,15 +396,17 @@
               />
             {/await}
           {/if}
-          <VkLoginButton
-            onSuccess={handleSuccessfulAuth}
-            authIntent="signup"
-            disabled={!signupPrivacyAccepted}
-            privacyAccepted={signupPrivacyAccepted}
-            registrationSource={registrationSource}
-            registrationPath={registrationPath}
-            label={$t('site.authModal.signupVk')}
-          />
+          {#if authMethods?.methods.vk}
+            <VkLoginButton
+              onSuccess={handleSuccessfulAuth}
+              authIntent="signup"
+              disabled={!signupPrivacyAccepted}
+              privacyAccepted={signupPrivacyAccepted}
+              registrationSource={registrationSource}
+              registrationPath={registrationPath}
+              label={$t('site.authModal.signupVk')}
+            />
+          {/if}
         </div>
       {/if}
     {/if}

@@ -14,15 +14,13 @@
     buildSpecialLandnameUrl,
   } from '$lib/api/backend'
   import {
-    login as siteLogin,
     refreshSiteUser,
-    register as siteRegister,
     siteToken,
     siteUser,
   } from '$lib/siteAuth'
+  import LoginModal from '$lib/components/auth/LoginModal.svelte'
   import {
     ArrowPath,
-    ClipboardDocument,
     Icon,
     ListBullet,
     MapPin,
@@ -126,19 +124,8 @@
   let copied = false
 
   let suggestionOpen = false
-  let authMode: 'login' | 'register' = 'login'
-  let authLoading = false
-  let authError = ''
-  let loginForm = {
-    username: '',
-    password: '',
-  }
-  let registerForm = {
-    username: '',
-    email: '',
-    password: '',
-    privacyAccepted: true,
-  }
+  let authOpen = false
+  let authInitialMode: 'login' | 'signup' = 'login'
   let suggestionForm = {
     letter: '',
     mapUrl: '',
@@ -280,33 +267,9 @@
     }
   }
 
-  const handleLogin = async () => {
-    authLoading = true
-    authError = ''
-    try {
-      await siteLogin(loginForm.username, loginForm.password)
-    } catch (err) {
-      authError = err instanceof Error ? err.message : 'Не удалось войти'
-    } finally {
-      authLoading = false
-    }
-  }
-
-  const handleRegister = async () => {
-    authLoading = true
-    authError = ''
-    try {
-      await siteRegister({
-        username: registerForm.username,
-        email: registerForm.email,
-        password: registerForm.password,
-        privacy_accepted: registerForm.privacyAccepted,
-      })
-    } catch (err) {
-      authError = err instanceof Error ? err.message : 'Не удалось зарегистрироваться'
-    } finally {
-      authLoading = false
-    }
+  const openAuth = (mode: 'login' | 'signup') => {
+    authInitialMode = mode
+    authOpen = true
   }
 
   const submitSuggestion = async () => {
@@ -913,43 +876,11 @@
 
       {#if !$siteUser}
         <div class="auth-grid">
+          <p>Чтобы предложить находку, войдите или зарегистрируйтесь.</p>
           <div class="auth-tabs">
-            <button class:active={authMode === 'login'} type="button" on:click={() => (authMode = 'login')}>
-              Войти
-            </button>
-            <button class:active={authMode === 'register'} type="button" on:click={() => (authMode = 'register')}>
-              Регистрация
-            </button>
+            <button type="button" on:click={() => openAuth('login')}>Войти</button>
+            <button type="button" on:click={() => openAuth('signup')}>Регистрация</button>
           </div>
-
-          {#if authMode === 'login'}
-            <form class="stack-form" on:submit|preventDefault={handleLogin}>
-              <input bind:value={loginForm.username} placeholder="Логин или email" autocomplete="username" required />
-              <input bind:value={loginForm.password} placeholder="Пароль" type="password" autocomplete="current-password" required />
-              <button class="primary-button" type="submit" disabled={authLoading}>
-                <Icon src={ClipboardDocument} mini size="17" />
-                Войти
-              </button>
-            </form>
-          {:else}
-            <form class="stack-form" on:submit|preventDefault={handleRegister}>
-              <input bind:value={registerForm.username} placeholder="Имя пользователя" autocomplete="username" required />
-              <input bind:value={registerForm.email} placeholder="Email" type="email" autocomplete="email" required />
-              <input bind:value={registerForm.password} placeholder="Пароль" type="password" minlength="8" autocomplete="new-password" required />
-              <label class="checkbox-row">
-                <input type="checkbox" bind:checked={registerForm.privacyAccepted} />
-                Согласен с обработкой данных
-              </label>
-              <button class="primary-button" type="submit" disabled={authLoading || !registerForm.privacyAccepted}>
-                <Icon src={ClipboardDocument} mini size="17" />
-                Зарегистрироваться
-              </button>
-            </form>
-          {/if}
-
-          {#if authError}
-            <div class="notice error">{authError}</div>
-          {/if}
         </div>
       {:else}
         <form class="suggestion-form" on:submit|preventDefault={submitSuggestion}>
@@ -992,6 +923,13 @@
     </div>
     </div>
   {/if}
+
+  <LoginModal
+    bind:open={authOpen}
+    initialMode={authInitialMode}
+    registrationSource="landname"
+    registrationPath="/s/landname"
+  />
 </section>
 
 <style>
@@ -1370,7 +1308,6 @@
   }
 
   .auth-grid,
-  .stack-form,
   .admin-form,
   .suggestion-form {
     display: flex;
@@ -1389,22 +1326,6 @@
 
   :global(.dark) .auth-tabs {
     background: rgba(39, 39, 42, 0.7);
-  }
-
-  .auth-tabs button.active {
-    color: white;
-    background: #ea580c;
-  }
-
-  .checkbox-row {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .checkbox-row input {
-    width: 1rem;
-    height: 1rem;
   }
 
   .form-grid {

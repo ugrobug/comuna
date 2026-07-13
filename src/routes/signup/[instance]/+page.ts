@@ -1,7 +1,5 @@
-import { getClient } from '$lib/lemmy.js'
+import { redirect } from '@sveltejs/kit'
 
-export async function load({ params, fetch }) {
-  const site = await getClient(params.instance, fetch).getSite()
-
-  return site
+export function load() {
+  throw redirect(307, '/signup')
 }
