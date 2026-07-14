@@ -12,7 +12,7 @@ from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.db import transaction
 from django.db.models import Count, Prefetch, Q
-from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.http import HttpRequest, HttpResponse, JsonResponse, StreamingHttpResponse
 from django.utils import timezone
 from django.utils.html import escape
 from django.utils.text import get_valid_filename
@@ -3382,16 +3382,44 @@ def comun_map(request: HttpRequest, slug: str) -> HttpResponse:
             post__is_pending=False,
             post__author__is_blocked=False,
         )
-        .select_related("post", "post__author")
+        .values(
+            "id",
+            "post_id",
+            "post__title",
+            "block_index",
+            "lat",
+            "lng",
+            "zoom",
+            "raw",
+            "created_at",
+            "updated_at",
+        )
         .order_by("-post__created_at", "post_id", "block_index", "id")
     )
-    return JsonResponse(
-        {
-            "ok": True,
-            "comun": _serialize_comun(request, comun, current_user=current_user),
-            "points": [community_service.serialize_comun_map_point(point) for point in points],
-        }
-    )
+
+    def stream_payload():
+        yield '{"ok":true,"comun":'
+        yield json.dumps(
+            _serialize_comun(request, comun, current_user=current_user),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        yield ',"points":['
+        is_first = True
+        for row in points.iterator(chunk_size=2000):
+            if not is_first:
+                yield ","
+            is_first = False
+            yield json.dumps(
+                community_service.serialize_comun_map_point_row(row),
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+        yield "]}"
+
+    response = StreamingHttpResponse(stream_payload(), content_type="application/json; charset=utf-8")
+    response["Cache-Control"] = "public, max-age=30"
+    return response
 
 
 @csrf_exempt

@@ -1,6 +1,8 @@
 import { buildComunMapUrl } from '$lib/api/backend'
 import { error } from '@sveltejs/kit'
 
+export const ssr = false
+
 export const load = async ({ fetch, parent, url }) => {
   const parentData = await parent()
   const comun = parentData.comun ?? null

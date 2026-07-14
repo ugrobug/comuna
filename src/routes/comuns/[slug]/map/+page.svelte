@@ -19,6 +19,15 @@
     y: number
   }
 
+  type MapCluster = {
+    key: string
+    x: number
+    y: number
+    lat: number
+    lng: number
+    markers: MapMarker[]
+  }
+
   const TILE_SIZE = 256
 
   let comun: BackendComun | null = data?.comun ?? null
@@ -27,6 +36,10 @@
   let mapWidth = 1024
   let mapHeight = 560
   let resizeObserver: ResizeObserver | null = null
+  let viewZoom: number | null = null
+  let viewCenterLat: number | null = null
+  let viewCenterLng: number | null = null
+  let selectedMarkers: MapMarker[] = []
 
   const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
 
@@ -72,14 +85,63 @@
     return 12
   }
 
+  const clusterMarkers = (items: MapMarker[], width: number, height: number): MapCluster[] => {
+    const cellSize = 52
+    const buckets = new Map<string, MapMarker[]>()
+    for (const marker of items) {
+      const cellX = Math.floor(((marker.x / 100) * width) / cellSize)
+      const cellY = Math.floor(((marker.y / 100) * height) / cellSize)
+      const key = `${cellX}:${cellY}`
+      const bucket = buckets.get(key)
+      if (bucket) bucket.push(marker)
+      else buckets.set(key, [marker])
+    }
+    return Array.from(buckets.entries()).map(([key, clusterItems]) => ({
+      key,
+      x: clusterItems.reduce((sum, marker) => sum + marker.x, 0) / clusterItems.length,
+      y: clusterItems.reduce((sum, marker) => sum + marker.y, 0) / clusterItems.length,
+      lat: clusterItems.reduce((sum, marker) => sum + marker.lat, 0) / clusterItems.length,
+      lng: clusterItems.reduce((sum, marker) => sum + marker.lng, 0) / clusterItems.length,
+      markers: clusterItems,
+    }))
+  }
+
+  const setMapZoom = (nextZoom: number) => {
+    viewZoom = clamp(nextZoom, 2, 16)
+    selectedMarkers = []
+  }
+
+  const focusCluster = (cluster: MapCluster) => {
+    if (mapZoom < 16) {
+      viewCenterLat = cluster.lat
+      viewCenterLng = cluster.lng
+      viewZoom = Math.min(mapZoom + 2, 16)
+      selectedMarkers = []
+      return
+    }
+    const uniquePosts = new Map<number, MapMarker>()
+    for (const marker of cluster.markers) uniquePosts.set(marker.post_id, marker)
+    selectedMarkers = Array.from(uniquePosts.values())
+  }
+
+  const resetMapView = () => {
+    viewZoom = null
+    viewCenterLat = null
+    viewCenterLng = null
+    selectedMarkers = []
+  }
+
   $: normalizedPoints = points.map(normalizePoint).filter(Boolean) as BackendComunMapPoint[]
-  $: mapZoom = mapZoomForPoints(normalizedPoints)
-  $: centerLat = normalizedPoints.length
+  $: fittedMapZoom = mapZoomForPoints(normalizedPoints)
+  $: fittedCenterLat = normalizedPoints.length
     ? normalizedPoints.reduce((sum, point) => sum + point.lat, 0) / normalizedPoints.length
     : 55.751244
-  $: centerLng = normalizedPoints.length
+  $: fittedCenterLng = normalizedPoints.length
     ? normalizedPoints.reduce((sum, point) => sum + point.lng, 0) / normalizedPoints.length
     : 37.618423
+  $: mapZoom = viewZoom ?? fittedMapZoom
+  $: centerLat = viewCenterLat ?? fittedCenterLat
+  $: centerLng = viewCenterLng ?? fittedCenterLng
   $: centerX = lonToX(centerLng, mapZoom)
   $: centerY = latToY(centerLat, mapZoom)
   $: topLeftX = centerX - mapWidth / 2
@@ -115,6 +177,7 @@
   $: visibleMarkers = markers.filter(
     (marker) => marker.x >= -2 && marker.x <= 102 && marker.y >= -4 && marker.y <= 104
   )
+  $: markerClusters = clusterMarkers(visibleMarkers, mapWidth, mapHeight)
 
   onMount(() => {
     const updateSize = () => {
@@ -173,17 +236,35 @@
             height={TILE_SIZE}
           />
         {/each}
-        {#each visibleMarkers as marker (marker.id)}
-          <a
-            href={marker.post_path}
-            class="community-map-marker"
-            style={`left:${marker.x}%; top:${marker.y}%;`}
-            title={marker.post_title || marker.raw || 'Пост с меткой'}
-            aria-label={marker.post_title || marker.raw || 'Пост с меткой'}
-          >
-            <span class="community-map-marker-dot"></span>
-          </a>
+        {#each markerClusters as cluster (cluster.key)}
+          {#if cluster.markers.length === 1}
+            <a
+              href={cluster.markers[0].post_path}
+              class="community-map-marker"
+              style={`left:${cluster.x}%; top:${cluster.y}%;`}
+              title={cluster.markers[0].post_title || cluster.markers[0].raw || 'Пост с меткой'}
+              aria-label={cluster.markers[0].post_title || cluster.markers[0].raw || 'Пост с меткой'}
+            >
+              <span class="community-map-marker-dot"></span>
+            </a>
+          {:else}
+            <button
+              type="button"
+              class="community-map-cluster"
+              style={`left:${cluster.x}%; top:${cluster.y}%;`}
+              title={mapZoom < 16 ? 'Приблизить область' : 'Показать посты'}
+              aria-label={`${formatCount(cluster.markers.length)} меток`}
+              on:click={() => focusCluster(cluster)}
+            >
+              {formatCount(cluster.markers.length)}
+            </button>
+          {/if}
         {/each}
+        <div class="community-map-controls" aria-label="Управление масштабом">
+          <button type="button" title="Приблизить" aria-label="Приблизить" on:click={() => setMapZoom(mapZoom + 1)}>+</button>
+          <button type="button" title="Отдалить" aria-label="Отдалить" on:click={() => setMapZoom(mapZoom - 1)}>−</button>
+          <button type="button" class="community-map-reset" on:click={resetMapView}>Вся карта</button>
+        </div>
         <a
           href="https://www.openstreetmap.org/copyright"
           target="_blank"
@@ -195,21 +276,25 @@
       </div>
     </section>
 
-    <section class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-      {#each normalizedPoints as point (point.id)}
-        <a
-          href={point.post_path}
-          class="block rounded-xl border border-slate-200 bg-white p-3 transition hover:border-blue-300 hover:bg-blue-50/40 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:border-blue-800 dark:hover:bg-blue-950/20"
-        >
-          <div class="truncate text-sm font-semibold text-slate-900 dark:text-zinc-100">
-            {point.post_title || point.raw || 'Пост с меткой'}
-          </div>
-          <div class="mt-1 text-xs text-slate-500 dark:text-zinc-400">
-            {point.lat.toFixed(6)}, {point.lng.toFixed(6)}
-          </div>
-        </a>
-      {/each}
-    </section>
+    {#if selectedMarkers.length}
+      <section class="rounded-xl border border-slate-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950">
+        <div class="mb-2 text-sm font-semibold text-slate-900 dark:text-zinc-100">
+          Посты в этой точке
+        </div>
+        <div class="community-map-posts grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+          {#each selectedMarkers as point (point.post_id)}
+            <a
+              href={point.post_path}
+              class="block rounded-lg border border-slate-200 p-3 transition hover:border-blue-300 hover:bg-blue-50/40 dark:border-zinc-800 dark:hover:border-blue-800 dark:hover:bg-blue-950/20"
+            >
+              <div class="truncate text-sm font-semibold text-slate-900 dark:text-zinc-100">
+                {point.post_title || point.raw || 'Пост с меткой'}
+              </div>
+            </a>
+          {/each}
+        </div>
+      </section>
+    {/if}
   {:else}
     <section class="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400">
       На карте пока нет меток.
@@ -263,6 +348,67 @@
   .community-map-marker:hover .community-map-marker-dot,
   .community-map-marker:focus-visible .community-map-marker-dot {
     background: #dc2626;
+  }
+
+  .community-map-cluster {
+    position: absolute;
+    z-index: 5;
+    min-width: 38px;
+    height: 38px;
+    transform: translate(-50%, -50%);
+    border: 3px solid rgb(255 255 255 / 0.92);
+    border-radius: 999px;
+    background: #2563eb;
+    padding: 0 8px;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    box-shadow: 0 5px 14px rgb(15 23 42 / 0.3);
+  }
+
+  .community-map-cluster:hover,
+  .community-map-cluster:focus-visible {
+    background: #1d4ed8;
+  }
+
+  .community-map-controls {
+    position: absolute;
+    left: 10px;
+    top: 10px;
+    z-index: 7;
+    display: grid;
+    grid-template-columns: 38px 38px auto;
+    overflow: hidden;
+    border: 1px solid rgb(148 163 184 / 0.55);
+    border-radius: 7px;
+    background: rgb(255 255 255 / 0.94);
+    box-shadow: 0 4px 12px rgb(15 23 42 / 0.16);
+  }
+
+  .community-map-controls button {
+    height: 38px;
+    border-right: 1px solid rgb(148 163 184 / 0.45);
+    color: #1e293b;
+    font-size: 22px;
+    font-weight: 600;
+    line-height: 1;
+  }
+
+  .community-map-controls button:hover,
+  .community-map-controls button:focus-visible {
+    background: #f1f5f9;
+  }
+
+  .community-map-controls .community-map-reset {
+    border-right: 0;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+
+  .community-map-posts {
+    max-height: 320px;
+    overflow: auto;
   }
 
   .community-map-attribution {

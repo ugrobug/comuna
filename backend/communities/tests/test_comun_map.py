@@ -20,6 +20,12 @@ def map_block(lat, lng, zoom=13, raw=""):
     return {"type": "map", "data": {"lat": lat, "lng": lng, "zoom": zoom, "raw": raw}}
 
 
+def response_body(response):
+    if response.streaming:
+        return b"".join(response.streaming_content)
+    return response.content
+
+
 class ComunMapPointTests(TestCase):
     def setUp(self):
         self.owner = User.objects.create_user(username="map-owner", password="secret")
@@ -85,8 +91,9 @@ class ComunMapPointTests(TestCase):
 
         response = self.client.get(reverse("comun-map", kwargs={"slug": self.comun.slug}))
 
-        self.assertEqual(response.status_code, 200, response.content.decode())
-        payload = response.json()
+        body = response_body(response)
+        self.assertEqual(response.status_code, 200, body.decode())
+        payload = json.loads(body.decode("utf-8"))
         self.assertTrue(payload["ok"])
         self.assertEqual(len(payload["points"]), 1)
         self.assertEqual(payload["points"][0]["post_id"], post.id)
