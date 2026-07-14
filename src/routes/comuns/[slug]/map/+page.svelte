@@ -82,7 +82,8 @@
 
   const xToLng = (x: number, zoom: number) => {
     const worldSize = TILE_SIZE * 2 ** zoom
-    return ((x / worldSize) * 360 + 540) % 360 - 180
+    const wrappedX = ((x % worldSize) + worldSize) % worldSize
+    return (wrappedX / worldSize) * 360 - 180
   }
 
   const yToLat = (y: number, zoom: number) => {
