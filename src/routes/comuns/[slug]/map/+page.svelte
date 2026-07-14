@@ -52,6 +52,7 @@
   let searchAbortController: AbortController | null = null
   let viewportLoadTimer: ReturnType<typeof setTimeout> | null = null
   let viewportAbortController: AbortController | null = null
+  let suppressMarkerClickUntil = 0
   let isLoadingPoints = false
   let dragState: {
     pointerId: number
@@ -59,6 +60,9 @@
     startY: number
     centerX: number
     centerY: number
+    zoom: number
+    lastLat: number
+    lastLng: number
     moved: boolean
   } | null = null
 
@@ -270,10 +274,14 @@
 
   const setMapZoom = (nextZoom: number) => {
     const normalizedZoom = clamp(nextZoom, 2, 16)
+    const currentLat = centerLat
+    const currentLng = centerLng
+    viewCenterLat = currentLat
+    viewCenterLng = currentLng
     viewZoom = normalizedZoom
     selectedMarkers = []
     selectedPoint = null
-    scheduleViewportLoad(centerLat, centerLng, normalizedZoom)
+    scheduleViewportLoad(currentLat, currentLng, normalizedZoom)
   }
 
   const focusCluster = (cluster: MapCluster) => {
@@ -304,7 +312,7 @@
   const handleMapPointerDown = (event: PointerEvent) => {
     if (event.button !== 0) return
     const target = event.target as HTMLElement | null
-    if (target?.closest('a, button, .community-map-popup')) return
+    if (target?.closest('.community-map-controls, .community-map-popup, .community-map-attribution')) return
     const currentTarget = event.currentTarget as HTMLElement
     currentTarget.setPointerCapture(event.pointerId)
     dragState = {
@@ -313,6 +321,9 @@
       startY: event.clientY,
       centerX,
       centerY,
+      zoom: mapZoom,
+      lastLat: centerLat,
+      lastLng: centerLng,
       moved: false,
     }
   }
@@ -322,19 +333,28 @@
     const deltaX = event.clientX - dragState.startX
     const deltaY = event.clientY - dragState.startY
     dragState.moved = dragState.moved || Math.abs(deltaX) + Math.abs(deltaY) > 4
-    viewCenterLng = xToLng(dragState.centerX - deltaX, mapZoom)
-    viewCenterLat = yToLat(dragState.centerY - deltaY, mapZoom)
+    dragState.lastLng = xToLng(dragState.centerX - deltaX, dragState.zoom)
+    dragState.lastLat = yToLat(dragState.centerY - deltaY, dragState.zoom)
+    viewCenterLng = dragState.lastLng
+    viewCenterLat = dragState.lastLat
+    if (dragState.moved) suppressMarkerClickUntil = Date.now() + 250
     selectedMarkers = []
     selectedPoint = null
   }
 
   const handleMapPointerUp = (event: PointerEvent) => {
     if (!dragState || dragState.pointerId !== event.pointerId) return
-    const moved = dragState.moved
+    const completedDrag = dragState
     dragState = null
     const currentTarget = event.currentTarget as HTMLElement
     if (currentTarget.hasPointerCapture(event.pointerId)) currentTarget.releasePointerCapture(event.pointerId)
-    if (moved) scheduleViewportLoad(centerLat, centerLng, mapZoom)
+    if (completedDrag.moved) {
+      scheduleViewportLoad(completedDrag.lastLat, completedDrag.lastLng, completedDrag.zoom)
+    }
+  }
+
+  const openMarker = (point: BackendComunMapPoint) => {
+    if (Date.now() >= suppressMarkerClickUntil) selectedPoint = point
   }
 
   const handleMapWheel = (event: WheelEvent) => {
@@ -532,7 +552,7 @@
               style={`left:${cluster.x}%; top:${cluster.y}%;`}
               title={cluster.markers[0].post_title || cluster.markers[0].raw || 'Пост с меткой'}
               aria-label={cluster.markers[0].post_title || cluster.markers[0].raw || 'Пост с меткой'}
-              on:click={() => (selectedPoint = cluster.markers[0])}
+              on:click={() => openMarker(cluster.markers[0])}
             >
               <span class="community-map-marker-dot"></span>
             </button>
@@ -543,7 +563,7 @@
               style={`left:${cluster.x}%; top:${cluster.y}%;`}
               title={mapZoom < 16 ? 'Приблизить область' : 'Показать посты'}
               aria-label={`${formatCount(cluster.markers.length)} меток`}
-              on:click={() => focusCluster(cluster)}
+              on:click={() => Date.now() >= suppressMarkerClickUntil && focusCluster(cluster)}
             >
               {formatCount(cluster.markers.length)}
             </button>
@@ -760,6 +780,7 @@
     width: 256px;
     height: 256px;
     max-width: none;
+    pointer-events: none;
     user-select: none;
   }
 
