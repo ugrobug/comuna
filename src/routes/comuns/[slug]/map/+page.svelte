@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
-  import type { BackendComun, BackendComunMapPoint } from '$lib/api/backend'
+  import { buildComunMapUrl, type BackendComun, type BackendComunMapPoint } from '$lib/api/backend'
 
   export let data
 
@@ -31,7 +31,9 @@
   const TILE_SIZE = 256
 
   let comun: BackendComun | null = data?.comun ?? null
-  let points: BackendComunMapPoint[] = Array.isArray(data?.points) ? data.points : []
+  const initialPoints: BackendComunMapPoint[] = Array.isArray(data?.points) ? data.points : []
+  let points: BackendComunMapPoint[] = [...initialPoints]
+  let totalPoints = Number(data?.totalPoints ?? initialPoints.length)
   let mapElement: HTMLDivElement | null = null
   let mapWidth = 1024
   let mapHeight = 560
@@ -40,6 +42,17 @@
   let viewCenterLat: number | null = null
   let viewCenterLng: number | null = null
   let selectedMarkers: MapMarker[] = []
+  let viewportLoadTimer: ReturnType<typeof setTimeout> | null = null
+  let viewportAbortController: AbortController | null = null
+  let isLoadingPoints = false
+  let dragState: {
+    pointerId: number
+    startX: number
+    startY: number
+    centerX: number
+    centerY: number
+    moved: boolean
+  } | null = null
 
   const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
 
@@ -53,6 +66,17 @@
       TILE_SIZE *
       2 ** zoom
     )
+  }
+
+  const xToLng = (x: number, zoom: number) => {
+    const worldSize = TILE_SIZE * 2 ** zoom
+    return ((x / worldSize) * 360 + 540) % 360 - 180
+  }
+
+  const yToLat = (y: number, zoom: number) => {
+    const worldSize = TILE_SIZE * 2 ** zoom
+    const mercator = Math.PI * (1 - (2 * y) / worldSize)
+    return clamp((Math.atan(Math.sinh(mercator)) * 180) / Math.PI, -85.0511, 85.0511)
   }
 
   const normalizePoint = (point: BackendComunMapPoint) => {
@@ -106,17 +130,72 @@
     }))
   }
 
+  const boundsForView = (lat: number, lng: number, zoom: number) => {
+    const viewCenterX = lonToX(lng, zoom)
+    const viewCenterY = latToY(lat, zoom)
+    return {
+      minLat: yToLat(viewCenterY + mapHeight / 2, zoom),
+      maxLat: yToLat(viewCenterY - mapHeight / 2, zoom),
+      minLng: xToLng(viewCenterX - mapWidth / 2, zoom),
+      maxLng: xToLng(viewCenterX + mapWidth / 2, zoom),
+    }
+  }
+
+  const mergePoints = (nextPoints: BackendComunMapPoint[]) => {
+    const merged = new Map<number, BackendComunMapPoint>()
+    for (const point of points) merged.set(Number(point.id), point)
+    for (const point of nextPoints) merged.set(Number(point.id), point)
+    points = Array.from(merged.values())
+  }
+
+  const loadViewportPoints = async (lat: number, lng: number, zoom: number) => {
+    if (!comun?.slug || typeof window === 'undefined') return
+    const bounds = boundsForView(lat, lng, zoom)
+    if (bounds.minLng > bounds.maxLng) return
+
+    viewportAbortController?.abort()
+    const controller = new AbortController()
+    viewportAbortController = controller
+    const url = new URL(buildComunMapUrl(comun.slug), window.location.origin)
+    url.searchParams.set('min_lat', String(bounds.minLat))
+    url.searchParams.set('max_lat', String(bounds.maxLat))
+    url.searchParams.set('min_lng', String(bounds.minLng))
+    url.searchParams.set('max_lng', String(bounds.maxLng))
+    url.searchParams.set('limit', '500')
+    isLoadingPoints = true
+    try {
+      const response = await fetch(url.toString(), { signal: controller.signal })
+      if (!response.ok) return
+      const payload = await response.json().catch(() => ({}))
+      if (Array.isArray(payload?.points)) mergePoints(payload.points)
+      if (Number(payload?.total_count) > 0) totalPoints = Number(payload.total_count)
+    } catch (error) {
+      if ((error as Error)?.name !== 'AbortError') console.error('Failed to load map viewport', error)
+    } finally {
+      if (viewportAbortController === controller) isLoadingPoints = false
+    }
+  }
+
+  const scheduleViewportLoad = (lat: number, lng: number, zoom: number) => {
+    if (viewportLoadTimer) clearTimeout(viewportLoadTimer)
+    viewportLoadTimer = setTimeout(() => loadViewportPoints(lat, lng, zoom), 180)
+  }
+
   const setMapZoom = (nextZoom: number) => {
-    viewZoom = clamp(nextZoom, 2, 16)
+    const normalizedZoom = clamp(nextZoom, 2, 16)
+    viewZoom = normalizedZoom
     selectedMarkers = []
+    scheduleViewportLoad(centerLat, centerLng, normalizedZoom)
   }
 
   const focusCluster = (cluster: MapCluster) => {
     if (mapZoom < 16) {
       viewCenterLat = cluster.lat
       viewCenterLng = cluster.lng
-      viewZoom = Math.min(mapZoom + 2, 16)
+      const nextZoom = Math.min(mapZoom + 2, 16)
+      viewZoom = nextZoom
       selectedMarkers = []
+      scheduleViewportLoad(cluster.lat, cluster.lng, nextZoom)
       return
     }
     const uniquePosts = new Map<number, MapMarker>()
@@ -125,10 +204,51 @@
   }
 
   const resetMapView = () => {
+    points = [...initialPoints]
     viewZoom = null
     viewCenterLat = null
     viewCenterLng = null
     selectedMarkers = []
+  }
+
+  const handleMapPointerDown = (event: PointerEvent) => {
+    if (event.button !== 0) return
+    const target = event.target as HTMLElement | null
+    if (target?.closest('a, button')) return
+    const currentTarget = event.currentTarget as HTMLElement
+    currentTarget.setPointerCapture(event.pointerId)
+    dragState = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      centerX,
+      centerY,
+      moved: false,
+    }
+  }
+
+  const handleMapPointerMove = (event: PointerEvent) => {
+    if (!dragState || dragState.pointerId !== event.pointerId) return
+    const deltaX = event.clientX - dragState.startX
+    const deltaY = event.clientY - dragState.startY
+    dragState.moved = dragState.moved || Math.abs(deltaX) + Math.abs(deltaY) > 4
+    viewCenterLng = xToLng(dragState.centerX - deltaX, mapZoom)
+    viewCenterLat = yToLat(dragState.centerY - deltaY, mapZoom)
+    selectedMarkers = []
+  }
+
+  const handleMapPointerUp = (event: PointerEvent) => {
+    if (!dragState || dragState.pointerId !== event.pointerId) return
+    const moved = dragState.moved
+    dragState = null
+    const currentTarget = event.currentTarget as HTMLElement
+    if (currentTarget.hasPointerCapture(event.pointerId)) currentTarget.releasePointerCapture(event.pointerId)
+    if (moved) scheduleViewportLoad(centerLat, centerLng, mapZoom)
+  }
+
+  const handleMapWheel = (event: WheelEvent) => {
+    event.preventDefault()
+    setMapZoom(mapZoom + (event.deltaY < 0 ? 1 : -1))
   }
 
   $: normalizedPoints = points.map(normalizePoint).filter(Boolean) as BackendComunMapPoint[]
@@ -195,6 +315,8 @@
 
   onDestroy(() => {
     resizeObserver?.disconnect()
+    if (viewportLoadTimer) clearTimeout(viewportLoadTimer)
+    viewportAbortController?.abort()
   })
 </script>
 
@@ -208,7 +330,7 @@
       <div class="min-w-0">
         <Header noMargin>Карта</Header>
         <div class="mt-1 text-sm text-slate-500 dark:text-zinc-400">
-          {comun?.name ?? 'Сообщество'} · {formatCount(normalizedPoints.length)} меток
+          {comun?.name ?? 'Сообщество'} · {formatCount(normalizedPoints.length)} из {formatCount(totalPoints || normalizedPoints.length)} меток{isLoadingPoints ? ' · загрузка' : ''}
         </div>
       </div>
       {#if comun?.slug}
@@ -224,12 +346,24 @@
 
   {#if normalizedPoints.length}
     <section class="community-map-shell overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 dark:border-zinc-800 dark:bg-zinc-900">
-      <div class="community-map-canvas" bind:this={mapElement}>
+      <div
+        class:community-map-dragging={Boolean(dragState)}
+        class="community-map-canvas"
+        role="application"
+        aria-label="Карта сообщества"
+        bind:this={mapElement}
+        on:pointerdown={handleMapPointerDown}
+        on:pointermove={handleMapPointerMove}
+        on:pointerup={handleMapPointerUp}
+        on:pointercancel={handleMapPointerUp}
+        on:wheel|nonpassive={handleMapWheel}
+      >
         {#each tiles as tile (tile.key)}
           <img
             src={tile.url}
             alt=""
             loading="lazy"
+            draggable="false"
             class="community-map-tile"
             style={`left:${tile.left}px; top:${tile.top}px;`}
             width={TILE_SIZE}
@@ -263,7 +397,7 @@
         <div class="community-map-controls" aria-label="Управление масштабом">
           <button type="button" title="Приблизить" aria-label="Приблизить" on:click={() => setMapZoom(mapZoom + 1)}>+</button>
           <button type="button" title="Отдалить" aria-label="Отдалить" on:click={() => setMapZoom(mapZoom - 1)}>−</button>
-          <button type="button" class="community-map-reset" on:click={resetMapView}>Вся карта</button>
+          <button type="button" class="community-map-reset" on:click={resetMapView}>К началу</button>
         </div>
         <a
           href="https://www.openstreetmap.org/copyright"
@@ -314,6 +448,12 @@
     min-height: 360px;
     max-height: 620px;
     overflow: hidden;
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .community-map-canvas.community-map-dragging {
+    cursor: grabbing;
   }
 
   .community-map-tile {

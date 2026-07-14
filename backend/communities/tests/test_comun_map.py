@@ -97,7 +97,25 @@ class ComunMapPointTests(TestCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(len(payload["points"]), 1)
         self.assertEqual(payload["points"][0]["post_id"], post.id)
-        self.assertTrue(payload["points"][0]["post_path"].startswith(f"/b/post/{post.id}-"))
+        self.assertEqual(payload["points"][0]["lat"], 55.751244)
+        self.assertEqual(payload["points"][0]["lng"], 37.618423)
+        self.assertEqual(payload["total_count"], 1)
+
+    def test_map_api_loads_only_requested_bounds(self):
+        near_post = self.create_post(editor_content(map_block(55.751244, 37.618423)))
+        far_post = self.create_post(editor_content(map_block(40.7128, -74.006)))
+        community_service.sync_comun_map_points_for_post(near_post, comun=self.comun)
+        community_service.sync_comun_map_points_for_post(far_post, comun=self.comun)
+
+        response = self.client.get(
+            reverse("comun-map", kwargs={"slug": self.comun.slug}),
+            {"min_lat": "55.7", "max_lat": "55.8", "min_lng": "37.5", "max_lng": "37.7"},
+        )
+
+        payload = json.loads(response_body(response).decode("utf-8"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([point["post_id"] for point in payload["points"]], [near_post.id])
+        self.assertIsNone(payload["total_count"])
 
     def test_disabled_map_api_is_not_public(self):
         self.comun.community_map_enabled = False

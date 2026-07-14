@@ -12,7 +12,7 @@ from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.db import transaction
 from django.db.models import Count, Prefetch, Q
-from django.http import HttpRequest, HttpResponse, JsonResponse, StreamingHttpResponse
+from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils import timezone
 from django.utils.html import escape
 from django.utils.text import get_valid_filename
@@ -3375,49 +3375,120 @@ def comun_map(request: HttpRequest, slug: str) -> HttpResponse:
     if request.method not in ("GET", "HEAD"):
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
 
-    points = (
-        ComunMapPoint.objects.filter(
-            comun=comun,
-            post__is_blocked=False,
-            post__is_pending=False,
-            post__author__is_blocked=False,
-        )
-        .values(
-            "id",
-            "post_id",
-            "post__title",
-            "block_index",
-            "lat",
-            "lng",
-            "zoom",
-            "raw",
-            "created_at",
-            "updated_at",
-        )
-        .order_by("-post__created_at", "post_id", "block_index", "id")
+    points = ComunMapPoint.objects.filter(
+        comun=comun,
+        post__is_blocked=False,
+        post__is_pending=False,
+        post__author__is_blocked=False,
     )
 
-    def stream_payload():
-        yield '{"ok":true,"comun":'
-        yield json.dumps(
-            _serialize_comun(request, comun, current_user=current_user),
-            ensure_ascii=False,
-            separators=(",", ":"),
-        )
-        yield ',"points":['
-        is_first = True
-        for row in points.iterator(chunk_size=2000):
-            if not is_first:
-                yield ","
-            is_first = False
-            yield json.dumps(
-                community_service.serialize_comun_map_point_row(row),
-                ensure_ascii=False,
-                separators=(",", ":"),
-            )
-        yield "]}"
+    def float_param(name: str) -> float | None:
+        try:
+            value = float(str(request.GET.get(name) or "").replace(",", "."))
+        except (TypeError, ValueError):
+            return None
+        return value if math.isfinite(value) else None
 
-    response = StreamingHttpResponse(stream_payload(), content_type="application/json; charset=utf-8")
+    try:
+        limit = min(max(int(request.GET.get("limit") or 300), 1), 1000)
+    except (TypeError, ValueError):
+        limit = 300
+
+    row_fields = ("id", "post_id", "post__title", "lat", "lng", "zoom")
+    min_lat = float_param("min_lat")
+    max_lat = float_param("max_lat")
+    min_lng = float_param("min_lng")
+    max_lng = float_param("max_lng")
+    has_bounds = all(value is not None for value in (min_lat, max_lat, min_lng, max_lng))
+    is_initial = not has_bounds
+
+    if has_bounds:
+        south, north = sorted((max(min_lat, -90), min(max_lat, 90)))
+        west, east = sorted((max(min_lng, -180), min(max_lng, 180)))
+        selected_rows = list(
+            points.filter(lat__gte=south, lat__lte=north, lng__gte=west, lng__lte=east)
+            .values(*row_fields)
+            .order_by("id")[: limit + 1]
+        )
+        anchor = None
+    else:
+        requested_lat = float_param("lat")
+        requested_lng = float_param("lng")
+        anchor = None
+        if requested_lat is not None and requested_lng is not None:
+            requested_lat = min(max(requested_lat, -90), 90)
+            requested_lng = min(max(requested_lng, -180), 180)
+            for span in (0.02, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 15, 45, 180):
+                candidates = list(
+                    points.filter(
+                        lat__gte=max(requested_lat - span, -90),
+                        lat__lte=min(requested_lat + span, 90),
+                        lng__gte=max(requested_lng - span, -180),
+                        lng__lte=min(requested_lng + span, 180),
+                    )
+                    .values(*row_fields)
+                    .order_by("id")[:1000]
+                )
+                if candidates:
+                    anchor = min(
+                        candidates,
+                        key=lambda row: (float(row["lat"]) - requested_lat) ** 2
+                        + (float(row["lng"]) - requested_lng) ** 2,
+                    )
+                    break
+        if anchor is None:
+            anchor = points.values(*row_fields).order_by("-post__created_at", "id").first()
+
+        selected_rows = []
+        if anchor:
+            anchor_lat = float(anchor["lat"])
+            anchor_lng = float(anchor["lng"])
+            minimum_points = min(limit, 6)
+            for span in (0.01, 0.02, 0.05, 0.1, 0.25, 0.5, 1, 2, 5):
+                candidates = list(
+                    points.filter(
+                        lat__gte=max(anchor_lat - span, -90),
+                        lat__lte=min(anchor_lat + span, 90),
+                        lng__gte=max(anchor_lng - span, -180),
+                        lng__lte=min(anchor_lng + span, 180),
+                    )
+                    .values(*row_fields)
+                    .order_by("id")[: max(limit * 10, 200)]
+                )
+                candidates.sort(
+                    key=lambda row: (float(row["lat"]) - anchor_lat) ** 2
+                    + (float(row["lng"]) - anchor_lng) ** 2
+                )
+                selected_rows = candidates[: limit + 1]
+                if len(selected_rows) >= minimum_points or span == 5:
+                    break
+
+    has_more = len(selected_rows) > limit
+    selected_rows = selected_rows[:limit]
+    serialized_points = [
+        {
+            "id": int(row["id"]),
+            "post_id": int(row["post_id"]),
+            "post_title": str(row.get("post__title") or ""),
+            "post_path": f'/b/post/{int(row["post_id"])}',
+            "lat": float(row["lat"]),
+            "lng": float(row["lng"]),
+            "zoom": int(row.get("zoom") or 14),
+        }
+        for row in selected_rows
+    ]
+    response = JsonResponse(
+        {
+            "ok": True,
+            "comun": _serialize_comun(request, comun, current_user=current_user),
+            "points": serialized_points,
+            "has_more": has_more,
+            "total_count": points.count() if is_initial else None,
+            "anchor": (
+                {"lat": float(anchor["lat"]), "lng": float(anchor["lng"])} if anchor else None
+            ),
+        }
+    )
     response["Cache-Control"] = "public, max-age=30"
     return response
 

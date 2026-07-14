@@ -1164,26 +1164,6 @@ def serialize_comun_map_point(point: ComunMapPoint) -> dict:
     }
 
 
-def serialize_comun_map_point_row(row: dict) -> dict:
-    post_id = int(row["post_id"])
-    post_title = str(row.get("post__title") or "")
-    created_at = row.get("created_at")
-    updated_at = row.get("updated_at")
-    return {
-        "id": int(row["id"]),
-        "post_id": post_id,
-        "post_title": post_title,
-        "post_path": build_post_public_path(post_id, post_title),
-        "block_index": int(row.get("block_index") or 0),
-        "lat": float(row["lat"]),
-        "lng": float(row["lng"]),
-        "zoom": int(row.get("zoom") or 14),
-        "raw": str(row.get("raw") or ""),
-        "created_at": created_at.isoformat() if created_at else None,
-        "updated_at": updated_at.isoformat() if updated_at else None,
-    }
-
-
 def _site_user_avatar_url(
     request: HttpRequest | None,
     user: User,

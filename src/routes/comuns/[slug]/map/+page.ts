@@ -14,7 +14,10 @@ export const load = async ({ fetch, parent, url }) => {
     throw error(404, 'Карта не включена')
   }
 
-  const response = await fetch(new URL(buildComunMapUrl(comun.slug), url.origin).toString())
+  const mapUrl = new URL(buildComunMapUrl(comun.slug), url.origin)
+  mapUrl.searchParams.set('initial', '1')
+  mapUrl.searchParams.set('limit', '40')
+  const response = await fetch(mapUrl.toString())
   if (!response.ok) {
     throw error(response.status, 'Не удалось загрузить карту')
   }
@@ -23,5 +26,6 @@ export const load = async ({ fetch, parent, url }) => {
   return {
     comun: payload?.comun ?? comun,
     points: Array.isArray(payload?.points) ? payload.points : [],
+    totalPoints: Number(payload?.total_count ?? 0),
   }
 }
