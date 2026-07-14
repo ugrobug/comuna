@@ -279,6 +279,33 @@
                 "team": "Zespół",
                 "settings": "Ustawienia"
             }
+        },
+        "communityMap": {
+            "pageTitle": "{{community}}: mapa",
+            "communityMapTitle": "Mapa społeczności",
+            "title": "Mapa",
+            "community": "Społeczność",
+            "pointsSummary": "{{visible}} z {{total}} znaczników",
+            "loading": "wczytywanie",
+            "backToCommunity": "Wróć do społeczności",
+            "searchPlaceholder": "Szukaj miejsc na mapie",
+            "clearSearch": "Wyczyść wyszukiwanie",
+            "searching": "Wyszukiwanie...",
+            "noResults": "Nie znaleziono wyników",
+            "point": "Punkt na mapie",
+            "markedPost": "Post ze znacznikiem",
+            "zoomArea": "Przybliż obszar",
+            "showPosts": "Pokaż posty",
+            "markersCount": "{{count}} znaczników",
+            "close": "Zamknij",
+            "placePhoto": "Zdjęcie miejsca",
+            "openPost": "Otwórz post",
+            "zoomControls": "Sterowanie powiększeniem mapy",
+            "zoomIn": "Przybliż",
+            "zoomOut": "Oddal",
+            "resetView": "Resetuj widok",
+            "postsAtPoint": "Posty w tym miejscu",
+            "empty": "Na mapie nie ma jeszcze znaczników."
         }
     },
     "nav": {

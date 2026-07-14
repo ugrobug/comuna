@@ -166,6 +166,33 @@
             "import": "匯入",
             "export": "匯出",
             "reset": "重設"
+        },
+        "communityMap": {
+            "pageTitle": "{{community}}：地圖",
+            "communityMapTitle": "社群地圖",
+            "title": "地圖",
+            "community": "社群",
+            "pointsSummary": "共 {{total}} 個標記，已顯示 {{visible}} 個",
+            "loading": "載入中",
+            "backToCommunity": "返回社群",
+            "searchPlaceholder": "搜尋地圖地點",
+            "clearSearch": "清除搜尋",
+            "searching": "正在搜尋...",
+            "noResults": "找不到結果",
+            "point": "地圖地點",
+            "markedPost": "帶標記的貼文",
+            "zoomArea": "放大此區域",
+            "showPosts": "顯示貼文",
+            "markersCount": "{{count}} 個標記",
+            "close": "關閉",
+            "placePhoto": "地點照片",
+            "openPost": "開啟貼文",
+            "zoomControls": "地圖縮放控制",
+            "zoomIn": "放大",
+            "zoomOut": "縮小",
+            "resetView": "重設檢視",
+            "postsAtPoint": "此地點的貼文",
+            "empty": "地圖上暫時沒有標記。"
         }
     },
     "cards": {

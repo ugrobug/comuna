@@ -157,7 +157,34 @@
             "description": "Tee oma uus parool.",
             "instance": "Mis serveris on sinu kasutaja?"
         },
-        "instances": "Serverid"
+        "instances": "Serverid",
+        "communityMap": {
+            "pageTitle": "{{community}}: kaart",
+            "communityMapTitle": "Kogukonna kaart",
+            "title": "Kaart",
+            "community": "Kogukond",
+            "pointsSummary": "{{visible}} / {{total}} markerit",
+            "loading": "laadimine",
+            "backToCommunity": "Tagasi kogukonda",
+            "searchPlaceholder": "Otsi kaardil olevaid kohti",
+            "clearSearch": "Tühjenda otsing",
+            "searching": "Otsimine...",
+            "noResults": "Tulemusi ei leitud",
+            "point": "Koht kaardil",
+            "markedPost": "Markeriga postitus",
+            "zoomArea": "Suumi piirkonda",
+            "showPosts": "Näita postitusi",
+            "markersCount": "{{count}} markerit",
+            "close": "Sulge",
+            "placePhoto": "Asukoha foto",
+            "openPost": "Ava postitus",
+            "zoomControls": "Kaardi suumi juhtnupud",
+            "zoomIn": "Suumi sisse",
+            "zoomOut": "Suumi välja",
+            "resetView": "Lähtesta vaade",
+            "postsAtPoint": "Postitused selles kohas",
+            "empty": "Kaardil pole veel markereid."
+        }
     },
     "cards": {
         "community": {

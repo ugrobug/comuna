@@ -227,6 +227,33 @@
                 "team": "Tiimi",
                 "settings": "Asetukset"
             }
+        },
+        "communityMap": {
+            "pageTitle": "{{community}}: kartta",
+            "communityMapTitle": "Yhteisön kartta",
+            "title": "Kartta",
+            "community": "Yhteisö",
+            "pointsSummary": "{{visible}} / {{total}} merkintää",
+            "loading": "ladataan",
+            "backToCommunity": "Takaisin yhteisöön",
+            "searchPlaceholder": "Hae kartan kohteita",
+            "clearSearch": "Tyhjennä haku",
+            "searching": "Haetaan...",
+            "noResults": "Tuloksia ei löytynyt",
+            "point": "Karttakohde",
+            "markedPost": "Merkinnän sisältävä julkaisu",
+            "zoomArea": "Lähennä alueeseen",
+            "showPosts": "Näytä julkaisut",
+            "markersCount": "{{count}} merkintää",
+            "close": "Sulje",
+            "placePhoto": "Paikan kuva",
+            "openPost": "Avaa julkaisu",
+            "zoomControls": "Kartan zoomaussäätimet",
+            "zoomIn": "Lähennä",
+            "zoomOut": "Loitonna",
+            "resetView": "Palauta näkymä",
+            "postsAtPoint": "Julkaisut tässä paikassa",
+            "empty": "Kartalla ei ole vielä merkintöjä."
         }
     },
     "cards": {

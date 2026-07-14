@@ -442,6 +442,33 @@
                 "settings": "Settings",
                 "manage": "Manage"
             }
+        },
+        "communityMap": {
+            "pageTitle": "{{community}}: peta",
+            "communityMapTitle": "Peta komunitas",
+            "title": "Peta",
+            "community": "Komunitas",
+            "pointsSummary": "{{visible}} dari {{total}} penanda",
+            "loading": "memuat",
+            "backToCommunity": "Kembali ke komunitas",
+            "searchPlaceholder": "Cari lokasi di peta",
+            "clearSearch": "Hapus pencarian",
+            "searching": "Mencari...",
+            "noResults": "Tidak ada hasil",
+            "point": "Lokasi di peta",
+            "markedPost": "Postingan dengan penanda",
+            "zoomArea": "Perbesar area",
+            "showPosts": "Tampilkan postingan",
+            "markersCount": "{{count}} penanda",
+            "close": "Tutup",
+            "placePhoto": "Foto lokasi",
+            "openPost": "Buka postingan",
+            "zoomControls": "Kontrol zoom peta",
+            "zoomIn": "Perbesar",
+            "zoomOut": "Perkecil",
+            "resetView": "Atur ulang tampilan",
+            "postsAtPoint": "Postingan di lokasi ini",
+            "empty": "Belum ada penanda di peta."
         }
     },
     "cards": {

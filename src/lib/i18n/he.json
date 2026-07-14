@@ -336,6 +336,33 @@
         "resetLogin": {
             "title": "איפוס סיסמה",
             "description": "לאחר הזנת האימייל של חשבונך, יישלח קישור לאיפוס הסיסמה. אם לחשבונך אין אימייל, ניתן ליצור קשר עם אדמיני השרת."
+        },
+        "communityMap": {
+            "pageTitle": "{{community}}: מפה",
+            "communityMapTitle": "מפת הקהילה",
+            "title": "מפה",
+            "community": "קהילה",
+            "pointsSummary": "{{visible}} מתוך {{total}} סמנים",
+            "loading": "טוען",
+            "backToCommunity": "חזרה לקהילה",
+            "searchPlaceholder": "חיפוש מיקומים במפה",
+            "clearSearch": "ניקוי החיפוש",
+            "searching": "מחפש...",
+            "noResults": "לא נמצאו תוצאות",
+            "point": "נקודה במפה",
+            "markedPost": "פוסט עם סמן",
+            "zoomArea": "התקרבות לאזור",
+            "showPosts": "הצגת פוסטים",
+            "markersCount": "{{count}} סמנים",
+            "close": "סגירה",
+            "placePhoto": "תמונת המקום",
+            "openPost": "פתיחת הפוסט",
+            "zoomControls": "פקדי תקריב במפה",
+            "zoomIn": "התקרבות",
+            "zoomOut": "התרחקות",
+            "resetView": "איפוס התצוגה",
+            "postsAtPoint": "פוסטים במיקום הזה",
+            "empty": "עדיין אין סמנים במפה."
         }
     },
     "nav": {

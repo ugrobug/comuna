@@ -428,6 +428,33 @@
                 "team": "Équipe",
                 "settings": "Paramètres"
             }
+        },
+        "communityMap": {
+            "pageTitle": "{{community}} : carte",
+            "communityMapTitle": "Carte de la communauté",
+            "title": "Carte",
+            "community": "Communauté",
+            "pointsSummary": "{{visible}} sur {{total}} repères",
+            "loading": "chargement",
+            "backToCommunity": "Retour à la communauté",
+            "searchPlaceholder": "Rechercher des lieux sur la carte",
+            "clearSearch": "Effacer la recherche",
+            "searching": "Recherche...",
+            "noResults": "Aucun résultat trouvé",
+            "point": "Point sur la carte",
+            "markedPost": "Publication avec un repère",
+            "zoomArea": "Zoomer sur la zone",
+            "showPosts": "Afficher les publications",
+            "markersCount": "{{count}} repères",
+            "close": "Fermer",
+            "placePhoto": "Photo du lieu",
+            "openPost": "Ouvrir la publication",
+            "zoomControls": "Contrôles de zoom de la carte",
+            "zoomIn": "Zoom avant",
+            "zoomOut": "Zoom arrière",
+            "resetView": "Réinitialiser la vue",
+            "postsAtPoint": "Publications à cet endroit",
+            "empty": "Aucun repère sur la carte pour le moment."
         }
     },
     "verifyEmail": {

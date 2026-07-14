@@ -448,6 +448,33 @@
             "search": {
                 "placeholder": "Поиск сообщества"
             }
+        },
+        "communityMap": {
+            "pageTitle": "{{community}}: карта",
+            "communityMapTitle": "Карта сообщества",
+            "title": "Карта",
+            "community": "Сообщество",
+            "pointsSummary": "{{visible}} из {{total}} меток",
+            "loading": "загрузка",
+            "backToCommunity": "К сообществу",
+            "searchPlaceholder": "Поиск по объектам карты",
+            "clearSearch": "Очистить поиск",
+            "searching": "Ищем...",
+            "noResults": "Ничего не найдено",
+            "point": "Точка на карте",
+            "markedPost": "Пост с меткой",
+            "zoomArea": "Приблизить область",
+            "showPosts": "Показать посты",
+            "markersCount": "{{count}} меток",
+            "close": "Закрыть",
+            "placePhoto": "Фотография места",
+            "openPost": "Открыть пост",
+            "zoomControls": "Управление масштабом",
+            "zoomIn": "Приблизить",
+            "zoomOut": "Отдалить",
+            "resetView": "К началу",
+            "postsAtPoint": "Посты в этой точке",
+            "empty": "На карте пока нет меток."
         }
     },
     "cards": {

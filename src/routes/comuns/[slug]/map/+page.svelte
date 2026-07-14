@@ -2,6 +2,7 @@
   import { onDestroy, onMount } from 'svelte'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import { buildComunMapUrl, type BackendComun, type BackendComunMapPoint } from '$lib/api/backend'
+  import { locale, t } from '$lib/translations'
   import { Icon, MagnifyingGlass, XMark } from 'svelte-hero-icons'
 
   export let data
@@ -100,13 +101,13 @@
     return { ...point, lat, lng }
   }
 
-  const formatCount = (value: number) => new Intl.NumberFormat('ru-RU').format(value)
+  const formatCount = (value: number) => new Intl.NumberFormat($locale || 'ru').format(value)
 
   const formatPostDate = (value?: string | null) => {
     if (!value) return ''
     const date = new Date(value)
     if (!Number.isFinite(date.getTime())) return ''
-    return new Intl.DateTimeFormat('ru-RU', {
+    return new Intl.DateTimeFormat($locale || 'ru', {
       day: 'numeric',
       month: 'short',
       year: 'numeric',
@@ -455,16 +456,19 @@
 </script>
 
 <svelte:head>
-  <title>{comun?.name ? `${comun.name}: карта` : 'Карта сообщества'}</title>
+  <title>{comun?.name ? $t('routes.communityMap.pageTitle', { community: comun.name }) : $t('routes.communityMap.communityMapTitle')}</title>
 </svelte:head>
 
 <main class="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
   <section class="rounded-2xl border border-slate-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950 sm:p-5">
     <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
       <div class="min-w-0">
-        <Header noMargin>Карта</Header>
+        <Header noMargin>{$t('routes.communityMap.title')}</Header>
         <div class="mt-1 text-sm text-slate-500 dark:text-zinc-400">
-          {comun?.name ?? 'Сообщество'} · {formatCount(normalizedPoints.length)} из {formatCount(totalPoints || normalizedPoints.length)} меток{isLoadingPoints ? ' · загрузка' : ''}
+          {comun?.name ?? $t('routes.communityMap.community')} · {$t('routes.communityMap.pointsSummary', {
+            visible: formatCount(normalizedPoints.length),
+            total: formatCount(totalPoints || normalizedPoints.length),
+          })}{isLoadingPoints ? ` · ${$t('routes.communityMap.loading')}` : ''}
         </div>
       </div>
       {#if comun?.slug}
@@ -472,7 +476,7 @@
           href={`/comuns/${encodeURIComponent(comun.slug)}`}
           class="inline-flex shrink-0 items-center justify-center rounded-full border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-900"
         >
-          К сообществу
+          {$t('routes.communityMap.backToCommunity')}
         </a>
       {/if}
     </div>
@@ -487,8 +491,8 @@
         type="search"
         bind:value={mapSearchQuery}
         on:input={handleSearchInput}
-        placeholder="Поиск по объектам карты"
-        aria-label="Поиск по объектам карты"
+        placeholder={$t('routes.communityMap.searchPlaceholder')}
+        aria-label={$t('routes.communityMap.searchPlaceholder')}
         autocomplete="off"
         class="community-map-search-input"
       />
@@ -496,8 +500,8 @@
         <button
           type="button"
           class="community-map-search-clear"
-          title="Очистить поиск"
-          aria-label="Очистить поиск"
+          title={$t('routes.communityMap.clearSearch')}
+          aria-label={$t('routes.communityMap.clearSearch')}
           on:click={clearMapSearch}
         >
           <Icon src={XMark} size="18" mini />
@@ -508,9 +512,9 @@
     {#if mapSearchQuery.trim().length >= 2 && (isSearching || searchResults.length || completedSearchQuery === mapSearchQuery.trim())}
       <div class="community-map-search-results">
         {#if isSearching && !searchResults.length}
-          <div class="community-map-search-status">Ищем...</div>
+          <div class="community-map-search-status">{$t('routes.communityMap.searching')}</div>
         {:else if !searchResults.length}
-          <div class="community-map-search-status">Ничего не найдено</div>
+          <div class="community-map-search-status">{$t('routes.communityMap.noResults')}</div>
         {:else}
           {#each searchResults.slice(0, 10) as result (result.id)}
             <button type="button" class="community-map-search-result" on:click={() => selectMapPoint(result)}>
@@ -523,7 +527,7 @@
               {/if}
               <span class="min-w-0 text-left">
                 <span class="block truncate text-sm font-semibold text-slate-900 dark:text-zinc-100">
-                  {result.post_title || result.raw || 'Точка на карте'}
+                  {result.post_title || result.raw || $t('routes.communityMap.point')}
                 </span>
                 <span class="mt-0.5 block truncate text-xs text-slate-500 dark:text-zinc-400">
                   {result.raw || `${Number(result.lat).toFixed(5)}, ${Number(result.lng).toFixed(5)}`}
@@ -542,7 +546,7 @@
         class:community-map-dragging={Boolean(dragState)}
         class="community-map-canvas"
         role="application"
-        aria-label="Карта сообщества"
+        aria-label={$t('routes.communityMap.communityMapTitle')}
         bind:this={mapElement}
         on:pointerdown={handleMapPointerDown}
         on:pointermove={handleMapPointerMove}
@@ -568,8 +572,8 @@
               type="button"
               class="community-map-marker"
               style={`left:${cluster.x}%; top:${cluster.y}%;`}
-              title={cluster.markers[0].post_title || cluster.markers[0].raw || 'Пост с меткой'}
-              aria-label={cluster.markers[0].post_title || cluster.markers[0].raw || 'Пост с меткой'}
+              title={cluster.markers[0].post_title || cluster.markers[0].raw || $t('routes.communityMap.markedPost')}
+              aria-label={cluster.markers[0].post_title || cluster.markers[0].raw || $t('routes.communityMap.markedPost')}
               on:click={() => openMarker(cluster.markers[0])}
             >
               <span class="community-map-marker-dot"></span>
@@ -579,8 +583,8 @@
               type="button"
               class="community-map-cluster"
               style={`left:${cluster.x}%; top:${cluster.y}%;`}
-              title={mapZoom < 16 ? 'Приблизить область' : 'Показать посты'}
-              aria-label={`${formatCount(cluster.markers.length)} меток`}
+              title={mapZoom < 16 ? $t('routes.communityMap.zoomArea') : $t('routes.communityMap.showPosts')}
+              aria-label={$t('routes.communityMap.markersCount', { count: formatCount(cluster.markers.length) })}
               on:click={() => Date.now() >= suppressMarkerClickUntil && focusCluster(cluster)}
             >
               {formatCount(cluster.markers.length)}
@@ -597,8 +601,8 @@
               <button
                 type="button"
                 class="community-map-popup-close"
-                title="Закрыть"
-                aria-label="Закрыть"
+                title={$t('routes.communityMap.close')}
+                aria-label={$t('routes.communityMap.close')}
                 on:click={() => (selectedPoint = null)}
               >
                 <Icon src={XMark} size="18" mini />
@@ -609,13 +613,13 @@
               {#if selectedMapMarker.preview_image_url}
                 <img
                   src={selectedMapMarker.preview_image_url}
-                  alt={selectedMapMarker.post_title || 'Фотография места'}
+                  alt={selectedMapMarker.post_title || $t('routes.communityMap.placePhoto')}
                   loading="lazy"
                   class="community-map-popup-image"
                 />
               {/if}
               <h2 class="community-map-popup-title">
-                {selectedMapMarker.post_title || 'Точка на карте'}
+                {selectedMapMarker.post_title || $t('routes.communityMap.point')}
               </h2>
               <div class="community-map-popup-meta">
                 {#if formatPostDate(selectedMapMarker.created_at)}
@@ -623,14 +627,14 @@
                 {/if}
                 <span>{selectedMapMarker.lat.toFixed(5)}, {selectedMapMarker.lng.toFixed(5)}</span>
               </div>
-              <a href={selectedMapMarker.post_path} class="community-map-popup-link">Открыть пост</a>
+              <a href={selectedMapMarker.post_path} class="community-map-popup-link">{$t('routes.communityMap.openPost')}</a>
             </div>
           </article>
         {/if}
-        <div class="community-map-controls" aria-label="Управление масштабом">
-          <button type="button" title="Приблизить" aria-label="Приблизить" on:click={() => setMapZoom(mapZoom + 1)}>+</button>
-          <button type="button" title="Отдалить" aria-label="Отдалить" on:click={() => setMapZoom(mapZoom - 1)}>−</button>
-          <button type="button" class="community-map-reset" on:click={resetMapView}>К началу</button>
+        <div class="community-map-controls" aria-label={$t('routes.communityMap.zoomControls')}>
+          <button type="button" title={$t('routes.communityMap.zoomIn')} aria-label={$t('routes.communityMap.zoomIn')} on:click={() => setMapZoom(mapZoom + 1)}>+</button>
+          <button type="button" title={$t('routes.communityMap.zoomOut')} aria-label={$t('routes.communityMap.zoomOut')} on:click={() => setMapZoom(mapZoom - 1)}>−</button>
+          <button type="button" class="community-map-reset" on:click={resetMapView}>{$t('routes.communityMap.resetView')}</button>
         </div>
         <a
           href="https://www.openstreetmap.org/copyright"
@@ -646,7 +650,7 @@
     {#if selectedMarkers.length}
       <section class="rounded-xl border border-slate-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950">
         <div class="mb-2 text-sm font-semibold text-slate-900 dark:text-zinc-100">
-          Посты в этой точке
+          {$t('routes.communityMap.postsAtPoint')}
         </div>
         <div class="community-map-posts grid gap-2 md:grid-cols-2 xl:grid-cols-3">
           {#each selectedMarkers as point (point.post_id)}
@@ -655,7 +659,7 @@
               class="block rounded-lg border border-slate-200 p-3 transition hover:border-blue-300 hover:bg-blue-50/40 dark:border-zinc-800 dark:hover:border-blue-800 dark:hover:bg-blue-950/20"
             >
               <div class="truncate text-sm font-semibold text-slate-900 dark:text-zinc-100">
-                {point.post_title || point.raw || 'Пост с меткой'}
+                {point.post_title || point.raw || $t('routes.communityMap.markedPost')}
               </div>
             </a>
           {/each}
@@ -664,7 +668,7 @@
     {/if}
   {:else}
     <section class="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400">
-      На карте пока нет меток.
+      {$t('routes.communityMap.empty')}
     </section>
   {/if}
 </main>

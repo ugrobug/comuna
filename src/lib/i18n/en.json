@@ -442,6 +442,33 @@
                 "settings": "Settings",
                 "manage": "Manage"
             }
+        },
+        "communityMap": {
+            "pageTitle": "{{community}}: map",
+            "communityMapTitle": "Community map",
+            "title": "Map",
+            "community": "Community",
+            "pointsSummary": "{{visible}} of {{total}} markers",
+            "loading": "loading",
+            "backToCommunity": "Back to community",
+            "searchPlaceholder": "Search map locations",
+            "clearSearch": "Clear search",
+            "searching": "Searching...",
+            "noResults": "No results found",
+            "point": "Map location",
+            "markedPost": "Post with a marker",
+            "zoomArea": "Zoom into area",
+            "showPosts": "Show posts",
+            "markersCount": "{{count}} markers",
+            "close": "Close",
+            "placePhoto": "Location photo",
+            "openPost": "Open post",
+            "zoomControls": "Map zoom controls",
+            "zoomIn": "Zoom in",
+            "zoomOut": "Zoom out",
+            "resetView": "Reset view",
+            "postsAtPoint": "Posts at this location",
+            "empty": "There are no markers on the map yet."
         }
     },
     "cards": {

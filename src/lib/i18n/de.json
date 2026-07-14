@@ -345,6 +345,33 @@
                 "title": "Thema zurücksetzen",
                 "description": "Dadurch werden alle Farben auf die Standardwerte zurückgesetzt. Es wird empfohlen, das Thema vorher zu exportieren."
             }
+        },
+        "communityMap": {
+            "pageTitle": "{{community}}: Karte",
+            "communityMapTitle": "Community-Karte",
+            "title": "Karte",
+            "community": "Community",
+            "pointsSummary": "{{visible}} von {{total}} Markierungen",
+            "loading": "wird geladen",
+            "backToCommunity": "Zur Community",
+            "searchPlaceholder": "Kartenorte durchsuchen",
+            "clearSearch": "Suche löschen",
+            "searching": "Suche...",
+            "noResults": "Keine Ergebnisse gefunden",
+            "point": "Ort auf der Karte",
+            "markedPost": "Beitrag mit Markierung",
+            "zoomArea": "Bereich vergrößern",
+            "showPosts": "Beiträge anzeigen",
+            "markersCount": "{{count}} Markierungen",
+            "close": "Schließen",
+            "placePhoto": "Foto des Ortes",
+            "openPost": "Beitrag öffnen",
+            "zoomControls": "Kartenzoom",
+            "zoomIn": "Vergrößern",
+            "zoomOut": "Verkleinern",
+            "resetView": "Ansicht zurücksetzen",
+            "postsAtPoint": "Beiträge an diesem Ort",
+            "empty": "Auf der Karte gibt es noch keine Markierungen."
         }
     },
     "toast": {

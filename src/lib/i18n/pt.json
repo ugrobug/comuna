@@ -383,6 +383,33 @@
                 "team": "Equipa",
                 "settings": "Configurações"
             }
+        },
+        "communityMap": {
+            "pageTitle": "{{community}}: mapa",
+            "communityMapTitle": "Mapa da comunidade",
+            "title": "Mapa",
+            "community": "Comunidade",
+            "pointsSummary": "{{visible}} de {{total}} marcadores",
+            "loading": "carregando",
+            "backToCommunity": "Voltar à comunidade",
+            "searchPlaceholder": "Pesquisar locais no mapa",
+            "clearSearch": "Limpar pesquisa",
+            "searching": "Pesquisando...",
+            "noResults": "Nenhum resultado encontrado",
+            "point": "Local no mapa",
+            "markedPost": "Publicação com marcador",
+            "zoomArea": "Aproximar área",
+            "showPosts": "Mostrar publicações",
+            "markersCount": "{{count}} marcadores",
+            "close": "Fechar",
+            "placePhoto": "Foto do local",
+            "openPost": "Abrir publicação",
+            "zoomControls": "Controles de zoom do mapa",
+            "zoomIn": "Aproximar",
+            "zoomOut": "Afastar",
+            "resetView": "Redefinir visualização",
+            "postsAtPoint": "Publicações neste local",
+            "empty": "Ainda não há marcadores no mapa."
         }
     },
     "cards": {

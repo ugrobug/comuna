@@ -247,6 +247,33 @@
                 "title": "无新通知",
                 "description": "消息、回复和提及将显示在此处."
             }
+        },
+        "communityMap": {
+            "pageTitle": "{{community}}：地图",
+            "communityMapTitle": "社区地图",
+            "title": "地图",
+            "community": "社区",
+            "pointsSummary": "共 {{total}} 个标记，已显示 {{visible}} 个",
+            "loading": "加载中",
+            "backToCommunity": "返回社区",
+            "searchPlaceholder": "搜索地图地点",
+            "clearSearch": "清除搜索",
+            "searching": "正在搜索...",
+            "noResults": "未找到结果",
+            "point": "地图地点",
+            "markedPost": "带标记的帖子",
+            "zoomArea": "放大此区域",
+            "showPosts": "显示帖子",
+            "markersCount": "{{count}} 个标记",
+            "close": "关闭",
+            "placePhoto": "地点照片",
+            "openPost": "打开帖子",
+            "zoomControls": "地图缩放控件",
+            "zoomIn": "放大",
+            "zoomOut": "缩小",
+            "resetView": "重置视图",
+            "postsAtPoint": "此地点的帖子",
+            "empty": "地图上暂时没有标记。"
         }
     },
     "common": {

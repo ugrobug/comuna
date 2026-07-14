@@ -422,6 +422,33 @@
                 "settings": "Ayarlar",
                 "manage": "Yönet"
             }
+        },
+        "communityMap": {
+            "pageTitle": "{{community}}: harita",
+            "communityMapTitle": "Topluluk haritası",
+            "title": "Harita",
+            "community": "Topluluk",
+            "pointsSummary": "{{total}} işaretten {{visible}} tanesi",
+            "loading": "yükleniyor",
+            "backToCommunity": "Topluluğa dön",
+            "searchPlaceholder": "Haritadaki konumlarda ara",
+            "clearSearch": "Aramayı temizle",
+            "searching": "Aranıyor...",
+            "noResults": "Sonuç bulunamadı",
+            "point": "Haritadaki konum",
+            "markedPost": "İşaretli gönderi",
+            "zoomArea": "Bölgeyi yakınlaştır",
+            "showPosts": "Gönderileri göster",
+            "markersCount": "{{count}} işaret",
+            "close": "Kapat",
+            "placePhoto": "Konum fotoğrafı",
+            "openPost": "Gönderiyi aç",
+            "zoomControls": "Harita yakınlaştırma kontrolleri",
+            "zoomIn": "Yakınlaştır",
+            "zoomOut": "Uzaklaştır",
+            "resetView": "Görünümü sıfırla",
+            "postsAtPoint": "Bu konumdaki gönderiler",
+            "empty": "Haritada henüz işaret yok."
         }
     },
     "cards": {

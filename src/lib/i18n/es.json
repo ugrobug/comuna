@@ -394,7 +394,34 @@
             }
         },
         "modlog": "Registro de moderación",
-        "createCommunity": "Crear comunidad"
+        "createCommunity": "Crear comunidad",
+        "communityMap": {
+            "pageTitle": "{{community}}: mapa",
+            "communityMapTitle": "Mapa de la comunidad",
+            "title": "Mapa",
+            "community": "Comunidad",
+            "pointsSummary": "{{visible}} de {{total}} marcadores",
+            "loading": "cargando",
+            "backToCommunity": "Volver a la comunidad",
+            "searchPlaceholder": "Buscar lugares en el mapa",
+            "clearSearch": "Borrar búsqueda",
+            "searching": "Buscando...",
+            "noResults": "No se encontraron resultados",
+            "point": "Punto del mapa",
+            "markedPost": "Publicación con marcador",
+            "zoomArea": "Acercar esta zona",
+            "showPosts": "Mostrar publicaciones",
+            "markersCount": "{{count}} marcadores",
+            "close": "Cerrar",
+            "placePhoto": "Foto del lugar",
+            "openPost": "Abrir publicación",
+            "zoomControls": "Controles de zoom del mapa",
+            "zoomIn": "Acercar",
+            "zoomOut": "Alejar",
+            "resetView": "Restablecer vista",
+            "postsAtPoint": "Publicaciones en este lugar",
+            "empty": "Aún no hay marcadores en el mapa."
+        }
     },
     "cards": {
         "site": {
