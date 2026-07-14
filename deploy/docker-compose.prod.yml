@@ -1,7 +1,14 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   db:
     image: postgres:16
     restart: unless-stopped
+    logging: *default-logging
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -13,6 +20,7 @@ services:
   mysql57:
     image: mysql:5.7
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - "127.0.0.1:3306:3306"
     environment:
@@ -29,6 +37,7 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile.backend
     restart: unless-stopped
+    logging: *default-logging
     env_file:
       - .env.backend
     extra_hosts:
@@ -46,9 +55,12 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile.backend
     restart: unless-stopped
+    logging: *default-logging
     command: sh -c "while true; do python manage.py send_public_book_reminders_due || true; sleep 60; done"
     env_file:
       - .env.backend
+    environment:
+      TELEGRAM_USE_POLLING: "0"
     extra_hosts:
       - "api.telegram.org:149.154.167.220"
       - "oauth.telegram.org:149.154.167.220"
@@ -62,9 +74,12 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile.backend
     restart: unless-stopped
+    logging: *default-logging
     command: sh -c "while true; do python manage.py send_1001_films_due || true; sleep 60; done"
     env_file:
       - .env.backend
+    environment:
+      TELEGRAM_USE_POLLING: "0"
     extra_hosts:
       - "api.telegram.org:149.154.167.220"
       - "oauth.telegram.org:149.154.167.220"
@@ -78,9 +93,12 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile.backend
     restart: unless-stopped
+    logging: *default-logging
     command: sh -c "while true; do python manage.py send_grouped_notifications_due || true; sleep 60; done"
     env_file:
       - .env.backend
+    environment:
+      TELEGRAM_USE_POLLING: "0"
     extra_hosts:
       - "api.telegram.org:149.154.167.220"
       - "oauth.telegram.org:149.154.167.220"
@@ -94,9 +112,12 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile.backend
     restart: unless-stopped
+    logging: *default-logging
     command: sh -c "worker() { while true; do python -u manage.py process_translation_tasks --limit 50 --run-timeout 720 || true; sleep 10; done; }; reconcile() { while true; do python -u manage.py queue_missing_post_translation_tasks || true; sleep 21600; done; }; worker & worker & reconcile & wait"
     env_file:
       - .env.backend
+    environment:
+      TELEGRAM_USE_POLLING: "0"
     depends_on:
       - db
     volumes:
@@ -107,6 +128,7 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile.frontend
     restart: unless-stopped
+    logging: *default-logging
     env_file:
       - .env.frontend
     environment:
@@ -117,6 +139,7 @@ services:
   nginx:
     image: nginx:stable-alpine
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - "80:80"
     volumes:
