@@ -244,6 +244,14 @@
     searchTimer = setTimeout(searchMapPoints, 280)
   }
 
+  const centerMapForPopup = (lat: number, lng: number, zoom: number) => {
+    const popupAnchorY = latToY(lat, zoom)
+    return {
+      lat: yToLat(popupAnchorY - mapHeight * 0.4, zoom),
+      lng,
+    }
+  }
+
   const selectMapPoint = (point: BackendComunMapPoint) => {
     const lat = Number(point.lat)
     const lng = Number(point.lng)
@@ -253,11 +261,12 @@
     selectedMarkers = []
     mapSearchQuery = point.post_title || point.raw || mapSearchQuery
     searchResults = []
-    viewCenterLat = lat
-    viewCenterLng = lng
     const nextZoom = clamp(Number(point.zoom ?? 14) || 14, 12, 16)
+    const popupCenter = centerMapForPopup(lat, lng, nextZoom)
+    viewCenterLat = popupCenter.lat
+    viewCenterLng = popupCenter.lng
     viewZoom = nextZoom
-    scheduleViewportLoad(lat, lng, nextZoom)
+    scheduleViewportLoad(popupCenter.lat, popupCenter.lng, nextZoom)
   }
 
   const submitMapSearch = () => {
@@ -357,7 +366,13 @@
   }
 
   const openMarker = (point: BackendComunMapPoint) => {
-    if (Date.now() >= suppressMarkerClickUntil) selectedPoint = point
+    if (Date.now() < suppressMarkerClickUntil) return
+    const popupCenter = centerMapForPopup(point.lat, point.lng, mapZoom)
+    selectedPoint = point
+    selectedMarkers = []
+    viewCenterLat = popupCenter.lat
+    viewCenterLng = popupCenter.lng
+    scheduleViewportLoad(popupCenter.lat, popupCenter.lng, mapZoom)
   }
 
   const handleMapWheel = (event: WheelEvent) => {
@@ -576,38 +591,40 @@
           <article
             class:community-map-popup-below={selectedMapMarker.y < 46}
             class="community-map-popup"
-            style={`left:${clamp(selectedMapMarker.x, 18, 82)}%; top:${clamp(selectedMapMarker.y, 8, 92)}%;`}
+            style={`--community-map-height:${mapHeight}px; left:${clamp(selectedMapMarker.x, 18, 82)}%; top:${clamp(selectedMapMarker.y, 8, 92)}%;`}
           >
-            <button
-              type="button"
-              class="community-map-popup-close"
-              title="Закрыть"
-              aria-label="Закрыть"
-              on:click={() => (selectedPoint = null)}
-            >
-              <Icon src={XMark} size="18" mini />
-            </button>
-            {#if selectedMapMarker.raw}
-              <div class="community-map-popup-location">{selectedMapMarker.raw}</div>
-            {/if}
-            {#if selectedMapMarker.preview_image_url}
-              <img
-                src={selectedMapMarker.preview_image_url}
-                alt={selectedMapMarker.post_title || 'Фотография места'}
-                loading="lazy"
-                class="community-map-popup-image"
-              />
-            {/if}
-            <h2 class="community-map-popup-title">
-              {selectedMapMarker.post_title || 'Точка на карте'}
-            </h2>
-            <div class="community-map-popup-meta">
-              {#if formatPostDate(selectedMapMarker.created_at)}
-                <span>{formatPostDate(selectedMapMarker.created_at)}</span>
+            <div class="community-map-popup-content">
+              <button
+                type="button"
+                class="community-map-popup-close"
+                title="Закрыть"
+                aria-label="Закрыть"
+                on:click={() => (selectedPoint = null)}
+              >
+                <Icon src={XMark} size="18" mini />
+              </button>
+              {#if selectedMapMarker.raw}
+                <div class="community-map-popup-location">{selectedMapMarker.raw}</div>
               {/if}
-              <span>{selectedMapMarker.lat.toFixed(5)}, {selectedMapMarker.lng.toFixed(5)}</span>
+              {#if selectedMapMarker.preview_image_url}
+                <img
+                  src={selectedMapMarker.preview_image_url}
+                  alt={selectedMapMarker.post_title || 'Фотография места'}
+                  loading="lazy"
+                  class="community-map-popup-image"
+                />
+              {/if}
+              <h2 class="community-map-popup-title">
+                {selectedMapMarker.post_title || 'Точка на карте'}
+              </h2>
+              <div class="community-map-popup-meta">
+                {#if formatPostDate(selectedMapMarker.created_at)}
+                  <span>{formatPostDate(selectedMapMarker.created_at)}</span>
+                {/if}
+                <span>{selectedMapMarker.lat.toFixed(5)}, {selectedMapMarker.lng.toFixed(5)}</span>
+              </div>
+              <a href={selectedMapMarker.post_path} class="community-map-popup-link">Открыть пост</a>
             </div>
-            <a href={selectedMapMarker.post_path} class="community-map-popup-link">Открыть пост</a>
           </article>
         {/if}
         <div class="community-map-controls" aria-label="Управление масштабом">
@@ -843,11 +860,19 @@
     z-index: 9;
     width: min(360px, calc(100% - 24px));
     transform: translate(-50%, calc(-100% - 22px));
+    color: #0f172a;
+  }
+
+  .community-map-popup-content {
+    position: relative;
+    z-index: 1;
+    overflow-y: auto;
+    max-height: calc(var(--community-map-height) * 0.9 - 34px);
+    overscroll-behavior: contain;
     border: 1px solid #e2e8f0;
     border-radius: 8px;
     background: #fff;
     padding: 14px;
-    color: #0f172a;
     box-shadow: 0 18px 45px rgb(15 23 42 / 0.28);
   }
 
@@ -1004,7 +1029,7 @@
 
   :global(.dark) .community-map-search-input,
   :global(.dark) .community-map-search-results,
-  :global(.dark) .community-map-popup,
+  :global(.dark) .community-map-popup-content,
   :global(.dark) .community-map-popup::after {
     border-color: #3f3f46;
     background: #18181b;
@@ -1040,6 +1065,9 @@
 
     .community-map-popup {
       width: min(310px, calc(100% - 20px));
+    }
+
+    .community-map-popup-content {
       padding: 12px;
     }
 
