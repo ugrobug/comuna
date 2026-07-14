@@ -2014,7 +2014,7 @@
         </label>
 
         <label class="flex flex-col gap-1">
-          <span class="text-sm text-slate-700 dark:text-zinc-300">Правила сообщества</span>
+          <span class="text-sm text-slate-700 dark:text-zinc-300">{$t('routes.communityPage.rules')}</span>
           <textarea
             bind:value={settingsDraft.rules_text}
             rows="8"
@@ -2024,7 +2024,7 @@
         </label>
 
         <label class="flex flex-col gap-1">
-          <span class="text-sm text-slate-700 dark:text-zinc-300">Для кого</span>
+          <span class="text-sm text-slate-700 dark:text-zinc-300">{$t('routes.communityPage.targetAudience')}</span>
           <textarea bind:value={settingsDraft.target_audience} rows="2" class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"></textarea>
         </label>
 
