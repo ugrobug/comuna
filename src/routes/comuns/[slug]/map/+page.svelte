@@ -2,6 +2,7 @@
   import { onDestroy, onMount } from 'svelte'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import { buildComunMapUrl, type BackendComun, type BackendComunMapPoint } from '$lib/api/backend'
+  import { Icon, MagnifyingGlass, XMark } from 'svelte-hero-icons'
 
   export let data
 
@@ -42,6 +43,13 @@
   let viewCenterLat: number | null = null
   let viewCenterLng: number | null = null
   let selectedMarkers: MapMarker[] = []
+  let selectedPoint: BackendComunMapPoint | null = null
+  let mapSearchQuery = ''
+  let searchResults: BackendComunMapPoint[] = []
+  let isSearching = false
+  let completedSearchQuery = ''
+  let searchTimer: ReturnType<typeof setTimeout> | null = null
+  let searchAbortController: AbortController | null = null
   let viewportLoadTimer: ReturnType<typeof setTimeout> | null = null
   let viewportAbortController: AbortController | null = null
   let isLoadingPoints = false
@@ -88,6 +96,17 @@
   }
 
   const formatCount = (value: number) => new Intl.NumberFormat('ru-RU').format(value)
+
+  const formatPostDate = (value?: string | null) => {
+    if (!value) return ''
+    const date = new Date(value)
+    if (!Number.isFinite(date.getTime())) return ''
+    return new Intl.DateTimeFormat('ru-RU', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    }).format(date)
+  }
 
   const mapZoomForPoints = (items: BackendComunMapPoint[]) => {
     if (items.length <= 1) return clamp(Number(items[0]?.zoom ?? 14) || 14, 4, 16)
@@ -181,10 +200,79 @@
     viewportLoadTimer = setTimeout(() => loadViewportPoints(lat, lng, zoom), 180)
   }
 
+  const searchMapPoints = async () => {
+    const query = mapSearchQuery.trim()
+    if (!comun?.slug || query.length < 2 || typeof window === 'undefined') {
+      searchResults = []
+      return
+    }
+
+    searchAbortController?.abort()
+    const controller = new AbortController()
+    searchAbortController = controller
+    const url = new URL(buildComunMapUrl(comun.slug), window.location.origin)
+    url.searchParams.set('q', query)
+    url.searchParams.set('limit', '30')
+    isSearching = true
+    try {
+      const response = await fetch(url.toString(), { signal: controller.signal })
+      if (!response.ok) return
+      const payload = await response.json().catch(() => ({}))
+      searchResults = Array.isArray(payload?.points) ? payload.points : []
+      completedSearchQuery = query
+    } catch (error) {
+      if ((error as Error)?.name !== 'AbortError') console.error('Failed to search map points', error)
+    } finally {
+      if (searchAbortController === controller) isSearching = false
+    }
+  }
+
+  const handleSearchInput = () => {
+    if (searchTimer) clearTimeout(searchTimer)
+    completedSearchQuery = ''
+    if (mapSearchQuery.trim().length < 2) {
+      searchAbortController?.abort()
+      searchResults = []
+      isSearching = false
+      return
+    }
+    searchTimer = setTimeout(searchMapPoints, 280)
+  }
+
+  const selectMapPoint = (point: BackendComunMapPoint) => {
+    const lat = Number(point.lat)
+    const lng = Number(point.lng)
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return
+    mergePoints([point])
+    selectedPoint = point
+    selectedMarkers = []
+    mapSearchQuery = point.post_title || point.raw || mapSearchQuery
+    searchResults = []
+    viewCenterLat = lat
+    viewCenterLng = lng
+    const nextZoom = clamp(Number(point.zoom ?? 14) || 14, 12, 16)
+    viewZoom = nextZoom
+    scheduleViewportLoad(lat, lng, nextZoom)
+  }
+
+  const submitMapSearch = () => {
+    if (searchResults.length) selectMapPoint(searchResults[0])
+    else searchMapPoints()
+  }
+
+  const clearMapSearch = () => {
+    mapSearchQuery = ''
+    searchResults = []
+    completedSearchQuery = ''
+    searchAbortController?.abort()
+    isSearching = false
+  }
+
   const setMapZoom = (nextZoom: number) => {
     const normalizedZoom = clamp(nextZoom, 2, 16)
     viewZoom = normalizedZoom
     selectedMarkers = []
+    selectedPoint = null
     scheduleViewportLoad(centerLat, centerLng, normalizedZoom)
   }
 
@@ -195,6 +283,7 @@
       const nextZoom = Math.min(mapZoom + 2, 16)
       viewZoom = nextZoom
       selectedMarkers = []
+      selectedPoint = null
       scheduleViewportLoad(cluster.lat, cluster.lng, nextZoom)
       return
     }
@@ -209,12 +298,13 @@
     viewCenterLat = null
     viewCenterLng = null
     selectedMarkers = []
+    selectedPoint = null
   }
 
   const handleMapPointerDown = (event: PointerEvent) => {
     if (event.button !== 0) return
     const target = event.target as HTMLElement | null
-    if (target?.closest('a, button')) return
+    if (target?.closest('a, button, .community-map-popup')) return
     const currentTarget = event.currentTarget as HTMLElement
     currentTarget.setPointerCapture(event.pointerId)
     dragState = {
@@ -235,6 +325,7 @@
     viewCenterLng = xToLng(dragState.centerX - deltaX, mapZoom)
     viewCenterLat = yToLat(dragState.centerY - deltaY, mapZoom)
     selectedMarkers = []
+    selectedPoint = null
   }
 
   const handleMapPointerUp = (event: PointerEvent) => {
@@ -298,6 +389,9 @@
     (marker) => marker.x >= -2 && marker.x <= 102 && marker.y >= -4 && marker.y <= 104
   )
   $: markerClusters = clusterMarkers(visibleMarkers, mapWidth, mapHeight)
+  $: selectedMapMarker = selectedPoint
+    ? markers.find((marker) => marker.id === selectedPoint?.id) ?? null
+    : null
 
   onMount(() => {
     const updateSize = () => {
@@ -317,6 +411,8 @@
     resizeObserver?.disconnect()
     if (viewportLoadTimer) clearTimeout(viewportLoadTimer)
     viewportAbortController?.abort()
+    if (searchTimer) clearTimeout(searchTimer)
+    searchAbortController?.abort()
   })
 </script>
 
@@ -342,6 +438,64 @@
         </a>
       {/if}
     </div>
+  </section>
+
+  <section class="community-map-search relative z-20">
+    <form class="relative" on:submit|preventDefault={submitMapSearch}>
+      <span class="community-map-search-icon" aria-hidden="true">
+        <Icon src={MagnifyingGlass} size="20" mini />
+      </span>
+      <input
+        type="search"
+        bind:value={mapSearchQuery}
+        on:input={handleSearchInput}
+        placeholder="Поиск по объектам карты"
+        aria-label="Поиск по объектам карты"
+        autocomplete="off"
+        class="community-map-search-input"
+      />
+      {#if mapSearchQuery}
+        <button
+          type="button"
+          class="community-map-search-clear"
+          title="Очистить поиск"
+          aria-label="Очистить поиск"
+          on:click={clearMapSearch}
+        >
+          <Icon src={XMark} size="18" mini />
+        </button>
+      {/if}
+    </form>
+
+    {#if mapSearchQuery.trim().length >= 2 && (isSearching || searchResults.length || completedSearchQuery === mapSearchQuery.trim())}
+      <div class="community-map-search-results">
+        {#if isSearching && !searchResults.length}
+          <div class="community-map-search-status">Ищем...</div>
+        {:else if !searchResults.length}
+          <div class="community-map-search-status">Ничего не найдено</div>
+        {:else}
+          {#each searchResults.slice(0, 10) as result (result.id)}
+            <button type="button" class="community-map-search-result" on:click={() => selectMapPoint(result)}>
+              {#if result.preview_image_url}
+                <img src={result.preview_image_url} alt="" loading="lazy" />
+              {:else}
+                <span class="community-map-search-placeholder">
+                  <Icon src={MagnifyingGlass} size="18" mini />
+                </span>
+              {/if}
+              <span class="min-w-0 text-left">
+                <span class="block truncate text-sm font-semibold text-slate-900 dark:text-zinc-100">
+                  {result.post_title || result.raw || 'Точка на карте'}
+                </span>
+                <span class="mt-0.5 block truncate text-xs text-slate-500 dark:text-zinc-400">
+                  {result.raw || `${Number(result.lat).toFixed(5)}, ${Number(result.lng).toFixed(5)}`}
+                </span>
+              </span>
+            </button>
+          {/each}
+        {/if}
+      </div>
+    {/if}
   </section>
 
   {#if normalizedPoints.length}
@@ -372,15 +526,16 @@
         {/each}
         {#each markerClusters as cluster (cluster.key)}
           {#if cluster.markers.length === 1}
-            <a
-              href={cluster.markers[0].post_path}
+            <button
+              type="button"
               class="community-map-marker"
               style={`left:${cluster.x}%; top:${cluster.y}%;`}
               title={cluster.markers[0].post_title || cluster.markers[0].raw || 'Пост с меткой'}
               aria-label={cluster.markers[0].post_title || cluster.markers[0].raw || 'Пост с меткой'}
+              on:click={() => (selectedPoint = cluster.markers[0])}
             >
               <span class="community-map-marker-dot"></span>
-            </a>
+            </button>
           {:else}
             <button
               type="button"
@@ -394,6 +549,44 @@
             </button>
           {/if}
         {/each}
+        {#if selectedMapMarker}
+          <article
+            class:community-map-popup-below={selectedMapMarker.y < 46}
+            class="community-map-popup"
+            style={`left:${clamp(selectedMapMarker.x, 18, 82)}%; top:${clamp(selectedMapMarker.y, 8, 92)}%;`}
+          >
+            <button
+              type="button"
+              class="community-map-popup-close"
+              title="Закрыть"
+              aria-label="Закрыть"
+              on:click={() => (selectedPoint = null)}
+            >
+              <Icon src={XMark} size="18" mini />
+            </button>
+            {#if selectedMapMarker.raw}
+              <div class="community-map-popup-location">{selectedMapMarker.raw}</div>
+            {/if}
+            {#if selectedMapMarker.preview_image_url}
+              <img
+                src={selectedMapMarker.preview_image_url}
+                alt={selectedMapMarker.post_title || 'Фотография места'}
+                loading="lazy"
+                class="community-map-popup-image"
+              />
+            {/if}
+            <h2 class="community-map-popup-title">
+              {selectedMapMarker.post_title || 'Точка на карте'}
+            </h2>
+            <div class="community-map-popup-meta">
+              {#if formatPostDate(selectedMapMarker.created_at)}
+                <span>{formatPostDate(selectedMapMarker.created_at)}</span>
+              {/if}
+              <span>{selectedMapMarker.lat.toFixed(5)}, {selectedMapMarker.lng.toFixed(5)}</span>
+            </div>
+            <a href={selectedMapMarker.post_path} class="community-map-popup-link">Открыть пост</a>
+          </article>
+        {/if}
         <div class="community-map-controls" aria-label="Управление масштабом">
           <button type="button" title="Приблизить" aria-label="Приблизить" on:click={() => setMapZoom(mapZoom + 1)}>+</button>
           <button type="button" title="Отдалить" aria-label="Отдалить" on:click={() => setMapZoom(mapZoom - 1)}>−</button>
@@ -437,6 +630,112 @@
 </main>
 
 <style>
+  .community-map-search-input {
+    width: 100%;
+    height: 46px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #fff;
+    padding: 0 46px;
+    color: #0f172a;
+    font-size: 15px;
+    outline: none;
+    box-shadow: 0 2px 8px rgb(15 23 42 / 0.06);
+  }
+
+  .community-map-search-input:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgb(37 99 235 / 0.14);
+  }
+
+  .community-map-search-icon,
+  .community-map-search-clear {
+    position: absolute;
+    top: 50%;
+    z-index: 2;
+    display: grid;
+    width: 38px;
+    height: 38px;
+    transform: translateY(-50%);
+    place-items: center;
+    color: #64748b;
+  }
+
+  .community-map-search-icon {
+    left: 5px;
+    pointer-events: none;
+  }
+
+  .community-map-search-clear {
+    right: 5px;
+    border: 0;
+    background: transparent;
+  }
+
+  .community-map-search-clear:hover,
+  .community-map-search-clear:focus-visible {
+    color: #0f172a;
+  }
+
+  .community-map-search-results {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(100% + 6px);
+    overflow: hidden;
+    max-height: 430px;
+    overflow-y: auto;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 14px 32px rgb(15 23 42 / 0.18);
+  }
+
+  .community-map-search-result {
+    display: grid;
+    width: 100%;
+    grid-template-columns: 48px minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    border: 0;
+    border-bottom: 1px solid #e2e8f0;
+    background: transparent;
+    padding: 8px 10px;
+  }
+
+  .community-map-search-result:last-child {
+    border-bottom: 0;
+  }
+
+  .community-map-search-result:hover,
+  .community-map-search-result:focus-visible {
+    background: #f8fafc;
+  }
+
+  .community-map-search-result img,
+  .community-map-search-placeholder {
+    width: 48px;
+    height: 48px;
+    border-radius: 6px;
+  }
+
+  .community-map-search-result img {
+    object-fit: cover;
+  }
+
+  .community-map-search-placeholder {
+    display: grid;
+    place-items: center;
+    background: #e2e8f0;
+    color: #64748b;
+  }
+
+  .community-map-search-status {
+    padding: 14px;
+    color: #64748b;
+    font-size: 14px;
+  }
+
   .community-map-shell {
     min-height: 360px;
   }
@@ -470,6 +769,9 @@
     width: 30px;
     height: 30px;
     transform: translate(-50%, -100%);
+    border: 0;
+    background: transparent;
+    padding: 0;
   }
 
   .community-map-marker-dot {
@@ -510,6 +812,113 @@
   .community-map-cluster:hover,
   .community-map-cluster:focus-visible {
     background: #1d4ed8;
+  }
+
+  .community-map-popup {
+    position: absolute;
+    z-index: 9;
+    width: min(360px, calc(100% - 24px));
+    transform: translate(-50%, calc(-100% - 22px));
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #fff;
+    padding: 14px;
+    color: #0f172a;
+    box-shadow: 0 18px 45px rgb(15 23 42 / 0.28);
+  }
+
+  .community-map-popup::after {
+    position: absolute;
+    left: 50%;
+    bottom: -9px;
+    width: 18px;
+    height: 18px;
+    transform: translateX(-50%) rotate(45deg);
+    border-right: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
+    background: #fff;
+    content: '';
+  }
+
+  .community-map-popup.community-map-popup-below {
+    transform: translate(-50%, 24px);
+  }
+
+  .community-map-popup.community-map-popup-below::after {
+    top: -9px;
+    bottom: auto;
+    transform: translateX(-50%) rotate(225deg);
+  }
+
+  .community-map-popup-close {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 2;
+    display: grid;
+    width: 32px;
+    height: 32px;
+    place-items: center;
+    border: 0;
+    border-radius: 6px;
+    background: rgb(255 255 255 / 0.9);
+    color: #475569;
+  }
+
+  .community-map-popup-close:hover,
+  .community-map-popup-close:focus-visible {
+    background: #f1f5f9;
+    color: #0f172a;
+  }
+
+  .community-map-popup-location {
+    padding-right: 34px;
+    color: #2563eb;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.35;
+  }
+
+  .community-map-popup-image {
+    width: 100%;
+    margin-top: 10px;
+    aspect-ratio: 16 / 9;
+    border-radius: 6px;
+    object-fit: cover;
+  }
+
+  .community-map-popup-title {
+    margin-top: 10px;
+    padding-right: 24px;
+    color: #0f172a;
+    font-size: 17px;
+    font-weight: 700;
+    line-height: 1.3;
+  }
+
+  .community-map-popup-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    margin-top: 7px;
+    color: #64748b;
+    font-size: 12px;
+  }
+
+  .community-map-popup-link {
+    position: relative;
+    z-index: 1;
+    display: inline-flex;
+    margin-top: 12px;
+    color: #0369a1;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .community-map-popup-link:hover,
+  .community-map-popup-link:focus-visible {
+    color: #075985;
+    text-decoration: underline;
   }
 
   .community-map-controls {
@@ -569,10 +978,49 @@
     color: #d4d4d8;
   }
 
+  :global(.dark) .community-map-search-input,
+  :global(.dark) .community-map-search-results,
+  :global(.dark) .community-map-popup,
+  :global(.dark) .community-map-popup::after {
+    border-color: #3f3f46;
+    background: #18181b;
+    color: #f4f4f5;
+  }
+
+  :global(.dark) .community-map-search-result {
+    border-color: #27272a;
+  }
+
+  :global(.dark) .community-map-search-result:hover,
+  :global(.dark) .community-map-search-result:focus-visible,
+  :global(.dark) .community-map-popup-close:hover,
+  :global(.dark) .community-map-popup-close:focus-visible {
+    background: #27272a;
+  }
+
+  :global(.dark) .community-map-search-placeholder,
+  :global(.dark) .community-map-popup-close {
+    background: #27272a;
+    color: #a1a1aa;
+  }
+
+  :global(.dark) .community-map-popup-title {
+    color: #f4f4f5;
+  }
+
   @media (max-width: 640px) {
     .community-map-canvas {
       aspect-ratio: 1 / 1;
       min-height: 320px;
+    }
+
+    .community-map-popup {
+      width: min(310px, calc(100% - 20px));
+      padding: 12px;
+    }
+
+    .community-map-popup-title {
+      font-size: 15px;
     }
   }
 </style>

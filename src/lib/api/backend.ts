@@ -1039,6 +1039,7 @@ export type BackendComunMapPoint = {
   lng: number
   zoom?: number
   raw?: string
+  preview_image_url?: string | null
   created_at?: string | null
   updated_at?: string | null
 }

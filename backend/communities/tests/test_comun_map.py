@@ -117,6 +117,28 @@ class ComunMapPointTests(TestCase):
         self.assertEqual([point["post_id"] for point in payload["points"]], [near_post.id])
         self.assertIsNone(payload["total_count"])
 
+    def test_map_api_searches_titles_and_returns_preview_image(self):
+        matched_post = self.create_post(editor_content(map_block(55.751244, 37.618423, raw="Tverskaya")))
+        matched_post.title = "Chemist shop filming location"
+        matched_post.preview_image_url = "/media/uploads/post/chemist.webp"
+        matched_post.save(update_fields=["title", "preview_image_url", "updated_at"])
+        other_post = self.create_post(editor_content(map_block(40.7128, -74.006)))
+        other_post.title = "Another location"
+        other_post.save(update_fields=["title", "updated_at"])
+        community_service.sync_comun_map_points_for_post(matched_post, comun=self.comun)
+        community_service.sync_comun_map_points_for_post(other_post, comun=self.comun)
+
+        response = self.client.get(
+            reverse("comun-map", kwargs={"slug": self.comun.slug}),
+            {"q": "chemist", "limit": "20"},
+        )
+
+        payload = json.loads(response_body(response).decode("utf-8"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([point["post_id"] for point in payload["points"]], [matched_post.id])
+        self.assertEqual(payload["points"][0]["raw"], "Tverskaya")
+        self.assertTrue(payload["points"][0]["preview_image_url"].endswith("/media/uploads/post/chemist.webp"))
+
     def test_disabled_map_api_is_not_public(self):
         self.comun.community_map_enabled = False
         self.comun.save(update_fields=["community_map_enabled", "updated_at"])

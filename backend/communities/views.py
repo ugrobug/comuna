@@ -3394,15 +3394,33 @@ def comun_map(request: HttpRequest, slug: str) -> HttpResponse:
     except (TypeError, ValueError):
         limit = 300
 
-    row_fields = ("id", "post_id", "post__title", "lat", "lng", "zoom")
+    row_fields = (
+        "id",
+        "post_id",
+        "post__title",
+        "post__preview_image_url",
+        "post__created_at",
+        "lat",
+        "lng",
+        "zoom",
+        "raw",
+    )
+    search_query = re.sub(r"\s+", " ", str(request.GET.get("q") or "").strip())[:120]
     min_lat = float_param("min_lat")
     max_lat = float_param("max_lat")
     min_lng = float_param("min_lng")
     max_lng = float_param("max_lng")
     has_bounds = all(value is not None for value in (min_lat, max_lat, min_lng, max_lng))
-    is_initial = not has_bounds
+    is_initial = not has_bounds and not search_query
 
-    if has_bounds:
+    if search_query:
+        selected_rows = list(
+            points.filter(Q(post__title__icontains=search_query) | Q(raw__icontains=search_query))
+            .values(*row_fields)
+            .order_by("-post__created_at", "id")[: limit + 1]
+        )
+        anchor = selected_rows[0] if selected_rows else None
+    elif has_bounds:
         south, north = sorted((max(min_lat, -90), min(max_lat, 90)))
         west, east = sorted((max(min_lng, -180), min(max_lng, 180)))
         selected_rows = list(
@@ -3471,9 +3489,14 @@ def comun_map(request: HttpRequest, slug: str) -> HttpResponse:
             "post_id": int(row["post_id"]),
             "post_title": str(row.get("post__title") or ""),
             "post_path": f'/b/post/{int(row["post_id"])}',
+            "preview_image_url": public_url(row.get("post__preview_image_url"), request=request),
             "lat": float(row["lat"]),
             "lng": float(row["lng"]),
             "zoom": int(row.get("zoom") or 14),
+            "raw": str(row.get("raw") or ""),
+            "created_at": (
+                row["post__created_at"].isoformat() if row.get("post__created_at") else None
+            ),
         }
         for row in selected_rows
     ]
