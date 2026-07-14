@@ -6,6 +6,7 @@
   import { Button, Modal, toast } from 'mono-svelte'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import ComunSettingsTabs from '$lib/components/comuns/ComunSettingsTabs.svelte'
+  import TemplateTypeDropdown from '$lib/components/comuns/TemplateTypeDropdown.svelte'
   import WelcomePostDropdown from '$lib/components/comuns/WelcomePostDropdown.svelte'
   import {
     buildComunCustomTemplateEditorPath,
@@ -77,9 +78,7 @@
     id: string
     name: string
     description: string
-    kind: 'feature' | 'template'
-    featureKey?: ComunFeatureApplicationKey
-    templateCode?: PostTemplateCode
+    featureKey: ComunFeatureApplicationKey
   }
   type CustomTemplateBlockOption = { value: string; label: string }
   type CustomTemplatePlacement = '' | 'available' | 'header' | 'footer'
@@ -112,7 +111,7 @@
   const comunSettingsTabs: Array<{ value: ComunSettingsTabKey; label: string }> = [
     { value: 'description', label: 'Описание' },
     { value: 'moderation', label: 'Модерирование' },
-    { value: 'categories', label: 'Категории' },
+    { value: 'categories', label: 'Категории и шаблоны' },
     { value: 'applications', label: 'Приложения' },
     { value: 'rules', label: 'Правила' },
   ]
@@ -121,45 +120,32 @@
       id: 'feature:glossary',
       name: 'Глоссарий',
       description: 'Собирает термины сообщества в единый словарь и помогает связывать их с публикациями.',
-      kind: 'feature',
       featureKey: 'glossary_enabled',
     },
     {
       id: 'feature:knowledge-base',
       name: 'База знаний',
       description: 'Организует выбранные публикации в структурированную базу знаний сообщества.',
-      kind: 'feature',
       featureKey: 'knowledge_base_enabled',
     },
     {
       id: 'feature:roadmap',
       name: 'Дорожная карта',
       description: 'Показывает планы, этапы и прогресс работы сообщества в отдельном представлении.',
-      kind: 'feature',
       featureKey: 'roadmap_enabled',
     },
     {
       id: 'feature:community-map',
       name: 'Общая карта',
       description: 'Собирает GPS-метки из публикаций и отображает их на общей карте сообщества.',
-      kind: 'feature',
       featureKey: 'community_map_enabled',
     },
   ]
-  const fallbackTemplateApplicationDescriptions: Record<string, string> = {
-    basic: 'Базовый формат публикации со свободной структурой содержимого.',
-    movie_review: 'Формат публикации для обзоров фильмов и сериалов.',
-    post_vote_poll: 'Формат голосования, в котором вариантами ответа становятся публикации.',
-    music_release: 'Формат публикации для музыкальных релизов, исполнителей и треков.',
-    bug_report: 'Формат для регистрации ошибок с техническими данными и статусом решения.',
-    tweet: 'Короткая публикация до 280 символов с одним медиаблоком.',
-  }
   const templateCodePattern = /^[a-z0-9][a-z0-9_-]{0,159}$/
   let settingsTagOptions: ComunTagOption[] = []
   let settingsUserOptions: ComunUserOption[] = []
   let settingsAuthorOptions: ComunAuthorOption[] = []
   let settingsTemplateTypeOptions: TemplateTypeOption[] = fallbackTemplateTypeOptions
-  let communityApplications: ComunApplication[] = []
   let installedCommunityApplications: ComunApplication[] = []
   let settingsTelegramChannelOptions: ComunTelegramChannelOption[] = []
   let settingsLogoInput: HTMLInputElement | null = null
@@ -724,71 +710,51 @@
     }
   }
 
+  const setDraftCategoryTemplateTypes = (categoryId: number, values: PostTemplateCode[]) => {
+    if (!settingsDraft) return
+    const normalizedValues = normalizeAllowedPostTemplateTypeOverrides(values)
+    settingsDraft = {
+      ...settingsDraft,
+      categories: (settingsDraft.categories ?? []).map((category) =>
+        category.id === categoryId
+          ? {
+              ...category,
+              category_allowed_template_types: normalizedValues,
+              allowed_template_types: normalizedValues.length
+                ? normalizedValues
+                : comunAllowedTemplateTypes(settingsDraft),
+              inherits_comun_template_types: normalizedValues.length === 0,
+            }
+          : category
+      ),
+    }
+    settingsCategoryOptions = (settingsCategoryOptions ?? []).map((category) =>
+      category.id === categoryId
+        ? {
+            ...category,
+            category_allowed_template_types: normalizedValues,
+            allowed_template_types: normalizedValues.length
+              ? normalizedValues
+              : comunAllowedTemplateTypes(settingsDraft),
+            inherits_comun_template_types: normalizedValues.length === 0,
+          }
+        : category
+    )
+  }
+
   const isApplicationInstalled = (application: ComunApplication) => {
     if (!settingsDraft) return false
-    if (application.kind === 'feature' && application.featureKey) {
-      return Boolean(settingsDraft[application.featureKey])
-    }
-    return Boolean(
-      application.templateCode &&
-        comunAllowedTemplateTypes(settingsDraft).includes(application.templateCode)
-    )
+    return Boolean(settingsDraft[application.featureKey])
   }
 
   const installApplication = (application: ComunApplication) => {
     if (!settingsDraft || isApplicationInstalled(application)) return
-    if (application.kind === 'feature' && application.featureKey) {
-      patchSettingsDraft({ [application.featureKey]: true } as Partial<BackendComun>)
-      return
-    }
-    if (application.templateCode) {
-      setDraftAllowedTemplateTypes([
-        ...comunAllowedTemplateTypes(settingsDraft),
-        application.templateCode,
-      ])
-    }
+    patchSettingsDraft({ [application.featureKey]: true } as Partial<BackendComun>)
   }
-
-  const canRemoveApplication = (application: ComunApplication) =>
-    application.kind === 'feature' || comunAllowedTemplateTypes(settingsDraft).length > 1
 
   const removeApplication = (application: ComunApplication) => {
     if (!settingsDraft || !isApplicationInstalled(application)) return
-    if (application.kind === 'feature' && application.featureKey) {
-      patchSettingsDraft({ [application.featureKey]: false } as Partial<BackendComun>)
-      return
-    }
-    if (!application.templateCode || !canRemoveApplication(application)) return
-
-    const nextTemplateTypes = comunAllowedTemplateTypes(settingsDraft).filter(
-      (templateCode) => templateCode !== application.templateCode
-    )
-    settingsDraft = {
-      ...settingsDraft,
-      allowed_template_types: nextTemplateTypes,
-      categories: (settingsDraft.categories ?? []).map((category) => {
-        const categoryTemplateTypes = comunCategoryTemplateTypes(category).filter(
-          (templateCode) => templateCode !== application.templateCode
-        )
-        return {
-          ...category,
-          category_allowed_template_types: categoryTemplateTypes,
-          allowed_template_types: categoryTemplateTypes.length
-            ? categoryTemplateTypes
-            : nextTemplateTypes,
-          inherits_comun_template_types: categoryTemplateTypes.length === 0,
-        }
-      }),
-    }
-  }
-
-  const customTemplateRefForApplication = (application: ComunApplication) => {
-    const match = String(application.templateCode ?? '').match(/^custom_(\d+)$/)
-    if (!match) return ''
-    const template = comunCustomTemplates(settingsDraft).find(
-      (item) => Number(item.id) === Number(match[1])
-    )
-    return String(template?.slug ?? template?.id ?? '')
+    patchSettingsDraft({ [application.featureKey]: false } as Partial<BackendComun>)
   }
 
   const openApplicationsCatalog = () => {
@@ -798,6 +764,12 @@
   const closeApplicationsCatalog = () => {
     applicationsCatalogOpen = false
   }
+
+  const customTemplateManagementItems = (value: BackendComun | null) =>
+    comunCustomTemplates(value).map((template, index) => ({
+      id: String(template.slug ?? template.id ?? index),
+      label: String(template.name ?? '').trim() || `Шаблон ${index + 1}`,
+    }))
 
   const openCreateCustomTemplateEditor = () => goto(customTemplateEditorPath('new'))
 
@@ -840,20 +812,7 @@
     return normalizeCategoryInput(category.name).toLowerCase() === needle
   })
   $: visibleCategoryOptions = settingsDraft?.categories ?? settingsCategoryOptions ?? []
-  $: communityApplications = [
-    ...featureApplications,
-    ...settingsTemplateTypeOptions.map((option) => ({
-      id: `template:${option.value}`,
-      name: option.label,
-      description:
-        option.description ||
-        fallbackTemplateApplicationDescriptions[option.value] ||
-        'Дополнительный формат публикации для сообщества.',
-      kind: 'template' as const,
-      templateCode: option.value,
-    })),
-  ]
-  $: installedCommunityApplications = communityApplications.filter(isApplicationInstalled)
+  $: installedCommunityApplications = featureApplications.filter(isApplicationInstalled)
   $: filteredSearchTagOptions = (settingsTagOptions ?? [])
     .filter((tag) => {
       if (!normalizedSearchTagSearch) return false
@@ -1728,7 +1687,7 @@
                         <div class="flex flex-wrap items-center gap-2">
                           <span class="text-sm font-semibold text-slate-950 dark:text-zinc-50">{application.name}</span>
                           <span class="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600 dark:bg-zinc-800 dark:text-zinc-300">
-                            {application.kind === 'template' ? 'Шаблон' : 'Инструмент'}
+                            Приложение
                           </span>
                         </div>
                         <div class="mt-1 text-sm leading-relaxed text-slate-600 dark:text-zinc-400">
@@ -1736,19 +1695,9 @@
                         </div>
                       </div>
                       <div class="flex shrink-0 items-center gap-2">
-                        {#if customTemplateRefForApplication(application)}
-                          <Button
-                            color="ghost"
-                            size="sm"
-                            on:click={() => openEditCustomTemplateEditor(customTemplateRefForApplication(application))}
-                          >
-                            Настроить
-                          </Button>
-                        {/if}
                         <Button
                           color="ghost"
                           size="sm"
-                          disabled={!canRemoveApplication(application)}
                           on:click={() => removeApplication(application)}
                         >
                           Удалить
@@ -1763,20 +1712,6 @@
                 </div>
               {/if}
             </div>
-
-            {#if canManageComunModerators()}
-              <div class="flex flex-col gap-2 border-t border-slate-200 pt-4 dark:border-zinc-800">
-                <div class="text-sm font-medium text-slate-900 dark:text-zinc-100">Собственные шаблоны</div>
-                <div class="text-sm text-slate-600 dark:text-zinc-400">
-                  Создавайте специальные форматы публикаций для задач вашего сообщества.
-                </div>
-                <div>
-                  <Button color="ghost" size="sm" on:click={openCreateCustomTemplateEditor}>
-                    Создать шаблон
-                  </Button>
-                </div>
-              </div>
-            {/if}
           </div>
         {:else if settingsTab === 'categories'}
           <div class="flex flex-col gap-2">
@@ -1788,6 +1723,17 @@
                     <div class="block text-sm font-medium text-slate-900 dark:text-zinc-100">Без категории</div>
                   </div>
                 </div>
+                <TemplateTypeDropdown
+                  options={settingsTemplateTypeOptions}
+                  selectedValues={comunAllowedTemplateTypes(settingsDraft)}
+                  disabled={settingsSaving}
+                  actionLabel={canManageComunModerators() ? 'Создать шаблон' : ''}
+                  customItems={canManageComunModerators() ? customTemplateManagementItems(settingsDraft) : []}
+                  customItemsTitle="Пользовательские шаблоны"
+                  on:change={(event) => setDraftAllowedTemplateTypes(event.detail)}
+                  on:action={openCreateCustomTemplateEditor}
+                  on:customitemclick={(event) => openEditCustomTemplateEditor(String(event.detail))}
+                />
                 <div class="flex flex-col gap-2 rounded-xl bg-slate-50 dark:bg-zinc-900/60 px-3 py-3">
                   <label class="flex items-start gap-2 cursor-pointer">
                     <input
@@ -1848,6 +1794,14 @@
                         </svg>
                       </button>
                     </div>
+                    <TemplateTypeDropdown
+                      options={settingsTemplateTypeOptions}
+                      selectedValues={comunCategoryTemplateTypes(category)}
+                      disabled={settingsSaving}
+                      allowEmpty={true}
+                      placeholder="Шаблоны категории"
+                      on:change={(event) => setDraftCategoryTemplateTypes(category.id, event.detail)}
+                    />
                     <div class="flex flex-col gap-2 rounded-xl bg-slate-50 dark:bg-zinc-900/60 px-3 py-3">
                       <label class="flex items-start gap-2 cursor-pointer">
                         <input
@@ -1958,18 +1912,18 @@
         Добавить приложение
       </div>
       <div class="mt-1 text-sm text-slate-600 dark:text-zinc-400">
-        Выберите инструменты и форматы публикаций, которые будут доступны в сообществе.
+        Выберите приложения, которые будут доступны в сообществе.
       </div>
     </div>
 
     <div class="max-h-[65vh] divide-y divide-slate-200 overflow-y-auto rounded-lg border border-slate-200 dark:divide-zinc-800 dark:border-zinc-800">
-      {#each communityApplications as application (application.id)}
+      {#each featureApplications as application (application.id)}
         <div class="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div class="min-w-0">
             <div class="flex flex-wrap items-center gap-2">
               <span class="text-sm font-semibold text-slate-950 dark:text-zinc-50">{application.name}</span>
               <span class="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600 dark:bg-zinc-800 dark:text-zinc-300">
-                {application.kind === 'template' ? 'Шаблон' : 'Инструмент'}
+                Приложение
               </span>
             </div>
             <div class="mt-1 text-sm leading-relaxed text-slate-600 dark:text-zinc-400">
