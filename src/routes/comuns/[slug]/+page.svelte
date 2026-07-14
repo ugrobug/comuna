@@ -25,7 +25,7 @@
   import { userSettings } from '$lib/settings'
   import { deserializeEditorModel } from '$lib/util'
   import { brandNameForLanguage } from '$lib/brand'
-  import { locale } from '$lib/translations'
+  import { locale, t } from '$lib/translations'
   import { normalizeInterfaceLanguage } from '$lib/postLanguages'
   import { ChatBubbleLeftRight, ChevronDown, GlobeAlt, Icon } from 'svelte-hero-icons'
 
@@ -1838,7 +1838,7 @@
           href={comunMapPath}
           class="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-full border border-slate-200 bg-white/95 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900/85 dark:text-zinc-200 dark:hover:bg-zinc-800/60"
         >
-          Карта
+          {$t('routes.communityMap.title')}
         </a>
       {/if}
       {#if comunWebsiteUrl}

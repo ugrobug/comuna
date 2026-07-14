@@ -33,6 +33,10 @@
   const TILE_SIZE = 256
 
   let comun: BackendComun | null = data?.comun ?? null
+  $: contentLanguage = String(data?.language ?? 'ru')
+  $: comunBackPath = comun?.slug
+    ? `${contentLanguage !== 'ru' ? `/${contentLanguage}` : ''}/comuns/${encodeURIComponent(comun.slug)}`
+    : '/comuns'
   const initialPoints: BackendComunMapPoint[] = Array.isArray(data?.points) ? data.points : []
   let points: BackendComunMapPoint[] = [...initialPoints]
   let totalPoints = Number(data?.totalPoints ?? initialPoints.length)
@@ -473,7 +477,7 @@
       </div>
       {#if comun?.slug}
         <a
-          href={`/comuns/${encodeURIComponent(comun.slug)}`}
+          href={comunBackPath}
           class="inline-flex shrink-0 items-center justify-center rounded-full border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-900"
         >
           {$t('routes.communityMap.backToCommunity')}
