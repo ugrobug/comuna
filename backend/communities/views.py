@@ -39,7 +39,7 @@ from editor.models import (
     normalize_allowed_post_templates_override,
     normalize_post_template_type_code,
 )
-from feeds.post_paths import slugify_title
+from feeds.post_paths import build_post_public_path, slugify_title
 from editor import service as editor_service
 from feeds.models import (
     Author,
@@ -3375,12 +3375,18 @@ def comun_map(request: HttpRequest, slug: str) -> HttpResponse:
     if request.method not in ("GET", "HEAD"):
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
 
+    language = _normalize_content_language(request.GET.get("lang"))
     points = ComunMapPoint.objects.filter(
         comun=comun,
         post__is_blocked=False,
         post__is_pending=False,
         post__author__is_blocked=False,
     )
+    if language != _ORIGINAL_CONTENT_LANGUAGE:
+        points = points.filter(
+            post__translations__language=language,
+            post__translations__status=POST_TRANSLATION_STATUS_TRANSLATED,
+        )
 
     def float_param(name: str) -> float | None:
         try:
@@ -3397,6 +3403,7 @@ def comun_map(request: HttpRequest, slug: str) -> HttpResponse:
     row_fields = (
         "id",
         "post_id",
+        "block_index",
         "post__title",
         "post__preview_image_url",
         "post__created_at",
@@ -3405,6 +3412,8 @@ def comun_map(request: HttpRequest, slug: str) -> HttpResponse:
         "zoom",
         "raw",
     )
+    if language != _ORIGINAL_CONTENT_LANGUAGE:
+        row_fields += ("post__translations__title",)
     search_query = re.sub(r"\s+", " ", str(request.GET.get("q") or "").strip())[:120]
     min_lat = float_param("min_lat")
     max_lat = float_param("max_lat")
@@ -3414,8 +3423,16 @@ def comun_map(request: HttpRequest, slug: str) -> HttpResponse:
     is_initial = not has_bounds and not search_query
 
     if search_query:
+        title_filter = (
+            Q(post__title__icontains=search_query)
+            if language == _ORIGINAL_CONTENT_LANGUAGE
+            else Q(post__translations__title__icontains=search_query)
+        )
+        point_filter = title_filter
+        if language == _ORIGINAL_CONTENT_LANGUAGE:
+            point_filter |= Q(raw__icontains=search_query)
         selected_rows = list(
-            points.filter(Q(post__title__icontains=search_query) | Q(raw__icontains=search_query))
+            points.filter(point_filter)
             .values(*row_fields)
             .order_by("-post__created_at", "id")[: limit + 1]
         )
@@ -3483,17 +3500,42 @@ def comun_map(request: HttpRequest, slug: str) -> HttpResponse:
 
     has_more = len(selected_rows) > limit
     selected_rows = selected_rows[:limit]
+
+    def localized_row_value(row: dict, field: str, fallback: str = "") -> str:
+        value = row.get(field)
+        return str(value).strip() if value is not None else fallback
+
     serialized_points = [
         {
             "id": int(row["id"]),
             "post_id": int(row["post_id"]),
-            "post_title": str(row.get("post__title") or ""),
-            "post_path": f'/b/post/{int(row["post_id"])}',
+            "post_title": localized_row_value(
+                row,
+                "post__title"
+                if language == _ORIGINAL_CONTENT_LANGUAGE
+                else "post__translations__title",
+            ),
+            "post_path": (
+                (f"/{language}" if language != _ORIGINAL_CONTENT_LANGUAGE else "")
+                + build_post_public_path(
+                    int(row["post_id"]),
+                    localized_row_value(
+                        row,
+                        "post__title"
+                        if language == _ORIGINAL_CONTENT_LANGUAGE
+                        else "post__translations__title",
+                    ),
+                )
+            ),
             "preview_image_url": public_url(row.get("post__preview_image_url"), request=request),
             "lat": float(row["lat"]),
             "lng": float(row["lng"]),
             "zoom": int(row.get("zoom") or 14),
-            "raw": str(row.get("raw") or ""),
+            "raw": (
+                localized_row_value(row, "raw")
+                if language == _ORIGINAL_CONTENT_LANGUAGE
+                else ""
+            ),
             "created_at": (
                 row["post__created_at"].isoformat() if row.get("post__created_at") else None
             ),
@@ -3503,7 +3545,12 @@ def comun_map(request: HttpRequest, slug: str) -> HttpResponse:
     response = JsonResponse(
         {
             "ok": True,
-            "comun": _serialize_comun(request, comun, current_user=current_user),
+            "comun": _serialize_comun(
+                request,
+                comun,
+                current_user=current_user,
+                language=language,
+            ),
             "points": serialized_points,
             "has_more": has_more,
             "total_count": points.count() if is_initial else None,

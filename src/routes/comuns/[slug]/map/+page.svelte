@@ -185,7 +185,10 @@
     viewportAbortController?.abort()
     const controller = new AbortController()
     viewportAbortController = controller
-    const url = new URL(buildComunMapUrl(comun.slug), window.location.origin)
+    const url = new URL(
+      buildComunMapUrl(comun.slug, { language: contentLanguage }),
+      window.location.origin
+    )
     url.searchParams.set('min_lat', String(bounds.minLat))
     url.searchParams.set('max_lat', String(bounds.maxLat))
     url.searchParams.set('min_lng', String(bounds.minLng))
@@ -220,7 +223,10 @@
     searchAbortController?.abort()
     const controller = new AbortController()
     searchAbortController = controller
-    const url = new URL(buildComunMapUrl(comun.slug), window.location.origin)
+    const url = new URL(
+      buildComunMapUrl(comun.slug, { language: contentLanguage }),
+      window.location.origin
+    )
     url.searchParams.set('q', query)
     url.searchParams.set('limit', '30')
     isSearching = true

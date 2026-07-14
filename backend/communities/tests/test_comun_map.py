@@ -6,7 +6,12 @@ from django.urls import reverse
 
 from communities import service as community_service
 from communities.models import Comun, ComunMapPoint
-from feeds.models import Author, Post
+from feeds.models import (
+    Author,
+    POST_TRANSLATION_STATUS_TRANSLATED,
+    Post,
+    PostTranslation,
+)
 
 
 User = get_user_model()
@@ -138,6 +143,47 @@ class ComunMapPointTests(TestCase):
         self.assertEqual([point["post_id"] for point in payload["points"]], [matched_post.id])
         self.assertEqual(payload["points"][0]["raw"], "Tverskaya")
         self.assertTrue(payload["points"][0]["preview_image_url"].endswith("/media/uploads/post/chemist.webp"))
+
+    def test_map_api_localizes_card_content_and_post_path(self):
+        post = self.create_post(
+            editor_content(map_block(55.751244, 37.618423, raw="Русское место"))
+        )
+        post.title = "Русский заголовок"
+        post.save(update_fields=["title", "updated_at"])
+        PostTranslation.objects.create(
+            post=post,
+            language="en",
+            title="English title",
+            content=editor_content(map_block(55.751244, 37.618423, raw="English place")),
+            status=POST_TRANSLATION_STATUS_TRANSLATED,
+        )
+        community_service.sync_comun_map_points_for_post(post, comun=self.comun)
+
+        response = self.client.get(
+            reverse("comun-map", kwargs={"slug": self.comun.slug}),
+            {"lang": "en", "q": "English title"},
+        )
+
+        payload = json.loads(response_body(response).decode("utf-8"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(payload["points"]), 1)
+        self.assertEqual(payload["points"][0]["post_title"], "English title")
+        self.assertEqual(payload["points"][0]["raw"], "")
+        self.assertRegex(payload["points"][0]["post_path"], rf"^/en/b/post/{post.id}-english-title$")
+
+    def test_map_api_hides_untranslated_posts_for_localized_map(self):
+        post = self.create_post(editor_content(map_block(55.751244, 37.618423)))
+        community_service.sync_comun_map_points_for_post(post, comun=self.comun)
+
+        response = self.client.get(
+            reverse("comun-map", kwargs={"slug": self.comun.slug}),
+            {"lang": "en"},
+        )
+
+        payload = json.loads(response_body(response).decode("utf-8"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(payload["points"], [])
+        self.assertEqual(payload["total_count"], 0)
 
     def test_disabled_map_api_is_not_public(self):
         self.comun.community_map_enabled = False

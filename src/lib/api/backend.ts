@@ -234,8 +234,15 @@ export const buildComunMapPath = (slug: string): string => {
   return `/comuns/${encodeURIComponent(slug)}/map`
 }
 
-export const buildComunMapUrl = (slug: string): string => {
-  return `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/map/`
+export const buildComunMapUrl = (
+  slug: string,
+  options?: { language?: string }
+): string => {
+  const base = `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/map/`
+  const params = new URLSearchParams()
+  if (options?.language && options.language !== 'ru') params.set('lang', options.language)
+  const query = params.toString()
+  return query ? `${base}?${query}` : base
 }
 
 export const buildComunVoteUrl = (slug: string): string => {

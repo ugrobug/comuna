@@ -6,6 +6,7 @@ export const ssr = false
 export const load = async ({ fetch, parent, url }) => {
   const parentData = await parent()
   const comun = parentData.comun ?? null
+  const language = String(parentData.language ?? 'ru')
   if (!comun?.slug) {
     throw error(404, 'site.errors.communityNotFound')
   }
@@ -14,7 +15,7 @@ export const load = async ({ fetch, parent, url }) => {
     throw error(404, 'Карта не включена')
   }
 
-  const mapUrl = new URL(buildComunMapUrl(comun.slug), url.origin)
+  const mapUrl = new URL(buildComunMapUrl(comun.slug, { language }), url.origin)
   mapUrl.searchParams.set('initial', '1')
   mapUrl.searchParams.set('limit', '40')
   const response = await fetch(mapUrl.toString())
@@ -25,6 +26,7 @@ export const load = async ({ fetch, parent, url }) => {
   const payload = await response.json().catch(() => ({}))
   return {
     comun: payload?.comun ?? comun,
+    language,
     points: Array.isArray(payload?.points) ? payload.points : [],
     totalPoints: Number(payload?.total_count ?? 0),
   }
