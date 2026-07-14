@@ -276,33 +276,6 @@
                 "team": "Team",
                 "settings": "Instellingen"
             }
-        },
-        "communityMap": {
-            "pageTitle": "{{community}}: kaart",
-            "communityMapTitle": "Communitykaart",
-            "title": "Kaart",
-            "community": "Community",
-            "pointsSummary": "{{visible}} van {{total}} markeringen",
-            "loading": "laden",
-            "backToCommunity": "Terug naar community",
-            "searchPlaceholder": "Zoeken naar locaties op de kaart",
-            "clearSearch": "Zoekopdracht wissen",
-            "searching": "Zoeken...",
-            "noResults": "Geen resultaten gevonden",
-            "point": "Locatie op de kaart",
-            "markedPost": "Bericht met markering",
-            "zoomArea": "Inzoomen op gebied",
-            "showPosts": "Berichten tonen",
-            "markersCount": "{{count}} markeringen",
-            "close": "Sluiten",
-            "placePhoto": "Foto van de locatie",
-            "openPost": "Bericht openen",
-            "zoomControls": "Zoomknoppen voor de kaart",
-            "zoomIn": "Inzoomen",
-            "zoomOut": "Uitzoomen",
-            "resetView": "Weergave herstellen",
-            "postsAtPoint": "Berichten op deze locatie",
-            "empty": "Er staan nog geen markeringen op de kaart."
         }
     },
     "toast": {

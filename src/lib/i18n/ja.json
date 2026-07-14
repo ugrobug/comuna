@@ -689,33 +689,6 @@
                 "team": "チーム",
                 "settings": "設定"
             }
-        },
-        "communityMap": {
-            "pageTitle": "{{community}}：マップ",
-            "communityMapTitle": "コミュニティマップ",
-            "title": "マップ",
-            "community": "コミュニティ",
-            "pointsSummary": "{{total}}件中{{visible}}件のマーカー",
-            "loading": "読み込み中",
-            "backToCommunity": "コミュニティに戻る",
-            "searchPlaceholder": "地図上の場所を検索",
-            "clearSearch": "検索をクリア",
-            "searching": "検索中...",
-            "noResults": "結果が見つかりません",
-            "point": "地図上の場所",
-            "markedPost": "マーカー付きの投稿",
-            "zoomArea": "エリアを拡大",
-            "showPosts": "投稿を表示",
-            "markersCount": "{{count}}件のマーカー",
-            "close": "閉じる",
-            "placePhoto": "場所の写真",
-            "openPost": "投稿を開く",
-            "zoomControls": "地図のズーム操作",
-            "zoomIn": "拡大",
-            "zoomOut": "縮小",
-            "resetView": "表示をリセット",
-            "postsAtPoint": "この場所の投稿",
-            "empty": "地図にはまだマーカーがありません。"
         }
     },
     "cards": {

@@ -316,33 +316,6 @@
                 "team": "Csapat",
                 "settings": "Beállítások"
             }
-        },
-        "communityMap": {
-            "pageTitle": "{{community}}: térkép",
-            "communityMapTitle": "Közösségi térkép",
-            "title": "Térkép",
-            "community": "Közösség",
-            "pointsSummary": "{{visible}} / {{total}} jelölő",
-            "loading": "betöltés",
-            "backToCommunity": "Vissza a közösséghez",
-            "searchPlaceholder": "Keresés a térkép helyei között",
-            "clearSearch": "Keresés törlése",
-            "searching": "Keresés...",
-            "noResults": "Nincs találat",
-            "point": "Hely a térképen",
-            "markedPost": "Jelölővel ellátott bejegyzés",
-            "zoomArea": "Nagyítás a területre",
-            "showPosts": "Bejegyzések megjelenítése",
-            "markersCount": "{{count}} jelölő",
-            "close": "Bezárás",
-            "placePhoto": "A hely fényképe",
-            "openPost": "Bejegyzés megnyitása",
-            "zoomControls": "Térkép nagyítása",
-            "zoomIn": "Nagyítás",
-            "zoomOut": "Kicsinyítés",
-            "resetView": "Nézet visszaállítása",
-            "postsAtPoint": "Bejegyzések ezen a helyen",
-            "empty": "Nincsenek még jelölők a térképen."
         }
     },
     "cards": {
