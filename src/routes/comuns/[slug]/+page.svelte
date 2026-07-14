@@ -370,10 +370,10 @@
   }
 
   const formatComunCount = (value?: number | null) =>
-    new Intl.NumberFormat('ru-RU').format(Math.max(Number(value ?? 0) || 0, 0))
+    new Intl.NumberFormat($locale || 'ru').format(Math.max(Number(value ?? 0) || 0, 0))
 
   $: siteTitle = brandNameForLanguage($locale)
-  $: comunName = comun?.name || 'Сообщество'
+  $: comunName = comun?.name || $t('routes.communityPage.community')
   $: minimumAuthorRatingToPost = Math.max(Number(comun?.minimum_author_rating_to_post ?? 0) || 0, 0)
   $: comunCategories = comun?.categories ?? []
   $: feedPosts = visiblePosts.map(withCurrentComunContext)
@@ -439,10 +439,13 @@
   $: categoryFilterAllSelected =
     !categoryFilterExplicit || categoryFilterSelectedCount === comunCategorySlugs.length
   $: categoryFilterLabel = categoryFilterAllSelected
-    ? 'Все категории'
+    ? $t('routes.communityPage.allCategories')
     : categoryFilterSelectedCount
-      ? `Все категории (${categoryFilterSelectedCount}/${comunCategorySlugs.length})`
-      : 'Все категории (0)'
+      ? $t('routes.communityPage.allCategoriesSelected', {
+          selected: categoryFilterSelectedCount,
+          total: comunCategorySlugs.length,
+        })
+      : $t('routes.communityPage.allCategoriesNone')
   $: hasExplicitComunCategorySelection =
     !!currentComunSlug && Object.prototype.hasOwnProperty.call(myFeedComunCategoryMap, currentComunSlug)
   $: subscribedComunCategorySlugs = new Set<string>(
@@ -457,7 +460,8 @@
   let subscriptionCategoriesOpen = false
   $: title = `${comunName} — ${siteTitle}`
   $: description =
-    comun?.product_description || `Посты и обсуждения продукта «${comunName}» на ${siteTitle}.`
+    comun?.product_description ||
+    $t('routes.communityPage.metaDescription', { community: comunName, site: siteTitle })
   $: comunWebsiteUrl = externalUrl(comun?.website_url)
   $: comunGlossaryPath = comun?.slug ? localizeContentPath(buildComunGlossaryPath(comun.slug), contentLanguage) : '/comuns'
   $: comunKnowledgeBasePath = comun?.slug ? localizeContentPath(buildComunKnowledgeBasePath(comun.slug), contentLanguage) : '/comuns'
@@ -605,7 +609,7 @@
     const displayName = (user?.display_name ?? '').trim()
     if (displayName) return displayName
     const username = (user?.username ?? '').trim()
-    return username ? `@${username}` : 'Пользователь'
+    return username ? `@${username}` : $t('routes.sidebar.comunInfo.user')
   }
 
   const openModeratorChat = async (moderator: ComunModeratorMember) => {
@@ -623,7 +627,7 @@
       await goto(`/chats/${chat.id}`)
     } catch (error) {
       toast({
-        content: error instanceof Error ? error.message : 'Не удалось открыть чат',
+        content: error instanceof Error ? error.message : $t('routes.communityPage.chatOpenError'),
         type: 'error',
       })
     } finally {
@@ -981,7 +985,7 @@
       myFeedComunCategories: nextCategoryMap,
     }
     subscriptionCategoriesOpen = false
-    toast({ content: 'Сообщество убрано из "Моей ленты"' })
+    toast({ content: $t('routes.communityPage.removedFromFeed') })
   }
 
   const toggleComunInMyFeed = async () => {
@@ -1005,7 +1009,7 @@
       myFeedComunCategories: nextCategoryMap,
     }
     subscriptionCategoriesOpen = comunCategorySlugs.length > 0
-    toast({ content: 'Посты этого сообщества будут попадать в "Мою ленту"' })
+    toast({ content: $t('routes.communityPage.addedToFeed') })
   }
 
   const toggleComunCategoryInMyFeed = (categorySlug: string) => {
@@ -1170,13 +1174,16 @@
     try {
       const response = await fetch(url, $siteToken ? { headers: { Authorization: `Bearer ${$siteToken}` } } : undefined)
       if (!response.ok) {
-        throw new Error('Не удалось загрузить посты сообщества')
+        throw new Error($t('routes.communityPage.postsLoadError'))
       }
       const payload = await response.json()
       applyPostsPayload(payload, reset)
     } catch (error) {
       console.error(error)
-      toast({ content: error instanceof Error ? error.message : 'Ошибка загрузки', type: 'error' })
+      toast({
+        content: error instanceof Error ? error.message : $t('routes.communityPage.loadError'),
+        type: 'error',
+      })
     } finally {
       loadingMore = false
       loadingCategory = false
@@ -1555,7 +1562,7 @@
         <div class="flex items-start gap-4 min-w-0">
           <div class="h-16 w-16 rounded-2xl overflow-hidden border border-slate-200 dark:border-zinc-800 bg-slate-100 dark:bg-zinc-800 shrink-0">
             {#if comun?.logo_url}
-              <img src={comun.logo_url} alt={comun?.name ?? 'Логотип'} class="h-full w-full object-cover" />
+              <img src={comun.logo_url} alt={comun?.name ?? $t('routes.communityPage.logoAlt')} class="h-full w-full object-cover" />
             {:else}
               <div
                 class="comun-logo-fallback h-full w-full grid place-items-center text-2xl font-bold"
@@ -1567,11 +1574,11 @@
           </div>
           <div class="min-w-0">
             <h1 class="text-2xl font-semibold tracking-tight text-slate-900 dark:text-zinc-100">
-              {comun?.name ?? 'Сообщество'}
+              {comun?.name ?? $t('routes.communityPage.community')}
             </h1>
             <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-600 dark:text-zinc-400">
-              <span>Подписчиков: {formatComunCount(comunSubscribersCount)}</span>
-              <span>Авторов: {formatComunCount(comunAuthorsCount)}</span>
+              <span>{$t('routes.communityPage.subscribers', { count: formatComunCount(comunSubscribersCount) })}</span>
+              <span>{$t('routes.communityPage.authors', { count: formatComunCount(comunAuthorsCount) })}</span>
               <span
                 class="relative inline-flex items-center"
                 on:mouseenter={openModeratorMenu}
@@ -1587,7 +1594,7 @@
                   aria-expanded={moderatorMenuOpen}
                   disabled={!comunModeratorList.length}
                 >
-                  Модераторов: {formatComunCount(comunModeratorsCount)}
+                  {$t('routes.communityPage.moderatorsCount', { count: formatComunCount(comunModeratorsCount) })}
                 </button>
                 {#if comunModeratorList.length && moderatorMenuOpen}
                   <div
@@ -1597,7 +1604,7 @@
                     role="presentation"
                   >
                     <div class="px-2 pb-2 pt-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-zinc-400">
-                      Модераторы
+                      {$t('routes.sidebar.comunInfo.moderators')}
                     </div>
                     <div class="flex max-h-72 flex-col gap-1 overflow-y-auto">
                       {#each comunModeratorList as moderator}
@@ -1614,7 +1621,7 @@
                             {#if moderator.isCreator}
                               <span class="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-slate-500 dark:text-zinc-400">
                                 <span class="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:bg-zinc-800 dark:text-zinc-300">
-                                  Создатель
+                                  {$t('routes.sidebar.comunInfo.creator')}
                                 </span>
                               </span>
                             {/if}
@@ -1622,8 +1629,8 @@
                           <button
                             type="button"
                             class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 text-slate-600 transition hover:bg-slate-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900 dark:hover:text-blue-300"
-                            title={isSelfModerator ? 'Это вы' : 'Написать модератору'}
-                            aria-label={isSelfModerator ? 'Это вы' : 'Написать модератору'}
+                            title={isSelfModerator ? $t('routes.communityPage.thisIsYou') : $t('routes.communityPage.messageModerator')}
+                            aria-label={isSelfModerator ? $t('routes.communityPage.thisIsYou') : $t('routes.communityPage.messageModerator')}
                             disabled={!moderatorId || moderator.is_deleted || isSelfModerator || openingModeratorChatId === moderatorId}
                             on:click={() => openModeratorChat(moderator)}
                           >
@@ -1642,21 +1649,21 @@
           {#if canShowComunPostButton}
             <Button size="sm" on:click={openComunPostEditor}>
               <span slot="prefix" class="text-base leading-none">+</span>
-              Добавить пост
+              {$t('routes.communityPage.addPost')}
             </Button>
           {/if}
           <div class="relative">
             <Button
               color={isSubscribedToComun ? 'ghost' : undefined}
               on:click={toggleComunInMyFeed}
-              title={isSubscribedToComun ? 'Настроить категории в Моей ленте' : 'Добавить сообщество в Мою ленту'}
+              title={isSubscribedToComun ? $t('routes.communityPage.configureFeedCategories') : $t('routes.communityPage.addToFeed')}
             >
-              {isSubscribedToComun ? 'Вы подписаны' : 'Подписаться'}
+              {isSubscribedToComun ? $t('routes.sidebar.recommended.subscribed') : $t('routes.sidebar.recommended.subscribe')}
             </Button>
             {#if subscriptionCategoriesOpen && isSubscribedToComun && hasComunCategories}
               <div class="absolute right-0 top-full z-30 mt-2 w-72 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl dark:border-zinc-800 dark:bg-zinc-950">
                 <div class="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-zinc-400">
-                  Категории в моей ленте
+                  {$t('routes.communityPage.feedCategories')}
                 </div>
                 <div class="flex max-h-72 flex-col gap-2 overflow-y-auto pr-1">
                   {#each comunCategories as category}
@@ -1676,10 +1683,10 @@
                   class="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-900"
                   on:click={() => {
                     subscriptionCategoriesOpen = false
-                    toast({ content: 'Настройки подписки сохранены' })
+                    toast({ content: $t('routes.communityPage.subscriptionSaved') })
                   }}
                 >
-                  Сохранить
+                  {$t('common.save')}
                 </button>
               </div>
             {/if}
@@ -1689,8 +1696,8 @@
               type="button"
               class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 text-slate-700 transition hover:bg-slate-50 dark:border-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-800/60"
               on:click={() => comun?.slug && goto(`/comuns/${comun.slug}/settings`)}
-              title="Настройки сообщества"
-              aria-label="Настройки сообщества"
+              title={$t('routes.communityPage.communitySettings')}
+              aria-label={$t('routes.communityPage.communitySettings')}
             >
               <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <circle cx="12" cy="12" r="3.2"></circle>
@@ -1712,7 +1719,7 @@
 
               {#if comun?.target_audience}
                 <div class="border-t border-slate-200 pt-3 text-sm text-slate-600 dark:border-zinc-800 dark:text-zinc-400">
-                  <span class="font-medium text-slate-800 dark:text-zinc-200">Для кого:</span>
+                  <span class="font-medium text-slate-800 dark:text-zinc-200">{$t('routes.communityPage.targetAudience')}</span>
                   <span class="whitespace-pre-line"> {comun.target_audience}</span>
                 </div>
               {/if}
@@ -1720,7 +1727,7 @@
               {#if comun?.rules_text}
                 <div class="border-t border-slate-200 pt-3 dark:border-zinc-800">
                   <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-zinc-400">
-                    Правила сообщества
+                    {$t('routes.sidebar.comunInfo.rules')}
                   </div>
                   <div class="mt-2 whitespace-pre-line text-sm leading-relaxed text-slate-700 dark:text-zinc-300">
                     {comun.rules_text}
@@ -1737,7 +1744,7 @@
         type="button"
         class="comun-header-expand-button"
         aria-expanded={comunHeaderDetailsOpen}
-        aria-label={comunHeaderDetailsOpen ? 'Скрыть описание сообщества' : 'Показать описание сообщества'}
+        aria-label={comunHeaderDetailsOpen ? $t('routes.communityPage.hideDescription') : $t('routes.communityPage.showDescription')}
         on:click={() => {
           comunHeaderDetailsOpen = !comunHeaderDetailsOpen
         }}
@@ -1771,7 +1778,7 @@
             <div class="absolute left-0 top-full z-30 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-slate-200 bg-white p-3 shadow-xl dark:border-zinc-800 dark:bg-zinc-950">
               <div class="mb-2 flex items-center justify-between gap-3">
                 <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-zinc-400">
-                  Категории
+                  {$t('routes.communityPage.categories')}
                 </div>
                 <button
                   type="button"
@@ -1779,7 +1786,7 @@
                   on:click={resetCategoryFilter}
                   disabled={loadingCategory}
                 >
-                  Все категории
+                  {$t('routes.communityPage.allCategories')}
                 </button>
               </div>
               <div class="flex max-h-72 flex-col gap-1 overflow-y-auto pr-1">
@@ -1814,7 +1821,7 @@
           href={comunKnowledgeBasePath}
           class="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-full border border-slate-200 bg-white/95 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900/85 dark:text-zinc-200 dark:hover:bg-zinc-800/60"
         >
-          База знаний
+          {$t('routes.sidebar.comunInfo.knowledgeBase')}
         </a>
       {/if}
       {#if comun?.glossary_enabled}
@@ -1822,7 +1829,7 @@
           href={comunGlossaryPath}
           class="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-full border border-slate-200 bg-white/95 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900/85 dark:text-zinc-200 dark:hover:bg-zinc-800/60"
         >
-          Глоссарий
+          {$t('routes.sidebar.comunInfo.glossary')}
         </a>
       {/if}
       {#if comun?.roadmap_enabled}
@@ -1830,7 +1837,7 @@
           href={comunRoadmapPath}
           class="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-full border border-slate-200 bg-white/95 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900/85 dark:text-zinc-200 dark:hover:bg-zinc-800/60"
         >
-          Дорожная карта
+          {$t('routes.sidebar.comunInfo.roadmap')}
         </a>
       {/if}
       {#if comun?.community_map_enabled}
@@ -1848,7 +1855,7 @@
             target="_blank"
             rel="nofollow noopener noreferrer"
             class="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-700 transition hover:bg-slate-50 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:border-zinc-800 dark:bg-zinc-900/85 dark:text-zinc-200 dark:hover:bg-zinc-800/60 dark:hover:text-blue-300 dark:focus:ring-offset-zinc-950"
-            aria-label="Сайт сообщества"
+            aria-label={$t('routes.sidebar.comunInfo.website')}
           >
             <Icon src={GlobeAlt} size="16" mini />
           </a>
@@ -1856,7 +1863,7 @@
             class="pointer-events-none absolute left-1/2 top-full z-30 mt-2 -translate-x-1/2 whitespace-nowrap rounded-lg bg-slate-950 px-2.5 py-1.5 text-xs font-medium text-white opacity-0 shadow-lg transition group-hover/website:opacity-100 group-focus-within/website:opacity-100 dark:bg-zinc-100 dark:text-zinc-950"
             role="tooltip"
           >
-            Сайт сообщества
+            {$t('routes.sidebar.comunInfo.website')}
           </span>
         </span>
       {/if}
@@ -1866,7 +1873,7 @@
 
   <ComunRoadmapModal
     open={roadmapModalVisible}
-    comunName={comun?.name ?? 'Сообщество'}
+    comunName={comun?.name ?? $t('routes.communityPage.community')}
     trackedCount={roadmapTrackedCount}
     releasedCount={roadmapReleasedCount}
     stages={roadmapStages}
@@ -1883,7 +1890,7 @@
   {#if comun?.welcome_post && welcomeFeedPosts.length}
     <section class="rounded-2xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/60 dark:bg-blue-950/20 p-4 sm:p-5">
       <div class="mb-3 text-sm font-semibold text-blue-800 dark:text-blue-300">
-        Приветственный пост
+        {$t('routes.communityPage.welcomePost')}
       </div>
       <FeedPostsList
         posts={welcomeFeedPosts}
@@ -1914,8 +1921,8 @@
       <div class="flex flex-col gap-4">
         <div>
           {categoryFilterExplicit
-            ? 'В выбранных категориях пока нет публикаций.'
-            : 'В этом сообществе пока нет публикаций.'}
+            ? $t('routes.communityPage.emptySelectedCategories')
+            : $t('routes.communityPage.emptyCommunity')}
         </div>
       </div>
     </div>
