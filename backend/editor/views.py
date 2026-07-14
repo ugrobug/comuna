@@ -481,6 +481,7 @@ def user_posts(request: HttpRequest) -> HttpResponse:
             category=comun_category,
             actor=user,
         )
+        community_service.sync_comun_map_points_for_post(post, comun=comun)
         _fv()._apply_post_tags(post, explicit_tags)
         if not is_draft:
             _fv()._maybe_notify_new_author(author, post)
@@ -619,6 +620,7 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
         post.is_blocked = True
         post.raw_data = raw_data
         post.save(update_fields=["is_blocked", "raw_data", "updated_at"])
+        community_service.sync_comun_map_points_for_post(post)
         for comun_id in previous_comun_ids:
             community_service._recalculate_comun_rating(comun_id)
         return JsonResponse({"ok": True, "deleted": True, "post_id": post.id})
@@ -838,6 +840,7 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
         category=next_comun_category,
         actor=user,
     )
+    community_service.sync_comun_map_points_for_post(post, comun=next_comun)
     if tags_payload is not None:
         explicit_tags = _fv()._parse_tag_payload(tags_payload)
     else:

@@ -1,7 +1,7 @@
 from django import forms
 from django.contrib import admin
 
-from communities.models import Comun, ComunCategory, ComunPostCategoryAssignment
+from communities.models import Comun, ComunCategory, ComunMapPoint, ComunPostCategoryAssignment
 from editor.models import (
     normalize_allowed_post_templates,
     post_template_type_choices,
@@ -52,6 +52,7 @@ class ComunAdmin(admin.ModelAdmin):
         "slug",
         "creator",
         "welcome_post",
+        "community_map_enabled",
         "is_active",
         "sort_order",
         "moderators_count",
@@ -74,6 +75,10 @@ class ComunAdmin(admin.ModelAdmin):
         "logo_url",
         "product_description",
         "target_audience",
+        "glossary_enabled",
+        "roadmap_enabled",
+        "knowledge_base_enabled",
+        "community_map_enabled",
         "categories",
         "allowed_post_templates",
         "rating_score",
@@ -100,3 +105,12 @@ class ComunPostCategoryAssignmentAdmin(admin.ModelAdmin):
     list_filter = ("comun", "category")
     search_fields = ("comun__name", "post__title", "post__author__username")
     raw_id_fields = ("comun", "post", "category", "assigned_by")
+
+
+@admin.register(ComunMapPoint)
+class ComunMapPointAdmin(admin.ModelAdmin):
+    list_display = ("comun", "post", "lat", "lng", "zoom", "block_index", "updated_at")
+    list_filter = ("comun",)
+    search_fields = ("comun__name", "comun__slug", "post__title", "raw")
+    raw_id_fields = ("comun", "post")
+    readonly_fields = ("created_at", "updated_at")

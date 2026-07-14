@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import base64
 import json
 import math
 import re
@@ -28,13 +29,14 @@ from communities.models import (
     Comun,
     ComunCategory,
     ComunGlossaryTerm,
+    ComunMapPoint,
     ComunPostCategoryAssignment,
     ComunPostRatingContribution,
     ComunVote,
 )
 from editor.models import PostPollVote
 from editor import service as editor_service
-from feeds.post_paths import slugify_title
+from feeds.post_paths import build_post_public_path, slugify_title
 from feeds.models import (
     Author,
     Post,
@@ -88,6 +90,7 @@ _COMUN_EXTERNAL_LINKS_FORBIDDEN_ERROR = (
     "В этом сообществе запрещены внешние ссылки. Удалите ссылки из текста и шаблона публикации."
 )
 _MORPH_ANALYZER = None
+_EDITOR_MODEL_BASE64_RE = re.compile(r"^[A-Za-z0-9+/_-]*={0,2}$")
 
 
 def _feeds_views():
@@ -1021,6 +1024,144 @@ def _payload_contains_external_links(
         if _text_contains_external_links(serialized_template):
             return True
     return False
+
+
+def _parse_serialized_editor_model(raw_value: object) -> dict | None:
+    raw = str(raw_value or "").strip() if isinstance(raw_value, str) else ""
+    if not raw:
+        return None
+    if raw.startswith("<") and raw.endswith(">"):
+        return None
+
+    candidates: list[str] = []
+    if raw.startswith("{") and raw.endswith("}"):
+        candidates.append(raw)
+    elif len(raw) >= 16 and _EDITOR_MODEL_BASE64_RE.match(raw):
+        encoded = raw.replace("-", "+").replace("_", "/")
+        padding = (-len(encoded)) % 4
+        encoded = f"{encoded}{'=' * padding}"
+        try:
+            candidates.append(base64.b64decode(encoded).decode("utf-8"))
+        except Exception:
+            candidates = []
+
+    for candidate in candidates:
+        try:
+            parsed = json.loads(candidate)
+        except (TypeError, ValueError):
+            continue
+        if isinstance(parsed, dict) and isinstance(parsed.get("blocks"), list):
+            return parsed
+    return None
+
+
+def _finite_float(value: object) -> float | None:
+    try:
+        number = float(str(value).replace(",", ".").strip())
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _normalize_map_zoom(value: object) -> int:
+    try:
+        zoom = int(float(str(value).replace(",", ".").strip()))
+    except (TypeError, ValueError):
+        return 14
+    return min(max(zoom, 1), 19)
+
+
+def _extract_editor_map_points(raw_content: object) -> list[dict]:
+    editor_model = _parse_serialized_editor_model(raw_content)
+    if not editor_model:
+        return []
+    points: list[dict] = []
+    for block_index, block in enumerate(editor_model.get("blocks") or []):
+        if not isinstance(block, dict):
+            continue
+        if str(block.get("type") or "").strip().lower() != "map":
+            continue
+        data = block.get("data") if isinstance(block.get("data"), dict) else {}
+        lat = _finite_float(data.get("lat"))
+        lng = _finite_float(data.get("lng"))
+        if lat is None or lng is None:
+            continue
+        if lat < -90 or lat > 90 or lng < -180 or lng > 180:
+            continue
+        points.append(
+            {
+                "block_index": block_index,
+                "lat": Decimal(str(lat)).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP),
+                "lng": Decimal(str(lng)).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP),
+                "zoom": _normalize_map_zoom(data.get("zoom")),
+                "raw": str(data.get("raw") or "").strip()[:255],
+            }
+        )
+    return points
+
+
+def sync_comun_map_points_for_post(
+    post: Post | None,
+    *,
+    comun: Comun | None = None,
+) -> int:
+    if not post or not getattr(post, "id", None):
+        return 0
+
+    ComunMapPoint.objects.filter(post=post).delete()
+    if bool(getattr(post, "is_pending", False)) or bool(getattr(post, "is_blocked", False)):
+        return 0
+
+    comun = comun or _post_comun(post)
+    if not comun or not bool(getattr(comun, "community_map_enabled", False)):
+        return 0
+
+    points = _extract_editor_map_points(getattr(post, "content", ""))
+    if not points:
+        return 0
+    objects = [
+        ComunMapPoint(
+            comun=comun,
+            post=post,
+            block_index=point["block_index"],
+            lat=point["lat"],
+            lng=point["lng"],
+            zoom=point["zoom"],
+            raw=point["raw"],
+        )
+        for point in points
+    ]
+    ComunMapPoint.objects.bulk_create(objects)
+    return len(objects)
+
+
+def sync_comun_map_points_for_comun(comun: Comun | None) -> int:
+    if not comun or not getattr(comun, "id", None):
+        return 0
+    ComunMapPoint.objects.filter(comun=comun).delete()
+    if not bool(getattr(comun, "community_map_enabled", False)):
+        return 0
+    synced_count = 0
+    for post in _comun_posts_base_queryset(comun).select_related("author").iterator(chunk_size=200):
+        synced_count += sync_comun_map_points_for_post(post, comun=comun)
+    return synced_count
+
+
+def serialize_comun_map_point(point: ComunMapPoint) -> dict:
+    post = getattr(point, "post", None)
+    return {
+        "id": point.id,
+        "post_id": point.post_id,
+        "post_title": getattr(post, "title", "") or "",
+        "post_path": build_post_public_path(point.post_id, getattr(post, "title", "") or ""),
+        "block_index": point.block_index,
+        "lat": float(point.lat),
+        "lng": float(point.lng),
+        "zoom": point.zoom,
+        "raw": point.raw,
+        "created_at": point.created_at.isoformat() if point.created_at else None,
+        "updated_at": point.updated_at.isoformat() if point.updated_at else None,
+    }
 
 
 def _site_user_avatar_url(

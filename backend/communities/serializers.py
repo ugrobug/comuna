@@ -236,6 +236,7 @@ def _serialize_comun_sidebar(request: HttpRequest, comun: Comun) -> dict:
         "glossary_enabled": bool(getattr(comun, "glossary_enabled", False)),
         "roadmap_enabled": bool(getattr(comun, "roadmap_enabled", False)),
         "knowledge_base_enabled": bool(getattr(comun, "knowledge_base_enabled", False)),
+        "community_map_enabled": bool(getattr(comun, "community_map_enabled", False)),
         "creator": _serialize_site_user_summary(
             getattr(comun, "creator", None),
             comun.creator_id,
@@ -522,6 +523,7 @@ def _serialize_comun(
         "glossary_auto_link_enabled": bool(getattr(comun, "glossary_auto_link_enabled", False)),
         "roadmap_enabled": bool(getattr(comun, "roadmap_enabled", False)),
         "knowledge_base_enabled": bool(getattr(comun, "knowledge_base_enabled", False)),
+        "community_map_enabled": bool(getattr(comun, "community_map_enabled", False)),
         "roadmap_category_ids": [category.id for category in roadmap_categories],
         "roadmap_categories": [
             _serialize_comun_category(

@@ -27,6 +27,7 @@ from communities.models import (
     ComunCategory,
     ComunGlossaryTerm,
     ComunKnowledgeBaseItem,
+    ComunMapPoint,
     ComunPostCategoryAssignment,
     ComunVote,
     ComunTelegramSubmission,
@@ -1205,6 +1206,7 @@ def _serialize_comun(
         "glossary_auto_link_enabled": bool(getattr(comun, "glossary_auto_link_enabled", False)),
         "roadmap_enabled": bool(getattr(comun, "roadmap_enabled", False)),
         "knowledge_base_enabled": bool(getattr(comun, "knowledge_base_enabled", False)),
+        "community_map_enabled": bool(getattr(comun, "community_map_enabled", False)),
         "roadmap_category_ids": [category.id for category in roadmap_categories],
         "roadmap_categories": [_serialize_comun_category(category, comun) for category in roadmap_categories],
         "glossary_terms": [_serialize_comun_glossary_term(term) for term in glossary_terms],
@@ -2336,6 +2338,7 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
 
     moderator_subscriptions_need_sync = False
     comun_translation_content_changed = False
+    previous_community_map_enabled = bool(getattr(comun, "community_map_enabled", False))
 
     if "name" in body:
         if not _comun_can_manage_moderators(current_user, comun):
@@ -2375,6 +2378,8 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
         comun.roadmap_enabled = bool(body.get("roadmap_enabled"))
     if "knowledge_base_enabled" in body:
         comun.knowledge_base_enabled = bool(body.get("knowledge_base_enabled"))
+    if "community_map_enabled" in body:
+        comun.community_map_enabled = bool(body.get("community_map_enabled"))
     if "roadmap_category_ids" in body:
         requested_roadmap_category_ids = community_service._parse_int_list(body.get("roadmap_category_ids"))
         active_category_ids = set(
@@ -2502,6 +2507,11 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
             comun.welcome_post = None
 
     comun.save()
+    if (
+        "community_map_enabled" in body
+        and bool(getattr(comun, "community_map_enabled", False)) != previous_community_map_enabled
+    ):
+        community_service.sync_comun_map_points_for_comun(comun)
     if moderator_subscriptions_need_sync:
         moderator_auto_subscribed_count = community_service._ensure_comun_moderators_subscribed(comun)
         if moderator_auto_subscribed_count:
@@ -3345,6 +3355,46 @@ def comun_knowledge_base_item(request: HttpRequest, slug: str, item_id: int) -> 
 
 
 @csrf_exempt
+def comun_map(request: HttpRequest, slug: str) -> HttpResponse:
+    current_user = user_views._get_user_from_request(request)
+    try:
+        comun = (
+            Comun.objects.filter(slug=slug)
+            .select_related("creator", "telegram_source_author")
+            .prefetch_related("moderators")
+            .get()
+        )
+    except Comun.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "comun not found"}, status=404)
+
+    can_moderate = _comun_is_moderator(current_user, comun)
+    if not comun.is_active and not can_moderate:
+        return JsonResponse({"ok": False, "error": "comun not found"}, status=404)
+    if not comun.community_map_enabled and not can_moderate:
+        return JsonResponse({"ok": False, "error": "community map disabled"}, status=404)
+    if request.method not in ("GET", "HEAD"):
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    points = (
+        ComunMapPoint.objects.filter(
+            comun=comun,
+            post__is_blocked=False,
+            post__is_pending=False,
+            post__author__is_blocked=False,
+        )
+        .select_related("post", "post__author")
+        .order_by("-post__created_at", "post_id", "block_index", "id")
+    )
+    return JsonResponse(
+        {
+            "ok": True,
+            "comun": _serialize_comun(request, comun, current_user=current_user),
+            "points": [community_service.serialize_comun_map_point(point) for point in points],
+        }
+    )
+
+
+@csrf_exempt
 def comun_glossary_submission_create(request: HttpRequest, slug: str) -> HttpResponse:
     if request.method != "POST":
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
@@ -3605,6 +3655,7 @@ def comun_post_category_update(request: HttpRequest, slug: str, post_id: int) ->
 
     if category is None:
         ComunPostCategoryAssignment.objects.filter(comun=comun, post=post).delete()
+        community_service.sync_comun_map_points_for_post(post, comun=comun)
         return JsonResponse({"ok": True, "assignment": None})
 
     assignment, _ = ComunPostCategoryAssignment.objects.update_or_create(
@@ -3619,6 +3670,7 @@ def comun_post_category_update(request: HttpRequest, slug: str, post_id: int) ->
         actor=current_user,
         previous_category=previous_category,
     )
+    community_service.sync_comun_map_points_for_post(post, comun=comun)
     return JsonResponse(
         {
             "ok": True,
@@ -3698,6 +3750,7 @@ __all__ = [
     "comun_create_from_telegram_channel",
     "comun_detail_manage",
     "comun_glossary_image_upload",
+    "comun_map",
     "comun_settings_options",
     "comun_post_category_update",
     "comun_posts",

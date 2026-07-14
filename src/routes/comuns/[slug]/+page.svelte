@@ -11,6 +11,7 @@
     buildBackendPostPath,
     buildComunGlossaryPath,
     buildComunKnowledgeBasePath,
+    buildComunMapPath,
     buildComunRoadmapPath,
     buildComunPostsUrl,
     buildComunSettingsOptionsUrl,
@@ -460,6 +461,7 @@
   $: comunWebsiteUrl = externalUrl(comun?.website_url)
   $: comunGlossaryPath = comun?.slug ? localizeContentPath(buildComunGlossaryPath(comun.slug), contentLanguage) : '/comuns'
   $: comunKnowledgeBasePath = comun?.slug ? localizeContentPath(buildComunKnowledgeBasePath(comun.slug), contentLanguage) : '/comuns'
+  $: comunMapPath = comun?.slug ? localizeContentPath(buildComunMapPath(comun.slug), contentLanguage) : '/comuns'
   $: comunRoadmapPath = comun?.slug ? localizeContentPath(buildComunRoadmapPath(comun.slug), contentLanguage) : '/comuns'
   $: languageVersions = Array.isArray(comun?.language_versions) ? comun.language_versions : []
   $: russianVersion = languageVersions.find((version) => version?.language === 'ru')
@@ -1750,7 +1752,7 @@
     {/if}
   </section>
 
-  {#if hasComunCategories || comunWebsiteUrl || comun?.glossary_enabled || comun?.knowledge_base_enabled || comun?.roadmap_enabled}
+  {#if hasComunCategories || comunWebsiteUrl || comun?.glossary_enabled || comun?.knowledge_base_enabled || comun?.roadmap_enabled || comun?.community_map_enabled}
     <div class="flex items-center gap-2">
       {#if hasComunCategories}
         <div class="relative shrink-0" bind:this={categoryFilterElement}>
@@ -1829,6 +1831,14 @@
           class="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-full border border-slate-200 bg-white/95 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900/85 dark:text-zinc-200 dark:hover:bg-zinc-800/60"
         >
           Дорожная карта
+        </a>
+      {/if}
+      {#if comun?.community_map_enabled}
+        <a
+          href={comunMapPath}
+          class="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-full border border-slate-200 bg-white/95 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900/85 dark:text-zinc-200 dark:hover:bg-zinc-800/60"
+        >
+          Карта
         </a>
       {/if}
       {#if comunWebsiteUrl}

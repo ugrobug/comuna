@@ -211,6 +211,11 @@ class Comun(models.Model):
         verbose_name="Включить базу знаний",
         help_text="Если включено, в сообществе будет доступна публичная база знаний из отмеченных постов.",
     )
+    community_map_enabled = models.BooleanField(
+        default=False,
+        verbose_name="Включить общую карту",
+        help_text="Если включено, в сообществе будет доступна публичная карта с GPS-метками из публикаций.",
+    )
     roadmap_category_ids = models.JSONField(
         default=list,
         blank=True,
@@ -423,6 +428,48 @@ class ComunKnowledgeBaseItem(models.Model):
 
     def __str__(self) -> str:
         return self.title or f"{self.comun_id}:{self.post_id or self.item_type}"
+
+
+class ComunMapPoint(models.Model):
+    comun = models.ForeignKey(
+        "feeds.Comun",
+        on_delete=models.CASCADE,
+        related_name="map_points",
+        verbose_name="Сообщество",
+    )
+    post = models.ForeignKey(
+        "feeds.Post",
+        on_delete=models.CASCADE,
+        related_name="comun_map_points",
+        verbose_name="Пост",
+    )
+    block_index = models.PositiveIntegerField(default=0, verbose_name="Индекс блока")
+    lat = models.DecimalField(max_digits=9, decimal_places=6, verbose_name="Широта")
+    lng = models.DecimalField(max_digits=9, decimal_places=6, verbose_name="Долгота")
+    zoom = models.PositiveSmallIntegerField(default=14, verbose_name="Масштаб")
+    raw = models.CharField(max_length=255, blank=True, verbose_name="Исходная строка")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = "feeds"
+        ordering = ["-post__created_at", "post_id", "block_index", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["post", "block_index"],
+                name="comun_map_point_unique_post_block",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["comun", "post"], name="comun_map_comun_post_idx"),
+            models.Index(fields=["post"], name="comun_map_post_idx"),
+            models.Index(fields=["lat", "lng"], name="comun_map_lat_lng_idx"),
+        ]
+        verbose_name = "Точка общей карты"
+        verbose_name_plural = "Точки общих карт"
+
+    def __str__(self) -> str:
+        return f"{self.comun_id}:{self.post_id}:{self.lat},{self.lng}"
 
 
 class ComunTelegramSubmission(models.Model):

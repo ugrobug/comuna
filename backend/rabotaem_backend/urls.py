@@ -10,6 +10,7 @@ from communities.views import (
     comun_glossary_submission_create,
     comun_knowledge_base,
     comun_knowledge_base_item,
+    comun_map,
     comun_post_category_update,
     comun_posts,
     comun_settings_options,
@@ -192,6 +193,11 @@ urlpatterns = [
         "api/comuns/<slug:slug>/knowledge-base/<int:item_id>/",
         comun_knowledge_base_item,
         name="comun-knowledge-base-item",
+    ),
+    path(
+        "api/comuns/<slug:slug>/map/",
+        comun_map,
+        name="comun-map",
     ),
     path(
         "api/comuns/<slug:slug>/telegram-submissions/",

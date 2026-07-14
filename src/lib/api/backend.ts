@@ -230,6 +230,14 @@ export const buildComunRoadmapPath = (slug: string): string => {
   return `/comuns/${encodeURIComponent(slug)}/roadmap`
 }
 
+export const buildComunMapPath = (slug: string): string => {
+  return `/comuns/${encodeURIComponent(slug)}/map`
+}
+
+export const buildComunMapUrl = (slug: string): string => {
+  return `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/map/`
+}
+
 export const buildComunVoteUrl = (slug: string): string => {
   return `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/vote/`
 }
@@ -924,6 +932,7 @@ export type BackendComun = {
   glossary_auto_link_enabled?: boolean
   roadmap_enabled?: boolean
   knowledge_base_enabled?: boolean
+  community_map_enabled?: boolean
   roadmap_category_ids?: number[]
   roadmap_categories?: BackendComunCategory[]
   glossary_terms?: BackendComunGlossaryTerm[]
@@ -1018,6 +1027,20 @@ export type BackendComunKnowledgeBaseItem = {
   sort_order?: number
   depth?: number
   children?: BackendComunKnowledgeBaseItem[]
+}
+
+export type BackendComunMapPoint = {
+  id: number
+  post_id: number
+  post_title: string
+  post_path: string
+  block_index?: number
+  lat: number
+  lng: number
+  zoom?: number
+  raw?: string
+  created_at?: string | null
+  updated_at?: string | null
 }
 
 export type BackendPublicSiteUser = {
