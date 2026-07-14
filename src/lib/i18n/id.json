@@ -471,7 +471,17 @@
             "addedToFeed": "Postingan komunitas ini akan muncul di Feed saya",
             "chatOpenError": "Tidak dapat membuka obrolan",
             "postsLoadError": "Tidak dapat memuat postingan komunitas",
-            "loadError": "Kesalahan pemuatan",
+      "loadError": "Kesalahan pemuatan",
+      "user": "Pengguna",
+      "moderators": "Moderator",
+      "creator": "Pembuat",
+      "subscribe": "Ikuti",
+      "subscribed": "Mengikuti",
+      "rules": "Aturan",
+      "knowledgeBase": "Basis pengetahuan",
+      "glossary": "Glosarium",
+      "roadmap": "Peta jalan",
+      "website": "Situs web",
             "metaDescription": "Postingan dan diskusi komunitas {{community}} di {{site}}."
         },
         "communityMap": {

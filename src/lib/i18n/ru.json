@@ -477,7 +477,17 @@
             "addedToFeed": "Посты этого сообщества будут попадать в Мою ленту",
             "chatOpenError": "Не удалось открыть чат",
             "postsLoadError": "Не удалось загрузить посты сообщества",
-            "loadError": "Ошибка загрузки",
+      "loadError": "Ошибка загрузки",
+      "user": "Пользователь",
+      "moderators": "Модераторы",
+      "creator": "Создатель",
+      "subscribe": "Подписаться",
+      "subscribed": "Вы подписаны",
+      "rules": "Правила",
+      "knowledgeBase": "База знаний",
+      "glossary": "Глоссарий",
+      "roadmap": "Дорожная карта",
+      "website": "Сайт",
             "metaDescription": "Посты и обсуждения сообщества «{{community}}» на {{site}}."
         },
         "communityMap": {

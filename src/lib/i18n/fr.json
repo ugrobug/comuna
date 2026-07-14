@@ -457,7 +457,17 @@
             "addedToFeed": "Les publications de cette communauté apparaîtront dans Mon fil",
             "chatOpenError": "Impossible d’ouvrir le chat",
             "postsLoadError": "Impossible de charger les publications de la communauté",
-            "loadError": "Erreur de chargement",
+      "loadError": "Erreur de chargement",
+      "user": "Utilisateur",
+      "moderators": "Modérateurs",
+      "creator": "Créateur",
+      "subscribe": "S’abonner",
+      "subscribed": "Abonné",
+      "rules": "Règles",
+      "knowledgeBase": "Base de connaissances",
+      "glossary": "Glossaire",
+      "roadmap": "Feuille de route",
+      "website": "Site web",
             "metaDescription": "Publications et discussions de la communauté {{community}} sur {{site}}."
         },
         "communityMap": {

@@ -471,7 +471,17 @@
             "addedToFeed": "Posts from this community will appear in My feed",
             "chatOpenError": "Could not open chat",
             "postsLoadError": "Could not load community posts",
-            "loadError": "Loading error",
+      "loadError": "Loading error",
+      "user": "User",
+      "moderators": "Moderators",
+      "creator": "Creator",
+      "subscribe": "Subscribe",
+      "subscribed": "Subscribed",
+      "rules": "Rules",
+      "knowledgeBase": "Knowledge base",
+      "glossary": "Glossary",
+      "roadmap": "Roadmap",
+      "website": "Website",
             "metaDescription": "Posts and discussions from the {{community}} community on {{site}}."
         },
         "communityMap": {

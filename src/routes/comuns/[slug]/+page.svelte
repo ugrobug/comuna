@@ -609,7 +609,7 @@
     const displayName = (user?.display_name ?? '').trim()
     if (displayName) return displayName
     const username = (user?.username ?? '').trim()
-    return username ? `@${username}` : $t('routes.sidebar.comunInfo.user')
+    return username ? `@${username}` : $t('routes.communityPage.user')
   }
 
   const openModeratorChat = async (moderator: ComunModeratorMember) => {
@@ -1604,7 +1604,7 @@
                     role="presentation"
                   >
                     <div class="px-2 pb-2 pt-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-zinc-400">
-                      {$t('routes.sidebar.comunInfo.moderators')}
+                      {$t('routes.communityPage.moderators')}
                     </div>
                     <div class="flex max-h-72 flex-col gap-1 overflow-y-auto">
                       {#each comunModeratorList as moderator}
@@ -1621,7 +1621,7 @@
                             {#if moderator.isCreator}
                               <span class="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-slate-500 dark:text-zinc-400">
                                 <span class="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:bg-zinc-800 dark:text-zinc-300">
-                                  {$t('routes.sidebar.comunInfo.creator')}
+                                  {$t('routes.communityPage.creator')}
                                 </span>
                               </span>
                             {/if}
@@ -1658,7 +1658,7 @@
               on:click={toggleComunInMyFeed}
               title={isSubscribedToComun ? $t('routes.communityPage.configureFeedCategories') : $t('routes.communityPage.addToFeed')}
             >
-              {isSubscribedToComun ? $t('routes.sidebar.recommended.subscribed') : $t('routes.sidebar.recommended.subscribe')}
+              {isSubscribedToComun ? $t('routes.communityPage.subscribed') : $t('routes.communityPage.subscribe')}
             </Button>
             {#if subscriptionCategoriesOpen && isSubscribedToComun && hasComunCategories}
               <div class="absolute right-0 top-full z-30 mt-2 w-72 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl dark:border-zinc-800 dark:bg-zinc-950">
@@ -1727,7 +1727,7 @@
               {#if comun?.rules_text}
                 <div class="border-t border-slate-200 pt-3 dark:border-zinc-800">
                   <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-zinc-400">
-                    {$t('routes.sidebar.comunInfo.rules')}
+                    {$t('routes.communityPage.rules')}
                   </div>
                   <div class="mt-2 whitespace-pre-line text-sm leading-relaxed text-slate-700 dark:text-zinc-300">
                     {comun.rules_text}
@@ -1821,7 +1821,7 @@
           href={comunKnowledgeBasePath}
           class="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-full border border-slate-200 bg-white/95 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900/85 dark:text-zinc-200 dark:hover:bg-zinc-800/60"
         >
-          {$t('routes.sidebar.comunInfo.knowledgeBase')}
+          {$t('routes.communityPage.knowledgeBase')}
         </a>
       {/if}
       {#if comun?.glossary_enabled}
@@ -1829,7 +1829,7 @@
           href={comunGlossaryPath}
           class="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-full border border-slate-200 bg-white/95 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900/85 dark:text-zinc-200 dark:hover:bg-zinc-800/60"
         >
-          {$t('routes.sidebar.comunInfo.glossary')}
+          {$t('routes.communityPage.glossary')}
         </a>
       {/if}
       {#if comun?.roadmap_enabled}
@@ -1837,7 +1837,7 @@
           href={comunRoadmapPath}
           class="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-full border border-slate-200 bg-white/95 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-900/85 dark:text-zinc-200 dark:hover:bg-zinc-800/60"
         >
-          {$t('routes.sidebar.comunInfo.roadmap')}
+          {$t('routes.communityPage.roadmap')}
         </a>
       {/if}
       {#if comun?.community_map_enabled}
@@ -1855,7 +1855,7 @@
             target="_blank"
             rel="nofollow noopener noreferrer"
             class="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-700 transition hover:bg-slate-50 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:border-zinc-800 dark:bg-zinc-900/85 dark:text-zinc-200 dark:hover:bg-zinc-800/60 dark:hover:text-blue-300 dark:focus:ring-offset-zinc-950"
-            aria-label={$t('routes.sidebar.comunInfo.website')}
+            aria-label={$t('routes.communityPage.website')}
           >
             <Icon src={GlobeAlt} size="16" mini />
           </a>
@@ -1863,7 +1863,7 @@
             class="pointer-events-none absolute left-1/2 top-full z-30 mt-2 -translate-x-1/2 whitespace-nowrap rounded-lg bg-slate-950 px-2.5 py-1.5 text-xs font-medium text-white opacity-0 shadow-lg transition group-hover/website:opacity-100 group-focus-within/website:opacity-100 dark:bg-zinc-100 dark:text-zinc-950"
             role="tooltip"
           >
-            {$t('routes.sidebar.comunInfo.website')}
+            {$t('routes.communityPage.website')}
           </span>
         </span>
       {/if}

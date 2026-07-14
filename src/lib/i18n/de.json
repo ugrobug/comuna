@@ -374,7 +374,17 @@
             "addedToFeed": "Beiträge dieser Community erscheinen in Mein Feed",
             "chatOpenError": "Chat konnte nicht geöffnet werden",
             "postsLoadError": "Community-Beiträge konnten nicht geladen werden",
-            "loadError": "Fehler beim Laden",
+      "loadError": "Fehler beim Laden",
+      "user": "Benutzer",
+      "moderators": "Moderatoren",
+      "creator": "Ersteller",
+      "subscribe": "Abonnieren",
+      "subscribed": "Abonniert",
+      "rules": "Regeln",
+      "knowledgeBase": "Wissensdatenbank",
+      "glossary": "Glossar",
+      "roadmap": "Roadmap",
+      "website": "Website",
             "metaDescription": "Beiträge und Diskussionen der Community {{community}} auf {{site}}."
         },
         "communityMap": {

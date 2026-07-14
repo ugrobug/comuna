@@ -451,7 +451,17 @@
             "addedToFeed": "Bu topluluğun gönderileri Akışım'da görünecek",
             "chatOpenError": "Sohbet açılamadı",
             "postsLoadError": "Topluluk gönderileri yüklenemedi",
-            "loadError": "Yükleme hatası",
+      "loadError": "Yükleme hatası",
+      "user": "Kullanıcı",
+      "moderators": "Moderatörler",
+      "creator": "Oluşturan",
+      "subscribe": "Abone ol",
+      "subscribed": "Abonesiniz",
+      "rules": "Kurallar",
+      "knowledgeBase": "Bilgi bankası",
+      "glossary": "Sözlük",
+      "roadmap": "Yol haritası",
+      "website": "Web sitesi",
             "metaDescription": "{{site}} üzerindeki {{community}} topluluğunun gönderileri ve tartışmaları."
         },
         "communityMap": {

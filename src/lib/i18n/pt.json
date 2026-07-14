@@ -412,7 +412,17 @@
             "addedToFeed": "As publicações desta comunidade aparecerão no Meu feed",
             "chatOpenError": "Não foi possível abrir o chat",
             "postsLoadError": "Não foi possível carregar as publicações da comunidade",
-            "loadError": "Erro de carregamento",
+      "loadError": "Erro de carregamento",
+      "user": "Usuário",
+      "moderators": "Moderadores",
+      "creator": "Criador",
+      "subscribe": "Seguir",
+      "subscribed": "Seguindo",
+      "rules": "Regras",
+      "knowledgeBase": "Base de conhecimento",
+      "glossary": "Glossário",
+      "roadmap": "Roteiro",
+      "website": "Site",
             "metaDescription": "Publicações e debates da comunidade {{community}} no {{site}}."
         },
         "communityMap": {
