@@ -314,8 +314,6 @@
     if (event.button !== 0) return
     const target = event.target as HTMLElement | null
     if (target?.closest('.community-map-controls, .community-map-popup, .community-map-attribution')) return
-    const currentTarget = event.currentTarget as HTMLElement
-    currentTarget.setPointerCapture(event.pointerId)
     dragState = {
       pointerId: event.pointerId,
       startX: event.clientX,
@@ -338,7 +336,11 @@
     dragState.lastLat = yToLat(dragState.centerY - deltaY, dragState.zoom)
     viewCenterLng = dragState.lastLng
     viewCenterLat = dragState.lastLat
-    if (dragState.moved) suppressMarkerClickUntil = Date.now() + 250
+    if (dragState.moved) {
+      const currentTarget = event.currentTarget as HTMLElement
+      if (!currentTarget.hasPointerCapture(event.pointerId)) currentTarget.setPointerCapture(event.pointerId)
+      suppressMarkerClickUntil = Date.now() + 250
+    }
     selectedMarkers = []
     selectedPoint = null
   }
@@ -802,7 +804,7 @@
     top: 50%;
     width: 18px;
     height: 18px;
-    transform: translate(-50%, -50%) rotate(45deg);
+    transform: translate(-50%, -50%) rotate(-45deg);
     border: 3px solid #fff;
     border-radius: 999px 999px 999px 0;
     background: #2563eb;
