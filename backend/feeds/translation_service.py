@@ -955,6 +955,7 @@ def _claim_due_translation_task_ids(*, limit: int, now) -> list[int]:
             .filter(
                 status=CONTENT_TRANSLATION_TASK_STATUS_PENDING,
                 scheduled_at__lte=now,
+                attempts__lt=CONTENT_TRANSLATION_TASK_MAX_ATTEMPTS,
             )
             .order_by("scheduled_at", "id")[:limit]
         )
@@ -969,6 +970,8 @@ def _claim_translation_task_id(task_id: int) -> int | None:
         except ContentTranslationTask.DoesNotExist:
             return None
         if task.status != CONTENT_TRANSLATION_TASK_STATUS_PENDING:
+            return None
+        if task.attempts >= CONTENT_TRANSLATION_TASK_MAX_ATTEMPTS:
             return None
         if task.scheduled_at > timezone.now():
             return None

@@ -450,6 +450,29 @@ class PostTranslationServiceTests(TestCase):
         self.assertEqual(task.attempts, CONTENT_TRANSLATION_TASK_MAX_ATTEMPTS)
         translate_mock.assert_not_called()
 
+    @patch("feeds.translation_service.translate_post_to_language")
+    def test_process_due_translation_tasks_skips_exhausted_pending_task(
+        self,
+        translate_mock,
+    ) -> None:
+        task = ContentTranslationTask.objects.get(
+            kind=CONTENT_TRANSLATION_KIND_POST,
+            object_id=self.post.pk,
+        )
+        ContentTranslationTask.objects.filter(pk=task.pk).update(
+            status=CONTENT_TRANSLATION_TASK_STATUS_PENDING,
+            attempts=CONTENT_TRANSLATION_TASK_MAX_ATTEMPTS,
+            scheduled_at=timezone.now() - timedelta(minutes=1),
+        )
+
+        stats = process_due_translation_tasks(limit=1)
+
+        self.assertEqual(stats["processed"], 0)
+        task.refresh_from_db()
+        self.assertEqual(task.status, CONTENT_TRANSLATION_TASK_STATUS_PENDING)
+        self.assertEqual(task.attempts, CONTENT_TRANSLATION_TASK_MAX_ATTEMPTS)
+        translate_mock.assert_not_called()
+
     def test_reconcile_only_resets_exhausted_task_when_explicitly_requested(self) -> None:
         task = ContentTranslationTask.objects.get(
             kind=CONTENT_TRANSLATION_KIND_POST,
@@ -467,6 +490,8 @@ class PostTranslationServiceTests(TestCase):
         self.assertEqual(task.status, CONTENT_TRANSLATION_TASK_STATUS_FAILED)
         self.assertEqual(task.attempts, CONTENT_TRANSLATION_TASK_MAX_ATTEMPTS)
 
+        task.status = CONTENT_TRANSLATION_TASK_STATUS_PENDING
+        task.save(update_fields=["status", "updated_at"])
         call_command(
             "queue_missing_post_translation_tasks",
             limit=1,

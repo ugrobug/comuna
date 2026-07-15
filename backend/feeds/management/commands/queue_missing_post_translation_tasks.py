@@ -115,7 +115,10 @@ class Command(BaseCommand):
 
             retry_exhausted = bool(
                 task
-                and task.status == CONTENT_TRANSLATION_TASK_STATUS_FAILED
+                and task.status in {
+                    CONTENT_TRANSLATION_TASK_STATUS_FAILED,
+                    CONTENT_TRANSLATION_TASK_STATUS_PENDING,
+                }
                 and task.attempts >= CONTENT_TRANSLATION_TASK_MAX_ATTEMPTS
                 and task.source_updated_at
                 and post.updated_at
@@ -130,7 +133,7 @@ class Command(BaseCommand):
             if task and task.status in {
                 CONTENT_TRANSLATION_TASK_STATUS_PENDING,
                 CONTENT_TRANSLATION_TASK_STATUS_RUNNING,
-            }:
+            } and not retry_exhausted:
                 if (
                     is_wherefilmed_priority
                     and task.status == CONTENT_TRANSLATION_TASK_STATUS_PENDING
