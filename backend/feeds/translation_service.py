@@ -113,8 +113,12 @@ COMUN_TRANSLATION_NAME_MAX_LENGTH = 160
 STATIC_PAGE_TRANSLATION_TITLE_MAX_LENGTH = 160
 CONTENT_TRANSLATION_TASK_STALE_AFTER = timedelta(minutes=12)
 CONTENT_TRANSLATION_TASK_FAILED_RETRY_AFTER = timedelta(minutes=15)
+CONTENT_TRANSLATION_TASK_MAX_ATTEMPTS = 10
 TRANSLATION_PROVIDER_DEEPSEEK = "deepseek"
 TRANSLATION_PROVIDER_OPENROUTER = "openrouter"
+POST_CONTENT_FORMAT_TEXT = "text"
+POST_CONTENT_FORMAT_EDITORJS_JSON = "editorjs_json"
+POST_CONTENT_FORMAT_EDITORJS_BASE64 = "editorjs_base64"
 
 
 def get_translation_language_label(language: str) -> str:
@@ -187,6 +191,88 @@ def _truncate_comun_name(value: str) -> str:
     if len(name) <= COMUN_TRANSLATION_NAME_MAX_LENGTH:
         return name
     return name[:COMUN_TRANSLATION_NAME_MAX_LENGTH].rstrip()
+
+
+def _decode_post_editor_payload(value: str) -> tuple[dict[str, Any] | None, str]:
+    raw = str(value or "").strip()
+    if not raw:
+        return None, POST_CONTENT_FORMAT_TEXT
+
+    candidates: list[tuple[str, str]] = []
+    if raw.startswith("{") and raw.endswith("}"):
+        candidates.append((raw, POST_CONTENT_FORMAT_EDITORJS_JSON))
+    if re.fullmatch(r"[A-Za-z0-9_\-+/=]+", raw):
+        for encoded in (raw, raw.replace("-", "+").replace("_", "/")):
+            padded = encoded + ("=" * (-len(encoded) % 4))
+            try:
+                decoded = base64.b64decode(padded, validate=False).decode("utf-8")
+            except (ValueError, UnicodeDecodeError):
+                continue
+            candidates.append((decoded, POST_CONTENT_FORMAT_EDITORJS_BASE64))
+
+    for candidate, content_format in candidates:
+        try:
+            payload = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict) and isinstance(payload.get("blocks"), list):
+            return payload, content_format
+    return None, POST_CONTENT_FORMAT_TEXT
+
+
+def _encode_post_editor_payload(payload: dict[str, Any], content_format: str) -> str:
+    raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    if content_format == POST_CONTENT_FORMAT_EDITORJS_BASE64:
+        return base64.b64encode(raw.encode("utf-8")).decode("ascii")
+    return raw
+
+
+def _post_translation_source_payload(post: Post) -> tuple[dict[str, Any], str]:
+    editor_payload, content_format = _decode_post_editor_payload(post.content or "")
+    return (
+        {
+            "title": post.title or "",
+            "content": editor_payload if editor_payload is not None else post.content or "",
+            "content_format": (
+                "editorjs"
+                if editor_payload is not None
+                else POST_CONTENT_FORMAT_TEXT
+            ),
+        },
+        content_format,
+    )
+
+
+def _validate_translated_editor_payload(
+    source_payload: dict[str, Any],
+    translated_payload: object,
+) -> dict[str, Any]:
+    if not isinstance(translated_payload, dict) or not isinstance(
+        translated_payload.get("blocks"), list
+    ):
+        raise PostTranslationError(
+            f"{_translation_provider_label()} вернул содержимое поста "
+            "не в формате EditorJS"
+        )
+
+    source_blocks = source_payload.get("blocks") or []
+    translated_blocks = translated_payload["blocks"]
+    if len(source_blocks) != len(translated_blocks):
+        raise PostTranslationError(
+            f"{_translation_provider_label()} изменил количество блоков EditorJS"
+        )
+
+    for source_block, translated_block in zip(source_blocks, translated_blocks):
+        if not isinstance(source_block, dict) or not isinstance(translated_block, dict):
+            raise PostTranslationError(
+                f"{_translation_provider_label()} вернул поврежденный блок EditorJS"
+            )
+        for key in ("id", "type"):
+            if source_block.get(key) != translated_block.get(key):
+                raise PostTranslationError(
+                    f"{_translation_provider_label()} изменил {key} блока EditorJS"
+                )
+    return translated_payload
 
 
 def _truncate_static_page_title(value: str) -> str:
@@ -303,14 +389,41 @@ def translate_post_to_language(post: Post, language: str) -> PostTranslation:
     translation.save(update_fields=["status", "model", "error_message", "updated_at"])
 
     try:
-        response_payload = _request_openrouter_translation(post, target)
-        translated_payload = _parse_translated_payload(response_payload)
-        translated_title = _truncate_translation_title(translated_payload.get("title", ""))
-        translated_content = str(translated_payload.get("content", "") or "").strip()
+        source_payload, source_content_format = _post_translation_source_payload(post)
+        response_payload = _request_openrouter_translation(source_payload, target)
+        raw_translated_payload = _parse_translated_json_payload(response_payload)
+        translated_title = _truncate_translation_title(
+            str(raw_translated_payload.get("title", "") or "")
+        )
+        raw_translated_content = raw_translated_payload.get("content")
+        if source_content_format in {
+            POST_CONTENT_FORMAT_EDITORJS_JSON,
+            POST_CONTENT_FORMAT_EDITORJS_BASE64,
+        }:
+            translated_editor_payload = _validate_translated_editor_payload(
+                source_payload["content"],
+                raw_translated_content,
+            )
+            translated_content = _encode_post_editor_payload(
+                translated_editor_payload,
+                source_content_format,
+            )
+        else:
+            if raw_translated_content is not None and not isinstance(
+                raw_translated_content, str
+            ):
+                raise PostTranslationError(
+                    f"{_translation_provider_label()} вернул текст поста не строкой"
+                )
+            translated_content = str(raw_translated_content or "").strip()
         if (post.title or "").strip() and not translated_title:
-            raise PostTranslationError("OpenRouter вернул пустой заголовок")
+            raise PostTranslationError(
+                f"{_translation_provider_label()} вернул пустой заголовок"
+            )
         if (post.content or "").strip() and not translated_content:
-            raise PostTranslationError("OpenRouter вернул пустой текст поста")
+            raise PostTranslationError(
+                f"{_translation_provider_label()} вернул пустой текст поста"
+            )
 
         preview = build_post_preview(translated_content, post.raw_data)
         translation.title = translated_title
@@ -928,6 +1041,7 @@ def _reset_retryable_failed_translation_tasks(now) -> int:
     return ContentTranslationTask.objects.filter(
         status=CONTENT_TRANSLATION_TASK_STATUS_FAILED,
         updated_at__lt=retry_before,
+        attempts__lt=CONTENT_TRANSLATION_TASK_MAX_ATTEMPTS,
     ).update(
         status=CONTENT_TRANSLATION_TASK_STATUS_PENDING,
         scheduled_at=now,
@@ -978,6 +1092,7 @@ def _schedule_auto_translation_task(
             "status": CONTENT_TRANSLATION_TASK_STATUS_PENDING,
             "scheduled_at": scheduled_at,
             "source_updated_at": source_updated_at,
+            "attempts": 0,
             "last_error": "",
             "locked_at": None,
         },
@@ -1196,8 +1311,9 @@ def _process_translation_task_payload(task: ContentTranslationTask) -> None:
             raise AutoTranslationSkipped("Пост недоступен для перевода")
         _raise_if_task_is_stale(task, post.updated_at)
         _reserve_translation_budget(task)
+        source_content_info = _decode_post_editor_payload(post.content or "")
         for language in SUPPORTED_TRANSLATION_LANGUAGES:
-            if _post_translation_is_current(post, language):
+            if _post_translation_is_current(post, language, source_content_info):
                 continue
             translate_post_to_language(post, language)
         return
@@ -1249,14 +1365,47 @@ def _translation_updated_after_source(translation, source_updated_at) -> bool:
     return not source_updated_at or translation.updated_at >= source_updated_at
 
 
-def _post_translation_is_current(post: Post, language: str) -> bool:
+def _post_translation_is_current(
+    post: Post,
+    language: str,
+    source_content_info: tuple[dict[str, Any] | None, str] | None = None,
+) -> bool:
     translation = PostTranslation.objects.filter(post=post, language=language).first()
+    return post_translation_record_is_current(post, translation, source_content_info)
+
+
+def post_translation_record_is_current(
+    post: Post,
+    translation: PostTranslation | None,
+    source_content_info: tuple[dict[str, Any] | None, str] | None = None,
+) -> bool:
     if not translation or translation.status != POST_TRANSLATION_STATUS_TRANSLATED:
         return False
     if (post.title or "").strip() and not (translation.title or "").strip():
         return False
     if (post.content or "").strip() and not (translation.content or "").strip():
         return False
+    source_editor_payload, source_content_format = (
+        source_content_info
+        if source_content_info is not None
+        else _decode_post_editor_payload(post.content or "")
+    )
+    if source_content_format in {
+        POST_CONTENT_FORMAT_EDITORJS_JSON,
+        POST_CONTENT_FORMAT_EDITORJS_BASE64,
+    }:
+        translated_editor_payload, _translated_format = _decode_post_editor_payload(
+            translation.content or ""
+        )
+        if translated_editor_payload is None:
+            return False
+        try:
+            _validate_translated_editor_payload(
+                source_editor_payload or {},
+                translated_editor_payload,
+            )
+        except PostTranslationError:
+            return False
     return _translation_updated_after_source(translation, post.updated_at)
 
 
@@ -1343,22 +1492,23 @@ def _raise_if_task_is_stale(task: ContentTranslationTask, source_updated_at) -> 
         raise AutoTranslationRescheduled("Контент был обновлен, задача перенесена")
 
 
-def _request_openrouter_translation(post: Post, target: dict[str, str]) -> dict[str, Any]:
+def _request_openrouter_translation(
+    post_payload: dict[str, Any],
+    target: dict[str, str],
+) -> dict[str, Any]:
     return _request_openrouter_json_translation(
         {
             "source_language": "Russian",
             "target_language": target["target"],
             "target_locale": target["locale"],
-            "post": {
-                "title": post.title or "",
-                "content": post.content or "",
-            },
+            "post": post_payload,
         },
         system_prompt=(
             "You are a professional localization editor. Translate Tambur posts from Russian. "
-            "Return only valid JSON with keys title and content. Preserve HTML tags, markdown, "
-            "EditorJS JSON structure, URLs, media URLs, embeds, code blocks, and placeholders. "
-            "Translate only human-readable Russian text. Do not add commentary."
+            "Return only valid JSON with keys title and content. If content is an EditorJS object, "
+            "return content as the same EditorJS object shape and preserve every block type, id, URL, "
+            "media URL, embed, code block, placeholder, and non-text field. Preserve HTML tags and "
+            "markdown. Translate only human-readable Russian text. Do not add commentary."
         ),
     )
 
@@ -1397,6 +1547,10 @@ def _request_openrouter_json_translation(
         ],
         "temperature": 0.2,
         "response_format": {"type": "json_object"},
+        "max_tokens": max(
+            min(int(getattr(settings, "CONTENT_TRANSLATION_MAX_TOKENS", 65_536)), 384_000),
+            1_024,
+        ),
     }
     if provider == TRANSLATION_PROVIDER_OPENROUTER:
         payload["provider"] = {
@@ -1448,22 +1602,35 @@ def _parse_translated_payload(
 
 
 def _parse_translated_json_payload(response_payload: dict[str, Any]) -> dict[str, Any]:
+    provider_label = _translation_provider_label()
     try:
         message = response_payload["choices"][0]["message"]
     except (KeyError, IndexError, TypeError) as exc:
-        raise PostTranslationError("OpenRouter вернул ответ без choices[0].message") from exc
+        raise PostTranslationError(
+            f"{provider_label} вернул ответ без choices[0].message"
+        ) from exc
 
     content = _normalize_openrouter_content(message.get("content"))
     if not content.strip():
-        raise PostTranslationError("OpenRouter вернул пустой content")
+        raise PostTranslationError(f"{provider_label} вернул пустой content")
 
     try:
         payload = json.loads(content)
-    except json.JSONDecodeError:
-        payload = json.loads(_extract_json_object(content))
+    except json.JSONDecodeError as initial_exc:
+        try:
+            payload = json.loads(_extract_json_object(content))
+        except (json.JSONDecodeError, PostTranslationError) as exc:
+            finish_reason = str(
+                response_payload.get("choices", [{}])[0].get("finish_reason") or "unknown"
+            )
+            raise PostTranslationError(
+                f"{provider_label} вернул некорректный JSON: "
+                f"finish_reason={finish_reason}, content_chars={len(content)}, "
+                f"parse_error={initial_exc.msg}"
+            ) from exc
 
     if not isinstance(payload, dict):
-        raise PostTranslationError("OpenRouter вернул не JSON-объект")
+        raise PostTranslationError(f"{provider_label} вернул не JSON-объект")
     return payload
 
 
@@ -1491,4 +1658,6 @@ def _extract_json_object(value: str) -> str:
     end = value.rfind("}")
     if start >= 0 and end > start:
         return value[start : end + 1]
-    raise PostTranslationError("OpenRouter вернул content не в формате JSON")
+    raise PostTranslationError(
+        f"{_translation_provider_label()} вернул content не в формате JSON"
+    )

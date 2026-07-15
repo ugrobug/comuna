@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import base64
+import json
 from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
@@ -27,7 +30,9 @@ from feeds.models import (
     PostTranslation,
 )
 from feeds.translation_service import (
+    CONTENT_TRANSLATION_TASK_MAX_ATTEMPTS,
     PostTranslationError,
+    post_translation_record_is_current,
     process_due_translation_tasks,
     process_translation_task,
     queue_post_translation,
@@ -93,6 +98,7 @@ class PostTranslationServiceTests(TestCase):
         request_payload = post_mock.call_args.kwargs["json"]
         self.assertEqual(request_payload["model"], "deepseek/deepseek-v4-flash")
         self.assertEqual(request_payload["response_format"], {"type": "json_object"})
+        self.assertEqual(request_payload["max_tokens"], 65_536)
         self.assertEqual(
             request_payload["reasoning"],
             {"effort": "none", "exclude": True},
@@ -137,11 +143,132 @@ class PostTranslationServiceTests(TestCase):
         request_payload = post_mock.call_args.kwargs["json"]
         self.assertEqual(request_payload["model"], "deepseek-v4-flash")
         self.assertEqual(request_payload["response_format"], {"type": "json_object"})
+        self.assertEqual(request_payload["max_tokens"], 65_536)
         self.assertEqual(request_payload["thinking"], {"type": "disabled"})
         self.assertNotIn("provider", request_payload)
         self.assertNotIn("reasoning", request_payload)
         request_headers = post_mock.call_args.kwargs["headers"]
         self.assertNotIn("X-OpenRouter-Title", request_headers)
+
+    @patch("feeds.translation_service.requests.post")
+    def test_translate_post_decodes_and_reencodes_base64_editorjs(self, post_mock) -> None:
+        source_editor = {
+            "time": 1,
+            "blocks": [
+                {
+                    "id": "paragraph-1",
+                    "type": "paragraph",
+                    "data": {"text": "Первый абзац"},
+                }
+            ],
+            "version": "2.30.0",
+        }
+        translated_editor = {
+            **source_editor,
+            "blocks": [
+                {
+                    "id": "paragraph-1",
+                    "type": "paragraph",
+                    "data": {"text": "First paragraph"},
+                }
+            ],
+        }
+        self.post.content = base64.b64encode(
+            json.dumps(source_editor, ensure_ascii=False).encode("utf-8")
+        ).decode("ascii")
+        self.post.save(update_fields=["content", "updated_at"])
+        post_mock.return_value = FakeOpenRouterResponse(
+            200,
+            {
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {
+                            "content": json.dumps(
+                                {"title": "Title", "content": translated_editor},
+                                ensure_ascii=False,
+                            )
+                        },
+                    }
+                ]
+            },
+        )
+
+        translation = translate_post_to_language(self.post, "en")
+
+        request_payload = post_mock.call_args.kwargs["json"]
+        self.assertEqual(request_payload["messages"][1]["content"].count(self.post.content), 0)
+        user_payload = json.loads(request_payload["messages"][1]["content"])
+        self.assertEqual(user_payload["post"]["content"], source_editor)
+        self.assertEqual(user_payload["post"]["content_format"], "editorjs")
+        decoded_translation = json.loads(
+            base64.b64decode(translation.content).decode("utf-8")
+        )
+        self.assertEqual(decoded_translation, translated_editor)
+        self.assertIn("First paragraph", translation.preview_content)
+
+    @patch("feeds.translation_service.requests.post")
+    def test_translate_post_rejects_changed_editorjs_structure(self, post_mock) -> None:
+        source_editor = {
+            "blocks": [
+                {"id": "paragraph-1", "type": "paragraph", "data": {"text": "Текст"}}
+            ]
+        }
+        self.post.content = json.dumps(source_editor, ensure_ascii=False)
+        self.post.save(update_fields=["content", "updated_at"])
+        post_mock.return_value = FakeOpenRouterResponse(
+            200,
+            {
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "title": "Title",
+                                    "content": {
+                                        "blocks": [
+                                            {
+                                                "id": "changed-id",
+                                                "type": "paragraph",
+                                                "data": {"text": "Text"},
+                                            }
+                                        ]
+                                    },
+                                }
+                            )
+                        },
+                    }
+                ]
+            },
+        )
+
+        with self.assertRaisesMessage(PostTranslationError, "изменил id блока EditorJS"):
+            translate_post_to_language(self.post, "en")
+
+        translation = PostTranslation.objects.get(post=self.post, language="en")
+        self.assertEqual(translation.status, POST_TRANSLATION_STATUS_FAILED)
+
+    def test_editorjs_translation_with_wrapped_base64_is_not_current(self) -> None:
+        source_editor = {
+            "blocks": [
+                {"id": "paragraph-1", "type": "paragraph", "data": {"text": "Текст"}}
+            ]
+        }
+        encoded = base64.b64encode(
+            json.dumps(source_editor, ensure_ascii=False).encode("utf-8")
+        ).decode("ascii")
+        self.post.content = encoded
+        self.post.save(update_fields=["content", "updated_at"])
+        translation = PostTranslation.objects.create(
+            post=self.post,
+            language="en",
+            title="Title",
+            content=f"<p>{encoded}</p>",
+            status=POST_TRANSLATION_STATUS_TRANSLATED,
+        )
+
+        self.assertFalse(post_translation_record_is_current(self.post, translation))
 
     @patch("feeds.translation_service.requests.post")
     def test_failed_openrouter_response_marks_translation_failed(self, post_mock) -> None:
@@ -299,6 +426,55 @@ class PostTranslationServiceTests(TestCase):
         self.assertEqual(stats["done"], 1)
         task.refresh_from_db()
         self.assertEqual(task.status, CONTENT_TRANSLATION_TASK_STATUS_DONE)
+
+    @patch("feeds.translation_service.translate_post_to_language")
+    def test_process_due_translation_tasks_stops_after_max_attempts(self, translate_mock) -> None:
+        task = ContentTranslationTask.objects.get(
+            kind=CONTENT_TRANSLATION_KIND_POST,
+            object_id=self.post.pk,
+        )
+        retry_before = timezone.now() - timedelta(minutes=16)
+        ContentTranslationTask.objects.filter(pk=task.pk).update(
+            status=CONTENT_TRANSLATION_TASK_STATUS_FAILED,
+            attempts=CONTENT_TRANSLATION_TASK_MAX_ATTEMPTS,
+            scheduled_at=retry_before,
+            updated_at=retry_before,
+            last_error="DeepSeek returned invalid JSON",
+        )
+
+        stats = process_due_translation_tasks(limit=1)
+
+        self.assertEqual(stats["processed"], 0)
+        task.refresh_from_db()
+        self.assertEqual(task.status, CONTENT_TRANSLATION_TASK_STATUS_FAILED)
+        self.assertEqual(task.attempts, CONTENT_TRANSLATION_TASK_MAX_ATTEMPTS)
+        translate_mock.assert_not_called()
+
+    def test_reconcile_only_resets_exhausted_task_when_explicitly_requested(self) -> None:
+        task = ContentTranslationTask.objects.get(
+            kind=CONTENT_TRANSLATION_KIND_POST,
+            object_id=self.post.pk,
+        )
+        ContentTranslationTask.objects.filter(pk=task.pk).update(
+            status=CONTENT_TRANSLATION_TASK_STATUS_FAILED,
+            attempts=CONTENT_TRANSLATION_TASK_MAX_ATTEMPTS,
+            source_updated_at=self.post.updated_at,
+            last_error="DeepSeek returned invalid JSON",
+        )
+
+        call_command("queue_missing_post_translation_tasks", limit=1)
+        task.refresh_from_db()
+        self.assertEqual(task.status, CONTENT_TRANSLATION_TASK_STATUS_FAILED)
+        self.assertEqual(task.attempts, CONTENT_TRANSLATION_TASK_MAX_ATTEMPTS)
+
+        call_command(
+            "queue_missing_post_translation_tasks",
+            limit=1,
+            reset_exhausted=True,
+        )
+        task.refresh_from_db()
+        self.assertEqual(task.status, CONTENT_TRANSLATION_TASK_STATUS_PENDING)
+        self.assertEqual(task.attempts, 0)
 
     @patch("feeds.translation_service.translate_post_to_language")
     def test_disabled_auto_translation_reschedules_without_openrouter(self, translate_mock) -> None:

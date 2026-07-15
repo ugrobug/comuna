@@ -12,13 +12,17 @@ from feeds.models import (
     CONTENT_TRANSLATION_TASK_STATUS_PENDING,
     CONTENT_TRANSLATION_TASK_STATUS_RUNNING,
     CONTENT_TRANSLATION_TASK_STATUS_DONE,
-    POST_TRANSLATION_STATUS_TRANSLATED,
+    CONTENT_TRANSLATION_TASK_STATUS_FAILED,
+    CONTENT_TRANSLATION_TASK_STATUS_SKIPPED,
     ContentTranslationTask,
     Post,
 )
 from feeds.translation_service import (
+    CONTENT_TRANSLATION_TASK_MAX_ATTEMPTS,
     SUPPORTED_TRANSLATION_LANGUAGES,
+    _decode_post_editor_payload,
     _scheduled_at_for,
+    post_translation_record_is_current,
 )
 
 
@@ -32,10 +36,12 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--dry-run", action="store_true")
         parser.add_argument("--limit", type=int, default=0)
+        parser.add_argument("--reset-exhausted", action="store_true")
 
     def handle(self, *args, **options):
         dry_run = bool(options["dry_run"])
         limit = max(int(options["limit"] or 0), 0)
+        reset_exhausted = bool(options["reset_exhausted"])
         now = timezone.now()
         negative_comuns = Comun.objects.filter(is_active=True, rating_score__lt=0).exclude(
             slug__iexact="faq"
@@ -54,6 +60,8 @@ class Command(BaseCommand):
             "created": 0,
             "reset": 0,
             "already_queued": 0,
+            "retry_exhausted": 0,
+            "retry_exhausted_reset": 0,
             "prioritized_wherefilmed": 0,
             "wherefilmed_missing_tr_id": 0,
             "skipped_not_translatable": 0,
@@ -105,6 +113,20 @@ class Command(BaseCommand):
                 object_id=post.pk,
             ).first()
 
+            retry_exhausted = bool(
+                task
+                and task.status == CONTENT_TRANSLATION_TASK_STATUS_FAILED
+                and task.attempts >= CONTENT_TRANSLATION_TASK_MAX_ATTEMPTS
+                and task.source_updated_at
+                and post.updated_at
+                and task.source_updated_at >= post.updated_at
+            )
+            if retry_exhausted and not reset_exhausted:
+                stats["retry_exhausted"] += 1
+                continue
+            if retry_exhausted:
+                stats["retry_exhausted_reset"] += 1
+
             if task and task.status in {
                 CONTENT_TRANSLATION_TASK_STATUS_PENDING,
                 CONTENT_TRANSLATION_TASK_STATUS_RUNNING,
@@ -152,20 +174,28 @@ class Command(BaseCommand):
                 )
                 continue
 
+            reset_attempts = retry_exhausted or task.status in {
+                CONTENT_TRANSLATION_TASK_STATUS_DONE,
+                CONTENT_TRANSLATION_TASK_STATUS_SKIPPED,
+            }
             task.status = CONTENT_TRANSLATION_TASK_STATUS_PENDING
             task.scheduled_at = scheduled_at
             task.source_updated_at = post.updated_at
             task.last_error = ""
             task.locked_at = None
+            update_fields = [
+                "status",
+                "scheduled_at",
+                "source_updated_at",
+                "last_error",
+                "locked_at",
+                "updated_at",
+            ]
+            if reset_attempts:
+                task.attempts = 0
+                update_fields.append("attempts")
             task.save(
-                update_fields=[
-                    "status",
-                    "scheduled_at",
-                    "source_updated_at",
-                    "last_error",
-                    "locked_at",
-                    "updated_at",
-                ]
+                update_fields=update_fields
             )
 
         prefix = "DRY_RUN " if dry_run else ""
@@ -180,10 +210,11 @@ def _missing_post_translation_languages(post: Post) -> set[str]:
         translation.language: translation
         for translation in post.translations.all()
     }
+    source_content_info = _decode_post_editor_payload(post.content or "")
     missing: set[str] = set()
     for language in SUPPORTED_TRANSLATION_LANGUAGES:
         translation = translations.get(language)
-        if not _post_translation_is_current(post, translation):
+        if not _post_translation_is_current(post, translation, source_content_info):
             missing.add(language)
     return missing
 
@@ -208,14 +239,8 @@ def _post_is_translatable_for_backfill(
     return post.author_id not in negative_source_author_ids
 
 
-def _post_translation_is_current(post: Post, translation) -> bool:
-    if not translation or translation.status != POST_TRANSLATION_STATUS_TRANSLATED:
-        return False
-    if (post.title or "").strip() and not (translation.title or "").strip():
-        return False
-    if (post.content or "").strip() and not (translation.content or "").strip():
-        return False
-    return not post.updated_at or translation.updated_at >= post.updated_at
+def _post_translation_is_current(post: Post, translation, source_content_info=None) -> bool:
+    return post_translation_record_is_current(post, translation, source_content_info)
 
 
 def _is_wherefilmed_post(post: Post) -> bool:
