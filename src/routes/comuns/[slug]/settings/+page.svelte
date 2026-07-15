@@ -812,7 +812,9 @@
     return normalizeCategoryInput(category.name).toLowerCase() === needle
   })
   $: visibleCategoryOptions = settingsDraft?.categories ?? settingsCategoryOptions ?? []
-  $: installedCommunityApplications = featureApplications.filter(isApplicationInstalled)
+  $: installedCommunityApplications = settingsDraft
+    ? featureApplications.filter((application) => Boolean(settingsDraft?.[application.featureKey]))
+    : []
   $: filteredSearchTagOptions = (settingsTagOptions ?? [])
     .filter((tag) => {
       if (!normalizedSearchTagSearch) return false
