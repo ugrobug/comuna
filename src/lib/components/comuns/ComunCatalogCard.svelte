@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { BackendComun } from '$lib/api/backend'
+  import { t } from '$lib/translations'
   import { createEventDispatcher } from 'svelte'
 
   export let comun: BackendComun
@@ -32,7 +33,7 @@
       <a
         href={`/comuns/${comun.slug}`}
         class="h-14 w-14 rounded-xl overflow-hidden border border-slate-200 dark:border-zinc-800 bg-slate-100 dark:bg-zinc-800"
-        aria-label={`Открыть сообщество ${comun.name}`}
+        aria-label={$t('site.communitiesPage.card.open', { name: comun.name })}
       >
         {#if comun.logo_url}
           <img src={comun.logo_url} alt={comun.name} class="h-full w-full object-cover" />
@@ -52,8 +53,14 @@
             ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-900/70 dark:bg-emerald-950/40 dark:text-emerald-300'
             : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-900/70 dark:bg-blue-950/40 dark:text-blue-300'
         } ${showSubscribeText ? 'px-3 text-xs font-medium' : 'w-9'} ${subscriptionsLoading ? 'opacity-60 cursor-wait' : ''}`}
-        title={subscriptionsLoading ? 'Загружаем подписки...' : subscribed ? 'Вы подписаны' : 'Подписаться'}
-        aria-label={subscribed ? `Отписаться от ${comun.name}` : `Подписаться на ${comun.name}`}
+        title={subscriptionsLoading
+          ? $t('site.communitiesPage.card.loadingSubscriptions')
+          : subscribed
+            ? $t('site.communitiesPage.card.subscribed')
+            : $t('site.communitiesPage.card.subscribe')}
+        aria-label={subscribed
+          ? $t('site.communitiesPage.card.unsubscribeFrom', { name: comun.name })
+          : $t('site.communitiesPage.card.subscribeTo', { name: comun.name })}
         aria-pressed={subscribed}
         disabled={subscriptionsLoading}
         on:click|preventDefault|stopPropagation={() => dispatch('toggle')}
@@ -63,14 +70,14 @@
             <path d="M4.5 10.4 8.1 14 15.7 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
           {#if showSubscribeText}
-            <span>Вы подписаны</span>
+            <span>{$t('site.communitiesPage.card.subscribed')}</span>
           {/if}
         {:else}
           <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" aria-hidden="true">
             <path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
           </svg>
           {#if showSubscribeText}
-            <span>Подписаться</span>
+            <span>{$t('site.communitiesPage.card.subscribe')}</span>
           {/if}
         {/if}
       </button>

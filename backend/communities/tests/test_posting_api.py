@@ -13,7 +13,13 @@ from communities.models import (
     ComunPostCategoryAssignment,
     ComunPostRatingContribution,
 )
-from feeds.models import Author, ComunTranslation, Post, Tag
+from feeds.models import (
+    Author,
+    ComunTranslation,
+    POST_TRANSLATION_STATUS_TRANSLATED,
+    Post,
+    Tag,
+)
 from my_feed.models import UserFeedSettings
 from users import service as user_service
 from users.models import AuthorAdmin
@@ -394,6 +400,30 @@ class ComunPostingApiTests(TestCase):
         self.assertEqual(slugs, ["needle-community"])
         self.assertEqual(payload["total_comuns"], 1)
 
+    def test_comuns_catalog_returns_and_searches_requested_translation(self):
+        ComunTranslation.objects.create(
+            comun=self.comun,
+            language="en",
+            name="Translated community",
+            product_description="English catalog marker",
+            status=POST_TRANSLATION_STATUS_TRANSLATED,
+        )
+
+        response = self.client.get(
+            reverse("comuns-catalog"),
+            {"lang": "en", "q": "English catalog marker", "limit": "20"},
+        )
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        payload = response.json()
+        self.assertEqual(payload["total_comuns"], 1)
+        translated_comun = payload["comuns"][0]
+        self.assertEqual(translated_comun["slug"], self.comun.slug)
+        self.assertEqual(translated_comun["name"], "Translated community")
+        self.assertEqual(translated_comun["product_description"], "English catalog marker")
+        self.assertEqual(translated_comun["language"], "en")
+        self.assertTrue(translated_comun["is_translated"])
+
     def test_comuns_catalog_filters_exact_slugs_in_requested_order(self):
         music = Comun.objects.create(
             name="Music",
@@ -457,6 +487,26 @@ class ComunPostingApiTests(TestCase):
         self.assertNotIn("welcome_post", comun)
         self.assertNotIn("tags", comun)
         self.assertNotIn("categories", comun)
+
+    def test_comuns_sidebar_returns_requested_translation(self):
+        ComunTranslation.objects.create(
+            comun=self.comun,
+            language="en",
+            name="English sidebar community",
+            product_description="English sidebar description",
+            status=POST_TRANSLATION_STATUS_TRANSLATED,
+        )
+
+        response = self.client.get(reverse("comuns-sidebar"), {"lang": "en"})
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        translated_comun = next(
+            item for item in response.json()["comuns"] if item["slug"] == self.comun.slug
+        )
+        self.assertEqual(translated_comun["name"], "English sidebar community")
+        self.assertEqual(translated_comun["product_description"], "English sidebar description")
+        self.assertEqual(translated_comun["language"], "en")
+        self.assertTrue(translated_comun["is_translated"])
 
     def test_auth_posts_require_comun_for_published_post(self):
         response = self.client.post(

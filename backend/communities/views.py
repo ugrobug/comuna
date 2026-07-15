@@ -578,7 +578,43 @@ def _parse_comun_slug_list_param(value: object, *, maximum: int = 50) -> list[st
     return slugs
 
 
-def _serialize_comun_catalog_item(request: HttpRequest, comun: Comun) -> dict:
+def _catalog_comun_translation(comun: Comun, language: str | None) -> ComunTranslation | None:
+    content_language = _normalize_content_language(language)
+    if content_language == _ORIGINAL_CONTENT_LANGUAGE:
+        return None
+    prefetched = getattr(comun, "_catalog_translations", None)
+    if isinstance(prefetched, list):
+        return prefetched[0] if prefetched else None
+    return _comun_translation_for_language(comun, content_language)
+
+
+def _catalog_translation_prefetch(language: str | None) -> Prefetch | None:
+    content_language = _normalize_content_language(language)
+    if content_language == _ORIGINAL_CONTENT_LANGUAGE:
+        return None
+    return Prefetch(
+        "translations",
+        queryset=ComunTranslation.objects.filter(
+            language=content_language,
+            status=POST_TRANSLATION_STATUS_TRANSLATED,
+        ).order_by("-updated_at"),
+        to_attr="_catalog_translations",
+    )
+
+
+def _serialize_comun_catalog_item(
+    request: HttpRequest,
+    comun: Comun,
+    *,
+    language: str | None = None,
+) -> dict:
+    content_language = _normalize_content_language(language)
+    translation = _catalog_comun_translation(comun, content_language)
+    name = comun.name
+    product_description = comun.product_description
+    if translation:
+        name = translation.name or name
+        product_description = translation.product_description or product_description
     tags = [
         {
             "id": tag.id,
@@ -594,10 +630,12 @@ def _serialize_comun_catalog_item(request: HttpRequest, comun: Comun) -> dict:
         rating_score = 0.0
     return {
         "id": comun.id,
-        "name": comun.name,
+        "name": name,
         "slug": comun.slug,
         "logo_url": _comun_logo_url(request, comun),
-        "product_description": comun.product_description,
+        "product_description": product_description,
+        "language": content_language if translation else _ORIGINAL_CONTENT_LANGUAGE,
+        "is_translated": bool(translation),
         "subscribers_count": int(getattr(comun, "subscribers_count", 0) or 0),
         "authors_count": int(getattr(comun, "authors_count", 0) or 0),
         "rating": {
@@ -1330,8 +1368,13 @@ def _serialize_comun(
     return payload
 
 
-def _serialize_comun_sidebar_item(request: HttpRequest, comun: Comun) -> dict:
-    payload = _serialize_comun_catalog_item(request, comun)
+def _serialize_comun_sidebar_item(
+    request: HttpRequest,
+    comun: Comun,
+    *,
+    language: str | None = None,
+) -> dict:
+    payload = _serialize_comun_catalog_item(request, comun, language=language)
     payload["can_moderate"] = bool(getattr(comun, "_sidebar_can_moderate", False))
     return payload
 
@@ -1351,7 +1394,8 @@ def comuns_sidebar(request: HttpRequest) -> HttpResponse:
             .distinct()
         )
 
-    comuns = list(
+    language = _normalize_content_language(request.GET.get("lang"))
+    queryset = (
         Comun.objects.filter(is_active=True)
         .exclude(slug__iexact="faq")
         .only(
@@ -1377,12 +1421,19 @@ def comuns_sidebar(request: HttpRequest) -> HttpResponse:
         )
         .order_by("-rating_score", "sort_order", "name", "id")
     )
+    translation_prefetch = _catalog_translation_prefetch(language)
+    if translation_prefetch is not None:
+        queryset = queryset.prefetch_related(translation_prefetch)
+    comuns = list(queryset)
     for comun in comuns:
         comun._sidebar_can_moderate = comun.id in manageable_ids
     return JsonResponse(
         {
             "ok": True,
-            "comuns": [_serialize_comun_sidebar_item(request, comun) for comun in comuns],
+            "comuns": [
+                _serialize_comun_sidebar_item(request, comun, language=language)
+                for comun in comuns
+            ],
         }
     )
 
@@ -1762,7 +1813,12 @@ def comun_create_from_telegram_channel(request: HttpRequest) -> HttpResponse:
     )
 
 
-def _comuns_catalog_queryset(query: str = "", slugs: list[str] | None = None):
+def _comuns_catalog_queryset(
+    query: str = "",
+    slugs: list[str] | None = None,
+    *,
+    language: str | None = None,
+):
     queryset = (
         Comun.objects.filter(is_active=True)
         .exclude(slug__iexact="faq")
@@ -1795,13 +1851,28 @@ def _comuns_catalog_queryset(query: str = "", slugs: list[str] | None = None):
         for slug in slugs:
             slug_filter |= Q(slug__iexact=slug)
         queryset = queryset.filter(slug_filter)
+    translation_prefetch = _catalog_translation_prefetch(language)
+    if translation_prefetch is not None:
+        queryset = queryset.prefetch_related(translation_prefetch)
     if query:
-        queryset = queryset.filter(
+        search_filter = (
             Q(name__icontains=query)
             | Q(product_description__icontains=query)
             | Q(tags__name__icontains=query)
             | Q(tags__lemma__icontains=query)
-        ).distinct()
+        )
+        content_language = _normalize_content_language(language)
+        if content_language != _ORIGINAL_CONTENT_LANGUAGE:
+            search_filter |= Q(
+                translations__language=content_language,
+                translations__status=POST_TRANSLATION_STATUS_TRANSLATED,
+                translations__name__icontains=query,
+            ) | Q(
+                translations__language=content_language,
+                translations__status=POST_TRANSLATION_STATUS_TRANSLATED,
+                translations__product_description__icontains=query,
+            )
+        queryset = queryset.filter(search_filter).distinct()
     return queryset
 
 
@@ -1813,6 +1884,7 @@ def _comuns_catalog_response(
     limit: int,
     query: str,
     slugs: list[str] | None = None,
+    language: str | None = None,
 ) -> HttpResponse:
     total_comuns = queryset.count()
     total_pages = math.ceil(total_comuns / limit) if total_comuns else 0
@@ -1825,7 +1897,10 @@ def _comuns_catalog_response(
     return JsonResponse(
         {
             "ok": True,
-            "comuns": [_serialize_comun_catalog_item(request, comun) for comun in comuns],
+            "comuns": [
+                _serialize_comun_catalog_item(request, comun, language=language)
+                for comun in comuns
+            ],
             "page": page,
             "limit": limit,
             "total_comuns": total_comuns,
@@ -1850,13 +1925,15 @@ def comuns_catalog(request: HttpRequest) -> HttpResponse:
     )
     query = re.sub(r"\s+", " ", str(request.GET.get("q") or "").strip())[:120]
     slugs = _parse_comun_slug_list_param(request.GET.getlist("slugs"))
+    language = _normalize_content_language(request.GET.get("lang"))
     return _comuns_catalog_response(
         request,
-        _comuns_catalog_queryset(query, slugs),
+        _comuns_catalog_queryset(query, slugs, language=language),
         page=page,
         limit=limit,
         query=query,
         slugs=slugs,
+        language=language,
     )
 
 

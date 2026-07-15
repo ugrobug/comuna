@@ -17,6 +17,7 @@
   import { sortComunsByRating } from '$lib/communitySidebar'
   import ComunCatalogCard from '$lib/components/comuns/ComunCatalogCard.svelte'
   import RecommendedComunsPanel from '$lib/components/feeds/RecommendedComunsPanel.svelte'
+  import { locale, t } from '$lib/translations'
 
   export let data
 
@@ -43,6 +44,7 @@
   let sidebarIndexLoaded = false
   let sidebarIndexLoading = false
   let sidebarIndexError = ''
+  let sidebarIndexLanguage = ''
   let createOpen = false
   let insufficientOpen = false
   let creating = false
@@ -69,6 +71,7 @@
   )
   $: selectedMyFeedComuns = $userSettings.myFeedComuns ?? []
   $: activeScope = (data.scope === 'mine' ? 'mine' : 'all') as CatalogScope
+  $: interfaceLanguage = String($locale || data.language || 'ru')
   $: requestedPage = Math.max(Number(data.page ?? 1) || 1, 1)
   $: mineBaseComuns = (() => {
     if (!$siteToken || !$feedSettingsHydrated) return []
@@ -96,7 +99,10 @@
       (minePage - 1) * COMUNS_PAGE_SIZE,
       minePage * COMUNS_PAGE_SIZE
     )
-    mineLoading = Boolean($siteToken) && (!$feedSettingsHydrated || (!sidebarIndexLoaded && !sidebarIndexError))
+    mineLoading = Boolean($siteToken) && (
+      !$feedSettingsHydrated ||
+      ((!sidebarIndexLoaded || sidebarIndexLanguage !== interfaceLanguage) && !sidebarIndexError)
+    )
     mineError = !$siteToken ? 'auth_required' : sidebarIndexError
   }
   $: comuns = activeScope === 'mine' ? mineComuns : data.comuns ?? []
@@ -141,7 +147,7 @@
         myFeedComuns: Array.from(nextComuns),
         myFeedComunCategories: nextCategoryMap,
       }
-      toast({ content: 'Сообщество убрано из "Моей ленты"' })
+      toast({ content: $t('site.communitiesPage.removedFromFeed') })
       return
     }
 
@@ -151,30 +157,35 @@
       myFeedComuns: Array.from(nextComuns),
       myFeedComunCategories: nextCategoryMap,
     }
-    toast({ content: 'Посты этого сообщества будут попадать в "Мою ленту"' })
+    toast({ content: $t('site.communitiesPage.addedToFeed') })
   }
 
-  const loadSidebarIndexComuns = async () => {
-    if (!browser || sidebarIndexLoading || sidebarIndexLoaded) return
+  const loadSidebarIndexComuns = async (language: string) => {
+    if (
+      !browser ||
+      sidebarIndexLoading ||
+      (sidebarIndexLoaded && sidebarIndexLanguage === language)
+    ) return
     sidebarIndexLoading = true
     sidebarIndexError = ''
     try {
       const payload = await cachedJson<{ comuns?: BackendComun[] }>(
-        'public:sidebar-comuns',
-        buildComunsSidebarUrl(),
+        `public:sidebar-comuns:${language}`,
+        buildComunsSidebarUrl({ language }),
         { ttlMs: 21_600_000 }
       )
       sidebarIndexComuns = payload.comuns ?? []
+      sidebarIndexLanguage = language
       sidebarIndexLoaded = true
     } catch (error) {
-      sidebarIndexError = error instanceof Error ? error.message : 'Не удалось загрузить мои сообщества'
+      sidebarIndexError = $t('site.communitiesPage.loadMineError')
     } finally {
       sidebarIndexLoading = false
     }
   }
 
   $: if (browser && activeScope === 'mine' && $siteToken) {
-    void loadSidebarIndexComuns()
+    void loadSidebarIndexComuns(interfaceLanguage)
   }
 
   const gotoCatalogScope = (scope: CatalogScope) => {
@@ -234,7 +245,7 @@
     const tagName = normalizeTagInput(createTagInput)
     if (!tagName || createTagSaving) return
     if (createTags.length >= 5) {
-      toast({ content: 'Можно добавить не больше 5 тегов', type: 'warning' })
+      toast({ content: $t('site.communitiesPage.create.maxTags'), type: 'warning' })
       return
     }
     createTagSaving = true
@@ -246,7 +257,7 @@
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok || !payload?.tag?.id) {
-        throw new Error(payload?.error || 'Не удалось добавить тег')
+        throw new Error($t('site.communitiesPage.create.addTagError'))
       }
       const nextTag = {
         id: Number(payload.tag.id),
@@ -260,7 +271,7 @@
       createTags = [...createTags, nextTag].slice(0, 5)
       createTagInput = ''
     } catch (error) {
-      toast({ content: error instanceof Error ? error.message : 'Не удалось добавить тег', type: 'error' })
+      toast({ content: $t('site.communitiesPage.create.addTagError'), type: 'error' })
     } finally {
       createTagSaving = false
     }
@@ -273,7 +284,7 @@
   }
 
   const authHeaders = () => {
-    if (!$siteToken) throw new Error('Нужна авторизация')
+    if (!$siteToken) throw new Error($t('site.communitiesPage.create.authRequired'))
     return {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${$siteToken}`,
@@ -326,9 +337,9 @@
     try {
       const uploadedUrl = await uploadSiteImage(file)
       logoUrl = uploadedUrl
-      toast({ content: 'Логотип загружен', type: 'success' })
+      toast({ content: $t('site.communitiesPage.create.logoSuccess'), type: 'success' })
     } catch (error) {
-      toast({ content: error instanceof Error ? error.message : 'Не удалось загрузить логотип', type: 'error' })
+      toast({ content: $t('site.communitiesPage.create.logoError'), type: 'error' })
     } finally {
       logoUploading = false
       if (input) input.value = ''
@@ -337,7 +348,7 @@
 
   const createComun = async () => {
     if (!name.trim()) {
-      toast({ content: 'Введите название сообщества', type: 'warning' })
+      toast({ content: $t('site.communitiesPage.create.nameRequired'), type: 'warning' })
       return
     }
     creating = true
@@ -357,17 +368,17 @@
       if (!response.ok || !payload?.comun?.slug) {
         if (payload?.reason === 'insufficient_author_rating') {
           insufficientOpen = true
-          throw new Error('У вас недостаточно рейтинга для создания сообщества')
+          throw new Error($t('site.communitiesPage.create.insufficientError'))
         }
-        throw new Error(payload?.error || 'Не удалось создать сообщество')
+        throw new Error($t('site.communitiesPage.create.createError'))
       }
       createOpen = false
       resetForm()
       subscribeToComunBySlug(payload.comun.slug)
-      toast({ content: 'Сообщество создано', type: 'success' })
+      toast({ content: $t('site.communitiesPage.create.created'), type: 'success' })
       goto(`/comuns/${payload.comun.slug}/settings`)
     } catch (error) {
-      toast({ content: error instanceof Error ? error.message : 'Ошибка создания', type: 'error' })
+      toast({ content: error instanceof Error ? error.message : $t('site.communitiesPage.create.createError'), type: 'error' })
     } finally {
       creating = false
     }
@@ -377,13 +388,13 @@
 <div class="flex flex-col gap-6 max-w-4xl">
   <div class="flex flex-wrap items-center justify-between gap-3">
     <div class="min-w-0">
-      <Header noMargin>Сообщества</Header>
+      <Header noMargin>{$t('site.nav.communities')}</Header>
     </div>
     <Button on:click={() => void openCreate()}>
       {#if $siteUser}
-        Создать сообщество
+        {$t('site.nav.createCommunity')}
       {:else}
-        Войти и создать
+        {$t('site.communitiesPage.loginAndCreate')}
       {/if}
     </Button>
   </div>
@@ -398,7 +409,7 @@
       }`}
       on:click={() => gotoCatalogScope('all')}
     >
-      Все сообщества
+      {$t('site.nav.allCommunities')}
     </button>
     <button
       type="button"
@@ -409,18 +420,18 @@
       }`}
       on:click={() => gotoCatalogScope('mine')}
     >
-      Мои сообщества
+      {$t('site.communitiesPage.mine')}
     </button>
   </div>
 
   <section class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-4 sm:p-5">
     <form class="flex flex-col gap-3 sm:flex-row" on:submit|preventDefault={submitSearch}>
       <label class="min-w-0 flex-1">
-        <span class="sr-only">Поиск сообществ</span>
+        <span class="sr-only">{$t('site.communitiesPage.searchLabel')}</span>
         <input
           bind:value={searchQuery}
           type="text"
-          placeholder="Поиск сообществ"
+          placeholder={$t('site.communitiesPage.searchPlaceholder')}
           class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-zinc-500"
         />
       </label>
@@ -429,7 +440,7 @@
           type="submit"
           class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-300"
         >
-          Найти
+          {$t('site.communitiesPage.find')}
         </button>
         {#if data.query}
           <button
@@ -440,7 +451,7 @@
               gotoCatalogPage(1)
             }}
           >
-            Сбросить
+            {$t('site.communitiesPage.reset')}
           </button>
         {/if}
       </div>
@@ -449,17 +460,17 @@
 
   {#if activeScope === 'mine' && mineLoading}
     <div class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-6 text-slate-600 dark:text-zinc-400">
-      Загрузка...
+      {$t('site.communitiesPage.loading')}
     </div>
   {:else if activeScope === 'mine' && mineError === 'auth_required'}
     <div class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-6 text-slate-600 dark:text-zinc-400">
       <div class="flex flex-wrap items-center justify-between gap-3">
-        <span>Войдите, чтобы открыть свои сообщества.</span>
+        <span>{$t('site.communitiesPage.signInPrompt')}</span>
         <a
           href={`/account?next=${encodeURIComponent('/comuns?scope=mine')}`}
           class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-300"
         >
-          Войти
+          {$t('site.communitiesPage.signIn')}
         </a>
       </div>
     </div>
@@ -483,17 +494,17 @@
   {:else if activeScope === 'mine' && !mineHasBaseComuns}
     <RecommendedComunsPanel
       selectedSlugs={selectedMyFeedComuns}
-      title="Подпишитесь на сообщества"
-      description="Выберите несколько сообществ, чтобы они появились здесь и начали наполнять вашу ленту."
+      title={$t('site.communitiesPage.recommendedTitle')}
+      description={$t('site.communitiesPage.recommendedDescription')}
     />
   {:else}
     <div class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-6 text-slate-600 dark:text-zinc-400">
       {#if data.query}
-        Ничего не найдено по вашему запросу.
+        {$t('site.communitiesPage.searchEmpty')}
       {:else if activeScope === 'mine'}
-        У вас пока нет сообществ.
+        {$t('site.communitiesPage.mineEmpty')}
       {:else}
-        Пока нет созданных сообществ.
+        {$t('site.communitiesPage.allEmpty')}
       {/if}
     </div>
   {/if}
@@ -510,7 +521,7 @@
           disabled={!hasPrevious}
           on:click={() => gotoCatalogPage(currentPage - 1)}
         >
-          Назад
+          {$t('site.communitiesPage.previous')}
         </button>
         <button
           type="button"
@@ -518,7 +529,7 @@
           disabled={!hasNext}
           on:click={() => gotoCatalogPage(currentPage + 1)}
         >
-          Вперед
+          {$t('site.communitiesPage.next')}
         </button>
       </div>
     </div>
@@ -527,18 +538,18 @@
 
 <Modal bind:open={createOpen} on:close={resetForm}>
   <div class="w-full max-w-2xl flex flex-col gap-4">
-    <div class="text-lg font-semibold text-slate-900 dark:text-zinc-100">Создать сообщество</div>
+    <div class="text-lg font-semibold text-slate-900 dark:text-zinc-100">{$t('site.communitiesPage.create.title')}</div>
     <div class="text-sm text-slate-600 dark:text-zinc-400">
-      После создания откроются настройки сообщества, где можно донастроить категории, теги, модераторов, приветственный пост и многое другое.
+      {$t('site.communitiesPage.create.intro')}
     </div>
 
     <label class="flex flex-col gap-1">
-      <span class="text-sm text-slate-700 dark:text-zinc-300">Название</span>
+      <span class="text-sm text-slate-700 dark:text-zinc-300">{$t('site.communitiesPage.create.name')}</span>
       <input bind:value={name} class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2" />
     </label>
 
     <div class="flex flex-col gap-2">
-      <span class="text-sm text-slate-700 dark:text-zinc-300">Логотип</span>
+      <span class="text-sm text-slate-700 dark:text-zinc-300">{$t('site.communitiesPage.create.logo')}</span>
       <input
         bind:this={createLogoInput}
         type="file"
@@ -549,21 +560,21 @@
       <div class="flex items-center gap-3 rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-3">
         <div class="h-14 w-14 rounded-xl overflow-hidden border border-slate-200 dark:border-zinc-800 bg-slate-100 dark:bg-zinc-800 shrink-0">
           {#if logoUrl}
-            <img src={logoUrl} alt="Предпросмотр логотипа" class="h-full w-full object-cover" />
+            <img src={logoUrl} alt={$t('site.communitiesPage.create.logoPreview')} class="h-full w-full object-cover" />
           {:else}
             <div class="h-full w-full grid place-items-center text-slate-400 dark:text-zinc-500 text-xs text-center px-1">
-              Нет лого
+              {$t('site.communitiesPage.create.noLogo')}
             </div>
           {/if}
         </div>
         <div class="min-w-0 flex-1 flex flex-col gap-1">
           <div class="text-sm text-slate-700 dark:text-zinc-300">
             {#if logoUploading}
-              Загрузка логотипа...
+              {$t('site.communitiesPage.create.uploadingLogo')}
             {:else if logoUrl}
-              Логотип загружен
+              {$t('site.communitiesPage.create.logoUploaded')}
             {:else}
-              Загрузите файл изображения
+              {$t('site.communitiesPage.create.logoPrompt')}
             {/if}
           </div>
           <div class="text-xs text-slate-500 dark:text-zinc-400">
@@ -572,11 +583,11 @@
         </div>
         <div class="flex flex-wrap gap-2 justify-end">
           <Button on:click={pickCreateLogo} disabled={creating || logoUploading} size="sm">
-            {logoUrl ? 'Заменить' : 'Выбрать файл'}
+            {logoUrl ? $t('site.communitiesPage.create.replace') : $t('site.communitiesPage.create.chooseFile')}
           </Button>
           {#if logoUrl}
             <Button color="ghost" size="sm" on:click={() => (logoUrl = '')} disabled={creating || logoUploading}>
-              Убрать
+              {$t('site.communitiesPage.create.remove')}
             </Button>
           {/if}
         </div>
@@ -584,16 +595,16 @@
     </div>
 
     <label class="flex flex-col gap-1">
-      <span class="text-sm text-slate-700 dark:text-zinc-300">Описание</span>
+      <span class="text-sm text-slate-700 dark:text-zinc-300">{$t('site.communitiesPage.create.description')}</span>
       <textarea bind:value={description} rows="4" class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"></textarea>
     </label>
 
     <div class="flex flex-col gap-3">
       <div class="flex items-start justify-between gap-3">
         <div>
-          <div class="text-sm text-slate-700 dark:text-zinc-300">Теги</div>
+          <div class="text-sm text-slate-700 dark:text-zinc-300">{$t('site.communitiesPage.create.tags')}</div>
           <div class="text-xs text-slate-500 dark:text-zinc-400">
-            До 5 тегов для удобства поиска и сортировки сообщества.
+            {$t('site.communitiesPage.create.tagsHelp')}
           </div>
         </div>
         <div class="text-xs text-slate-500 dark:text-zinc-400">{createTags.length}/5</div>
@@ -601,13 +612,13 @@
       <div class="flex gap-2">
         <input
           bind:value={createTagInput}
-          placeholder="Например: saas, дизайн, аналитика"
+          placeholder={$t('site.communitiesPage.create.tagsPlaceholder')}
           class="flex-1 rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"
           on:keydown={onCreateTagKeydown}
           disabled={createTagSaving || createTags.length >= 5}
         />
         <Button on:click={() => void addCreateTag()} disabled={createTagSaving || !createTagInput.trim() || createTags.length >= 5}>
-          {createTagSaving ? 'Добавляем...' : 'Добавить'}
+          {createTagSaving ? $t('site.communitiesPage.create.adding') : $t('site.communitiesPage.create.add')}
         </Button>
       </div>
       {#if createTags.length}
@@ -627,9 +638,9 @@
     </div>
 
     <div class="flex justify-end gap-2 pt-2">
-      <Button color="ghost" on:click={() => (createOpen = false)} disabled={creating}>Отмена</Button>
+      <Button color="ghost" on:click={() => (createOpen = false)} disabled={creating}>{$t('site.communitiesPage.create.cancel')}</Button>
       <Button on:click={createComun} disabled={creating || logoUploading}>
-        {creating ? 'Создаем...' : 'Создать сообщество'}
+        {creating ? $t('site.communitiesPage.create.creating') : $t('site.communitiesPage.create.title')}
       </Button>
     </div>
   </div>
@@ -637,22 +648,22 @@
 
 <Modal bind:open={insufficientOpen}>
   <div class="w-full max-w-xl flex flex-col gap-4">
-    <div class="text-lg font-semibold text-slate-900 dark:text-zinc-100">Недостаточно рейтинга</div>
+    <div class="text-lg font-semibold text-slate-900 dark:text-zinc-100">{$t('site.communitiesPage.rating.title')}</div>
     <div class="text-sm leading-6 text-slate-600 dark:text-zinc-400">
-      У вас недостаточно рейтинга для создания сообщества. Сейчас ваш максимальный рейтинг автора:
+      {$t('site.communitiesPage.rating.before')}
       <span class="font-semibold text-slate-900 dark:text-zinc-100">{formatRatingValue(currentUserMaxAuthorRating())}</span>.
-      Для создания нужен неотрицательный рейтинг автора.
+      {$t('site.communitiesPage.rating.after')}
     </div>
     <div class="grid gap-3">
       <a
         href={COMMUNITIES_LANDING_HREF}
         class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900 px-4 py-4 text-sm font-medium text-slate-900 dark:text-zinc-100 hover:border-slate-300 dark:hover:border-zinc-700 transition-colors"
       >
-        Что такое сообщества
+        {$t('site.communitiesPage.rating.about')}
       </a>
     </div>
     <div class="flex justify-end gap-2 pt-1">
-      <Button color="ghost" on:click={() => (insufficientOpen = false)}>Закрыть</Button>
+      <Button color="ghost" on:click={() => (insufficientOpen = false)}>{$t('site.communitiesPage.rating.close')}</Button>
     </div>
   </div>
 </Modal>

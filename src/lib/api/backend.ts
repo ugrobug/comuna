@@ -102,6 +102,7 @@ export const buildComunsCatalogUrl = (options?: {
   limit?: number
   q?: string
   slugs?: string[]
+  language?: string
 }): string => {
   const params = new URLSearchParams()
   if (typeof options?.page === 'number') {
@@ -112,6 +113,9 @@ export const buildComunsCatalogUrl = (options?: {
   }
   if (options?.q) {
     params.set('q', options.q)
+  }
+  if (options?.language && options.language !== 'ru') {
+    params.set('lang', options.language)
   }
   const slugs = (options?.slugs ?? []).map((slug) => String(slug).trim()).filter(Boolean)
   if (slugs.length) {
@@ -125,8 +129,13 @@ export const buildComunsComposerUrl = (): string => {
   return `${getBackendBaseUrl()}/api/comuns/composer/`
 }
 
-export const buildComunsSidebarUrl = (): string => {
-  return `${getBackendBaseUrl()}/api/comuns/sidebar/`
+export const buildComunsSidebarUrl = (options?: { language?: string }): string => {
+  const params = new URLSearchParams()
+  if (options?.language && options.language !== 'ru') {
+    params.set('lang', options.language)
+  }
+  const query = params.toString()
+  return `${getBackendBaseUrl()}/api/comuns/sidebar/${query ? `?${query}` : ''}`
 }
 
 export const buildComunFromTelegramChannelUrl = (): string => {

@@ -1,7 +1,8 @@
 import { browser } from '$app/environment'
 import { buildComunsSidebarUrl, type BackendComun } from '$lib/api/backend'
 import { cachedJson, invalidateCachedJson } from '$lib/api/publicCache'
-import { writable } from 'svelte/store'
+import { locale } from '$lib/translations'
+import { get, writable } from 'svelte/store'
 
 const comunNameCollator = new Intl.Collator('ru', { sensitivity: 'base' })
 const SIDEBAR_COMUNS_CACHE_KEY = 'public:sidebar-comuns'
@@ -16,9 +17,11 @@ let sidebarComunsRequestId = 0
 
 export const loadSidebarComuns = async (options: { force?: boolean } = {}) => {
   if (!browser) return []
+  const language = String(get(locale) || 'ru')
+  const cacheKey = `${SIDEBAR_COMUNS_CACHE_KEY}:${language}`
   const force = Boolean(options.force)
   if (force) {
-    invalidateCachedJson(SIDEBAR_COMUNS_CACHE_KEY)
+    invalidateCachedJson(cacheKey)
     sidebarComunsPromise = null
     sidebarComunsRequestId += 1
   }
@@ -27,8 +30,8 @@ export const loadSidebarComuns = async (options: { force?: boolean } = {}) => {
   const requestId = sidebarComunsRequestId
   sidebarComunsLoading.set(true)
   sidebarComunsPromise = cachedJson<{ comuns?: BackendComun[] }>(
-    SIDEBAR_COMUNS_CACHE_KEY,
-    buildComunsSidebarUrl(),
+    cacheKey,
+    buildComunsSidebarUrl({ language }),
     { ttlMs: SIDEBAR_COMUNS_TTL_MS }
   )
     .then((data) => {

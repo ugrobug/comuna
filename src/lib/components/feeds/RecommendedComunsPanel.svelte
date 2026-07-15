@@ -6,7 +6,7 @@
   import { subscribeToComunBySlug } from '$lib/settings'
   import { siteToken } from '$lib/siteAuth'
   import LoginModal from '$lib/components/auth/LoginModal.svelte'
-  import { t } from '$lib/translations'
+  import { locale, t } from '$lib/translations'
 
   export let selectedSlugs: string[] = []
   export let recommendedSlugs: string[] = []
@@ -43,15 +43,16 @@
     loading = true
     error = ''
     try {
+      const language = String($locale || 'ru')
       const normalizedRecommendedSlugs = recommendedSlugs.map(normalizeSlug).filter(Boolean)
       const payload = await cachedJson<{ comuns?: BackendComun[] }>(
         normalizedRecommendedSlugs.length
-          ? `public:recommended-comuns:${normalizedRecommendedSlugs.join(',')}`
-          : 'public:comuns-catalog:recommendations:50',
+          ? `public:recommended-comuns:${language}:${normalizedRecommendedSlugs.join(',')}`
+          : `public:comuns-catalog:recommendations:50:${language}`,
         buildComunsCatalogUrl(
           normalizedRecommendedSlugs.length
-            ? { limit: normalizedRecommendedSlugs.length, slugs: recommendedSlugs }
-            : { limit: 50 }
+            ? { limit: normalizedRecommendedSlugs.length, slugs: recommendedSlugs, language }
+            : { limit: 50, language }
         ),
         { ttlMs: 21_600_000 }
       )
