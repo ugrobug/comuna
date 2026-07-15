@@ -1185,15 +1185,19 @@ def _serialize_comun(
     content_language = _normalize_content_language(language)
     translation = None if include_manage_fields else _comun_translation_for_language(comun, content_language)
     is_translated = bool(translation)
+    name = comun.name
     product_description = comun.product_description
+    target_audience = comun.target_audience
     rules_text = comun.rules_text
     if translation:
+        name = translation.name or name
         product_description = translation.product_description or product_description
+        target_audience = translation.target_audience or target_audience
         rules_text = translation.rules_text or rules_text
 
     payload = {
         "id": comun.id,
-        "name": comun.name,
+        "name": name,
         "slug": comun.slug,
         "website_url": comun.website_url,
         "logo_url": _comun_logo_url(request, comun),
@@ -1201,7 +1205,7 @@ def _serialize_comun(
         "rules_text": rules_text,
         "language": content_language if is_translated else _ORIGINAL_CONTENT_LANGUAGE,
         "is_translated": is_translated,
-        "target_audience": comun.target_audience,
+        "target_audience": target_audience,
         "glossary_enabled": bool(getattr(comun, "glossary_enabled", False)),
         "glossary_auto_link_enabled": bool(getattr(comun, "glossary_auto_link_enabled", False)),
         "roadmap_enabled": bool(getattr(comun, "roadmap_enabled", False)),

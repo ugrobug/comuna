@@ -13,7 +13,7 @@ from communities.models import (
     ComunPostCategoryAssignment,
     ComunPostRatingContribution,
 )
-from feeds.models import Author, Post, Tag
+from feeds.models import Author, ComunTranslation, Post, Tag
 from my_feed.models import UserFeedSettings
 from users import service as user_service
 from users.models import AuthorAdmin
@@ -142,6 +142,35 @@ class ComunPostingApiTests(TestCase):
         )
         self.assertEqual(update_response.status_code, 400, update_response.content.decode())
         self.assertEqual(update_response.json()["error"], "post does not belong to comun")
+
+    def test_comun_detail_uses_translated_name(self):
+        self.comun.product_description = "Описание"
+        self.comun.target_audience = "Для игроков"
+        self.comun.rules_text = "Без спама"
+        self.comun.save(
+            update_fields=["product_description", "target_audience", "rules_text"]
+        )
+        ComunTranslation.objects.create(
+            comun=self.comun,
+            language="en",
+            name="Unit Game Community",
+            product_description="Description",
+            target_audience="For players",
+            rules_text="No spam",
+            status="translated",
+        )
+
+        response = self.client.get(
+            reverse("comun-detail-manage", kwargs={"slug": self.comun.slug}),
+            {"lang": "en"},
+        )
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        payload = response.json()["comun"]
+        self.assertEqual(payload["name"], "Unit Game Community")
+        self.assertEqual(payload["product_description"], "Description")
+        self.assertEqual(payload["target_audience"], "For players")
+        self.assertEqual(payload["rules_text"], "No spam")
 
     def test_comun_posts_can_filter_multiple_categories(self):
         author = Author.objects.create(username="category-filter-author", title="Category Author")
