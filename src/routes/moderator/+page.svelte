@@ -435,7 +435,6 @@
       label: translationBreakdownLabels[key] ?? key,
       translated: Number(item.translated ?? 0),
       target: Number(item.target ?? 0),
-      queued: Number(translationSettings?.queue?.breakdown?.[key] ?? item.queued ?? 0),
       percent: Number(item.percent ?? 0),
     }
   })
@@ -1171,7 +1170,7 @@
             {#each translationBreakdownRows as row (row.key)}
               <div class="translation-breakdown-row">
                 <span>{row.label}</span>
-                <strong>{formatNumber(row.translated)} / {formatNumber(row.queued)}</strong>
+                <strong>{formatNumber(row.translated)} / {formatNumber(row.target)}</strong>
                 <small>{formatPercent(row.percent)}</small>
               </div>
             {/each}
