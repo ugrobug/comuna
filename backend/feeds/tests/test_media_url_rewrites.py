@@ -1,3 +1,6 @@
+import base64
+import json
+
 from django.test import SimpleTestCase, override_settings
 
 from rabotaem_backend.media_urls import (
@@ -55,6 +58,40 @@ class MediaUrlRewriteTests(SimpleTestCase):
         self.assertEqual(
             rewrite_public_media_payload({"image": "/media/uploads/post/a.jpg"}),
             {"image": "https://media.tambur.pub/uploads/post/a.jpg"},
+        )
+
+    @override_settings(MEDIA_PUBLIC_URL_MODE="s3")
+    def test_rewrites_public_media_inside_base64_editor_payload(self) -> None:
+        payload = {
+            "blocks": [
+                {
+                    "type": "image",
+                    "data": {
+                        "file": {
+                            "url": "https://tambur.pub/media/uploads/manual/a.webp",
+                        }
+                    },
+                },
+                {
+                    "type": "image",
+                    "data": {"file": {"url": "https://example.com/external.webp"}},
+                },
+            ]
+        }
+        encoded = base64.b64encode(
+            json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        ).decode("ascii")
+
+        rewritten = rewrite_public_media_urls(encoded)
+        decoded = json.loads(base64.b64decode(rewritten).decode("utf-8"))
+
+        self.assertEqual(
+            decoded["blocks"][0]["data"]["file"]["url"],
+            "https://media.tambur.pub/uploads/manual/a.webp",
+        )
+        self.assertEqual(
+            decoded["blocks"][1]["data"]["file"]["url"],
+            "https://example.com/external.webp",
         )
 
     @override_settings(MEDIA_PUBLIC_URL_MODE="s3")

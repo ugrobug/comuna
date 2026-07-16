@@ -3626,7 +3626,7 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
     title = _post_display_title(post)
     if translation is not None:
         title = translation.title or title
-        content = translation.content or content
+        content = rewrite_public_media_urls(translation.content or content)
     original_content, _original_poll_payload = _content_with_live_poll(post, current_user)
     template_payload = _serialize_localized_post_template(post, language)
     author_channel_url, author_title = _author_display_fields(
@@ -3655,7 +3655,7 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
                 "bug_report_confirmation": _serialize_bug_report_confirmation(post, current_user),
                 "vote_poll_participations": _serialize_post_vote_poll_participations(post),
                 "comun": community_service._serialize_post_comun(request, post, current_user),
-                "content": content,
+                "content": rewrite_public_media_urls(content),
                 "poll": poll_payload,
                 "post_ratings": _serialize_post_ratings(post, current_user),
                 "post_rating": _serialize_post_rating(post, current_user, template_payload=template_payload),

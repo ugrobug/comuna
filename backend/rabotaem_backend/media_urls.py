@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import json
 import re
 import urllib.parse
 from typing import Any
@@ -9,6 +11,7 @@ from django.http import HttpRequest
 
 _S3_PUBLIC_MODES = {"s3", "s3-first", "s3_first", "s3_public", "s3-public"}
 _URL_CANDIDATE_RE = re.compile(r"https?://[^\s\"'<>\\]+|(?<![:\w/])/[^\s\"'<>\\]+", re.IGNORECASE)
+_BASE64_CANDIDATE_RE = re.compile(r"[A-Za-z0-9_\-+/=]+")
 _TRAILING_PUNCTUATION = ".,;:)]}"
 
 
@@ -231,10 +234,42 @@ def public_url(value: object, *, request: HttpRequest | None = None) -> str:
     return site_absolute_url(raw_value, request=request) if raw_value.startswith("/") else raw_value
 
 
+def _rewrite_base64_editor_media_urls(
+    text: str,
+    *,
+    request: HttpRequest | None = None,
+) -> str | None:
+    raw = text.strip()
+    if not raw or not _BASE64_CANDIDATE_RE.fullmatch(raw):
+        return None
+
+    candidates = (raw, raw.replace("-", "+").replace("_", "/"))
+    for encoded in candidates:
+        padded = encoded + ("=" * (-len(encoded) % 4))
+        try:
+            decoded = base64.b64decode(padded, validate=False).decode("utf-8")
+            payload = json.loads(decoded)
+        except (ValueError, UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict) or not isinstance(payload.get("blocks"), list):
+            continue
+
+        rewritten = rewrite_public_media_payload(payload, request=request)
+        if rewritten == payload:
+            return text
+        serialized = json.dumps(rewritten, ensure_ascii=False, separators=(",", ":"))
+        return base64.b64encode(serialized.encode("utf-8")).decode("ascii")
+    return None
+
+
 def rewrite_public_media_urls(value: object, *, request: HttpRequest | None = None) -> str:
     text = str(value or "")
     if not text or not public_media_urls_prefer_s3():
         return text
+
+    rewritten_editor_content = _rewrite_base64_editor_media_urls(text, request=request)
+    if rewritten_editor_content is not None:
+        return rewritten_editor_content
 
     def replace(match: re.Match[str]) -> str:
         matched = match.group(0)
