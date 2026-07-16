@@ -34,21 +34,29 @@
     if (current) return Promise.resolve(current)
     scriptPromise ??= new Promise((resolve, reject) => {
       const existing = document.querySelector<HTMLScriptElement>('script[data-apple-signin]')
-      const script = existing || document.createElement('script')
-      const timeout = window.setTimeout(() => reject(new Error('Apple Sign In timeout')), 10000)
+      if (existing?.dataset.loadFailed === 'true') existing.remove()
+      const script =
+        document.querySelector<HTMLScriptElement>('script[data-apple-signin]') ||
+        document.createElement('script')
+      const fail = (message: string) => {
+        script.dataset.loadFailed = 'true'
+        script.remove()
+        reject(new Error(message))
+      }
+      const timeout = window.setTimeout(() => fail('Apple Sign In timeout'), 10000)
       script.async = true
-      script.src = 'https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js'
+      script.src = '/auth/apple/sdk.js'
       script.dataset.appleSignin = 'true'
       script.onload = () => {
         window.clearTimeout(timeout)
         const loaded = currentApple()
-        loaded ? resolve(loaded) : reject(new Error('Apple Sign In unavailable'))
+        loaded ? resolve(loaded) : fail('Apple Sign In unavailable')
       }
       script.onerror = () => {
         window.clearTimeout(timeout)
-        reject(new Error('Apple Sign In unavailable'))
+        fail('Apple Sign In unavailable')
       }
-      if (!existing) document.head.appendChild(script)
+      if (!script.isConnected) document.head.appendChild(script)
     })
     return scriptPromise
   }
@@ -137,8 +145,8 @@
 <button
   type="button"
   class="apple-login"
-  class:opacity-60={disabled || loading}
-  disabled={!disabled && (loading || loadFailed || !clientId)}
+  class:opacity-60={disabled || loading || loadFailed}
+  disabled={!disabled && (loading || !clientId)}
   on:click={handleClick}
 >
   <span class="apple-login__badge">Apple</span>
