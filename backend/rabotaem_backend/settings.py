@@ -269,6 +269,16 @@ TELEGRAM_AUTH_ALLOWED_ORIGINS = _csv_env(
     "https://app1299099924-login.tg.dev",
 )
 GOOGLE_OAUTH_CLIENT_ID = os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "").strip()
+GOOGLE_ANDROID_CLIENT_ID = os.environ.get("GOOGLE_ANDROID_CLIENT_ID", "").strip()
+GOOGLE_IOS_CLIENT_ID = os.environ.get("GOOGLE_IOS_CLIENT_ID", "").strip()
+GOOGLE_OAUTH_CLIENT_IDS = _csv_env("GOOGLE_OAUTH_CLIENT_IDS")
+for google_client_id in (
+    GOOGLE_OAUTH_CLIENT_ID,
+    GOOGLE_ANDROID_CLIENT_ID,
+    GOOGLE_IOS_CLIENT_ID,
+):
+    if google_client_id and google_client_id not in GOOGLE_OAUTH_CLIENT_IDS:
+        GOOGLE_OAUTH_CLIENT_IDS.append(google_client_id)
 APPLE_OAUTH_CLIENT_ID = os.environ.get("APPLE_OAUTH_CLIENT_ID", "").strip()
 APPLE_OAUTH_CLIENT_IDS = _csv_env("APPLE_OAUTH_CLIENT_IDS")
 if APPLE_OAUTH_CLIENT_ID and APPLE_OAUTH_CLIENT_ID not in APPLE_OAUTH_CLIENT_IDS:

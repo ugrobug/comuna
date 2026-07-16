@@ -20,6 +20,20 @@ logger = logging.getLogger(__name__)
 _UNKNOWN_COUNTRY = "--"
 
 
+def _google_oauth_configured() -> bool:
+    configured = getattr(settings, "GOOGLE_OAUTH_CLIENT_IDS", ()) or ()
+    if isinstance(configured, str):
+        configured = configured.split(",")
+    return any(
+        [
+            str(getattr(settings, "GOOGLE_OAUTH_CLIENT_ID", "") or "").strip(),
+            str(getattr(settings, "GOOGLE_ANDROID_CLIENT_ID", "") or "").strip(),
+            str(getattr(settings, "GOOGLE_IOS_CLIENT_ID", "") or "").strip(),
+            *(str(value or "").strip() for value in configured),
+        ]
+    )
+
+
 def _apple_oauth_configured() -> bool:
     private_key = str(getattr(settings, "APPLE_OAUTH_PRIVATE_KEY", "") or "").strip()
     private_key_file = str(getattr(settings, "APPLE_OAUTH_PRIVATE_KEY_FILE", "") or "").strip()
@@ -118,7 +132,7 @@ def auth_methods_for_request(request: HttpRequest) -> dict[str, object]:
     configured = {
         "email": bool(getattr(settings, "ALLOW_PASSWORD_REGISTRATION", False)),
         "vk": bool(str(getattr(settings, "VK_APP_ID", "") or "").strip()),
-        "google": bool(str(getattr(settings, "GOOGLE_OAUTH_CLIENT_ID", "") or "").strip()),
+        "google": _google_oauth_configured(),
         "apple": _apple_oauth_configured(),
         "telegram": bool(str(getattr(settings, "TELEGRAM_OIDC_CLIENT_ID", "") or "").strip()),
     }

@@ -102,6 +102,25 @@ class AuthMethodsApiTests(TestCase):
         response = self.client.post("/api/auth/methods/", data="{}", content_type="application/json")
         self.assertEqual(response.status_code, 405)
 
+    @override_settings(
+        GOOGLE_OAUTH_CLIENT_ID="",
+        GOOGLE_ANDROID_CLIENT_ID="android-client",
+        GOOGLE_IOS_CLIENT_ID="",
+        GOOGLE_OAUTH_CLIENT_IDS=[],
+    )
+    @patch("users.auth_methods.urllib.request.urlopen")
+    def test_mobile_google_client_configures_google_login(self, urlopen: Mock) -> None:
+        urlopen.return_value = self._country_response("DE")
+
+        response = self.client.get(
+            "/api/auth/methods/",
+            HTTP_X_FORWARDED_FOR="8.8.8.8",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["configured_methods"]["google"])
+        self.assertTrue(response.json()["methods"]["google"])
+
     @patch("users.auth_methods.urllib.request.urlopen")
     def test_nginx_real_ip_takes_precedence_over_forwarded_header(self, urlopen: Mock) -> None:
         urlopen.return_value = self._country_response("RU")
@@ -266,6 +285,32 @@ class SocialAuthApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         account = SocialAccount.objects.get(provider="google", subject="unverified-google-subject")
         self.assertNotEqual(account.user_id, unverified_user.id)
+
+
+@override_settings(
+    GOOGLE_OAUTH_CLIENT_ID="web-client",
+    GOOGLE_ANDROID_CLIENT_ID="android-client",
+    GOOGLE_IOS_CLIENT_ID="ios-client",
+    GOOGLE_OAUTH_CLIENT_IDS=["extra-client", "web-client"],
+)
+class GoogleAuthenticationTests(TestCase):
+    @patch("google.oauth2.id_token.verify_oauth2_token")
+    def test_all_configured_client_ids_are_allowed_audiences(self, verify_token: Mock) -> None:
+        verify_token.return_value = {
+            "iss": "https://accounts.google.com",
+            "sub": "google-subject",
+            "email": "reader@example.com",
+            "email_verified": True,
+        }
+
+        identity = user_service._authenticate_google_payload({"id_token": "signed-token"})
+
+        self.assertEqual(identity["subject"], "google-subject")
+        self.assertEqual(verify_token.call_args.args[0], "signed-token")
+        self.assertEqual(
+            verify_token.call_args.args[2],
+            ["web-client", "android-client", "ios-client", "extra-client"],
+        )
 
 
 @override_settings(

@@ -1418,10 +1418,23 @@ def _verified_boolean_claim(value: object) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes"}
 
 
+def _google_allowed_client_ids() -> tuple[str, ...]:
+    configured = getattr(settings, "GOOGLE_OAUTH_CLIENT_IDS", ()) or ()
+    if isinstance(configured, str):
+        configured = configured.split(",")
+    client_ids = [
+        str(getattr(settings, "GOOGLE_OAUTH_CLIENT_ID", "") or "").strip(),
+        str(getattr(settings, "GOOGLE_ANDROID_CLIENT_ID", "") or "").strip(),
+        str(getattr(settings, "GOOGLE_IOS_CLIENT_ID", "") or "").strip(),
+    ]
+    client_ids.extend(str(value or "").strip() for value in configured)
+    return tuple(dict.fromkeys(value for value in client_ids if value))
+
+
 def _authenticate_google_payload(payload: dict) -> dict:
     credential = str(payload.get("credential") or payload.get("id_token") or "").strip()
-    client_id = str(getattr(settings, "GOOGLE_OAUTH_CLIENT_ID", "") or "").strip()
-    if not credential or not client_id:
+    client_ids = _google_allowed_client_ids()
+    if not credential or not client_ids:
         raise ValueError(_("Google-вход не настроен."))
 
     try:
@@ -1431,7 +1444,7 @@ def _authenticate_google_payload(payload: dict) -> dict:
         claims = google_id_token.verify_oauth2_token(
             credential,
             google_requests.Request(),
-            client_id,
+            list(client_ids),
         )
     except Exception as exc:
         logger.warning("Google id_token validation failed", exc_info=True)
