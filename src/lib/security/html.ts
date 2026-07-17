@@ -68,6 +68,8 @@ const GLOBAL_ATTRIBUTES = new Set([
   'data-post-link-title',
   'data-post-link-text',
   'data-post-link-image',
+  'data-draft-block-id',
+  'data-draft-comment-button',
   'data-glossary-term',
   'data-glossary-term-en',
   'data-glossary-slug',

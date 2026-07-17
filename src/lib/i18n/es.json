@@ -1023,6 +1023,16 @@
             "grantSuccess": "El usuario ya puede ver el borrador",
             "revokeSuccess": "Acceso al borrador eliminado"
         },
+        "draftReview": {
+            "commentBlock": "Comentar bloque", "user": "Usuario", "pageTitle": "Revisión colaborativa del borrador",
+            "loading": "Cargando...", "signIn": "Iniciar sesión", "privatePreview": "Vista previa privada del borrador",
+            "title": "Opiniones sobre la publicación", "selectedBlock": "Conversaciones del bloque seleccionado", "selectBlock": "Selecciona un bloque para dejar tu opinión", "showAll": "Todas las conversaciones",
+            "newComment": "Nueva opinión", "placeholder": "¿Qué debería cambiarse o aclararse?", "send": "Enviar", "commentAdded": "Opinión añadida", "saveError": "No se pudo guardar el comentario",
+            "published": "Borrador publicado", "publishError": "No se pudo publicar el borrador", "deleteConfirm": "¿Eliminar este borrador?", "deleted": "Borrador eliminado", "deleteError": "No se pudo eliminar el borrador",
+            "loginRequired": "Inicia sesión para abrir este borrador compartido.", "loadError": "No se pudo cargar el borrador", "publish": "Publicar", "edit": "Editar", "delete": "Eliminar",
+            "resolved": "Resuelto", "blockRemoved": "Este bloque se eliminó del borrador", "replyPlaceholder": "Responder en esta conversación", "reopen": "Reabrir", "resolve": "Resolver conversación", "reply": "Responder",
+            "noBlockComments": "Este bloque aún no tiene conversaciones", "noComments": "Aún no hay conversaciones"
+        },
         "report": {
             "title": "¿Qué quieres denunciar?",
             "action": "Denunciar",

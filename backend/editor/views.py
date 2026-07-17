@@ -19,6 +19,8 @@ from PIL import Image, UnidentifiedImageError
 
 from rabotaem_backend.images import save_image_with_variants
 from editor.models import (
+    DraftBlockComment,
+    DraftBlockCommentThread,
     POST_TEMPLATE_TYPE_BUG_REPORT,
     POST_TEMPLATE_TYPE_MOVIE_REVIEW,
     PostBugReportConfirmation,
@@ -34,6 +36,7 @@ from editor.serializers import (
     _user_can_manage_bug_report_status,
 )
 from editor.service import (
+    _extract_draft_review_blocks,
     _extract_inline_post_rating_blocks,
     _get_or_create_personal_author,
     _is_post_draft,
@@ -343,6 +346,262 @@ def shared_draft_detail(request: HttpRequest, share_token: str) -> HttpResponse:
         return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
 
     return JsonResponse({"ok": True, "post": _serialize_post_for_user(request, post, user)})
+
+
+def _shared_draft_for_user(request: HttpRequest, share_token: str):
+    user = _fv()._get_user_from_request(request)
+    if not user:
+        return None, None, JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    token = str(share_token or "").strip()
+    if not token:
+        return user, None, JsonResponse({"ok": False, "error": "draft not found"}, status=404)
+    try:
+        post = Post.objects.select_related("author").get(
+            is_blocked=False,
+            is_pending=True,
+            author__is_blocked=False,
+            raw_data__draft=True,
+            raw_data__draft_share_token=token,
+        )
+    except Post.DoesNotExist:
+        return user, None, JsonResponse({"ok": False, "error": "draft not found"}, status=404)
+    can_manage = editor_service._user_can_manage_site_post(user, post)
+    if not can_manage and not PostDraftAccess.objects.filter(post=post, user=user).exists():
+        return user, post, JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+    return user, post, None
+
+
+def _draft_comment_body(payload: dict) -> str:
+    body = str(payload.get("body") or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    return body[:4000].strip()
+
+
+def _serialize_draft_comment(request: HttpRequest, comment: DraftBlockComment) -> dict:
+    return {
+        "id": comment.id,
+        "body": comment.body,
+        "user": _serialize_draft_access_user(request, comment.user, has_access=True),
+        "created_at": comment.created_at.isoformat(),
+        "updated_at": comment.updated_at.isoformat(),
+    }
+
+
+def _serialize_draft_comment_thread(
+    request: HttpRequest,
+    thread: DraftBlockCommentThread,
+    *,
+    can_resolve: bool,
+    current_block_ids: set[str],
+) -> dict:
+    return {
+        "id": thread.id,
+        "block_id": thread.block_id,
+        "block_index": thread.block_index,
+        "block_type": thread.block_type,
+        "block_exists": thread.block_id in current_block_ids,
+        "created_by_user_id": thread.created_by_id,
+        "resolved_at": thread.resolved_at.isoformat() if thread.resolved_at else None,
+        "resolved_by_user_id": thread.resolved_by_id,
+        "created_at": thread.created_at.isoformat(),
+        "updated_at": thread.updated_at.isoformat(),
+        "can_resolve": can_resolve,
+        "comments": [
+            _serialize_draft_comment(request, comment)
+            for comment in thread.comments.all()
+        ],
+    }
+
+
+def _notify_draft_comment_participants(
+    *,
+    post: Post,
+    thread: DraftBlockCommentThread,
+    actor,
+    message: str,
+) -> None:
+    participant_ids = set(
+        thread.comments.exclude(user=actor).values_list("user_id", flat=True)
+    )
+    participant_ids.update(
+        AuthorAdmin.objects.filter(
+            author=post.author,
+            verified_at__isnull=False,
+        )
+        .exclude(user=actor)
+        .values_list("user_id", flat=True)
+    )
+    share_token = editor_service._post_draft_share_token(post)
+    for recipient in User.objects.filter(id__in=participant_ids, is_active=True):
+        create_user_notification(
+            user=recipient,
+            event_key="draft_block_comment",
+            title="Новое мнение к черновику",
+            message=message,
+            link_url=f"/drafts/{share_token}#draft-comment-{thread.id}",
+            payload={"post_id": post.id, "thread_id": thread.id, "actor_user_id": actor.id},
+            force_site=True,
+            force_telegram=False,
+            force_push=False,
+        )
+
+
+@csrf_exempt
+def shared_draft_comments(request: HttpRequest, share_token: str) -> HttpResponse:
+    user, post, error = _shared_draft_for_user(request, share_token)
+    if error:
+        return error
+    can_resolve = editor_service._user_can_manage_site_post(user, post)
+    current_blocks = _extract_draft_review_blocks(post.content)
+    current_block_ids = {block["id"] for block in current_blocks}
+
+    if request.method == "GET":
+        threads = (
+            post.draft_comment_threads.select_related("created_by", "resolved_by")
+            .prefetch_related("comments__user__site_profile")
+            .all()
+        )
+        return JsonResponse(
+            {
+                "ok": True,
+                "threads": [
+                    _serialize_draft_comment_thread(
+                        request,
+                        thread,
+                        can_resolve=can_resolve,
+                        current_block_ids=current_block_ids,
+                    )
+                    for thread in threads
+                ],
+            }
+        )
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+    block_id = _normalize_editor_block_identifier(
+        payload.get("block_id"), fallback_prefix="draft-block", fallback_index=0
+    )
+    block = next((item for item in current_blocks if item["id"] == block_id), None)
+    body = _draft_comment_body(payload)
+    if not block:
+        return JsonResponse({"ok": False, "error": "block not found"}, status=404)
+    if not body:
+        return JsonResponse({"ok": False, "error": "comment is required"}, status=400)
+    thread = DraftBlockCommentThread.objects.create(
+        post=post,
+        block_id=block["id"],
+        block_index=block["index"],
+        block_type=block["type"],
+        created_by=user,
+    )
+    DraftBlockComment.objects.create(thread=thread, user=user, body=body)
+    thread = (
+        DraftBlockCommentThread.objects.select_related("created_by", "resolved_by")
+        .prefetch_related("comments__user__site_profile")
+        .get(id=thread.id)
+    )
+    _notify_draft_comment_participants(
+        post=post,
+        thread=thread,
+        actor=user,
+        message=f"{user.username} оставил мнение к черновику «{post.title or 'Без названия'}».",
+    )
+    return JsonResponse(
+        {
+            "ok": True,
+            "thread": _serialize_draft_comment_thread(
+                request,
+                thread,
+                can_resolve=can_resolve,
+                current_block_ids=current_block_ids,
+            ),
+        },
+        status=201,
+    )
+
+
+@csrf_exempt
+def shared_draft_comment_reply(
+    request: HttpRequest,
+    share_token: str,
+    thread_id: int,
+) -> HttpResponse:
+    user, post, error = _shared_draft_for_user(request, share_token)
+    if error:
+        return error
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    thread = post.draft_comment_threads.filter(id=thread_id).first()
+    if not thread:
+        return JsonResponse({"ok": False, "error": "thread not found"}, status=404)
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+    body = _draft_comment_body(payload)
+    if not body:
+        return JsonResponse({"ok": False, "error": "comment is required"}, status=400)
+    comment = DraftBlockComment.objects.create(thread=thread, user=user, body=body)
+    thread.save(update_fields=("updated_at",))
+    comment = DraftBlockComment.objects.select_related("user__site_profile").get(id=comment.id)
+    _notify_draft_comment_participants(
+        post=post,
+        thread=thread,
+        actor=user,
+        message=(
+            f"{user.username} ответил в обсуждении черновика "
+            f"«{post.title or 'Без названия'}»."
+        ),
+    )
+    return JsonResponse(
+        {"ok": True, "comment": _serialize_draft_comment(request, comment)},
+        status=201,
+    )
+
+
+@csrf_exempt
+def shared_draft_comment_thread(
+    request: HttpRequest,
+    share_token: str,
+    thread_id: int,
+) -> HttpResponse:
+    user, post, error = _shared_draft_for_user(request, share_token)
+    if error:
+        return error
+    if request.method != "PATCH":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    if not editor_service._user_can_manage_site_post(user, post):
+        return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+    thread = (
+        post.draft_comment_threads.select_related("created_by", "resolved_by")
+        .prefetch_related("comments__user__site_profile")
+        .filter(id=thread_id)
+        .first()
+    )
+    if not thread:
+        return JsonResponse({"ok": False, "error": "thread not found"}, status=404)
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+    resolved = bool(payload.get("resolved"))
+    thread.resolved_at = timezone.now() if resolved else None
+    thread.resolved_by = user if resolved else None
+    thread.save(update_fields=("resolved_at", "resolved_by", "updated_at"))
+    current_block_ids = {block["id"] for block in _extract_draft_review_blocks(post.content)}
+    return JsonResponse(
+        {
+            "ok": True,
+            "thread": _serialize_draft_comment_thread(
+                request,
+                thread,
+                can_resolve=True,
+                current_block_ids=current_block_ids,
+            ),
+        }
+    )
 
 
 def _serialize_draft_access_user(request: HttpRequest, user, *, has_access: bool) -> dict:
@@ -973,6 +1232,7 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
     )
     if current_is_draft and not target_is_draft:
         post.draft_accesses.all().delete()
+        post.draft_comment_threads.all().delete()
     _sync_comun_category_assignment(
         post=post,
         comun=next_comun,

@@ -572,6 +572,76 @@ class PostRatingVote(models.Model):
         return f"{self.post_id}:{self.user_id}:{self.block_id}:{self.value}"
 
 
+class DraftBlockCommentThread(models.Model):
+    post = models.ForeignKey(
+        "feeds.Post",
+        on_delete=models.CASCADE,
+        related_name="draft_comment_threads",
+    )
+    block_id = models.CharField(max_length=64)
+    block_index = models.PositiveIntegerField(default=0)
+    block_type = models.CharField(max_length=64, blank=True, default="")
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="draft_comment_threads_created",
+    )
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    resolved_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="draft_comment_threads_resolved",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = "feeds"
+        ordering = ("resolved_at", "created_at", "id")
+        indexes = (
+            models.Index(
+                fields=("post", "block_id", "created_at"),
+                name="draftthread_post_block_idx",
+            ),
+            models.Index(fields=("post", "resolved_at"), name="draftthread_post_state_idx"),
+        )
+        verbose_name = "Обсуждение блока черновика"
+        verbose_name_plural = "Обсуждения блоков черновиков"
+
+    def __str__(self) -> str:
+        return f"{self.post_id}:{self.block_id}:{self.id}"
+
+
+class DraftBlockComment(models.Model):
+    thread = models.ForeignKey(
+        DraftBlockCommentThread,
+        on_delete=models.CASCADE,
+        related_name="comments",
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="draft_block_comments",
+    )
+    body = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = "feeds"
+        ordering = ("created_at", "id")
+        indexes = (
+            models.Index(fields=("thread", "created_at"), name="draftcomment_thread_time_idx"),
+        )
+        verbose_name = "Комментарий к блоку черновика"
+        verbose_name_plural = "Комментарии к блокам черновиков"
+
+    def __str__(self) -> str:
+        return f"{self.thread_id}:{self.user_id}:{self.id}"
+
+
 class PostBugReportConfirmation(models.Model):
     post = models.ForeignKey(
         "feeds.Post",
@@ -636,6 +706,8 @@ __all__ = [
     "PostTemplateConfig",
     "PostPollVote",
     "PostRatingVote",
+    "DraftBlockCommentThread",
+    "DraftBlockComment",
     "PostBugReportConfirmation",
     "default_allowed_post_templates",
     "configured_post_template_type_values",

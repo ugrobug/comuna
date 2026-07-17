@@ -137,6 +137,8 @@
   export let canExpandPreview = false
   export let externalPreviewImageUrl: string | null | undefined = null
   export let ratingVoteUrl: string | null = null
+  export let draftReviewEnabled = false
+  export let draftCommentCounts: Record<string, number> = {}
   $: contentLanguage =
     languageFromPathname($page.url.pathname) ??
     normalizeInterfaceLanguage($locale) ??
@@ -148,7 +150,11 @@
 
   export { htmlElement as element }
 
-  const dispatch = createEventDispatcher<{ expand: void; rating: BackendPostRating }>()
+  const dispatch = createEventDispatcher<{
+    expand: void
+    rating: BackendPostRating
+    draftblockcomment: { blockId: string }
+  }>()
 
   let expanded = false
   let hasOverflow = false
@@ -174,6 +180,7 @@
   let lastPostRatingsRef: Record<string, BackendPostRating> | null = null
   let postRatingsVoting = false
   let postRatingsRenderState = ''
+  let draftReviewRenderState = ''
   let pollRestoreInFlight = false
   let restoredPollToken: string | null = null
   const activeGlossaryTermClass = 'post-glossary-term--active'
@@ -2532,6 +2539,7 @@
 
       const htmlParts: string[] = []
       const spoilerStack: Array<{ title: string; parts: string[] }> = []
+      const reviewBlockIds = new Set<string>()
 
       const appendHtmlToCurrentScope = (html: string, blockType: string) => {
         if (!html) return
@@ -2539,6 +2547,7 @@
           spoilerStack.length > 0 ? spoilerStack[spoilerStack.length - 1].parts : htmlParts
         const normalizedType = blockType.toLowerCase()
         if (
+          !draftReviewEnabled &&
           (normalizedType === 'movie_time' || normalizedType === 'movietime') &&
           targetParts.length > 0 &&
           /<\/p>\s*$/i.test(targetParts[targetParts.length - 1])
@@ -2552,6 +2561,27 @@
         targetParts.push(html)
       }
 
+      const wrapDraftReviewBlock = (block: any, index: number, html: string): string => {
+        if (!draftReviewEnabled || !html) return html
+        const dataBlockId = block?.data && typeof block.data === 'object' ? block.data.block_id : ''
+        const rawId = String(block?.id || dataBlockId || `draft-block-${index + 1}`).trim()
+        let normalizedId =
+          rawId.replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^[-_]+|[-_]+$/g, '').slice(0, 64) ||
+          `draft-block-${index + 1}`
+        if (reviewBlockIds.has(normalizedId)) {
+          const suffix = `-${index + 1}`
+          normalizedId = `${normalizedId.slice(0, 64 - suffix.length)}${suffix}`
+        }
+        reviewBlockIds.add(normalizedId)
+        const count = Math.max(Number(draftCommentCounts?.[normalizedId] || 0), 0)
+        const countLabel = count > 0 ? `<span class="draft-review-block__count">${count}</span>` : ''
+        const activeClass = count > 0 ? ' draft-review-block--commented' : ''
+        return `<div class="draft-review-block${activeClass}" data-draft-block-id="${normalizedId}">
+          <div class="draft-review-block__content">${html}</div>
+          <button type="button" class="draft-review-block__comment" data-draft-comment-button="${normalizedId}" aria-label="${escapeHtml($t('site.draftReview.commentBlock'))}">${countLabel}</button>
+        </div>`
+      }
+
       for (const [index, block] of content.blocks.entries()) {
         const blockType = String(block?.type || '').toLowerCase()
         if (blockType === 'spoiler') {
@@ -2560,7 +2590,7 @@
             typeof rawData?.content === 'string' ? rawData.content.trim() : ''
           if (legacyContent) {
             const html = processJsonBlock(block, index, tocEntriesByIndex)
-            appendHtmlToCurrentScope(html, blockType)
+            appendHtmlToCurrentScope(wrapDraftReviewBlock(block, index, html), blockType)
             continue
           }
           const markerCandidate =
@@ -2591,7 +2621,7 @@
         }
 
         const html = processJsonBlock(block, index, tocEntriesByIndex)
-        appendHtmlToCurrentScope(html, blockType)
+        appendHtmlToCurrentScope(wrapDraftReviewBlock(block, index, html), blockType)
       }
 
       while (spoilerStack.length > 0) {
@@ -3409,6 +3439,9 @@
     void canExpandPreview
     void pollRenderState
     void postRatingsRenderState
+    draftReviewRenderState = JSON.stringify(draftCommentCounts || {})
+    void draftReviewRenderState
+    void draftReviewEnabled
     void expanded
     void fullBody
   }
@@ -3445,6 +3478,15 @@
     void restoreInlinePollState()
     const clickHandler = (event: Event) => {
       const target = event.target as HTMLElement | null
+      const draftCommentButton = target?.closest('.draft-review-block__comment') as HTMLElement | null
+      if (draftCommentButton && element?.contains(draftCommentButton)) {
+        const blockId = String(draftCommentButton.dataset.draftCommentButton || '').trim()
+        if (!blockId) return
+        event.preventDefault()
+        event.stopPropagation()
+        dispatch('draftblockcomment', { blockId })
+        return
+      }
       const clickedImage = target?.closest('img') as HTMLImageElement | null
       if (isExpandableImage(clickedImage)) {
         event.preventDefault()
@@ -3993,6 +4035,107 @@
 
   :global(.post-content .image-alt-text) {
     @apply text-sm text-slate-600 dark:text-zinc-400 text-center mt-2;
+  }
+
+  :global(.post-content .draft-review-block) {
+    position: relative;
+    min-width: 0;
+    padding-right: 2.75rem;
+    border-radius: 6px;
+    transition: background-color 0.16s ease;
+  }
+
+  :global(.post-content .draft-review-block:hover),
+  :global(.post-content .draft-review-block--commented) {
+    background: rgb(241 245 249 / 0.72);
+  }
+
+  :global(.dark .post-content .draft-review-block:hover),
+  :global(.dark .post-content .draft-review-block--commented) {
+    background: rgb(39 39 42 / 0.72);
+  }
+
+  :global(.post-content .draft-review-block__comment) {
+    position: absolute;
+    top: 0.25rem;
+    right: 0.25rem;
+    display: inline-flex;
+    width: 2rem;
+    height: 2rem;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgb(203 213 225);
+    border-radius: 6px;
+    background: white;
+    color: rgb(71 85 105);
+    opacity: 0;
+    box-shadow: 0 2px 7px rgb(15 23 42 / 0.1);
+    transition: opacity 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+  }
+
+  :global(.post-content .draft-review-block__comment::before) {
+    content: '';
+    width: 0.82rem;
+    height: 0.68rem;
+    border: 1.5px solid currentColor;
+    border-radius: 3px;
+  }
+
+  :global(.post-content .draft-review-block__comment::after) {
+    content: '';
+    position: absolute;
+    left: 0.58rem;
+    bottom: 0.43rem;
+    width: 0.3rem;
+    height: 0.3rem;
+    border-left: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: skewY(-32deg);
+    background: white;
+  }
+
+  :global(.post-content .draft-review-block:hover .draft-review-block__comment),
+  :global(.post-content .draft-review-block__comment:focus-visible),
+  :global(.post-content .draft-review-block--commented .draft-review-block__comment) {
+    opacity: 1;
+  }
+
+  :global(.post-content .draft-review-block__comment:hover) {
+    border-color: rgb(14 116 144);
+    color: rgb(14 116 144);
+  }
+
+  :global(.post-content .draft-review-block__count) {
+    position: absolute;
+    top: -0.4rem;
+    right: -0.4rem;
+    z-index: 1;
+    min-width: 1.1rem;
+    height: 1.1rem;
+    padding: 0 0.25rem;
+    border-radius: 999px;
+    background: rgb(14 116 144);
+    color: white;
+    font-size: 0.68rem;
+    font-weight: 700;
+    line-height: 1.1rem;
+    text-align: center;
+  }
+
+  :global(.dark .post-content .draft-review-block__comment) {
+    border-color: rgb(82 82 91);
+    background: rgb(24 24 27);
+    color: rgb(212 212 216);
+  }
+
+  :global(.dark .post-content .draft-review-block__comment::after) {
+    background: rgb(24 24 27);
+  }
+
+  @media (max-width: 768px) {
+    :global(.post-content .draft-review-block__comment) {
+      opacity: 1;
+    }
   }
 
   :global(.post-content img:not(.post-image-compare__image):not(.post-quote__author-photo)) {

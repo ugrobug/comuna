@@ -56,6 +56,8 @@
   export let disableUserLink: boolean | undefined = undefined
   export let comunCategories: BackendComunCategory[] = []
   export let currentWelcomePostId: number | null | undefined = undefined
+  export let draftReviewEnabled = false
+  export let draftCommentCounts: Record<string, number> = {}
 
   $: postUrl = linkOverride ?? postLink(post.post)
   $: isBackendPost = Boolean(linkOverride)
@@ -391,6 +393,9 @@
           {view}
           clickThrough={true}
           {showFullBody}
+          {draftReviewEnabled}
+          {draftCommentCounts}
+          on:draftblockcomment
           class="relative text-slate-600 dark:text-zinc-400"
         />
         {#if backendTags.length}

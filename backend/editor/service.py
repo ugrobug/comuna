@@ -2177,6 +2177,37 @@ def _extract_inline_post_rating_blocks(raw_content: str) -> list[str]:
     return block_ids
 
 
+def _extract_draft_review_blocks(raw_content: str) -> list[dict]:
+    payload = _decode_editor_payload(raw_content)
+    if not payload:
+        return []
+
+    blocks: list[dict] = []
+    seen: set[str] = set()
+    for index, raw_block in enumerate(payload.get("blocks") or []):
+        if not isinstance(raw_block, dict):
+            continue
+        block_data = raw_block.get("data")
+        data_block_id = block_data.get("block_id") if isinstance(block_data, dict) else ""
+        block_id = _normalize_editor_block_identifier(
+            raw_block.get("id") or data_block_id,
+            fallback_prefix="draft-block",
+            fallback_index=index,
+        )
+        if block_id in seen:
+            suffix = f"-{index + 1}"
+            block_id = f"{block_id[: 64 - len(suffix)]}{suffix}"
+        seen.add(block_id)
+        blocks.append(
+            {
+                "id": block_id,
+                "index": index,
+                "type": str(raw_block.get("type") or "").strip().lower()[:64],
+            }
+        )
+    return blocks
+
+
 def _serialize_post_rating_block(
     post: Post,
     user: User | None,
@@ -2458,6 +2489,7 @@ __all__ = [
     "_extract_editor_payload_title",
     "_extract_imdb_id",
     "_extract_inline_post_rating_blocks",
+    "_extract_draft_review_blocks",
     "_get_or_create_personal_author",
     "_get_personal_author_for_user",
     "_is_post_draft",

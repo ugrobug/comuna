@@ -103,6 +103,29 @@ export type DraftAccessResponse = {
   users: DraftShareUser[]
 }
 
+export type DraftBlockComment = {
+  id: number
+  body: string
+  user: DraftShareUser
+  created_at: string
+  updated_at: string
+}
+
+export type DraftBlockCommentThread = {
+  id: number
+  block_id: string
+  block_index: number
+  block_type: string
+  block_exists: boolean
+  created_by_user_id: number
+  resolved_at?: string | null
+  resolved_by_user_id?: number | null
+  created_at: string
+  updated_at: string
+  can_resolve: boolean
+  comments: DraftBlockComment[]
+}
+
 export type SiteNotificationItem = {
   id: number
   event_key: string
@@ -891,6 +914,75 @@ export const fetchSharedDraft = async (shareToken: string) => {
   }
 
   return data.post as SiteUserPost
+}
+
+const sharedDraftCommentsUrl = (shareToken: string, suffix = '') =>
+  `/api/auth/drafts/shared/${encodeURIComponent(shareToken)}/comments/${suffix}`
+
+const draftCommentRequest = async <T>(path: string, options?: RequestInit): Promise<T> => {
+  const token = get(siteToken)
+  if (!token) {
+    throw new Error('Нужна авторизация')
+  }
+  const response = await fetch(buildUrl(path), {
+    credentials: 'include',
+    ...options,
+    headers: {
+      ...(options?.body ? { 'Content-Type': 'application/json' } : {}),
+      ...options?.headers,
+      Authorization: `Bearer ${token}`,
+    },
+  })
+  const data = await response.json().catch(() => null)
+  if (!response.ok || !data?.ok) {
+    throw new Error(data?.error || 'Не удалось обновить обсуждение')
+  }
+  return data as T
+}
+
+export const fetchDraftBlockComments = async (
+  shareToken: string
+): Promise<DraftBlockCommentThread[]> => {
+  const data = await draftCommentRequest<{ ok: true; threads: DraftBlockCommentThread[] }>(
+    sharedDraftCommentsUrl(shareToken)
+  )
+  return data.threads || []
+}
+
+export const createDraftBlockComment = async (
+  shareToken: string,
+  blockId: string,
+  body: string
+): Promise<DraftBlockCommentThread> => {
+  const data = await draftCommentRequest<{ ok: true; thread: DraftBlockCommentThread }>(
+    sharedDraftCommentsUrl(shareToken),
+    { method: 'POST', body: JSON.stringify({ block_id: blockId, body }) }
+  )
+  return data.thread
+}
+
+export const replyToDraftBlockComment = async (
+  shareToken: string,
+  threadId: number,
+  body: string
+): Promise<DraftBlockComment> => {
+  const data = await draftCommentRequest<{ ok: true; comment: DraftBlockComment }>(
+    sharedDraftCommentsUrl(shareToken, `${threadId}/replies/`),
+    { method: 'POST', body: JSON.stringify({ body }) }
+  )
+  return data.comment
+}
+
+export const setDraftBlockCommentResolved = async (
+  shareToken: string,
+  threadId: number,
+  resolved: boolean
+): Promise<DraftBlockCommentThread> => {
+  const data = await draftCommentRequest<{ ok: true; thread: DraftBlockCommentThread }>(
+    sharedDraftCommentsUrl(shareToken, `${threadId}/`),
+    { method: 'PATCH', body: JSON.stringify({ resolved }) }
+  )
+  return data.thread
 }
 
 export const fetchDraftAccess = async (

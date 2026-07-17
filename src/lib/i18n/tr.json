@@ -1112,6 +1112,16 @@
             "grantSuccess": "Kullanıcı artık taslağı görüntüleyebilir",
             "revokeSuccess": "Taslak erişimi kaldırıldı"
         },
+        "draftReview": {
+            "commentBlock": "Bloğa yorum yap", "user": "Kullanıcı", "pageTitle": "Ortak taslak incelemesi",
+            "loading": "Yükleniyor...", "signIn": "Giriş yap", "privatePreview": "Özel taslak önizlemesi",
+            "title": "Gönderi geri bildirimleri", "selectedBlock": "Seçilen bloktaki tartışmalar", "selectBlock": "Görüş bildirmek için bir blok seçin", "showAll": "Tüm tartışmalar",
+            "newComment": "Yeni görüş", "placeholder": "Ne değiştirilmeli veya açıklanmalı?", "send": "Gönder", "commentAdded": "Görüş eklendi", "saveError": "Yorum kaydedilemedi",
+            "published": "Taslak yayınlandı", "publishError": "Taslak yayınlanamadı", "deleteConfirm": "Bu taslak silinsin mi?", "deleted": "Taslak silindi", "deleteError": "Taslak silinemedi",
+            "loginRequired": "Paylaşılan taslağı açmak için giriş yapın.", "loadError": "Taslak yüklenemedi", "publish": "Yayınla", "edit": "Düzenle", "delete": "Sil",
+            "resolved": "Çözüldü", "blockRemoved": "Bu blok taslaktan kaldırıldı", "replyPlaceholder": "Bu tartışmaya yanıt ver", "reopen": "Yeniden aç", "resolve": "Tartışmayı çöz", "reply": "Yanıtla",
+            "noBlockComments": "Bu blokta henüz tartışma yok", "noComments": "Henüz tartışma yok"
+        },
         "report": {
             "title": "Neyi şikâyet ediyorsunuz?",
             "action": "Şikâyet et",

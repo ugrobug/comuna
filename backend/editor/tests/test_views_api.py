@@ -6,6 +6,7 @@ from django.urls import resolve
 from django.utils import timezone
 
 from editor import views as editor_views
+from editor.models import DraftBlockCommentThread
 from feeds.models import Author, Post, PostDraftAccess
 from notifications.models import SiteNotification
 from users.models import AuthorAdmin
@@ -21,6 +22,18 @@ class EditorViewsRoutingTests(SimpleTestCase):
         self.assertIs(resolve("/api/auth/posts/1/").func, editor_views.user_post_update)
         self.assertIs(resolve("/api/auth/drafts/1/access/").func, editor_views.draft_access)
         self.assertIs(resolve("/api/auth/drafts/shared/token/").func, editor_views.shared_draft_detail)
+        self.assertIs(
+            resolve("/api/auth/drafts/shared/token/comments/").func,
+            editor_views.shared_draft_comments,
+        )
+        self.assertIs(
+            resolve("/api/auth/drafts/shared/token/comments/1/").func,
+            editor_views.shared_draft_comment_thread,
+        )
+        self.assertIs(
+            resolve("/api/auth/drafts/shared/token/comments/1/replies/").func,
+            editor_views.shared_draft_comment_reply,
+        )
         self.assertIs(resolve("/api/auth/uploads/").func, editor_views.user_upload)
         self.assertIs(resolve("/api/posts/1/poll-vote/").func, editor_views.post_poll_vote)
         self.assertIs(resolve("/api/posts/1/rating-vote/").func, editor_views.post_rating_vote)
@@ -45,7 +58,18 @@ class DraftAccessApiTests(TestCase):
             author=self.author,
             message_id=91001,
             title="Shared draft",
-            content="Draft body",
+            content=json.dumps(
+                {
+                    "blocks": [
+                        {"id": "intro-block", "type": "paragraph", "data": {"text": "Draft body"}},
+                        {
+                            "id": "image-block",
+                            "type": "image",
+                            "data": {"url": "https://example.com/image.jpg"},
+                        },
+                    ]
+                }
+            ),
             is_pending=True,
             raw_data={"draft": True, "draft_share_token": "shared-draft-token"},
         )
@@ -118,4 +142,59 @@ class DraftAccessApiTests(TestCase):
             self.recipient.id,
             **self.outsider_headers,
         )
+        self.assertEqual(response.status_code, 403)
+
+    def test_shared_user_can_comment_and_owner_can_resolve_thread(self):
+        PostDraftAccess.objects.create(
+            post=self.post,
+            user=self.recipient,
+            granted_by=self.owner,
+        )
+        comments_url = "/api/auth/drafts/shared/shared-draft-token/comments/"
+        response = self.client.post(
+            comments_url,
+            data=json.dumps({"block_id": "intro-block", "body": "Please clarify this."}),
+            content_type="application/json",
+            **self.recipient_headers,
+        )
+        self.assertEqual(response.status_code, 201)
+        thread_id = response.json()["thread"]["id"]
+        self.assertEqual(response.json()["thread"]["block_id"], "intro-block")
+        self.assertEqual(response.json()["thread"]["comments"][0]["body"], "Please clarify this.")
+
+        response = self.client.post(
+            f"{comments_url}{thread_id}/replies/",
+            data=json.dumps({"body": "Updated, thank you."}),
+            content_type="application/json",
+            **self.owner_headers,
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["comment"]["body"], "Updated, thank you.")
+
+        response = self.client.patch(
+            f"{comments_url}{thread_id}/",
+            data=json.dumps({"resolved": True}),
+            content_type="application/json",
+            **self.owner_headers,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNotNone(response.json()["thread"]["resolved_at"])
+        self.assertEqual(DraftBlockCommentThread.objects.get(id=thread_id).resolved_by, self.owner)
+
+    def test_comment_api_rejects_unknown_block_and_revoked_user(self):
+        access = PostDraftAccess.objects.create(
+            post=self.post,
+            user=self.recipient,
+            granted_by=self.owner,
+        )
+        comments_url = "/api/auth/drafts/shared/shared-draft-token/comments/"
+        response = self.client.post(
+            comments_url,
+            data=json.dumps({"block_id": "missing-block", "body": "Comment"}),
+            content_type="application/json",
+            **self.recipient_headers,
+        )
+        self.assertEqual(response.status_code, 404)
+        access.delete()
+        response = self.client.get(comments_url, **self.recipient_headers)
         self.assertEqual(response.status_code, 403)

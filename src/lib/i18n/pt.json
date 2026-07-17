@@ -993,6 +993,16 @@
             "grantSuccess": "O usuário agora pode ver o rascunho",
             "revokeSuccess": "Acesso ao rascunho removido"
         },
+        "draftReview": {
+            "commentBlock": "Comentar bloco", "user": "Usuário", "pageTitle": "Revisão colaborativa do rascunho",
+            "loading": "Carregando...", "signIn": "Entrar", "privatePreview": "Prévia privada do rascunho",
+            "title": "Opiniões sobre a publicação", "selectedBlock": "Discussões do bloco selecionado", "selectBlock": "Selecione um bloco para deixar sua opinião", "showAll": "Todas as discussões",
+            "newComment": "Nova opinião", "placeholder": "O que deve ser alterado ou esclarecido?", "send": "Enviar", "commentAdded": "Opinião adicionada", "saveError": "Não foi possível salvar o comentário",
+            "published": "Rascunho publicado", "publishError": "Não foi possível publicar o rascunho", "deleteConfirm": "Excluir este rascunho?", "deleted": "Rascunho excluído", "deleteError": "Não foi possível excluir o rascunho",
+            "loginRequired": "Entre para abrir este rascunho compartilhado.", "loadError": "Não foi possível carregar o rascunho", "publish": "Publicar", "edit": "Editar", "delete": "Excluir",
+            "resolved": "Resolvido", "blockRemoved": "Este bloco foi removido do rascunho", "replyPlaceholder": "Responder nesta discussão", "reopen": "Reabrir", "resolve": "Resolver discussão", "reply": "Responder",
+            "noBlockComments": "Ainda não há discussões neste bloco", "noComments": "Ainda não há discussões"
+        },
         "report": {
             "title": "O que deseja denunciar?",
             "action": "Denunciar",

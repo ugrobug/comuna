@@ -860,6 +860,16 @@
             "grantSuccess": "Der Benutzer kann den Entwurf jetzt ansehen",
             "revokeSuccess": "Entwurfszugriff entfernt"
         },
+        "draftReview": {
+            "commentBlock": "Block kommentieren", "user": "Benutzer", "pageTitle": "Gemeinsame Entwurfsprüfung",
+            "loading": "Wird geladen...", "signIn": "Anmelden", "privatePreview": "Private Entwurfsvorschau",
+            "title": "Feedback zum Beitrag", "selectedBlock": "Diskussionen zum ausgewählten Block", "selectBlock": "Wähle einen Block aus, um Feedback zu geben", "showAll": "Alle Diskussionen",
+            "newComment": "Neues Feedback", "placeholder": "Was sollte geändert oder erläutert werden?", "send": "Senden", "commentAdded": "Feedback hinzugefügt", "saveError": "Kommentar konnte nicht gespeichert werden",
+            "published": "Entwurf veröffentlicht", "publishError": "Entwurf konnte nicht veröffentlicht werden", "deleteConfirm": "Diesen Entwurf löschen?", "deleted": "Entwurf gelöscht", "deleteError": "Entwurf konnte nicht gelöscht werden",
+            "loginRequired": "Melde dich an, um diesen geteilten Entwurf zu öffnen.", "loadError": "Entwurf konnte nicht geladen werden", "publish": "Veröffentlichen", "edit": "Bearbeiten", "delete": "Löschen",
+            "resolved": "Erledigt", "blockRemoved": "Dieser Block wurde aus dem Entwurf entfernt", "replyPlaceholder": "In dieser Diskussion antworten", "reopen": "Wieder öffnen", "resolve": "Diskussion erledigen", "reply": "Antworten",
+            "noBlockComments": "Noch keine Diskussionen zu diesem Block", "noComments": "Noch keine Diskussionen"
+        },
         "report": {
             "title": "Was möchtest du melden?",
             "action": "Melden",
