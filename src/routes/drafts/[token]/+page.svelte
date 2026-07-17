@@ -303,7 +303,7 @@
               placeholder={$t('site.draftReview.placeholder')}
             ></textarea>
             <div class="mt-2 flex justify-end">
-              <Button type="submit" color="primary" size="sm" loading={submittingBlock} disabled={!newComment.trim() || submittingBlock}>
+              <Button submit={true} color="primary" size="sm" loading={submittingBlock} disabled={!newComment.trim() || submittingBlock}>
                 {$t('site.draftReview.send')}
               </Button>
             </div>
@@ -394,7 +394,7 @@
                     <span></span>
                   {/if}
                   <Button
-                    type="submit"
+                    submit={true}
                     color="ghost"
                     size="sm"
                     loading={busyThreadId === thread.id}
