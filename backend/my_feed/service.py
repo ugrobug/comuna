@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from django.contrib.auth import get_user_model
+from django.db.models import Q
 
 from my_feed.models import UserFeedSettings, default_feed_tag_rules
 
@@ -25,6 +26,34 @@ def _normalize_unique_string_list(value: object, *, lowercase: bool = False, lim
         seen.add(text)
         result.append(text)
     return result
+
+
+def _normalize_unique_positive_int_list(value: object, *, limit: int = 2000) -> list[int]:
+    if not isinstance(value, list):
+        return []
+    result: list[int] = []
+    seen: set[int] = set()
+    for item in value[:limit]:
+        try:
+            number = int(item)
+        except (TypeError, ValueError):
+            continue
+        if number <= 0 or number in seen:
+            continue
+        seen.add(number)
+        result.append(number)
+    return result
+
+
+def _hidden_comun_filter(slugs: list[str], *, prefix: str = "") -> Q:
+    normalized_slugs = _normalize_unique_string_list(slugs, lowercase=True, limit=2000)
+    if not normalized_slugs:
+        return Q()
+    return (
+        Q(**{f"{prefix}raw_data__comun_slug__in": normalized_slugs})
+        | Q(**{f"{prefix}comun_category_assignments__comun__slug__in": normalized_slugs})
+        | Q(**{f"{prefix}author__telegram_source_comun__slug__in": normalized_slugs})
+    )
 
 
 def _normalize_comun_category_selection(value: object) -> dict[str, list[str]]:
@@ -75,6 +104,8 @@ def _feed_settings_have_customizations(settings: UserFeedSettings) -> bool:
             bool(settings.my_feed_comuns),
             bool(settings.my_feed_comun_categories),
             bool(settings.hidden_authors),
+            bool(settings.hidden_post_ids),
+            bool(settings.hidden_comuns),
             not bool(settings.my_feed_hide_negative),
             dict(settings.tag_rules or {}) != default_rules,
             bool(settings.interface_language_manual and settings.interface_language),
@@ -94,6 +125,8 @@ def _serialize_user_feed_settings(settings: UserFeedSettings) -> dict:
             settings.my_feed_comun_categories
         ),
         "hidden_authors": _normalize_unique_string_list(settings.hidden_authors),
+        "hidden_post_ids": _normalize_unique_positive_int_list(settings.hidden_post_ids),
+        "hidden_comuns": _normalize_unique_string_list(settings.hidden_comuns, lowercase=True, limit=2000),
         "my_feed_hide_negative": bool(settings.my_feed_hide_negative),
         "tag_rules": _normalize_tag_rules(settings.tag_rules),
         "interface_language": (
@@ -128,6 +161,12 @@ def _apply_user_feed_settings_payload(settings: UserFeedSettings, payload: dict)
         )
     if "hidden_authors" in payload:
         settings.hidden_authors = _normalize_unique_string_list(payload.get("hidden_authors"))
+    if "hidden_post_ids" in payload:
+        settings.hidden_post_ids = _normalize_unique_positive_int_list(payload.get("hidden_post_ids"))
+    if "hidden_comuns" in payload:
+        settings.hidden_comuns = _normalize_unique_string_list(
+            payload.get("hidden_comuns"), lowercase=True, limit=2000
+        )
     if "my_feed_hide_negative" in payload:
         settings.my_feed_hide_negative = bool(payload.get("my_feed_hide_negative"))
     if "tag_rules" in payload:
@@ -150,6 +189,7 @@ __all__ = [
     "VALID_HOME_FEEDS",
     "VALID_INTERFACE_LANGUAGES",
     "VALID_TAG_RULES",
+    "_hidden_comun_filter",
     "_apply_user_feed_settings_payload",
     "_feed_settings_have_customizations",
     "_get_or_create_user_feed_settings",

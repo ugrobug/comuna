@@ -16,6 +16,7 @@
   import { onDestroy, onMount } from 'svelte'
   import type { ComponentType } from 'svelte'
   import type { BackendPost } from '$lib/api/backend'
+  import { isBackendPostVisible } from '$lib/postVisibility'
 
   export let data
 
@@ -77,15 +78,6 @@
     url.searchParams.set('limit', String(limit))
     url.searchParams.set('offset', String(currentOffset))
     return url.toString()
-  }
-
-  const authorKey = (backendPost: { author?: { username?: string } }) =>
-    (backendPost.author?.username ?? '').trim().toLowerCase()
-
-  const isAuthorVisible = (backendPost: { author?: { username?: string } }) => {
-    const key = authorKey(backendPost)
-    if (!key) return true
-    return !hiddenAuthorKeys.has(key)
   }
 
   const loadMore = async (limit = pageSize) => {
@@ -200,15 +192,12 @@
   $: selectedMyFeedAuthors = $userSettings.myFeedAuthors ?? []
   $: selectedMyFeedComunCategories = $userSettings.myFeedComunCategories ?? {}
   $: myFeedHasBaseSettings = selectedMyFeedComuns.length > 0 || selectedMyFeedAuthors.length > 0
-  $: hiddenAuthorKeys = new Set(
-    ($userSettings.hiddenAuthors ?? []).map((value) => value.toLowerCase())
-  )
   $: canLoadMyFeed =
     feedType === 'mine' && $siteUser && $feedSettingsHydrated && myFeedHasBaseSettings
   $: hideNegativeMyFeed = $userSettings.myFeedHideNegative ?? true
   $: hideReadPosts = ($userSettings.hideReadPosts ?? false) && !!$siteUser
   $: effectiveHideRead = hideReadPosts && !readOnly
-  $: visiblePosts = posts.filter(isAuthorVisible) as BackendPost[]
+  $: visiblePosts = posts.filter((post) => isBackendPostVisible(post, $userSettings)) as BackendPost[]
   $: showFeedKeyboardShortcutsHint = feedType === 'hot' || feedType === 'mine'
 
   $: if (feedType === 'mine' && browser && !myFeedSectionModulePromise) {

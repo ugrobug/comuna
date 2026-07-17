@@ -23,6 +23,7 @@
   import { createSiteChat, refreshSiteUser, siteToken, siteUser, uploadSiteImage } from '$lib/siteAuth'
   import { env } from '$env/dynamic/public'
   import { userSettings } from '$lib/settings'
+  import { isBackendPostVisible } from '$lib/postVisibility'
   import { deserializeEditorModel } from '$lib/util'
   import { brandNameForLanguage } from '$lib/brand'
   import { locale, t } from '$lib/translations'
@@ -267,17 +268,7 @@
         : uncategorizedPostsCount
   }
 
-  $: hiddenAuthorKeys = new Set(
-    ($userSettings.hiddenAuthors ?? []).map((value) => value.toLowerCase())
-  )
-  const authorKey = (backendPost: { author?: { username?: string } }) =>
-    (backendPost.author?.username ?? '').trim().toLowerCase()
-  const isAuthorVisible = (backendPost: { author?: { username?: string } }) => {
-    const key = authorKey(backendPost)
-    if (!key) return true
-    return !hiddenAuthorKeys.has(key)
-  }
-  $: visiblePosts = posts.filter(isAuthorVisible)
+  $: visiblePosts = posts.filter((post) => isBackendPostVisible(post, $userSettings))
 
   const isModerator = () => Boolean(comun?.can_moderate && $siteToken)
   const canManageComunModerators = () => Boolean(comun?.can_manage_moderators && $siteToken)

@@ -3881,6 +3881,30 @@ def post_view(request: HttpRequest, post_id: int) -> HttpResponse:
     return JsonResponse({"ok": True, "views_count": _post_total_views(post, now)})
 
 
+def _apply_user_hidden_content(queryset, user, *, prefix: str = ""):
+    if not user:
+        return queryset
+    settings = UserFeedSettings.objects.filter(user=user).first()
+    if not settings:
+        return queryset
+    serialized = my_feed_service._serialize_user_feed_settings(settings)
+    hidden_post_ids = serialized.get("hidden_post_ids") or []
+    if hidden_post_ids:
+        queryset = queryset.exclude(**{f"{prefix}id__in": hidden_post_ids})
+    hidden_authors = serialized.get("hidden_authors") or []
+    if hidden_authors:
+        author_filter = Q()
+        for username in hidden_authors:
+            author_filter |= Q(**{f"{prefix}author__username__iexact": username})
+        queryset = queryset.exclude(author_filter)
+    hidden_comun_filter = my_feed_service._hidden_comun_filter(
+        serialized.get("hidden_comuns") or [], prefix=prefix
+    )
+    if hidden_comun_filter:
+        queryset = queryset.exclude(hidden_comun_filter).distinct()
+    return queryset
+
+
 @anonymous_cache(prefix="home-feed", seconds=45)
 def home_feed(request: HttpRequest) -> HttpResponse:
     language = _request_post_language(request)
@@ -3941,6 +3965,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
         .exclude(id__in=hidden_home_comun_category_post_ids)
     )
     base_query = _filter_posts_for_language(base_query, language)
+    base_query = _apply_user_hidden_content(base_query, current_user)
     if hidden_home_comun_slugs:
         hidden_home_comun_post_ids = Post.objects.filter(
             raw_data__source="manual_comun",
@@ -4116,6 +4141,7 @@ def favorites_feed(request: HttpRequest) -> HttpResponse:
         .filter(Q(post__author__shadow_banned=False) | Q(post__author__force_home=True))
     )
     favorites_qs = _filter_posts_for_language(favorites_qs, language, prefix="post__")
+    favorites_qs = _apply_user_hidden_content(favorites_qs, user, prefix="post__")
     favorite_prefetches = ["post__tags"]
     translation_prefetch = _post_translation_prefetch(language, prefix="post__")
     if translation_prefetch:

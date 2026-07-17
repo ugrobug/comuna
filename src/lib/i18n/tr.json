@@ -1020,6 +1020,18 @@
                 "remove": "Gizli yazarı kaldır:",
                 "empty": "Henüz gizli yazar yok."
             },
+            "hiddenPosts": {
+                "title": "Gizlenen gönderiler",
+                "description": "Bu gönderiler akışlarda gösterilmez.",
+                "remove": "Gönderiyi yeniden göster:",
+                "empty": "Henüz gizlenen gönderi yok."
+            },
+            "hiddenComuns": {
+                "title": "Gizlenen topluluklar",
+                "description": "Bu toplulukların gönderileri akışlarda gösterilmez.",
+                "remove": "Topluluğu yeniden göster:",
+                "empty": "Henüz gizlenen topluluk yok."
+            },
             "hideNegative": {
                 "title": "Negatif puanlı gönderileri gösterme",
                 "description": "Akışımda puanı sıfırın altında olan gönderileri gizle."
@@ -1380,6 +1392,10 @@
         },
         "postMeta": {
             "subscribe": "Abone ol",
+            "hide": "Gizle",
+            "hidePost": "Bu gönderiyi gizle",
+            "hideAuthorPosts": "Yazarın tüm gönderilerini gizle",
+            "hideComunPosts": "Topluluğun tüm gönderilerini gizle",
             "showAuthor": "Yazarı göster",
             "hideAuthor": "Yazarı gizle",
             "notifyOn": "Telegram comment notifications for the author are enabled",
@@ -1388,6 +1404,8 @@
             "loginRequired": "Kayıt gerekli",
             "authorVisible": "Posts by this author are visible again",
             "authorHidden": "You will no longer see posts by this author",
+            "postHidden": "Gönderi gizlendi",
+            "comunHidden": "Topluluk gönderileri gizlendi",
             "admin": "Yönetim"
         },
         "postCard": {

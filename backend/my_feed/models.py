@@ -28,6 +28,8 @@ class UserFeedSettings(models.Model):
     my_feed_comuns = models.JSONField(default=list, blank=True)
     my_feed_comun_categories = models.JSONField(default=dict, blank=True)
     hidden_authors = models.JSONField(default=list, blank=True)
+    hidden_post_ids = models.JSONField(default=list, blank=True)
+    hidden_comuns = models.JSONField(default=list, blank=True)
     my_feed_hide_negative = models.BooleanField(default=True)
     tag_rules = models.JSONField(default=default_feed_tag_rules, blank=True)
     interface_language = models.CharField(max_length=8, blank=True, default="")

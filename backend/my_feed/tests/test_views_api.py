@@ -205,6 +205,8 @@ class UserFeedSettingsApiTests(TestCase):
                 {
                     "home_feed": "mine",
                     "my_feed_authors": ["chosen-author", "chosen-author"],
+                    "hidden_post_ids": [self.post.id, str(self.post.id), 0, "bad"],
+                    "hidden_comuns": ["Subscribed", "subscribed"],
                     "my_feed_hide_negative": False,
                     "tag_rules": {"noise": "hide", "nsfw": "blur", "bad": "drop"},
                     "keyboard_shortcuts_hint_dismissed": True,
@@ -218,6 +220,8 @@ class UserFeedSettingsApiTests(TestCase):
         payload = response.json()
         self.assertEqual(payload["settings"]["home_feed"], "mine")
         self.assertEqual(payload["settings"]["my_feed_authors"], ["chosen-author"])
+        self.assertEqual(payload["settings"]["hidden_post_ids"], [self.post.id])
+        self.assertEqual(payload["settings"]["hidden_comuns"], ["subscribed"])
         self.assertFalse(payload["settings"]["my_feed_hide_negative"])
         self.assertEqual(payload["settings"]["tag_rules"], {"noise": "hide", "nsfw": "blur"})
         self.assertTrue(payload["settings"]["keyboard_shortcuts_hint_dismissed"])
@@ -225,6 +229,22 @@ class UserFeedSettingsApiTests(TestCase):
         response = self.client.get(reverse("auth-feed-settings"), **self.auth_headers)
         self.assertEqual(response.status_code, 200, response.content.decode())
         self.assertTrue(response.json()["has_customizations"])
+
+    def test_my_feed_excludes_hidden_posts_and_comun_posts(self):
+        UserFeedSettings.objects.create(
+            user=self.user,
+            my_feed_authors=[self.author.username],
+            hidden_post_ids=[self.post.id],
+            hidden_comuns=[self.comun.slug],
+        )
+
+        response = self.client.get(reverse("my-feed"), **self.auth_headers)
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        self.assertEqual(
+            [post["id"] for post in response.json()["posts"]],
+            [self.other_comun_post.id],
+        )
 
     def test_auth_feed_settings_language_requires_manual_flag(self):
         response = self.client.patch(

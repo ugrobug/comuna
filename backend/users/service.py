@@ -684,7 +684,14 @@ def _merge_feed_settings(target: User, source: User) -> None:
         "my_feed_comuns": target_settings.my_feed_comuns or [],
         "my_feed_comun_categories": target_settings.my_feed_comun_categories or {},
     }
-    for field in ("my_feed_authors", "my_feed_tags", "my_feed_comuns", "hidden_authors"):
+    for field in (
+        "my_feed_authors",
+        "my_feed_tags",
+        "my_feed_comuns",
+        "hidden_authors",
+        "hidden_post_ids",
+        "hidden_comuns",
+    ):
         merged = list(dict.fromkeys([*(getattr(target_settings, field) or []), *(getattr(source_settings, field) or [])]))
         setattr(target_settings, field, merged)
     target_settings.my_feed_comun_categories = {

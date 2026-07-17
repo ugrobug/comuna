@@ -6,11 +6,12 @@
   import { Button, toast } from 'mono-svelte'
   import FeedPostsList from '$lib/components/feeds/FeedPostsList.svelte'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
-  import { buildTagPostsUrl } from '$lib/api/backend'
+  import { buildTagPostsUrl, type BackendPost } from '$lib/api/backend'
   import { userSettings } from '$lib/settings'
   import { normalizeTag } from '$lib/tags'
   import { brandNameForLanguage } from '$lib/brand'
   import { locale } from '$lib/translations'
+  import { isBackendPostVisible } from '$lib/postVisibility'
 
   export let data
 
@@ -29,9 +30,6 @@
   }
   const scrollThreshold = 400
   let scrollRaf: number | null = null
-  $: hiddenAuthorKeys = new Set(
-    ($userSettings.hiddenAuthors ?? []).map((value) => value.toLowerCase())
-  )
 
   $: tagName = data.tag?.name ?? data.tag ?? ''
   $: tagLemma = normalizeTag(data.tag?.lemma ?? tagName)
@@ -46,16 +44,7 @@
     (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '') + '/'
   ).toString()
 
-  const authorKey = (backendPost: { author?: { username?: string } }) =>
-    (backendPost.author?.username ?? '').trim().toLowerCase()
-
-  const isAuthorVisible = (backendPost: { author?: { username?: string } }) => {
-    const key = authorKey(backendPost)
-    if (!key) return true
-    return !hiddenAuthorKeys.has(key)
-  }
-
-  $: visiblePosts = posts.filter(isAuthorVisible)
+  $: visiblePosts = posts.filter((post: BackendPost) => isBackendPostVisible(post, $userSettings))
 
   const buildPageUrl = (offset: number) => {
     if (!tagName) return ''

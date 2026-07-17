@@ -60,6 +60,8 @@
     ($userSettings.languageManuallySelected ? $userSettings.language : normalizeInterfaceLanguage($locale)) ?? 'ru'
   let syncedInterfaceLanguage = selectedInterfaceLanguage
   $: hiddenAuthors = $userSettings.hiddenAuthors ?? []
+  $: hiddenPostIds = $userSettings.hiddenPostIds ?? []
+  $: hiddenComuns = $userSettings.hiddenComuns ?? []
   $: blacklistedTags = Object.entries($userSettings.tagRules ?? {})
     .filter(([, rule]) => rule === 'hide')
     .map(([tag]) => tag)
@@ -158,6 +160,28 @@
 
   const clearHiddenAuthors = () => {
     $userSettings = { ...$userSettings, hiddenAuthors: [] }
+  }
+
+  const removeHiddenPost = (postId: number) => {
+    $userSettings = {
+      ...$userSettings,
+      hiddenPostIds: ($userSettings.hiddenPostIds ?? []).filter((value) => value !== postId),
+    }
+  }
+
+  const clearHiddenPosts = () => {
+    $userSettings = { ...$userSettings, hiddenPostIds: [] }
+  }
+
+  const removeHiddenComun = (slug: string) => {
+    $userSettings = {
+      ...$userSettings,
+      hiddenComuns: ($userSettings.hiddenComuns ?? []).filter((value) => value !== slug),
+    }
+  }
+
+  const clearHiddenComuns = () => {
+    $userSettings = { ...$userSettings, hiddenComuns: [] }
   }
 
   const syncSiteProfileForm = () => {
@@ -573,6 +597,58 @@
         </Button>
       {:else}
         <span class="text-sm text-slate-500 dark:text-zinc-400">{$t('settings.myFeed.hiddenAuthors.empty')}</span>
+      {/if}
+    </Setting>
+    <Setting itemsClass="!flex-col !items-start">
+      <span slot="title">{$t('settings.myFeed.hiddenPosts.title')}</span>
+      <span slot="description">{$t('settings.myFeed.hiddenPosts.description')}</span>
+      {#if hiddenPostIds.length}
+        <div class="flex flex-wrap gap-2">
+          {#each hiddenPostIds as postId}
+            <span class="inline-flex items-center gap-2 rounded-full bg-slate-100 dark:bg-zinc-800 px-3 py-1 text-xs font-medium text-slate-700 dark:text-zinc-200">
+              #{postId}
+              <button
+                type="button"
+                class="text-slate-500 hover:text-slate-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+                aria-label={`${$t('settings.myFeed.hiddenPosts.remove')} ${postId}`}
+                on:click={() => removeHiddenPost(postId)}
+              >
+                ×
+              </button>
+            </span>
+          {/each}
+        </div>
+        <Button size="sm" color="ghost" on:click={clearHiddenPosts}>
+          {$t('settings.myFeed.clearList')}
+        </Button>
+      {:else}
+        <span class="text-sm text-slate-500 dark:text-zinc-400">{$t('settings.myFeed.hiddenPosts.empty')}</span>
+      {/if}
+    </Setting>
+    <Setting itemsClass="!flex-col !items-start">
+      <span slot="title">{$t('settings.myFeed.hiddenComuns.title')}</span>
+      <span slot="description">{$t('settings.myFeed.hiddenComuns.description')}</span>
+      {#if hiddenComuns.length}
+        <div class="flex flex-wrap gap-2">
+          {#each hiddenComuns as slug}
+            <span class="inline-flex items-center gap-2 rounded-full bg-slate-100 dark:bg-zinc-800 px-3 py-1 text-xs font-medium text-slate-700 dark:text-zinc-200">
+              {slug}
+              <button
+                type="button"
+                class="text-slate-500 hover:text-slate-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+                aria-label={`${$t('settings.myFeed.hiddenComuns.remove')} ${slug}`}
+                on:click={() => removeHiddenComun(slug)}
+              >
+                ×
+              </button>
+            </span>
+          {/each}
+        </div>
+        <Button size="sm" color="ghost" on:click={clearHiddenComuns}>
+          {$t('settings.myFeed.clearList')}
+        </Button>
+      {:else}
+        <span class="text-sm text-slate-500 dark:text-zinc-400">{$t('settings.myFeed.hiddenComuns.empty')}</span>
       {/if}
     </Setting>
     <ToggleSetting

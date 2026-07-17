@@ -25,6 +25,7 @@
   import { userSettings } from '$lib/settings'
   import { brandNameForLanguage } from '$lib/brand'
   import { locale, t } from '$lib/translations'
+  import { isBackendPostVisible } from '$lib/postVisibility'
 
   export let data
 
@@ -73,17 +74,7 @@
     comuns = data.comuns ?? []
   }
 
-  $: hiddenAuthorKeys = new Set(
-    ($userSettings.hiddenAuthors ?? []).map((value) => value.toLowerCase())
-  )
-  const authorKey = (backendPost: { author?: { username?: string } }) =>
-    (backendPost.author?.username ?? '').trim().toLowerCase()
-  const isAuthorVisible = (backendPost: { author?: { username?: string } }) => {
-    const key = authorKey(backendPost)
-    if (!key) return true
-    return !hiddenAuthorKeys.has(key)
-  }
-  $: visiblePosts = posts.filter(isAuthorVisible)
+  $: visiblePosts = posts.filter((post) => isBackendPostVisible(post, $userSettings))
   $: isOwnProfile = Boolean(profile?.id && $siteUser?.id && profile.id === $siteUser.id)
   $: ownerDrafts = ownerPosts.filter((item) => item.is_draft)
   $: currentProfileId = profile?.id ?? null

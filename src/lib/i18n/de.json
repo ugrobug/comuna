@@ -813,6 +813,18 @@
                 "remove": "Ausgeblendeten Autor entfernen:",
                 "empty": "Noch keine ausgeblendeten Autoren."
             },
+            "hiddenPosts": {
+                "title": "Ausgeblendete Beiträge",
+                "description": "Diese Beiträge werden in Feeds nicht angezeigt.",
+                "remove": "Beitrag wieder anzeigen:",
+                "empty": "Noch keine ausgeblendeten Beiträge."
+            },
+            "hiddenComuns": {
+                "title": "Ausgeblendete Communities",
+                "description": "Beiträge dieser Communities werden in Feeds nicht angezeigt.",
+                "remove": "Community wieder anzeigen:",
+                "empty": "Noch keine ausgeblendeten Communities."
+            },
             "hideNegative": {
                 "title": "Beiträge mit negativer Bewertung ausblenden",
                 "description": "In Mein Feed Beiträge mit einer Bewertung unter null ausblenden."
@@ -1128,6 +1140,10 @@
         },
         "postMeta": {
             "subscribe": "Abonnieren",
+            "hide": "Ausblenden",
+            "hidePost": "Diesen Beitrag ausblenden",
+            "hideAuthorPosts": "Alle Beiträge des Autors ausblenden",
+            "hideComunPosts": "Alle Beiträge der Community ausblenden",
             "showAuthor": "Autor anzeigen",
             "hideAuthor": "Autor ausblenden",
             "notifyOn": "Telegram comment notifications for the author are enabled",
@@ -1136,6 +1152,8 @@
             "loginRequired": "Registrierung erforderlich",
             "authorVisible": "Posts by this author are visible again",
             "authorHidden": "You will no longer see posts by this author",
+            "postHidden": "Beitrag ausgeblendet",
+            "comunHidden": "Community-Beiträge ausgeblendet",
             "admin": "Administration"
         },
         "postCard": {

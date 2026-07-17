@@ -1040,6 +1040,18 @@
                 "remove": "Remove hidden author:",
                 "empty": "No hidden authors yet."
             },
+            "hiddenPosts": {
+                "title": "Hidden posts",
+                "description": "These posts are hidden from feeds.",
+                "remove": "Remove hidden post:",
+                "empty": "No hidden posts yet."
+            },
+            "hiddenComuns": {
+                "title": "Hidden communities",
+                "description": "Posts from these communities are hidden from feeds.",
+                "remove": "Remove hidden community:",
+                "empty": "No hidden communities yet."
+            },
             "hideNegative": {
                 "title": "Hide posts with negative rating",
                 "description": "Hide posts with a rating below zero in My feed."
@@ -1403,6 +1415,10 @@
         },
         "postMeta": {
             "subscribe": "Subscribe",
+            "hide": "Hide",
+            "hidePost": "Hide this post",
+            "hideAuthorPosts": "Hide all posts by this author",
+            "hideComunPosts": "Hide all posts from this community",
             "showAuthor": "Show author",
             "hideAuthor": "Hide author",
             "notifyOn": "Telegram comment notifications for the author are enabled",
@@ -1411,6 +1427,8 @@
             "loginRequired": "Registration is required",
             "authorVisible": "Posts by this author are visible again",
             "authorHidden": "You will no longer see posts by this author",
+            "postHidden": "Post hidden",
+            "comunHidden": "Community posts hidden",
             "admin": "Administration"
         },
         "postCard": {

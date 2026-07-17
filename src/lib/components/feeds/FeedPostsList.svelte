@@ -14,6 +14,8 @@
     type BackendPost,
   } from '$lib/api/backend'
   import { t } from '$lib/translations'
+  import { userSettings } from '$lib/settings'
+  import { isBackendPostVisible } from '$lib/postVisibility'
   import KeyboardShortcutsHint from '$lib/components/ui/sidebar/KeyboardShortcutsHint.svelte'
 
   export let posts: BackendPost[] = []
@@ -28,16 +30,19 @@
 
   const dispatch = createEventDispatcher()
   let isDesktop = false
+  let visiblePosts: BackendPost[] = []
   let desktopMediaQuery: MediaQueryList | null = null
 
   const updateDesktopState = () => {
     isDesktop = Boolean(desktopMediaQuery?.matches)
   }
 
-  const handleHide = (index: number, event: CustomEvent) => {
-    posts = posts.toSpliced(index, 1)
+  const handleHide = (postId: number, event: CustomEvent) => {
+    posts = posts.filter((post) => post.id !== postId)
     dispatch('hide', event.detail)
   }
+
+  $: visiblePosts = posts.filter((post) => isBackendPostVisible(post, $userSettings))
 
   const forward = (event: CustomEvent) => {
     dispatch(event.type, event.detail)
@@ -56,9 +61,9 @@
   })
 </script>
 
-{#if posts.length}
+{#if visiblePosts.length}
   <div class="flex flex-col gap-6" use:feedKeyboardShortcuts>
-    {#each posts as backendPost, index (backendPost.id)}
+    {#each visiblePosts as backendPost, index (backendPost.id)}
       {@const postView = backendPostToPostView(backendPost, backendPost.author)}
       <Post
         post={postView}
@@ -77,12 +82,12 @@
         hideSubscribe={isSpecialProjectPost(backendPost)}
         {comunCategories}
         {currentWelcomePostId}
-        on:hide={(event) => handleHide(index, event)}
+        on:hide={(event) => handleHide(backendPost.id, event)}
         on:categorychange={forward}
         on:pinned={forward}
         on:unpinned={forward}
       />
-      {#if showKeyboardShortcutsHint && isDesktop && index === 0 && posts.length > 1}
+      {#if showKeyboardShortcutsHint && isDesktop && index === 0 && visiblePosts.length > 1}
         <KeyboardShortcutsHint />
       {/if}
     {/each}

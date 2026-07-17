@@ -1,13 +1,14 @@
 <script lang="ts">
   import { browser } from '$app/environment'
   import FeedPostsList from '$lib/components/feeds/FeedPostsList.svelte'
-  import { buildAuthorPostsUrl } from '$lib/api/backend'
+  import { buildAuthorPostsUrl, type BackendPost } from '$lib/api/backend'
   import { env } from '$env/dynamic/public'
   import { userSettings } from '$lib/settings'
   import { page } from '$app/stores'
   import { onDestroy, onMount } from 'svelte'
   import { brandNameForLanguage } from '$lib/brand'
   import { locale, t } from '$lib/translations'
+  import { isBackendPostVisible } from '$lib/postVisibility'
 
   export let data
 
@@ -26,9 +27,6 @@
   }
   const scrollThreshold = 400
   let scrollRaf: number | null = null
-  $: hiddenAuthorKeys = new Set(
-    ($userSettings.hiddenAuthors ?? []).map((value) => value.toLowerCase())
-  )
 
   const formatNumber = (value: number | undefined) => {
     if (!value && value !== 0) return '—'
@@ -36,10 +34,13 @@
   }
 
   $: authorUsername = data.author?.username ?? ''
+  $: visiblePosts = posts.filter((post: BackendPost) => isBackendPostVisible(post, $userSettings))
   $: authorHiddenOnPortal = Boolean(
-    authorUsername && hiddenAuthorKeys.has(authorUsername.toLowerCase())
+    authorUsername &&
+      ($userSettings.hiddenAuthors ?? []).some(
+        (value) => value.trim().toLowerCase() === authorUsername.toLowerCase()
+      )
   )
-  $: visiblePosts = authorHiddenOnPortal ? [] : posts
   $: siteTitle = brandNameForLanguage($locale)
   $: authorName = data.author?.title ?? data.author?.username ?? ''
   $: title = authorName ? `${authorName} — ${siteTitle}` : siteTitle

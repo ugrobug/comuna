@@ -1040,6 +1040,18 @@
                 "remove": "Hapus penulis tersembunyi:",
                 "empty": "Belum ada penulis tersembunyi."
             },
+            "hiddenPosts": {
+                "title": "Posting tersembunyi",
+                "description": "Posting ini tidak ditampilkan di feed.",
+                "remove": "Tampilkan kembali posting:",
+                "empty": "Belum ada posting tersembunyi."
+            },
+            "hiddenComuns": {
+                "title": "Komunitas tersembunyi",
+                "description": "Posting dari komunitas ini tidak ditampilkan di feed.",
+                "remove": "Tampilkan kembali komunitas:",
+                "empty": "Belum ada komunitas tersembunyi."
+            },
             "hideNegative": {
                 "title": "Jangan tampilkan posting dengan rating negatif",
                 "description": "Di Feed saya, sembunyikan publikasi dengan rating di bawah nol."
@@ -1403,6 +1415,10 @@
         },
         "postMeta": {
             "subscribe": "Berlangganan",
+            "hide": "Sembunyikan",
+            "hidePost": "Sembunyikan posting ini",
+            "hideAuthorPosts": "Sembunyikan semua posting penulis",
+            "hideComunPosts": "Sembunyikan semua posting komunitas",
             "showAuthor": "Tampilkan penulis",
             "hideAuthor": "Sembunyikan penulis",
             "notifyOn": "Telegram comment notifications for the author are enabled",
@@ -1411,6 +1427,8 @@
             "loginRequired": "Pendaftaran diperlukan",
             "authorVisible": "Posts by this author are visible again",
             "authorHidden": "You will no longer see posts by this author",
+            "postHidden": "Posting disembunyikan",
+            "comunHidden": "Posting komunitas disembunyikan",
             "admin": "Administrasi"
         },
         "postCard": {

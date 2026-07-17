@@ -951,6 +951,18 @@
                 "remove": "Quitar autor oculto:",
                 "empty": "Aún no hay autores ocultos."
             },
+            "hiddenPosts": {
+                "title": "Publicaciones ocultas",
+                "description": "Estas publicaciones no aparecen en los feeds.",
+                "remove": "Dejar de ocultar la publicación:",
+                "empty": "Aún no hay publicaciones ocultas."
+            },
+            "hiddenComuns": {
+                "title": "Comunidades ocultas",
+                "description": "Las publicaciones de estas comunidades no aparecen en los feeds.",
+                "remove": "Dejar de ocultar la comunidad:",
+                "empty": "Aún no hay comunidades ocultas."
+            },
             "hideNegative": {
                 "title": "No mostrar publicaciones con valoración negativa",
                 "description": "En Mi feed, ocultar publicaciones con valoración inferior a cero."
@@ -1291,6 +1303,10 @@
         },
         "postMeta": {
             "subscribe": "Suscribirse",
+            "hide": "Ocultar",
+            "hidePost": "Ocultar esta publicación",
+            "hideAuthorPosts": "Ocultar todas las publicaciones del autor",
+            "hideComunPosts": "Ocultar todas las publicaciones de la comunidad",
             "showAuthor": "Mostrar autor",
             "hideAuthor": "Ocultar autor",
             "notifyOn": "Telegram comment notifications for the author are enabled",
@@ -1299,6 +1315,8 @@
             "loginRequired": "Es necesario registrarse",
             "authorVisible": "Posts by this author are visible again",
             "authorHidden": "You will no longer see posts by this author",
+            "postHidden": "Publicación ocultada",
+            "comunHidden": "Publicaciones de la comunidad ocultadas",
             "admin": "Administración"
         },
         "postCard": {

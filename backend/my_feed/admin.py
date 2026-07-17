@@ -26,6 +26,8 @@ class UserFeedSettingsAdmin(admin.ModelAdmin):
         "my_feed_comuns",
         "my_feed_comun_categories",
         "hidden_authors",
+        "hidden_post_ids",
+        "hidden_comuns",
         "my_feed_hide_negative",
         "tag_rules",
         "interface_language",

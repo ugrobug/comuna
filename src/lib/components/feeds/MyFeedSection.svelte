@@ -9,6 +9,7 @@
     userSettings,
   } from '$lib/settings'
   import { t } from '$lib/translations'
+  import { isBackendPostVisible } from '$lib/postVisibility'
 
   export let posts: BackendPost[] = []
   export let loadingMore = false
@@ -24,24 +25,11 @@
   ]
 
   let filteredPosts: BackendPost[] = []
-  let hiddenAuthorKeys = new Set<string>()
-
-  const authorKey = (backendPost: { author?: { username?: string } }) =>
-    (backendPost.author?.username ?? '').trim().toLowerCase()
-
-  const isAuthorVisible = (backendPost: { author?: { username?: string } }) => {
-    const key = authorKey(backendPost)
-    if (!key) return true
-    return !hiddenAuthorKeys.has(key)
-  }
 
   $: selectedMyFeedComuns = $userSettings.myFeedComuns ?? []
   $: selectedMyFeedAuthors = $userSettings.myFeedAuthors ?? []
   $: myFeedHasBaseSettings = selectedMyFeedComuns.length > 0 || selectedMyFeedAuthors.length > 0
-  $: hiddenAuthorKeys = new Set(
-    ($userSettings.hiddenAuthors ?? []).map((value) => value.toLowerCase())
-  )
-  $: filteredPosts = posts.filter(isAuthorVisible)
+  $: filteredPosts = posts.filter((post) => isBackendPostVisible(post, $userSettings))
   $: shouldShowRecommendations =
     !!$siteUser &&
     $feedSettingsHydrated &&

@@ -803,6 +803,18 @@
                 "remove": "Retirer l’auteur masqué:",
                 "empty": "Aucun auteur masqué pour le moment."
             },
+            "hiddenPosts": {
+                "title": "Publications masquées",
+                "description": "Ces publications ne sont pas affichées dans les fils.",
+                "remove": "Ne plus masquer la publication :",
+                "empty": "Aucune publication masquée."
+            },
+            "hiddenComuns": {
+                "title": "Communautés masquées",
+                "description": "Les publications de ces communautés ne sont pas affichées dans les fils.",
+                "remove": "Ne plus masquer la communauté :",
+                "empty": "Aucune communauté masquée."
+            },
             "hideNegative": {
                 "title": "Masquer les publications avec une note négative",
                 "description": "Dans Mon fil, masquer les publications avec une note inférieure à zéro."
@@ -1355,6 +1367,10 @@
         },
         "postMeta": {
             "subscribe": "S’abonner",
+            "hide": "Masquer",
+            "hidePost": "Masquer cette publication",
+            "hideAuthorPosts": "Masquer toutes les publications de l’auteur",
+            "hideComunPosts": "Masquer toutes les publications de la communauté",
             "showAuthor": "Afficher l’auteur",
             "hideAuthor": "Masquer l’auteur",
             "notifyOn": "Telegram comment notifications for the author are enabled",
@@ -1363,6 +1379,8 @@
             "loginRequired": "Inscription requise",
             "authorVisible": "Posts by this author are visible again",
             "authorHidden": "You will no longer see posts by this author",
+            "postHidden": "Publication masquée",
+            "comunHidden": "Publications de la communauté masquées",
             "admin": "Administration"
         },
         "postCard": {

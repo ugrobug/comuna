@@ -110,6 +110,8 @@ export interface Settings {
   myFeedComuns: string[]
   myFeedComunCategories: Record<string, string[]>
   hiddenAuthors: string[]
+  hiddenPostIds: number[]
+  hiddenComuns: string[]
   myFeedHideNegative: boolean
   keyboardShortcutsHintDismissed: boolean
   useRtl: boolean
@@ -199,6 +201,8 @@ export const defaultSettings: Settings = {
   myFeedComuns: [],
   myFeedComunCategories: {},
   hiddenAuthors: [],
+  hiddenPostIds: [],
+  hiddenComuns: [],
   myFeedHideNegative: true,
   keyboardShortcutsHintDismissed: false,
   useRtl: false,
@@ -225,6 +229,8 @@ type BackendFeedSettings = {
   my_feed_comuns?: string[]
   my_feed_comun_categories?: Record<string, string[]>
   hidden_authors?: string[]
+  hidden_post_ids?: number[]
+  hidden_comuns?: string[]
   my_feed_hide_negative?: boolean
   tag_rules?: Record<string, 'hide' | 'blur'>
   interface_language?: string
@@ -240,6 +246,8 @@ const feedSettingsDefaults = () => ({
   myFeedComuns: [...defaultSettings.myFeedComuns],
   myFeedComunCategories: { ...defaultSettings.myFeedComunCategories },
   hiddenAuthors: [...defaultSettings.hiddenAuthors],
+  hiddenPostIds: [...defaultSettings.hiddenPostIds],
+  hiddenComuns: [...defaultSettings.hiddenComuns],
   myFeedHideNegative: defaultSettings.myFeedHideNegative,
   keyboardShortcutsHintDismissed: defaultSettings.keyboardShortcutsHintDismissed,
   tagRules: { ...defaultSettings.tagRules },
@@ -254,6 +262,8 @@ const feedSettingsSnapshot = (settings: Settings) =>
     myFeedComuns: settings.myFeedComuns ?? [],
     myFeedComunCategories: settings.myFeedComunCategories ?? {},
     hiddenAuthors: settings.hiddenAuthors ?? [],
+    hiddenPostIds: settings.hiddenPostIds ?? [],
+    hiddenComuns: settings.hiddenComuns ?? [],
     myFeedHideNegative: settings.myFeedHideNegative,
     keyboardShortcutsHintDismissed: settings.keyboardShortcutsHintDismissed,
     tagRules: settings.tagRules ?? {},
@@ -269,6 +279,8 @@ const backendPayloadFromSettings = (settings: Settings) => ({
   my_feed_comuns: settings.myFeedComuns ?? [],
   my_feed_comun_categories: settings.myFeedComunCategories ?? {},
   hidden_authors: settings.hiddenAuthors ?? [],
+  hidden_post_ids: settings.hiddenPostIds ?? [],
+  hidden_comuns: settings.hiddenComuns ?? [],
   my_feed_hide_negative: settings.myFeedHideNegative,
   keyboard_shortcuts_hint_dismissed: settings.keyboardShortcutsHintDismissed,
   tag_rules: settings.tagRules ?? {},
@@ -288,6 +300,8 @@ const settingsFromBackendPayload = (settings: Settings, payload: BackendFeedSett
     myFeedComuns: payload.my_feed_comuns ?? settings.myFeedComuns,
     myFeedComunCategories: payload.my_feed_comun_categories ?? settings.myFeedComunCategories,
     hiddenAuthors: payload.hidden_authors ?? settings.hiddenAuthors,
+    hiddenPostIds: payload.hidden_post_ids ?? settings.hiddenPostIds,
+    hiddenComuns: payload.hidden_comuns ?? settings.hiddenComuns,
     myFeedHideNegative: payload.my_feed_hide_negative ?? settings.myFeedHideNegative,
     keyboardShortcutsHintDismissed:
       payload.keyboard_shortcuts_hint_dismissed ?? settings.keyboardShortcutsHintDismissed,
@@ -500,6 +514,30 @@ const migrate = (settings: any): Settings => {
       .filter((author: string) => {
         if (seen.has(author)) return false
         seen.add(author)
+        return true
+      })
+  }
+  if (!Array.isArray(settings?.hiddenPostIds)) {
+    settings.hiddenPostIds = []
+  } else {
+    settings.hiddenPostIds = Array.from(
+      new Set(
+        settings.hiddenPostIds
+          .map((value: unknown) => Number(value))
+          .filter((value: number) => Number.isInteger(value) && value > 0)
+      )
+    )
+  }
+  if (!Array.isArray(settings?.hiddenComuns)) {
+    settings.hiddenComuns = []
+  } else {
+    const seen = new Set<string>()
+    settings.hiddenComuns = settings.hiddenComuns
+      .map((slug: unknown) => (typeof slug === 'string' ? slug.trim().toLowerCase() : ''))
+      .filter((slug: string) => !!slug)
+      .filter((slug: string) => {
+        if (seen.has(slug)) return false
+        seen.add(slug)
         return true
       })
   }

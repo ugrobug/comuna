@@ -123,6 +123,7 @@
   let knowledgeBaseSaving = false
   let welcomePostSaving = false
   let actionsMenuOpen = false
+  let hideMenuOpen = false
   let categoryMenuOpen = false
   let categorySaving = false
   let backendReportOpen = false
@@ -137,11 +138,6 @@
   $: backendCreatorUsername = (post.creator?.name ?? '').trim().toLowerCase()
   $: authorUsername = (post.creator?.name ?? '').trim()
   $: authorKey = authorUsername.toLowerCase()
-  $: hiddenAuthorKeys = new Set(
-    ($userSettings.hiddenAuthors ?? []).map((value) => value.toLowerCase())
-  )
-  $: authorHidden = Boolean(authorKey && hiddenAuthorKeys.has(authorKey))
-  $: hiddenActionLabel = authorHidden ? $t('site.postMeta.showAuthor') : $t('site.postMeta.hideAuthor')
   $: backendOwnedAuthorUsernames = $siteUser
     ? [
         ($siteUser.username ?? '').trim().toLowerCase(),
@@ -193,6 +189,7 @@
       : null
   $: if (!categorySaving) currentBackendCategoryId = backendComunCategoryId
   $: if (!actionsMenuOpen && categoryMenuOpen) categoryMenuOpen = false
+  $: if (!actionsMenuOpen && hideMenuOpen) hideMenuOpen = false
   $: canChangeComunCategory = Boolean(
     isBackendPost &&
       backendPostId &&
@@ -327,32 +324,45 @@
     backendReportOpen = true
   }
 
-  const toggleHiddenAuthor = () => {
+  const canHideContent = () => {
     if (!$siteUser) {
       toast({
         content: $t('site.postMeta.loginRequired'),
         type: 'warning',
       })
-      return
+      return false
     }
-    if (!authorUsername) return
+    return true
+  }
+
+  const finishHide = (message: string) => {
+    hideMenuOpen = false
+    actionsMenuOpen = false
+    dispatcher('hide', true)
+    toast({ content: message, type: 'success' })
+  }
+
+  const hideCurrentPost = () => {
+    if (!canHideContent()) return
+    const postId = Number(backendPostId ?? post.post.id)
+    if (!Number.isInteger(postId) || postId <= 0) return
+
+    $userSettings = {
+      ...$userSettings,
+      hiddenPostIds: Array.from(new Set([...($userSettings.hiddenPostIds ?? []), postId])),
+    }
+    finishHide($t('site.postMeta.postHidden'))
+  }
+
+  const hideAuthorPosts = () => {
+    if (!canHideContent() || !authorUsername) return
 
     const nextHidden = new Set($userSettings.hiddenAuthors ?? [])
     const existingHidden = Array.from(nextHidden).find(
       (value) => value.toLowerCase() === authorKey
     )
-    if (existingHidden) {
-      nextHidden.delete(existingHidden)
-      toast({
-        content: $t('site.postMeta.authorVisible'),
-        type: 'success',
-      })
-    } else {
+    if (!existingHidden) {
       nextHidden.add(authorUsername)
-      toast({
-        content: $t('site.postMeta.authorHidden'),
-        type: 'success',
-      })
     }
 
     const nextMyFeed = new Set($userSettings.myFeedAuthors ?? [])
@@ -368,7 +378,19 @@
       hiddenAuthors: Array.from(nextHidden),
       myFeedAuthors: Array.from(nextMyFeed),
     }
-    actionsMenuOpen = false
+    finishHide($t('site.postMeta.authorHidden'))
+  }
+
+  const hideComunPosts = () => {
+    if (!canHideContent() || !backendComunSlug) return
+    const normalizedSlug = backendComunSlug.toLowerCase()
+    $userSettings = {
+      ...$userSettings,
+      hiddenComuns: Array.from(
+        new Set([...($userSettings.hiddenComuns ?? []).map((value) => value.toLowerCase()), normalizedSlug])
+      ),
+    }
+    finishHide($t('site.postMeta.comunHidden'))
   }
 
   const toggleBackendFavorite = async () => {
@@ -850,11 +872,34 @@
     <MenuDivider>
       {$t('post.actions.more.actions')}
     </MenuDivider>
-    {#if authorUsername}
-      <MenuButton on:click={toggleHiddenAuthor} color={authorHidden ? 'danger-subtle' : undefined}>
-        <Icon src={EyeSlash} size="16" micro slot="prefix" />
-        {hiddenActionLabel}
-      </MenuButton>
+    <button
+      type="button"
+      class="category-toggle"
+      aria-expanded={hideMenuOpen}
+      on:click|stopPropagation={() => (hideMenuOpen = !hideMenuOpen)}
+    >
+      <span class="contents !text-slate-600 dark:!text-zinc-400 flex-shrink-0">
+        <Icon src={EyeSlash} size="16" micro />
+      </span>
+      <span class="min-w-0 flex-1 truncate">{$t('site.postMeta.hide')}</span>
+      <Icon src={hideMenuOpen ? ChevronUp : ChevronDown} size="14" micro />
+    </button>
+    {#if hideMenuOpen}
+      <div class="mx-2 my-1 rounded-lg border border-slate-200 bg-white p-1 dark:border-zinc-700 dark:bg-zinc-900">
+        <button type="button" class="category-option" on:click|stopPropagation={hideCurrentPost}>
+          {$t('site.postMeta.hidePost')}
+        </button>
+        {#if authorUsername}
+          <button type="button" class="category-option" on:click|stopPropagation={hideAuthorPosts}>
+            {$t('site.postMeta.hideAuthorPosts')}
+          </button>
+        {/if}
+        {#if backendComunSlug}
+          <button type="button" class="category-option" on:click|stopPropagation={hideComunPosts}>
+            {$t('site.postMeta.hideComunPosts')}
+          </button>
+        {/if}
+      </div>
     {/if}
     {#if canManageBackendPost && backendPostId}
       <MenuButton link href={`/account/edit-post/${backendPostId}`}>

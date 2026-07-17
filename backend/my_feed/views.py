@@ -115,6 +115,8 @@ def _source_candidate_queryset(
     now,
     hide_negative: bool,
     hidden_author_usernames: list[str],
+    hidden_post_ids: list[int],
+    hidden_comun_slugs: list[str],
     hidden_tag_values: list[str],
     read_user,
     only_read: bool,
@@ -138,6 +140,13 @@ def _source_candidate_queryset(
     hidden_author_q = _hidden_author_filter(hidden_author_usernames, prefix="post__")
     if hidden_author_q:
         qs = qs.exclude(hidden_author_q)
+
+    if hidden_post_ids:
+        qs = qs.exclude(post_id__in=hidden_post_ids)
+
+    hidden_comun_q = my_feed_service._hidden_comun_filter(hidden_comun_slugs, prefix="post__")
+    if hidden_comun_q:
+        qs = qs.exclude(hidden_comun_q)
 
     hidden_tag_q = _hidden_tag_filter(hidden_tag_values, prefix="post__")
     if hidden_tag_q:
@@ -167,6 +176,8 @@ def _my_feed_posts_from_source_index(
     now,
     hide_negative: bool,
     hidden_author_usernames: list[str],
+    hidden_post_ids: list[int],
+    hidden_comun_slugs: list[str],
     hidden_tag_values: list[str],
     read_user,
     only_read: bool,
@@ -186,6 +197,8 @@ def _my_feed_posts_from_source_index(
                 now=now,
                 hide_negative=hide_negative,
                 hidden_author_usernames=hidden_author_usernames,
+                hidden_post_ids=hidden_post_ids,
+                hidden_comun_slugs=hidden_comun_slugs,
                 hidden_tag_values=hidden_tag_values,
                 read_user=read_user,
                 only_read=only_read,
@@ -197,6 +210,8 @@ def _my_feed_posts_from_source_index(
                 now=now,
                 hide_negative=hide_negative,
                 hidden_author_usernames=hidden_author_usernames,
+                hidden_post_ids=hidden_post_ids,
+                hidden_comun_slugs=hidden_comun_slugs,
                 hidden_tag_values=hidden_tag_values,
                 read_user=read_user,
                 only_read=only_read,
@@ -208,6 +223,8 @@ def _my_feed_posts_from_source_index(
                 now=now,
                 hide_negative=hide_negative,
                 hidden_author_usernames=hidden_author_usernames,
+                hidden_post_ids=hidden_post_ids,
+                hidden_comun_slugs=hidden_comun_slugs,
                 hidden_tag_values=hidden_tag_values,
                 read_user=read_user,
                 only_read=only_read,
@@ -448,6 +465,8 @@ def my_feed(request: HttpRequest) -> HttpResponse:
     if has_tag_selection or has_comun_selection:
         base_query = base_query.distinct()
     hidden_author_usernames: list[str] = []
+    hidden_post_ids: list[int] = []
+    hidden_comun_slugs: list[str] = []
     hidden_tag_values: list[str] = []
     if saved_feed_settings:
         hidden_author_usernames = saved_feed_settings.get("hidden_authors") or []
@@ -455,6 +474,13 @@ def my_feed(request: HttpRequest) -> HttpResponse:
             hidden_author_filter = _hidden_author_filter(hidden_author_usernames)
             if hidden_author_filter:
                 base_query = base_query.exclude(hidden_author_filter)
+        hidden_post_ids = saved_feed_settings.get("hidden_post_ids") or []
+        if hidden_post_ids:
+            base_query = base_query.exclude(id__in=hidden_post_ids)
+        hidden_comun_slugs = saved_feed_settings.get("hidden_comuns") or []
+        hidden_comun_filter = my_feed_service._hidden_comun_filter(hidden_comun_slugs)
+        if hidden_comun_filter:
+            base_query = base_query.exclude(hidden_comun_filter).distinct()
         hidden_tag_values = [
             tag
             for tag, rule in (saved_feed_settings.get("tag_rules") or {}).items()
@@ -486,6 +512,8 @@ def my_feed(request: HttpRequest) -> HttpResponse:
         now=now,
         hide_negative=hide_negative,
         hidden_author_usernames=hidden_author_usernames,
+        hidden_post_ids=hidden_post_ids,
+        hidden_comun_slugs=hidden_comun_slugs,
         hidden_tag_values=hidden_tag_values,
         read_user=read_user,
         only_read=only_read,
