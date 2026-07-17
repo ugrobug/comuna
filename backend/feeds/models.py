@@ -397,6 +397,43 @@ class Post(models.Model):
         super().save(*args, **kwargs)
 
 
+class PostDraftAccess(models.Model):
+    post = models.ForeignKey(
+        Post,
+        on_delete=models.CASCADE,
+        related_name="draft_accesses",
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="shared_draft_accesses",
+    )
+    granted_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="draft_accesses_granted",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("post", "user"),
+                name="feeds_post_draft_access_unique",
+            )
+        ]
+        indexes = [
+            models.Index(fields=("user", "-created_at"), name="draftaccess_user_created_idx"),
+        ]
+        verbose_name = "Доступ к черновику"
+        verbose_name_plural = "Доступы к черновикам"
+
+    def __str__(self) -> str:
+        return f"{self.post_id}:{self.user_id}"
+
+
 POST_TRANSLATION_LANGUAGE_ENGLISH = "en"
 POST_TRANSLATION_LANGUAGE_SPANISH = "es"
 POST_TRANSLATION_LANGUAGE_PORTUGUESE = "pt"

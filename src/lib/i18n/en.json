@@ -1115,6 +1115,26 @@
     },
     "logout": "Log out",
     "site": {
+        "draftShare": {
+            "button": "Share",
+            "title": "Share draft",
+            "description": "Find a user by name and give them permission to view this draft.",
+            "searchLabel": "User",
+            "placeholder": "Enter a name or username",
+            "noResults": "No users found",
+            "viewersTitle": "People with access",
+            "noViewers": "No one has access yet",
+            "grant": "Grant access",
+            "hasAccess": "Has access",
+            "revoke": "Remove access",
+            "copyLink": "Copy link",
+            "linkCopied": "Draft link copied",
+            "copyError": "Failed to copy the link",
+            "loadError": "Failed to load draft access",
+            "changeError": "Failed to change access",
+            "grantSuccess": "The user can now view the draft",
+            "revokeSuccess": "Draft access removed"
+        },
         "report": {
             "title": "What are you reporting?",
             "action": "Report",

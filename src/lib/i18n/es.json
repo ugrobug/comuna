@@ -1003,6 +1003,26 @@
         "slurs": "Su aporte contiene un término prohibido por esta instancia."
     },
     "site": {
+        "draftShare": {
+            "button": "Compartir",
+            "title": "Compartir borrador",
+            "description": "Busca a un usuario por nombre y dale permiso para ver este borrador.",
+            "searchLabel": "Usuario",
+            "placeholder": "Introduce un nombre o usuario",
+            "noResults": "No se encontraron usuarios",
+            "viewersTitle": "Personas con acceso",
+            "noViewers": "Nadie tiene acceso todavía",
+            "grant": "Dar acceso",
+            "hasAccess": "Tiene acceso",
+            "revoke": "Quitar acceso",
+            "copyLink": "Copiar enlace",
+            "linkCopied": "Enlace del borrador copiado",
+            "copyError": "No se pudo copiar el enlace",
+            "loadError": "No se pudo cargar el acceso al borrador",
+            "changeError": "No se pudo cambiar el acceso",
+            "grantSuccess": "El usuario ya puede ver el borrador",
+            "revokeSuccess": "Acceso al borrador eliminado"
+        },
         "report": {
             "title": "¿Qué quieres denunciar?",
             "action": "Denunciar",

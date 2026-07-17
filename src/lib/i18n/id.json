@@ -1115,6 +1115,26 @@
     },
     "logout": "Log out",
     "site": {
+        "draftShare": {
+            "button": "Bagikan",
+            "title": "Bagikan draf",
+            "description": "Cari pengguna berdasarkan nama dan izinkan mereka melihat draf ini.",
+            "searchLabel": "Pengguna",
+            "placeholder": "Masukkan nama atau nama pengguna",
+            "noResults": "Pengguna tidak ditemukan",
+            "viewersTitle": "Orang yang memiliki akses",
+            "noViewers": "Belum ada yang memiliki akses",
+            "grant": "Berikan akses",
+            "hasAccess": "Memiliki akses",
+            "revoke": "Hapus akses",
+            "copyLink": "Salin tautan",
+            "linkCopied": "Tautan draf disalin",
+            "copyError": "Gagal menyalin tautan",
+            "loadError": "Gagal memuat akses draf",
+            "changeError": "Gagal mengubah akses",
+            "grantSuccess": "Pengguna sekarang dapat melihat draf",
+            "revokeSuccess": "Akses draf dihapus"
+        },
         "report": {
             "title": "Apa yang ingin Anda laporkan?",
             "action": "Laporkan",

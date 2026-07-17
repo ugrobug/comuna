@@ -27,6 +27,7 @@ from editor.views import (
     auth_movie_review_autofill,
     bug_report_confirmation_update,
     bug_report_status_update,
+    draft_access,
     post_poll_vote,
     post_rating_vote,
     shared_draft_detail,
@@ -372,6 +373,11 @@ urlpatterns = [
         name="moderator-translation-settings-update",
     ),
     path("api/auth/posts/<int:post_id>/", user_post_update, name="auth-post-update"),
+    path(
+        "api/auth/drafts/<int:post_id>/access/",
+        draft_access,
+        name="auth-draft-access",
+    ),
     path(
         "api/auth/drafts/shared/<str:share_token>/",
         shared_draft_detail,

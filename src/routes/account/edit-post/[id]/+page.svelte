@@ -4,6 +4,7 @@
   import { page } from '$app/stores'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import EditorAutosaveNotice from '$lib/components/editor/EditorAutosaveNotice.svelte'
+  import DraftShareModal from '$lib/components/editor/DraftShareModal.svelte'
   import GlossaryAutoLinkModal from '$lib/components/editor/GlossaryAutoLinkModal.svelte'
   import { Button, Spinner, TextInput, toast } from 'mono-svelte'
   import EditorJS from '$lib/components/editor/EditorJS.svelte'
@@ -59,6 +60,7 @@
   } from '$lib/postTemplates'
   import { deserializeEditorModel } from '$lib/util'
   import { onDestroy, onMount } from 'svelte'
+  import { t } from '$lib/translations'
 
   export let data: { postId: number }
 
@@ -95,6 +97,7 @@
   let loading = true
   let loadError = ''
   let post: SiteUserPost | null = null
+  let draftShareOpen = false
   let comunsLoading = false
   let comuns: BackendComun[] = []
   let comunMenuOpen = false
@@ -651,14 +654,10 @@
     await submitDraftPublishPayload(payload)
   }
 
-  const copyDraftShareLink = async () => {
-    if (!draftShareUrl) return
-    try {
-      await navigator.clipboard.writeText(draftShareUrl)
-      toast({ content: 'Ссылка на черновик скопирована', type: 'success' })
-    } catch {
-      toast({ content: 'Не удалось скопировать ссылку', type: 'error' })
-    }
+  const openDraftShare = async () => {
+    await flushDraftAutosave()
+    if (!post?.id || !draftShareUrl) return
+    draftShareOpen = true
   }
 
   const openDraftPreview = async () => {
@@ -741,6 +740,12 @@
     queueDraftAutosave()
   }
 </script>
+
+<DraftShareModal
+  bind:open={draftShareOpen}
+  postId={post?.id ?? 0}
+  shareUrl={draftShareUrl}
+/>
 
 <GlossaryAutoLinkModal
   open={glossaryAutoLinkOpen}
@@ -1078,8 +1083,8 @@
             >
               Опубликовать
             </Button>
-            <Button color="ghost" on:click={copyDraftShareLink} disabled={!draftShareUrl || publishing}>
-              Поделиться
+            <Button color="ghost" on:click={openDraftShare} disabled={!draftShareUrl || publishing}>
+              {$t('site.draftShare.button')}
             </Button>
             {#if draftSharePath}
               <Button color="ghost" on:click={openDraftPreview} disabled={publishing}>

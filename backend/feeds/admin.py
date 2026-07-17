@@ -12,6 +12,7 @@ from .models import (
     ContentTranslationRun,
     ContentTranslationSettings,
     Post,
+    PostDraftAccess,
     PostComment,
     PostCommentLike,
     PostCommentTranslation,
@@ -171,6 +172,14 @@ class PostTranslationInline(admin.StackedInline):
 
 
 PostAdmin.inlines = (PostTranslationInline,)
+
+
+@admin.register(PostDraftAccess)
+class PostDraftAccessAdmin(admin.ModelAdmin):
+    list_display = ("post", "user", "granted_by", "created_at")
+    search_fields = ("post__title", "user__username", "granted_by__username")
+    raw_id_fields = ("post", "user", "granted_by")
+    readonly_fields = ("created_at",)
 
 
 @admin.register(PostTranslation)

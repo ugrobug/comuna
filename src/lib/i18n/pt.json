@@ -973,6 +973,26 @@
         }
     },
     "site": {
+        "draftShare": {
+            "button": "Compartilhar",
+            "title": "Compartilhar rascunho",
+            "description": "Encontre um usuário pelo nome e permita que ele veja este rascunho.",
+            "searchLabel": "Usuário",
+            "placeholder": "Digite um nome ou usuário",
+            "noResults": "Nenhum usuário encontrado",
+            "viewersTitle": "Pessoas com acesso",
+            "noViewers": "Ninguém tem acesso ainda",
+            "grant": "Dar acesso",
+            "hasAccess": "Tem acesso",
+            "revoke": "Remover acesso",
+            "copyLink": "Copiar link",
+            "linkCopied": "Link do rascunho copiado",
+            "copyError": "Não foi possível copiar o link",
+            "loadError": "Não foi possível carregar os acessos ao rascunho",
+            "changeError": "Não foi possível alterar o acesso",
+            "grantSuccess": "O usuário agora pode ver o rascunho",
+            "revokeSuccess": "Acesso ao rascunho removido"
+        },
         "report": {
             "title": "O que deseja denunciar?",
             "action": "Denunciar",

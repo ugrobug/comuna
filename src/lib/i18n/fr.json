@@ -1067,6 +1067,26 @@
         "incorrect_login_5": "Petite question, regardez-vous les touches sur lesquelles vous appuyez ?"
     },
     "site": {
+        "draftShare": {
+            "button": "Partager",
+            "title": "Partager le brouillon",
+            "description": "Recherchez un utilisateur par son nom et autorisez-le à voir ce brouillon.",
+            "searchLabel": "Utilisateur",
+            "placeholder": "Saisissez un nom ou un identifiant",
+            "noResults": "Aucun utilisateur trouvé",
+            "viewersTitle": "Personnes ayant accès",
+            "noViewers": "Personne n'a encore accès",
+            "grant": "Donner accès",
+            "hasAccess": "Accès accordé",
+            "revoke": "Retirer l'accès",
+            "copyLink": "Copier le lien",
+            "linkCopied": "Lien du brouillon copié",
+            "copyError": "Impossible de copier le lien",
+            "loadError": "Impossible de charger les accès au brouillon",
+            "changeError": "Impossible de modifier l'accès",
+            "grantSuccess": "L'utilisateur peut maintenant voir le brouillon",
+            "revokeSuccess": "Accès au brouillon retiré"
+        },
         "report": {
             "title": "Que souhaitez-vous signaler ?",
             "action": "Signaler",

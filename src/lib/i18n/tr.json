@@ -1092,6 +1092,26 @@
         "created": "Oluşturuldu"
     },
     "site": {
+        "draftShare": {
+            "button": "Paylaş",
+            "title": "Taslağı paylaş",
+            "description": "Bir kullanıcıyı adına göre bulun ve bu taslağı görüntülemesine izin verin.",
+            "searchLabel": "Kullanıcı",
+            "placeholder": "Ad veya kullanıcı adı girin",
+            "noResults": "Kullanıcı bulunamadı",
+            "viewersTitle": "Erişimi olan kişiler",
+            "noViewers": "Henüz kimsenin erişimi yok",
+            "grant": "Erişim ver",
+            "hasAccess": "Erişimi var",
+            "revoke": "Erişimi kaldır",
+            "copyLink": "Bağlantıyı kopyala",
+            "linkCopied": "Taslak bağlantısı kopyalandı",
+            "copyError": "Bağlantı kopyalanamadı",
+            "loadError": "Taslak erişimleri yüklenemedi",
+            "changeError": "Erişim değiştirilemedi",
+            "grantSuccess": "Kullanıcı artık taslağı görüntüleyebilir",
+            "revokeSuccess": "Taslak erişimi kaldırıldı"
+        },
         "report": {
             "title": "Neyi şikâyet ediyorsunuz?",
             "action": "Şikâyet et",

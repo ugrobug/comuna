@@ -9,7 +9,9 @@ from communities import views as community_views
 from communities import service as community_service
 from communities.models import Comun, ComunCategory, ComunPostCategoryAssignment
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.text import get_valid_filename
 from django.views.decorators.csrf import csrf_exempt
@@ -46,10 +48,12 @@ from editor.service import (
     movie_review_autofill_template_from_imdb,
 )
 from editor import service as editor_service
-from feeds.models import Post
+from feeds.models import Post, PostDraftAccess
 from notifications.service import create_user_notification
 from rabotaem_backend.media_urls import public_url
 from users.models import AuthorAdmin
+
+User = get_user_model()
 
 
 def _absolute_storage_url(request: HttpRequest, relative_url: str) -> str:
@@ -333,7 +337,140 @@ def shared_draft_detail(request: HttpRequest, share_token: str) -> HttpResponse:
     except Post.DoesNotExist:
         return JsonResponse({"ok": False, "error": "draft not found"}, status=404)
 
+    can_manage = editor_service._user_can_manage_site_post(user, post)
+    has_access = PostDraftAccess.objects.filter(post=post, user=user).exists()
+    if not can_manage and not has_access:
+        return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+
     return JsonResponse({"ok": True, "post": _serialize_post_for_user(request, post, user)})
+
+
+def _serialize_draft_access_user(request: HttpRequest, user, *, has_access: bool) -> dict:
+    try:
+        profile = user.site_profile
+    except Exception:
+        profile = None
+    display_name = str(getattr(profile, "display_name", "") or "").strip()
+    return {
+        "id": user.id,
+        "username": user.username,
+        "display_name": display_name or None,
+        "avatar_url": community_service._site_user_avatar_url(request, user),
+        "has_access": has_access,
+    }
+
+
+@csrf_exempt
+def draft_access(request: HttpRequest, post_id: int) -> HttpResponse:
+    user = _fv()._get_user_from_request(request)
+    if not user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+
+    try:
+        post = Post.objects.select_related("author").get(
+            id=post_id,
+            is_blocked=False,
+            is_pending=True,
+            raw_data__draft=True,
+        )
+    except Post.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "draft not found"}, status=404)
+
+    if not editor_service._user_can_manage_site_post(user, post):
+        return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+
+    if request.method == "GET":
+        viewers = [
+            _serialize_draft_access_user(request, access.user, has_access=True)
+            for access in post.draft_accesses.select_related("user__site_profile").order_by(
+                "user__username"
+            )
+        ]
+        query = " ".join(str(request.GET.get("q") or "").split())
+        matches = []
+        if len(query) >= 2:
+            viewer_ids = {viewer["id"] for viewer in viewers}
+            users = (
+                User.objects.filter(is_active=True, site_profile__deleted_at__isnull=True)
+                .filter(
+                    Q(username__icontains=query)
+                    | Q(first_name__icontains=query)
+                    | Q(last_name__icontains=query)
+                    | Q(site_profile__display_name__icontains=query)
+                )
+                .exclude(id=user.id)
+                .select_related("site_profile")
+                .order_by("username")[:20]
+            )
+            matches = [
+                _serialize_draft_access_user(
+                    request,
+                    matched_user,
+                    has_access=matched_user.id in viewer_ids,
+                )
+                for matched_user in users
+            ]
+        return JsonResponse({"ok": True, "viewers": viewers, "users": matches})
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+
+    try:
+        target_user_id = int(payload.get("user_id") or 0)
+    except (TypeError, ValueError):
+        target_user_id = 0
+    if target_user_id <= 0 or target_user_id == user.id:
+        return JsonResponse({"ok": False, "error": "invalid user"}, status=400)
+
+    target_user = (
+        User.objects.filter(
+            id=target_user_id,
+            is_active=True,
+            site_profile__deleted_at__isnull=True,
+        )
+        .select_related("site_profile")
+        .first()
+    )
+    if not target_user:
+        return JsonResponse({"ok": False, "error": "user not found"}, status=404)
+
+    if request.method == "POST":
+        access, created = PostDraftAccess.objects.get_or_create(
+            post=post,
+            user=target_user,
+            defaults={"granted_by": user},
+        )
+        if created:
+            share_token = editor_service._post_draft_share_token(post)
+            create_user_notification(
+                user=target_user,
+                event_key="draft_shared",
+                title="Вам открыли доступ к черновику",
+                message=f"{user.username} поделился с вами черновиком «{post.title or 'Без названия'}».",
+                link_url=f"/drafts/{share_token}",
+                payload={"post_id": post.id, "shared_by_user_id": user.id},
+                force_site=True,
+                force_telegram=False,
+                force_push=False,
+            )
+        return JsonResponse(
+            {
+                "ok": True,
+                "created": created,
+                "user": _serialize_draft_access_user(request, target_user, has_access=True),
+            }
+        )
+
+    if request.method == "DELETE":
+        deleted, _details = PostDraftAccess.objects.filter(
+            post=post,
+            user=target_user,
+        ).delete()
+        return JsonResponse({"ok": True, "deleted": bool(deleted), "user_id": target_user.id})
+
+    return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
 
 
 @csrf_exempt
@@ -834,6 +971,8 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
             "updated_at",
         ]
     )
+    if current_is_draft and not target_is_draft:
+        post.draft_accesses.all().delete()
     _sync_comun_category_assignment(
         post=post,
         comun=next_comun,
@@ -1123,6 +1262,7 @@ def post_rating_vote(request: HttpRequest, post_id: int) -> HttpResponse:
 __all__ = [
     "auth_movie_review_autofill",
     "bug_report_confirmation_update",
+    "draft_access",
     "post_poll_vote",
     "post_rating_vote",
     "shared_draft_detail",

@@ -90,6 +90,19 @@ export type SiteUserPost = {
   }
 }
 
+export type DraftShareUser = {
+  id: number
+  username: string
+  display_name?: string | null
+  avatar_url?: string | null
+  has_access: boolean
+}
+
+export type DraftAccessResponse = {
+  viewers: DraftShareUser[]
+  users: DraftShareUser[]
+}
+
 export type SiteNotificationItem = {
   id: number
   event_key: string
@@ -878,6 +891,79 @@ export const fetchSharedDraft = async (shareToken: string) => {
   }
 
   return data.post as SiteUserPost
+}
+
+export const fetchDraftAccess = async (
+  postId: number,
+  query = ''
+): Promise<DraftAccessResponse> => {
+  const token = get(siteToken)
+  if (!token) {
+    throw new Error('Нужна авторизация')
+  }
+
+  const params = new URLSearchParams()
+  if (query.trim()) params.set('q', query.trim())
+  const suffix = params.size ? `?${params.toString()}` : ''
+  const response = await fetch(buildUrl(`/api/auth/drafts/${postId}/access/${suffix}`), {
+    credentials: 'include',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+  const data = await response.json().catch(() => null)
+  if (!response.ok || !data?.ok) {
+    throw new Error(data?.error || 'Не удалось загрузить доступы к черновику')
+  }
+  return {
+    viewers: (data.viewers || []) as DraftShareUser[],
+    users: (data.users || []) as DraftShareUser[],
+  }
+}
+
+export const grantDraftAccess = async (
+  postId: number,
+  userId: number
+): Promise<DraftShareUser> => {
+  const token = get(siteToken)
+  if (!token) {
+    throw new Error('Нужна авторизация')
+  }
+  const response = await fetch(buildUrl(`/api/auth/drafts/${postId}/access/`), {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ user_id: userId }),
+  })
+  const data = await response.json().catch(() => null)
+  if (!response.ok || !data?.ok || !data?.user) {
+    throw new Error(data?.error || 'Не удалось открыть доступ к черновику')
+  }
+  return data.user as DraftShareUser
+}
+
+export const revokeDraftAccess = async (postId: number, userId: number) => {
+  const token = get(siteToken)
+  if (!token) {
+    throw new Error('Нужна авторизация')
+  }
+  const response = await fetch(buildUrl(`/api/auth/drafts/${postId}/access/`), {
+    method: 'DELETE',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ user_id: userId }),
+  })
+  const data = await response.json().catch(() => null)
+  if (!response.ok || !data?.ok) {
+    throw new Error(data?.error || 'Не удалось закрыть доступ к черновику')
+  }
+  return Boolean(data.deleted)
 }
 
 export const createComunPost = async (

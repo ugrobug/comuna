@@ -840,6 +840,26 @@
         }
     },
     "site": {
+        "draftShare": {
+            "button": "Teilen",
+            "title": "Entwurf teilen",
+            "description": "Suche einen Benutzer nach Namen und erlaube ihm, diesen Entwurf anzusehen.",
+            "searchLabel": "Benutzer",
+            "placeholder": "Name oder Benutzername eingeben",
+            "noResults": "Keine Benutzer gefunden",
+            "viewersTitle": "Personen mit Zugriff",
+            "noViewers": "Noch hat niemand Zugriff",
+            "grant": "Zugriff geben",
+            "hasAccess": "Hat Zugriff",
+            "revoke": "Zugriff entfernen",
+            "copyLink": "Link kopieren",
+            "linkCopied": "Entwurfslink kopiert",
+            "copyError": "Link konnte nicht kopiert werden",
+            "loadError": "Entwurfszugriffe konnten nicht geladen werden",
+            "changeError": "Zugriff konnte nicht geändert werden",
+            "grantSuccess": "Der Benutzer kann den Entwurf jetzt ansehen",
+            "revokeSuccess": "Entwurfszugriff entfernt"
+        },
         "report": {
             "title": "Was möchtest du melden?",
             "action": "Melden",
