@@ -122,6 +122,7 @@ from ratings.models import AuthorRatingEvent
 from .post_paths import build_post_public_path
 from .models import (
     Author,
+    ContentReport,
     POST_TRANSLATION_LANGUAGE_ENGLISH,
     POST_TRANSLATION_LANGUAGE_FRENCH,
     POST_TRANSLATION_LANGUAGE_GERMAN,
@@ -3156,6 +3157,96 @@ def comment_like(request: HttpRequest, comment_id: int) -> HttpResponse:
     likes_count = PostCommentLike.objects.filter(comment=comment).count()
 
     return JsonResponse({"ok": True, "liked": liked, "likes_count": likes_count})
+
+
+def _content_report_reason(request: HttpRequest) -> tuple[str | None, HttpResponse | None]:
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return None, JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+    reason = str(payload.get("reason") or "").strip().lower() if isinstance(payload, dict) else ""
+    valid_reasons = {choice[0] for choice in ContentReport.REASON_CHOICES}
+    if reason not in valid_reasons:
+        return None, JsonResponse({"ok": False, "error": "invalid reason"}, status=400)
+    return reason, None
+
+
+@csrf_exempt
+def post_report(request: HttpRequest, post_id: int) -> HttpResponse:
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    user = _get_user_from_request(request)
+    if not user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    reason, error_response = _content_report_reason(request)
+    if error_response is not None:
+        return error_response
+
+    post = (
+        Post.objects.select_related("author")
+        .filter(is_blocked=False, is_pending=False, author__is_blocked=False)
+        .filter(_publish_ready_filter(timezone.now()))
+        .filter(id=post_id)
+        .first()
+    )
+    if not post:
+        return JsonResponse({"ok": False, "error": "post not found"}, status=404)
+
+    report, created = ContentReport.objects.get_or_create(
+        reporter=user,
+        target_type=ContentReport.TARGET_POST,
+        post=post,
+        defaults={
+            "reason": reason,
+            "title_snapshot": (post.title or "").strip()[:255],
+            "content_snapshot": (post.preview_content or post.content or "").strip()[:5000],
+        },
+    )
+    return JsonResponse({"ok": True, "report_id": report.id, "created": created})
+
+
+@csrf_exempt
+def comment_report(request: HttpRequest, comment_id: int) -> HttpResponse:
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    user = _get_user_from_request(request)
+    if not user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    reason, error_response = _content_report_reason(request)
+    if error_response is not None:
+        return error_response
+
+    comment = (
+        PostComment.objects.select_related("post", "post__author", "user")
+        .filter(
+            id=comment_id,
+            is_deleted=False,
+            post__is_blocked=False,
+            post__is_pending=False,
+            post__author__is_blocked=False,
+        )
+        .filter(
+            Q(post__publish_at__isnull=True)
+            | Q(post__publish_at__lte=timezone.now())
+        )
+        .first()
+    )
+    if not comment:
+        return JsonResponse({"ok": False, "error": "comment not found"}, status=404)
+
+    report, created = ContentReport.objects.get_or_create(
+        reporter=user,
+        target_type=ContentReport.TARGET_COMMENT,
+        comment=comment,
+        defaults={
+            "reason": reason,
+            "title_snapshot": (comment.post.title or "").strip()[:255],
+            "content_snapshot": (comment.body or "").strip()[:5000],
+        },
+    )
+    return JsonResponse({"ok": True, "report_id": report.id, "created": created})
 
 
 @csrf_exempt

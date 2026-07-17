@@ -501,6 +501,117 @@ class PostComment(models.Model):
         return f"{self.post_id}:{self.user_id}"
 
 
+class ContentReport(models.Model):
+    TARGET_POST = "post"
+    TARGET_COMMENT = "comment"
+    TARGET_CHOICES = (
+        (TARGET_POST, "Пост"),
+        (TARGET_COMMENT, "Комментарий"),
+    )
+
+    REASON_SEXUALIZED = "sexualized"
+    REASON_ILLEGAL = "illegal"
+    REASON_HARASSMENT = "harassment"
+    REASON_SPAM_FRAUD = "spam_fraud"
+    REASON_OTHER = "other"
+    REASON_CHOICES = (
+        (REASON_SEXUALIZED, "Сексуализированный контент"),
+        (REASON_ILLEGAL, "Незаконный контент"),
+        (REASON_HARASSMENT, "Травля"),
+        (REASON_SPAM_FRAUD, "Спам, мошенничество"),
+        (REASON_OTHER, "Иное"),
+    )
+
+    STATUS_OPEN = "open"
+    STATUS_REVIEWED = "reviewed"
+    STATUS_DISMISSED = "dismissed"
+    STATUS_CHOICES = (
+        (STATUS_OPEN, "Новая"),
+        (STATUS_REVIEWED, "Обработана"),
+        (STATUS_DISMISSED, "Отклонена"),
+    )
+
+    reporter = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="content_reports_made",
+    )
+    target_type = models.CharField(max_length=16, choices=TARGET_CHOICES)
+    post = models.ForeignKey(
+        Post,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="content_reports",
+    )
+    comment = models.ForeignKey(
+        PostComment,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="content_reports",
+    )
+    reason = models.CharField(max_length=32, choices=REASON_CHOICES)
+    title_snapshot = models.CharField(max_length=255, blank=True)
+    content_snapshot = models.TextField(blank=True)
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_OPEN,
+        db_index=True,
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="reviewed_content_reports",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        target_type="post",
+                        post__isnull=False,
+                        comment__isnull=True,
+                    )
+                    | models.Q(
+                        target_type="comment",
+                        post__isnull=True,
+                        comment__isnull=False,
+                    )
+                ),
+                name="content_report_has_one_target",
+            ),
+            models.UniqueConstraint(
+                fields=["reporter", "post"],
+                condition=models.Q(target_type="post"),
+                name="unique_reporter_post_report",
+            ),
+            models.UniqueConstraint(
+                fields=["reporter", "comment"],
+                condition=models.Q(target_type="comment"),
+                name="unique_reporter_comment_report",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["status", "-created_at"], name="content_report_status_idx"),
+            models.Index(fields=["target_type", "-created_at"], name="content_report_target_idx"),
+        ]
+        verbose_name = "Жалоба на контент"
+        verbose_name_plural = "Жалобы на контент"
+
+    def __str__(self) -> str:
+        target_id = self.post_id if self.target_type == self.TARGET_POST else self.comment_id
+        return f"{self.target_type}:{target_id}:{self.reporter_id}"
+
+
 class PostCommentTranslation(models.Model):
     comment = models.ForeignKey(
         PostComment,

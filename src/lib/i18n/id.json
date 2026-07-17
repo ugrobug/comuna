@@ -1103,6 +1103,20 @@
     },
     "logout": "Log out",
     "site": {
+        "report": {
+            "title": "Apa yang ingin Anda laporkan?",
+            "action": "Laporkan",
+            "commentMenu": "Tindakan komentar",
+            "success": "Laporan terkirim",
+            "error": "Laporan tidak dapat dikirim",
+            "reasons": {
+                "sexualized": "Konten seksual",
+                "illegal": "Konten ilegal",
+                "harassment": "Pelecehan",
+                "spamFraud": "Spam atau penipuan",
+                "other": "Lainnya"
+            }
+        },
         "nav": {
             "moderator": "Moderasi",
             "refreshTagline": "Muat ulang slogan",

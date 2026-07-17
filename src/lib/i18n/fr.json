@@ -1055,6 +1055,20 @@
         "incorrect_login_5": "Petite question, regardez-vous les touches sur lesquelles vous appuyez ?"
     },
     "site": {
+        "report": {
+            "title": "Que souhaitez-vous signaler ?",
+            "action": "Signaler",
+            "commentMenu": "Actions du commentaire",
+            "success": "Signalement envoyé",
+            "error": "Impossible d’envoyer le signalement",
+            "reasons": {
+                "sexualized": "Contenu sexualisé",
+                "illegal": "Contenu illégal",
+                "harassment": "Harcèlement",
+                "spamFraud": "Spam ou fraude",
+                "other": "Autre"
+            }
+        },
         "nav": {
             "moderator": "Modération",
             "refreshTagline": "Actualiser le slogan",

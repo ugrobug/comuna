@@ -5,6 +5,8 @@
     buildModeratorAnalyticsUrl,
     buildModeratorChatReportUrl,
     buildModeratorChatReportsUrl,
+    buildModeratorContentReportUrl,
+    buildModeratorContentReportsUrl,
     buildModeratorPostViewDefaultsUrl,
     buildModeratorPostViewSettingsUrl,
     buildModeratorPostViewSettingUrl,
@@ -12,6 +14,7 @@
     buildModeratorRatingSettingsUpdateUrl,
     buildModeratorTranslationSettingsUpdateUrl,
     buildModeratorTranslationSettingsUrl,
+    type BackendContentReport,
     type BackendSiteChatReport,
     type BackendSiteChatReportStatus,
   } from '$lib/api/backend'
@@ -204,6 +207,17 @@
     open_count?: number
   }
 
+  type ContentReportsResponse = {
+    ok: boolean
+    error?: string
+    reports?: BackendContentReport[]
+    report?: BackendContentReport
+    total?: number
+    limit?: number
+    offset?: number
+    open_count?: number
+  }
+
   type ModeratorTab =
     | 'analytics'
     | 'views'
@@ -255,6 +269,13 @@
   let chatReportsOpenCount = 0
   let chatReportsFilter: ChatReportsFilter = 'open'
   let savingChatReports: Record<number, boolean> = {}
+  let contentReportsLoading = true
+  let contentReportsError = ''
+  let contentReportsNotice = ''
+  let contentReports: BackendContentReport[] = []
+  let contentReportsTotal = 0
+  let contentReportsOpenCount = 0
+  let savingContentReports: Record<number, boolean> = {}
   const staticPages = (Object.entries(EDITABLE_STATIC_PAGE_META) as Array<
     [EditableStaticPageSlug, (typeof EDITABLE_STATIC_PAGE_META)[EditableStaticPageSlug]]
   >).map(([slug, meta]) => ({
@@ -268,7 +289,7 @@
     if (tab === 'views') return 'Настройки просмотров'
     if (tab === 'rating') return 'Настройки рейтинга'
     if (tab === 'translations') return 'Лимиты перевода'
-    if (tab === 'chat-reports') return 'Модерация комментариев'
+    if (tab === 'chat-reports') return 'Модерация'
     if (tab === 'static-pages') return 'Статичные страницы'
     return 'Аналитика сайта'
   }
@@ -454,7 +475,9 @@
           minute: '2-digit',
         }).format(new Date(value))
       : 'Дата неизвестна'
-  const chatReportUserName = (user: BackendSiteChatReport['reporter']) =>
+  const chatReportUserName = (
+    user: BackendSiteChatReport['reporter'] | BackendContentReport['reporter']
+  ) =>
     (user.display_name || '').trim() || (user.username ? `@${user.username}` : `ID ${user.id}`)
   async function readModeratorJson<T>(response: Response): Promise<T> {
     const contentType = response.headers.get('content-type') ?? ''
@@ -738,6 +761,79 @@
     }
   }
 
+  async function loadContentReports() {
+    if (!$siteUser?.is_staff) return
+    contentReportsLoading = true
+    contentReportsError = ''
+    contentReportsNotice = ''
+
+    try {
+      const token = $siteToken
+      const response = await fetch(
+        buildModeratorContentReportsUrl({ status: chatReportsFilter, limit: 50 }),
+        {
+          credentials: 'include',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        }
+      )
+      const data = await readModeratorJson<ContentReportsResponse>(response)
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || 'Не удалось загрузить жалобы на контент')
+      }
+      contentReports = data.reports ?? []
+      contentReportsTotal = Number(data.total ?? contentReports.length)
+      contentReportsOpenCount = Number(data.open_count ?? 0)
+    } catch (err) {
+      contentReportsError =
+        err instanceof Error ? err.message : 'Не удалось загрузить жалобы на контент'
+      contentReports = []
+      contentReportsTotal = 0
+    } finally {
+      contentReportsLoading = false
+    }
+  }
+
+  async function updateContentReportStatus(
+    report: BackendContentReport,
+    status: BackendSiteChatReportStatus
+  ) {
+    savingContentReports = { ...savingContentReports, [report.id]: true }
+    contentReportsError = ''
+    contentReportsNotice = ''
+
+    try {
+      const token = $siteToken
+      const response = await fetch(buildModeratorContentReportUrl(report.id), {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ status }),
+      })
+      const data = await readModeratorJson<ContentReportsResponse>(response)
+      if (!response.ok || !data.ok || !data.report) {
+        throw new Error(data.error || 'Не удалось обновить жалобу')
+      }
+      contentReportsOpenCount = Number(data.open_count ?? contentReportsOpenCount)
+      if (chatReportsFilter === 'open' && status !== 'open') {
+        contentReports = contentReports.filter((item) => item.id !== report.id)
+        contentReportsTotal = Math.max(0, contentReportsTotal - 1)
+      } else {
+        contentReports = contentReports.map((item) =>
+          item.id === report.id ? data.report! : item
+        )
+      }
+      contentReportsNotice =
+        status === 'reviewed' ? 'Жалоба отмечена обработанной.' : 'Жалоба отклонена.'
+    } catch (err) {
+      contentReportsError = err instanceof Error ? err.message : 'Не удалось обновить жалобу'
+    } finally {
+      savingContentReports = { ...savingContentReports, [report.id]: false }
+    }
+  }
+
   async function updateChatReportStatus(
     report: BackendSiteChatReport,
     status: BackendSiteChatReportStatus
@@ -779,6 +875,7 @@
   function setChatReportsFilter(filter: ChatReportsFilter) {
     chatReportsFilter = filter
     loadChatReports()
+    loadContentReports()
   }
 
   function setPreset(days: number) {
@@ -806,6 +903,7 @@
     loadRatingSettings()
     loadTranslationSettings()
     loadChatReports()
+    loadContentReports()
   })
 </script>
 
@@ -877,9 +975,9 @@
       class:active={activeTab === 'chat-reports'}
       on:click={() => (activeTab = 'chat-reports')}
     >
-      Модерация комментариев
-      {#if chatReportsOpenCount}
-        <span class="tab-badge">{chatReportsOpenCount}</span>
+      Модерация
+      {#if chatReportsOpenCount + contentReportsOpenCount}
+        <span class="tab-badge">{chatReportsOpenCount + contentReportsOpenCount}</span>
       {/if}
     </button>
     <button
@@ -1254,7 +1352,7 @@
       <div class="section-header">
         <div>
           <p class="section-label">Раздел</p>
-          <h2>Модерация комментариев</h2>
+          <h2>Модерация</h2>
         </div>
         <div class="chat-reports-toolbar">
           <div class="chat-report-filters" aria-label="Фильтр жалоб">
@@ -1273,85 +1371,179 @@
               Все
             </button>
           </div>
-          <button class="secondary-button" type="button" disabled={chatReportsLoading} on:click={loadChatReports}>
+          <button
+            class="secondary-button"
+            type="button"
+            disabled={chatReportsLoading || contentReportsLoading}
+            on:click={() => {
+              loadContentReports()
+              loadChatReports()
+            }}
+          >
             Обновить
           </button>
         </div>
       </div>
 
+      {#if contentReportsError}
+        <div class="notice error">{contentReportsError}</div>
+      {/if}
       {#if chatReportsError}
         <div class="notice error">{chatReportsError}</div>
+      {/if}
+      {#if contentReportsNotice}
+        <div class="notice success">{contentReportsNotice}</div>
       {/if}
       {#if chatReportsNotice}
         <div class="notice success">{chatReportsNotice}</div>
       {/if}
 
-      {#if chatReportsLoading}
-        <div class="chat-reports-list">
-          {#each Array(4) as _}
-            <div class="chat-report-row skeleton"></div>
-          {/each}
+      <div class="report-group">
+        <div class="report-group-heading">
+          <h3>Посты и комментарии</h3>
+          <span>{formatNumber(contentReportsTotal)}</span>
         </div>
-      {:else if chatReports.length}
-        <div class="chat-reports-list">
-          {#each chatReports as report (report.id)}
-            <article class="chat-report-row">
-              <div class="chat-report-header">
-                <div class="chat-report-users">
-                  <strong>{chatReportUserName(report.reported_user)}</strong>
-                  <span>Жалоба от {chatReportUserName(report.reporter)} · {formatDateTime(report.created_at)}</span>
+        {#if contentReportsLoading}
+          <div class="chat-reports-list">
+            {#each Array(2) as _}
+              <div class="chat-report-row skeleton"></div>
+            {/each}
+          </div>
+        {:else if contentReports.length}
+          <div class="chat-reports-list">
+            {#each contentReports as report (report.id)}
+              <article class="chat-report-row">
+                <div class="chat-report-header">
+                  <div class="chat-report-users">
+                    <strong>{report.reason_label || report.reason}</strong>
+                    <span>
+                      {report.target_type_label || report.target_type} · жалоба от
+                      {chatReportUserName(report.reporter)} · {formatDateTime(report.created_at)}
+                    </span>
+                  </div>
+                  <span class={`chat-report-status status-${report.status}`}>
+                    {report.status_label || report.status}
+                  </span>
                 </div>
-                <span class={`chat-report-status status-${report.status}`}>
-                  {report.status_label || report.status}
-                </span>
-              </div>
 
-              <div class="chat-report-message">
-                {report.message?.body || 'Сообщение не найдено или пустое.'}
-              </div>
-
-              <div class="chat-report-footer">
-                <span>
-                  Чат #{report.chat_id}
-                  {#if report.message?.id}
-                    · сообщение #{report.message.id}
+                <div class="chat-report-message">
+                  {#if report.target.title}
+                    <strong class="content-report-title">{report.target.title}</strong>
                   {/if}
-                  {#if report.message?.created_at}
-                    · {formatDateTime(report.message.created_at)}
-                  {/if}
-                </span>
-                <div class="chat-report-actions">
-                  {#if report.status !== 'reviewed'}
-                    <button
-                      class="secondary-button"
-                      type="button"
-                      disabled={savingChatReports[report.id]}
-                      on:click={() => updateChatReportStatus(report, 'reviewed')}
-                    >
-                      Обработано
-                    </button>
-                  {/if}
-                  {#if report.status !== 'dismissed'}
-                    <button
-                      class="secondary-button danger-button"
-                      type="button"
-                      disabled={savingChatReports[report.id]}
-                      on:click={() => updateChatReportStatus(report, 'dismissed')}
-                    >
-                      Отклонить
-                    </button>
-                  {/if}
+                  {report.target.body || 'Содержимое не найдено или пустое.'}
                 </div>
-              </div>
-            </article>
-          {/each}
+
+                <div class="chat-report-footer">
+                  <span>
+                    {#if report.target.author}
+                      Автор: {chatReportUserName(report.target.author)}
+                    {/if}
+                    {#if report.target.url}
+                      · <a href={report.target.url} target="_blank" rel="noopener noreferrer">
+                        Открыть {report.target_type === 'comment' ? 'комментарий' : 'пост'}
+                      </a>
+                    {/if}
+                  </span>
+                  <div class="chat-report-actions">
+                    {#if report.status !== 'reviewed'}
+                      <button
+                        class="secondary-button"
+                        type="button"
+                        disabled={savingContentReports[report.id]}
+                        on:click={() => updateContentReportStatus(report, 'reviewed')}
+                      >
+                        Обработано
+                      </button>
+                    {/if}
+                    {#if report.status !== 'dismissed'}
+                      <button
+                        class="secondary-button danger-button"
+                        type="button"
+                        disabled={savingContentReports[report.id]}
+                        on:click={() => updateContentReportStatus(report, 'dismissed')}
+                      >
+                        Отклонить
+                      </button>
+                    {/if}
+                  </div>
+                </div>
+              </article>
+            {/each}
+          </div>
+        {:else}
+          <div class="empty-state">Новых жалоб на посты и комментарии нет.</div>
+        {/if}
+      </div>
+
+      <div class="report-group">
+        <div class="report-group-heading">
+          <h3>Личные сообщения</h3>
+          <span>{formatNumber(chatReportsTotal)}</span>
         </div>
-        <div class="chat-reports-total">
-          Показано {formatNumber(chatReports.length)} из {formatNumber(chatReportsTotal)}
-        </div>
-      {:else}
-        <div class="empty-state">Новых жалоб нет.</div>
-      {/if}
+        {#if chatReportsLoading}
+          <div class="chat-reports-list">
+            {#each Array(2) as _}
+              <div class="chat-report-row skeleton"></div>
+            {/each}
+          </div>
+        {:else if chatReports.length}
+          <div class="chat-reports-list">
+            {#each chatReports as report (report.id)}
+              <article class="chat-report-row">
+                <div class="chat-report-header">
+                  <div class="chat-report-users">
+                    <strong>{chatReportUserName(report.reported_user)}</strong>
+                    <span>Жалоба от {chatReportUserName(report.reporter)} · {formatDateTime(report.created_at)}</span>
+                  </div>
+                  <span class={`chat-report-status status-${report.status}`}>
+                    {report.status_label || report.status}
+                  </span>
+                </div>
+
+                <div class="chat-report-message">
+                  {report.message?.body || 'Сообщение не найдено или пустое.'}
+                </div>
+
+                <div class="chat-report-footer">
+                  <span>
+                    Чат #{report.chat_id}
+                    {#if report.message?.id}
+                      · сообщение #{report.message.id}
+                    {/if}
+                    {#if report.message?.created_at}
+                      · {formatDateTime(report.message.created_at)}
+                    {/if}
+                  </span>
+                  <div class="chat-report-actions">
+                    {#if report.status !== 'reviewed'}
+                      <button
+                        class="secondary-button"
+                        type="button"
+                        disabled={savingChatReports[report.id]}
+                        on:click={() => updateChatReportStatus(report, 'reviewed')}
+                      >
+                        Обработано
+                      </button>
+                    {/if}
+                    {#if report.status !== 'dismissed'}
+                      <button
+                        class="secondary-button danger-button"
+                        type="button"
+                        disabled={savingChatReports[report.id]}
+                        on:click={() => updateChatReportStatus(report, 'dismissed')}
+                      >
+                        Отклонить
+                      </button>
+                    {/if}
+                  </div>
+                </div>
+              </article>
+            {/each}
+          </div>
+        {:else}
+          <div class="empty-state">Новых жалоб на личные сообщения нет.</div>
+        {/if}
+      </div>
     </section>
   {/if}
 
@@ -1731,6 +1923,35 @@
     gap: 10px;
   }
 
+  .report-group {
+    display: grid;
+    gap: 10px;
+    padding-top: 18px;
+    border-top: 1px solid rgb(226 232 240);
+  }
+
+  .report-group + .report-group {
+    margin-top: 22px;
+  }
+
+  .report-group-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .report-group-heading h3 {
+    color: rgb(15 23 42);
+    font-size: 17px;
+    font-weight: 650;
+  }
+
+  .report-group-heading span {
+    color: rgb(100 116 139);
+    font-size: 13px;
+  }
+
   .chat-report-row {
     min-height: 148px;
     border: 1px solid rgb(226 232 240);
@@ -1803,6 +2024,16 @@
     line-height: 1.45;
     white-space: pre-wrap;
     word-break: break-word;
+  }
+
+  .content-report-title {
+    display: block;
+    margin-bottom: 6px;
+  }
+
+  .chat-report-footer a {
+    color: rgb(2 132 199);
+    font-weight: 600;
   }
 
   .chat-report-actions {
@@ -2148,6 +2379,7 @@
   :global(.dark) .post-info span,
   :global(.dark) .static-page-info span,
   :global(.dark) .static-page-info a,
+  :global(.dark) .report-group-heading span,
   :global(.dark) .chat-report-users span,
   :global(.dark) .chat-report-footer span,
   :global(.dark) .chat-reports-total,
@@ -2177,6 +2409,15 @@
   :global(.dark) .static-page-info strong,
   :global(.dark) .view-cell strong {
     color: white;
+  }
+
+  :global(.dark) .report-group-heading h3,
+  :global(.dark) .content-report-title {
+    color: white;
+  }
+
+  :global(.dark) .report-group {
+    border-color: rgb(63 63 70);
   }
 
   :global(.dark) .metric-card,

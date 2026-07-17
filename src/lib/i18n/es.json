@@ -991,6 +991,20 @@
         "slurs": "Su aporte contiene un término prohibido por esta instancia."
     },
     "site": {
+        "report": {
+            "title": "¿Qué quieres denunciar?",
+            "action": "Denunciar",
+            "commentMenu": "Acciones del comentario",
+            "success": "Denuncia enviada",
+            "error": "No se pudo enviar la denuncia",
+            "reasons": {
+                "sexualized": "Contenido sexualizado",
+                "illegal": "Contenido ilegal",
+                "harassment": "Acoso",
+                "spamFraud": "Spam o fraude",
+                "other": "Otro"
+            }
+        },
         "nav": {
             "moderator": "Moderación",
             "refreshTagline": "Actualizar lema",

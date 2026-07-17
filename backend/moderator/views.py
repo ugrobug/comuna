@@ -16,6 +16,7 @@ from feeds.models import (
     CONTENT_TRANSLATION_KIND_POST,
     CONTENT_TRANSLATION_KIND_STATIC_PAGE,
     ComunTranslation,
+    ContentReport,
     POST_TRANSLATION_LANGUAGE_CHOICES,
     POST_TRANSLATION_STATUS_TRANSLATED,
     Post,
@@ -29,6 +30,7 @@ from feeds.models import (
     StaticPageContent,
     StaticPageTranslation,
 )
+from feeds.post_paths import build_post_public_path
 from feeds.translation_service import (
     serialize_content_translation_settings,
     update_content_translation_settings,
@@ -730,6 +732,146 @@ def _chat_report_queryset():
     )
 
 
+def _content_report_queryset():
+    return ContentReport.objects.select_related(
+        "reporter",
+        "reporter__site_profile",
+        "post",
+        "post__author",
+        "comment",
+        "comment__post",
+        "comment__post__author",
+        "comment__user",
+        "comment__user__site_profile",
+        "reviewed_by",
+        "reviewed_by__site_profile",
+    )
+
+
+def _serialize_content_report(report: ContentReport) -> dict:
+    comment = report.comment
+    post = report.post or (comment.post if comment else None)
+    target_url = build_post_public_path(post.id, post.title) if post else None
+    if comment and target_url:
+        target_url = f"{target_url}#site-comment-{comment.id}"
+
+    target_author = None
+    if comment:
+        target_author = chat_service._serialize_chat_user(comment.user)
+    elif post:
+        target_author = {
+            "id": post.author_id,
+            "username": post.author.username,
+            "display_name": (post.author.title or "").strip() or post.author.username,
+            "avatar_url": post.author.avatar_url or None,
+            "profile_url": f"/b/{post.author.username}",
+        }
+
+    return {
+        "id": report.id,
+        "target_type": report.target_type,
+        "target_type_label": report.get_target_type_display(),
+        "reason": report.reason,
+        "reason_label": report.get_reason_display(),
+        "status": report.status,
+        "status_label": report.get_status_display(),
+        "created_at": report.created_at.isoformat(),
+        "updated_at": report.updated_at.isoformat(),
+        "reviewed_at": report.reviewed_at.isoformat() if report.reviewed_at else None,
+        "reporter": chat_service._serialize_chat_user(report.reporter),
+        "reviewed_by": (
+            chat_service._serialize_chat_user(report.reviewed_by)
+            if report.reviewed_by
+            else None
+        ),
+        "target": {
+            "id": comment.id if comment else (post.id if post else None),
+            "post_id": post.id if post else None,
+            "title": report.title_snapshot or ((post.title or "").strip() if post else ""),
+            "body": report.content_snapshot,
+            "url": target_url,
+            "author": target_author,
+        },
+    }
+
+
+def moderator_content_reports(request: HttpRequest) -> HttpResponse:
+    if request.method != "GET":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    _user, auth_response = _staff_user_or_response(request)
+    if auth_response is not None:
+        return auth_response
+
+    try:
+        limit = min(max(int(request.GET.get("limit", "50")), 1), 100)
+    except ValueError:
+        limit = 50
+    try:
+        offset = max(int(request.GET.get("offset", "0")), 0)
+    except ValueError:
+        offset = 0
+    status = (request.GET.get("status") or ContentReport.STATUS_OPEN).strip().lower()
+
+    reports = _content_report_queryset()
+    if status != "all":
+        valid_statuses = {choice[0] for choice in ContentReport.STATUS_CHOICES}
+        if status not in valid_statuses:
+            return JsonResponse({"ok": False, "error": "invalid status"}, status=400)
+        reports = reports.filter(status=status)
+
+    total = reports.count()
+    items = list(reports[offset : offset + limit])
+    open_count = ContentReport.objects.filter(status=ContentReport.STATUS_OPEN).count()
+    return JsonResponse(
+        {
+            "ok": True,
+            "reports": [_serialize_content_report(report) for report in items],
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "open_count": open_count,
+        }
+    )
+
+
+@csrf_exempt
+def moderator_content_report_update(request: HttpRequest, report_id: int) -> HttpResponse:
+    if request.method not in {"PATCH", "POST"}:
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    user, auth_response = _staff_user_or_response(request)
+    if auth_response is not None:
+        return auth_response
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+    status = str(payload.get("status") or "").strip().lower()
+    valid_statuses = {choice[0] for choice in ContentReport.STATUS_CHOICES}
+    if status not in valid_statuses:
+        return JsonResponse({"ok": False, "error": "invalid status"}, status=400)
+
+    report = _content_report_queryset().filter(id=report_id).first()
+    if not report:
+        return JsonResponse({"ok": False, "error": "report not found"}, status=404)
+
+    report.status = status
+    report.reviewed_by = user if status != ContentReport.STATUS_OPEN else None
+    report.reviewed_at = timezone.now() if status != ContentReport.STATUS_OPEN else None
+    report.save(update_fields=["status", "reviewed_by", "reviewed_at", "updated_at"])
+
+    open_count = ContentReport.objects.filter(status=ContentReport.STATUS_OPEN).count()
+    return JsonResponse(
+        {
+            "ok": True,
+            "report": _serialize_content_report(report),
+            "open_count": open_count,
+        }
+    )
+
+
 def moderator_chat_reports(request: HttpRequest) -> HttpResponse:
     if request.method != "GET":
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
@@ -812,6 +954,8 @@ __all__ = [
     "moderator_analytics",
     "moderator_chat_report_update",
     "moderator_chat_reports",
+    "moderator_content_report_update",
+    "moderator_content_reports",
     "moderator_post_view_settings",
     "moderator_post_view_setting_update",
     "moderator_rating_settings",

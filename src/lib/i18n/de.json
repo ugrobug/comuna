@@ -828,6 +828,20 @@
         }
     },
     "site": {
+        "report": {
+            "title": "Was möchtest du melden?",
+            "action": "Melden",
+            "commentMenu": "Kommentaraktionen",
+            "success": "Meldung gesendet",
+            "error": "Meldung konnte nicht gesendet werden",
+            "reasons": {
+                "sexualized": "Sexualisierte Inhalte",
+                "illegal": "Illegale Inhalte",
+                "harassment": "Belästigung",
+                "spamFraud": "Spam oder Betrug",
+                "other": "Sonstiges"
+            }
+        },
         "nav": {
             "moderator": "Moderation",
             "refreshTagline": "Slogan aktualisieren",

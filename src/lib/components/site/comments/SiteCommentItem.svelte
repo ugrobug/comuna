@@ -1,10 +1,20 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte'
-  import { Icon, Heart, ChatBubbleOvalLeft, PencilSquare, Trash } from 'svelte-hero-icons'
+  import {
+    Icon,
+    Heart,
+    ChatBubbleOvalLeft,
+    EllipsisHorizontal,
+    Flag,
+    PencilSquare,
+    Trash,
+  } from 'svelte-hero-icons'
+  import { Menu, MenuButton } from 'mono-svelte'
   import Avatar from '$lib/components/ui/Avatar.svelte'
   import RelativeDate from '$lib/components/util/RelativeDate.svelte'
   import Markdown from '$lib/components/markdown/Markdown.svelte'
   import LoginModal from '$lib/components/auth/LoginModal.svelte'
+  import ContentReportModal from '$lib/components/site/ContentReportModal.svelte'
   import { buildCommentLikeUrl, buildCommentDetailUrl } from '$lib/api/backend'
   import { siteToken } from '$lib/siteAuth'
   import SiteCommentForm from './SiteCommentForm.svelte'
@@ -30,6 +40,7 @@
   let liking = false
   let deleting = false
   let showLoginModal = false
+  let reportModalOpen = false
   let showOriginalComment = false
 
   $: isReply = depth > 0
@@ -105,6 +116,14 @@
     replying = !replying
   }
 
+  function openReportModal() {
+    if (!$siteToken) {
+      showLoginModal = true
+      return
+    }
+    reportModalOpen = true
+  }
+
   async function toggleLike() {
     if (!$siteToken) {
       showLoginModal = true
@@ -161,6 +180,11 @@
 </script>
 
 <LoginModal bind:open={showLoginModal} />
+<ContentReportModal
+  bind:open={reportModalOpen}
+  targetType="comment"
+  targetId={node.comment.id}
+/>
 
 <li class={itemClass} id={`site-comment-${node.comment.id}`}>
   <div class="flex gap-2 sm:gap-3">
@@ -282,6 +306,23 @@
               <Icon src={Trash} size="14" mini />
               {$t('site.comments.delete')}
             </button>
+          {/if}
+          {#if !isDeleted}
+            <Menu placement="bottom-end">
+              <button
+                slot="target"
+                type="button"
+                class="grid h-7 w-7 place-items-center rounded-full transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+                title={$t('site.report.commentMenu')}
+                aria-label={$t('site.report.commentMenu')}
+              >
+                <Icon src={EllipsisHorizontal} size="16" mini />
+              </button>
+              <MenuButton on:click={openReportModal} color="danger-subtle">
+                <Icon src={Flag} size="16" mini slot="prefix" />
+                {$t('site.report.action')}
+              </MenuButton>
+            </Menu>
           {/if}
         </div>
       {/if}

@@ -49,8 +49,16 @@ export const buildCommentLikeUrl = (id: number | string): string => {
   return `${getBackendBaseUrl()}/api/comments/${encodeURIComponent(id)}/like/`
 }
 
+export const buildCommentReportUrl = (id: number | string): string => {
+  return `${getBackendBaseUrl()}/api/comments/${encodeURIComponent(id)}/report/`
+}
+
 export const buildPostLikeUrl = (id: number | string): string => {
   return `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/like/`
+}
+
+export const buildPostReportUrl = (id: number | string): string => {
+  return `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/report/`
 }
 
 export const buildPostFavoriteUrl = (id: number | string): string => {
@@ -428,6 +436,24 @@ export const buildModeratorChatReportsUrl = (options?: {
 
 export const buildModeratorChatReportUrl = (id: number | string): string => {
   return `${getBackendBaseUrl()}/api/moderator/chat-reports/${encodeURIComponent(id)}/`
+}
+
+export const buildModeratorContentReportsUrl = (options?: {
+  status?: string
+  limit?: number
+  offset?: number
+}): string => {
+  const base = `${getBackendBaseUrl()}/api/moderator/content-reports/`
+  const params = new URLSearchParams()
+  if (options?.status) params.set('status', options.status)
+  if (typeof options?.limit === 'number') params.set('limit', String(options.limit))
+  if (typeof options?.offset === 'number') params.set('offset', String(options.offset))
+  const query = params.toString()
+  return query ? `${base}?${query}` : base
+}
+
+export const buildModeratorContentReportUrl = (id: number | string): string => {
+  return `${getBackendBaseUrl()}/api/moderator/content-reports/${encodeURIComponent(id)}/`
 }
 
 export const buildSpecialLandnameUrl = (text: string = '', options?: { track?: boolean }): string => {
@@ -1106,6 +1132,36 @@ export type BackendSiteChat = {
 }
 
 export type BackendSiteChatReportStatus = 'open' | 'reviewed' | 'dismissed'
+
+export type BackendContentReportReason =
+  | 'sexualized'
+  | 'illegal'
+  | 'harassment'
+  | 'spam_fraud'
+  | 'other'
+
+export type BackendContentReport = {
+  id: number
+  target_type: 'post' | 'comment'
+  target_type_label?: string
+  reason: BackendContentReportReason
+  reason_label?: string
+  status: BackendSiteChatReportStatus
+  status_label?: string
+  created_at: string
+  updated_at?: string | null
+  reviewed_at?: string | null
+  reporter: BackendSiteChatUser
+  reviewed_by?: BackendSiteChatUser | null
+  target: {
+    id?: number | null
+    post_id?: number | null
+    title?: string | null
+    body: string
+    url?: string | null
+    author?: BackendSiteChatUser | null
+  }
+}
 
 export type BackendSiteChatReport = {
   id: number

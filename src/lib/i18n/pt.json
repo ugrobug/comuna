@@ -961,6 +961,20 @@
         }
     },
     "site": {
+        "report": {
+            "title": "O que deseja denunciar?",
+            "action": "Denunciar",
+            "commentMenu": "Ações do comentário",
+            "success": "Denúncia enviada",
+            "error": "Não foi possível enviar a denúncia",
+            "reasons": {
+                "sexualized": "Conteúdo sexualizado",
+                "illegal": "Conteúdo ilegal",
+                "harassment": "Assédio",
+                "spamFraud": "Spam ou fraude",
+                "other": "Outro"
+            }
+        },
         "nav": {
             "moderator": "Moderação",
             "refreshTagline": "Atualizar slogan",

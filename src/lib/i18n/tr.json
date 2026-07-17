@@ -1080,6 +1080,20 @@
         "created": "Oluşturuldu"
     },
     "site": {
+        "report": {
+            "title": "Neyi şikâyet ediyorsunuz?",
+            "action": "Şikâyet et",
+            "commentMenu": "Yorum işlemleri",
+            "success": "Şikâyet gönderildi",
+            "error": "Şikâyet gönderilemedi",
+            "reasons": {
+                "sexualized": "Cinselleştirilmiş içerik",
+                "illegal": "Yasa dışı içerik",
+                "harassment": "Taciz",
+                "spamFraud": "Spam veya dolandırıcılık",
+                "other": "Diğer"
+            }
+        },
         "nav": {
             "moderator": "Moderasyon",
             "refreshTagline": "Sloganı yenile",

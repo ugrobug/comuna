@@ -1103,6 +1103,20 @@
     },
     "logout": "Log out",
     "site": {
+        "report": {
+            "title": "What are you reporting?",
+            "action": "Report",
+            "commentMenu": "Comment actions",
+            "success": "Report sent",
+            "error": "Failed to send report",
+            "reasons": {
+                "sexualized": "Sexualized content",
+                "illegal": "Illegal content",
+                "harassment": "Harassment",
+                "spamFraud": "Spam or fraud",
+                "other": "Other"
+            }
+        },
         "nav": {
             "moderator": "Moderation",
             "refreshTagline": "Refresh tagline",

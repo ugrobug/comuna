@@ -69,6 +69,7 @@
   import RelativeDate, {
     formatRelativeDate,
   } from '$lib/components/util/RelativeDate.svelte'
+  import ContentReportModal from '$lib/components/site/ContentReportModal.svelte'
   import { deleteUserPost, siteToken, siteUser } from '$lib/siteAuth'
   import {
     buildComunUrl,
@@ -124,6 +125,7 @@
   let actionsMenuOpen = false
   let categoryMenuOpen = false
   let categorySaving = false
+  let backendReportOpen = false
   let currentBackendCategoryId: number | null = null
 
   $: buttonHeight = view == 'compact' ? 'h-7' : 'h-8'
@@ -314,6 +316,15 @@
         : `${window.location.pathname}${window.location.search}${window.location.hash}`
     toast({ content: $t('site.postActions.loginRequired'), type: 'warning' })
     await goto(`/account?next=${encodeURIComponent(next)}`)
+  }
+
+  const openBackendReport = async () => {
+    if (!$siteToken) {
+      await redirectToSiteRegistration()
+      return
+    }
+    actionsMenuOpen = false
+    backendReportOpen = true
   }
 
   const toggleHiddenAuthor = () => {
@@ -599,6 +610,14 @@
   {#await import('$lib/components/translate/Translation.svelte') then { default: Translation }}
     <Translation bind:open={translating} />
   {/await}
+{/if}
+
+{#if backendPostId}
+  <ContentReportModal
+    bind:open={backendReportOpen}
+    targetType="post"
+    targetId={backendPostId}
+  />
 {/if}
 
 <footer
@@ -966,6 +985,12 @@
         </div>
       {/if}
     </MenuButton>
+    {#if isBackendPost}
+      <MenuButton on:click={openBackendReport} color="danger-subtle">
+        <Icon src={Flag} width={16} micro slot="prefix" />
+        {$t('site.report.action')}
+      </MenuButton>
+    {/if}
     {#if post.post.body && $userSettings.translator}
       <MenuButton
         on:click={() => {
@@ -1046,10 +1071,12 @@
               : $t('post.actions.more.hide')}
           </MenuButton>
         {/if}
-        <MenuButton on:click={() => report(post)} color="danger-subtle">
-          <Icon src={Flag} width={16} micro slot="prefix" />
-          {$t('moderation.report')}
-        </MenuButton>
+        {#if !isBackendPost}
+          <MenuButton on:click={() => report(post)} color="danger-subtle">
+            <Icon src={Flag} width={16} micro slot="prefix" />
+            {$t('moderation.report')}
+          </MenuButton>
+        {/if}
       {/if}
     {/if}
   </Menu>
