@@ -8,6 +8,7 @@ from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
+from communities import service as community_service
 from communities.models import Comun, ComunCategory, ComunGlossaryTerm
 from feeds.models import (
     Author,
@@ -202,6 +203,9 @@ def moderator_analytics(request: HttpRequest) -> HttpResponse:
         "post_real_views": post_real_views,
         "average_real_views_per_post": average_real_views_per_post,
     }
+    recent_communities = list(
+        Comun.objects.filter(is_active=True).order_by("-created_at", "-id")[:10]
+    )
 
     return JsonResponse(
         {
@@ -212,6 +216,18 @@ def moderator_analytics(request: HttpRequest) -> HttpResponse:
                 "post_likes": post_likes_count,
                 "comment_likes": comment_likes_count,
             },
+            "recent_communities": [
+                {
+                    "id": comun.id,
+                    "name": comun.name,
+                    "slug": comun.slug,
+                    "url": f"/comuns/{comun.slug}",
+                    "logo_url": community_service._comun_logo_url(request, comun),
+                    "description": (comun.product_description or "").strip(),
+                    "created_at": comun.created_at.isoformat(),
+                }
+                for comun in recent_communities
+            ],
         }
     )
 

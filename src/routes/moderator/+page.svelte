@@ -23,6 +23,7 @@
     type EditableStaticPageSlug,
   } from '$lib/staticPageContent'
   import { brandNameForLanguage } from '$lib/brand'
+  import Avatar from '$lib/components/ui/Avatar.svelte'
   import { refreshSiteUser, siteToken, siteUser } from '$lib/siteAuth'
   import { locale } from '$lib/translations'
   import { onMount } from 'svelte'
@@ -62,6 +63,15 @@
       post_likes: number
       comment_likes: number
     }
+    recent_communities?: Array<{
+      id: number
+      name: string
+      slug: string
+      url: string
+      logo_url?: string | null
+      description?: string | null
+      created_at: string
+    }>
   }
 
   type PostViewSettingsItem = {
@@ -1030,6 +1040,40 @@
           </span>
         </div>
       </section>
+
+      <section class="recent-comuns-section">
+        <div class="section-header">
+          <div>
+            <p class="section-label">Сообщества</p>
+            <h2>Последние созданные</h2>
+          </div>
+          <span class="recent-comuns-count">
+            {formatNumber(analytics.recent_communities?.length ?? 0)}
+          </span>
+        </div>
+
+        {#if analytics.recent_communities?.length}
+          <div class="recent-comuns-list">
+            {#each analytics.recent_communities as comun (comun.id)}
+              <article class="recent-comun-row">
+                <Avatar
+                  url={comun.logo_url || undefined}
+                  alt={comun.name}
+                  width={48}
+                  circle={false}
+                />
+                <div class="recent-comun-info">
+                  <a href={comun.url}>{comun.name}</a>
+                  <p>{comun.description || 'Описание не заполнено.'}</p>
+                </div>
+                <time datetime={comun.created_at}>{formatDateTime(comun.created_at)}</time>
+              </article>
+            {/each}
+          </div>
+        {:else}
+          <div class="empty-state">Сообщества пока не созданы.</div>
+        {/if}
+      </section>
     {/if}
   {/if}
 
@@ -1766,6 +1810,7 @@
   }
 
   .analytics-section,
+  .recent-comuns-section,
   .view-settings-section,
   .rating-settings-section,
   .translation-settings-section,
@@ -1781,6 +1826,60 @@
     display: flex;
     justify-content: space-between;
     gap: 18px;
+  }
+
+  .recent-comuns-list {
+    display: grid;
+  }
+
+  .recent-comun-row {
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr) minmax(150px, auto);
+    align-items: center;
+    gap: 14px;
+    min-height: 76px;
+    padding: 13px 0;
+    border-top: 1px solid rgb(226 232 240);
+  }
+
+  .recent-comun-row:first-child {
+    border-top: 0;
+  }
+
+  .recent-comun-info {
+    min-width: 0;
+  }
+
+  .recent-comun-info a {
+    color: rgb(15 23 42);
+    font-size: 15px;
+    font-weight: 650;
+  }
+
+  .recent-comun-info a:hover {
+    color: rgb(2 132 199);
+  }
+
+  .recent-comun-info p {
+    display: -webkit-box;
+    margin: 4px 0 0;
+    overflow: hidden;
+    color: rgb(100 116 139);
+    font-size: 13px;
+    line-height: 1.4;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .recent-comun-row time,
+  .recent-comuns-count {
+    color: rgb(100 116 139);
+    font-size: 13px;
+  }
+
+  .recent-comun-row time {
+    text-align: right;
+    white-space: nowrap;
   }
 
   .section-header {
@@ -2379,6 +2478,9 @@
   :global(.dark) .post-info span,
   :global(.dark) .static-page-info span,
   :global(.dark) .static-page-info a,
+  :global(.dark) .recent-comun-info p,
+  :global(.dark) .recent-comun-row time,
+  :global(.dark) .recent-comuns-count,
   :global(.dark) .report-group-heading span,
   :global(.dark) .chat-report-users span,
   :global(.dark) .chat-report-footer span,
@@ -2407,6 +2509,7 @@
   :global(.dark) .chat-report-users strong,
   :global(.dark) .chat-report-message,
   :global(.dark) .static-page-info strong,
+  :global(.dark) .recent-comun-info a,
   :global(.dark) .view-cell strong {
     color: white;
   }
@@ -2422,6 +2525,7 @@
 
   :global(.dark) .metric-card,
   :global(.dark) .analytics-section,
+  :global(.dark) .recent-comuns-section,
   :global(.dark) .view-settings-section,
   :global(.dark) .rating-settings-section,
   :global(.dark) .translation-settings-section,
@@ -2447,6 +2551,10 @@
   }
 
   :global(.dark) .moderator-tabs {
+    border-color: rgb(63 63 70);
+  }
+
+  :global(.dark) .recent-comun-row {
     border-color: rgb(63 63 70);
   }
 
@@ -2623,6 +2731,15 @@
     }
 
     .translation-breakdown-row small {
+      text-align: left;
+    }
+
+    .recent-comun-row {
+      grid-template-columns: 48px minmax(0, 1fr);
+    }
+
+    .recent-comun-row time {
+      grid-column: 2;
       text-align: left;
     }
 

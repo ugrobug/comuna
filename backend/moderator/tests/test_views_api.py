@@ -225,6 +225,35 @@ class ModeratorAnalyticsApiTests(TestCase):
         )
         self.assertEqual(data["breakdown"]["post_likes"], 1)
         self.assertEqual(data["breakdown"]["comment_likes"], 1)
+        self.assertEqual(len(data["recent_communities"]), 2)
+        self.assertEqual(data["recent_communities"][0]["name"], "Other community")
+        self.assertEqual(data["recent_communities"][0]["url"], "/comuns/other-community")
+
+    def test_analytics_returns_only_ten_latest_active_communities(self):
+        communities = [
+            Comun.objects.create(
+                name=f"Recent community {index}",
+                slug=f"recent-community-{index}",
+                product_description=f"Description {index}",
+                logo_url=f"https://example.com/community-{index}.png",
+            )
+            for index in range(12)
+        ]
+        communities[-1].is_active = False
+        communities[-1].save(update_fields=["is_active", "updated_at"])
+
+        response = self.client.get(reverse("moderator-analytics"), **self.staff_headers)
+
+        self.assertEqual(response.status_code, 200)
+        recent = response.json()["recent_communities"]
+        self.assertEqual(len(recent), 10)
+        self.assertEqual(recent[0]["name"], "Recent community 10")
+        self.assertEqual(recent[-1]["name"], "Recent community 1")
+        self.assertEqual(recent[0]["description"], "Description 10")
+        self.assertEqual(
+            recent[0]["logo_url"],
+            "https://example.com/community-10.png",
+        )
 
     def test_translation_settings_returns_content_coverage(self):
         author = Author.objects.create(username="coverage-channel")
