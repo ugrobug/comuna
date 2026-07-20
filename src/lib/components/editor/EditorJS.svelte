@@ -1794,6 +1794,7 @@
               : this.escapeCellText(text)
             if (!nextHtml) return
             event.preventDefault()
+            event.stopPropagation()
             this.insertHtmlAtSelection(nextHtml)
             this.updateCell(rowIndex, columnIndex, input.innerHTML)
           })
