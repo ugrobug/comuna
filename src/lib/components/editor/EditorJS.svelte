@@ -4713,7 +4713,7 @@
 
       if (event.dataTransfer) {
         event.dataTransfer.effectAllowed = 'move'
-        event.dataTransfer.setData('text/plain', String(currentIndex))
+        event.dataTransfer.setData('application/x-comuna-editor-block', String(currentIndex))
       }
     }
 
@@ -4763,6 +4763,7 @@
       }
 
       event.preventDefault()
+      event.stopPropagation()
 
       const targetIndex = getBlockIndex(targetBlock)
       if (targetIndex < 0) {
