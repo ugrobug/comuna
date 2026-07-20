@@ -27,7 +27,7 @@ from datetime import datetime as dt_datetime, time as dt_time, timedelta, timezo
 from math import ceil
 from html import escape, unescape
 from xml.sax.saxutils import escape as xml_escape
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Avg, Count, Exists, F, IntegerField, Max, OuterRef, Prefetch, Q, Sum, Value
 from django.db.models.functions import Cast, Coalesce
 from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
@@ -3877,8 +3877,26 @@ def post_view(request: HttpRequest, post_id: int) -> HttpResponse:
         return JsonResponse({"ok": True, "views_count": _post_total_views(post, now)})
 
     Post.objects.filter(id=post.id).update(real_views_count=F("real_views_count") + 1)
+    _record_post_daily_view(post.id, timezone.localdate())
     post.real_views_count = (post.real_views_count or 0) + 1
     return JsonResponse({"ok": True, "views_count": _post_total_views(post, now)})
+
+
+def _record_post_daily_view(post_id: int, view_date) -> None:
+    from feeds.models import PostDailyView
+
+    updated = PostDailyView.objects.filter(post_id=post_id, date=view_date).update(
+        views_count=F("views_count") + 1
+    )
+    if updated:
+        return
+    try:
+        with transaction.atomic():
+            PostDailyView.objects.create(post_id=post_id, date=view_date, views_count=1)
+    except IntegrityError:
+        PostDailyView.objects.filter(post_id=post_id, date=view_date).update(
+            views_count=F("views_count") + 1
+        )
 
 
 def _apply_user_hidden_content(queryset, user, *, prefix: str = ""):

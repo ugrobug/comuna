@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from django.contrib.auth import get_user_model
 from django.db import models
+from django.utils import timezone
 
 from editor.models import default_allowed_post_templates
 
@@ -249,6 +250,7 @@ class Comun(models.Model):
     votes_down = models.PositiveIntegerField(default=0, verbose_name="Не нравится")
     subscribers_count = models.PositiveIntegerField(default=0, verbose_name="Подписчиков")
     authors_count = models.PositiveIntegerField(default=0, verbose_name="Авторов")
+    analytics_tracking_started_at = models.DateTimeField(default=timezone.now)
     hide_from_home = models.BooleanField(
         default=False,
         verbose_name="Не показывать на главной",

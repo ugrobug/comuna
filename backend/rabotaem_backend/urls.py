@@ -4,6 +4,7 @@ from django.contrib import admin
 from django.urls import path
 
 from communities.views import (
+    comun_analytics,
     comun_create_from_telegram_channel,
     comun_detail_manage,
     comun_glossary_image_upload,
@@ -229,6 +230,7 @@ urlpatterns = [
         comun_settings_options,
         name="comun-settings-options",
     ),
+    path("api/comuns/<slug:slug>/analytics/", comun_analytics, name="comun-analytics"),
     path(
         "api/comuns/<slug:slug>/glossary-image/",
         comun_glossary_image_upload,

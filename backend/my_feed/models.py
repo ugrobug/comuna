@@ -48,6 +48,13 @@ class UserFeedSettings(models.Model):
 
 
 class ComunSubscriptionEvent(models.Model):
+    ACTION_SUBSCRIBE = "subscribe"
+    ACTION_UNSUBSCRIBE = "unsubscribe"
+    ACTION_CHOICES = (
+        (ACTION_SUBSCRIBE, "Подписка"),
+        (ACTION_UNSUBSCRIBE, "Отписка"),
+    )
+
     SOURCE_FEED_SETTINGS = "feed_settings"
     SOURCE_MODERATOR_SYNC = "moderator_sync"
     SOURCE_CHOICES = (
@@ -67,6 +74,7 @@ class ComunSubscriptionEvent(models.Model):
     )
     comun_slug = models.SlugField(max_length=120)
     source = models.CharField(max_length=32, choices=SOURCE_CHOICES, default=SOURCE_FEED_SETTINGS)
+    action = models.CharField(max_length=16, choices=ACTION_CHOICES, default=ACTION_SUBSCRIBE)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -80,7 +88,7 @@ class ComunSubscriptionEvent(models.Model):
         verbose_name_plural = "События подписок на сообщества"
 
     def __str__(self) -> str:
-        return f"{self.user_id}:{self.comun_slug}:{self.created_at:%Y-%m-%d %H:%M:%S}"
+        return f"{self.user_id}:{self.comun_slug}:{self.action}:{self.created_at:%Y-%m-%d %H:%M:%S}"
 
 
 class FeedSourcePost(models.Model):

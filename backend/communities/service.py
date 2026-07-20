@@ -1372,6 +1372,7 @@ def _record_comun_subscription_events(
     user_id: int | None,
     slugs: set[str],
     source: str = "feed_settings",
+    action: str = "subscribe",
 ) -> None:
     if not user_id or not slugs:
         return
@@ -1384,6 +1385,7 @@ def _record_comun_subscription_events(
             comun_id=comun_id,
             comun_slug=slug,
             source=source,
+            action=action,
         )
         for comun_id, slug in Comun.objects.filter(slug__in=slugs).values_list("id", "slug")
     ]
@@ -1411,6 +1413,11 @@ def _sync_comun_subscriber_counts(
                 default=Value(0),
                 output_field=IntegerField(),
             )
+        )
+        _record_comun_subscription_events(
+            user_id=user_id,
+            slugs=removed_slugs,
+            action="unsubscribe",
         )
 
 

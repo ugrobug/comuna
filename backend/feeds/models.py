@@ -397,6 +397,32 @@ class Post(models.Model):
         super().save(*args, **kwargs)
 
 
+class PostDailyView(models.Model):
+    post = models.ForeignKey(
+        Post,
+        on_delete=models.CASCADE,
+        related_name="daily_views",
+    )
+    date = models.DateField()
+    views_count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("post", "date"),
+                name="feeds_post_daily_view_unique",
+            )
+        ]
+        indexes = [
+            models.Index(fields=("date",), name="postdailyview_date_idx"),
+        ]
+        verbose_name = "Просмотры поста за день"
+        verbose_name_plural = "Просмотры постов по дням"
+
+    def __str__(self) -> str:
+        return f"{self.post_id}:{self.date}:{self.views_count}"
+
+
 class PostDraftAccess(models.Model):
     post = models.ForeignKey(
         Post,

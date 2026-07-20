@@ -169,6 +169,10 @@ export const buildComunUrl = (
   return query ? `${base}?${query}` : base
 }
 
+export const buildComunAnalyticsUrl = (slug: string): string => {
+  return `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/analytics/`
+}
+
 export const buildComunSettingsOptionsUrl = (
   slug: string,
   type: 'users' | 'tags' | 'authors',
@@ -1047,6 +1051,36 @@ export type BackendComun = {
       field_type_options?: Array<{ value: string; label: string }>
       field_placement_options?: Array<{ value: string; label: string }>
     }
+  }
+}
+
+export type BackendComunAnalyticsPeriod = {
+  views: number
+  comments: number
+  subscribers_gained: number
+  subscribers_lost: number
+  subscribers_net: number
+}
+
+export type BackendComunAnalyticsDay = BackendComunAnalyticsPeriod & {
+  date: string
+}
+
+export type BackendComunAnalytics = {
+  comun: {
+    id: number
+    slug: string
+    name: string
+    subscribers_count: number
+  }
+  periods: {
+    day: BackendComunAnalyticsPeriod
+    week: BackendComunAnalyticsPeriod
+    month: BackendComunAnalyticsPeriod
+  }
+  series: BackendComunAnalyticsDay[]
+  tracking: {
+    started_at: string
   }
 }
 
