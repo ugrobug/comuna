@@ -35,6 +35,7 @@ class ComunAnalyticsTests(TestCase):
             author=self.author,
             message_id=1,
             title="Community post",
+            real_views_count=41,
             raw_data={"source": "manual_comun", "comun_slug": self.comun.slug},
         )
         self.url = reverse("comun-analytics", kwargs={"slug": self.comun.slug})
@@ -95,6 +96,8 @@ class ComunAnalyticsTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content.decode())
         payload = response.json()
         self.assertEqual(payload["comun"]["subscribers_count"], 12)
+        self.assertEqual(payload["periods"]["all_time"]["views"], 41)
+        self.assertEqual(payload["periods"]["all_time"]["comments"], 3)
         self.assertEqual(payload["periods"]["day"]["views"], 5)
         self.assertEqual(payload["periods"]["week"]["views"], 12)
         self.assertEqual(payload["periods"]["month"]["views"], 23)

@@ -3958,7 +3958,15 @@ def comun_analytics(request: HttpRequest, slug: str) -> HttpResponse:
     tracking_started_at = timezone.localtime(comun.analytics_tracking_started_at)
     tracking_started_date = tracking_started_at.date()
     dates = [first_date + timedelta(days=offset) for offset in range(30)]
-    post_ids = community_service._comun_posts_base_queryset(comun).values_list("id", flat=True)
+    posts_queryset = community_service._comun_posts_base_queryset(comun)
+    post_ids = posts_queryset.values_list("id", flat=True)
+    all_time_views = int(
+        posts_queryset.aggregate(value=Sum("real_views_count"))["value"] or 0
+    )
+    all_time_comments = PostComment.objects.filter(
+        post_id__in=post_ids,
+        is_deleted=False,
+    ).count()
 
     views_by_date = {
         row["date"]: int(row["value"] or 0)
@@ -4037,6 +4045,10 @@ def comun_analytics(request: HttpRequest, slug: str) -> HttpResponse:
                 "subscribers_count": int(comun.subscribers_count or 0),
             },
             "periods": {
+                "all_time": {
+                    "views": all_time_views,
+                    "comments": all_time_comments,
+                },
                 "day": period_totals(1),
                 "week": period_totals(7),
                 "month": period_totals(30),

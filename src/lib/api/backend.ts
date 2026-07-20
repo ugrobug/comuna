@@ -1074,6 +1074,10 @@ export type BackendComunAnalytics = {
     subscribers_count: number
   }
   periods: {
+    all_time: {
+      views: number
+      comments: number
+    }
     day: BackendComunAnalyticsPeriod
     week: BackendComunAnalyticsPeriod
     month: BackendComunAnalyticsPeriod
