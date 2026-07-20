@@ -110,6 +110,13 @@ export const handle: Handle = async ({ event, resolve }) => {
   for (const [name, value] of Object.entries(securityHeaders)) {
     headers.set(name, value)
   }
+  if (
+    shouldPrioritizePreviewHead &&
+    response.headers.get('content-type')?.includes('text/html')
+  ) {
+    headers.delete('link')
+    headers.set('content-type', 'text/html; charset=utf-8')
+  }
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
