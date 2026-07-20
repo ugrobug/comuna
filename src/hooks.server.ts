@@ -11,14 +11,7 @@ import {
 const PRIORITY_HEAD_TAG_PATTERN =
   /<(?:meta|link)\b[^>]*(?:name="description"|name="robots"|rel="canonical"|property="og:[^"]+"|name="twitter:[^"]+")[^>]*>/gi
 
-const TITLE_TAG_PATTERN = /<title\b[^>]*>[\s\S]*?<\/title>/i
-
-const TITLE_CONTENT_PATTERN = /<title\b[^>]*>([\s\S]*?)<\/title>/i
-
 const STYLESHEET_LINK_PATTERN = /<link\b[^>]*rel="stylesheet"[^>]*>/i
-
-const SOCIAL_CRAWLER_USER_AGENT_PATTERN =
-  /\b(?:TelegramBot|Twitterbot|facebookexternalhit|Facebot|WhatsApp|Slackbot|Discordbot|LinkedInBot|Pinterest|vkShare|SkypeUriPreview|Applebot)\b/i
 
 const securityHeaders = {
   'Content-Security-Policy': [
@@ -42,7 +35,7 @@ const securityHeaders = {
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=()',
 }
 
-const prioritizePreviewHeadTags = (html: string) => {
+export const prioritizePreviewHeadTags = (html: string) => {
   const headOpenIndex = html.indexOf('<head>')
   const headCloseIndex = html.indexOf('</head>')
   if (headOpenIndex === -1 || headCloseIndex === -1 || headCloseIndex <= headOpenIndex) {
@@ -76,31 +69,6 @@ const prioritizePreviewHeadTags = (html: string) => {
   )
 }
 
-export const buildSocialCrawlerHtml = (html: string) => {
-  const titleTag = html.match(TITLE_TAG_PATTERN)?.[0] || ''
-  const titleContent = titleTag.match(TITLE_CONTENT_PATTERN)?.[1]?.trim() || ''
-  const priorityTags = html.match(PRIORITY_HEAD_TAG_PATTERN) || []
-  const hasRobotsTag = priorityTags.some((tag) => /\bname="robots"/i.test(tag))
-  const robotsTag = hasRobotsTag ? '' : '<meta name="robots" content="max-image-preview:large">'
-  const headTags = [
-    '<meta charset="utf-8">',
-    titleTag,
-    robotsTag,
-    ...priorityTags,
-  ].filter(Boolean)
-
-  const descriptionTag = priorityTags.find((tag) =>
-    /(?:\bproperty="og:description"|\bname="description")/i.test(tag)
-  )
-  const descriptionContent = descriptionTag?.match(/\bcontent="([^"]*)"/i)?.[1]?.trim() || ''
-  const bodyParts = [
-    titleContent ? `<h1>${titleContent}</h1>` : '',
-    descriptionContent ? `<p>${descriptionContent}</p>` : '',
-  ].filter(Boolean)
-
-  return `<!doctype html><html><head>${headTags.join('')}</head><body><main><article>${bodyParts.join('')}</article></main></body></html>`
-}
-
 const escapeHtmlAttribute = (value: string) =>
   value
     .replace(/&/g, '&amp;')
@@ -130,9 +98,6 @@ export const handle: Handle = async ({ event, resolve }) => {
     languageFromAcceptLanguage(event.request.headers.get('Accept-Language')) ||
     originalPostLanguage
   const shouldPrioritizePreviewHead = /^\/(?:[a-z]{2}\/)?b\/post\//.test(event.url.pathname)
-  const isSocialCrawler =
-    shouldPrioritizePreviewHead &&
-    SOCIAL_CRAWLER_USER_AGENT_PATTERN.test(event.request.headers.get('User-Agent') || '')
   const response = await resolve(event, {
     transformPageChunk: ({ html }) => {
       const localizedHtml = localizeAppShellHead(html, language)
@@ -144,32 +109,6 @@ export const handle: Handle = async ({ event, resolve }) => {
   const headers = new Headers(response.headers)
   for (const [name, value] of Object.entries(securityHeaders)) {
     headers.set(name, value)
-  }
-  if (shouldPrioritizePreviewHead) {
-    const vary = headers.get('vary')
-    const varyValues = vary?.split(',').map((value) => value.trim().toLowerCase()) || []
-    if (!varyValues.includes('user-agent')) {
-      headers.set('vary', vary ? `${vary}, User-Agent` : 'User-Agent')
-    }
-  }
-  if (
-    isSocialCrawler &&
-    response.status >= 200 &&
-    response.status < 400 &&
-    response.headers.get('content-type')?.includes('text/html')
-  ) {
-    const html = await response.text()
-    const crawlerHtml = buildSocialCrawlerHtml(html)
-    headers.delete('etag')
-    headers.delete('link')
-    headers.set('content-type', 'text/html; charset=utf-8')
-    headers.set('content-length', String(new TextEncoder().encode(crawlerHtml).byteLength))
-    headers.set('cache-control', 'public, max-age=300, stale-while-revalidate=300')
-    return new Response(crawlerHtml, {
-      status: response.status,
-      statusText: response.statusText,
-      headers,
-    })
   }
   return new Response(response.body, {
     status: response.status,
