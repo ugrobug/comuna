@@ -4,7 +4,6 @@
   import {
     buildComunAnalyticsUrl,
     type BackendComunAnalytics,
-    type BackendComunAnalyticsPeriod,
   } from '$lib/api/backend'
   import { siteToken } from '$lib/siteAuth'
   import { locale } from '$lib/translations'
@@ -54,7 +53,8 @@
   let loading = true
   let error = ''
   let loadedToken: string | null | undefined
-  let periodCards: Array<{ label: string; rows: Array<{ label: string; value: number; signed?: boolean }> }> = []
+  let activeActivityIndex: number | null = null
+  let activeSubscriberIndex: number | null = null
 
   $: localeLanguage = String($locale || 'ru').split('-')[0]
   $: language = (['ru', 'en', 'de', 'es', 'fr', 'pt', 'tr', 'id'].includes(localeLanguage) ? localeLanguage : 'ru') as Language
@@ -63,31 +63,22 @@
   $: dateFormatter = new Intl.DateTimeFormat(language, { day: 'numeric', month: 'short' })
   $: maxActivity = Math.max(1, ...(analytics?.series ?? []).map((row) => Math.max(row.views, row.comments)))
   $: maxSubscriberChange = Math.max(1, ...(analytics?.series ?? []).map((row) => Math.max(row.subscribers_gained, row.subscribers_lost)))
-  $: periodCards = analytics
-    ? [
-        {
-          label: copy.allTime,
-          rows: [
-            { label: copy.views, value: analytics.periods.all_time.views },
-            { label: copy.comments, value: analytics.periods.all_time.comments },
-            { label: copy.subscribers, value: analytics.comun.subscribers_count },
-          ],
-        },
-        { label: copy.today, rows: periodRows(analytics.periods.day) },
-        { label: copy.week, rows: periodRows(analytics.periods.week) },
-        { label: copy.month, rows: periodRows(analytics.periods.month) },
-      ]
-    : []
+  $: activityAxisMax = axisMaximum(maxActivity, 4)
+  $: activityTicks = axisTicks(activityAxisMax, 4)
+  $: subscriberAxisMax = axisMaximum(maxSubscriberChange, 2)
+  $: subscriberTicks = [subscriberAxisMax, subscriberAxisMax / 2, 0, -(subscriberAxisMax / 2), -subscriberAxisMax]
 
   const formatNumber = (value: number | null | undefined) => numberFormatter.format(Number(value ?? 0))
   const formatDate = (value: string) => dateFormatter.format(new Date(`${value}T12:00:00`))
-  const periodRows = (period: BackendComunAnalyticsPeriod | undefined) => [
-    { label: copy.views, value: period?.views ?? 0 },
-    { label: copy.comments, value: period?.comments ?? 0 },
-    { label: copy.net, value: period?.subscribers_net ?? 0, signed: true },
-  ]
-  const signedNumber = (value: number) => `${value > 0 ? '+' : ''}${formatNumber(value)}`
-  const barHeight = (value: number, max: number) => `${Math.max(value ? 4 : 0, (value / max) * 100)}%`
+  const axisMaximum = (value: number, intervalCount: number) => {
+    const safeValue = Math.max(0, Number(value) || 0)
+    return Math.max(intervalCount, Math.ceil(safeValue / intervalCount) * intervalCount)
+  }
+  const axisTicks = (maximum: number, intervalCount: number) =>
+    Array.from({ length: intervalCount + 1 }, (_, index) => maximum - (maximum / intervalCount) * index)
+  const activityBarHeight = (value: number) => `${Math.max(0, (value / activityAxisMax) * 100)}%`
+  const subscriberBarHeight = (value: number) => `${Math.max(0, (value / subscriberAxisMax) * 50)}%`
+  const tooltipPosition = (index: number) => `${((index + 0.5) / 30) * 100}%`
 
   const loadAnalytics = async (token: string | null) => {
     loadedToken = token
@@ -127,123 +118,562 @@
   <title>{analytics?.comun.name ? `${copy.title} · ${analytics.comun.name}` : copy.pageTitle}</title>
 </svelte:head>
 
-<main class="mx-auto w-full max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
+<main class="analytics-dashboard">
   {#if loading}
-    <div class="py-20 text-center text-sm text-slate-500 dark:text-zinc-400">{copy.loading}</div>
+    <div class="loading-state">{copy.loading}</div>
   {:else if error}
-    <section class="border-y border-slate-200 py-12 text-center dark:border-zinc-800">
-      <p class="text-sm text-slate-600 dark:text-zinc-300">{error}</p>
-      <a class="mt-4 inline-flex text-sm font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400" href={`/comuns/${encodeURIComponent(slug)}`}>{copy.back}</a>
+    <section class="notice-section">
+      <p>{error}</p>
+      <a href={`/comuns/${encodeURIComponent(slug)}`}>{copy.back}</a>
     </section>
   {:else if analytics}
-    <header class="flex flex-col gap-3 border-b border-slate-200 pb-5 dark:border-zinc-800 sm:flex-row sm:items-end sm:justify-between">
-      <div class="min-w-0">
-        <h1 class="text-2xl font-bold text-slate-950 dark:text-zinc-50">{copy.title}</h1>
-        <p class="mt-1 truncate text-sm text-slate-500 dark:text-zinc-400">{analytics.comun.name}</p>
+    <header class="dashboard-header">
+      <div>
+        <p class="eyebrow">{analytics.comun.name}</p>
+        <h1>{copy.title}</h1>
       </div>
-      <a class="text-sm font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400" href={`/comuns/${encodeURIComponent(slug)}`}>{copy.back}</a>
+      <a class="back-link" href={`/comuns/${encodeURIComponent(slug)}`}>{copy.back}</a>
     </header>
 
-    <section class="grid gap-x-6 border-b border-slate-200 dark:border-zinc-800 sm:grid-cols-2 lg:grid-cols-4">
-      {#each periodCards as card}
-        <div class="py-5">
-          <h2 class="text-xs font-bold uppercase text-slate-500 dark:text-zinc-400">{card.label}</h2>
-          <dl class="mt-4 space-y-3">
-            {#each card.rows as row}
-              <div class="flex items-baseline justify-between gap-4">
-                <dt class="text-sm text-slate-600 dark:text-zinc-400">{row.label}</dt>
-                <dd class:positive={row.signed && row.value > 0} class:negative={row.signed && row.value < 0} class="text-lg font-bold tabular-nums text-slate-950 dark:text-zinc-50">{row.signed ? signedNumber(row.value) : formatNumber(row.value)}</dd>
-              </div>
-            {/each}
-          </dl>
-        </div>
-      {/each}
-    </section>
-
-    <section class="border-b border-slate-200 py-6 dark:border-zinc-800">
-      <div class="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+    <section class="chart-card">
+      <div class="section-header">
         <div>
-          <h2 class="text-lg font-bold text-slate-950 dark:text-zinc-50">{copy.activityTitle}</h2>
-          <p class="text-sm text-slate-500 dark:text-zinc-400">{copy.activityDescription}</p>
+          <p class="section-label">{copy.title}</p>
+          <h2>{copy.activityTitle}</h2>
+          <p class="section-description">{copy.activityDescription}</p>
         </div>
-        <div class="flex gap-4 text-xs font-medium text-slate-600 dark:text-zinc-300">
+        <div class="chart-legend">
           <span class="legend legend-views">{copy.views}</span>
           <span class="legend legend-comments">{copy.comments}</span>
         </div>
       </div>
-      <div class="mt-5 overflow-x-auto pb-2">
-        <div class="chart-grid min-w-[760px]" aria-label={copy.activityTitle}>
-          {#each analytics.series as row, index (row.date)}
-            <div class="chart-column" title={`${formatDate(row.date)} · ${copy.views}: ${formatNumber(row.views)} · ${copy.comments}: ${formatNumber(row.comments)}`}>
-              <div class="activity-bars">
-                <span class="activity-bar views-bar" style={`height:${barHeight(row.views, maxActivity)}`}></span>
-                <span class="activity-bar comments-bar" style={`height:${barHeight(row.comments, maxActivity)}`}></span>
-              </div>
-              <span class="chart-date">{index % 5 === 0 || index === analytics.series.length - 1 ? formatDate(row.date) : ''}</span>
+
+      <div class="chart-scroll">
+        <div class="scaled-chart" aria-label={copy.activityTitle}>
+          <div class="y-axis" aria-hidden="true">
+            {#each activityTicks as tick}
+              <span>{formatNumber(tick)}</span>
+            {/each}
+          </div>
+          <div class="chart-plot">
+            <div class="grid-lines" aria-hidden="true">
+              {#each activityTicks as _}<span></span>{/each}
             </div>
-          {/each}
+            <div class="chart-columns">
+              {#each analytics.series as row, index (row.date)}
+                <button
+                  type="button"
+                  class="chart-column"
+                  aria-label={`${formatDate(row.date)}. ${copy.views}: ${formatNumber(row.views)}. ${copy.comments}: ${formatNumber(row.comments)}`}
+                  on:mouseenter={() => (activeActivityIndex = index)}
+                  on:mouseleave={() => (activeActivityIndex = null)}
+                  on:focus={() => (activeActivityIndex = index)}
+                  on:blur={() => (activeActivityIndex = null)}
+                >
+                  <span class="activity-bar views-bar" style={`height:${activityBarHeight(row.views)}`}></span>
+                  <span class="activity-bar comments-bar" style={`height:${activityBarHeight(row.comments)}`}></span>
+                </button>
+              {/each}
+            </div>
+            {#if activeActivityIndex !== null && analytics.series[activeActivityIndex]}
+              {@const row = analytics.series[activeActivityIndex]}
+              <div class="chart-tooltip" role="tooltip" style={`--tooltip-position:${tooltipPosition(activeActivityIndex)}`}>
+                <strong>{formatDate(row.date)}</strong>
+                <span><i class="tooltip-swatch views-swatch"></i>{copy.views}<b>{formatNumber(row.views)}</b></span>
+                <span><i class="tooltip-swatch comments-swatch"></i>{copy.comments}<b>{formatNumber(row.comments)}</b></span>
+              </div>
+            {/if}
+          </div>
+          <div class="x-axis" aria-hidden="true">
+            {#each analytics.series as row, index (row.date)}
+              <span>{index % 5 === 0 || index === analytics.series.length - 1 ? formatDate(row.date) : ''}</span>
+            {/each}
+          </div>
         </div>
       </div>
-      <p class="mt-2 text-xs text-slate-500 dark:text-zinc-500">{copy.collectionStarted} {formatDate(analytics.tracking.started_at.slice(0, 10))}</p>
+      <p class="tracking-note">{copy.collectionStarted} {formatDate(analytics.tracking.started_at.slice(0, 10))}</p>
     </section>
 
-    <section class="py-6">
-      <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+    <section class="chart-card">
+      <div class="section-header">
         <div>
-          <h2 class="text-lg font-bold text-slate-950 dark:text-zinc-50">{copy.subscribersTitle}</h2>
-          <p class="text-sm text-slate-500 dark:text-zinc-400">{copy.subscribersDescription}</p>
+          <p class="section-label">{copy.title}</p>
+          <h2>{copy.subscribersTitle}</h2>
+          <p class="section-description">{copy.subscribersDescription}</p>
         </div>
-        <div class="text-right">
-          <div class="text-xs font-medium text-slate-500 dark:text-zinc-400">{copy.current}</div>
-          <div class="text-2xl font-bold tabular-nums text-slate-950 dark:text-zinc-50">{formatNumber(analytics.comun.subscribers_count)}</div>
+        <div class="chart-legend">
+          <span class="legend legend-gained">{copy.gained}</span>
+          <span class="legend legend-lost">{copy.lost}</span>
         </div>
       </div>
-      <div class="mt-5 overflow-x-auto pb-2">
-        <div class="subscriber-chart min-w-[760px]">
-          {#each analytics.series as row, index (row.date)}
-            <div class="subscriber-column" title={`${formatDate(row.date)} · ${copy.gained}: ${formatNumber(row.subscribers_gained)} · ${copy.lost}: ${formatNumber(row.subscribers_lost)}`}>
-              <div class="subscriber-half subscriber-positive"><span style={`height:${barHeight(row.subscribers_gained, maxSubscriberChange)}`}></span></div>
-              <div class="subscriber-half subscriber-negative"><span style={`height:${barHeight(row.subscribers_lost, maxSubscriberChange)}`}></span></div>
-              <span class="chart-date">{index % 5 === 0 || index === analytics.series.length - 1 ? formatDate(row.date) : ''}</span>
+
+      <div class="chart-scroll">
+        <div class="scaled-chart" aria-label={copy.subscribersTitle}>
+          <div class="y-axis" aria-hidden="true">
+            {#each subscriberTicks as tick}
+              <span>{formatNumber(tick)}</span>
+            {/each}
+          </div>
+          <div class="chart-plot subscriber-plot">
+            <div class="grid-lines" aria-hidden="true">
+              {#each subscriberTicks as _}<span></span>{/each}
             </div>
-          {/each}
+            <div class="chart-columns">
+              {#each analytics.series as row, index (row.date)}
+                <button
+                  type="button"
+                  class="chart-column subscriber-column"
+                  aria-label={`${formatDate(row.date)}. ${copy.gained}: ${formatNumber(row.subscribers_gained)}. ${copy.lost}: ${formatNumber(row.subscribers_lost)}`}
+                  on:mouseenter={() => (activeSubscriberIndex = index)}
+                  on:mouseleave={() => (activeSubscriberIndex = null)}
+                  on:focus={() => (activeSubscriberIndex = index)}
+                  on:blur={() => (activeSubscriberIndex = null)}
+                >
+                  <span class="subscriber-bar gained-bar" style={`height:${subscriberBarHeight(row.subscribers_gained)}`}></span>
+                  <span class="subscriber-bar lost-bar" style={`height:${subscriberBarHeight(row.subscribers_lost)}`}></span>
+                </button>
+              {/each}
+            </div>
+            {#if activeSubscriberIndex !== null && analytics.series[activeSubscriberIndex]}
+              {@const row = analytics.series[activeSubscriberIndex]}
+              <div class="chart-tooltip" role="tooltip" style={`--tooltip-position:${tooltipPosition(activeSubscriberIndex)}`}>
+                <strong>{formatDate(row.date)}</strong>
+                <span><i class="tooltip-swatch gained-swatch"></i>{copy.gained}<b>{formatNumber(row.subscribers_gained)}</b></span>
+                <span><i class="tooltip-swatch lost-swatch"></i>{copy.lost}<b>{formatNumber(row.subscribers_lost)}</b></span>
+                <span class="net-row">{copy.net}<b>{row.subscribers_net > 0 ? '+' : ''}{formatNumber(row.subscribers_net)}</b></span>
+              </div>
+            {/if}
+          </div>
+          <div class="x-axis" aria-hidden="true">
+            {#each analytics.series as row, index (row.date)}
+              <span>{index % 5 === 0 || index === analytics.series.length - 1 ? formatDate(row.date) : ''}</span>
+            {/each}
+          </div>
         </div>
-      </div>
-      <div class="mt-3 flex gap-4 text-xs font-medium text-slate-600 dark:text-zinc-300">
-        <span class="legend legend-gained">{copy.gained}</span>
-        <span class="legend legend-lost">{copy.lost}</span>
       </div>
     </section>
   {/if}
 </main>
 
 <style>
-  .positive { color: #15803d; }
-  .negative { color: #dc2626; }
-  .legend { display: inline-flex; align-items: center; gap: 0.4rem; }
-  .legend::before { width: 0.55rem; height: 0.55rem; border-radius: 2px; content: ''; }
-  .legend-views::before { background: #2563eb; }
-  .legend-comments::before { background: #0f766e; }
-  .legend-gained::before { background: #16a34a; }
-  .legend-lost::before { background: #dc2626; }
-  .chart-grid { display: grid; grid-template-columns: repeat(30, minmax(18px, 1fr)); height: 230px; border-bottom: 1px solid rgb(203 213 225); background-image: linear-gradient(to bottom, rgb(226 232 240 / 0.65) 1px, transparent 1px); background-size: 100% 25%; }
-  .chart-column { display: grid; grid-template-rows: 1fr 24px; min-width: 0; }
-  .activity-bars { display: flex; align-items: end; justify-content: center; gap: 2px; padding: 0 2px; }
-  .activity-bar { width: min(9px, 42%); min-height: 0; border-radius: 2px 2px 0 0; transition: height 180ms ease; }
-  .views-bar { background: #2563eb; }
-  .comments-bar { background: #0f766e; }
-  .chart-date { overflow: visible; white-space: nowrap; padding-top: 7px; font-size: 10px; color: #64748b; }
-  .subscriber-chart { display: grid; grid-template-columns: repeat(30, minmax(18px, 1fr)); height: 250px; }
-  .subscriber-column { display: grid; grid-template-rows: 104px 104px 28px; min-width: 0; }
-  .subscriber-half { display: flex; justify-content: center; padding: 0 4px; }
-  .subscriber-half span { width: min(12px, 72%); min-height: 0; }
-  .subscriber-positive { align-items: end; border-bottom: 1px solid rgb(148 163 184); }
-  .subscriber-positive span { background: #16a34a; border-radius: 2px 2px 0 0; }
-  .subscriber-negative { align-items: start; background-image: linear-gradient(to bottom, rgb(226 232 240 / 0.55) 1px, transparent 1px); background-size: 100% 50%; }
-  .subscriber-negative span { background: #dc2626; border-radius: 0 0 2px 2px; }
-  @media (prefers-color-scheme: dark) {
-    .chart-grid { border-color: rgb(63 63 70); background-image: linear-gradient(to bottom, rgb(63 63 70 / 0.6) 1px, transparent 1px); }
-    .subscriber-positive { border-color: rgb(82 82 91); }
-    .subscriber-negative { background-image: linear-gradient(to bottom, rgb(63 63 70 / 0.55) 1px, transparent 1px); }
+  .analytics-dashboard {
+    width: min(1120px, calc(100% - 32px));
+    margin: 0 auto;
+    padding: 20px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .dashboard-header,
+  .section-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 18px;
+  }
+
+  .dashboard-header {
+    padding: 8px 0 4px;
+  }
+
+  .eyebrow,
+  .section-label,
+  .section-description,
+  .tracking-note {
+    margin: 0;
+    color: rgb(100 116 139);
+  }
+
+  .eyebrow,
+  .section-label {
+    margin-bottom: 4px;
+    font-size: 13px;
+  }
+
+  h1,
+  h2 {
+    margin: 0;
+    color: rgb(15 23 42);
+    font-weight: 600;
+    letter-spacing: 0;
+  }
+
+  h1 {
+    font-size: 32px;
+    line-height: 1.12;
+  }
+
+  h2 {
+    font-size: 22px;
+    line-height: 1.2;
+  }
+
+  .section-description {
+    margin-top: 6px;
+    font-size: 14px;
+    line-height: 1.45;
+  }
+
+  .back-link {
+    min-height: 38px;
+    border: 1px solid rgb(226 232 240);
+    border-radius: 8px;
+    padding: 0 14px;
+    background: white;
+    color: rgb(51 65 85);
+    display: inline-flex;
+    align-items: center;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .back-link:hover {
+    border-color: rgb(148 163 184);
+    color: rgb(15 23 42);
+  }
+
+  .chart-card,
+  .notice-section {
+    border: 1px solid rgb(226 232 240);
+    border-radius: 8px;
+    background: white;
+    padding: 18px;
+  }
+
+  .notice-section {
+    text-align: center;
+  }
+
+  .notice-section p {
+    margin: 0;
+    color: rgb(71 85 105);
+  }
+
+  .notice-section a {
+    margin-top: 14px;
+    color: rgb(2 132 199);
+    display: inline-flex;
+    font-weight: 600;
+  }
+
+  .loading-state {
+    padding: 80px 0;
+    color: rgb(100 116 139);
+    text-align: center;
+    font-size: 14px;
+  }
+
+  .chart-legend {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 16px;
+    color: rgb(71 85 105);
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .legend {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+  }
+
+  .legend::before,
+  .tooltip-swatch {
+    width: 9px;
+    height: 9px;
+    border-radius: 2px;
+    content: '';
+    flex: 0 0 auto;
+  }
+
+  .legend-views::before,
+  .views-bar,
+  .views-swatch {
+    background: rgb(37 99 235);
+  }
+
+  .legend-comments::before,
+  .comments-bar,
+  .comments-swatch {
+    background: rgb(13 148 136);
+  }
+
+  .legend-gained::before,
+  .gained-bar,
+  .gained-swatch {
+    background: rgb(22 163 74);
+  }
+
+  .legend-lost::before,
+  .lost-bar,
+  .lost-swatch {
+    background: rgb(220 38 38);
+  }
+
+  .chart-scroll {
+    margin-top: 22px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .scaled-chart {
+    min-width: 760px;
+    display: grid;
+    grid-template-columns: 54px minmax(0, 1fr);
+    grid-template-rows: 240px 32px;
+  }
+
+  .y-axis {
+    grid-column: 1;
+    grid-row: 1;
+    padding-right: 10px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    color: rgb(100 116 139);
+    font-size: 11px;
+    line-height: 1;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .y-axis span {
+    transform: translateY(-50%);
+  }
+
+  .y-axis span:last-child {
+    transform: translateY(50%);
+  }
+
+  .chart-plot {
+    grid-column: 2;
+    grid-row: 1;
+    position: relative;
+    min-width: 0;
+  }
+
+  .grid-lines,
+  .chart-columns {
+    position: absolute;
+    inset: 0;
+  }
+
+  .grid-lines {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    pointer-events: none;
+  }
+
+  .grid-lines span {
+    width: 100%;
+    border-top: 1px solid rgb(226 232 240);
+  }
+
+  .grid-lines span:last-child {
+    border-color: rgb(148 163 184);
+  }
+
+  .chart-columns,
+  .x-axis {
+    display: grid;
+    grid-template-columns: repeat(30, minmax(18px, 1fr));
+  }
+
+  .chart-column {
+    min-width: 0;
+    border: 0;
+    padding: 0 3px;
+    background: transparent;
+    color: inherit;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 3px;
+    position: relative;
+    outline: none;
+    font: inherit;
+    cursor: default;
+  }
+
+  .chart-column:hover,
+  .chart-column:focus-visible {
+    background: rgb(239 246 255 / 0.72);
+  }
+
+  .activity-bar {
+    width: min(10px, 42%);
+    min-height: 0;
+    border-radius: 2px 2px 0 0;
+    transition: height 180ms ease, opacity 120ms ease;
+  }
+
+  .chart-column:hover .activity-bar,
+  .chart-column:focus-visible .activity-bar,
+  .chart-column:hover .subscriber-bar,
+  .chart-column:focus-visible .subscriber-bar {
+    opacity: 0.78;
+  }
+
+  .x-axis {
+    grid-column: 2;
+    grid-row: 2;
+    color: rgb(100 116 139);
+    font-size: 10px;
+  }
+
+  .x-axis span {
+    min-width: 0;
+    padding-top: 8px;
+    white-space: nowrap;
+  }
+
+  .subscriber-column {
+    display: block;
+  }
+
+  .subscriber-bar {
+    width: min(12px, calc(100% - 8px));
+    min-height: 0;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    transition: height 180ms ease, opacity 120ms ease;
+  }
+
+  .gained-bar {
+    bottom: 50%;
+    border-radius: 2px 2px 0 0;
+  }
+
+  .lost-bar {
+    top: 50%;
+    border-radius: 0 0 2px 2px;
+  }
+
+  .subscriber-plot .grid-lines span:nth-child(3) {
+    border-color: rgb(100 116 139);
+  }
+
+  .chart-tooltip {
+    --tooltip-position: 50%;
+    width: 228px;
+    min-height: 0;
+    position: absolute;
+    z-index: 3;
+    top: 12px;
+    left: clamp(114px, var(--tooltip-position), calc(100% - 114px));
+    transform: translateX(-50%);
+    border: 1px solid rgb(203 213 225);
+    border-radius: 8px;
+    background: white;
+    padding: 11px 12px;
+    box-shadow: 0 8px 24px rgb(15 23 42 / 0.13);
+    color: rgb(51 65 85);
+    display: grid;
+    gap: 7px;
+    pointer-events: none;
+    font-size: 12px;
+  }
+
+  .chart-tooltip strong {
+    color: rgb(15 23 42);
+    font-size: 13px;
+  }
+
+  .chart-tooltip span {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 7px;
+  }
+
+  .chart-tooltip .net-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .chart-tooltip b {
+    color: rgb(15 23 42);
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .tracking-note {
+    margin-top: 10px;
+    padding-left: 54px;
+    font-size: 12px;
+  }
+
+  :global(.dark) h1,
+  :global(.dark) h2,
+  :global(.dark) .chart-tooltip strong,
+  :global(.dark) .chart-tooltip b {
+    color: white;
+  }
+
+  :global(.dark) .chart-card,
+  :global(.dark) .notice-section,
+  :global(.dark) .back-link,
+  :global(.dark) .chart-tooltip {
+    border-color: rgb(63 63 70);
+    background: rgb(24 24 27);
+  }
+
+  :global(.dark) .back-link,
+  :global(.dark) .chart-legend,
+  :global(.dark) .chart-tooltip,
+  :global(.dark) .notice-section p {
+    color: rgb(212 212 216);
+  }
+
+  :global(.dark) .grid-lines span {
+    border-color: rgb(63 63 70);
+  }
+
+  :global(.dark) .grid-lines span:last-child,
+  :global(.dark) .subscriber-plot .grid-lines span:nth-child(3) {
+    border-color: rgb(113 113 122);
+  }
+
+  :global(.dark) .chart-column:hover,
+  :global(.dark) .chart-column:focus-visible {
+    background: rgb(39 39 42 / 0.8);
+  }
+
+  @media (max-width: 700px) {
+    .analytics-dashboard {
+      width: min(100% - 24px, 1120px);
+      padding-top: 12px;
+    }
+
+    .dashboard-header,
+    .section-header {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    h1 {
+      font-size: 28px;
+    }
+
+    h2 {
+      font-size: 19px;
+    }
+
+    .back-link {
+      align-self: flex-start;
+    }
+
+    .chart-legend {
+      justify-content: flex-start;
+    }
+
+    .chart-card {
+      padding: 16px;
+    }
   }
 </style>
