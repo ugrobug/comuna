@@ -23,7 +23,7 @@
     subscribedInSettings || (!$feedSettingsHydrated && comun?.is_subscribed)
   )
   $: subscribersCount = Math.max(
-    0,
+    1,
     Number(comun?.subscribers_count ?? 0) + countDelta
   )
   $: communityPath = `/comuns/${encodeURIComponent(slug)}`

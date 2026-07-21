@@ -2,7 +2,9 @@ import json
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
@@ -177,6 +179,64 @@ class ComunPostingApiTests(TestCase):
         self.assertEqual(payload["product_description"], "Description")
         self.assertEqual(payload["target_audience"], "For players")
         self.assertEqual(payload["rules_text"], "No spam")
+
+    def test_post_detail_returns_cached_comun_banner_fields(self):
+        self.comun.product_description = "Описание сообщества"
+        self.comun.subscribers_count = 42
+        self.comun.authors_count = 7
+        self.comun.save(
+            update_fields=["product_description", "subscribers_count", "authors_count"]
+        )
+        ComunTranslation.objects.create(
+            comun=self.comun,
+            language="en",
+            name="Unit Game Community",
+            product_description="Community description",
+            status=POST_TRANSLATION_STATUS_TRANSLATED,
+        )
+        author = Author.objects.create(username="post-banner-author", title="Author")
+        post = Post.objects.create(
+            author=author,
+            message_id=987654321,
+            title="Post with community banner",
+            content="{}",
+            raw_data={"source": "manual_comun", "comun_slug": self.comun.slug},
+            is_pending=False,
+            is_blocked=False,
+        )
+
+        with CaptureQueriesContext(connection) as queries:
+            response = self.client.get(reverse("post-detail", args=[post.id]), {"lang": "en"})
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        comun = response.json()["post"]["comun"]
+        self.assertEqual(comun["name"], "Unit Game Community")
+        self.assertEqual(comun["product_description"], "Community description")
+        self.assertEqual(comun["subscribers_count"], 42)
+        self.assertEqual(comun["authors_count"], 7)
+        self.assertFalse(any("COUNT(" in query["sql"].upper() for query in queries))
+
+    def test_post_detail_uses_creator_as_minimum_subscriber_count(self):
+        self.comun.product_description = "Описание сообщества"
+        self.comun.subscribers_count = 0
+        self.comun.save(update_fields=["product_description", "subscribers_count"])
+        author = Author.objects.create(username="zero-count-banner-author", title="Author")
+        post = Post.objects.create(
+            author=author,
+            message_id=987654322,
+            title="Post with zero cached subscribers",
+            content="{}",
+            raw_data={"source": "manual_comun", "comun_slug": self.comun.slug},
+            is_pending=False,
+            is_blocked=False,
+        )
+
+        response = self.client.get(reverse("post-detail", args=[post.id]))
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        comun = response.json()["post"]["comun"]
+        self.assertEqual(comun["product_description"], "Описание сообщества")
+        self.assertEqual(comun["subscribers_count"], 1)
 
     def test_comun_posts_can_filter_multiple_categories(self):
         author = Author.objects.create(username="category-filter-author", title="Category Author")

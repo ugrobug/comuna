@@ -3718,7 +3718,12 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
                 "can_manage_bug_report_status": _user_can_manage_bug_report_status(current_user, post),
                 "bug_report_confirmation": _serialize_bug_report_confirmation(post, current_user),
                 "vote_poll_participations": _serialize_post_vote_poll_participations(post),
-                "comun": community_service._serialize_post_comun(request, post, current_user),
+                "comun": community_service._serialize_post_comun(
+                    request,
+                    post,
+                    current_user,
+                    language=language,
+                ),
                 "content": rewrite_public_media_urls(content),
                 "poll": poll_payload,
                 "post_ratings": _serialize_post_ratings(post, current_user),

@@ -85,7 +85,7 @@
     <!-- Единый навбар для всех устройств -->
     <div class="grid navbar-desktop-grid items-center w-full">
       <!-- 1 колонка: логотип -->
-      <div class="navbar-brand-cell flex min-w-0 items-center pl-0 gap-2">
+      <div class="navbar-brand-cell flex min-w-0 items-center gap-2">
         <div
           class="logo min-w-0 cursor-pointer"
           on:click={goToHome}
@@ -238,6 +238,10 @@
     column-gap: 0.5rem;
     display: grid;
     width: 100%;
+  }
+
+  .navbar-brand-cell {
+    padding-left: 0.75rem;
   }
 
   /* Адаптивные размеры для мобильных устройств */

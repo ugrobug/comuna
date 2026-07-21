@@ -39,6 +39,8 @@ from editor import service as editor_service
 from feeds.post_paths import build_post_public_path, slugify_title
 from feeds.models import (
     Author,
+    ComunTranslation,
+    POST_TRANSLATION_STATUS_TRANSLATED,
     Post,
     PostComment,
     PostCommentLike,
@@ -802,15 +804,41 @@ def _serialize_post_comun(
     request: HttpRequest | None,
     post: Post,
     current_user: User | None = None,
+    *,
+    language: str | None = None,
 ) -> dict | None:
     comun = _post_comun(post)
     if not comun:
         return None
+
+    normalized_language = str(language or "ru").strip().lower()
+    translation = None
+    if normalized_language != "ru":
+        translation = (
+            ComunTranslation.objects.filter(
+                comun=comun,
+                language=normalized_language,
+                status=POST_TRANSLATION_STATUS_TRANSLATED,
+            )
+            .only("name", "product_description")
+            .order_by("-updated_at")
+            .first()
+        )
+
+    name = comun.name
+    product_description = comun.product_description
+    if translation:
+        name = translation.name or name
+        product_description = translation.product_description or product_description
+
     return {
         "id": comun.id,
-        "name": comun.name,
+        "name": name,
         "slug": comun.slug,
         "logo_url": _comun_logo_url(request, comun),
+        "product_description": product_description,
+        "subscribers_count": max(1, int(getattr(comun, "subscribers_count", 0) or 0)),
+        "authors_count": int(getattr(comun, "authors_count", 0) or 0),
         "knowledge_base_enabled": bool(getattr(comun, "knowledge_base_enabled", False)),
         "can_moderate": _comun_is_moderator(current_user, comun),
     }
