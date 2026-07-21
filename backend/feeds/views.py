@@ -24,11 +24,9 @@ import urllib.parse
 import urllib.request
 from collections import defaultdict
 from datetime import datetime as dt_datetime, time as dt_time, timedelta, timezone as dt_timezone
-from math import ceil
 from html import escape, unescape
-from xml.sax.saxutils import escape as xml_escape
 from django.db import IntegrityError, transaction
-from django.db.models import Avg, Count, Exists, F, IntegerField, Max, OuterRef, Prefetch, Q, Sum, Value
+from django.db.models import Avg, Count, Exists, F, IntegerField, OuterRef, Prefetch, Q, Sum, Value
 from django.db.models.functions import Cast, Coalesce
 from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
 
@@ -1510,23 +1508,8 @@ def _author_posts_rating_filter(now) -> Q:
     )
 
 
-def _format_lastmod(value) -> str | None:
-    if not value:
-        return None
-    if timezone.is_naive(value):
-        value = timezone.make_aware(value, dt_timezone.utc)
-    return value.astimezone(dt_timezone.utc).date().isoformat()
-
-
 def _publish_ready_filter(now) -> Q:
     return Q(publish_at__isnull=True) | Q(publish_at__lte=now)
-
-
-def _sitemap_base_url(request: HttpRequest) -> str:
-    base = (getattr(settings, "SITE_BASE_URL", "") or "").strip().rstrip("/")
-    if base:
-        return base
-    return request.build_absolute_uri("/").rstrip("/")
 
 
 def _build_title(text: str) -> str:
@@ -2810,16 +2793,6 @@ def _serialize_localized_post_template(post: Post, language: str) -> dict | None
         localized_template["data"] = data
     data.update(localized_data)
     return localized_template
-
-
-def _post_sitemap_lastmod(post: Post) -> dt_datetime | None:
-    candidates = [post.updated_at or post.created_at]
-    candidates.extend(
-        translation.updated_at
-        for translation in _translated_versions_for_post(post)
-        if translation.updated_at
-    )
-    return max((value for value in candidates if value), default=None)
 
 
 def _serialize_post_vote_poll_participations(
@@ -4802,197 +4775,6 @@ def search_content(request: HttpRequest) -> HttpResponse:
         }
     )
 
-
-SITEMAP_PAGE_SIZE = 5000
-
-
-def _sitemap_xml_attr(value: str) -> str:
-    return xml_escape(value, {'"': "&quot;"})
-
-
-def _sitemap_urlset(entries: list[tuple[str, str | None] | dict]) -> HttpResponse:
-    urls = []
-    has_alternates = any(isinstance(entry, dict) and entry.get("alternates") for entry in entries)
-    for item in entries:
-        if isinstance(item, dict):
-            loc = item.get("loc", "")
-            lastmod = item.get("lastmod")
-            alternates = item.get("alternates") or []
-        else:
-            loc, lastmod = item
-            alternates = []
-        entry = f"<url><loc>{xml_escape(loc)}</loc>"
-        if lastmod:
-            entry += f"<lastmod>{xml_escape(lastmod)}</lastmod>"
-        for alternate in alternates:
-            hreflang = _sitemap_xml_attr(str(alternate.get("hreflang") or ""))
-            href = _sitemap_xml_attr(str(alternate.get("href") or ""))
-            if hreflang and href:
-                entry += (
-                    f'<xhtml:link rel="alternate" hreflang="{hreflang}" href="{href}" />'
-                )
-        entry += "</url>"
-        urls.append(entry)
-    namespaces = 'xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"'
-    if has_alternates:
-        namespaces += ' xmlns:xhtml="http://www.w3.org/1999/xhtml"'
-    body = (
-        '<?xml version="1.0" encoding="UTF-8"?>'
-        f"<urlset {namespaces}>"
-        + "".join(urls)
-        + "</urlset>"
-    )
-    return HttpResponse(body, content_type="application/xml")
-
-
-def _sitemap_index(entries: list[tuple[str, str | None]]) -> HttpResponse:
-    items = []
-    for loc, lastmod in entries:
-        entry = f"<sitemap><loc>{xml_escape(loc)}</loc>"
-        if lastmod:
-            entry += f"<lastmod>{xml_escape(lastmod)}</lastmod>"
-        entry += "</sitemap>"
-        items.append(entry)
-    body = (
-        '<?xml version="1.0" encoding="UTF-8"?>'
-        '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
-        + "".join(items)
-        + "</sitemapindex>"
-    )
-    return HttpResponse(body, content_type="application/xml")
-
-
-def sitemap_xml(request: HttpRequest) -> HttpResponse:
-    base_url = _sitemap_base_url(request)
-    now = timezone.now()
-
-    def full(path: str) -> str:
-        return f"{base_url}{path}"
-
-    authors_lastmod = Author.objects.order_by("-updated_at").values_list("updated_at", flat=True).first()
-    posts_qs = (
-        Post.objects.filter(is_blocked=False, is_pending=False, author__is_blocked=False)
-        .filter(_publish_ready_filter(now))
-    )
-    posts_lastmod = posts_qs.order_by("-updated_at").values_list("updated_at", flat=True).first()
-    translations_lastmod = (
-        PostTranslation.objects.filter(
-            post__is_blocked=False,
-            post__is_pending=False,
-            post__author__is_blocked=False,
-            status=POST_TRANSLATION_STATUS_TRANSLATED,
-        )
-        .filter(post__in=posts_qs)
-        .aggregate(lastmod=Max("updated_at"))
-        .get("lastmod")
-    )
-    posts_lastmod = max(
-        (value for value in (posts_lastmod, translations_lastmod) if value),
-        default=None,
-    )
-    posts_count = posts_qs.count()
-    pages = max(1, ceil(posts_count / SITEMAP_PAGE_SIZE))
-
-    entries: list[tuple[str, str | None]] = [
-        (full("/sitemap-static.xml"), None),
-        (full("/sitemap-authors.xml"), _format_lastmod(authors_lastmod) if authors_lastmod else None),
-    ]
-
-    for page in range(1, pages + 1):
-        entries.append(
-            (
-                full(f"/sitemap-posts-{page}.xml"),
-                _format_lastmod(posts_lastmod) if posts_lastmod else None,
-            )
-        )
-
-    return _sitemap_index(entries)
-
-
-def sitemap_static_xml(request: HttpRequest) -> HttpResponse:
-    base_url = _sitemap_base_url(request)
-    static_paths = [
-        "/",
-        "/authors",
-        "/about",
-        "/advertisement",
-        "/apps",
-        "/privacy",
-        "/rules",
-    ]
-    entries = [(f"{base_url}{path}", None) for path in static_paths]
-    return _sitemap_urlset(entries)
-
-
-def sitemap_authors_xml(request: HttpRequest) -> HttpResponse:
-    base_url = _sitemap_base_url(request)
-    authors = Author.objects.filter(is_blocked=False).order_by("username")
-    entries = [
-        (f"{base_url}/{author.username}", _format_lastmod(author.updated_at))
-        for author in authors
-    ]
-    return _sitemap_urlset(entries)
-
-
-def sitemap_posts_xml(request: HttpRequest, page: int) -> HttpResponse:
-    if page < 1:
-        return HttpResponse(status=404)
-
-    base_url = _sitemap_base_url(request)
-    now = timezone.now()
-    qs = (
-        Post.objects.filter(is_blocked=False, is_pending=False, author__is_blocked=False)
-        .filter(_publish_ready_filter(now))
-    )
-    total = qs.count()
-    total_pages = max(1, ceil(total / SITEMAP_PAGE_SIZE))
-    if page > total_pages:
-        return HttpResponse(status=404)
-
-    offset = (page - 1) * SITEMAP_PAGE_SIZE
-    posts = (
-        qs.only("id", "title", "updated_at", "created_at")
-        .prefetch_related(
-            Prefetch(
-                "translations",
-                queryset=PostTranslation.objects.filter(
-                    status=POST_TRANSLATION_STATUS_TRANSLATED
-                ).only(
-                    "id",
-                    "post_id",
-                    "language",
-                    "title",
-                    "status",
-                    "updated_at",
-                ),
-                to_attr="_translated_versions",
-            )
-        )
-        .order_by("-updated_at", "-id")[offset : offset + SITEMAP_PAGE_SIZE]
-    )
-
-    entries = []
-    for post in posts:
-        lastmod = _format_lastmod(_post_sitemap_lastmod(post))
-        versions = _post_language_versions(post)
-        alternate_links = [
-            {"hreflang": version["hreflang"], "href": f"{base_url}{version['path']}"}
-            for version in versions
-        ]
-        russian_version = versions[0]
-        alternate_links.append(
-            {"hreflang": "x-default", "href": f"{base_url}{russian_version['path']}"}
-        )
-        for version in versions:
-            entries.append(
-                {
-                    "loc": f"{base_url}{version['path']}",
-                    "lastmod": lastmod,
-                    "alternates": alternate_links,
-                }
-            )
-
-    return _sitemap_urlset(entries)
 
 from telegram_integration import bot as telegram_bot
 from users import serializers as user_serializers

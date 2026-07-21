@@ -131,6 +131,10 @@ PUBLIC_API_CACHE_SECONDS = int(os.environ.get("PUBLIC_API_CACHE_SECONDS", "60"))
 PUBLIC_API_STALE_SECONDS = int(os.environ.get("PUBLIC_API_STALE_SECONDS", "300"))
 SNAPSHOT_FRONTEND_URL = os.environ.get("SNAPSHOT_FRONTEND_URL", "http://frontend:3000")
 PUBLIC_HTML_SNAPSHOT_ROOT = os.environ.get("PUBLIC_HTML_SNAPSHOT_ROOT", "")
+SITEMAP_OUTPUT_DIR = os.environ.get(
+    "SITEMAP_OUTPUT_DIR",
+    str(BASE_DIR / "var" / "sitemaps"),
+)
 
 AUTH_PASSWORD_VALIDATORS = [
     {

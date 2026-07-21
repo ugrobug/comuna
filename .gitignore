@@ -20,6 +20,7 @@ __pycache__/
 .venv/
 backend/media/
 backend/secrets/
+backend/var/
 deploy/secrets/
 *firebase-adminsdk*.json
 

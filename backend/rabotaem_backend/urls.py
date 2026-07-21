@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
-from django.urls import path
+from django.urls import path, re_path
 
 from communities.views import (
     comun_analytics,
@@ -56,14 +56,11 @@ from feeds.views import (
     post_social_image,
     post_view,
     search_content,
-    sitemap_authors_xml,
-    sitemap_posts_xml,
-    sitemap_static_xml,
-    sitemap_xml,
     tags_ensure,
     tags_list,
     tag_posts,
 )
+from feeds.sitemaps import materialized_sitemap_file
 from feeds.wherefilmed_import import wherefilmed_import
 from landing_pages.views import (
     admin_landing_page_detail,
@@ -605,10 +602,12 @@ urlpatterns = [
         film_journey_admin_film_detail,
         name="special-1001-films-admin-film-detail",
     ),
-    path("sitemap.xml", sitemap_xml, name="sitemap-xml"),
-    path("sitemap-static.xml", sitemap_static_xml, name="sitemap-static-xml"),
-    path("sitemap-authors.xml", sitemap_authors_xml, name="sitemap-authors-xml"),
-    path("sitemap-posts-<int:page>.xml", sitemap_posts_xml, name="sitemap-posts-xml"),
+    path("sitemap.xml", materialized_sitemap_file, name="sitemap-xml"),
+    re_path(
+        r"^(?P<filename>sitemap-[a-z0-9-]+\.xml(?:\.gz)?)$",
+        materialized_sitemap_file,
+        name="sitemap-file",
+    ),
     path("tg/webhook/<str:token>/", telegram_webhook, name="telegram-webhook"),
 ]
 

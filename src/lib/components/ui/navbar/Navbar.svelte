@@ -11,87 +11,38 @@
     Plus,
     ServerStack,
     Newspaper,
-    Bars3,
-    Fire,
-    Inbox,
-    UserGroup,
     ArrowPath,
-    DocumentText,
-    InformationCircle,
-    Megaphone,
-    ClipboardDocumentList,
     ChevronDown,
-    Bookmark,
-    ChartBar,
     ChatBubbleLeftRight
   } from 'svelte-hero-icons'
   import Profile from './Profile.svelte'
   import NavButton from './NavButton.svelte'
   import { LINKED_INSTANCE_URL } from '$lib/instance'
   import { locale, t } from '$lib/translations'
-  import { normalizeInterfaceLanguage, originalPostLanguage } from '$lib/postLanguages'
   import { brandNameForLanguage } from '$lib/brand'
   import CommandsWrapper from './commands/CommandsWrapper.svelte'
   import { optimizeImageURL } from '$lib/components/lemmy/post/helpers'
   import LoginModal from '$lib/components/auth/LoginModal.svelte'
   import { goto } from '$app/navigation'
-  import { page } from '$app/stores'
-  import { env } from '$env/dynamic/public';
-  import SidebarButton from '$lib/components/ui/sidebar/SidebarButton.svelte'
-  import { feedSettingsHydrated, userSettings } from '$lib/settings'
-  import { Badge } from 'mono-svelte'
+  import { userSettings } from '$lib/settings'
   import { onMount } from 'svelte';
-  import { siteToken, siteUser, logout as siteLogout } from '$lib/siteAuth'
-  
-  import type { BackendComun } from '$lib/api/backend'
-  import { loadSidebarComuns, selectSidebarComuns, sidebarComunsStore } from '$lib/communitySidebar'
+  import { siteUser, logout as siteLogout } from '$lib/siteAuth'
   import { getRandomTaglineFromSite, hasTaglines } from '$lib/taglineUtils.js';
   import Markdown from '$lib/components/markdown/Markdown.svelte';
 
-  let sidebarComuns: BackendComun[] = [];
-  let sidebarComunsTotal = 0;
   $: brandName = brandNameForLanguage($locale)
-
-  const PUBLIC_TELEGRAM_URL = env.PUBLIC_TELEGRAM_URL;
-
-  const PUBLIC_PROJECT_ABOUT = env.PUBLIC_PROJECT_ABOUT || '/about';
-  const PUBLIC_PROJECT_ADVRTISEMENT =
-    env.PUBLIC_PROJECT_ADVRTISEMENT || '/advertisement';
-  const PUBLIC_PROJECT_APPS = env.PUBLIC_PROJECT_APPS || '/apps';
-  const PUBLIC_PROJECT_AUTHORS = env.PUBLIC_PROJECT_AUTHORS || '/authors';
-  const PUBLIC_PROJECT_RULES = env.PUBLIC_PROJECT_RULES || '/rules';
-
-  const localizedProjectPath = (path: string) => {
-    const language = normalizeInterfaceLanguage($locale) ?? originalPostLanguage
-    if (language === originalPostLanguage || !path.startsWith('/')) return path
-    return `/${language}${path}`
-  }
   
   // Переменная для случайного слогана
   let randomTagline = '';
 
   onMount(() => {
-    void loadSidebarComuns();
-    
-    // Добавляем обработчик клавиши Escape
-    document.addEventListener('keydown', handleKeydown);
-    
-    return () => {
-      document.removeEventListener('keydown', handleKeydown);
-    };
+    if ($site) {
+      updateRandomTagline();
+    }
   });
 
   let promptOpen: boolean = false
   let loginModalOpen = false
-  let sidebarOpen = false;
-  $: projectAboutPath = localizedProjectPath(PUBLIC_PROJECT_ABOUT);
-  $: projectAdvertisementPath = localizedProjectPath(PUBLIC_PROJECT_ADVRTISEMENT);
-  $: projectAppsPath = localizedProjectPath(PUBLIC_PROJECT_APPS);
-  $: projectAuthorsPath = localizedProjectPath(PUBLIC_PROJECT_AUTHORS);
-  $: projectRulesPath = localizedProjectPath(PUBLIC_PROJECT_RULES);
-  function toggleSidebar() {
-    sidebarOpen = !sidebarOpen;
-  }
 
 
   // Функция для перехода на главную страницу с обновлением
@@ -102,19 +53,6 @@
       replaceState: true,
       invalidateAll: true // Принудительно инвалидируем все данные
     })
-  }
-
-  function handleAuthRequired() {
-    if (!$profile?.jwt) {
-      loginModalOpen = true;
-    }
-  }
-
-  // Обработка клавиши Escape для закрытия меню
-  function handleKeydown(event: KeyboardEvent) {
-    if (event.key === 'Escape' && sidebarOpen) {
-      sidebarOpen = false;
-    }
   }
 
   // Функция для обновления случайного слогана
@@ -131,21 +69,6 @@
     updateRandomTagline();
   }
 
-  $: currentFeed = $page.url.searchParams.get('feed') ?? ($userSettings.homeFeed ?? 'hot')
-  $: sidebarComunsSelection = selectSidebarComuns(
-    $sidebarComunsStore,
-    $userSettings.myFeedComuns,
-    !$siteToken || $feedSettingsHydrated
-  )
-  $: sidebarComuns = sidebarComunsSelection.items
-  $: sidebarComunsTotal = sidebarComunsSelection.total
-
-  // Принудительное обновление при монтировании компонента
-  onMount(() => {
-    if ($site) {
-      updateRandomTagline();
-    }
-  });
 </script>
 
 <CommandsWrapper bind:open={promptOpen} />
@@ -161,20 +84,8 @@
   <div class="w-full mx-auto px-0 md:py-2 py-1">
     <!-- Единый навбар для всех устройств -->
     <div class="grid navbar-desktop-grid items-center w-full">
-      <!-- 1 колонка: гамбургер, логотип -->
+      <!-- 1 колонка: логотип -->
       <div class="navbar-brand-cell flex min-w-0 items-center pl-0 gap-2">
-        <!-- Кнопка гамбургера только на мобилках -->
-        <button
-          type="button"
-          class="md:hidden w-10 h-10 shrink-0 rounded-full flex items-center justify-center hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
-          title="Меню"
-          aria-label={$t('site.nav.sideMenu')}
-          aria-controls="mobile-site-menu"
-          aria-expanded={sidebarOpen}
-          on:click={toggleSidebar}
-        >
-          <Icon src={Bars3} size="18" class="w-4 h-4" />
-        </button>
         <div
           class="logo min-w-0 cursor-pointer"
           on:click={goToHome}
@@ -320,158 +231,6 @@
 </nav>
 
 <LoginModal bind:open={loginModalOpen} />
-
-{#if sidebarOpen}
-  <div
-    class="fixed left-0 right-0 z-[9999] md:hidden"
-    style="pointer-events: auto; top: 112px; height: calc(100dvh - 112px);"
-  >
-    <button
-      type="button"
-      tabindex="-1"
-      class="absolute inset-0 bg-black/30 transition-opacity duration-300"
-      on:click={() => (sidebarOpen = false)}
-      aria-label={$t('site.nav.closeMenu')}
-    ></button>
-    <aside
-      id="mobile-site-menu"
-      class="absolute left-0 top-0 bottom-0 w-[min(82vw,20rem)] h-full bg-white dark:bg-zinc-900 shadow-lg flex flex-col items-start justify-start overflow-y-auto p-4 gap-2 transform transition-transform duration-300"
-      class:translate-x-0={sidebarOpen}
-      class:-translate-x-full={!sidebarOpen}
-      aria-label={$t('site.nav.sideMenu')}
-    >
-      <!-- Контент меню с отступом сверху -->
-      <div class="flex flex-col gap-2 w-full">
-      <div class="flex flex-col gap-1">
-        <SidebarButton
-          icon={Fire}
-          href="/?feed=hot"
-          active={currentFeed === 'hot'}
-          on:click={() => { sidebarOpen = false; }}
-        >
-          <span slot="label">{$t('site.nav.hot')}</span>
-        </SidebarButton>
-        <SidebarButton
-          icon={UserGroup}
-          href="/?feed=mine"
-          active={currentFeed === 'mine'}
-          on:click={() => { sidebarOpen = false; }}
-        >
-          <span slot="label">{$t('site.nav.mine')}</span>
-        </SidebarButton>
-        <SidebarButton
-          icon={Bookmark}
-          href="/?feed=favorites"
-          active={currentFeed === 'favorites'}
-          on:click={() => { sidebarOpen = false; }}
-        >
-          <span slot="label">{$t('site.nav.favorites')}</span>
-        </SidebarButton>
-      </div>
-
-      {#if $profile?.jwt}
-        <div class="flex flex-col gap-1">
-          <SidebarButton 
-            icon={Inbox} 
-            href="/inbox"
-            on:click={() => { sidebarOpen = false; handleAuthRequired(); }}
-          >
-            <span slot="label" class="flex items-center gap-2">
-              {$t('profile.inbox')}
-              {#if $notifications.inbox}
-                <Badge
-                  class="w-5 h-5 !p-0 grid place-items-center ml-auto"
-                  color="red-subtle"
-                >
-                  {$notifications.inbox}
-                </Badge>
-              {/if}
-            </span>
-          </SidebarButton>
-        </div>
-      {/if}
-
-      {#if $siteUser?.is_staff}
-        <div class="flex flex-col gap-1">
-          <SidebarButton
-            icon={ChartBar}
-            href="/moderator"
-            on:click={() => { sidebarOpen = false; }}
-          >
-            <span slot="label">{$t('site.nav.moderator')}</span>
-          </SidebarButton>
-        </div>
-      {/if}
-
-      <div class="flex flex-col gap-2">
-          <span 
-            class="px-2 py-1 text-sm font-normal text-slate-500 dark:text-zinc-200 text-left"
-          >
-            {$t('site.nav.communities')}
-          </span>
-          <SidebarButton href="/comuns?create=1" icon={Plus} on:click={() => { sidebarOpen = false; }}>
-            <span slot="label">{$t('site.nav.createCommunity')}</span>
-          </SidebarButton>
-          {#each sidebarComuns as comun}
-            <SidebarButton href={`/comuns/${comun.slug}`} on:click={() => { sidebarOpen = false; }}>
-              <div slot="icon" class="w-7 h-7 rounded-full overflow-hidden bg-slate-100 dark:bg-zinc-800 flex items-center justify-center">
-                {#if comun.logo_url}
-                  <img src={comun.logo_url} alt={comun.name} class="w-full h-full object-cover" />
-                {:else}
-                  <Icon src={DocumentText} size="20" />
-                {/if}
-              </div>
-              <span slot="label">{comun.name}</span>
-            </SidebarButton>
-          {/each}
-          <SidebarButton href="/comuns" icon={ChevronDown} on:click={() => { sidebarOpen = false; }}>
-            <span slot="label">{$t('site.nav.allCommunities')}</span>
-          </SidebarButton>
-      </div>
-
-      <div class="flex flex-col gap-2">
-        <span
-          class="px-2 py-1 text-sm font-normal text-slate-500 dark:text-zinc-200 text-left"
-        >
-          {$t('site.nav.resources')}
-        </span>
-        {#if env.PUBLIC_TELEGRAM_URL || env.PUBLIC_GITHUB_URL}
-          <div class="flex items-center pl-2 gap-2">
-            {#if env.PUBLIC_TELEGRAM_URL}
-              <a href={env.PUBLIC_TELEGRAM_URL} target="_blank" rel="noopener noreferrer" class="telegram-btn group">
-                <img src="/img/logos/telegram_logo.svg" alt="Telegram" class="w-5 h-5 min-w-[20px] min-h-[20px] max-w-[20px] max-h-[20px] transition-transform group-hover:scale-110 group-hover:drop-shadow-lg" />
-              </a>
-            {/if}
-            {#if env.PUBLIC_GITHUB_URL}
-              <a href={env.PUBLIC_GITHUB_URL} target="_blank" rel="noopener noreferrer" class="github-btn group">
-                <img src="/img/logos/github-mark.svg" alt="GitHub" class="w-5 h-5 min-w-[20px] min-h-[20px] max-w-[20px] max-h-[20px] opacity-80 transition-transform group-hover:scale-110 group-hover:drop-shadow-lg dark:invert" />
-              </a>
-            {/if}
-          </div>
-        {/if}
-        <div class="flex flex-col gap-1">
-          <SidebarButton href={projectAboutPath} icon={InformationCircle} on:click={() => { sidebarOpen = false; }}>
-            <span slot="label">{$t('site.nav.aboutProject')}</span>
-          </SidebarButton>
-          <SidebarButton href={projectAdvertisementPath} icon={Megaphone} on:click={() => { sidebarOpen = false; }}>
-            <span slot="label">{$t('site.nav.advertisement')}</span>
-          </SidebarButton>
-          <SidebarButton href={projectAppsPath} icon={DocumentText} on:click={() => { sidebarOpen = false; }}>
-            <span slot="label">{$t('site.nav.apps')}</span>
-          </SidebarButton>
-          <SidebarButton href={projectAuthorsPath} icon={PencilSquare} on:click={() => { sidebarOpen = false; }}>
-            <span slot="label">{$t('site.nav.authors')}</span>
-          </SidebarButton>
-          <SidebarButton href={projectRulesPath} icon={ClipboardDocumentList} on:click={() => { sidebarOpen = false; }}>
-            <span slot="label">{$t('site.nav.rules')}</span>
-          </SidebarButton>
-        </div>
-      </div>
-
-	      </div>
-	      </aside>
-  </div>
-{/if}
 
 <style>
   .navbar-desktop-grid {

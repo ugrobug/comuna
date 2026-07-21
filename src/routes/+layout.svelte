@@ -35,6 +35,7 @@
   import YandexMetrika from '$lib/components/YandexMetrika.svelte'
   import GoogleAnalytics from '$lib/components/GoogleAnalytics.svelte'
   import CookieNotice from '$lib/components/CookieNotice.svelte'
+  import MobileBottomNavigation from '$lib/components/ui/navbar/MobileBottomNavigation.svelte'
 
   nProgress.configure({
     minimum: 0.4,
@@ -74,6 +75,11 @@
     $page.url.pathname.startsWith('/l/')
   $: isSpecialProjectRoute = $page.url.pathname.startsWith('/s/')
   $: isFullBleedRoute = isLandingRoute || isSpecialProjectRoute
+  $: isMobileNavigationExcludedRoute =
+    /^\/(?:account\/(?:new-post|edit-post)|create\/post|edit\/post|drafts|login|signup)(?:\/|$)/.test(
+      $page.url.pathname
+    )
+  $: showMobileBottomNavigation = !isFullBleedRoute && !isMobileNavigationExcludedRoute
   // Получаем текущий URL для канонической ссылки
   $: siteBaseUrl = (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '')
   $: canonicalUrl = (() => {
@@ -95,6 +101,15 @@
       ? $site?.site_view?.site?.description || env.PUBLIC_SITE_DESCRIPTION || defaultDescription
       : defaultDescription
   $: isBackendPostRoute = /^\/(?:[a-z]{2}\/)?b\/post\//.test($page.url.pathname)
+  $: isLocalizedStaticPageRoute =
+    /^\/(?:[a-z]{2}\/)?(?:about|advertisement|apps|authors|rules)\/?$/.test(
+      $page.url.pathname
+    )
+  $: isCommunityDetailRoute = /^\/(?:[a-z]{2}\/)?comuns\/[^/]+\/?$/.test(
+    $page.url.pathname
+  )
+  $: hasRouteManagedSeo =
+    isBackendPostRoute || isLocalizedStaticPageRoute || isCommunityDetailRoute
   const toJsonLd = (value: unknown) =>
     JSON.stringify(value)
       .replace(/</g, '\\u003c')
@@ -170,7 +185,7 @@
       <meta property="og:site_name" content={siteTitle} />
       <meta property="og:locale" content={postLanguageOgLocales[currentLanguage]} />
     {/if}
-  {#if !isBackendPostRoute}
+  {#if !hasRouteManagedSeo}
     <link rel="canonical" href={canonicalUrl} />
   {/if}
   
@@ -184,7 +199,7 @@
     <meta http-equiv="content-security-policy" content="upgrade-insecure-requests">
   {/if}
   
-  {#if !isBackendPostRoute}
+  {#if !hasRouteManagedSeo}
     <link rel="alternate" hreflang="ru" href={canonicalUrl} />
     <link rel="alternate" hreflang="x-default" href={canonicalUrl} />
   {/if}
@@ -235,7 +250,7 @@
     let:class={c}
     class="{isFullBleedRoute
       ? 'min-w-0 w-full flex flex-col h-full relative xl:pt-0 pt-20'
-      : 'p-4 sm:p-6 min-w-0 w-full flex flex-col h-full relative xl:pt-0 pt-20'} {c}"
+      : 'p-4 sm:p-6 min-w-0 w-full flex flex-col h-full relative xl:pt-0 pt-20'} {showMobileBottomNavigation ? 'mobile-bottom-nav-space' : ''} {c}"
     style={s}
     id="main"
   >
@@ -243,3 +258,19 @@
   </main>
   <Navbar slot="navbar" let:style={s} let:class={c} class={c} style={s} />
 </Shell>
+
+{#if showMobileBottomNavigation}
+  <MobileBottomNavigation />
+{/if}
+
+<style>
+  :global(.mobile-bottom-nav-space) {
+    padding-bottom: calc(6rem + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  @media (min-width: 768px) {
+    :global(.mobile-bottom-nav-space) {
+      padding-bottom: 1.5rem !important;
+    }
+  }
+</style>

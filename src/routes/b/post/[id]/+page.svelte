@@ -5,6 +5,7 @@
   import { onMount } from 'svelte'
   import Post from '$lib/components/lemmy/post/Post.svelte'
   import PostComments from '$lib/components/site/PostComments.svelte'
+  import PostCommunityBanner from '$lib/components/site/PostCommunityBanner.svelte'
   import {
     backendAuthorPath,
     backendPostCommunityPath,
@@ -484,6 +485,10 @@
         communityUrlOverride={backendPostCommunityPath(postData)}
       />
     </div>
+
+    {#if postData?.comun?.slug}
+      <PostCommunityBanner comun={postData.comun} />
+    {/if}
 
     <PostComments
       postId={postData.id}

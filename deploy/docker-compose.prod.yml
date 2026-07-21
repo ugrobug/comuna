@@ -40,6 +40,8 @@ services:
     logging: *default-logging
     env_file:
       - .env.backend
+    environment:
+      SITEMAP_OUTPUT_DIR: /app/sitemaps
     extra_hosts:
       - "api.telegram.org:149.154.167.220"
       - "oauth.telegram.org:149.154.167.220"
@@ -48,7 +50,33 @@ services:
     volumes:
       - media_data:/app/media
       - static_data:/app/staticfiles
+      - sitemap_data:/app/sitemaps
       - ./secrets:/app/secrets:ro
+
+  sitemap-materializer:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+    restart: unless-stopped
+    logging: *default-logging
+    command: >-
+      sh -c "until python -u manage.py materialize_sitemaps; do sleep 10; done;
+      while true; do python -u manage.py materialize_sitemaps || true; sleep 1200; done"
+    env_file:
+      - .env.backend
+    environment:
+      TELEGRAM_USE_POLLING: "0"
+      SITEMAP_OUTPUT_DIR: /app/sitemaps
+    depends_on:
+      - db
+    volumes:
+      - sitemap_data:/app/sitemaps
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /app/sitemaps/sitemap.xml"]
+      interval: 10s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
 
   public-book-reminders:
     build:
@@ -146,12 +174,18 @@ services:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - media_data:/var/www/media
       - static_data:/var/www/static
+      - sitemap_data:/var/www/sitemaps:ro
     depends_on:
-      - backend
-      - frontend
+      backend:
+        condition: service_started
+      frontend:
+        condition: service_started
+      sitemap-materializer:
+        condition: service_healthy
 
 volumes:
   db_data:
   mysql57_data:
   media_data:
   static_data:
+  sitemap_data:

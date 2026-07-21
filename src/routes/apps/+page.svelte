@@ -1,5 +1,6 @@
 <script>
   import StaticPageArticle from '$lib/components/static-pages/StaticPageArticle.svelte'
+  import StaticPageSeo from '$lib/components/static-pages/StaticPageSeo.svelte'
   import { brandNameForLanguage } from '$lib/brand'
   import { APPS_PAGE_LOCALIZATION } from '$lib/staticPageContent'
   import { normalizePostLanguage } from '$lib/postLanguages'
@@ -16,10 +17,9 @@
   <StaticPageArticle heading={pageHeading} pageContent={data?.pageContent ?? ''} />
 </div>
 
-<svelte:head>
-  <title>{seoTitle}</title>
-  <meta name="description" content={meta.description} />
-  <meta property="og:title" content={seoTitle} />
-  <meta property="og:description" content={meta.description} />
-  <meta property="og:type" content="website" />
-</svelte:head>
+<StaticPageSeo
+  title={seoTitle}
+  description={meta.description}
+  language={data?.language}
+  languageVersions={data?.languageVersions}
+/>
