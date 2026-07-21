@@ -73,6 +73,8 @@
   let draftId: number | null = null
   let draftShareToken = ''
   let draftShareOpen = false
+  let draftActionPending: 'share' | 'preview' | null = null
+  let draftSavePromise: Promise<void> | null = null
   let comunsLoading = false
   let composerDataLoaded = false
   let autosavePrimed = false
@@ -250,7 +252,6 @@
   $: profileDraftsPath = $siteUser?.id ? `/id${$siteUser.id}` : '/settings'
   $: draftSharePath = draftShareToken ? `/drafts/${encodeURIComponent(draftShareToken)}` : ''
   $: draftShareUrl = draftSharePath && browser ? `${window.location.origin}${draftSharePath}` : ''
-  $: draftPreviewPath = draftId ? `/account/edit-post/${draftId}/preview` : ''
   $: if (!availableTemplateTypeOptions.some((option) => option.value === createTemplateType)) {
     createTemplateType = availableTemplateTypeOptions[0]?.value ?? ''
   }
@@ -642,29 +643,45 @@
     }
   }
 
-  const flushDraftSave = async (options?: { keepalive?: boolean; allowWhileCreating?: boolean }) => {
+  const flushDraftSave = async (options?: {
+    keepalive?: boolean
+    force?: boolean
+  }) => {
     if (!autosavePrimed || !$siteUser || creating) return
-    const targetSnapshot = JSON.stringify(buildLocalDraftState())
-    if (targetSnapshot === lastSavedFormSnapshot) return
-    if (draftCreating && !draftId && !options?.allowWhileCreating) return
-
     clearAutosaveTimeout()
 
-    try {
-      const previousDraftId = draftId
-      const draft = await saveDraftRecord(options)
-      const isFirstSave = !previousDraftId || previousDraftId !== draft.id
-      draftId = draft.id
-      draftShareToken = draft.draft_share_token ?? ''
-      draftError = ''
-      lastSavedFormSnapshot = targetSnapshot
-      persistLocalDraftBuffer()
-      if (isFirstSave || !firstDraftAutosaveCompleted) {
-        firstDraftAutosaveCompleted = true
-        scheduleDraftSavedNotice()
+    if (draftSavePromise) {
+      await draftSavePromise
+    }
+
+    const targetSnapshot = JSON.stringify(buildLocalDraftState())
+    if (targetSnapshot === lastSavedFormSnapshot && (draftId || !options?.force)) return
+
+    const savePromise = (async () => {
+      try {
+        const previousDraftId = draftId
+        const draft = await saveDraftRecord(options)
+        const isFirstSave = !previousDraftId || previousDraftId !== draft.id
+        draftId = draft.id
+        draftShareToken = draft.draft_share_token ?? ''
+        draftError = ''
+        lastSavedFormSnapshot = targetSnapshot
+        persistLocalDraftBuffer()
+        if (isFirstSave || !firstDraftAutosaveCompleted) {
+          firstDraftAutosaveCompleted = true
+          scheduleDraftSavedNotice()
+        }
+      } catch (error) {
+        draftError = (error as Error)?.message ?? 'Не удалось сохранить черновик'
       }
-    } catch (error) {
-      draftError = (error as Error)?.message ?? 'Не удалось сохранить черновик'
+    })()
+    draftSavePromise = savePromise
+    try {
+      await savePromise
+    } finally {
+      if (draftSavePromise === savePromise) {
+        draftSavePromise = null
+      }
     }
   }
 
@@ -846,7 +863,7 @@
       if (currentFormSnapshot === lastSavedFormSnapshot) return
       draftCreating = true
       try {
-        await flushDraftSave({ allowWhileCreating: true })
+        await flushDraftSave()
       } catch (error) {
         draftError = (error as Error)?.message ?? 'Не удалось сохранить черновик'
       } finally {
@@ -1079,15 +1096,29 @@
   }
 
   const openDraftShare = async () => {
-    await flushDraftSave()
-    if (!draftId || !draftShareUrl) return
-    draftShareOpen = true
+    if (draftActionPending) return
+    draftActionPending = 'share'
+    draftError = ''
+    try {
+      await flushDraftSave({ force: true })
+      if (!draftId || !draftShareToken) return
+      draftShareOpen = true
+    } finally {
+      draftActionPending = null
+    }
   }
 
   const openDraftPreview = async () => {
-    await flushDraftSave()
-    if (!draftPreviewPath) return
-    await goto(draftPreviewPath)
+    if (draftActionPending) return
+    draftActionPending = 'preview'
+    draftError = ''
+    try {
+      await flushDraftSave({ force: true })
+      if (!draftId) return
+      await goto(`/account/edit-post/${draftId}/preview`)
+    } finally {
+      draftActionPending = null
+    }
   }
 </script>
 
@@ -1531,14 +1562,22 @@
           >
             Опубликовать
           </Button>
-          {#if draftId}
-            <Button color="ghost" on:click={openDraftShare} disabled={!draftShareUrl || creating}>
-              {$t('site.draftShare.button')}
-            </Button>
-            <Button color="ghost" on:click={openDraftPreview} disabled={creating}>
-              Предпросмотр
-            </Button>
-          {/if}
+          <Button
+            color="ghost"
+            on:click={openDraftShare}
+            loading={draftActionPending === 'share'}
+            disabled={creating || draftActionPending !== null}
+          >
+            {$t('site.draftShare.button')}
+          </Button>
+          <Button
+            color="ghost"
+            on:click={openDraftPreview}
+            loading={draftActionPending === 'preview'}
+            disabled={creating || draftActionPending !== null}
+          >
+            Предпросмотр
+          </Button>
           <Button color="ghost" on:click={resetForm} disabled={creating}>
             Очистить
           </Button>

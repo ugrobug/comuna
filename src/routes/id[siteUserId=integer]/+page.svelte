@@ -197,7 +197,7 @@
       let total = 0
       const collected: SiteUserPost[] = []
       do {
-        const payload = await fetchUserPosts(50, offset)
+        const payload = await fetchUserPosts(50, offset, { draftsOnly: true })
         const nextItems = payload.posts ?? []
         total = Number(payload.total ?? 0)
         if (!nextItems.length) break

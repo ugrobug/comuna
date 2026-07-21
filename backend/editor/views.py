@@ -914,6 +914,13 @@ def user_posts(request: HttpRequest) -> HttpResponse:
         .prefetch_related("tags")
         .order_by("-created_at")
     )
+    drafts_only = request.GET.get("drafts_only", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    if drafts_only:
+        posts_qs = posts_qs.filter(raw_data__draft=True)
 
     total = posts_qs.count()
     posts = posts_qs[offset : offset + limit]

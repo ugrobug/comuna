@@ -742,7 +742,11 @@ export const fetchVerificationCode = async () => {
   return data.code as string
 }
 
-export const fetchUserPosts = async (limit = 20, offset = 0) => {
+export const fetchUserPosts = async (
+  limit = 20,
+  offset = 0,
+  options?: { draftsOnly?: boolean }
+) => {
   const token = get(siteToken)
   if (!token) {
     throw new Error('Нужна авторизация')
@@ -752,6 +756,9 @@ export const fetchUserPosts = async (limit = 20, offset = 0) => {
     limit: String(limit),
     offset: String(offset),
   })
+  if (options?.draftsOnly) {
+    params.set('drafts_only', '1')
+  }
 
   const response = await fetch(buildUrl(`/api/auth/posts/?${params.toString()}`), {
     credentials: 'include',

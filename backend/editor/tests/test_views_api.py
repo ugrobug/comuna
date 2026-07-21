@@ -144,6 +144,27 @@ class DraftAccessApiTests(TestCase):
         )
         self.assertEqual(response.status_code, 403)
 
+    def test_owner_post_list_can_filter_drafts(self):
+        published_post = Post.objects.create(
+            author=self.author,
+            message_id=91002,
+            title="Published post",
+            content="Published body",
+            is_pending=False,
+            raw_data={"source": "manual"},
+        )
+
+        response = self.client.get(
+            "/api/auth/posts/?drafts_only=1",
+            **self.owner_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["total"], 1)
+        self.assertEqual([item["id"] for item in payload["posts"]], [self.post.id])
+        self.assertNotIn(published_post.id, [item["id"] for item in payload["posts"]])
+
     def test_shared_user_can_comment_and_owner_can_resolve_thread(self):
         PostDraftAccess.objects.create(
             post=self.post,
