@@ -27,7 +27,6 @@
   type StageDefinition = {
     key: BackendComunRoadmapStage
     label: string
-    description: string
     empty: string
   }
 
@@ -35,19 +34,16 @@
     {
       key: 'planned',
       label: 'Планируется',
-      description: 'Идеи и задачи, которые запланированы к реализации.',
       empty: 'В планах пока нет постов.',
     },
     {
       key: 'in_progress',
       label: 'В работе',
-      description: 'То, над чем команда работает прямо сейчас.',
       empty: 'Сейчас в работе ничего нет.',
     },
     {
       key: 'done',
       label: 'Сделано',
-      description: 'Завершенные задачи и выпущенные изменения.',
       empty: 'Завершенных задач пока нет.',
     },
   ]
@@ -239,9 +235,6 @@
             <header class="lane-header">
               <div class="min-w-0">
                 <div class="lane-pill">{stageBadgeLabel(stage.key)}</div>
-                <h2 class="mt-2 text-sm font-semibold text-slate-900 dark:text-zinc-100">
-                  {stage.label}
-                </h2>
                 <div class="mt-1 text-xs text-slate-500 dark:text-zinc-400">
                   {formatCount(stageItems.length)} карточек
                 </div>
@@ -258,8 +251,6 @@
                 </button>
               {/if}
             </header>
-
-            <p class="lane-description">{stage.description}</p>
 
             <div class="lane-content">
               {#if stageItems.length}
@@ -412,8 +403,8 @@
 
   .roadmap-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    gap: 0.9rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.75rem;
     align-items: start;
   }
 
@@ -504,17 +495,6 @@
     flex-direction: column;
     gap: 0.5rem;
     margin-top: 0.75rem;
-  }
-
-  .lane-description {
-    margin: 0.75rem 0 0;
-    color: rgb(71 85 105);
-    font-size: 0.82rem;
-    line-height: 1.4;
-  }
-
-  :global(.dark) .lane-description {
-    color: rgb(161 161 170);
   }
 
   .mini-card {
