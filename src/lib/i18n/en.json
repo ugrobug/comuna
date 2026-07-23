@@ -1138,7 +1138,7 @@
         "draftReview": {
             "commentBlock": "Comment on block", "user": "User", "pageTitle": "Collaborative draft review",
             "loading": "Loading...", "signIn": "Sign in", "privatePreview": "Private draft preview",
-            "title": "Post feedback", "selectedBlock": "Discussions for the selected block", "selectBlock": "Select a block in the post to leave feedback", "showAll": "All discussions",
+            "title": "Post feedback", "selectedBlock": "Discussions for the selected block", "selectBlock": "Select a block in the post to leave feedback", "showAll": "All discussions", "close": "Close",
             "newComment": "New feedback", "placeholder": "What should be changed or clarified?", "send": "Send", "commentAdded": "Feedback added", "saveError": "Failed to save the comment",
             "published": "Draft published", "publishError": "Failed to publish the draft", "deleteConfirm": "Delete this draft?", "deleted": "Draft deleted", "deleteError": "Failed to delete the draft",
             "loginRequired": "Sign in to open this shared draft.", "loadError": "Failed to load the draft", "publish": "Publish", "edit": "Edit", "delete": "Delete",

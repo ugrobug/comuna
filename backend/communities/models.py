@@ -474,6 +474,62 @@ class ComunMapPoint(models.Model):
         return f"{self.comun_id}:{self.post_id}:{self.lat},{self.lng}"
 
 
+class ComunRoadmapItem(models.Model):
+    STAGE_PLANNED = "planned"
+    STAGE_IN_PROGRESS = "in_progress"
+    STAGE_DONE = "done"
+    STAGE_CHOICES = (
+        (STAGE_PLANNED, "Планируется"),
+        (STAGE_IN_PROGRESS, "В работе"),
+        (STAGE_DONE, "Сделано"),
+    )
+
+    comun = models.ForeignKey(
+        "feeds.Comun",
+        on_delete=models.CASCADE,
+        related_name="roadmap_items",
+        verbose_name="Сообщество",
+    )
+    post = models.OneToOneField(
+        "feeds.Post",
+        on_delete=models.CASCADE,
+        related_name="comun_roadmap_item",
+        verbose_name="Пост",
+    )
+    stage = models.CharField(
+        max_length=24,
+        choices=STAGE_CHOICES,
+        default=STAGE_PLANNED,
+        verbose_name="Столбец",
+    )
+    position = models.PositiveIntegerField(default=0, verbose_name="Позиция")
+    added_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="added_comun_roadmap_items",
+        verbose_name="Добавил",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = "feeds"
+        ordering = ["stage", "position", "-created_at", "-id"]
+        indexes = [
+            models.Index(
+                fields=["comun", "stage", "position"],
+                name="comroad_comun_stage_pos_idx",
+            ),
+        ]
+        verbose_name = "Элемент дорожной карты"
+        verbose_name_plural = "Элементы дорожных карт"
+
+    def __str__(self) -> str:
+        return f"{self.comun_id}:{self.stage}:{self.post_id}"
+
+
 class ComunTelegramSubmission(models.Model):
     TYPE_KNOWLEDGE_BASE = "knowledge_base"
     TYPE_GLOSSARY = "glossary"
@@ -572,6 +628,7 @@ __all__ = [
     "ComunCategory",
     "ComunGlossaryTerm",
     "ComunKnowledgeBaseItem",
+    "ComunRoadmapItem",
     "ComunPostCategoryAssignment",
     "ComunPostRatingContribution",
     "ComunTelegramSubmission",

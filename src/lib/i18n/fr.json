@@ -1090,7 +1090,7 @@
         "draftReview": {
             "commentBlock": "Commenter le bloc", "user": "Utilisateur", "pageTitle": "Révision collaborative du brouillon",
             "loading": "Chargement...", "signIn": "Se connecter", "privatePreview": "Aperçu privé du brouillon",
-            "title": "Avis sur la publication", "selectedBlock": "Discussions du bloc sélectionné", "selectBlock": "Sélectionnez un bloc pour donner votre avis", "showAll": "Toutes les discussions",
+            "title": "Avis sur la publication", "selectedBlock": "Discussions du bloc sélectionné", "selectBlock": "Sélectionnez un bloc pour donner votre avis", "showAll": "Toutes les discussions", "close": "Fermer",
             "newComment": "Nouvel avis", "placeholder": "Que faut-il modifier ou préciser ?", "send": "Envoyer", "commentAdded": "Avis ajouté", "saveError": "Impossible d’enregistrer le commentaire",
             "published": "Brouillon publié", "publishError": "Impossible de publier le brouillon", "deleteConfirm": "Supprimer ce brouillon ?", "deleted": "Brouillon supprimé", "deleteError": "Impossible de supprimer le brouillon",
             "loginRequired": "Connectez-vous pour ouvrir ce brouillon partagé.", "loadError": "Impossible de charger le brouillon", "publish": "Publier", "edit": "Modifier", "delete": "Supprimer",

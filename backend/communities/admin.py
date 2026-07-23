@@ -1,7 +1,13 @@
 from django import forms
 from django.contrib import admin
 
-from communities.models import Comun, ComunCategory, ComunMapPoint, ComunPostCategoryAssignment
+from communities.models import (
+    Comun,
+    ComunCategory,
+    ComunMapPoint,
+    ComunPostCategoryAssignment,
+    ComunRoadmapItem,
+)
 from editor.models import (
     normalize_allowed_post_templates,
     post_template_type_choices,
@@ -113,4 +119,13 @@ class ComunMapPointAdmin(admin.ModelAdmin):
     list_filter = ("comun",)
     search_fields = ("comun__name", "comun__slug", "post__title", "raw")
     raw_id_fields = ("comun", "post")
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(ComunRoadmapItem)
+class ComunRoadmapItemAdmin(admin.ModelAdmin):
+    list_display = ("comun", "post", "stage", "position", "added_by", "updated_at")
+    list_filter = ("comun", "stage")
+    search_fields = ("comun__name", "comun__slug", "post__title")
+    raw_id_fields = ("comun", "post", "added_by")
     readonly_fields = ("created_at", "updated_at")

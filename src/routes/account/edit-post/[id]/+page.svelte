@@ -4,6 +4,7 @@
   import { page } from '$app/stores'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import EditorAutosaveNotice from '$lib/components/editor/EditorAutosaveNotice.svelte'
+  import DraftReviewPanel from '$lib/components/editor/DraftReviewPanel.svelte'
   import DraftShareModal from '$lib/components/editor/DraftShareModal.svelte'
   import GlossaryAutoLinkModal from '$lib/components/editor/GlossaryAutoLinkModal.svelte'
   import { Button, Spinner, TextInput, toast } from 'mono-svelte'
@@ -19,10 +20,12 @@
   } from '$lib/glossaryAutoLink'
   import {
     fetchUserPost,
+    fetchDraftBlockComments,
     refreshSiteUser,
     siteToken,
     siteUser,
     updateUserPost,
+    type DraftBlockCommentThread,
     type SiteUserPost,
   } from '$lib/siteAuth'
   import {
@@ -148,6 +151,11 @@
   let glossaryAutoLinkOpen = false
   let glossaryAutoLinkMatches: GlossaryAutoLinkMatch[] = []
   let pendingGlossaryEdit: PendingGlossaryEdit | null = null
+  let draftReviewThreads: DraftBlockCommentThread[] = []
+  let selectedReviewBlockId = ''
+  let draftReviewLoading = false
+  let draftReviewError = ''
+  let draftReviewRefreshTimer: ReturnType<typeof setInterval> | null = null
 
   $: selectedComun = comuns.find((comun) => comun.slug === editComunSlug)
   $: selectedComunCategory =
@@ -217,6 +225,29 @@
       : ''
   $: draftShareUrl = draftSharePath ? `${$page.url.origin}${draftSharePath}` : ''
   $: profileDraftsPath = $siteUser?.id ? `/id${$siteUser.id}` : '/settings'
+  $: draftReviewMarkers = (() => {
+    const threadsByBlock = new Map<string, DraftBlockCommentThread[]>()
+    for (const thread of draftReviewThreads) {
+      if (thread.resolved_at || !thread.block_exists) continue
+      const blockThreads = threadsByBlock.get(thread.block_id) || []
+      blockThreads.push(thread)
+      threadsByBlock.set(thread.block_id, blockThreads)
+    }
+    return Array.from(threadsByBlock.entries()).map(([blockId, blockThreads]) => {
+      const firstThread = blockThreads[0]
+      const user = firstThread?.comments[0]?.user
+      const displayName = user?.display_name || user?.username || $t('site.draftReview.user')
+      return {
+        blockId,
+        blockIndex: firstThread?.block_index ?? 0,
+        count: blockThreads.length,
+        avatarUrl: user?.avatar_url || null,
+        initial: displayName.slice(0, 1),
+        label: `${$t('site.draftReview.commentBlock')}: ${blockThreads.length}`,
+        active: selectedReviewBlockId === blockId,
+      }
+    })
+  })()
 
   const stripHtml = (value: string) =>
     value.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim()
@@ -533,11 +564,35 @@
       post = loadedPost
       fillForm(loadedPost)
       autosavePrimed = true
+      await loadDraftReviewThreads()
     } catch (err) {
       loadError = (err as Error)?.message ?? 'Не удалось загрузить пост'
     } finally {
       loading = false
     }
+  }
+
+  const loadDraftReviewThreads = async (quiet = false) => {
+    const shareToken = post?.is_draft ? post.draft_share_token : ''
+    if (!shareToken || draftReviewLoading) return
+
+    draftReviewLoading = true
+    if (!quiet) draftReviewError = ''
+    try {
+      draftReviewThreads = await fetchDraftBlockComments(shareToken)
+      draftReviewError = ''
+    } catch (error) {
+      if (!quiet) {
+        draftReviewError = (error as Error)?.message || $t('site.draftReview.loadError')
+      }
+    } finally {
+      draftReviewLoading = false
+    }
+  }
+
+  const selectReviewBlock = (event: CustomEvent<{ blockId: string }>) => {
+    selectedReviewBlockId = event.detail.blockId
+    draftReviewError = ''
   }
 
   const queueDraftAutosave = () => {
@@ -660,12 +715,6 @@
     draftShareOpen = true
   }
 
-  const openDraftPreview = async () => {
-    await flushDraftAutosave()
-    if (!post?.id) return
-    await goto(`/account/edit-post/${post.id}/preview`)
-  }
-
   const selectComun = (slug: string) => {
     editComunSlug = slug
     editComunCategoryId = ''
@@ -685,6 +734,9 @@
 
   onMount(() => {
     loadPost()
+    draftReviewRefreshTimer = setInterval(() => {
+      void loadDraftReviewThreads(true)
+    }, 15_000)
 
     const flushOnPageHide = () => {
       void flushDraftAutosave({ keepalive: true })
@@ -723,6 +775,8 @@
     clearAutosaveTimeout()
     clearDraftSavedNoticeTimer()
     clearDraftSavedNoticeHideTimer()
+    if (draftReviewRefreshTimer) clearInterval(draftReviewRefreshTimer)
+    draftReviewRefreshTimer = null
   })
 
   $: if (
@@ -1036,36 +1090,56 @@
           showTypeSelector={false}
         />
 
-        <div class="flex flex-col gap-2">
-          {#key `edit-editor-template-${editorTemplateBlocksKey}`}
-            <EditorJS
-              bind:value={editContent}
-              placeholder="Текст поста"
-              postTemplateType={editTemplateType}
-              enabledTemplateEditorBlockTypes={editorEnabledTemplateBlockTypes}
-              glossaryTerms={
-                selectedComun?.glossary_enabled ? selectedComun?.glossary_terms ?? [] : []
-              }
-              glossaryComunSlug={selectedComun?.glossary_enabled ? selectedComun.slug : ''}
-              canManageGlossary={Boolean(selectedComun?.glossary_enabled && selectedComun?.can_moderate)}
-              enableAutosave={false}
-              postId={post.id}
-              showPostSettings={false}
-            />
-          {/key}
-          {#if isTweetTemplateType(editTemplateType)}
-            <div class={`rounded-xl border px-3 py-2 text-sm ${
-              tweetCharacterCountValue > TWEET_TEMPLATE_MAX_LENGTH
-                ? 'border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-900/40 dark:bg-rose-950/20 dark:text-rose-300'
-                : 'border-slate-200 bg-slate-50 text-slate-600 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-300'
-            }`}>
-              <div class="flex flex-wrap items-center justify-between gap-2">
-                <span>Текст твита: {tweetCharacterCountValue} / {TWEET_TEMPLATE_MAX_LENGTH}</span>
-                <span>Разрешен один медиаблок с изображениями</span>
+        <div
+          class="draft-editor-review-layout"
+          class:draft-editor-review-layout--open={Boolean(post.is_draft && selectedReviewBlockId)}
+        >
+          <div class="flex min-w-0 flex-col gap-2">
+            {#key `edit-editor-template-${editorTemplateBlocksKey}`}
+              <EditorJS
+                bind:value={editContent}
+                placeholder="Текст поста"
+                postTemplateType={editTemplateType}
+                enabledTemplateEditorBlockTypes={editorEnabledTemplateBlockTypes}
+                glossaryTerms={
+                  selectedComun?.glossary_enabled ? selectedComun?.glossary_terms ?? [] : []
+                }
+                glossaryComunSlug={selectedComun?.glossary_enabled ? selectedComun.slug : ''}
+                canManageGlossary={Boolean(selectedComun?.glossary_enabled && selectedComun?.can_moderate)}
+                enableAutosave={false}
+                postId={post.id}
+                showPostSettings={false}
+                reviewMarkers={post.is_draft ? draftReviewMarkers : []}
+                on:reviewblockclick={selectReviewBlock}
+              />
+            {/key}
+            {#if isTweetTemplateType(editTemplateType)}
+              <div class={`rounded-xl border px-3 py-2 text-sm ${
+                tweetCharacterCountValue > TWEET_TEMPLATE_MAX_LENGTH
+                  ? 'border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-900/40 dark:bg-rose-950/20 dark:text-rose-300'
+                  : 'border-slate-200 bg-slate-50 text-slate-600 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-300'
+              }`}>
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <span>Текст твита: {tweetCharacterCountValue} / {TWEET_TEMPLATE_MAX_LENGTH}</span>
+                  <span>Разрешен один медиаблок с изображениями</span>
+                </div>
               </div>
-            </div>
+            {/if}
+          </div>
+
+          {#if post.is_draft && selectedReviewBlockId && post.draft_share_token}
+            <DraftReviewPanel
+              shareToken={post.draft_share_token}
+              blockId={selectedReviewBlockId}
+              bind:threads={draftReviewThreads}
+              on:close={() => (selectedReviewBlockId = '')}
+            />
           {/if}
         </div>
+
+        {#if draftReviewError}
+          <p class="text-sm text-red-600 dark:text-red-400">{draftReviewError}</p>
+        {/if}
 
         <TextInput label="Теги (через запятую)" bind:value={editTags} />
 
@@ -1086,11 +1160,6 @@
             <Button color="ghost" on:click={openDraftShare} disabled={!draftShareUrl || publishing}>
               {$t('site.draftShare.button')}
             </Button>
-            {#if draftSharePath}
-              <Button color="ghost" on:click={openDraftPreview} disabled={publishing}>
-                Предпросмотр
-              </Button>
-            {/if}
           {:else}
             <Button color="primary" on:click={savePublishedEdit} loading={saving} disabled={saving}>
               Сохранить
@@ -1113,3 +1182,23 @@
     </div>
   {/if}
 </div>
+
+<style>
+  .draft-editor-review-layout {
+    display: block;
+    min-width: 0;
+  }
+
+  .draft-editor-review-layout--open {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 20rem;
+    gap: 1.25rem;
+    align-items: start;
+  }
+
+  @media (max-width: 1023px) {
+    .draft-editor-review-layout--open {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+</style>

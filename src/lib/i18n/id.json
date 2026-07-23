@@ -1138,7 +1138,7 @@
         "draftReview": {
             "commentBlock": "Komentari blok", "user": "Pengguna", "pageTitle": "Tinjauan draf bersama",
             "loading": "Memuat...", "signIn": "Masuk", "privatePreview": "Pratinjau draf privat",
-            "title": "Masukan untuk postingan", "selectedBlock": "Diskusi untuk blok yang dipilih", "selectBlock": "Pilih blok untuk memberi masukan", "showAll": "Semua diskusi",
+            "title": "Masukan untuk postingan", "selectedBlock": "Diskusi untuk blok yang dipilih", "selectBlock": "Pilih blok untuk memberi masukan", "showAll": "Semua diskusi", "close": "Tutup",
             "newComment": "Masukan baru", "placeholder": "Apa yang perlu diubah atau diperjelas?", "send": "Kirim", "commentAdded": "Masukan ditambahkan", "saveError": "Komentar tidak dapat disimpan",
             "published": "Draf diterbitkan", "publishError": "Draf tidak dapat diterbitkan", "deleteConfirm": "Hapus draf ini?", "deleted": "Draf dihapus", "deleteError": "Draf tidak dapat dihapus",
             "loginRequired": "Masuk untuk membuka draf yang dibagikan ini.", "loadError": "Draf tidak dapat dimuat", "publish": "Terbitkan", "edit": "Edit", "delete": "Hapus",

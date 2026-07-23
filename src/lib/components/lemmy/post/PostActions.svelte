@@ -29,6 +29,7 @@
     Star,
     Trash,
     UserCircle,
+    ViewColumns,
     XMark,
     ChevronDown,
     ChevronUp,
@@ -75,9 +76,12 @@
     buildComunUrl,
     buildComunPostCategoryUrl,
     buildComunKnowledgeBaseUrl,
+    buildComunRoadmapItemUrl,
+    buildComunRoadmapUrl,
     buildPostFavoriteUrl,
     buildPostLikeUrl,
     type BackendComunCategory,
+    type BackendComunRoadmapStage,
   } from '$lib/api/backend'
 
   export let post: PostView
@@ -126,6 +130,11 @@
   let hideMenuOpen = false
   let categoryMenuOpen = false
   let categorySaving = false
+  let roadmapMenuOpen = false
+  let roadmapStatusLoading = false
+  let roadmapStatusLoaded = false
+  let roadmapSaving = false
+  let roadmapStage: BackendComunRoadmapStage | null = null
   let backendReportOpen = false
   let currentBackendCategoryId: number | null = null
 
@@ -177,6 +186,14 @@
       backendComunSlug &&
       (post.post as any)?.comun_can_moderate
   )
+  $: canManageRoadmap = Boolean(
+    isBackendPost &&
+      backendPostId &&
+      $siteToken &&
+      backendComunSlug &&
+      (post.post as any)?.comun_roadmap_enabled &&
+      (post.post as any)?.comun_can_manage_roadmap
+  )
   $: currentWelcomePostIdValue = Number(currentWelcomePostId ?? 0) || 0
   $: isCurrentWelcomePost = Boolean(
     backendPostId && currentWelcomePostIdValue && backendPostId === currentWelcomePostIdValue
@@ -189,7 +206,16 @@
       : null
   $: if (!categorySaving) currentBackendCategoryId = backendComunCategoryId
   $: if (!actionsMenuOpen && categoryMenuOpen) categoryMenuOpen = false
+  $: if (!actionsMenuOpen && roadmapMenuOpen) roadmapMenuOpen = false
   $: if (!actionsMenuOpen && hideMenuOpen) hideMenuOpen = false
+  $: if (
+    actionsMenuOpen &&
+    canManageRoadmap &&
+    !roadmapStatusLoading &&
+    !roadmapStatusLoaded
+  ) {
+    void loadRoadmapStatus()
+  }
   $: canChangeComunCategory = Boolean(
     isBackendPost &&
       backendPostId &&
@@ -489,6 +515,94 @@
       })
     } finally {
       knowledgeBaseSaving = false
+    }
+  }
+
+  const loadRoadmapStatus = async () => {
+    if (!backendPostId || !backendComunSlug || !$siteToken || roadmapStatusLoading) return
+    roadmapStatusLoading = true
+    try {
+      const response = await fetch(buildComunRoadmapItemUrl(backendComunSlug, backendPostId), {
+        headers: { Authorization: `Bearer ${$siteToken}` },
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(data?.error || 'Не удалось проверить дорожную карту')
+      }
+      roadmapStage = data?.in_roadmap ? data?.stage ?? null : null
+      roadmapStatusLoaded = true
+    } catch (error) {
+      roadmapStatusLoaded = true
+      toast({
+        content:
+          error instanceof Error ? error.message : 'Не удалось проверить дорожную карту',
+        type: 'error',
+      })
+    } finally {
+      roadmapStatusLoading = false
+    }
+  }
+
+  const addToRoadmap = async (stage: BackendComunRoadmapStage) => {
+    if (!backendPostId || !backendComunSlug || !$siteToken || roadmapSaving) return
+    roadmapSaving = true
+    try {
+      const response = await fetch(buildComunRoadmapUrl(backendComunSlug), {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${$siteToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ post_id: backendPostId, stage }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(
+          response.status === 409
+            ? 'Этот пост уже добавлен в дорожную карту'
+            : data?.error || 'Не удалось добавить пост в дорожную карту'
+        )
+      }
+      roadmapStage = stage
+      roadmapStatusLoaded = true
+      roadmapMenuOpen = false
+      actionsMenuOpen = false
+      toast({ content: 'Пост добавлен в дорожную карту', type: 'success' })
+    } catch (error) {
+      toast({
+        content:
+          error instanceof Error ? error.message : 'Не удалось добавить пост в дорожную карту',
+        type: 'error',
+      })
+    } finally {
+      roadmapSaving = false
+    }
+  }
+
+  const removeFromRoadmap = async () => {
+    if (!backendPostId || !backendComunSlug || !$siteToken || roadmapSaving) return
+    roadmapSaving = true
+    try {
+      const response = await fetch(buildComunRoadmapItemUrl(backendComunSlug, backendPostId), {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${$siteToken}` },
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(data?.error || 'Не удалось убрать пост из дорожной карты')
+      }
+      roadmapStage = null
+      roadmapStatusLoaded = true
+      actionsMenuOpen = false
+      toast({ content: 'Пост убран из дорожной карты', type: 'success' })
+    } catch (error) {
+      toast({
+        content:
+          error instanceof Error ? error.message : 'Не удалось убрать пост из дорожной карты',
+        type: 'error',
+      })
+    } finally {
+      roadmapSaving = false
     }
   }
 
@@ -932,6 +1046,67 @@
         <Icon src={Bookmark} size="16" micro slot="prefix" />
         {knowledgeBaseSaving ? $t('site.postActions.adding') : $t('site.postActions.addKnowledge')}
       </MenuButton>
+    {/if}
+    {#if canManageRoadmap}
+      {#if roadmapStatusLoading && !roadmapStatusLoaded}
+        <MenuButton disabled>
+          <Icon src={ViewColumns} size="16" micro slot="prefix" />
+          Проверяем дорожную карту…
+        </MenuButton>
+      {:else if roadmapStage}
+        <MenuButton
+          on:click={removeFromRoadmap}
+          disabled={roadmapSaving}
+          color="danger-subtle"
+        >
+          <Icon src={XMark} size="16" micro slot="prefix" />
+          {roadmapSaving ? 'Убираем…' : 'Убрать из дорожной карты'}
+        </MenuButton>
+      {:else}
+        <button
+          type="button"
+          class="category-toggle"
+          disabled={roadmapSaving}
+          aria-expanded={roadmapMenuOpen}
+          on:click|stopPropagation={() => (roadmapMenuOpen = !roadmapMenuOpen)}
+        >
+          <span class="contents !text-slate-600 dark:!text-zinc-400 flex-shrink-0">
+            <Icon src={ViewColumns} size="16" micro />
+          </span>
+          <span class="min-w-0 flex-1 truncate">
+            {roadmapSaving ? 'Добавляем…' : 'Добавить в дорожную карту'}
+          </span>
+          <Icon src={roadmapMenuOpen ? ChevronUp : ChevronDown} size="14" micro />
+        </button>
+        {#if roadmapMenuOpen}
+          <div class="mx-2 my-1 rounded-lg border border-slate-200 bg-white p-1 dark:border-zinc-700 dark:bg-zinc-900">
+            <button
+              type="button"
+              class="category-option"
+              disabled={roadmapSaving}
+              on:click|stopPropagation={() => addToRoadmap('planned')}
+            >
+              Планируется
+            </button>
+            <button
+              type="button"
+              class="category-option"
+              disabled={roadmapSaving}
+              on:click|stopPropagation={() => addToRoadmap('in_progress')}
+            >
+              В работе
+            </button>
+            <button
+              type="button"
+              class="category-option"
+              disabled={roadmapSaving}
+              on:click|stopPropagation={() => addToRoadmap('done')}
+            >
+              Сделано
+            </button>
+          </div>
+        {/if}
+      {/if}
     {/if}
     {#if canShowPinWelcomePost}
       <MenuButton on:click={pinWelcomePost} disabled={welcomePostSaving}>

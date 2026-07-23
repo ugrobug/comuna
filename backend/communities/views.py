@@ -12,7 +12,7 @@ from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.db import transaction
-from django.db.models import Count, Prefetch, Q, Sum
+from django.db.models import Count, Max, Prefetch, Q, Sum
 from django.db.models.functions import TruncDate
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils import timezone
@@ -31,6 +31,7 @@ from communities.models import (
     ComunKnowledgeBaseItem,
     ComunMapPoint,
     ComunPostCategoryAssignment,
+    ComunRoadmapItem,
     ComunVote,
     ComunTelegramSubmission,
 )
@@ -60,6 +61,7 @@ from feeds.models import (
     PostFavorite,
     PostLike,
     PostRead,
+    PostTranslation,
     Tag,
 )
 from notifications.service import create_user_notification
@@ -3435,6 +3437,287 @@ def comun_knowledge_base_item(request: HttpRequest, slug: str, item_id: int) -> 
     item.save(update_fields=["title", "sort_order", "parent", "updated_at"])
     serialized = _serialize_comun_knowledge_base(list(_comun_knowledge_base_queryset(comun)))
     return JsonResponse({"ok": True, "item": _serialize_comun_knowledge_base_item(item), **serialized})
+
+
+_ROADMAP_STAGE_KEYS = {
+    ComunRoadmapItem.STAGE_PLANNED,
+    ComunRoadmapItem.STAGE_IN_PROGRESS,
+    ComunRoadmapItem.STAGE_DONE,
+}
+
+
+def _comun_roadmap_owner(user: User | None, comun: Comun) -> bool:
+    return bool(user and comun.creator_id == user.id)
+
+
+def _serialize_comun_roadmap(
+    request: HttpRequest,
+    comun: Comun,
+    current_user: User | None,
+    *,
+    language: str,
+) -> dict:
+    items_query = (
+        ComunRoadmapItem.objects.filter(
+            comun=comun,
+            post__is_pending=False,
+            post__is_blocked=False,
+            post__author__is_blocked=False,
+        )
+        .select_related("post", "post__author")
+        .prefetch_related("post__tags")
+        .order_by("stage", "position", "-created_at", "-id")
+    )
+    if language != _ORIGINAL_CONTENT_LANGUAGE:
+        items_query = items_query.filter(
+            post__translations__language=language,
+            post__translations__status=POST_TRANSLATION_STATUS_TRANSLATED,
+        ).prefetch_related(
+            Prefetch(
+                "post__translations",
+                queryset=PostTranslation.objects.filter(
+                    language=language,
+                    status=POST_TRANSLATION_STATUS_TRANSLATED,
+                ),
+                to_attr="_translated_versions",
+            )
+        )
+    items = list(items_query.distinct())
+    posts = [item.post for item in items]
+    favorite_post_ids = community_service._favorite_post_ids_for_user(posts, current_user)
+    serialized_items = []
+    now = timezone.now()
+    for item in items:
+        serialized_items.append(
+            {
+                "id": item.id,
+                "stage": item.stage,
+                "position": item.position,
+                "created_at": item.created_at.isoformat(),
+                "post": community_service._serialize_backend_post_card(
+                    request,
+                    item.post,
+                    current_user,
+                    now=now,
+                    is_favorite=item.post_id in favorite_post_ids,
+                    language=language,
+                ),
+            }
+        )
+    return {
+        "items": serialized_items,
+        "total_count": len(serialized_items),
+        "can_manage": _comun_roadmap_owner(current_user, comun),
+    }
+
+
+def _get_comun_for_roadmap(slug: str) -> Comun | None:
+    return (
+        Comun.objects.filter(slug=slug)
+        .select_related("creator", "telegram_source_author")
+        .prefetch_related("moderators")
+        .first()
+    )
+
+
+@csrf_exempt
+def comun_roadmap(request: HttpRequest, slug: str) -> HttpResponse:
+    current_user = user_views._get_user_from_request(request)
+    comun = _get_comun_for_roadmap(slug)
+    if not comun:
+        return JsonResponse({"ok": False, "error": "comun not found"}, status=404)
+
+    can_manage = _comun_roadmap_owner(current_user, comun)
+    if not comun.is_active and not can_manage:
+        return JsonResponse({"ok": False, "error": "comun not found"}, status=404)
+    if not comun.roadmap_enabled and not can_manage:
+        return JsonResponse({"ok": False, "error": "roadmap disabled"}, status=404)
+
+    language = _normalize_content_language(request.GET.get("lang"))
+    if request.method in ("GET", "HEAD"):
+        return JsonResponse(
+            {
+                "ok": True,
+                "comun": _serialize_comun(
+                    request,
+                    comun,
+                    current_user=current_user,
+                    language=language,
+                ),
+                **_serialize_comun_roadmap(
+                    request,
+                    comun,
+                    current_user,
+                    language=language,
+                ),
+            }
+        )
+
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    if not current_user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    if not can_manage:
+        return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+    if not comun.roadmap_enabled:
+        return JsonResponse({"ok": False, "error": "roadmap disabled"}, status=400)
+
+    try:
+        body = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+
+    post_id = _parse_post_reference_to_id(body.get("post_id"))
+    stage = str(body.get("stage") or "").strip()
+    if not post_id:
+        return JsonResponse({"ok": False, "error": "post id required"}, status=400)
+    if stage not in _ROADMAP_STAGE_KEYS:
+        return JsonResponse({"ok": False, "error": "invalid roadmap stage"}, status=400)
+
+    post = _knowledge_base_post_for_comun(comun, post_id)
+    if not post:
+        return JsonResponse({"ok": False, "error": "post not found in comun"}, status=404)
+    with transaction.atomic():
+        last_position = (
+            ComunRoadmapItem.objects.select_for_update()
+            .filter(comun=comun, stage=stage)
+            .aggregate(value=Max("position"))
+            .get("value")
+        )
+        item, created = ComunRoadmapItem.objects.get_or_create(
+            post=post,
+            defaults={
+                "comun": comun,
+                "stage": stage,
+                "position": int(last_position or 0) + 1,
+                "added_by": current_user,
+            },
+        )
+    if not created:
+        return JsonResponse({"ok": False, "error": "post already in roadmap"}, status=409)
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "item": {
+                "id": item.id,
+                "stage": item.stage,
+                "position": item.position,
+                "created_at": item.created_at.isoformat(),
+                "post": community_service._serialize_backend_post_card(
+                    request,
+                    post,
+                    current_user,
+                    is_favorite=post.id
+                    in community_service._favorite_post_ids_for_user([post], current_user),
+                    language=language,
+                ),
+            },
+        },
+        status=201,
+    )
+
+
+def comun_roadmap_posts(request: HttpRequest, slug: str) -> HttpResponse:
+    if request.method != "GET":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    current_user = user_views._get_user_from_request(request)
+    comun = _get_comun_for_roadmap(slug)
+    if not comun:
+        return JsonResponse({"ok": False, "error": "comun not found"}, status=404)
+    if not current_user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    if not _comun_roadmap_owner(current_user, comun):
+        return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+
+    query = re.sub(r"\s+", " ", str(request.GET.get("q") or "").strip())
+    try:
+        limit = min(max(int(request.GET.get("limit", "20")), 1), 50)
+    except (TypeError, ValueError):
+        limit = 20
+    language = _normalize_content_language(request.GET.get("lang"))
+    posts_query = community_service._comun_posts_base_queryset(comun, timezone.now()).exclude(
+        comun_roadmap_item__isnull=False
+    )
+    posts_query = community_service._filter_posts_for_language(posts_query, language)
+    if query:
+        search_filter = (
+            Q(title__icontains=query)
+            | Q(preview_content__icontains=query)
+            | Q(content__icontains=query)
+        )
+        if language != _ORIGINAL_CONTENT_LANGUAGE:
+            search_filter |= (
+                Q(
+                    translations__language=language,
+                    translations__status=POST_TRANSLATION_STATUS_TRANSLATED,
+                    translations__title__icontains=query,
+                )
+                | Q(
+                    translations__language=language,
+                    translations__status=POST_TRANSLATION_STATUS_TRANSLATED,
+                    translations__preview_content__icontains=query,
+                )
+                | Q(
+                    translations__language=language,
+                    translations__status=POST_TRANSLATION_STATUS_TRANSLATED,
+                    translations__content__icontains=query,
+                )
+            )
+        posts_query = posts_query.filter(search_filter)
+    post_prefetches = ["tags"]
+    translation_prefetch = community_service._post_translation_prefetch(language)
+    if translation_prefetch:
+        post_prefetches.append(translation_prefetch)
+    posts = list(
+        posts_query.select_related("author")
+        .prefetch_related(*post_prefetches)
+        .order_by("-created_at", "-id")[:limit]
+    )
+    favorite_post_ids = community_service._favorite_post_ids_for_user(posts, current_user)
+    return JsonResponse(
+        {
+            "ok": True,
+            "posts": [
+                community_service._serialize_backend_post_card(
+                    request,
+                    post,
+                    current_user,
+                    is_favorite=post.id in favorite_post_ids,
+                    language=language,
+                )
+                for post in posts
+            ],
+        }
+    )
+
+
+@csrf_exempt
+def comun_roadmap_item(request: HttpRequest, slug: str, post_id: int) -> HttpResponse:
+    if request.method not in ("GET", "DELETE"):
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+    current_user = user_views._get_user_from_request(request)
+    comun = _get_comun_for_roadmap(slug)
+    if not comun:
+        return JsonResponse({"ok": False, "error": "comun not found"}, status=404)
+    if not current_user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+    if not _comun_roadmap_owner(current_user, comun):
+        return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+
+    item = ComunRoadmapItem.objects.filter(comun=comun, post_id=post_id).first()
+    if request.method == "GET":
+        return JsonResponse(
+            {
+                "ok": True,
+                "in_roadmap": bool(item),
+                "stage": item.stage if item else None,
+            }
+        )
+    if not item:
+        return JsonResponse({"ok": False, "error": "roadmap item not found"}, status=404)
+    item.delete()
+    return JsonResponse({"ok": True, "deleted": True, "post_id": post_id})
 
 
 @csrf_exempt

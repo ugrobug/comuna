@@ -4,11 +4,9 @@
   import { page } from '$app/stores'
   import { onDestroy, onMount } from 'svelte'
   import { Button, Modal, toast } from 'mono-svelte'
-  import ComunRoadmapModal from '$lib/components/comuns/ComunRoadmapModal.svelte'
   import WelcomePostDropdown from '$lib/components/comuns/WelcomePostDropdown.svelte'
   import FeedPostsList from '$lib/components/feeds/FeedPostsList.svelte'
   import {
-    buildBackendPostPath,
     buildComunGlossaryPath,
     buildComunKnowledgeBasePath,
     buildComunMapPath,
@@ -1493,16 +1491,6 @@
 
   $: if (
     browser &&
-    roadmapSignature &&
-    roadmapSignature !== lastRoadmapPreviewSignature &&
-    roadmapCanOpenModal
-  ) {
-    lastRoadmapPreviewSignature = roadmapSignature
-    void loadRoadmapPreviews()
-  }
-
-  $: if (
-    browser &&
     wantsSettingsOpenFromUrl &&
     $siteToken &&
     !settingsOpen &&
@@ -1861,22 +1849,6 @@
       </div>
     </div>
   {/if}
-
-  <ComunRoadmapModal
-    open={roadmapModalVisible}
-    comunName={comun?.name ?? $t('routes.communityPage.community')}
-    trackedCount={roadmapTrackedCount}
-    releasedCount={roadmapReleasedCount}
-    stages={roadmapStages}
-    getPreviewState={getRoadmapPreviewState}
-    stageStyleVars={roadmapStageStyleVars}
-    buildPostPath={buildBackendPostPath}
-    formatCount={formatRoadmapCount}
-    formatDate={formatRoadmapDate}
-    snippetForPost={roadmapSnippet}
-    onClose={closePublicRoadmapModal}
-    onSubmit={openRoadmapSubmitFlow}
-  />
 
   {#if comun?.welcome_post && welcomeFeedPosts.length}
     <section class="rounded-2xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/60 dark:bg-blue-950/20 p-4 sm:p-5">

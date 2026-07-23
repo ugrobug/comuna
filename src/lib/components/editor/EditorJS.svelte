@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte'
+  import { createEventDispatcher, onMount, onDestroy } from 'svelte'
   import { profile } from '$lib/auth'
   import { uploadSiteImage, siteToken } from '$lib/siteAuth'
   import {
@@ -4382,6 +4382,22 @@
   export let enableAutosave: boolean = true // Разрешение автосохранения
   export let onContentChange: (() => void) | null = null // Callback для уведомления PostForm об изменениях
 
+  type EditorReviewMarker = {
+    blockId: string
+    blockIndex: number
+    count: number
+    avatarUrl?: string | null
+    initial?: string
+    label?: string
+    active?: boolean
+  }
+
+  export let reviewMarkers: EditorReviewMarker[] = []
+
+  const dispatch = createEventDispatcher<{
+    reviewblockclick: { blockId: string }
+  }>()
+
   const normalizeGlossaryTermOptions = (terms: GlossaryTermOption[]) =>
     (Array.isArray(terms) ? terms : [])
       .map((term) => ({
@@ -4545,6 +4561,91 @@
   let destroyBlockDragAndDrop: (() => void) | null = null
   let isImageBlockEnabled = true
   let isUploadingPastedImage = false
+  let reviewMarkerSyncTimer: ReturnType<typeof setTimeout> | null = null
+
+  const syncEditorReviewMarkers = () => {
+    if (!element || !editor) return
+
+    element.querySelectorAll('[data-editor-review-marker]').forEach((marker) => marker.remove())
+    element
+      .querySelectorAll('.ce-block.editor-review-block')
+      .forEach((block) => block.classList.remove('editor-review-block'))
+
+    const validMarkers = (Array.isArray(reviewMarkers) ? reviewMarkers : []).filter(
+      (marker) => marker.blockId && marker.count > 0
+    )
+    if (!validMarkers.length) return
+
+    const markersById = new Map(validMarkers.map((marker) => [marker.blockId, marker]))
+    const markersByIndex = new Map(validMarkers.map((marker) => [marker.blockIndex, marker]))
+    const blocks = Array.from(element.querySelectorAll<HTMLElement>('.ce-block'))
+
+    blocks.forEach((block, index) => {
+      const blockId = String(block.dataset.id || '').trim()
+      const marker = markersById.get(blockId) ?? markersByIndex.get(index)
+      if (!marker) return
+
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.className = `editor-review-marker${marker.active ? ' editor-review-marker--active' : ''}`
+      button.dataset.editorReviewMarker = marker.blockId
+      button.setAttribute('aria-label', marker.label || 'Open discussion')
+      button.title = marker.label || 'Open discussion'
+
+      if (marker.avatarUrl) {
+        const image = document.createElement('img')
+        image.src = marker.avatarUrl
+        image.alt = ''
+        image.loading = 'lazy'
+        button.appendChild(image)
+      } else {
+        const fallback = document.createElement('span')
+        fallback.className = 'editor-review-marker__fallback'
+        fallback.textContent = String(marker.initial || '?').slice(0, 1).toUpperCase()
+        button.appendChild(fallback)
+      }
+
+      if (marker.count > 1) {
+        const count = document.createElement('span')
+        count.className = 'editor-review-marker__count'
+        count.textContent = marker.count > 99 ? '99+' : String(marker.count)
+        button.appendChild(count)
+      }
+
+      block.classList.add('editor-review-block')
+      block.appendChild(button)
+    })
+  }
+
+  const queueReviewMarkerSync = () => {
+    if (reviewMarkerSyncTimer) clearTimeout(reviewMarkerSyncTimer)
+    reviewMarkerSyncTimer = setTimeout(() => {
+      reviewMarkerSyncTimer = null
+      syncEditorReviewMarkers()
+    }, 0)
+  }
+
+  const handleEditorReviewClick = (event: Event) => {
+    const target = event.target as HTMLElement | null
+    const marker = target?.closest<HTMLElement>('[data-editor-review-marker]')
+    const blockId = marker?.dataset.editorReviewMarker
+    if (!marker || !blockId) return
+    event.preventDefault()
+    event.stopPropagation()
+    dispatch('reviewblockclick', { blockId })
+  }
+
+  const stopEditorReviewPointer = (event: Event) => {
+    const target = event.target as HTMLElement | null
+    if (!target?.closest('[data-editor-review-marker]')) return
+    event.preventDefault()
+    event.stopPropagation()
+  }
+
+  $: {
+    JSON.stringify(reviewMarkers)
+    if (editor) queueReviewMarkerSync()
+  }
 
   const getPastedImageFile = (event: ClipboardEvent): File | null => {
     const clipboardData = event.clipboardData
@@ -4921,6 +5022,8 @@
 
   onMount(async () => {
     console.log('🚀 EditorJS onMount: начало монтирования', { postId })
+    element.addEventListener('pointerdown', stopEditorReviewPointer, true)
+    element.addEventListener('mousedown', stopEditorReviewPointer, true)
     
     // Загружаем информацию о последнем сохранении черновика
     draftLastSaved = getDraftLastSaved(postId)
@@ -5410,6 +5513,7 @@
       onChange: async () => {
         const data = await editor.save()
         updateMarkdown(data)
+        queueReviewMarkerSync()
       },
       onReady: () => {
         console.log('🚀 EditorJS готов к работе');
@@ -5417,6 +5521,8 @@
         destroyBlockDragAndDrop?.()
         destroyBlockDragAndDrop = setupEditorBlockDragAndDrop(editor, element)
         element.addEventListener('paste', handleEditorPaste, true)
+        element.addEventListener('click', handleEditorReviewClick, true)
+        queueReviewMarkerSync()
         
         // Добавляем обработчик кликов по ссылкам для их редактирования
         const editorElement = element.querySelector('.codex-editor__redactor');
@@ -5486,6 +5592,7 @@
       // Очищаем редактор и загружаем новые данные
       await editor.clear()
       await editor.render(contentData)
+      queueReviewMarkerSync()
       
       // Временно отключаем автосохранение при внешнем обновлении
       isInitialized = false
@@ -5517,6 +5624,11 @@
 
   onDestroy(() => {
     element?.removeEventListener('paste', handleEditorPaste, true)
+    element?.removeEventListener('click', handleEditorReviewClick, true)
+    element?.removeEventListener('pointerdown', stopEditorReviewPointer, true)
+    element?.removeEventListener('mousedown', stopEditorReviewPointer, true)
+    if (reviewMarkerSyncTimer) clearTimeout(reviewMarkerSyncTimer)
+    reviewMarkerSyncTimer = null
     destroyBlockDragAndDrop?.()
     destroyBlockDragAndDrop = null
     if (editor) {
@@ -5641,6 +5753,98 @@
 
   .editor-content {
     padding-left: 2.5rem;
+  }
+
+  :global(.editor-content .ce-block.editor-review-block) {
+    position: relative;
+  }
+
+  :global(.editor-content .ce-block.editor-review-block > .ce-block__content) {
+    padding-right: 2.75rem;
+  }
+
+  :global(.editor-content .editor-review-marker) {
+    position: absolute;
+    z-index: 8;
+    top: 0.35rem;
+    right: 0.35rem;
+    display: flex;
+    width: 2rem;
+    height: 2rem;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    overflow: visible;
+    border: 2px solid white;
+    border-radius: 9999px;
+    background: #e2e8f0;
+    color: #334155;
+    box-shadow: 0 1px 4px rgb(15 23 42 / 0.25);
+    cursor: pointer;
+  }
+
+  :global(.editor-content .editor-review-marker:hover),
+  :global(.editor-content .editor-review-marker--active) {
+    box-shadow: 0 0 0 3px rgb(8 145 178 / 0.2), 0 1px 4px rgb(15 23 42 / 0.25);
+  }
+
+  :global(.editor-content .editor-review-marker img),
+  :global(.editor-content .editor-review-marker__fallback) {
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+  }
+
+  :global(.editor-content .editor-review-marker img) {
+    object-fit: cover;
+  }
+
+  :global(.editor-content .editor-review-marker__fallback) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: 700;
+  }
+
+  :global(.editor-content .editor-review-marker__count) {
+    position: absolute;
+    top: -0.45rem;
+    right: -0.45rem;
+    min-width: 1.1rem;
+    height: 1.1rem;
+    padding: 0 0.25rem;
+    border: 2px solid white;
+    border-radius: 9999px;
+    background: #0891b2;
+    color: white;
+    font-size: 0.58rem;
+    font-weight: 700;
+    line-height: 0.85rem;
+    text-align: center;
+  }
+
+  :global(.dark .editor-content .editor-review-marker) {
+    border-color: #1e293b;
+    background: #3f3f46;
+    color: #f4f4f5;
+  }
+
+  :global(.dark .editor-content .editor-review-marker__count) {
+    border-color: #1e293b;
+  }
+
+  @media (max-width: 640px) {
+    :global(.editor-content .ce-block.editor-review-block > .ce-block__content) {
+      padding-right: 2rem;
+    }
+
+    :global(.editor-content .editor-review-marker) {
+      top: 0.25rem;
+      right: 0.1rem;
+      width: 1.65rem;
+      height: 1.65rem;
+    }
   }
 
   :global(.gallery-wrapper) {

@@ -11,6 +11,9 @@ from communities.views import (
     comun_glossary_submission_create,
     comun_knowledge_base,
     comun_knowledge_base_item,
+    comun_roadmap,
+    comun_roadmap_item,
+    comun_roadmap_posts,
     comun_map,
     comun_post_category_update,
     comun_posts,
@@ -201,6 +204,21 @@ urlpatterns = [
         "api/comuns/<slug:slug>/knowledge-base/<int:item_id>/",
         comun_knowledge_base_item,
         name="comun-knowledge-base-item",
+    ),
+    path(
+        "api/comuns/<slug:slug>/roadmap/",
+        comun_roadmap,
+        name="comun-roadmap",
+    ),
+    path(
+        "api/comuns/<slug:slug>/roadmap/posts/",
+        comun_roadmap_posts,
+        name="comun-roadmap-posts",
+    ),
+    path(
+        "api/comuns/<slug:slug>/roadmap/<int:post_id>/",
+        comun_roadmap_item,
+        name="comun-roadmap-item",
     ),
     path(
         "api/comuns/<slug:slug>/map/",

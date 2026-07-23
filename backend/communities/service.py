@@ -840,7 +840,9 @@ def _serialize_post_comun(
         "subscribers_count": max(1, int(getattr(comun, "subscribers_count", 0) or 0)),
         "authors_count": int(getattr(comun, "authors_count", 0) or 0),
         "knowledge_base_enabled": bool(getattr(comun, "knowledge_base_enabled", False)),
+        "roadmap_enabled": bool(getattr(comun, "roadmap_enabled", False)),
         "can_moderate": _comun_is_moderator(current_user, comun),
+        "can_manage_roadmap": bool(current_user and comun.creator_id == current_user.id),
     }
 
 

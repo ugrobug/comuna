@@ -251,6 +251,37 @@ export const buildComunRoadmapPath = (slug: string): string => {
   return `/comuns/${encodeURIComponent(slug)}/roadmap`
 }
 
+export const buildComunRoadmapUrl = (
+  slug: string,
+  options?: { language?: string }
+): string => {
+  const base = `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/roadmap/`
+  const params = new URLSearchParams()
+  if (options?.language && options.language !== 'ru') params.set('lang', options.language)
+  const query = params.toString()
+  return query ? `${base}?${query}` : base
+}
+
+export const buildComunRoadmapPostsUrl = (
+  slug: string,
+  options?: { q?: string; limit?: number; language?: string }
+): string => {
+  const base = `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/roadmap/posts/`
+  const params = new URLSearchParams()
+  if (options?.q) params.set('q', options.q)
+  if (typeof options?.limit === 'number') params.set('limit', String(options.limit))
+  if (options?.language && options.language !== 'ru') params.set('lang', options.language)
+  const query = params.toString()
+  return query ? `${base}?${query}` : base
+}
+
+export const buildComunRoadmapItemUrl = (
+  slug: string,
+  postId: number | string
+): string => {
+  return `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/roadmap/${encodeURIComponent(postId)}/`
+}
+
 export const buildComunMapPath = (slug: string): string => {
   return `/comuns/${encodeURIComponent(slug)}/map`
 }
@@ -1094,7 +1125,19 @@ export type BackendPostComun = {
   slug: string
   logo_url?: string | null
   knowledge_base_enabled?: boolean
+  roadmap_enabled?: boolean
   can_moderate?: boolean
+  can_manage_roadmap?: boolean
+}
+
+export type BackendComunRoadmapStage = 'planned' | 'in_progress' | 'done'
+
+export type BackendComunRoadmapItem = {
+  id: number
+  stage: BackendComunRoadmapStage
+  position: number
+  created_at?: string | null
+  post: BackendPost
 }
 
 export type BackendComunKnowledgeBaseItem = {
@@ -1370,6 +1413,8 @@ export const backendPostToPostView = (
       comun_category: post.comun_category ?? null,
       comun_knowledge_base_enabled: Boolean(post.comun?.knowledge_base_enabled),
       comun_can_moderate: Boolean(post.comun?.can_moderate),
+      comun_roadmap_enabled: Boolean(post.comun?.roadmap_enabled),
+      comun_can_manage_roadmap: Boolean(post.comun?.can_manage_roadmap),
       can_manage_bug_report_status: Boolean(post.can_manage_bug_report_status),
       bug_report_confirmation: post.bug_report_confirmation ?? null,
       vote_poll_participations: post.vote_poll_participations ?? [],
