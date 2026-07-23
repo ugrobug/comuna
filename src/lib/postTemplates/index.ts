@@ -1129,6 +1129,7 @@ export const movieReviewAuthorRatingTone = (
 export const movieReviewGenreLabel = (genre: string | null | undefined): string => {
   if (!genre) return ''
   const normalized = normalizeMovieReviewGenre(genre)
+  if (!genreLabelByValue.has(normalized)) return genre
   return t.get(`site.template.movie.genres.${normalized}`) || genreLabelByValue.get(normalized) || genre
 }
 

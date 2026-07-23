@@ -60,5 +60,4 @@
     sendPageView($page.url.pathname + $page.url.search);
   }
 
-  console.log('GA_MEASUREMENT_ID:', PUBLIC_GA_MEASUREMENT_ID);
-</script> 
+</script>
