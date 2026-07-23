@@ -141,7 +141,7 @@ services:
       dockerfile: deploy/Dockerfile.backend
     restart: unless-stopped
     logging: *default-logging
-    command: sh -c "worker() { while true; do python -u manage.py process_translation_tasks --limit 50 --run-timeout 720 || true; sleep 10; done; }; reconcile() { while true; do python -u manage.py queue_missing_post_translation_tasks || true; sleep 21600; done; }; worker & worker & reconcile & wait"
+    command: sh -c "worker() { while true; do python -u manage.py process_translation_tasks --limit 50 --run-timeout 720 --loop --interval 10 || true; sleep 10; done; }; reconcile() { while true; do python -u manage.py queue_missing_post_translation_tasks || true; sleep 21600; done; }; worker & worker & reconcile & wait"
     env_file:
       - .env.backend
     environment:
