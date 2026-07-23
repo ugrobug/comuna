@@ -3,16 +3,7 @@ import type { RequestHandler } from './$types'
 export const GET: RequestHandler = ({ url }) => {
   const origin = url.origin.replace(/\/+$/, '')
   const body = [
-    'User-agent: GPTBot',
-    'Disallow: /',
-    '',
-    'User-agent: ClaudeBot',
-    'Disallow: /',
-    '',
     'User-agent: Bytespider',
-    'Disallow: /',
-    '',
-    'User-agent: meta-externalagent',
     'Disallow: /',
     '',
     'User-agent: SemrushBot',
