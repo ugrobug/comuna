@@ -69,9 +69,15 @@
   })
 
   const stageStyleVars = (stage: BackendComunRoadmapStage) => {
-    if (stage === 'planned') return '--lane-accent: 217 119 6; --lane-soft: 255 251 235;'
-    if (stage === 'in_progress') return '--lane-accent: 2 132 199; --lane-soft: 240 249 255;'
-    return '--lane-accent: 5 150 105; --lane-soft: 236 253 245;'
+    if (stage === 'planned') return '--lane-h: 34; --lane-s: 88%; --lane-l: 50%;'
+    if (stage === 'in_progress') return '--lane-h: 153; --lane-s: 77%; --lane-l: 40%;'
+    return '--lane-h: 340; --lane-s: 78%; --lane-l: 52%;'
+  }
+
+  const stageBadgeLabel = (stage: BackendComunRoadmapStage) => {
+    if (stage === 'planned') return 'Дальше'
+    if (stage === 'in_progress') return 'В работе'
+    return 'Готово'
   }
 
   const formatCount = (value: number) =>
@@ -208,79 +214,81 @@
 <div class="mx-auto flex w-full max-w-7xl flex-col gap-6">
   <div class="flex flex-wrap items-center justify-between gap-3">
     <div class="min-w-0">
-      <Header noMargin>Дорожная карта</Header>
+      <Header noMargin>Публичная дорожная карта</Header>
       {#if comun?.name}
         <div class="truncate text-sm text-slate-600 dark:text-zinc-400">{comun.name}</div>
       {/if}
     </div>
     <a
       href={comun?.slug ? `/comuns/${encodeURIComponent(comun.slug)}` : '/comuns'}
-      class="inline-flex h-10 items-center border border-slate-200 bg-white px-3 text-sm font-medium text-slate-900 transition hover:bg-slate-50 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100 dark:hover:bg-zinc-900"
+      class="inline-flex items-center rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-900 transition hover:bg-slate-50 dark:border-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-800/60"
     >
       Назад к сообществу
     </a>
   </div>
 
-  <div class="roadmap-grid">
-    {#each STAGES as stage}
-      {@const stageItems = items
-        .filter((item) => item.stage === stage.key)
-        .sort((a, b) => Number(a.position ?? 0) - Number(b.position ?? 0))}
-      <section class="roadmap-lane" style={stageStyleVars(stage.key)}>
-        <header class="lane-header">
-          <div class="min-w-0">
-            <div class="flex items-center gap-2">
-              <span class="lane-marker"></span>
-              <h2 class="text-base font-semibold text-slate-950 dark:text-zinc-100">
-                {stage.label}
-              </h2>
-              <span class="lane-count">{formatCount(stageItems.length)}</span>
-            </div>
-            <p class="mt-1 text-xs leading-5 text-slate-500 dark:text-zinc-400">
-              {stage.description}
-            </p>
-          </div>
-          {#if canManageRoadmap}
-            <button
-              type="button"
-              class="add-button"
-              on:click={() => openAddModal(stage.key)}
-              aria-label={`Добавить пост в столбец «${stage.label}»`}
-              title={`Добавить пост в «${stage.label}»`}
-            >
-              <Icon src={Plus} size="18" micro />
-            </button>
-          {/if}
-        </header>
+  <section class="roadmap-page-shell overflow-hidden rounded-3xl">
+    <div class="roadmap-page-glow"></div>
+    <div class="roadmap-page-content relative z-10 p-4 sm:p-5 lg:p-6">
+      <div class="roadmap-grid">
+        {#each STAGES as stage}
+          {@const stageItems = items
+            .filter((item) => item.stage === stage.key)
+            .sort((a, b) => Number(a.position ?? 0) - Number(b.position ?? 0))}
+          <section class="roadmap-lane rounded-2xl p-4" style={stageStyleVars(stage.key)}>
+            <header class="lane-header">
+              <div class="min-w-0">
+                <div class="lane-pill">{stageBadgeLabel(stage.key)}</div>
+                <h2 class="mt-2 text-sm font-semibold text-slate-900 dark:text-zinc-100">
+                  {stage.label}
+                </h2>
+                <div class="mt-1 text-xs text-slate-500 dark:text-zinc-400">
+                  {formatCount(stageItems.length)} карточек
+                </div>
+              </div>
+              {#if canManageRoadmap}
+                <button
+                  type="button"
+                  class="add-button rounded-xl"
+                  on:click={() => openAddModal(stage.key)}
+                  aria-label={`Добавить пост в столбец «${stage.label}»`}
+                  title={`Добавить пост в «${stage.label}»`}
+                >
+                  <Icon src={Plus} size="18" micro />
+                </button>
+              {/if}
+            </header>
 
-        <div class="lane-content">
-          {#if stageItems.length}
-            {#each stageItems as item (item.id)}
-              {@const snippet = postSnippet(item.post)}
-              <a href={buildBackendPostPath(item.post)} class="roadmap-card">
-                <div class="text-sm font-semibold leading-5 text-slate-950 dark:text-zinc-100">
-                  {item.post.title || 'Без заголовка'}
-                </div>
-                {#if snippet}
-                  <p class="mt-2 line-clamp-3 text-xs leading-5 text-slate-600 dark:text-zinc-400">
-                    {snippet}
-                  </p>
-                {/if}
-                <div class="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-zinc-500">
-                  <span>{formatCount(item.post.comments_count ?? 0)} комментариев</span>
-                  {#if formatDate(item.post.created_at)}
-                    <span>{formatDate(item.post.created_at)}</span>
-                  {/if}
-                </div>
-              </a>
-            {/each}
-          {:else}
-            <div class="lane-empty">{stage.empty}</div>
-          {/if}
-        </div>
-      </section>
-    {/each}
-  </div>
+            <p class="lane-description">{stage.description}</p>
+
+            <div class="lane-content">
+              {#if stageItems.length}
+                {#each stageItems as item (item.id)}
+                  {@const snippet = postSnippet(item.post)}
+                  <a href={buildBackendPostPath(item.post)} class="mini-card rounded-xl p-3">
+                    <div class="mini-card__title">{item.post.title || 'Без заголовка'}</div>
+                    {#if snippet}
+                      <div class="mini-card__snippet">{snippet}</div>
+                    {/if}
+                    <div class="mini-card__meta">
+                      <span>Голоса {formatCount(item.post.likes_count ?? 0)}</span>
+                      <span>Комментарии {formatCount(item.post.comments_count ?? 0)}</span>
+                      {#if formatDate(item.post.created_at)}
+                        <span>{formatDate(item.post.created_at)}</span>
+                      {/if}
+                    </div>
+                    <div class="mini-card__cta">Открыть карточку и обсуждение</div>
+                  </a>
+                {/each}
+              {:else}
+                <div class="lane-state">{stage.empty}</div>
+              {/if}
+            </div>
+          </section>
+        {/each}
+      </div>
+    </div>
+  </section>
 </div>
 
 {#if addModalOpen}
@@ -292,7 +300,7 @@
         on:click={closeAddModal}
         aria-label="Закрыть"
       ></button>
-      <section class="relative z-10 flex max-h-[min(720px,90dvh)] w-full max-w-2xl flex-col overflow-hidden border border-slate-200 bg-white shadow-2xl dark:border-zinc-700 dark:bg-zinc-950">
+      <section class="relative z-10 flex max-h-[min(720px,90dvh)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-zinc-700 dark:bg-zinc-950">
         <header class="flex items-start justify-between gap-4 border-b border-slate-200 p-4 dark:border-zinc-800">
           <div>
             <h2 class="text-lg font-semibold text-slate-950 dark:text-zinc-100">Добавить пост</h2>
@@ -300,13 +308,13 @@
               Столбец «{selectedStageDefinition.label}»
             </p>
           </div>
-          <button type="button" class="close-button" on:click={closeAddModal} aria-label="Закрыть">
+          <button type="button" class="close-button rounded-xl" on:click={closeAddModal} aria-label="Закрыть">
             <Icon src={XMark} size="20" micro />
           </button>
         </header>
 
         <div class="border-b border-slate-200 p-4 dark:border-zinc-800">
-          <label class="search-field">
+          <label class="search-field rounded-xl">
             <Icon src={MagnifyingGlass} size="18" micro />
             <input
               type="search"
@@ -368,58 +376,90 @@
 </svelte:head>
 
 <style>
+  .roadmap-page-shell {
+    position: relative;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    background:
+      radial-gradient(circle at 12% 12%, rgba(59, 130, 246, 0.12), transparent 38%),
+      radial-gradient(circle at 88% 8%, rgba(249, 115, 22, 0.12), transparent 34%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.95));
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.08);
+  }
+
+  :global(.dark) .roadmap-page-shell {
+    border-color: rgba(63, 63, 70, 0.9);
+    background:
+      radial-gradient(circle at 12% 12%, rgba(59, 130, 246, 0.18), transparent 38%),
+      radial-gradient(circle at 88% 8%, rgba(249, 115, 22, 0.14), transparent 34%),
+      linear-gradient(180deg, rgba(24, 24, 27, 0.96), rgba(10, 10, 11, 0.97));
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.34);
+  }
+
+  .roadmap-page-glow {
+    position: absolute;
+    inset: -4px;
+    pointer-events: none;
+    border-radius: 1.7rem;
+    background: linear-gradient(
+      125deg,
+      rgba(59, 130, 246, 0.22),
+      rgba(168, 85, 247, 0.14),
+      rgba(16, 185, 129, 0.16)
+    );
+    filter: blur(24px);
+    opacity: 0.4;
+  }
+
   .roadmap-grid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.75rem;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 0.9rem;
     align-items: start;
   }
 
   .roadmap-lane {
-    min-width: 0;
-    border: 1px solid rgb(226 232 240);
-    background: rgb(248 250 252);
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    background: linear-gradient(
+      180deg,
+      hsla(var(--lane-h), 95%, 97%, 0.84),
+      rgba(255, 255, 255, 0.86)
+    );
   }
 
   :global(.dark) .roadmap-lane {
-    border-color: rgb(39 39 42);
-    background: rgb(9 9 11);
+    border-color: rgba(63, 63, 70, 0.85);
+    background: linear-gradient(
+      180deg,
+      hsla(var(--lane-h), 44%, 15%, 0.4),
+      rgba(24, 24, 27, 0.84)
+    );
   }
 
   .lane-header {
     display: flex;
-    min-height: 92px;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 0.75rem;
-    border-bottom: 1px solid rgb(226 232 240);
-    padding: 1rem;
+    gap: 0.5rem;
   }
 
-  :global(.dark) .lane-header {
-    border-color: rgb(39 39 42);
-  }
-
-  .lane-marker {
-    width: 0.55rem;
-    height: 0.55rem;
-    flex: none;
-    border-radius: 999px;
-    background: rgb(var(--lane-accent));
-  }
-
-  .lane-count {
+  .lane-pill {
     display: inline-flex;
-    min-width: 1.4rem;
-    height: 1.4rem;
     align-items: center;
-    justify-content: center;
-    border-radius: 999px;
-    background: rgb(var(--lane-accent) / 0.12);
-    padding: 0 0.4rem;
-    font-size: 0.72rem;
+    border-radius: 9999px;
+    padding: 0.22rem 0.55rem;
+    border: 1px solid hsla(var(--lane-h), 84%, 56%, 0.2);
+    background: hsla(var(--lane-h), 92%, 93%, 0.94);
+    color: hsl(var(--lane-h) 60% 30%);
+    font-size: 0.68rem;
     font-weight: 700;
-    color: rgb(var(--lane-accent));
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  :global(.dark) .lane-pill {
+    border-color: hsla(var(--lane-h), 62%, 52%, 0.22);
+    background: hsla(var(--lane-h), 46%, 18%, 0.58);
+    color: hsl(var(--lane-h) 88% 82%);
   }
 
   .add-button,
@@ -430,22 +470,26 @@
     flex: none;
     align-items: center;
     justify-content: center;
-    border: 1px solid rgb(203 213 225);
-    background: white;
-    color: rgb(51 65 85);
-    transition: background-color 0.15s ease, color 0.15s ease;
+    border: 1px solid hsla(var(--lane-h, 220), 55%, 45%, 0.24);
+    background: rgba(255, 255, 255, 0.72);
+    color: hsl(var(--lane-h, 220) 62% 34%);
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease,
+      transform 0.15s ease;
   }
 
   .add-button:hover,
   .close-button:hover {
-    background: rgb(241 245 249);
-    color: rgb(15 23 42);
+    background: rgba(255, 255, 255, 0.96);
+    color: hsl(var(--lane-h, 220) 72% 26%);
+    transform: translateY(-1px);
   }
 
   :global(.dark) .add-button,
   :global(.dark) .close-button {
-    border-color: rgb(63 63 70);
-    background: rgb(24 24 27);
+    border-color: rgba(82, 82, 91, 0.86);
+    background: rgba(24, 24, 27, 0.72);
     color: rgb(212 212 216);
   }
 
@@ -457,45 +501,114 @@
 
   .lane-content {
     display: flex;
-    min-height: 160px;
     flex-direction: column;
-    gap: 0.6rem;
-    padding: 0.75rem;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
   }
 
-  .roadmap-card {
-    display: block;
-    border: 1px solid rgb(226 232 240);
-    background: white;
-    padding: 0.85rem;
-    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  .lane-description {
+    margin: 0.75rem 0 0;
+    color: rgb(71 85 105);
+    font-size: 0.82rem;
+    line-height: 1.4;
   }
 
-  .roadmap-card:hover {
-    border-color: rgb(var(--lane-accent) / 0.55);
-    box-shadow: 0 5px 16px rgb(15 23 42 / 0.07);
-  }
-
-  :global(.dark) .roadmap-card {
-    border-color: rgb(39 39 42);
-    background: rgb(24 24 27);
-  }
-
-  .lane-empty {
-    display: flex;
-    min-height: 130px;
-    align-items: center;
-    justify-content: center;
-    border: 1px dashed rgb(203 213 225);
-    padding: 1rem;
-    text-align: center;
-    font-size: 0.8rem;
-    color: rgb(100 116 139);
-  }
-
-  :global(.dark) .lane-empty {
-    border-color: rgb(63 63 70);
+  :global(.dark) .lane-description {
     color: rgb(161 161 170);
+  }
+
+  .mini-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    background: rgba(255, 255, 255, 0.86);
+    transition:
+      transform 0.14s ease,
+      box-shadow 0.14s ease,
+      border-color 0.14s ease;
+  }
+
+  .mini-card:hover {
+    transform: translateY(-1px);
+    border-color: hsla(var(--lane-h), 80%, 48%, 0.28);
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.07);
+  }
+
+  :global(.dark) .mini-card {
+    border-color: rgba(63, 63, 70, 0.78);
+    background: rgba(9, 9, 11, 0.36);
+  }
+
+  :global(.dark) .mini-card:hover {
+    border-color: hsla(var(--lane-h), 70%, 56%, 0.3);
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.24);
+  }
+
+  .mini-card__title {
+    line-clamp: 2;
+    display: -webkit-box;
+    overflow: hidden;
+    color: rgb(15 23 42);
+    font-size: 0.88rem;
+    font-weight: 600;
+    line-height: 1.28;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .mini-card__snippet {
+    line-clamp: 3;
+    display: -webkit-box;
+    overflow: hidden;
+    color: rgb(71 85 105);
+    font-size: 0.78rem;
+    line-height: 1.4;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+  }
+
+  .mini-card__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.6rem;
+    color: rgb(100 116 139);
+    font-size: 0.72rem;
+  }
+
+  .mini-card__cta {
+    color: hsl(var(--lane-h) 62% 36%);
+    font-size: 0.76rem;
+    font-weight: 600;
+  }
+
+  :global(.dark) .mini-card__title {
+    color: rgb(244 244 245);
+  }
+
+  :global(.dark) .mini-card__snippet,
+  :global(.dark) .mini-card__meta {
+    color: rgb(161 161 170);
+  }
+
+  :global(.dark) .mini-card__cta {
+    color: hsl(var(--lane-h) 90% 80%);
+  }
+
+  .lane-state {
+    border: 1px dashed rgba(148, 163, 184, 0.28);
+    border-radius: 0.85rem;
+    background: rgba(248, 250, 252, 0.78);
+    color: rgb(71 85 105);
+    font-size: 0.82rem;
+    line-height: 1.38;
+    padding: 0.8rem;
+  }
+
+  :global(.dark) .lane-state {
+    border-color: rgba(82, 82, 91, 0.9);
+    background: rgba(9, 9, 11, 0.34);
+    color: rgb(212 212 216);
   }
 
   .search-field {
