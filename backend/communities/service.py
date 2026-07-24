@@ -1720,12 +1720,12 @@ def _favorite_post_ids_for_user(posts: list[Post], user: User | None) -> set[int
     return _feeds_views()._favorite_post_ids_for_user(posts, user)
 
 
-def _filter_posts_for_language(queryset, language: str):
-    return _feeds_views()._filter_posts_for_language(queryset, language)
+def _filter_posts_for_language(queryset, language: str, *, prefix: str = ""):
+    return _feeds_views()._filter_posts_for_language(queryset, language, prefix=prefix)
 
 
-def _post_translation_prefetch(language: str):
-    return _feeds_views()._post_translation_prefetch(language)
+def _post_translation_prefetch(language: str, *, prefix: str = ""):
+    return _feeds_views()._post_translation_prefetch(language, prefix=prefix)
 
 
 def _serialize_backend_post_card(

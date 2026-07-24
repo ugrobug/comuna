@@ -108,6 +108,36 @@ class PostTranslationServiceTests(TestCase):
             {"sort": "throughput", "require_parameters": True},
         )
 
+    @patch("feeds.translation_service.requests.post")
+    def test_translates_english_original_to_russian(self, post_mock) -> None:
+        self.post.title = "An English source article"
+        self.post.content = "<p>This article was originally written in English.</p>"
+        self.post.original_language = "en"
+        self.post.save(update_fields=["title", "content", "original_language", "updated_at"])
+        post_mock.return_value = FakeOpenRouterResponse(
+            200,
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "content": (
+                                '{"title": "Статья на английском", '
+                                '"content": "<p>Эта статья изначально написана на английском.</p>"}'
+                            )
+                        }
+                    }
+                ]
+            },
+        )
+
+        translation = translate_post_to_language(self.post, "ru")
+
+        self.assertEqual(translation.language, "ru")
+        request_payload = post_mock.call_args.kwargs["json"]
+        user_payload = json.loads(request_payload["messages"][1]["content"])
+        self.assertEqual(user_payload["source_language"], "English")
+        self.assertEqual(user_payload["target_language"], "Russian")
+
     @override_settings(
         CONTENT_TRANSLATION_PROVIDER="deepseek",
         DEEPSEEK_API_KEY="deepseek-test-key",

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, time, timedelta
 
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, F, Q, Sum
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -453,10 +453,13 @@ def _content_translation_coverage() -> dict:
     public_terms = ComunGlossaryTerm.objects.filter(is_active=True, comun__is_active=True)
     static_pages = StaticPageContent.objects.all()
     target_languages = [language for language, _label in POST_TRANSLATION_LANGUAGE_CHOICES]
+    post_languages = ["ru", *target_languages]
     target_language_count = len(target_languages)
     translated_posts = public_posts.filter(
         translations__status=POST_TRANSLATION_STATUS_TRANSLATED,
-        translations__language__in=target_languages,
+        translations__language__in=post_languages,
+    ).exclude(
+        translations__language=F("original_language")
     ).distinct()
     translated_comments = public_comments.filter(
         translations__status=POST_TRANSLATION_STATUS_TRANSLATED,
@@ -464,11 +467,11 @@ def _content_translation_coverage() -> dict:
     ).distinct()
     translated_post_rows = PostTranslation.objects.filter(
         status=POST_TRANSLATION_STATUS_TRANSLATED,
-        language__in=target_languages,
+        language__in=post_languages,
         post__is_blocked=False,
         post__is_pending=False,
         post__author__is_blocked=False,
-    ).count()
+    ).exclude(language=F("post__original_language")).count()
     translated_comment_rows = PostCommentTranslation.objects.filter(
         status=POST_TRANSLATION_STATUS_TRANSLATED,
         language__in=target_languages,
@@ -516,8 +519,9 @@ def _content_translation_coverage() -> dict:
                     "translations__language",
                     filter=Q(
                         translations__status=POST_TRANSLATION_STATUS_TRANSLATED,
-                        translations__language__in=target_languages,
-                    ),
+                        translations__language__in=post_languages,
+                    )
+                    & ~Q(translations__language=F("original_language")),
                     distinct=True,
                 )
             )

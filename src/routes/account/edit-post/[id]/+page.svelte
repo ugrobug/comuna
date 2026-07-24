@@ -373,7 +373,7 @@
     try {
       const updated = await updateUserPost(post.id, payload)
       toast({ content: 'Черновик опубликован', type: 'success' })
-      await goto(buildBackendPostPath({ id: updated.id, title: updated.title }))
+      await goto(buildBackendPostPath(updated))
     } catch (err) {
       saveError = (err as Error)?.message ?? 'Не удалось опубликовать черновик'
     } finally {
@@ -1166,7 +1166,7 @@
             </Button>
             <Button
               color="ghost"
-              href={buildBackendPostPath({ id: post.id, title: post.title })}
+              href={buildBackendPostPath(post)}
               target="_blank"
               rel="noreferrer"
               disabled={saving}

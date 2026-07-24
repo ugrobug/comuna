@@ -32,6 +32,8 @@ class Command(BaseCommand):
             raise CommandError(f"Post {post_id} does not exist") from exc
 
         for language in languages:
+            if language == post.original_language:
+                continue
             try:
                 translation = translate_post_to_language(post, language)
             except PostTranslationError as exc:

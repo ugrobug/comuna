@@ -35,7 +35,7 @@ from feeds.post_paths import build_post_public_path
 from landing_pages.models import LandingPage
 
 
-SITEMAP_MATERIALIZER_VERSION = 1
+SITEMAP_MATERIALIZER_VERSION = 2
 SITEMAP_SHARD_SIZE = 5_000
 ORIGINAL_LANGUAGE = "ru"
 TRANSLATED_LANGUAGES = ("en", "es", "pt", "de", "fr", "tr", "id")
@@ -287,7 +287,7 @@ def _post_group_fingerprint(queryset: QuerySet) -> tuple[str, int]:
     translations = PostTranslation.objects.filter(
         post_id__in=queryset.values("id"),
         status=POST_TRANSLATION_STATUS_TRANSLATED,
-        language__in=TRANSLATED_LANGUAGES,
+        language__in=PUBLIC_LANGUAGES,
     ).aggregate(count=Count("id"), max_updated=Max("updated_at"))
     payload = {
         "kind": "posts",
@@ -310,11 +310,11 @@ def _post_fallback_titles(post_ids: list[int]) -> dict[int, str]:
 def _build_post_files(queryset: QuerySet, start: int, end: int, base_url: str) -> dict[str, str]:
     translations = PostTranslation.objects.filter(
         status=POST_TRANSLATION_STATUS_TRANSLATED,
-        language__in=TRANSLATED_LANGUAGES,
+        language__in=PUBLIC_LANGUAGES,
     ).only("post_id", "language", "title", "updated_at", "status")
     posts = list(
         queryset.filter(id__gte=start, id__lte=end)
-        .only("id", "title", "created_at", "updated_at")
+        .only("id", "title", "original_language", "created_at", "updated_at")
         .prefetch_related(Prefetch("translations", queryset=translations, to_attr="_sitemap_translations"))
         .order_by("id")
     )
@@ -322,16 +322,28 @@ def _build_post_files(queryset: QuerySet, start: int, end: int, base_url: str) -
     entries_by_language: dict[str, list[SitemapEntry]] = {language: [] for language in PUBLIC_LANGUAGES}
 
     for post in posts:
-        russian_title = (post.title or "").strip() or fallback_titles.get(post.id) or "Пост"
+        original_title = (post.title or "").strip() or fallback_titles.get(post.id) or "Пост"
+        original_language = (
+            post.original_language
+            if post.original_language in PUBLIC_LANGUAGES
+            else ORIGINAL_LANGUAGE
+        )
+        original_path = build_post_public_path(post.id, original_title)
+        if original_language != ORIGINAL_LANGUAGE:
+            original_path = f"/{original_language}{original_path}"
         versions: dict[str, tuple[str, str | None]] = {
-            ORIGINAL_LANGUAGE: (
-                build_post_public_path(post.id, russian_title),
+            original_language: (
+                original_path,
                 _utc_timestamp(post.updated_at or post.created_at),
             )
         }
         for translation in getattr(post, "_sitemap_translations", []):
-            title = (translation.title or "").strip() or russian_title
-            path = f"/{translation.language}{build_post_public_path(post.id, title)}"
+            if translation.language == original_language:
+                continue
+            title = (translation.title or "").strip() or original_title
+            path = build_post_public_path(post.id, title)
+            if translation.language != ORIGINAL_LANGUAGE:
+                path = f"/{translation.language}{path}"
             versions[translation.language] = (path, _utc_timestamp(translation.updated_at))
 
         alternates = tuple(
@@ -339,7 +351,7 @@ def _build_post_files(queryset: QuerySet, start: int, end: int, base_url: str) -
             for language in PUBLIC_LANGUAGES
             if language in versions
         ) + (
-            SitemapAlternate("x-default", f"{base_url}{versions[ORIGINAL_LANGUAGE][0]}"),
+            SitemapAlternate("x-default", f"{base_url}{versions[original_language][0]}"),
         )
         for language, (path, lastmod) in versions.items():
             entries_by_language[language].append(

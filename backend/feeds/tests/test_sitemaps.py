@@ -48,6 +48,21 @@ class MaterializedSitemapTests(TestCase):
             content="<p>Text</p>",
             status="translated",
         )
+        self.english_post = Post.objects.create(
+            id=5006,
+            author=self.author,
+            message_id=6,
+            title="Original English guide",
+            content="<p>English source content</p>",
+            original_language="en",
+        )
+        PostTranslation.objects.create(
+            post=self.english_post,
+            language="ru",
+            title="Русский перевод руководства",
+            content="<p>Русский перевод</p>",
+            status="translated",
+        )
         Post.objects.create(
             id=5002,
             author=self.author,
@@ -142,12 +157,26 @@ class MaterializedSitemapTests(TestCase):
 
         russian_url = f"{SITE_BASE_URL}/b/post/5001-russkiy-zagolovok"
         english_url = f"{SITE_BASE_URL}/en/b/post/5001-english-title"
+        english_original_url = f"{SITE_BASE_URL}/en/b/post/5006-original-english-guide"
+        russian_translation_url = (
+            f"{SITE_BASE_URL}/b/post/5006-russkiy-perevod-rukovodstva"
+        )
         self.assertIn(f"<loc>{russian_url}</loc>", russian)
         self.assertIn(f'hreflang="en" href="{english_url}"', russian)
         self.assertIn(f'hreflang="x-default" href="{russian_url}"', russian)
         self.assertIn(f"<loc>{english_url}</loc>", english)
         self.assertIn(f'hreflang="ru" href="{russian_url}"', english)
         self.assertNotIn(f"<loc>{russian_url}</loc>", english)
+        self.assertIn(f"<loc>{english_original_url}</loc>", english)
+        self.assertIn(
+            f'hreflang="x-default" href="{english_original_url}"',
+            english,
+        )
+        self.assertIn(f"<loc>{russian_translation_url}</loc>", russian)
+        self.assertIn(
+            f'hreflang="en" href="{english_original_url}"',
+            russian,
+        )
 
         all_xml = "".join(
             path.read_text(encoding="utf-8")

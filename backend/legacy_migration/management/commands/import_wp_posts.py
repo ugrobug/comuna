@@ -3,6 +3,7 @@ from __future__ import annotations
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
+from feeds.language_detection import detect_post_language
 
 from feeds.models import Post
 from feeds.views import _generate_manual_message_id
@@ -199,6 +200,11 @@ class Command(BaseCommand):
                 assert post is not None
                 post.title = title
                 post.content = content
+                post.original_language = detect_post_language(
+                    title,
+                    content,
+                    fallback=post.original_language,
+                )
                 post.source_url = source_url
                 post.publish_at = publish_at
                 post.comments_count = comments_count
@@ -220,6 +226,7 @@ class Command(BaseCommand):
                 message_id=message_id,
                 title=title,
                 content=content,
+                original_language=detect_post_language(title, content),
                 source_url=source_url,
                 publish_at=publish_at,
                 comments_count=comments_count,

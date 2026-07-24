@@ -158,3 +158,151 @@ class ComunRoadmapTests(TestCase):
         response = self.client.delete(item_url)
         self.assertEqual(response.status_code, 200, response.content.decode())
         self.assertFalse(ComunRoadmapItem.objects.filter(id=item.id).exists())
+
+    def test_owner_can_move_and_reorder_roadmap_items(self):
+        second_post = self.create_post("Second roadmap post")
+        active_post = self.create_post("Active roadmap post")
+        last_active_post = self.create_post("Last active roadmap post")
+        ComunRoadmapItem.objects.create(
+            comun=self.comun,
+            post=self.post,
+            stage=ComunRoadmapItem.STAGE_PLANNED,
+            position=1,
+            added_by=self.owner,
+        )
+        moving_item = ComunRoadmapItem.objects.create(
+            comun=self.comun,
+            post=second_post,
+            stage=ComunRoadmapItem.STAGE_PLANNED,
+            position=2,
+            added_by=self.owner,
+        )
+        ComunRoadmapItem.objects.create(
+            comun=self.comun,
+            post=active_post,
+            stage=ComunRoadmapItem.STAGE_IN_PROGRESS,
+            position=1,
+            added_by=self.owner,
+        )
+        ComunRoadmapItem.objects.create(
+            comun=self.comun,
+            post=last_active_post,
+            stage=ComunRoadmapItem.STAGE_IN_PROGRESS,
+            position=2,
+            added_by=self.owner,
+        )
+        self.authenticate(self.owner)
+        item_url = reverse(
+            "comun-roadmap-item",
+            kwargs={"slug": self.comun.slug, "post_id": second_post.id},
+        )
+
+        response = self.client.patch(
+            item_url,
+            data=json.dumps(
+                {
+                    "stage": ComunRoadmapItem.STAGE_IN_PROGRESS,
+                    "position": 1,
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        moving_item.refresh_from_db()
+        self.assertEqual(moving_item.stage, ComunRoadmapItem.STAGE_IN_PROGRESS)
+        self.assertEqual(moving_item.position, 2)
+        self.assertEqual(
+            list(
+                ComunRoadmapItem.objects.filter(
+                    comun=self.comun,
+                    stage=ComunRoadmapItem.STAGE_PLANNED,
+                )
+                .order_by("position")
+                .values_list("post_id", "position")
+            ),
+            [(self.post.id, 1)],
+        )
+        self.assertEqual(
+            list(
+                ComunRoadmapItem.objects.filter(
+                    comun=self.comun,
+                    stage=ComunRoadmapItem.STAGE_IN_PROGRESS,
+                )
+                .order_by("position")
+                .values_list("post_id", "position")
+            ),
+            [
+                (active_post.id, 1),
+                (second_post.id, 2),
+                (last_active_post.id, 3),
+            ],
+        )
+
+        response = self.client.patch(
+            item_url,
+            data=json.dumps(
+                {
+                    "stage": ComunRoadmapItem.STAGE_IN_PROGRESS,
+                    "position": 0,
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        self.assertEqual(
+            list(
+                ComunRoadmapItem.objects.filter(
+                    comun=self.comun,
+                    stage=ComunRoadmapItem.STAGE_IN_PROGRESS,
+                )
+                .order_by("position")
+                .values_list("post_id", "position")
+            ),
+            [
+                (second_post.id, 1),
+                (active_post.id, 2),
+                (last_active_post.id, 3),
+            ],
+        )
+
+    def test_only_owner_can_reorder_roadmap_items(self):
+        ComunRoadmapItem.objects.create(
+            comun=self.comun,
+            post=self.post,
+            stage=ComunRoadmapItem.STAGE_PLANNED,
+            position=1,
+            added_by=self.owner,
+        )
+        item_url = reverse(
+            "comun-roadmap-item",
+            kwargs={"slug": self.comun.slug, "post_id": self.post.id},
+        )
+
+        for user in (self.moderator, self.outsider):
+            self.authenticate(user)
+            response = self.client.patch(
+                item_url,
+                data=json.dumps(
+                    {
+                        "stage": ComunRoadmapItem.STAGE_DONE,
+                        "position": 0,
+                    }
+                ),
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, 403, response.content.decode())
+
+        self.logout()
+        response = self.client.patch(
+            item_url,
+            data=json.dumps(
+                {
+                    "stage": ComunRoadmapItem.STAGE_DONE,
+                    "position": 0,
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 401, response.content.decode())

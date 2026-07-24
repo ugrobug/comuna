@@ -113,6 +113,7 @@ class PostAdmin(admin.ModelAdmin):
                 f"Перевести {language.upper()}",
             )
             for language in SUPPORTED_TRANSLATION_LANGUAGES
+            if language != obj.original_language
         ]
         links.append(
             (

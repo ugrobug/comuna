@@ -29,6 +29,14 @@ export const loadPostDetailPage = async ({ params, fetch }) => {
   const languageVersions = Array.isArray(data.post?.language_versions)
     ? data.post.language_versions
     : []
+  if (data.post?.translation_unavailable && data.post?.original_language !== language) {
+    const originalVersion = languageVersions.find(
+      (version) => version?.language === data.post?.original_language
+    )
+    if (originalVersion?.path) {
+      throw redirect(302, originalVersion.path)
+    }
+  }
   const currentVersion = languageVersions.find((version) => version?.language === language)
   const slug = slugifyTitle(data.post?.title ?? '')
   const canonicalId = slug ? `${id}-${slug}` : `${id}`

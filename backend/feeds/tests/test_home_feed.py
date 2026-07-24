@@ -9,6 +9,57 @@ from ratings.models import RatingSettings
 
 
 class HomeFeedTests(TestCase):
+    def test_original_english_post_is_only_in_english_feed_until_russian_translation_exists(self):
+        author = Author.objects.create(username="english-source")
+        post = Post.objects.create(
+            author=author,
+            message_id=1000,
+            title="An original English article",
+            content="<p>This post was written and published in English.</p>",
+            original_language="en",
+            rating=2,
+            is_pending=False,
+            is_blocked=False,
+        )
+        PublicFeedItem.objects.create(
+            feed=PublicFeedItem.FEED_HOME,
+            post=post,
+            rank=1,
+            score=2,
+            post_created_at=post.created_at,
+            author_id_snapshot=author.id,
+        )
+
+        english_response = self.client.get(
+            reverse("home-feed"),
+            {"card": "1", "limit": "10", "lang": "en"},
+        )
+        russian_response = self.client.get(
+            reverse("home-feed"),
+            {"card": "1", "limit": "10", "lang": "ru"},
+        )
+
+        self.assertEqual([item["id"] for item in english_response.json()["posts"]], [post.id])
+        self.assertEqual(english_response.json()["posts"][0]["title"], post.title)
+        self.assertEqual(russian_response.json()["posts"], [])
+
+        PostTranslation.objects.create(
+            post=post,
+            language="ru",
+            title="Перевод английской статьи",
+            content="<p>Этот пост был переведен на русский язык.</p>",
+            preview_content="<p>Этот пост был переведен на русский язык.</p>",
+            status="translated",
+        )
+        russian_response = self.client.get(
+            reverse("home-feed"),
+            {"card": "1", "limit": "10", "lang": "ru"},
+        )
+
+        self.assertEqual([item["id"] for item in russian_response.json()["posts"]], [post.id])
+        self.assertEqual(russian_response.json()["posts"][0]["title"], "Перевод английской статьи")
+        self.assertTrue(russian_response.json()["posts"][0]["is_translated"])
+
     def test_english_feed_only_returns_translated_posts_with_localized_cards(self):
         author = Author.objects.create(username="localized-author")
         translated_post = Post.objects.create(

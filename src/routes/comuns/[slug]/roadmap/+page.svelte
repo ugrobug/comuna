@@ -12,6 +12,7 @@
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import {
     buildBackendPostPath,
+    buildComunRoadmapItemUrl,
     buildComunRoadmapPostsUrl,
     buildComunRoadmapUrl,
     type BackendComun,
@@ -56,7 +57,13 @@
   let candidatePosts: BackendPost[] = []
   let candidatesLoading = false
   let addingPostId: number | null = null
+  let draggingItemId: number | null = null
+  let dragTargetStage: BackendComunRoadmapStage | null = null
+  let dragTargetIndex: number | null = null
+  let reorderSaving = false
+  let suppressCardNavigation = false
   let searchTimer: ReturnType<typeof setTimeout> | null = null
+  let dragNavigationTimer: ReturnType<typeof setTimeout> | null = null
   let requestSequence = 0
 
   const authHeaders = () => ({
@@ -97,6 +104,182 @@
       .replace(/\s+/g, ' ')
       .trim()
     return source.length > 150 ? `${source.slice(0, 149).trimEnd()}…` : source
+  }
+
+  const roadmapItemsForStage = (stage: BackendComunRoadmapStage) =>
+    items
+      .filter((item) => item.stage === stage)
+      .sort((a, b) => Number(a.position ?? 0) - Number(b.position ?? 0))
+
+  const clearDragTarget = () => {
+    draggingItemId = null
+    dragTargetStage = null
+    dragTargetIndex = null
+  }
+
+  const releaseCardNavigation = () => {
+    if (dragNavigationTimer) clearTimeout(dragNavigationTimer)
+    dragNavigationTimer = setTimeout(() => {
+      suppressCardNavigation = false
+      dragNavigationTimer = null
+    }, 120)
+  }
+
+  const handleDragStart = (
+    event: DragEvent,
+    item: BackendComunRoadmapItem
+  ) => {
+    if (!canManageRoadmap || reorderSaving) {
+      event.preventDefault()
+      return
+    }
+    draggingItemId = item.id
+    dragTargetStage = item.stage
+    dragTargetIndex = roadmapItemsForStage(item.stage).findIndex(
+      (candidate) => candidate.id === item.id
+    )
+    suppressCardNavigation = true
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move'
+      event.dataTransfer.setData('application/x-tambur-roadmap-item', String(item.id))
+    }
+  }
+
+  const handleCardDragOver = (
+    event: DragEvent,
+    stage: BackendComunRoadmapStage,
+    itemIndex: number
+  ) => {
+    if (!canManageRoadmap || draggingItemId === null || reorderSaving) return
+    event.preventDefault()
+    event.stopPropagation()
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+    const target = event.currentTarget as HTMLElement
+    const bounds = target.getBoundingClientRect()
+    dragTargetStage = stage
+    dragTargetIndex = itemIndex + (event.clientY > bounds.top + bounds.height / 2 ? 1 : 0)
+  }
+
+  const handleLaneDragOver = (
+    event: DragEvent,
+    stage: BackendComunRoadmapStage,
+    itemCount: number
+  ) => {
+    if (!canManageRoadmap || draggingItemId === null || reorderSaving) return
+    event.preventDefault()
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+    dragTargetStage = stage
+    dragTargetIndex = itemCount
+  }
+
+  const persistDraggedItem = async (
+    stage: BackendComunRoadmapStage,
+    requestedIndex: number
+  ) => {
+    const draggedId = draggingItemId
+    const draggedItem = items.find((item) => item.id === draggedId)
+    clearDragTarget()
+    releaseCardNavigation()
+    if (!comun?.slug || !$siteToken || !draggedItem || reorderSaving) return
+
+    const previousItems = items
+    const sourceItems = roadmapItemsForStage(draggedItem.stage)
+    const sourceIndex = sourceItems.findIndex((item) => item.id === draggedItem.id)
+    let targetIndex = Math.max(0, requestedIndex)
+    if (draggedItem.stage === stage && sourceIndex >= 0 && sourceIndex < targetIndex) {
+      targetIndex -= 1
+    }
+
+    const remainingItems = items.filter((item) => item.id !== draggedItem.id)
+    const targetItems = remainingItems
+      .filter((item) => item.stage === stage)
+      .sort((a, b) => Number(a.position ?? 0) - Number(b.position ?? 0))
+    targetIndex = Math.min(targetIndex, targetItems.length)
+    if (draggedItem.stage === stage && targetIndex === sourceIndex) return
+
+    targetItems.splice(targetIndex, 0, { ...draggedItem, stage })
+    const normalizedById = new Map<number, BackendComunRoadmapItem>()
+    for (const stageDefinition of STAGES) {
+      const laneItems =
+        stageDefinition.key === stage
+          ? targetItems
+          : remainingItems
+              .filter((item) => item.stage === stageDefinition.key)
+              .sort((a, b) => Number(a.position ?? 0) - Number(b.position ?? 0))
+      laneItems.forEach((item, index) => {
+        normalizedById.set(item.id, {
+          ...item,
+          stage: stageDefinition.key,
+          position: index + 1,
+        })
+      })
+    }
+    items = previousItems.map((item) => normalizedById.get(item.id) ?? item)
+    reorderSaving = true
+    try {
+      const response = await fetch(
+        buildComunRoadmapItemUrl(comun.slug, draggedItem.post.id),
+        {
+          method: 'PATCH',
+          headers: authHeaders(),
+          body: JSON.stringify({ stage, position: targetIndex }),
+        }
+      )
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Не удалось переместить карточку')
+      }
+      if (Array.isArray(payload?.items)) {
+        const serverPositions = new Map(
+          payload.items.map((item: { id: number; stage: BackendComunRoadmapStage; position: number }) => [
+            Number(item.id),
+            item,
+          ])
+        )
+        items = items.map((item) => {
+          const serverItem = serverPositions.get(item.id)
+          return serverItem
+            ? {
+                ...item,
+                stage: serverItem.stage,
+                position: Number(serverItem.position),
+              }
+            : item
+        })
+      }
+    } catch (error) {
+      items = previousItems
+      toast({
+        content: error instanceof Error ? error.message : 'Не удалось переместить карточку',
+        type: 'error',
+      })
+    } finally {
+      reorderSaving = false
+    }
+  }
+
+  const handleDrop = (
+    event: DragEvent,
+    stage: BackendComunRoadmapStage,
+    itemCount: number
+  ) => {
+    if (!canManageRoadmap || draggingItemId === null || reorderSaving) return
+    event.preventDefault()
+    event.stopPropagation()
+    const targetIndex =
+      dragTargetStage === stage && dragTargetIndex !== null
+        ? dragTargetIndex
+        : itemCount
+    void persistDraggedItem(stage, targetIndex)
+  }
+
+  const handleDragEnd = () => {
+    clearDragTarget()
+    releaseCardNavigation()
+  }
+
+  const handleCardClick = (event: MouseEvent) => {
+    if (suppressCardNavigation) event.preventDefault()
   }
 
   const closeAddModal = () => {
@@ -204,6 +387,7 @@
 
   onDestroy(() => {
     if (searchTimer) clearTimeout(searchTimer)
+    if (dragNavigationTimer) clearTimeout(dragNavigationTimer)
   })
 </script>
 
@@ -228,10 +412,14 @@
     <div class="roadmap-page-content relative z-10 p-4 sm:p-5 lg:p-6">
       <div class="roadmap-grid">
         {#each STAGES as stage}
-          {@const stageItems = items
-            .filter((item) => item.stage === stage.key)
-            .sort((a, b) => Number(a.position ?? 0) - Number(b.position ?? 0))}
-          <section class="roadmap-lane rounded-2xl p-4" style={stageStyleVars(stage.key)}>
+          {@const stageItems = roadmapItemsForStage(stage.key)}
+          <section
+            class="roadmap-lane rounded-2xl p-4"
+            class:roadmap-lane--drag-target={canManageRoadmap && draggingItemId !== null && dragTargetStage === stage.key}
+            style={stageStyleVars(stage.key)}
+            on:dragover={(event) => handleLaneDragOver(event, stage.key, stageItems.length)}
+            on:drop={(event) => handleDrop(event, stage.key, stageItems.length)}
+          >
             <header class="lane-header">
               <div class="min-w-0">
                 <div class="lane-pill">{stageBadgeLabel(stage.key)}</div>
@@ -254,9 +442,25 @@
 
             <div class="lane-content">
               {#if stageItems.length}
-                {#each stageItems as item (item.id)}
+                {#each stageItems as item, itemIndex (item.id)}
                   {@const snippet = postSnippet(item.post)}
-                  <a href={buildBackendPostPath(item.post)} class="mini-card rounded-xl p-3">
+                  <a
+                    href={buildBackendPostPath(item.post)}
+                    class="mini-card rounded-xl p-3"
+                    class:mini-card--draggable={canManageRoadmap}
+                    class:mini-card--dragging={draggingItemId === item.id}
+                    class:mini-card--drop-before={canManageRoadmap &&
+                      draggingItemId !== null &&
+                      dragTargetStage === stage.key &&
+                      dragTargetIndex === itemIndex &&
+                      draggingItemId !== item.id}
+                    draggable={canManageRoadmap && !reorderSaving}
+                    on:dragstart={(event) => handleDragStart(event, item)}
+                    on:dragover={(event) => handleCardDragOver(event, stage.key, itemIndex)}
+                    on:drop={(event) => handleDrop(event, stage.key, itemIndex)}
+                    on:dragend={handleDragEnd}
+                    on:click={handleCardClick}
+                  >
                     <div class="mini-card__title">{item.post.title || 'Без заголовка'}</div>
                     {#if snippet}
                       <div class="mini-card__snippet">{snippet}</div>
@@ -271,6 +475,12 @@
                     <div class="mini-card__cta">Открыть карточку и обсуждение</div>
                   </a>
                 {/each}
+                {#if canManageRoadmap &&
+                  draggingItemId !== null &&
+                  dragTargetStage === stage.key &&
+                  dragTargetIndex === stageItems.length}
+                  <div class="roadmap-drop-indicator"></div>
+                {/if}
               {:else}
                 <div class="lane-state">{stage.empty}</div>
               {/if}
@@ -415,6 +625,14 @@
       hsla(var(--lane-h), 95%, 97%, 0.84),
       rgba(255, 255, 255, 0.86)
     );
+    transition:
+      border-color 0.14s ease,
+      box-shadow 0.14s ease;
+  }
+
+  .roadmap-lane--drag-target {
+    border-color: hsla(var(--lane-h), 76%, 46%, 0.44);
+    box-shadow: 0 0 0 2px hsla(var(--lane-h), 76%, 46%, 0.12) inset;
   }
 
   :global(.dark) .roadmap-lane {
@@ -498,6 +716,7 @@
   }
 
   .mini-card {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 0.45rem;
@@ -507,6 +726,38 @@
       transform 0.14s ease,
       box-shadow 0.14s ease,
       border-color 0.14s ease;
+  }
+
+  .mini-card--draggable {
+    cursor: grab;
+    user-select: none;
+  }
+
+  .mini-card--draggable:active {
+    cursor: grabbing;
+  }
+
+  .mini-card--dragging {
+    opacity: 0.38;
+    transform: scale(0.985);
+  }
+
+  .mini-card--drop-before::before {
+    position: absolute;
+    right: 0.4rem;
+    top: -0.35rem;
+    left: 0.4rem;
+    height: 3px;
+    border-radius: 999px;
+    background: hsl(var(--lane-h) var(--lane-s) var(--lane-l));
+    content: '';
+  }
+
+  .roadmap-drop-indicator {
+    height: 3px;
+    margin: 0 0.4rem;
+    border-radius: 999px;
+    background: hsl(var(--lane-h) var(--lane-s) var(--lane-l));
   }
 
   .mini-card:hover {

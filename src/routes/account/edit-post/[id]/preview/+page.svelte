@@ -52,7 +52,7 @@
     try {
       const updated = await updateUserPost(post.id, { is_draft: false })
       toast({ content: 'Черновик опубликован', type: 'success' })
-      await goto(buildBackendPostPath({ id: updated.id, title: updated.title }))
+      await goto(buildBackendPostPath(updated))
     } catch (error) {
       loadError = (error as Error)?.message ?? 'Не удалось опубликовать черновик'
     } finally {

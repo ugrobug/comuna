@@ -12,7 +12,7 @@ from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.db import transaction
-from django.db.models import Count, Max, Prefetch, Q, Sum
+from django.db.models import Count, Max, OuterRef, Prefetch, Q, Subquery, Sum
 from django.db.models.functions import TruncDate
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.utils import timezone
@@ -43,6 +43,7 @@ from editor.models import (
     normalize_post_template_type_code,
 )
 from feeds.post_paths import build_post_public_path, slugify_title
+from feeds.language_detection import detect_post_language, post_language_fallback_for_user
 from editor import service as editor_service
 from feeds.models import (
     Author,
@@ -363,6 +364,11 @@ def _approve_knowledge_base_submission(
         message_id=message_id,
         title=title,
         content=content,
+        original_language=detect_post_language(
+            title,
+            content,
+            fallback=post_language_fallback_for_user(reviewer),
+        ),
         channel_url=author.invite_url or author.channel_url or "",
         source_url=submission.telegram_source_url or author.invite_url or author.channel_url or "",
         raw_data=raw_data,
@@ -3054,6 +3060,11 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
             message_id=message_id,
             title=title,
             content=content,
+            original_language=detect_post_language(
+                title,
+                content,
+                fallback=post_language_fallback_for_user(current_user),
+            ),
             channel_url=(author.invite_url or author.channel_url or ""),
             source_url=(author.invite_url or author.channel_url or ""),
             raw_data=raw_data,
@@ -3439,11 +3450,11 @@ def comun_knowledge_base_item(request: HttpRequest, slug: str, item_id: int) -> 
     return JsonResponse({"ok": True, "item": _serialize_comun_knowledge_base_item(item), **serialized})
 
 
-_ROADMAP_STAGE_KEYS = {
+_ROADMAP_STAGE_KEYS = (
     ComunRoadmapItem.STAGE_PLANNED,
     ComunRoadmapItem.STAGE_IN_PROGRESS,
     ComunRoadmapItem.STAGE_DONE,
-}
+)
 
 
 def _comun_roadmap_owner(user: User | None, comun: Comun) -> bool:
@@ -3468,20 +3479,14 @@ def _serialize_comun_roadmap(
         .prefetch_related("post__tags")
         .order_by("stage", "position", "-created_at", "-id")
     )
-    if language != _ORIGINAL_CONTENT_LANGUAGE:
-        items_query = items_query.filter(
-            post__translations__language=language,
-            post__translations__status=POST_TRANSLATION_STATUS_TRANSLATED,
-        ).prefetch_related(
-            Prefetch(
-                "post__translations",
-                queryset=PostTranslation.objects.filter(
-                    language=language,
-                    status=POST_TRANSLATION_STATUS_TRANSLATED,
-                ),
-                to_attr="_translated_versions",
-            )
-        )
+    items_query = community_service._filter_posts_for_language(
+        items_query,
+        language,
+        prefix="post__",
+    )
+    items_query = items_query.prefetch_related(
+        community_service._post_translation_prefetch(language, prefix="post__")
+    )
     items = list(items_query.distinct())
     posts = [item.post for item in items]
     favorite_post_ids = community_service._favorite_post_ids_for_user(posts, current_user)
@@ -3642,28 +3647,27 @@ def comun_roadmap_posts(request: HttpRequest, slug: str) -> HttpResponse:
     posts_query = community_service._filter_posts_for_language(posts_query, language)
     if query:
         search_filter = (
-            Q(title__icontains=query)
-            | Q(preview_content__icontains=query)
-            | Q(content__icontains=query)
+            Q(original_language=language, title__icontains=query)
+            | Q(original_language=language, preview_content__icontains=query)
+            | Q(original_language=language, content__icontains=query)
         )
-        if language != _ORIGINAL_CONTENT_LANGUAGE:
-            search_filter |= (
-                Q(
-                    translations__language=language,
-                    translations__status=POST_TRANSLATION_STATUS_TRANSLATED,
-                    translations__title__icontains=query,
-                )
-                | Q(
-                    translations__language=language,
-                    translations__status=POST_TRANSLATION_STATUS_TRANSLATED,
-                    translations__preview_content__icontains=query,
-                )
-                | Q(
-                    translations__language=language,
-                    translations__status=POST_TRANSLATION_STATUS_TRANSLATED,
-                    translations__content__icontains=query,
-                )
+        search_filter |= (
+            Q(
+                translations__language=language,
+                translations__status=POST_TRANSLATION_STATUS_TRANSLATED,
+                translations__title__icontains=query,
             )
+            | Q(
+                translations__language=language,
+                translations__status=POST_TRANSLATION_STATUS_TRANSLATED,
+                translations__preview_content__icontains=query,
+            )
+            | Q(
+                translations__language=language,
+                translations__status=POST_TRANSLATION_STATUS_TRANSLATED,
+                translations__content__icontains=query,
+            )
+        )
         posts_query = posts_query.filter(search_filter)
     post_prefetches = ["tags"]
     translation_prefetch = community_service._post_translation_prefetch(language)
@@ -3694,7 +3698,7 @@ def comun_roadmap_posts(request: HttpRequest, slug: str) -> HttpResponse:
 
 @csrf_exempt
 def comun_roadmap_item(request: HttpRequest, slug: str, post_id: int) -> HttpResponse:
-    if request.method not in ("GET", "DELETE"):
+    if request.method not in ("GET", "PATCH", "DELETE"):
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
     current_user = user_views._get_user_from_request(request)
     comun = _get_comun_for_roadmap(slug)
@@ -3712,6 +3716,83 @@ def comun_roadmap_item(request: HttpRequest, slug: str, post_id: int) -> HttpRes
                 "ok": True,
                 "in_roadmap": bool(item),
                 "stage": item.stage if item else None,
+            }
+        )
+    if request.method == "PATCH":
+        if not comun.roadmap_enabled:
+            return JsonResponse({"ok": False, "error": "roadmap disabled"}, status=400)
+        if not item:
+            return JsonResponse({"ok": False, "error": "roadmap item not found"}, status=404)
+        try:
+            body = json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+        stage = str(body.get("stage") or "").strip()
+        if stage not in _ROADMAP_STAGE_KEYS:
+            return JsonResponse({"ok": False, "error": "invalid roadmap stage"}, status=400)
+        try:
+            target_index = int(body.get("position", 0))
+        except (TypeError, ValueError):
+            return JsonResponse({"ok": False, "error": "invalid roadmap position"}, status=400)
+
+        with transaction.atomic():
+            locked_items = list(
+                ComunRoadmapItem.objects.select_for_update()
+                .filter(comun=comun)
+                .order_by("stage", "position", "created_at", "id")
+            )
+            item = next(
+                (candidate for candidate in locked_items if candidate.post_id == post_id),
+                None,
+            )
+            if not item:
+                return JsonResponse(
+                    {"ok": False, "error": "roadmap item not found"},
+                    status=404,
+                )
+
+            lanes = {stage_key: [] for stage_key in _ROADMAP_STAGE_KEYS}
+            for candidate in locked_items:
+                if candidate.id != item.id:
+                    lanes[candidate.stage].append(candidate)
+            target_lane = lanes[stage]
+            target_index = min(max(target_index, 0), len(target_lane))
+            target_lane.insert(target_index, item)
+
+            changed_items = []
+            changed_at = timezone.now()
+            for stage_key, lane_items in lanes.items():
+                for position, candidate in enumerate(lane_items, start=1):
+                    if candidate.stage != stage_key or candidate.position != position:
+                        candidate.stage = stage_key
+                        candidate.position = position
+                        candidate.updated_at = changed_at
+                        changed_items.append(candidate)
+            if changed_items:
+                ComunRoadmapItem.objects.bulk_update(
+                    changed_items,
+                    ["stage", "position", "updated_at"],
+                )
+
+        return JsonResponse(
+            {
+                "ok": True,
+                "item": {
+                    "id": item.id,
+                    "post_id": item.post_id,
+                    "stage": item.stage,
+                    "position": item.position,
+                },
+                "items": [
+                    {
+                        "id": candidate.id,
+                        "post_id": candidate.post_id,
+                        "stage": candidate.stage,
+                        "position": candidate.position,
+                    }
+                    for stage_key in _ROADMAP_STAGE_KEYS
+                    for candidate in lanes[stage_key]
+                ],
             }
         )
     if not item:
@@ -3748,11 +3829,20 @@ def comun_map(request: HttpRequest, slug: str) -> HttpResponse:
         post__is_pending=False,
         post__author__is_blocked=False,
     )
-    if language != _ORIGINAL_CONTENT_LANGUAGE:
-        points = points.filter(
-            post__translations__language=language,
-            post__translations__status=POST_TRANSLATION_STATUS_TRANSLATED,
+    points = community_service._filter_posts_for_language(
+        points,
+        language,
+        prefix="post__",
+    )
+    points = points.annotate(
+        localized_translation_title=Subquery(
+            PostTranslation.objects.filter(
+                post_id=OuterRef("post_id"),
+                language=language,
+                status=POST_TRANSLATION_STATUS_TRANSLATED,
+            ).values("title")[:1]
         )
+    )
 
     def float_param(name: str) -> float | None:
         try:
@@ -3771,6 +3861,7 @@ def comun_map(request: HttpRequest, slug: str) -> HttpResponse:
         "post_id",
         "block_index",
         "post__title",
+        "post__original_language",
         "post__preview_image_url",
         "post__created_at",
         "lat",
@@ -3778,8 +3869,7 @@ def comun_map(request: HttpRequest, slug: str) -> HttpResponse:
         "zoom",
         "raw",
     )
-    if language != _ORIGINAL_CONTENT_LANGUAGE:
-        row_fields += ("post__translations__title",)
+    row_fields += ("localized_translation_title",)
     search_query = re.sub(r"\s+", " ", str(request.GET.get("q") or "").strip())[:120]
     min_lat = float_param("min_lat")
     max_lat = float_param("max_lat")
@@ -3789,14 +3879,16 @@ def comun_map(request: HttpRequest, slug: str) -> HttpResponse:
     is_initial = not has_bounds and not search_query
 
     if search_query:
-        title_filter = (
-            Q(post__title__icontains=search_query)
-            if language == _ORIGINAL_CONTENT_LANGUAGE
-            else Q(post__translations__title__icontains=search_query)
+        title_filter = Q(
+            post__original_language=language,
+            post__title__icontains=search_query,
+        ) | Q(
+            post__translations__language=language,
+            post__translations__status=POST_TRANSLATION_STATUS_TRANSLATED,
+            post__translations__title__icontains=search_query,
         )
         point_filter = title_filter
-        if language == _ORIGINAL_CONTENT_LANGUAGE:
-            point_filter |= Q(raw__icontains=search_query)
+        point_filter |= Q(post__original_language=language, raw__icontains=search_query)
         selected_rows = list(
             points.filter(point_filter)
             .values(*row_fields)
@@ -3871,26 +3963,21 @@ def comun_map(request: HttpRequest, slug: str) -> HttpResponse:
         value = row.get(field)
         return str(value).strip() if value is not None else fallback
 
+    def localized_post_title(row: dict) -> str:
+        if localized_row_value(row, "post__original_language") == language:
+            return localized_row_value(row, "post__title")
+        return localized_row_value(row, "localized_translation_title")
+
     serialized_points = [
         {
             "id": int(row["id"]),
             "post_id": int(row["post_id"]),
-            "post_title": localized_row_value(
-                row,
-                "post__title"
-                if language == _ORIGINAL_CONTENT_LANGUAGE
-                else "post__translations__title",
-            ),
+            "post_title": localized_post_title(row),
             "post_path": (
                 (f"/{language}" if language != _ORIGINAL_CONTENT_LANGUAGE else "")
                 + build_post_public_path(
                     int(row["post_id"]),
-                    localized_row_value(
-                        row,
-                        "post__title"
-                        if language == _ORIGINAL_CONTENT_LANGUAGE
-                        else "post__translations__title",
-                    ),
+                    localized_post_title(row),
                 )
             ),
             "preview_image_url": public_url(row.get("post__preview_image_url"), request=request),
@@ -3899,7 +3986,7 @@ def comun_map(request: HttpRequest, slug: str) -> HttpResponse:
             "zoom": int(row.get("zoom") or 14),
             "raw": (
                 localized_row_value(row, "raw")
-                if language == _ORIGINAL_CONTENT_LANGUAGE
+                if localized_row_value(row, "post__original_language") == language
                 else ""
             ),
             "created_at": (

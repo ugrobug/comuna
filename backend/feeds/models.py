@@ -340,6 +340,21 @@ class Post(models.Model):
     content = models.TextField(blank=True)
     preview_content = models.TextField(blank=True)
     preview_image_url = models.TextField(blank=True)
+    original_language = models.CharField(
+        max_length=8,
+        choices=(
+            ("ru", "Русский"),
+            ("en", "Английский"),
+            ("es", "Испанский"),
+            ("pt", "Португальский"),
+            ("de", "Немецкий"),
+            ("fr", "Французский"),
+            ("tr", "Турецкий"),
+            ("id", "Индонезийский"),
+        ),
+        default="ru",
+        db_index=True,
+    )
     rating = models.IntegerField(default=0)
     comments_count = models.PositiveIntegerField(default=0)
     fake_views_target = models.PositiveIntegerField(default=default_post_fake_views_target)
@@ -460,6 +475,7 @@ class PostDraftAccess(models.Model):
         return f"{self.post_id}:{self.user_id}"
 
 
+POST_TRANSLATION_LANGUAGE_RUSSIAN = "ru"
 POST_TRANSLATION_LANGUAGE_ENGLISH = "en"
 POST_TRANSLATION_LANGUAGE_SPANISH = "es"
 POST_TRANSLATION_LANGUAGE_PORTUGUESE = "pt"
@@ -475,6 +491,10 @@ POST_TRANSLATION_LANGUAGE_CHOICES = (
     (POST_TRANSLATION_LANGUAGE_FRENCH, "Французский"),
     (POST_TRANSLATION_LANGUAGE_TURKISH, "Турецкий"),
     (POST_TRANSLATION_LANGUAGE_INDONESIAN, "Индонезийский"),
+)
+POST_LANGUAGE_CHOICES = (
+    (POST_TRANSLATION_LANGUAGE_RUSSIAN, "Русский"),
+    *POST_TRANSLATION_LANGUAGE_CHOICES,
 )
 
 POST_TRANSLATION_STATUS_PENDING = "pending"
@@ -495,7 +515,7 @@ class PostTranslation(models.Model):
     )
     language = models.CharField(
         max_length=8,
-        choices=POST_TRANSLATION_LANGUAGE_CHOICES,
+        choices=POST_LANGUAGE_CHOICES,
         db_index=True,
     )
     title = models.CharField(max_length=255, blank=True)

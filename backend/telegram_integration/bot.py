@@ -13,6 +13,7 @@ from django.core.files.base import ContentFile
 from django.db import IntegrityError
 from django.db import transaction
 from django.utils import timezone
+from feeds.language_detection import detect_post_language
 from feeds.models import Author, Post
 from telegram_integration.models import BotSession, TelegramAccount
 from telegram_integration.media import is_private_telegram_file_url
@@ -838,6 +839,11 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
                     raw_data.get("poll_html") or poll_html,
                 )
                 existing_group_post.content = content
+                existing_group_post.original_language = detect_post_language(
+                    existing_group_post.title,
+                    content,
+                    fallback=existing_group_post.original_language,
+                )
                 existing_group_post.raw_data = raw_data
                 existing_group_post.channel_url = f"https://t.me/{username}"
                 existing_group_post.source_url = (
@@ -846,6 +852,7 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
                 existing_group_post.save(
                     update_fields=[
                         "content",
+                        "original_language",
                         "raw_data",
                         "channel_url",
                         "source_url",
@@ -897,6 +904,7 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
         defaults={
             "title": title,
             "content": content,
+            "original_language": detect_post_language(title, content),
             "source_url": source_url,
             "channel_url": channel_url,
             "raw_data": raw_data,
@@ -912,6 +920,11 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
         post.source_url = source_url
         post.channel_url = channel_url
         post.raw_data = raw_data
+        post.original_language = detect_post_language(
+            post.title,
+            post.content,
+            fallback=post.original_language,
+        )
         if media_group_id and not post.media_group_id:
             post.media_group_id = media_group_id
         post.save(
@@ -921,6 +934,7 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
                 "source_url",
                 "channel_url",
                 "raw_data",
+                "original_language",
                 "media_group_id",
                 "updated_at",
             ]
@@ -1530,7 +1544,13 @@ def _handle_callback_query(callback_query: dict) -> None:
             return
         if post.is_pending:
             post.is_pending = False
-            post.save(update_fields=["is_pending", "updated_at"])
+            post.original_language = detect_post_language(
+                post.title,
+                post.content,
+                fallback=post.original_language,
+            )
+            post.translations.filter(language=post.original_language).delete()
+            post.save(update_fields=["is_pending", "original_language", "updated_at"])
             _fv()._maybe_notify_new_author(post.author, post)
             _answer_callback_query(callback_id, "Опубликовано")
             return

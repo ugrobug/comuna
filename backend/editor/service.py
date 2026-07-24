@@ -2319,6 +2319,8 @@ def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None
         "template": template_payload,
         "enabled_template_editor_blocks": _serialize_enabled_template_editor_blocks(template_payload),
         "content": content,
+        "original_language": post.original_language,
+        "language": post.original_language,
         "poll": poll_payload,
         "post_ratings": _serialize_post_ratings(post, user),
         "post_rating": _serialize_post_rating(post, user, template_payload=template_payload),

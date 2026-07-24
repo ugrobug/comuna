@@ -216,6 +216,8 @@ def _missing_post_translation_languages(post: Post) -> set[str]:
     source_content_info = _decode_post_editor_payload(post.content or "")
     missing: set[str] = set()
     for language in SUPPORTED_TRANSLATION_LANGUAGES:
+        if language == post.original_language:
+            continue
         translation = translations.get(language)
         if not _post_translation_is_current(post, translation, source_content_info):
             missing.add(language)

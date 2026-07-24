@@ -51,6 +51,7 @@ from editor.service import (
     movie_review_autofill_template_from_imdb,
 )
 from editor import service as editor_service
+from feeds.language_detection import detect_post_language, post_language_fallback_for_user
 from feeds.models import Post, PostDraftAccess
 from notifications.service import create_user_notification
 from rabotaem_backend.media_urls import public_url
@@ -864,6 +865,15 @@ def user_posts(request: HttpRequest) -> HttpResponse:
             message_id=message_id,
             title=title,
             content=content,
+            original_language=(
+                post_language_fallback_for_user(user)
+                if is_draft
+                else detect_post_language(
+                    title,
+                    content,
+                    fallback=post_language_fallback_for_user(user),
+                )
+            ),
             channel_url=channel_url,
             source_url=channel_url,
             raw_data=raw_data,
@@ -1224,6 +1234,22 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
         delay_days = max(int(post.author.publish_delay_days or 0), 0)
         post.publish_at = timezone.now() + timedelta(days=delay_days) if delay_days else None
 
+    if not target_is_draft and (
+        current_is_draft
+        or title is not None
+        or content is not None
+    ):
+        post.original_language = detect_post_language(
+            post.title,
+            post.content,
+            fallback=(
+                post_language_fallback_for_user(user)
+                if current_is_draft
+                else post.original_language
+            ),
+        )
+        post.translations.filter(language=post.original_language).delete()
+
     post.save(
         update_fields=[
             "author",
@@ -1231,6 +1257,7 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
             "content",
             "channel_url",
             "source_url",
+            "original_language",
             "is_pending",
             "publish_at",
             "raw_data",

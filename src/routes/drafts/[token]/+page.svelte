@@ -152,7 +152,7 @@
     try {
       const updated = await updateUserPost(draft.id, { is_draft: false })
       toast({ content: $t('site.draftReview.published'), type: 'success' })
-      await goto(buildBackendPostPath({ id: updated.id, title: updated.title }))
+      await goto(buildBackendPostPath(updated))
     } catch (error) {
       loadError = (error as Error)?.message ?? $t('site.draftReview.publishError')
     } finally {

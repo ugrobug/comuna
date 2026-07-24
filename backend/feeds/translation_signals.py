@@ -17,6 +17,7 @@ POST_TRANSLATION_FIELDS = {
     "author",
     "title",
     "content",
+    "original_language",
     "is_pending",
     "is_blocked",
     "publish_at",

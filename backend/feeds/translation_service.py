@@ -24,7 +24,7 @@ from feeds.models import (
     CONTENT_TRANSLATION_TASK_STATUS_PENDING,
     CONTENT_TRANSLATION_TASK_STATUS_RUNNING,
     CONTENT_TRANSLATION_TASK_STATUS_SKIPPED,
-    POST_TRANSLATION_LANGUAGE_CHOICES,
+    POST_TRANSLATION_LANGUAGE_RUSSIAN,
     POST_TRANSLATION_LANGUAGE_ENGLISH,
     POST_TRANSLATION_LANGUAGE_FRENCH,
     POST_TRANSLATION_LANGUAGE_GERMAN,
@@ -63,6 +63,11 @@ class AutoTranslationRescheduled(PostTranslationError):
 
 
 SUPPORTED_TRANSLATION_LANGUAGES = {
+    POST_TRANSLATION_LANGUAGE_RUSSIAN: {
+        "label": "Русский",
+        "target": "Russian",
+        "locale": "ru",
+    },
     POST_TRANSLATION_LANGUAGE_ENGLISH: {
         "label": "Английский",
         "target": "English",
@@ -99,6 +104,10 @@ SUPPORTED_TRANSLATION_LANGUAGES = {
         "locale": "id",
     },
 }
+POST_SOURCE_LANGUAGE_NAMES = {
+    code: settings["target"]
+    for code, settings in SUPPORTED_TRANSLATION_LANGUAGES.items()
+}
 
 AUTO_TRANSLATION_DELAYS = {
     CONTENT_TRANSLATION_KIND_POST: timedelta(minutes=10),
@@ -122,7 +131,8 @@ POST_CONTENT_FORMAT_EDITORJS_BASE64 = "editorjs_base64"
 
 
 def get_translation_language_label(language: str) -> str:
-    return dict(POST_TRANSLATION_LANGUAGE_CHOICES).get(language, language)
+    target = SUPPORTED_TRANSLATION_LANGUAGES.get(language)
+    return target["label"] if target else language
 
 
 def _translation_provider() -> str:
@@ -377,6 +387,9 @@ def update_content_translation_settings(payload: dict) -> ContentTranslationSett
 
 def translate_post_to_language(post: Post, language: str) -> PostTranslation:
     language = str(language or "").strip().lower()
+    source_language = str(post.original_language or POST_TRANSLATION_LANGUAGE_RUSSIAN).strip().lower()
+    if language == source_language:
+        raise AutoTranslationSkipped("Исходный язык поста не требует перевода")
     target = SUPPORTED_TRANSLATION_LANGUAGES.get(language)
     if target is None:
         raise PostTranslationError(f"Язык перевода не поддерживается: {language}")
@@ -390,7 +403,11 @@ def translate_post_to_language(post: Post, language: str) -> PostTranslation:
 
     try:
         source_payload, source_content_format = _post_translation_source_payload(post)
-        response_payload = _request_openrouter_translation(source_payload, target)
+        response_payload = _request_openrouter_translation(
+            source_payload,
+            target,
+            source_language=source_language,
+        )
         raw_translated_payload = _parse_translated_json_payload(response_payload)
         translated_title = _truncate_translation_title(
             str(raw_translated_payload.get("title", "") or "")
@@ -461,11 +478,14 @@ def translate_post_to_all_languages(post: Post) -> list[PostTranslation]:
     return [
         translate_post_to_language(post, language)
         for language in SUPPORTED_TRANSLATION_LANGUAGES
+        if language != post.original_language
     ]
 
 
 def translate_comment_to_language(comment: PostComment, language: str) -> PostCommentTranslation:
     language = str(language or "").strip().lower()
+    if language == POST_TRANSLATION_LANGUAGE_RUSSIAN:
+        raise AutoTranslationSkipped("Исходный язык комментария не требует перевода")
     target = SUPPORTED_TRANSLATION_LANGUAGES.get(language)
     if target is None:
         raise PostTranslationError(f"Язык перевода не поддерживается: {language}")
@@ -630,6 +650,8 @@ def _translation_items_by_id(raw_items: object) -> dict[int, dict[str, Any]]:
 
 def translate_comun_to_language(comun: Comun, language: str) -> ComunTranslation:
     language = str(language or "").strip().lower()
+    if language == POST_TRANSLATION_LANGUAGE_RUSSIAN:
+        raise AutoTranslationSkipped("Исходный язык сообщества не требует перевода")
     target = SUPPORTED_TRANSLATION_LANGUAGES.get(language)
     if target is None:
         raise PostTranslationError(f"Язык перевода не поддерживается: {language}")
@@ -777,6 +799,8 @@ def _static_page_translation_source_payload(page: StaticPageContent) -> dict[str
 
 def translate_static_page_to_language(page: StaticPageContent, language: str) -> StaticPageTranslation:
     language = str(language or "").strip().lower()
+    if language == POST_TRANSLATION_LANGUAGE_RUSSIAN:
+        raise AutoTranslationSkipped("Исходный язык страницы не требует перевода")
     target = SUPPORTED_TRANSLATION_LANGUAGES.get(language)
     if target is None:
         raise PostTranslationError(f"Язык перевода не поддерживается: {language}")
@@ -856,7 +880,11 @@ def translate_static_page_to_language(page: StaticPageContent, language: str) ->
 
 
 def queue_post_translation(post: Post, languages: list[str]) -> list[PostTranslation]:
-    normalized_languages = _normalize_translation_languages(languages)
+    normalized_languages = [
+        language
+        for language in _normalize_translation_languages(languages)
+        if language != post.original_language
+    ]
     if not normalized_languages:
         return []
 
@@ -1316,6 +1344,8 @@ def _process_translation_task_payload(task: ContentTranslationTask) -> None:
         _reserve_translation_budget(task)
         source_content_info = _decode_post_editor_payload(post.content or "")
         for language in SUPPORTED_TRANSLATION_LANGUAGES:
+            if language == post.original_language:
+                continue
             if _post_translation_is_current(post, language, source_content_info):
                 continue
             translate_post_to_language(post, language)
@@ -1332,6 +1362,8 @@ def _process_translation_task_payload(task: ContentTranslationTask) -> None:
         _raise_if_task_is_stale(task, comment.updated_at)
         _reserve_translation_budget(task)
         for language in SUPPORTED_TRANSLATION_LANGUAGES:
+            if language == POST_TRANSLATION_LANGUAGE_RUSSIAN:
+                continue
             if _comment_translation_is_current(comment, language):
                 continue
             translate_comment_to_language(comment, language)
@@ -1344,6 +1376,8 @@ def _process_translation_task_payload(task: ContentTranslationTask) -> None:
         _raise_if_task_is_stale(task, _comun_source_updated_at(comun))
         _reserve_translation_budget(task)
         for language in SUPPORTED_TRANSLATION_LANGUAGES:
+            if language == POST_TRANSLATION_LANGUAGE_RUSSIAN:
+                continue
             if _comun_translation_is_current(comun, language):
                 continue
             translate_comun_to_language(comun, language)
@@ -1356,6 +1390,8 @@ def _process_translation_task_payload(task: ContentTranslationTask) -> None:
         _raise_if_task_is_stale(task, page.updated_at)
         _reserve_translation_budget(task)
         for language in SUPPORTED_TRANSLATION_LANGUAGES:
+            if language == POST_TRANSLATION_LANGUAGE_RUSSIAN:
+                continue
             if _static_page_translation_is_current(page, language):
                 continue
             translate_static_page_to_language(page, language)
@@ -1498,20 +1534,23 @@ def _raise_if_task_is_stale(task: ContentTranslationTask, source_updated_at) -> 
 def _request_openrouter_translation(
     post_payload: dict[str, Any],
     target: dict[str, str],
+    *,
+    source_language: str,
 ) -> dict[str, Any]:
+    source_name = POST_SOURCE_LANGUAGE_NAMES.get(source_language, source_language)
     return _request_openrouter_json_translation(
         {
-            "source_language": "Russian",
+            "source_language": source_name,
             "target_language": target["target"],
             "target_locale": target["locale"],
             "post": post_payload,
         },
         system_prompt=(
-            "You are a professional localization editor. Translate Tambur posts from Russian. "
+            f"You are a professional localization editor. Translate Tambur posts from {source_name}. "
             "Return only valid JSON with keys title and content. If content is an EditorJS object, "
             "return content as the same EditorJS object shape and preserve every block type, id, URL, "
             "media URL, embed, code block, placeholder, and non-text field. Preserve HTML tags and "
-            "markdown. Translate only human-readable Russian text. Do not add commentary."
+            f"markdown. Translate only human-readable {source_name} text. Do not add commentary."
         ),
     )
 

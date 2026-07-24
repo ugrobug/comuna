@@ -60,6 +60,8 @@ export type SiteUserPost = {
   id: number
   title: string
   content: string
+  original_language?: string
+  language?: string
   template?: SitePostTemplate | null
   enabled_template_editor_blocks?: string[]
   post_ratings?: Record<string, BackendPostRating>

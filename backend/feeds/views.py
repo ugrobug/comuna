@@ -121,6 +121,7 @@ from .post_paths import build_post_public_path
 from .models import (
     Author,
     ContentReport,
+    POST_TRANSLATION_LANGUAGE_RUSSIAN,
     POST_TRANSLATION_LANGUAGE_ENGLISH,
     POST_TRANSLATION_LANGUAGE_FRENCH,
     POST_TRANSLATION_LANGUAGE_GERMAN,
@@ -178,7 +179,7 @@ _SOCIAL_IMAGE_MAX_SIZE = (1200, 1200)
 _LOCAL_WEBP_VARIANT_RE = re.compile(r"-(320|640|960|1280|1920)\.webp$", re.IGNORECASE)
 _IMAGE_URL_PATH_RE = re.compile(r"\.(?:jpe?g|png|webp|gif|avif)$", re.IGNORECASE)
 _COMUN_CREATION_MIN_AUTHOR_RATING = 0.0
-ORIGINAL_POST_LANGUAGE = "ru"
+ORIGINAL_POST_LANGUAGE = POST_TRANSLATION_LANGUAGE_RUSSIAN
 TRANSLATED_POST_LANGUAGES = (
     POST_TRANSLATION_LANGUAGE_ENGLISH,
     POST_TRANSLATION_LANGUAGE_SPANISH,
@@ -2614,7 +2615,10 @@ def content_page_manage(request: HttpRequest, slug: str) -> HttpResponse:
 def _post_public_path(post: Post) -> str:
     if _special_project_redirect_path(post):
         return "/s/book"
-    return build_post_public_path(post.id, _post_display_title(post))
+    path = build_post_public_path(post.id, _post_display_title(post))
+    if post.original_language != ORIGINAL_POST_LANGUAGE:
+        return f"/{post.original_language}{path}"
+    return path
 
 
 def _normalize_post_language(value: str | None) -> str | None:
@@ -2629,19 +2633,18 @@ def _request_post_language(request: HttpRequest) -> str:
 
 
 def _filter_posts_for_language(queryset, language: str, *, prefix: str = ""):
-    if language == ORIGINAL_POST_LANGUAGE:
-        return queryset
     return queryset.filter(
-        **{
-            f"{prefix}translations__language": language,
-            f"{prefix}translations__status": POST_TRANSLATION_STATUS_TRANSLATED,
-        }
+        Q(**{f"{prefix}original_language": language})
+        | Q(
+            **{
+                f"{prefix}translations__language": language,
+                f"{prefix}translations__status": POST_TRANSLATION_STATUS_TRANSLATED,
+            }
+        )
     ).distinct()
 
 
 def _post_translation_prefetch(language: str, *, prefix: str = "") -> Prefetch | None:
-    if language == ORIGINAL_POST_LANGUAGE:
-        return None
     return Prefetch(
         f"{prefix}translations",
         queryset=PostTranslation.objects.filter(
@@ -2653,7 +2656,7 @@ def _post_translation_prefetch(language: str, *, prefix: str = "") -> Prefetch |
 
 
 def _feed_post_translation(post: Post, language: str) -> PostTranslation | None:
-    if language == ORIGINAL_POST_LANGUAGE:
+    if language == post.original_language:
         return None
     return _translation_by_language(post).get(language)
 
@@ -2684,22 +2687,25 @@ def _translation_by_language(post: Post) -> dict[str, PostTranslation]:
     return {
         translation.language: translation
         for translation in _translated_versions_for_post(post)
-        if translation.language in TRANSLATED_POST_LANGUAGES
+        if translation.language in PUBLIC_POST_LANGUAGES
     }
 
 
 def _post_language_versions(post: Post) -> list[dict]:
+    original_language = _normalize_post_language(post.original_language) or ORIGINAL_POST_LANGUAGE
     versions = [
         {
-            "language": ORIGINAL_POST_LANGUAGE,
-            "hreflang": ORIGINAL_POST_LANGUAGE,
-            "locale": PUBLIC_POST_LANGUAGE_LOCALES[ORIGINAL_POST_LANGUAGE],
-            "og_locale": PUBLIC_POST_OG_LOCALES[ORIGINAL_POST_LANGUAGE],
-            "path": _localized_post_public_path(post, ORIGINAL_POST_LANGUAGE),
+            "language": original_language,
+            "hreflang": original_language,
+            "locale": PUBLIC_POST_LANGUAGE_LOCALES[original_language],
+            "og_locale": PUBLIC_POST_OG_LOCALES[original_language],
+            "path": _localized_post_public_path(post, original_language),
         }
     ]
     translations = _translation_by_language(post)
-    for language in TRANSLATED_POST_LANGUAGES:
+    for language in PUBLIC_POST_LANGUAGES:
+        if language == original_language:
+            continue
         translation = translations.get(language)
         if translation is None:
             continue
@@ -2764,7 +2770,7 @@ def _wherefilmed_reference_title(snapshot: dict, key: str, language: str) -> str
 
 def _serialize_localized_post_template(post: Post, language: str) -> dict | None:
     template_payload = _serialize_post_template(post)
-    if language == ORIGINAL_POST_LANGUAGE or not isinstance(template_payload, dict):
+    if language == post.original_language or not isinstance(template_payload, dict):
         return template_payload
     template_type = str(template_payload.get("type") or "").strip()
     if template_type != _POST_TEMPLATE_TYPE_MOVIE_REVIEW:
@@ -3678,7 +3684,7 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
     translations = _translation_by_language(post)
     translation = None
     translation_unavailable = False
-    if language != ORIGINAL_POST_LANGUAGE:
+    if language != post.original_language:
         translation = translations.get(language)
         if translation is None:
             translation_unavailable = True
@@ -3705,11 +3711,11 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
                 "title": title,
                 "original_title": _post_display_title(post),
                 "original_content": original_content,
-                "original_language": ORIGINAL_POST_LANGUAGE,
+                "original_language": post.original_language,
                 "language": language,
                 "language_locale": PUBLIC_POST_LANGUAGE_LOCALES[language],
                 "og_locale": PUBLIC_POST_OG_LOCALES[language],
-                "is_translated": language != ORIGINAL_POST_LANGUAGE,
+                "is_translated": language != post.original_language,
                 "translation_unavailable": translation_unavailable,
                 "language_versions": language_versions,
                 "available_languages": [version["language"] for version in language_versions],

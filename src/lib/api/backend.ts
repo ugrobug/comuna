@@ -679,8 +679,8 @@ export const buildLandingPageAdminImageUrl = (id: number | string): string => {
 }
 
 export const buildBackendPostPath = (
-  post: { id: number; title: string; language?: string },
-  language = post.language || 'ru'
+  post: { id: number; title: string; language?: string; original_language?: string },
+  language = post.language || post.original_language || 'ru'
 ): string => {
   const slug = slugifyTitle(post.title)
   const path = slug ? `/b/post/${post.id}-${slug}` : `/b/post/${post.id}`
