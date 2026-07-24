@@ -390,7 +390,7 @@
   {#each alternateLinks as alternate (alternate.hreflang)}
     <link rel="alternate" hreflang={alternate.hreflang} href={alternate.href} />
   {/each}
-  {#if translationUnavailable}
+  {#if translationUnavailable || postData?.seo_indexable === false}
     <meta name="robots" content="noindex, follow" />
   {:else}
     <meta name="robots" content="max-image-preview:large" />

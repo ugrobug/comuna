@@ -1033,6 +1033,11 @@
 
 <svelte:head>
   <title>{comun?.name ? `Глоссарий ${comun.name}` : 'Глоссарий сообщества'}</title>
+  {#if comun?.seo_indexable === false}
+    <meta name="robots" content="noindex, follow" />
+  {:else}
+    <meta name="robots" content="max-image-preview:large" />
+  {/if}
 </svelte:head>
 
 <style>

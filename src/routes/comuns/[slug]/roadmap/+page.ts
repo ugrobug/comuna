@@ -19,7 +19,7 @@ export const load = async ({ fetch, params, parent }) => {
   }
 
   return {
-    comun: payload?.comun ?? comun,
+    comun: payload?.comun ? { ...comun, ...payload.comun } : comun,
     items: Array.isArray(payload?.items) ? payload.items : [],
     language,
   }

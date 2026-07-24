@@ -2193,6 +2193,11 @@
   <meta property="og:description" content={description} />
   <meta property="og:type" content="website" />
   <meta property="og:url" content={canonicalUrl} />
+  {#if comun?.seo_indexable === false}
+    <meta name="robots" content="noindex, follow" />
+  {:else}
+    <meta name="robots" content="max-image-preview:large" />
+  {/if}
   {#if comun?.logo_url}
     <meta property="og:image" content={comun.logo_url} />
     <meta name="twitter:image" content={comun.logo_url} />

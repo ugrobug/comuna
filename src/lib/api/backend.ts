@@ -1027,6 +1027,7 @@ export type BackendComun = {
   template_editor_blocks_by_template?: Record<string, string[]>
   custom_templates?: BackendComunCustomTemplate[]
   is_active?: boolean
+  seo_indexable?: boolean
   sort_order?: number
   can_moderate?: boolean
   can_manage_moderators?: boolean
@@ -1338,6 +1339,7 @@ export type BackendPost = {
   original_language?: string
   language?: string
   is_translated?: boolean
+  seo_indexable?: boolean
   template?: SitePostTemplate | null
   enabled_template_editor_blocks?: string[]
   vote_poll_participations?: BackendPostVotePollParticipation[]

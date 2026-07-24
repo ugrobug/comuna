@@ -573,6 +573,11 @@
   <meta property="og:description" content={pageDescription} />
   <meta property="og:type" content="website" />
   <meta property="og:url" content={canonicalUrl} />
+  {#if comun?.seo_indexable === false}
+    <meta name="robots" content="noindex, follow" />
+  {:else}
+    <meta name="robots" content="max-image-preview:large" />
+  {/if}
   <link rel="canonical" href={canonicalUrl} />
 </svelte:head>
 

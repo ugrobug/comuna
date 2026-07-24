@@ -36,6 +36,7 @@ from feeds.models import (
     PostRead,
     Tag,
 )
+from feeds.seo_indexing import comun_is_seo_indexable
 from my_feed import service as my_feed_service
 
 User = get_user_model()
@@ -456,6 +457,7 @@ def _serialize_comun(
     include_options: bool = False,
     include_activity: bool = False,
     include_counts: bool = True,
+    include_seo_indexing: bool = False,
     language: str | None = None,
 ) -> dict:
     categories = community_service._comun_categories_list(comun)
@@ -622,6 +624,8 @@ def _serialize_comun(
     if include_counts:
         payload["subscribers_count"] = int(getattr(comun, "subscribers_count", 0) or 0)
         payload["authors_count"] = int(getattr(comun, "authors_count", 0) or 0)
+    if include_seo_indexing:
+        payload["seo_indexable"] = comun_is_seo_indexable(comun)
     if include_activity:
         payload["activity"] = _serialize_comun_activity(request, comun)
     if include_manage_fields:

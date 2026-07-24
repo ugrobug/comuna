@@ -338,6 +338,7 @@ class Post(models.Model):
     title = models.CharField(max_length=255, blank=True)
     tags = models.ManyToManyField(Tag, blank=True, related_name="posts")
     content = models.TextField(blank=True)
+    seo_text_length = models.PositiveIntegerField(default=0, db_index=True)
     preview_content = models.TextField(blank=True)
     preview_image_url = models.TextField(blank=True)
     original_language = models.CharField(
@@ -399,6 +400,7 @@ class Post(models.Model):
         should_refresh_preview = update_fields is None or bool(
             {"content", "raw_data"} & set(update_fields)
         )
+        should_refresh_seo_text = update_fields is None or "content" in set(update_fields)
         if should_refresh_preview:
             from feeds.preview import build_post_preview
 
@@ -408,6 +410,14 @@ class Post(models.Model):
             if update_fields is not None:
                 kwargs["update_fields"] = list(
                     set(update_fields) | {"preview_content", "preview_image_url"}
+                )
+        if should_refresh_seo_text:
+            from feeds.seo_indexing import plain_text_length
+
+            self.seo_text_length = plain_text_length(self.content)
+            if update_fields is not None:
+                kwargs["update_fields"] = list(
+                    set(kwargs["update_fields"]) | {"seo_text_length"}
                 )
         super().save(*args, **kwargs)
 
@@ -568,6 +578,7 @@ class PostComment(models.Model):
         "self", on_delete=models.CASCADE, null=True, blank=True, related_name="replies"
     )
     body = models.TextField()
+    seo_text_length = models.PositiveIntegerField(default=0, db_index=True)
     persona_key = models.CharField(max_length=64, blank=True, default="")
     persona_username = models.CharField(max_length=150, blank=True, default="")
     is_deleted = models.BooleanField(default=False)
@@ -582,6 +593,18 @@ class PostComment(models.Model):
 
     def __str__(self) -> str:
         return f"{self.post_id}:{self.user_id}"
+
+    def save(self, *args, **kwargs) -> None:
+        update_fields = kwargs.get("update_fields")
+        if update_fields is None or "body" in set(update_fields):
+            from feeds.seo_indexing import plain_text_length
+
+            self.seo_text_length = plain_text_length(self.body)
+            if update_fields is not None:
+                kwargs["update_fields"] = list(
+                    set(update_fields) | {"seo_text_length"}
+                )
+        super().save(*args, **kwargs)
 
 
 class ContentReport(models.Model):

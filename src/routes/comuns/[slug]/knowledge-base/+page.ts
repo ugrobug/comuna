@@ -21,7 +21,7 @@ export const load = async ({ fetch, parent, url }) => {
 
   const payload = await response.json().catch(() => ({}))
   return {
-    comun: payload?.comun ?? comun,
+    comun: payload?.comun ? { ...comun, ...payload.comun } : comun,
     items: payload?.items ?? [],
     flatItems: payload?.flat_items ?? [],
   }

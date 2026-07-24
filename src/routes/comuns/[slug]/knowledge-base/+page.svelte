@@ -296,6 +296,15 @@
   }
 </script>
 
+<svelte:head>
+  <title>{comun?.name ? `База знаний ${comun.name}` : 'База знаний сообщества'}</title>
+  {#if comun?.seo_indexable === false}
+    <meta name="robots" content="noindex, follow" />
+  {:else}
+    <meta name="robots" content="max-image-preview:large" />
+  {/if}
+</svelte:head>
+
 <div class="flex w-full flex-col gap-6">
   <div class="flex flex-wrap items-center justify-between gap-3">
     <div class="min-w-0">

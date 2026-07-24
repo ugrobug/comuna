@@ -25,7 +25,7 @@ export const load = async ({ fetch, parent, url }) => {
 
   const payload = await response.json().catch(() => ({}))
   return {
-    comun: payload?.comun ?? comun,
+    comun: payload?.comun ? { ...comun, ...payload.comun } : comun,
     language,
     points: Array.isArray(payload?.points) ? payload.points : [],
     totalPoints: Number(payload?.total_count ?? 0),

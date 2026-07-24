@@ -174,5 +174,6 @@
   <meta property="og:description" content={description} />
   <meta property="og:type" content="website" />
   <meta property="og:url" content={canonicalUrl} />
+  <meta name="robots" content="noindex, follow" />
   <link rel="canonical" href={canonicalUrl} />
 </svelte:head>

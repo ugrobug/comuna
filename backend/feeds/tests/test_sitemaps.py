@@ -6,6 +6,7 @@ from datetime import timedelta
 from pathlib import Path
 from xml.etree import ElementTree
 
+from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
@@ -14,16 +15,20 @@ from feeds.models import (
     Author,
     ComunTranslation,
     Post,
+    PostComment,
     PostTranslation,
     StaticPageContent,
     StaticPageTranslation,
     Tag,
 )
 from feeds.sitemaps import SITEMAP_SHARD_SIZE, _range_bounds, materialize_sitemaps
+from feeds.seo_indexing import seo_indexable_posts_queryset
 from landing_pages.models import LandingPage
 
 
 SITE_BASE_URL = "https://tambur.pub"
+LONG_CONTENT = f"<p>{'Полезный текст публикации ' * 12}</p>"
+User = get_user_model()
 
 
 @override_settings(SITE_BASE_URL=SITE_BASE_URL)
@@ -39,7 +44,8 @@ class MaterializedSitemapTests(TestCase):
             author=self.author,
             message_id=1,
             title="Русский заголовок",
-            content="<p>Текст</p>",
+            content=LONG_CONTENT,
+            raw_data={"source": "manual_comun", "comun_slug": "community"},
         )
         PostTranslation.objects.create(
             post=self.post,
@@ -53,8 +59,9 @@ class MaterializedSitemapTests(TestCase):
             author=self.author,
             message_id=6,
             title="Original English guide",
-            content="<p>English source content</p>",
+            content=LONG_CONTENT,
             original_language="en",
+            raw_data={"source": "manual_comun", "comun_slug": "community"},
         )
         PostTranslation.objects.create(
             post=self.english_post,
@@ -94,7 +101,14 @@ class MaterializedSitemapTests(TestCase):
         self.tag = Tag.objects.create(name="Кино и ТВ")
         self.post.tags.add(self.tag)
 
-        self.comun = Comun.objects.create(name="Сообщество", slug="community")
+        self.comun = Comun.objects.create(
+            name="Сообщество",
+            slug="community",
+            glossary_enabled=True,
+            roadmap_enabled=True,
+            knowledge_base_enabled=True,
+            community_map_enabled=True,
+        )
         ComunTranslation.objects.create(
             comun=self.comun,
             language="en",
@@ -188,10 +202,15 @@ class MaterializedSitemapTests(TestCase):
         self.assertNotIn("post-zablokirovannogo-avtora", all_xml)
         self.assertIn(f"{SITE_BASE_URL}/comuns/community", all_xml)
         self.assertIn(f"{SITE_BASE_URL}/en/comuns/community", all_xml)
+        self.assertIn(f"{SITE_BASE_URL}/comuns/community/glossary", all_xml)
+        self.assertIn(f"{SITE_BASE_URL}/comuns/community/roadmap", all_xml)
+        self.assertIn(f"{SITE_BASE_URL}/comuns/community/knowledge-base", all_xml)
+        self.assertIn(f"{SITE_BASE_URL}/comuns/community/map", all_xml)
         self.assertIn(f"{SITE_BASE_URL}/en/about", all_xml)
         self.assertIn(f"{SITE_BASE_URL}/l/community-platform", all_xml)
         self.assertNotIn(f"{SITE_BASE_URL}/l/hidden-landing", all_xml)
-        self.assertIn(f"{SITE_BASE_URL}/tags/%D0%9A%D0%B8%D0%BD%D0%BE%20%D0%B8%20%D0%A2%D0%92", all_xml)
+        self.assertNotIn(f"{SITE_BASE_URL}/tags/", all_xml)
+        self.assertFalse(list(self.output_dir.glob("sitemap-tags-*.xml")))
 
         for path in self.output_dir.glob("sitemap*.xml"):
             ElementTree.fromstring(path.read_bytes())
@@ -248,3 +267,118 @@ class MaterializedSitemapTests(TestCase):
         self.assertEqual(child.status_code, 200)
         self.assertEqual(missing.status_code, 404)
         self.assertEqual(response["Cache-Control"], "public, max-age=300")
+
+    def test_detail_apis_expose_the_same_indexing_decision(self) -> None:
+        short_post = Post.objects.create(
+            id=5090,
+            author=self.author,
+            message_id=90,
+            title="Короткая запись для API",
+            content="<p>Мало текста</p>",
+        )
+        sparse_comun = Comun.objects.create(
+            name="Малое сообщество для API",
+            slug="sparse-api-community",
+        )
+        Post.objects.create(
+            id=5091,
+            author=self.author,
+            message_id=91,
+            title="Единственный пост малого сообщества для API",
+            content=LONG_CONTENT,
+            raw_data={"source": "manual_comun", "comun_slug": sparse_comun.slug},
+        )
+
+        long_post_response = self.client.get(f"/api/posts/{self.post.id}/")
+        short_post_response = self.client.get(f"/api/posts/{short_post.id}/")
+        comun_response = self.client.get(f"/api/comuns/{self.comun.slug}/")
+        sparse_comun_response = self.client.get(
+            f"/api/comuns/{sparse_comun.slug}/"
+        )
+
+        self.assertTrue(long_post_response.json()["post"]["seo_indexable"])
+        self.assertFalse(short_post_response.json()["post"]["seo_indexable"])
+        self.assertTrue(comun_response.json()["comun"]["seo_indexable"])
+        self.assertFalse(
+            sparse_comun_response.json()["comun"]["seo_indexable"]
+        )
+
+    def test_applies_dynamic_post_and_comun_indexing_rules(self) -> None:
+        short_post = Post.objects.create(
+            id=5010,
+            author=self.author,
+            message_id=10,
+            title="Короткая запись",
+            content="<p>Мало текста</p>",
+        )
+        discussed_post = Post.objects.create(
+            id=5011,
+            author=self.author,
+            message_id=11,
+            title="Короткая запись с обсуждением",
+            content="<p>Мало текста</p>",
+        )
+        commenter = User.objects.create_user(username="seo-commenter")
+        PostComment.objects.create(
+            post=discussed_post,
+            user=commenter,
+            body="Подробный содержательный комментарий " * 8,
+        )
+        self.assertTrue(
+            seo_indexable_posts_queryset().filter(id=discussed_post.id).exists()
+        )
+
+        sparse_comun = Comun.objects.create(
+            name="Малое сообщество",
+            slug="sparse-community",
+            roadmap_enabled=True,
+        )
+        Post.objects.create(
+            id=5012,
+            author=self.author,
+            message_id=12,
+            title="Единственный пост малого сообщества",
+            content=LONG_CONTENT,
+            raw_data={"source": "manual_comun", "comun_slug": sparse_comun.slug},
+        )
+
+        blocked_comun = Comun.objects.create(
+            name="Заблокированное сообщество",
+            slug="blocked-community",
+            is_active=False,
+        )
+        blocked_comun_post = Post.objects.create(
+            id=5013,
+            author=self.author,
+            message_id=13,
+            title="Пост заблокированного сообщества",
+            content=LONG_CONTENT,
+            raw_data={"source": "manual_comun", "comun_slug": blocked_comun.slug},
+        )
+
+        self._materialize()
+        all_xml = "".join(
+            path.read_text(encoding="utf-8")
+            for path in self.output_dir.glob("sitemap*.xml")
+        )
+        self.assertNotIn(f"/b/post/{short_post.id}-", all_xml)
+        self.assertIn(f"/b/post/{discussed_post.id}-", all_xml)
+        self.assertNotIn("/comuns/sparse-community", all_xml)
+        self.assertNotIn(f"/b/post/{blocked_comun_post.id}-", all_xml)
+        self.assertNotIn("/comuns/blocked-community", all_xml)
+
+        Post.objects.create(
+            id=5014,
+            author=self.author,
+            message_id=14,
+            title="Второй пост малого сообщества",
+            content=LONG_CONTENT,
+            raw_data={"source": "manual_comun", "comun_slug": sparse_comun.slug},
+        )
+        self._materialize()
+        refreshed_xml = "".join(
+            path.read_text(encoding="utf-8")
+            for path in self.output_dir.glob("sitemap*.xml")
+        )
+        self.assertIn("/comuns/sparse-community", refreshed_xml)
+        self.assertIn("/comuns/sparse-community/roadmap", refreshed_xml)

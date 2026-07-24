@@ -467,6 +467,11 @@
 
 <svelte:head>
   <title>{comun?.name ? $t('routes.communityMap.pageTitle', { community: comun.name }) : $t('routes.communityMap.communityMapTitle')}</title>
+  {#if comun?.seo_indexable === false}
+    <meta name="robots" content="noindex, follow" />
+  {:else}
+    <meta name="robots" content="max-image-preview:large" />
+  {/if}
 </svelte:head>
 
 <main class="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">

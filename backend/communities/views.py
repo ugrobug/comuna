@@ -2406,6 +2406,7 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
                     include_manage_fields=include_settings and can_moderate,
                     include_options=include_options and can_moderate,
                     include_activity=include_activity,
+                    include_seo_indexing=True,
                     language=language,
                 ),
             }

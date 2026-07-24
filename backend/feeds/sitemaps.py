@@ -15,27 +15,30 @@ from urllib.parse import quote
 from xml.sax.saxutils import escape as xml_escape
 
 from django.conf import settings
-from django.db.models import Count, Exists, Max, OuterRef, Prefetch, Q, QuerySet
+from django.db.models import Count, Max, Prefetch, QuerySet
 from django.http import FileResponse, Http404, HttpRequest, HttpResponse
 from django.utils import timezone
 from django.utils.http import http_date
 
-from communities.models import Comun
 from feeds.models import (
     Author,
     ComunTranslation,
     POST_TRANSLATION_STATUS_TRANSLATED,
     Post,
+    PostComment,
     PostTranslation,
     StaticPageContent,
     StaticPageTranslation,
-    Tag,
 )
 from feeds.post_paths import build_post_public_path
+from feeds.seo_indexing import (
+    seo_indexable_comuns_queryset,
+    seo_indexable_posts_queryset,
+)
 from landing_pages.models import LandingPage
 
 
-SITEMAP_MATERIALIZER_VERSION = 2
+SITEMAP_MATERIALIZER_VERSION = 3
 SITEMAP_SHARD_SIZE = 5_000
 ORIGINAL_LANGUAGE = "ru"
 TRANSLATED_LANGUAGES = ("en", "es", "pt", "de", "fr", "tr", "id")
@@ -263,19 +266,7 @@ def _ranges_for_queryset(queryset: QuerySet) -> list[tuple[int, int]]:
 
 
 def _public_posts(now=None) -> QuerySet:
-    current_time = now or timezone.now()
-    return (
-        Post.objects.filter(
-            is_blocked=False,
-            is_pending=False,
-            author__is_blocked=False,
-        )
-        .filter(Q(publish_at__isnull=True) | Q(publish_at__lte=current_time))
-        .filter(
-            Q(raw_data__special_project__slug__isnull=True)
-            | ~Q(raw_data__special_project__slug="book")
-        )
-    )
+    return seo_indexable_posts_queryset(now=now)
 
 
 def _post_group_fingerprint(queryset: QuerySet) -> tuple[str, int]:
@@ -289,11 +280,16 @@ def _post_group_fingerprint(queryset: QuerySet) -> tuple[str, int]:
         status=POST_TRANSLATION_STATUS_TRANSLATED,
         language__in=PUBLIC_LANGUAGES,
     ).aggregate(count=Count("id"), max_updated=Max("updated_at"))
+    comments = PostComment.objects.filter(
+        post_id__in=queryset.values("id"),
+        is_deleted=False,
+    ).aggregate(count=Count("id"), max_updated=Max("updated_at"))
     payload = {
         "kind": "posts",
         "version": SITEMAP_MATERIALIZER_VERSION,
         "posts": stats,
         "translations": translations,
+        "comments": comments,
     }
     return _fingerprint(payload), int(stats.get("count") or 0)
 
@@ -420,7 +416,7 @@ def _build_landing_page_files(
 
 
 def _public_comuns() -> QuerySet:
-    return Comun.objects.filter(is_active=True)
+    return seo_indexable_comuns_queryset()
 
 
 def _comun_group_fingerprint(queryset: QuerySet) -> tuple[str, int]:
@@ -447,61 +443,68 @@ def _build_comun_files(queryset: QuerySet, start: int, end: int, base_url: str) 
     ).only("comun_id", "language", "updated_at", "status")
     comuns = list(
         queryset.filter(id__gte=start, id__lte=end)
-        .only("id", "slug", "created_at", "updated_at")
+        .only(
+            "id",
+            "slug",
+            "created_at",
+            "updated_at",
+            "glossary_enabled",
+            "roadmap_enabled",
+            "knowledge_base_enabled",
+            "community_map_enabled",
+        )
         .prefetch_related(Prefetch("translations", queryset=translations, to_attr="_sitemap_translations"))
         .order_by("id")
     )
     entries_by_language: dict[str, list[SitemapEntry]] = {language: [] for language in PUBLIC_LANGUAGES}
     for comun in comuns:
-        versions: dict[str, tuple[str, str | None]] = {
-            ORIGINAL_LANGUAGE: (f"/comuns/{quote(comun.slug, safe='')}", _utc_timestamp(comun.updated_at))
-        }
-        for translation in getattr(comun, "_sitemap_translations", []):
-            versions[translation.language] = (
-                f"/{translation.language}/comuns/{quote(comun.slug, safe='')}",
-                _utc_timestamp(translation.updated_at),
+        enabled_paths = [""]
+        enabled_paths.extend(
+            path
+            for enabled, path in (
+                (comun.glossary_enabled, "glossary"),
+                (comun.roadmap_enabled, "roadmap"),
+                (comun.knowledge_base_enabled, "knowledge-base"),
+                (comun.community_map_enabled, "map"),
             )
-        alternates = tuple(
-            SitemapAlternate(language, f"{base_url}{versions[language][0]}")
-            for language in PUBLIC_LANGUAGES
-            if language in versions
-        ) + (
-            SitemapAlternate("x-default", f"{base_url}{versions[ORIGINAL_LANGUAGE][0]}"),
+            if enabled
         )
-        for language, (path, lastmod) in versions.items():
-            entries_by_language[language].append(
-                SitemapEntry(loc=f"{base_url}{path}", lastmod=lastmod, alternates=alternates)
+        for app_path in enabled_paths:
+            suffix = f"/{app_path}" if app_path else ""
+            versions: dict[str, tuple[str, str | None]] = {
+                ORIGINAL_LANGUAGE: (
+                    f"/comuns/{quote(comun.slug, safe='')}{suffix}",
+                    _utc_timestamp(comun.updated_at),
+                )
+            }
+            for translation in getattr(comun, "_sitemap_translations", []):
+                versions[translation.language] = (
+                    f"/{translation.language}/comuns/{quote(comun.slug, safe='')}{suffix}",
+                    _utc_timestamp(translation.updated_at),
+                )
+            alternates = tuple(
+                SitemapAlternate(language, f"{base_url}{versions[language][0]}")
+                for language in PUBLIC_LANGUAGES
+                if language in versions
+            ) + (
+                SitemapAlternate("x-default", f"{base_url}{versions[ORIGINAL_LANGUAGE][0]}"),
             )
-    return {
-        f"sitemap-comuns-{language}-{start:09d}-{end:09d}.xml": _urlset(entries)
-        for language, entries in entries_by_language.items()
-        if entries
-    }
+            for language, (path, lastmod) in versions.items():
+                entries_by_language[language].append(
+                    SitemapEntry(loc=f"{base_url}{path}", lastmod=lastmod, alternates=alternates)
+                )
 
-
-def _public_tags(now=None) -> QuerySet:
-    public_post = _public_posts(now).filter(tags=OuterRef("pk"))
-    return Tag.objects.filter(is_active=True).annotate(
-        has_public_post=Exists(public_post)
-    ).filter(has_public_post=True)
-
-
-def _tag_group_fingerprint(queryset: QuerySet) -> tuple[str, int]:
-    stats = queryset.aggregate(
-        count=Count("id"),
-        max_updated=Max("updated_at"),
-    )
-    return _fingerprint({"kind": "tags", "version": SITEMAP_MATERIALIZER_VERSION, **stats}), int(
-        stats.get("count") or 0
-    )
-
-
-def _build_tag_files(queryset: QuerySet, start: int, end: int, base_url: str) -> dict[str, str]:
-    entries = [
-        SitemapEntry(loc=f"{base_url}/tags/{quote(tag.name, safe='')}")
-        for tag in queryset.filter(id__gte=start, id__lte=end).only("id", "name").order_by("id")
-    ]
-    return {f"sitemap-tags-{start:09d}-{end:09d}.xml": _urlset(entries)} if entries else {}
+    files: dict[str, str] = {}
+    for language, entries in entries_by_language.items():
+        for offset in range(0, len(entries), SITEMAP_SHARD_SIZE):
+            chunk = entries[offset : offset + SITEMAP_SHARD_SIZE]
+            part = offset // SITEMAP_SHARD_SIZE + 1
+            part_suffix = f"-part-{part:03d}" if len(entries) > SITEMAP_SHARD_SIZE else ""
+            filename = (
+                f"sitemap-comuns-{language}-{start:09d}-{end:09d}{part_suffix}.xml"
+            )
+            files[filename] = _urlset(chunk)
+    return files
 
 
 def _static_fingerprint() -> tuple[str, int]:
@@ -654,7 +657,6 @@ def materialize_sitemaps(
                 _build_landing_page_files,
             ),
             ("comuns", _public_comuns(), _comun_group_fingerprint, _build_comun_files),
-            ("tags", _public_tags(), _tag_group_fingerprint, _build_tag_files),
         )
         for kind, base_queryset, signature_builder, file_builder in specifications:
             for start, end in _ranges_for_queryset(base_queryset):

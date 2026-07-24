@@ -118,6 +118,7 @@ from editor.service import (
 )
 from ratings.models import AuthorRatingEvent
 from .post_paths import build_post_public_path
+from .seo_indexing import post_is_seo_indexable
 from .models import (
     Author,
     ContentReport,
@@ -3717,6 +3718,7 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
                 "og_locale": PUBLIC_POST_OG_LOCALES[language],
                 "is_translated": translation is not None,
                 "translation_unavailable": translation_unavailable,
+                "seo_indexable": post_is_seo_indexable(post, now=now),
                 "language_versions": language_versions,
                 "available_languages": [version["language"] for version in language_versions],
                 "template": template_payload,
