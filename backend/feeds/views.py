@@ -3715,7 +3715,7 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
                 "language": language,
                 "language_locale": PUBLIC_POST_LANGUAGE_LOCALES[language],
                 "og_locale": PUBLIC_POST_OG_LOCALES[language],
-                "is_translated": language != post.original_language,
+                "is_translated": translation is not None,
                 "translation_unavailable": translation_unavailable,
                 "language_versions": language_versions,
                 "available_languages": [version["language"] for version in language_versions],

@@ -9,6 +9,29 @@ from ratings.models import RatingSettings
 
 
 class HomeFeedTests(TestCase):
+    def test_post_detail_does_not_claim_missing_translation_is_translated(self):
+        author = Author.objects.create(username="english-detail-source")
+        post = Post.objects.create(
+            author=author,
+            message_id=999,
+            title="An English source without a Russian translation",
+            content="<p>This article has not been translated yet.</p>",
+            original_language="en",
+            is_pending=False,
+            is_blocked=False,
+        )
+
+        response = self.client.get(
+            reverse("post-detail", args=[post.id]),
+            {"lang": "ru"},
+        )
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        payload = response.json()["post"]
+        self.assertTrue(payload["translation_unavailable"])
+        self.assertFalse(payload["is_translated"])
+        self.assertEqual(payload["content"], "")
+
     def test_original_english_post_is_only_in_english_feed_until_russian_translation_exists(self):
         author = Author.objects.create(username="english-source")
         post = Post.objects.create(
