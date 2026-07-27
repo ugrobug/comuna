@@ -961,8 +961,11 @@ def process_due_translation_tasks(*, limit: int = 20) -> dict[str, int]:
     now = timezone.now()
     _reset_stale_running_translation_tasks(now)
     _reset_retryable_failed_translation_tasks(now)
-    task_ids = _claim_due_translation_task_ids(limit=limit, now=now)
-    for task_id in task_ids:
+    for _ in range(max(int(limit), 1)):
+        task_ids = _claim_due_translation_task_ids(limit=1, now=now)
+        if not task_ids:
+            break
+        task_id = task_ids[0]
         result = _process_claimed_translation_task(task_id)
         stats["processed"] += 1
         stats[result] = stats.get(result, 0) + 1
@@ -1056,15 +1059,27 @@ def _process_claimed_translation_task(task_id: int) -> str:
 
 def _reset_stale_running_translation_tasks(now) -> int:
     stale_before = now - CONTENT_TRANSLATION_TASK_STALE_AFTER
-    return ContentTranslationTask.objects.filter(
+    stale_tasks = ContentTranslationTask.objects.filter(
         status=CONTENT_TRANSLATION_TASK_STATUS_RUNNING,
         locked_at__lt=stale_before,
+    )
+    failed = stale_tasks.filter(
+        attempts__gte=CONTENT_TRANSLATION_TASK_MAX_ATTEMPTS,
+    ).update(
+        status=CONTENT_TRANSLATION_TASK_STATUS_FAILED,
+        locked_at=None,
+        last_error="Исчерпан лимит попыток после таймаута обработчика",
+        updated_at=now,
+    )
+    pending = stale_tasks.filter(
+        attempts__lt=CONTENT_TRANSLATION_TASK_MAX_ATTEMPTS,
     ).update(
         status=CONTENT_TRANSLATION_TASK_STATUS_PENDING,
         locked_at=None,
         last_error="Задача возвращена в очередь после таймаута обработчика",
         updated_at=now,
     )
+    return failed + pending
 
 
 def _reset_retryable_failed_translation_tasks(now) -> int:
@@ -1162,7 +1177,17 @@ def _reschedule_translation_task(task: ContentTranslationTask, *, scheduled_at, 
     task.scheduled_at = scheduled_at
     task.locked_at = None
     task.last_error = reason[:2000]
-    task.save(update_fields=["status", "scheduled_at", "locked_at", "last_error", "updated_at"])
+    task.attempts = max(int(task.attempts or 0) - 1, 0)
+    task.save(
+        update_fields=[
+            "status",
+            "scheduled_at",
+            "locked_at",
+            "last_error",
+            "attempts",
+            "updated_at",
+        ]
+    )
 
 
 def _translation_budget_reschedule(task: ContentTranslationTask) -> tuple[object, str] | None:

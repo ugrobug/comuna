@@ -23,12 +23,18 @@ class Command(BaseCommand):
         run_timeout = max(int(options["run_timeout"] or 720), 1)
 
         while True:
-            signal.signal(signal.SIGALRM, _raise_timeout)
-            signal.alarm(run_timeout)
-            try:
-                stats = process_due_translation_tasks(limit=limit)
-            finally:
-                signal.alarm(0)
+            stats = {"processed": 0, "done": 0, "failed": 0, "skipped": 0}
+            for _ in range(limit):
+                signal.signal(signal.SIGALRM, _raise_timeout)
+                signal.alarm(run_timeout)
+                try:
+                    result = process_due_translation_tasks(limit=1)
+                finally:
+                    signal.alarm(0)
+                for key in stats:
+                    stats[key] += result.get(key, 0)
+                if result["processed"] == 0:
+                    break
             self.stdout.write(
                 "processed={processed} done={done} failed={failed} skipped={skipped}".format(
                     **stats

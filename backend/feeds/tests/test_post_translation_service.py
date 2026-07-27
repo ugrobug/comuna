@@ -480,6 +480,64 @@ class PostTranslationServiceTests(TestCase):
         self.assertEqual(task.attempts, CONTENT_TRANSLATION_TASK_MAX_ATTEMPTS)
         translate_mock.assert_not_called()
 
+    @patch(
+        "feeds.translation_service._process_claimed_translation_task",
+        side_effect=TimeoutError("worker timeout"),
+    )
+    def test_process_due_translation_tasks_does_not_preclaim_batch(
+        self,
+        process_mock,
+    ) -> None:
+        second_post = Post.objects.create(
+            author=self.author,
+            message_id=2,
+            title="Второй заголовок",
+            content="<p>Второй абзац</p>",
+        )
+        ContentTranslationTask.objects.filter(
+            kind=CONTENT_TRANSLATION_KIND_POST,
+            object_id__in=[self.post.pk, second_post.pk],
+        ).update(scheduled_at=timezone.now() - timedelta(minutes=1))
+
+        with self.assertRaises(TimeoutError):
+            process_due_translation_tasks(limit=50)
+
+        statuses = dict(
+            ContentTranslationTask.objects.filter(
+                kind=CONTENT_TRANSLATION_KIND_POST,
+                object_id__in=[self.post.pk, second_post.pk],
+            ).values_list("object_id", "status")
+        )
+        self.assertEqual(process_mock.call_count, 1)
+        self.assertEqual(
+            list(statuses.values()).count(CONTENT_TRANSLATION_TASK_STATUS_RUNNING),
+            1,
+        )
+        self.assertEqual(
+            list(statuses.values()).count(CONTENT_TRANSLATION_TASK_STATUS_PENDING),
+            1,
+        )
+
+    @patch("feeds.translation_service.translate_post_to_language")
+    def test_exhausted_stale_task_becomes_failed(self, translate_mock) -> None:
+        task = ContentTranslationTask.objects.get(
+            kind=CONTENT_TRANSLATION_KIND_POST,
+            object_id=self.post.pk,
+        )
+        ContentTranslationTask.objects.filter(pk=task.pk).update(
+            status="running",
+            attempts=CONTENT_TRANSLATION_TASK_MAX_ATTEMPTS,
+            locked_at=timezone.now() - timedelta(minutes=13),
+        )
+
+        stats = process_due_translation_tasks(limit=1)
+
+        self.assertEqual(stats["processed"], 0)
+        task.refresh_from_db()
+        self.assertEqual(task.status, CONTENT_TRANSLATION_TASK_STATUS_FAILED)
+        self.assertIn("таймаута", task.last_error)
+        translate_mock.assert_not_called()
+
     @patch("feeds.translation_service.translate_post_to_language")
     def test_process_due_translation_tasks_skips_exhausted_pending_task(
         self,
@@ -555,6 +613,7 @@ class PostTranslationServiceTests(TestCase):
         task.refresh_from_db()
         self.assertEqual(task.status, CONTENT_TRANSLATION_TASK_STATUS_PENDING)
         self.assertIn("выключен", task.last_error)
+        self.assertEqual(task.attempts, 0)
         self.assertFalse(ContentTranslationRun.objects.exists())
         translate_mock.assert_not_called()
 
@@ -586,6 +645,7 @@ class PostTranslationServiceTests(TestCase):
         task.refresh_from_db()
         self.assertEqual(task.status, CONTENT_TRANSLATION_TASK_STATUS_PENDING)
         self.assertIn("Дневной лимит", task.last_error)
+        self.assertEqual(task.attempts, 0)
         self.assertEqual(
             ContentTranslationRun.objects.filter(object_id=self.post.pk).count(),
             0,
@@ -621,6 +681,7 @@ class PostTranslationServiceTests(TestCase):
         task.refresh_from_db()
         self.assertEqual(task.status, CONTENT_TRANSLATION_TASK_STATUS_PENDING)
         self.assertIn("24 часа", task.last_error)
+        self.assertEqual(task.attempts, 0)
         self.assertEqual(
             ContentTranslationRun.objects.filter(object_id=self.post.pk).count(),
             3,
