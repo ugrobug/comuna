@@ -163,6 +163,7 @@ from ratings.service import (
     user_max_author_rating as _user_max_author_rating,
 )
 from telegram_integration.media import download_telegram_file_by_path
+from telegram_integration.models import TelegramAccount
 from users.models import (
     AuthorAdmin,
     AuthorVerificationCode,
@@ -780,7 +781,12 @@ def _can_edit_site_comment(user: User | None, comment: PostComment) -> bool:
     return bool(user.is_staff and getattr(comment, "persona_key", ""))
 
 
-def _maybe_notify_author_comment(post: Post, comment: PostComment) -> None:
+def _maybe_notify_author_comment(
+    post: Post,
+    comment: PostComment,
+    *,
+    excluded_telegram_chat_ids: set[int] | None = None,
+) -> None:
     author = post.author
     if not author.notify_comments or not author.admin_chat_id:
         return
@@ -805,7 +811,10 @@ def _maybe_notify_author_comment(post: Post, comment: PostComment) -> None:
     if post_link:
         text += f"\nСсылка: {post_link}"
 
-    telegram_bot._send_bot_message(int(author.admin_chat_id), text)
+    admin_chat_id = int(author.admin_chat_id)
+    if admin_chat_id in (excluded_telegram_chat_ids or set()):
+        return
+    telegram_bot._send_bot_message(admin_chat_id, text)
 
 
 def _site_comment_link(
@@ -850,16 +859,28 @@ def _author_owner_users_for_notifications(author: Author) -> list[User]:
     return list(User.objects.filter(id__in=user_ids))
 
 
+def _delivered_notification_telegram_chat_ids(notification) -> set[int]:
+    if not notification or not notification.telegram_sent_at:
+        return set()
+    telegram_id = (
+        TelegramAccount.objects.filter(user_id=notification.user_id)
+        .values_list("telegram_id", flat=True)
+        .first()
+    )
+    return {int(telegram_id)} if telegram_id is not None else set()
+
+
 def _maybe_notify_post_comment(
     post: Post,
     comment: PostComment,
     *,
     parent: PostComment | None = None,
-) -> None:
+) -> set[int]:
     recipients = _author_owner_users_for_notifications(post.author)
     if not recipients:
-        return
+        return set()
 
+    notified_telegram_chat_ids: set[int] = set()
     commenter_name = _comment_display_username(comment) or "Пользователь"
     post_title = _post_display_title(post)
     comment_preview = _comment_preview(comment.body)
@@ -887,7 +908,7 @@ def _maybe_notify_post_comment(
             and parent.user_id == recipient.id
         ):
             continue
-        create_user_notification(
+        notification = create_user_notification(
             user=recipient,
             event_key="post_comment",
             title="Новый комментарий к вашему посту",
@@ -895,21 +916,25 @@ def _maybe_notify_post_comment(
             link_url=link_url,
             payload=payload,
         )
+        notified_telegram_chat_ids.update(
+            _delivered_notification_telegram_chat_ids(notification)
+        )
+    return notified_telegram_chat_ids
 
 
 def _maybe_notify_comment_reply(
     post: Post,
     parent: PostComment | None,
     comment: PostComment,
-) -> None:
+) -> set[int]:
     if not parent:
-        return
+        return set()
     if parent.is_deleted:
-        return
+        return set()
     if getattr(parent, "persona_key", ""):
-        return
+        return set()
     if not parent.user_id or parent.user_id == comment.user_id:
-        return
+        return set()
 
     replier_name = _comment_display_username(comment) or "Пользователь"
     post_title = _post_display_title(post)
@@ -927,7 +952,7 @@ def _maybe_notify_comment_reply(
         f"в посте «{post_title}»: {comment_preview}"
     )
 
-    create_user_notification(
+    notification = create_user_notification(
         user=parent.user,
         event_key="comment_reply",
         title="Ответ на ваш комментарий",
@@ -935,6 +960,7 @@ def _maybe_notify_comment_reply(
         link_url=link_url,
         payload=payload,
     )
+    return _delivered_notification_telegram_chat_ids(notification)
 
 
 def _is_voting_comun_category(category: ComunCategory | None) -> bool:
@@ -3006,9 +3032,15 @@ def post_comments(request: HttpRequest, post_id: int) -> HttpResponse:
         value_delta=1,
         event_type="post_comment",
     )
-    _maybe_notify_post_comment(post, comment, parent=parent)
-    _maybe_notify_comment_reply(post, parent, comment)
-    _maybe_notify_author_comment(post, comment)
+    notified_telegram_chat_ids = _maybe_notify_post_comment(post, comment, parent=parent)
+    notified_telegram_chat_ids.update(
+        _maybe_notify_comment_reply(post, parent, comment)
+    )
+    _maybe_notify_author_comment(
+        post,
+        comment,
+        excluded_telegram_chat_ids=notified_telegram_chat_ids,
+    )
 
     return JsonResponse(
         {

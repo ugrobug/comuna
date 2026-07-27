@@ -668,9 +668,15 @@ def film_journey_entry_comments(request: HttpRequest, access_token: str) -> Http
     )
     Post.objects.filter(id=post.id).update(comments_count=F("comments_count") + 1)
     post.refresh_from_db(fields=["comments_count"])
-    _maybe_notify_post_comment(post, comment, parent=parent)
-    _maybe_notify_comment_reply(post, parent, comment)
-    _maybe_notify_author_comment(post, comment)
+    notified_telegram_chat_ids = _maybe_notify_post_comment(post, comment, parent=parent)
+    notified_telegram_chat_ids.update(
+        _maybe_notify_comment_reply(post, parent, comment)
+    )
+    _maybe_notify_author_comment(
+        post,
+        comment,
+        excluded_telegram_chat_ids=notified_telegram_chat_ids,
+    )
 
     if comment_user.id == user.id:
         entry = film_journey.complete_entry_from_discussion_if_ready(entry, user)
