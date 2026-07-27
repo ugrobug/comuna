@@ -87,7 +87,7 @@
       <!-- 1 колонка: логотип -->
       <div class="navbar-brand-cell flex min-w-0 items-center gap-2">
         <div
-          class="logo min-w-0 cursor-pointer"
+          class="logo min-w-0 shrink-0 cursor-pointer"
           on:click={goToHome}
           role="button"
           tabindex="0"
@@ -96,6 +96,9 @@
           <span class="block truncate text-xl font-medium tracking-tight font-roboto text-slate-900 dark:text-white">
             {brandName}
           </span>
+        </div>
+        <div class="min-w-0 flex-1 md:hidden">
+          <HeaderSearch compact />
         </div>
       </div>
       <!-- 2 колонка: поиск -->
@@ -166,13 +169,15 @@
           </Menu>
         {:else}
           {#if $siteUser}
-            {#await import('$lib/components/notifications/NotificationBellMenu.svelte') then { default: NotificationBellMenu }}
-              <NotificationBellMenu />
-            {/await}
             <div class="hidden md:block">
+              {#await import('$lib/components/notifications/NotificationBellMenu.svelte') then { default: NotificationBellMenu }}
+                <NotificationBellMenu />
+              {/await}
+            </div>
+            <div class="hidden md:flex items-center">
               <Button
                 color="primary"
-                class="!rounded-full font-normal py-2 px-4 !text-base md:py-2 md:px-4 dark:!bg-primary-900 dark:!text-white dark:!border-transparent dark:hover:!brightness-110"
+                class="!inline-flex !rounded-full font-normal py-2 px-4 !text-base md:py-2 md:px-4 dark:!bg-primary-900 dark:!text-white dark:!border-transparent dark:hover:!brightness-110"
                 href="/account/new-post?new=1"
               >
                 {$t('site.nav.write')}
@@ -229,9 +234,6 @@
           </div>
         {/if}
       </div>
-    </div>
-    <div class="md:hidden mt-2 w-full min-w-0">
-      <HeaderSearch compact />
     </div>
   </div>
 </nav>

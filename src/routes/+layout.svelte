@@ -238,7 +238,7 @@
       {#await import('$lib/components/ui/sidebar/Sidebar.svelte') then { default: Sidebar }}
         <Sidebar
           route={$page.route.id ?? ''}
-          class="xl:pt-0 pt-20 {c}"
+          class="pt-14 md:pt-20 xl:pt-0 {c}"
           style={s}
         />
       {/await}
@@ -249,8 +249,8 @@
     let:style={s}
     let:class={c}
     class="{isFullBleedRoute
-      ? 'min-w-0 w-full flex flex-col h-full relative xl:pt-0 pt-20'
-      : 'p-4 sm:p-6 min-w-0 w-full flex flex-col h-full relative xl:pt-0 pt-20'} {showMobileBottomNavigation ? 'mobile-bottom-nav-space' : ''} {c}"
+      ? 'min-w-0 w-full flex flex-col h-full relative pt-14 md:pt-20 xl:pt-0'
+      : 'p-4 sm:p-6 min-w-0 w-full flex flex-col h-full relative pt-14 md:pt-20 xl:pt-0'} {showMobileBottomNavigation ? 'mobile-bottom-nav-space' : ''} {c}"
     style={s}
     id="main"
   >
