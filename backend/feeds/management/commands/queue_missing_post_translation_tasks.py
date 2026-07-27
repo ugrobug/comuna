@@ -28,6 +28,7 @@ from feeds.translation_service import (
 
 WHEREFILMED_PRIORITY_AT = datetime(2000, 1, 1, tzinfo=datetime_timezone.utc)
 WHEREFILMED_PRIORITY_LANGUAGES = {"tr", "id"}
+WHEREFILMED_PRIORITY_MAX_CONTENT_CHARS = 150_000
 
 
 class Command(BaseCommand):
@@ -64,6 +65,7 @@ class Command(BaseCommand):
             "retry_exhausted_reset": 0,
             "prioritized_wherefilmed": 0,
             "wherefilmed_missing_tr_id": 0,
+            "wherefilmed_oversized_deferred": 0,
             "skipped_not_translatable": 0,
         }
 
@@ -98,11 +100,17 @@ class Command(BaseCommand):
 
             stats["missing_translations"] += 1
             is_wherefilmed = _is_wherefilmed_post(post)
-            is_wherefilmed_priority = is_wherefilmed and bool(
+            is_wherefilmed_missing_priority_language = is_wherefilmed and bool(
                 WHEREFILMED_PRIORITY_LANGUAGES.intersection(missing_languages)
             )
-            if is_wherefilmed_priority:
+            is_wherefilmed_priority = (
+                is_wherefilmed_missing_priority_language
+                and len(post.content or "") <= WHEREFILMED_PRIORITY_MAX_CONTENT_CHARS
+            )
+            if is_wherefilmed_missing_priority_language:
                 stats["wherefilmed_missing_tr_id"] += 1
+            if is_wherefilmed_missing_priority_language and not is_wherefilmed_priority:
+                stats["wherefilmed_oversized_deferred"] += 1
 
             scheduled_at = _scheduled_at_for(post, CONTENT_TRANSLATION_KIND_POST)
             if is_wherefilmed_priority and scheduled_at <= now:
