@@ -169,43 +169,47 @@
             {#await import('$lib/components/notifications/NotificationBellMenu.svelte') then { default: NotificationBellMenu }}
               <NotificationBellMenu />
             {/await}
-            <Button
-              color="primary"
-              class="!rounded-full font-normal py-2 px-4 !text-base md:py-2 md:px-4 dark:!bg-primary-900 dark:!text-white dark:!border-transparent dark:hover:!brightness-110"
-              href="/account/new-post?new=1"
-            >
-              {$t('site.nav.write')}
-            </Button>
-            <Menu placement="bottom-end">
-              <button
-                slot="target"
-                class="flex items-center gap-2 rounded-full border border-slate-200 dark:border-zinc-700 px-2 py-1 transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800"
-                title={$t('site.nav.userMenu')}
+            <div class="hidden md:block">
+              <Button
+                color="primary"
+                class="!rounded-full font-normal py-2 px-4 !text-base md:py-2 md:px-4 dark:!bg-primary-900 dark:!text-white dark:!border-transparent dark:hover:!brightness-110"
+                href="/account/new-post?new=1"
               >
-                <Avatar
-                  url={$siteUser.avatar_url || undefined}
-                  width={32}
-                  alt={$siteUser.username}
-                />
-                <Icon src={ChevronDown} size="16" class="text-slate-500 dark:text-zinc-400" />
-              </button>
-              <MenuButton link href="/settings" class="py-2.5">
-                {$t('site.nav.settings')}
-              </MenuButton>
-              <MenuButton link href={`/id${$siteUser.id}`} class="py-2.5">
-                {$t('site.nav.profile')}
-              </MenuButton>
-              <MenuButton link href="/chats" class="py-2.5">
-                <Icon src={ChatBubbleLeftRight} size="16" micro slot="prefix" />
-                {$t('site.nav.chats')}
-              </MenuButton>
-              <MenuButton
-                class="py-2.5 text-red-600 dark:text-red-400"
-                on:click={siteLogout}
-              >
-                {$t('account.logout')}
-              </MenuButton>
-            </Menu>
+                {$t('site.nav.write')}
+              </Button>
+            </div>
+            <div class="hidden md:block">
+              <Menu placement="bottom-end">
+                <button
+                  slot="target"
+                  class="flex items-center gap-2 rounded-full border border-slate-200 dark:border-zinc-700 px-2 py-1 transition-colors hover:bg-slate-100 dark:hover:bg-zinc-800"
+                  title={$t('site.nav.userMenu')}
+                >
+                  <Avatar
+                    url={$siteUser.avatar_url || undefined}
+                    width={32}
+                    alt={$siteUser.username}
+                  />
+                  <Icon src={ChevronDown} size="16" class="text-slate-500 dark:text-zinc-400" />
+                </button>
+                <MenuButton link href="/settings" class="py-2.5">
+                  {$t('site.nav.settings')}
+                </MenuButton>
+                <MenuButton link href={`/id${$siteUser.id}`} class="py-2.5">
+                  {$t('site.nav.profile')}
+                </MenuButton>
+                <MenuButton link href="/chats" class="py-2.5">
+                  <Icon src={ChatBubbleLeftRight} size="16" micro slot="prefix" />
+                  {$t('site.nav.chats')}
+                </MenuButton>
+                <MenuButton
+                  class="py-2.5 text-red-600 dark:text-red-400"
+                  on:click={siteLogout}
+                >
+                  {$t('account.logout')}
+                </MenuButton>
+              </Menu>
+            </div>
           {:else}
             <Button
               color="primary"
@@ -220,7 +224,9 @@
         {/if}
         <!-- Профиль -->
         {#if $profile?.jwt}
-          <Profile placement="bottom" />
+          <div class="hidden md:block">
+            <Profile placement="bottom" />
+          </div>
         {/if}
       </div>
     </div>
