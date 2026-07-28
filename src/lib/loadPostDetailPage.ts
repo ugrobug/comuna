@@ -1,9 +1,10 @@
 import { buildPostDetailUrl } from '$lib/api/backend'
 import { buildLocalizedPostPath, normalizePostLanguage } from '$lib/postLanguages'
+import { canonicalPostRedirectPath } from '$lib/postCanonicalPath'
 import { slugifyTitle } from '$lib/util/slug'
 import { error, redirect } from '@sveltejs/kit'
 
-export const loadPostDetailPage = async ({ params, fetch }) => {
+export const loadPostDetailPage = async ({ params, fetch, url }) => {
   const rawId = params.id
   const id = Number(rawId.split('-')[0])
   if (!Number.isInteger(id) || id <= 0) {
@@ -41,6 +42,10 @@ export const loadPostDetailPage = async ({ params, fetch }) => {
   const slug = slugifyTitle(data.post?.title ?? '')
   const canonicalId = slug ? `${id}-${slug}` : `${id}`
   const canonicalPath = currentVersion?.path || buildLocalizedPostPath(canonicalId, language)
+  const redirectPath = canonicalPostRedirectPath(url.pathname, canonicalPath)
+  if (redirectPath) {
+    throw redirect(301, redirectPath)
+  }
 
   return {
     post: data.post,
