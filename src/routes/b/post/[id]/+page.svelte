@@ -16,6 +16,11 @@
     buildPostViewUrl,
   } from '$lib/api/backend'
   import { refreshSiteUser, siteToken } from '$lib/siteAuth'
+  import {
+    stringifyJsonLd,
+    toWellFormedUnicode,
+    truncateUnicodeText,
+  } from '$lib/seoJsonLd'
   import { parseSerializedEditorModel, looksLikeSerializedEditorModel } from '$lib/util'
   import { locale, t } from '$lib/translations'
 
@@ -93,9 +98,7 @@
         )
       )
       if (extraDescription) {
-        return extraDescription.length <= max
-          ? extraDescription
-          : `${extraDescription.slice(0, max).trim()}…`
+        return truncateUnicodeText(extraDescription, max)
       }
 
       const blocks = Array.isArray(editorPayload.blocks) ? editorPayload.blocks : []
@@ -105,13 +108,13 @@
         if (type === 'paragraph' && typeof data.text === 'string') {
           const clean = stripHtml(data.text)
           if (clean) {
-            return clean.length <= max ? clean : `${clean.slice(0, max).trim()}…`
+            return truncateUnicodeText(clean, max)
           }
         }
         if (type === 'header' && typeof data.text === 'string') {
           const clean = stripHtml(data.text)
           if (clean) {
-            return clean.length <= max ? clean : `${clean.slice(0, max).trim()}…`
+            return truncateUnicodeText(clean, max)
           }
         }
       }
@@ -120,8 +123,7 @@
     if (looksLikeSerializedEditorModel(raw)) return ''
     const text = stripHtml(raw)
     if (!text) return ''
-    if (text.length <= max) return text
-    return `${text.slice(0, max).trim()}…`
+    return truncateUnicodeText(text, max)
   }
 
   const ensureAbsoluteUrl = (value: string | null | undefined, baseUrl: string) => {
@@ -151,12 +153,6 @@
     if (normalized.includes('.gif')) return 'image/gif'
     return ''
   }
-
-  const toJsonLd = (value: unknown) =>
-    JSON.stringify(value)
-      .replace(/</g, '\\u003c')
-      .replace(/>/g, '\\u003e')
-      .replace(/&/g, '\\u0026')
 
   const buildJsonLdTag = (json: string) =>
     json ? `<script type="application/ld+json">${json}</` + `script>` : ''
@@ -233,7 +229,9 @@
     showOriginalPost = false
   }
   $: postView = backendPostToPostView(displayedPostData, undefined, { includePreviewMedia: false })
-  $: authorName = postData?.author?.title || postData?.author?.username || $t('site.post.author')
+  $: authorName = toWellFormedUnicode(
+    postData?.author?.title || postData?.author?.username || $t('site.post.author')
+  )
   $: authorUrl = postData?.author?.username
     ? `${siteBaseUrl}/${postData.author.username}`
     : undefined
@@ -256,10 +254,12 @@
   )
   $: ogImageType = imageMimeByExtension(ogImage)
   $: postDescription = buildDescription(postData?.content || '')
-  $: metaDescription = translationUnavailable
-    ? translationUnavailableBody
-    : postDescription || (env.PUBLIC_SITE_DESCRIPTION || $t('site.post.defaultDescription'))
-  $: postTitle = postData?.title || ''
+  $: metaDescription = toWellFormedUnicode(
+    translationUnavailable
+      ? translationUnavailableBody
+      : postDescription || (env.PUBLIC_SITE_DESCRIPTION || $t('site.post.defaultDescription'))
+  )
+  $: postTitle = toWellFormedUnicode(postData?.title || '')
   $: socialTitle = translationUnavailable ? translationUnavailableTitle : postTitle
   $: siteTitle = env.PUBLIC_SITE_TITLE || 'Тамбур'
   $: metaTitle = translationUnavailable
@@ -270,7 +270,7 @@
   $: ogImageAlt = socialTitle || siteTitle
   $: articleSchema =
     postData && !translationUnavailable
-      ? toJsonLd({
+      ? stringifyJsonLd({
           '@context': 'https://schema.org',
           '@type': 'BlogPosting',
           headline: postData.title,

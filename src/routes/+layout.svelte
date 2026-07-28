@@ -29,6 +29,7 @@
   import { LINKED_INSTANCE_URL } from '$lib/instance'
   import { locale, t } from '$lib/translations'
   import { brandNameForLanguage } from '$lib/brand'
+  import { stringifyJsonLd, toWellFormedUnicode } from '$lib/seoJsonLd'
   import { normalizeInterfaceLanguage, postLanguageLocales, postLanguageOgLocales } from '$lib/postLanguages'
   import { getDefaultColors } from '$lib/ui/presets'
   import { env } from '$env/dynamic/public'
@@ -94,12 +95,14 @@
   $: shouldLoadAdsense = currentLanguage !== 'ru'
   $: defaultTitle = brandNameForLanguage(currentLanguage)
   $: defaultDescription = $t('site.meta.defaultDescription')
-  $: siteTitle =
+  $: siteTitle = toWellFormedUnicode(
     currentLanguage === 'ru' ? $site?.site_view?.site?.name || defaultTitle : defaultTitle
-  $: siteDescription =
+  )
+  $: siteDescription = toWellFormedUnicode(
     currentLanguage === 'ru'
       ? $site?.site_view?.site?.description || env.PUBLIC_SITE_DESCRIPTION || defaultDescription
       : defaultDescription
+  )
   $: isBackendPostRoute = /^\/(?:[a-z]{2}\/)?b\/post\//.test($page.url.pathname)
   $: isLocalizedStaticPageRoute =
     /^\/(?:[a-z]{2}\/)?(?:about|advertisement|apps|authors|rules)\/?$/.test(
@@ -110,16 +113,10 @@
   )
   $: hasRouteManagedSeo =
     isBackendPostRoute || isLocalizedStaticPageRoute || isCommunityDetailRoute
-  const toJsonLd = (value: unknown) =>
-    JSON.stringify(value)
-      .replace(/</g, '\\u003c')
-      .replace(/>/g, '\\u003e')
-      .replace(/&/g, '\\u0026')
-
   const buildJsonLdTag = (json: string) =>
     json ? `<script type="application/ld+json">${json}</` + `script>` : ''
 
-  $: siteSchemaJson = toJsonLd({
+  $: siteSchemaJson = stringifyJsonLd({
     '@context': 'https://schema.org',
     '@graph': [
       {
