@@ -145,6 +145,14 @@ class Comun(models.Model):
         help_text="Группа или супергруппа Telegram, из которой можно предлагать материалы в базу знаний и глоссарий.",
     )
     telegram_chat_title = models.CharField(max_length=255, blank=True, verbose_name="Название Telegram-чата")
+    telegram_ai_summary_enabled = models.BooleanField(
+        default=False,
+        verbose_name="ИИ-саммари сообщений Telegram",
+        help_text=(
+            "Разрешает участникам привязанного Telegram-чата создавать заявки "
+            "в базу знаний из ИИ-саммари пересланных сообщений."
+        ),
+    )
     moderators = models.ManyToManyField(
         User,
         blank=True,

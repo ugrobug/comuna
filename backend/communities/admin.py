@@ -59,13 +59,21 @@ class ComunAdmin(admin.ModelAdmin):
         "creator",
         "welcome_post",
         "community_map_enabled",
+        "telegram_ai_summary_enabled",
         "is_active",
         "sort_order",
         "moderators_count",
         "categories_count",
     )
-    list_filter = ("is_active", "categories")
-    search_fields = ("name", "slug", "product_description", "target_audience")
+    list_filter = ("is_active", "telegram_ai_summary_enabled", "categories")
+    search_fields = (
+        "name",
+        "slug",
+        "product_description",
+        "target_audience",
+        "telegram_chat_title",
+        "telegram_chat_id",
+    )
     prepopulated_fields = {"slug": ("name",)}
     filter_horizontal = ("moderators", "categories")
     raw_id_fields = ("creator", "welcome_post")
@@ -85,6 +93,9 @@ class ComunAdmin(admin.ModelAdmin):
         "roadmap_enabled",
         "knowledge_base_enabled",
         "community_map_enabled",
+        "telegram_chat_id",
+        "telegram_chat_title",
+        "telegram_ai_summary_enabled",
         "categories",
         "allowed_post_templates",
         "rating_score",

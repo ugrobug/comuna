@@ -12,6 +12,7 @@ from telegram_integration import serializers as telegram_serializers
 from telegram_integration.bot import (
     _handle_callback_query,
     _handle_channel_post,
+    _handle_inline_query,
     _handle_message,
     _handle_my_chat_member,
 )
@@ -150,6 +151,8 @@ def telegram_webhook(request: HttpRequest, token: str) -> HttpResponse:
         _handle_message(payload["message"])
     elif "callback_query" in payload:
         _handle_callback_query(payload["callback_query"])
+    elif "inline_query" in payload:
+        _handle_inline_query(payload["inline_query"])
 
     return JsonResponse({"ok": True})
 

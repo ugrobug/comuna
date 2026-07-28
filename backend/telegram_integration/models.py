@@ -39,6 +39,24 @@ class BotSession(models.Model):
     instructions_sent = models.BooleanField(default=False)
     pending_update_post_id = models.IntegerField(null=True, blank=True)
     pending_update_message = models.JSONField(null=True, blank=True)
+    selected_comun = models.ForeignKey(
+        "feeds.Comun",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="telegram_bot_sessions",
+    )
+    pending_forward_comun = models.ForeignKey(
+        "feeds.Comun",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="telegram_forward_sessions",
+    )
+    pending_forward_messages = models.JSONField(default=list, blank=True)
+    pending_forward_action_message_id = models.BigIntegerField(null=True, blank=True)
+    pending_forward_started_at = models.DateTimeField(null=True, blank=True)
+    pending_forward_processing = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

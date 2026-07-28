@@ -48,10 +48,11 @@ python backend/manage.py runserver 0.0.0.0:8000
 ```bash
 curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook" \
   -d "url=https://your-domain.com/tg/webhook/<YOUR_SECRET>/" \
-  -d "secret_token=<YOUR_SECRET>"
+  -d "secret_token=<YOUR_SECRET>" \
+  -d 'allowed_updates=["channel_post","edited_channel_post","message","callback_query","my_chat_member","inline_query"]'
 ```
 
-The backend accepts only channel posts and ignores other update types.
+Enable inline mode for the bot through BotFather before using community knowledge-base search.
 
 ## Telegram polling (IPv6-only)
 

@@ -18,6 +18,26 @@ class TelegramIntegrationRoutesTests(SimpleTestCase):
         self.assertIs(resolve("/tg/webhook/token/").func, telegram_webhook)
 
 
+@override_settings(TELEGRAM_WEBHOOK_SECRET="webhook-secret")
+class TelegramWebhookTests(TestCase):
+    def test_webhook_dispatches_inline_query(self):
+        inline_query = {
+            "id": "inline-1",
+            "from": {"id": 123},
+            "query": "термин",
+        }
+        with patch("telegram_integration.views._handle_inline_query") as handler:
+            response = self.client.post(
+                "/tg/webhook/webhook-secret/",
+                data=json.dumps({"update_id": 1, "inline_query": inline_query}),
+                content_type="application/json",
+                HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN="webhook-secret",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        handler.assert_called_once_with(inline_query)
+
+
 User = get_user_model()
 TELEGRAM_NATIVE_ORIGIN = "https://app1299099924-login.tg.dev"
 

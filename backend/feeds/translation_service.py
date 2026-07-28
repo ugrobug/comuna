@@ -1584,6 +1584,7 @@ def _request_openrouter_json_translation(
     user_payload: dict[str, Any],
     *,
     system_prompt: str,
+    timeout_seconds: float = 90,
 ) -> dict[str, Any]:
     provider = _translation_provider()
     provider_label = _translation_provider_label()
@@ -1632,7 +1633,12 @@ def _request_openrouter_json_translation(
         payload["thinking"] = {"type": "disabled"}
 
     try:
-        response = requests.post(api_url, headers=headers, json=payload, timeout=90)
+        response = requests.post(
+            api_url,
+            headers=headers,
+            json=payload,
+            timeout=max(min(float(timeout_seconds), 90), 1),
+        )
     except requests.RequestException as exc:
         raise PostTranslationError(f"Ошибка запроса {provider_label}: {exc}") from exc
 

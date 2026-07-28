@@ -13,6 +13,7 @@ from telegram_integration.bot import (
     _fetch_telegram_json,
     _handle_callback_query,
     _handle_channel_post,
+    _handle_inline_query,
     _handle_message,
     _handle_my_chat_member,
 )
@@ -47,7 +48,10 @@ def _polling_loop(token: str) -> None:
         try:
             payload: dict[str, Any] = {
                 "timeout": 25,
-                "allowed_updates": '["channel_post","edited_channel_post","message","callback_query","my_chat_member"]',
+                "allowed_updates": (
+                    '["channel_post","edited_channel_post","message",'
+                    '"callback_query","my_chat_member","inline_query"]'
+                ),
             }
             if offset is not None:
                 payload["offset"] = offset
@@ -73,6 +77,8 @@ def _polling_loop(token: str) -> None:
                     _handle_callback_query(update["callback_query"])
                 elif "my_chat_member" in update:
                     _handle_my_chat_member(update["my_chat_member"])
+                elif "inline_query" in update:
+                    _handle_inline_query(update["inline_query"])
         except Exception as exc:
             print(f"Telegram polling error: {exc}")
             time.sleep(2)

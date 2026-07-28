@@ -1,17 +1,26 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import re
 import urllib.request
 from datetime import timedelta
+from html import escape, unescape
 
 from communities import service as community_service
-from communities.models import Comun, ComunTelegramSubmission
+from communities.models import (
+    Comun,
+    ComunGlossaryTerm,
+    ComunKnowledgeBaseItem,
+    ComunTelegramSubmission,
+)
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
 from django.db import IntegrityError
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from feeds.language_detection import detect_post_language
 from feeds.models import Author, Post
@@ -111,12 +120,12 @@ def _send_bot_message(chat_id: int, text: str) -> None:
     _fetch_telegram_json("sendMessage", token, {"chat_id": chat_id, "text": text})
 
 
-def _send_bot_message_with_keyboard(chat_id: int, text: str, keyboard: dict) -> None:
+def _send_bot_message_with_keyboard(chat_id: int, text: str, keyboard: dict) -> dict | None:
     token = settings.TELEGRAM_BOT_TOKEN
     if not token:
-        return
+        return None
     payload = {"chat_id": chat_id, "text": text, "reply_markup": json.dumps(keyboard)}
-    _fetch_telegram_json("sendMessage", token, payload)
+    return _fetch_telegram_json("sendMessage", token, payload)
 
 
 def _edit_bot_message_with_keyboard(chat_id: int, message_id: int, text: str, keyboard: dict) -> None:
@@ -148,6 +157,22 @@ def _answer_callback_query(callback_query_id: str, text: str = "") -> None:
     _fetch_telegram_json("answerCallbackQuery", token, payload)
 
 
+def _answer_inline_query(inline_query_id: str, results: list[dict]) -> None:
+    token = settings.TELEGRAM_BOT_TOKEN
+    if not token:
+        return
+    _fetch_telegram_json(
+        "answerInlineQuery",
+        token,
+        {
+            "inline_query_id": inline_query_id,
+            "results": json.dumps(results, ensure_ascii=False),
+            "cache_time": 20,
+            "is_personal": True,
+        },
+    )
+
+
 def _main_reply_keyboard() -> dict:
     return {
         "keyboard": [["Управление оповещениями", "Управление каналами"]],
@@ -158,9 +183,9 @@ def _main_reply_keyboard() -> dict:
 def _send_main_menu(chat_id: int) -> None:
     _send_bot_message_with_keyboard(
         chat_id,
-        "Привет! Это бот сайта Тамбур, у меня две основные задачи, я присылаю "
-        "оповещения (только на которые подписан пользователь), а также я помогаю "
-        "привязать канал телеграм к сообществу. Выбери что ты хочешь.",
+        "Привет! Это бот сайта Тамбур. Я присылаю выбранные оповещения, связываю "
+        "Telegram-каналы и групповые чаты с сообществами, ищу по базе знаний и "
+        "принимаю пересланные сообщения для публикации через модераторов.",
         _main_reply_keyboard(),
     )
 
@@ -249,6 +274,202 @@ def _title_candidate_from_text(text: str) -> str:
     return "Сообщение из Telegram"
 
 
+def _telegram_excerpt(value: str, limit: int = 220) -> str:
+    text = re.sub(r"<[^>]+>", " ", str(value or ""))
+    text = unescape(re.sub(r"\s+", " ", text)).strip()
+    if len(text) <= limit:
+        return text
+    return f"{text[: max(limit - 1, 1)].rstrip()}…"
+
+
+def _telegram_forward_source(message: dict) -> tuple[dict | None, int | None]:
+    legacy_chat = (
+        message.get("forward_from_chat")
+        if isinstance(message.get("forward_from_chat"), dict)
+        else None
+    )
+    legacy_message_id = message.get("forward_from_message_id")
+    if legacy_chat:
+        try:
+            source_message_id = int(legacy_message_id)
+        except (TypeError, ValueError):
+            source_message_id = None
+        return legacy_chat, source_message_id
+
+    origin = message.get("forward_origin")
+    if not isinstance(origin, dict):
+        return None, None
+    origin_type = str(origin.get("type") or "").strip().lower()
+    if origin_type == "channel" and isinstance(origin.get("chat"), dict):
+        source_chat = origin["chat"]
+        source_message_id = origin.get("message_id")
+    elif origin_type == "chat" and isinstance(origin.get("sender_chat"), dict):
+        source_chat = origin["sender_chat"]
+        source_message_id = None
+    else:
+        return None, None
+    try:
+        source_message_id = int(source_message_id)
+    except (TypeError, ValueError):
+        source_message_id = None
+    return source_chat, source_message_id
+
+
+def _telegram_forward_author_name(message: dict) -> str:
+    actor = (
+        message.get("forward_from")
+        if isinstance(message.get("forward_from"), dict)
+        else None
+    )
+    if actor:
+        return _telegram_actor_name(actor)
+    origin = message.get("forward_origin")
+    if not isinstance(origin, dict):
+        return ""
+    for key in ("sender_user", "sender_chat"):
+        candidate = origin.get(key)
+        if isinstance(candidate, dict):
+            return _telegram_actor_name(candidate) or str(candidate.get("title") or "").strip()
+    return str(origin.get("sender_user_name") or origin.get("author_signature") or "").strip()
+
+
+def _remember_comun_for_telegram_user(message: dict, comun: Comun) -> None:
+    actor = message.get("from") if isinstance(message.get("from"), dict) else {}
+    telegram_user_id = actor.get("id")
+    try:
+        telegram_user_id = int(telegram_user_id)
+    except (TypeError, ValueError):
+        return
+    BotSession.objects.update_or_create(
+        telegram_user_id=telegram_user_id,
+        defaults={"selected_comun": comun},
+    )
+
+
+def _parse_group_search_query(text: str) -> str | None:
+    value = _normalize_bot_command_text(text)
+    if not value.startswith("/"):
+        return None
+    command, _separator, query = value.partition(" ")
+    if command.lower() not in {"/search", "/find", "/knowledge"}:
+        return None
+    return query.strip()[:200]
+
+
+def _post_inline_url(post: Post) -> str:
+    base_url = str(getattr(settings, "SITE_BASE_URL", "") or "https://tambur.pub").rstrip("/")
+    return f"{base_url}{_fv()._post_public_path(post)}"
+
+
+def _inline_search_results(comun: Comun, query: str) -> list[dict]:
+    normalized_query = str(query or "").strip()
+    glossary_queryset = ComunGlossaryTerm.objects.filter(comun=comun, is_active=True)
+    knowledge_queryset = (
+        ComunKnowledgeBaseItem.objects.filter(
+            comun=comun,
+            is_active=True,
+            item_type=ComunKnowledgeBaseItem.TYPE_POST,
+            post__isnull=False,
+            post__is_blocked=False,
+            post__author__is_blocked=False,
+        )
+        .select_related("post", "post__author")
+        .order_by("-updated_at")
+    )
+    if not comun.glossary_enabled:
+        glossary_queryset = glossary_queryset.none()
+    if not comun.knowledge_base_enabled:
+        knowledge_queryset = knowledge_queryset.none()
+    if normalized_query:
+        glossary_queryset = glossary_queryset.filter(
+            Q(term__icontains=normalized_query)
+            | Q(term_en__icontains=normalized_query)
+            | Q(definition__icontains=normalized_query)
+        )
+        knowledge_queryset = knowledge_queryset.filter(
+            Q(title__icontains=normalized_query)
+            | Q(post__title__icontains=normalized_query)
+            | Q(post__preview_content__icontains=normalized_query)
+            | Q(post__content__icontains=normalized_query)
+        )
+
+    results: list[dict] = []
+    for term in glossary_queryset.order_by("sort_order", "term")[:12]:
+        definition = _telegram_excerpt(term.definition, 700)
+        message_text = f"<b>{escape(term.term)}</b>"
+        if definition:
+            message_text += f"\n{escape(definition)}"
+        results.append(
+            {
+                "type": "article",
+                "id": f"glossary-{term.id}",
+                "title": term.term,
+                "description": _telegram_excerpt(term.definition),
+                "input_message_content": {
+                    "message_text": message_text,
+                    "parse_mode": "HTML",
+                },
+            }
+        )
+
+    for item in knowledge_queryset[:18]:
+        post = item.post
+        if not post:
+            continue
+        title = str(item.title or post.title or "Материал базы знаний").strip()
+        excerpt = _telegram_excerpt(post.preview_content or post.content, 500)
+        post_url = _post_inline_url(post)
+        message_text = f"<b>{escape(title)}</b>"
+        if excerpt:
+            message_text += f"\n\n{escape(excerpt)}"
+        message_text += f"\n\n<a href=\"{escape(post_url)}\">Читать полностью на Тамбуре</a>"
+        results.append(
+            {
+                "type": "article",
+                "id": f"knowledge-{item.id}",
+                "title": title,
+                "description": _telegram_excerpt(excerpt),
+                "input_message_content": {
+                    "message_text": message_text,
+                    "parse_mode": "HTML",
+                    "link_preview_options": {"is_disabled": False},
+                },
+            }
+        )
+    return results[:50]
+
+
+def _handle_inline_query(inline_query: dict) -> None:
+    inline_query_id = str(inline_query.get("id") or "").strip()
+    actor = inline_query.get("from") if isinstance(inline_query.get("from"), dict) else {}
+    telegram_user_id = actor.get("id")
+    if not inline_query_id:
+        return
+    try:
+        telegram_user_id = int(telegram_user_id)
+    except (TypeError, ValueError):
+        _answer_inline_query(inline_query_id, [])
+        return
+    session = (
+        BotSession.objects.select_related("selected_comun")
+        .filter(telegram_user_id=telegram_user_id)
+        .first()
+    )
+    comun = session.selected_comun if session else None
+    if (
+        not comun
+        or not comun.is_active
+        or not comun.telegram_chat_id
+        or not (comun.knowledge_base_enabled or comun.glossary_enabled)
+    ):
+        _answer_inline_query(inline_query_id, [])
+        return
+    _answer_inline_query(
+        inline_query_id,
+        _inline_search_results(comun, str(inline_query.get("query") or "")),
+    )
+
+
 def _requesting_user_from_message(message: dict) -> tuple[User | None, int | None, str]:
     actor = message.get("from") if isinstance(message.get("from"), dict) else {}
     telegram_user_id = actor.get("id")
@@ -329,10 +550,12 @@ def _handle_group_link_comun(message: dict, slug: str) -> None:
     comun.telegram_chat_id = int(chat_id)
     comun.telegram_chat_title = str(chat.get("title") or "").strip()[:255]
     comun.save(update_fields=["telegram_chat_id", "telegram_chat_title", "updated_at"])
+    _remember_comun_for_telegram_user(message, comun)
     _send_bot_message(
         chat_id,
-        f"Чат привязан к сообществу «{comun.name}». Теперь ответьте на сообщение текстом "
-        "команды /kb или /glossary, чтобы отправить заявку модераторам.",
+        f"Чат привязан к сообществу «{comun.name}». Используйте /search для поиска "
+        "по базе знаний и глоссарию. Ответьте на сообщение командой /kb или /glossary, "
+        "чтобы отправить заявку модераторам.",
     )
 
 
@@ -355,6 +578,7 @@ def _handle_group_submission_request(message: dict, request_type: str) -> None:
             "Этот чат не привязан к сообществу. Создатель или модератор может привязать его командой /link_comun slug.",
         )
         return
+    _remember_comun_for_telegram_user(message, comun)
     if request_type == ComunTelegramSubmission.TYPE_KNOWLEDGE_BASE and not comun.knowledge_base_enabled:
         _send_bot_message(chat_id, "В этом сообществе база знаний пока выключена.")
         return
@@ -425,14 +649,54 @@ def _handle_group_submission_request(message: dict, request_type: str) -> None:
     _send_bot_message(chat_id, f"Заявка на добавление в {target_label} отправлена модераторам.")
 
 
+def _handle_group_search(message: dict, query: str) -> None:
+    chat = message.get("chat") if isinstance(message.get("chat"), dict) else {}
+    chat_id = chat.get("id")
+    if not chat_id:
+        return
+    comun = Comun.objects.filter(telegram_chat_id=chat_id, is_active=True).first()
+    if not comun:
+        _send_bot_message(
+            chat_id,
+            "Этот чат не привязан к сообществу. Создатель или модератор может "
+            "привязать его командой /link_comun slug.",
+        )
+        return
+    if not (comun.knowledge_base_enabled or comun.glossary_enabled):
+        _send_bot_message(chat_id, "В сообществе пока не включены база знаний и глоссарий.")
+        return
+    _remember_comun_for_telegram_user(message, comun)
+    _send_bot_message_with_keyboard(
+        chat_id,
+        f"Поиск по сообществу «{comun.name}».",
+        {
+            "inline_keyboard": [
+                [
+                    {
+                        "text": "Открыть поиск",
+                        "switch_inline_query_current_chat": query,
+                    }
+                ]
+            ]
+        },
+    )
+
+
 def _handle_group_message(message: dict) -> None:
     chat = message.get("chat") if isinstance(message.get("chat"), dict) else {}
     if chat.get("type") not in {"group", "supergroup"}:
         return
+    comun = Comun.objects.filter(telegram_chat_id=chat.get("id"), is_active=True).first()
+    if comun:
+        _remember_comun_for_telegram_user(message, comun)
     text = _telegram_plain_text(message)
     slug = _parse_link_comun_slug(text)
     if slug:
         _handle_group_link_comun(message, slug)
+        return
+    search_query = _parse_group_search_query(text)
+    if search_query is not None:
+        _handle_group_search(message, search_query)
         return
     request_type = _submission_type_from_text(text)
     if request_type:
@@ -1022,6 +1286,357 @@ def _handle_verification_code(chat_id: int, code: str) -> None:
     )
 
 
+def _is_forwarded_message(message: dict) -> bool:
+    return bool(
+        isinstance(message.get("forward_origin"), dict)
+        or isinstance(message.get("forward_from"), dict)
+        or isinstance(message.get("forward_from_chat"), dict)
+        or message.get("forward_sender_name")
+        or message.get("forward_date")
+    )
+
+
+def _forward_batch_keyboard(comun: Comun, first_message_id: int) -> dict:
+    rows = [
+        [
+            {
+                "text": "Добавить как пост в базу знаний",
+                "callback_data": f"tgforward:kb:{first_message_id}",
+            }
+        ],
+        [
+            {
+                "text": "Добавить как термин в глоссарий",
+                "callback_data": f"tgforward:gl:{first_message_id}",
+            }
+        ],
+    ]
+    if comun.telegram_ai_summary_enabled:
+        rows.append(
+            [
+                {
+                    "text": "Сделать саммари и добавить как пост",
+                    "callback_data": f"tgforward:sum:{first_message_id}",
+                }
+            ]
+        )
+    return {"inline_keyboard": rows}
+
+
+def _forward_batch_text(comun: Comun, messages_count: int) -> str:
+    if messages_count % 10 == 1 and messages_count % 100 != 11:
+        suffix = "сообщение"
+    elif messages_count % 10 in {2, 3, 4} and messages_count % 100 not in {12, 13, 14}:
+        suffix = "сообщения"
+    else:
+        suffix = "сообщений"
+    next_step = (
+        "Достигнут лимит пачки, выберите действие."
+        if messages_count >= 20
+        else "Можно переслать еще сообщения в эту пачку или выбрать действие."
+    )
+    return (
+        f"Получено: {messages_count} {suffix} для сообщества «{comun.name}».\n"
+        f"{next_step}"
+    )
+
+
+def _handle_forwarded_community_message(message: dict) -> bool:
+    if not _is_forwarded_message(message):
+        return False
+    chat = message.get("chat") if isinstance(message.get("chat"), dict) else {}
+    chat_id = chat.get("id")
+    private_message_id = message.get("message_id")
+    try:
+        chat_id = int(chat_id)
+        private_message_id = int(private_message_id)
+    except (TypeError, ValueError):
+        return True
+
+    source_chat, source_message_id = _telegram_forward_source(message)
+    source_chat_type = str((source_chat or {}).get("type") or "").strip().lower()
+    comun = None
+    if source_chat_type in {"group", "supergroup"}:
+        comun = Comun.objects.filter(
+            telegram_chat_id=source_chat.get("id"),
+            is_active=True,
+        ).first()
+        if not comun:
+            _send_bot_message(chat_id, "Этот Telegram-чат не привязан к сообществу Тамбура.")
+            return True
+    else:
+        session = (
+            BotSession.objects.select_related("selected_comun")
+            .filter(telegram_user_id=chat_id)
+            .first()
+        )
+        comun = session.selected_comun if session else None
+    if not comun or not comun.is_active or not comun.telegram_chat_id:
+        _send_bot_message(
+            chat_id,
+            "Не удалось определить сообщество. Выполните команду /search в привязанном "
+            "групповом чате и повторите пересылку.",
+        )
+        return True
+    if not (comun.knowledge_base_enabled or comun.glossary_enabled):
+        _send_bot_message(chat_id, "В сообществе пока не включены база знаний и глоссарий.")
+        return True
+
+    source_text = _telegram_plain_text(message)
+    if not source_text:
+        _send_bot_message(
+            chat_id,
+            "В этой версии можно обработать текст сообщения или подпись к вложению.",
+        )
+        return True
+
+    now = timezone.now()
+    actor = message.get("from") if isinstance(message.get("from"), dict) else {}
+    entry = {
+        "private_message_id": private_message_id,
+        "source_message_id": source_message_id,
+        "source_chat_id": (source_chat or {}).get("id"),
+        "source_chat_title": str((source_chat or {}).get("title") or "").strip()[:255],
+        "source_chat_username": str((source_chat or {}).get("username") or "").strip()[:255],
+        "source_author_name": _telegram_forward_author_name(message)[:255],
+        "text": source_text[:10000],
+        "date": message.get("date"),
+        "telegram_username": _telegram_actor_name(actor)[:255],
+    }
+    with transaction.atomic():
+        session, _created = BotSession.objects.select_for_update().get_or_create(
+            telegram_user_id=chat_id
+        )
+        existing_messages = (
+            list(session.pending_forward_messages)
+            if isinstance(session.pending_forward_messages, list)
+            else []
+        )
+        batch_expired = (
+            not session.pending_forward_started_at
+            or session.pending_forward_started_at < now - timedelta(minutes=10)
+        )
+        if (
+            batch_expired
+            or session.pending_forward_comun_id != comun.id
+            or session.pending_forward_processing
+        ):
+            existing_messages = []
+            session.pending_forward_action_message_id = None
+            session.pending_forward_started_at = now
+            session.pending_forward_processing = False
+        is_duplicate = any(
+            int(item.get("private_message_id") or 0) == private_message_id
+            for item in existing_messages
+            if isinstance(item, dict)
+        )
+        if not is_duplicate and len(existing_messages) < 20:
+            existing_messages.append(entry)
+        session.selected_comun = comun
+        session.pending_forward_comun = comun
+        session.pending_forward_messages = existing_messages
+        session.save(
+            update_fields=[
+                "selected_comun",
+                "pending_forward_comun",
+                "pending_forward_messages",
+                "pending_forward_action_message_id",
+                "pending_forward_started_at",
+                "pending_forward_processing",
+                "updated_at",
+            ]
+        )
+        action_message_id = session.pending_forward_action_message_id
+
+    first_message_id = int(existing_messages[0].get("private_message_id") or private_message_id)
+    chooser_text = _forward_batch_text(comun, len(existing_messages))
+    chooser_keyboard = _forward_batch_keyboard(comun, first_message_id)
+    if action_message_id:
+        _edit_bot_message_with_keyboard(
+            chat_id,
+            int(action_message_id),
+            chooser_text,
+            chooser_keyboard,
+        )
+    else:
+        response = _send_bot_message_with_keyboard(chat_id, chooser_text, chooser_keyboard)
+        result = response.get("result") if isinstance(response, dict) else None
+        sent_message_id = result.get("message_id") if isinstance(result, dict) else None
+        if sent_message_id:
+            BotSession.objects.filter(
+                telegram_user_id=chat_id,
+                pending_forward_comun=comun,
+            ).update(pending_forward_action_message_id=sent_message_id)
+    return True
+
+
+def _forward_batch_source_id(telegram_user_id: int, first_message_id: int) -> int:
+    digest = hashlib.sha256(
+        f"{telegram_user_id}:{first_message_id}".encode("utf-8")
+    ).digest()
+    value = int.from_bytes(digest[:8], "big", signed=False) & ((1 << 63) - 1)
+    return -max(value, 1)
+
+
+def _reset_forward_batch_processing(telegram_user_id: int) -> None:
+    BotSession.objects.filter(telegram_user_id=telegram_user_id).update(
+        pending_forward_processing=False
+    )
+
+
+def _handle_forward_batch_action(
+    *,
+    callback_id: str,
+    chat_id: int,
+    action: str,
+    first_message_id: int,
+    message_id: int | None,
+) -> None:
+    _answer_callback_query(callback_id, "Обрабатываю сообщения")
+    with transaction.atomic():
+        session = (
+            BotSession.objects.select_for_update()
+            .filter(telegram_user_id=chat_id)
+            .first()
+        )
+        messages = (
+            list(session.pending_forward_messages)
+            if session and isinstance(session.pending_forward_messages, list)
+            else []
+        )
+        current_first_id = (
+            int(messages[0].get("private_message_id") or 0)
+            if messages and isinstance(messages[0], dict)
+            else 0
+        )
+        if (
+            not session
+            or not session.pending_forward_comun
+            or current_first_id != first_message_id
+        ):
+            _send_bot_message(chat_id, "Эта пачка сообщений уже обработана или устарела.")
+            return
+        if session.pending_forward_processing:
+            _send_bot_message(chat_id, "Эта пачка сообщений уже обрабатывается.")
+            return
+        session.pending_forward_processing = True
+        session.save(update_fields=["pending_forward_processing", "updated_at"])
+        comun = session.pending_forward_comun
+
+    if action == "kb" and not comun.knowledge_base_enabled:
+        _reset_forward_batch_processing(chat_id)
+        _send_bot_message(chat_id, "В сообществе выключена база знаний.")
+        return
+    if action == "gl" and not comun.glossary_enabled:
+        _reset_forward_batch_processing(chat_id)
+        _send_bot_message(chat_id, "В сообществе выключен глоссарий.")
+        return
+    if action == "sum" and (
+        not comun.knowledge_base_enabled or not comun.telegram_ai_summary_enabled
+    ):
+        _reset_forward_batch_processing(chat_id)
+        _send_bot_message(chat_id, "ИИ-саммари выключено для этого сообщества.")
+        return
+
+    source_text = "\n\n".join(
+        str(item.get("text") or "").strip()
+        for item in messages
+        if isinstance(item, dict) and str(item.get("text") or "").strip()
+    )[:20000]
+    if not source_text:
+        _reset_forward_batch_processing(chat_id)
+        _send_bot_message(chat_id, "В пересланных сообщениях нет текста.")
+        return
+
+    title = _title_candidate_from_text(source_text)
+    if action == "sum":
+        try:
+            from telegram_integration.ai import summarize_telegram_messages
+
+            title, source_text = summarize_telegram_messages(source_text)
+        except Exception as error:
+            _reset_forward_batch_processing(chat_id)
+            _send_bot_message(chat_id, f"Не удалось сделать саммари: {str(error)[:500]}")
+            return
+
+    request_type = (
+        ComunTelegramSubmission.TYPE_GLOSSARY
+        if action == "gl"
+        else ComunTelegramSubmission.TYPE_KNOWLEDGE_BASE
+    )
+    glossary_term = ""
+    glossary_definition = ""
+    if request_type == ComunTelegramSubmission.TYPE_GLOSSARY:
+        glossary_term, glossary_definition = _glossary_candidate_from_text(source_text)
+        title = glossary_term
+    account = (
+        TelegramAccount.objects.select_related("user")
+        .filter(telegram_id=chat_id)
+        .first()
+    )
+    first_message = messages[0] if isinstance(messages[0], dict) else {}
+    source_message_id = _forward_batch_source_id(chat_id, first_message_id)
+    source_authors = _unique_nonempty(
+        [
+            str(item.get("source_author_name") or "")
+            for item in messages
+            if isinstance(item, dict)
+        ]
+    )
+    source_url = ""
+    source_username = str(first_message.get("source_chat_username") or "").strip()
+    original_message_id = first_message.get("source_message_id")
+    if source_username and original_message_id:
+        source_url = f"https://t.me/{source_username}/{original_message_id}"
+    try:
+        submission = ComunTelegramSubmission.objects.create(
+            comun=comun,
+            request_type=request_type,
+            requested_by=account.user if account else None,
+            telegram_user_id=chat_id,
+            telegram_username=str(first_message.get("telegram_username") or "")[:255],
+            telegram_chat_id=int(comun.telegram_chat_id),
+            telegram_chat_title=comun.telegram_chat_title,
+            telegram_source_message_id=source_message_id,
+            telegram_request_message_id=message_id,
+            telegram_source_url=source_url,
+            source_author_name=", ".join(source_authors)[:255],
+            source_text=source_text,
+            title=title,
+            glossary_term=glossary_term,
+            glossary_definition=glossary_definition,
+            source_payload={
+                "source": "telegram_forward_batch",
+                "ai_summary": action == "sum",
+                "messages": messages,
+            },
+        )
+    except IntegrityError:
+        _reset_forward_batch_processing(chat_id)
+        _send_bot_message(chat_id, "Такая заявка уже ожидает модерации.")
+        return
+
+    _notify_comun_team_about_telegram_submission(submission)
+    BotSession.objects.filter(telegram_user_id=chat_id).update(
+        pending_forward_comun=None,
+        pending_forward_messages=[],
+        pending_forward_action_message_id=None,
+        pending_forward_started_at=None,
+        pending_forward_processing=False,
+    )
+    target_label = "глоссарий" if action == "gl" else "базу знаний"
+    confirmation = f"Заявка на добавление в {target_label} отправлена модераторам."
+    if message_id:
+        _edit_bot_message_with_keyboard(
+            chat_id,
+            message_id,
+            confirmation,
+            {"inline_keyboard": []},
+        )
+    else:
+        _send_bot_message(chat_id, confirmation)
+
+
 def _handle_private_message(message: dict) -> None:
     chat = message.get("chat", {})
     if chat.get("type") != "private":
@@ -1052,6 +1667,9 @@ def _handle_private_message(message: dict) -> None:
             "этого достаточно.\n"
             "4) Если канал нужно привязать к существующему сообществу, получите код "
             "подтверждения в настройках профиля на сайте и отправьте его сюда.\n"
+            "5) В групповом чате используйте /link_comun slug для привязки и /search "
+            "для поиска. Перешлите сообщения из привязанного чата сюда, чтобы предложить "
+            "их в базу знаний или глоссарий.\n"
             "Сайт: https://tambur.pub/settings",
         )
         return
@@ -1097,8 +1715,7 @@ def _handle_private_message(message: dict) -> None:
             )
             return
 
-    forward_chat = message.get("forward_from_chat")
-    forward_message_id = message.get("forward_from_message_id")
+    forward_chat, forward_message_id = _telegram_forward_source(message)
     if forward_chat and forward_chat.get("type") == "channel" and forward_message_id:
         if not forward_chat.get("username"):
             _send_bot_message(
@@ -1209,6 +1826,9 @@ def _handle_private_message(message: dict) -> None:
         _send_bot_message(chat_id, "Пост добавлен на сайт.")
         return
 
+    if _handle_forwarded_community_message(message):
+        return
+
     _send_bot_message_with_keyboard(
         chat_id,
         "Выберите раздел: управление оповещениями или управление каналами.",
@@ -1231,15 +1851,21 @@ def _handle_my_chat_member(update: dict) -> None:
     if chat.get("type") in {"group", "supergroup"}:
         new_member = update.get("new_chat_member", {})
         status = new_member.get("status")
+        chat_id = chat.get("id")
+        if status in {"left", "kicked"} and chat_id:
+            Comun.objects.filter(telegram_chat_id=chat_id).update(
+                telegram_chat_id=None,
+                telegram_chat_title="",
+            )
+            return
         if status in {"administrator", "member"}:
-            chat_id = chat.get("id")
             if chat_id:
                 _send_bot_message(
                     chat_id,
-                    "Я могу отправлять сообщения из этого чата на модерацию в базу знаний "
-                    "или глоссарий сообщества. Создатель или модератор сообщества должен "
-                    "привязать чат командой /link_comun slug. После этого отвечайте на "
-                    "сообщения командами /kb или /glossary.",
+                    "Я могу искать по базе знаний сообщества и отправлять сообщения "
+                    "из этого чата на модерацию. Создатель или модератор сообщества "
+                    "должен привязать чат командой /link_comun slug. После этого "
+                    "используйте /search, /kb и /glossary.",
                 )
         return
 
@@ -1336,6 +1962,25 @@ def _handle_callback_query(callback_query: dict) -> None:
             .select_related("selected_author")
             .first()
         )
+
+    if data.startswith("tgforward:") and chat_id:
+        parts = data.split(":")
+        if len(parts) != 3 or parts[1] not in {"kb", "gl", "sum"}:
+            _answer_callback_query(callback_id, "Некорректное действие")
+            return
+        try:
+            first_message_id = int(parts[2])
+        except ValueError:
+            _answer_callback_query(callback_id, "Некорректная пачка сообщений")
+            return
+        _handle_forward_batch_action(
+            callback_id=callback_id,
+            chat_id=int(chat_id),
+            action=parts[1],
+            first_message_id=first_message_id,
+            message_id=int(message_id) if message_id else None,
+        )
+        return
 
     if data == "menu:channels" and chat_id:
         _answer_callback_query(callback_id)
