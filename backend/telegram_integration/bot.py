@@ -226,9 +226,23 @@ def _submission_type_from_text(text: str) -> str:
         return ComunTelegramSubmission.TYPE_KNOWLEDGE_BASE
     if value in {"/glossary", "/term"}:
         return ComunTelegramSubmission.TYPE_GLOSSARY
-    if "глоссар" in value or "гласар" in value:
+    intent = re.sub(r"[.!?,;:]+$", "", value).strip()
+    if intent in {
+        "в глоссарий",
+        "в гласарий",
+        "добавить в глоссарий",
+        "добавь в глоссарий",
+        "отправить в глоссарий",
+        "предложить в глоссарий",
+    }:
         return ComunTelegramSubmission.TYPE_GLOSSARY
-    if "баз" in value and "знан" in value:
+    if intent in {
+        "в базу знаний",
+        "добавить в базу знаний",
+        "добавь в базу знаний",
+        "отправить в базу знаний",
+        "предложить в базу знаний",
+    }:
         return ComunTelegramSubmission.TYPE_KNOWLEDGE_BASE
     return ""
 
@@ -697,6 +711,8 @@ def _handle_group_message(message: dict) -> None:
     search_query = _parse_group_search_query(text)
     if search_query is not None:
         _handle_group_search(message, search_query)
+        return
+    if isinstance(message.get("via_bot"), dict):
         return
     request_type = _submission_type_from_text(text)
     if request_type:

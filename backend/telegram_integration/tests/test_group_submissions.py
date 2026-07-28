@@ -3,7 +3,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
 from communities.models import Comun, ComunGlossaryTerm, ComunKnowledgeBaseItem, ComunTelegramSubmission
@@ -14,6 +14,27 @@ from telegram_integration.models import BotSession, TelegramAccount
 from users import service as user_service
 
 User = get_user_model()
+
+
+class TelegramGroupCommandParsingTests(SimpleTestCase):
+    def test_inline_result_text_is_not_treated_as_submission_command(self):
+        self.assertEqual(
+            telegram_bot._submission_type_from_text(
+                "Как использовать глоссарий?\n\n"
+                "Каждое сообщество может включить глоссарий и базу знаний."
+            ),
+            "",
+        )
+
+    def test_explicit_submission_phrases_are_supported(self):
+        self.assertEqual(
+            telegram_bot._submission_type_from_text("добавить в глоссарий"),
+            ComunTelegramSubmission.TYPE_GLOSSARY,
+        )
+        self.assertEqual(
+            telegram_bot._submission_type_from_text("в базу знаний"),
+            ComunTelegramSubmission.TYPE_KNOWLEDGE_BASE,
+        )
 
 
 class TelegramGroupSubmissionTests(TestCase):
