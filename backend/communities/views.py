@@ -2016,7 +2016,7 @@ def comuns_list_create(request: HttpRequest) -> HttpResponse:
     target_audience = str(body.get("target_audience") or "").strip()
     allowed_template_types = normalize_allowed_post_templates(body.get("allowed_template_types"))
     tag_ids = community_service._parse_int_list(body.get("tag_ids"))[:5]
-    raw_tag_names = body.get("tag_names") if isinstance(body.get("tag_names"), list) else []
+    raw_tag_names = community_service._parse_tag_payload(body.get("tag_names"))
     category_ids = community_service._parse_int_list(body.get("category_ids"))
     welcome_post_id = _parse_post_reference_to_id(body.get("welcome_post_id") or body.get("welcome_post_ref"))
     selected_tag_ids: list[int] = []
@@ -2027,6 +2027,8 @@ def comuns_list_create(request: HttpRequest) -> HttpResponse:
         seen_tag_ids.add(tag_id)
         selected_tag_ids.append(tag_id)
     for raw_tag_name in raw_tag_names:
+        if len(selected_tag_ids) >= 5:
+            break
         tag, _created = community_service._ensure_tag_by_name(str(raw_tag_name or ""))
         if not tag or tag.id in seen_tag_ids:
             continue

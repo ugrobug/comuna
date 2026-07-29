@@ -237,39 +237,59 @@
   const normalizeTagInput = (value: string) =>
     value.trim().replace(/^#+/, '').replace(/\s+/g, ' ').trim()
 
+  const parseCreateTagInput = (value: string) => {
+    const seen = new Set<string>()
+    return value
+      .split(/[,\n]/)
+      .map(normalizeTagInput)
+      .filter((tagName) => {
+        const key = tagName.toLocaleLowerCase()
+        if (!tagName || seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+  }
+
   const removeCreateTag = (tagId: number) => {
     createTags = createTags.filter((tag) => tag.id !== tagId)
   }
 
   const addCreateTag = async () => {
-    const tagName = normalizeTagInput(createTagInput)
-    if (!tagName || createTagSaving) return
+    const tagNames = parseCreateTagInput(createTagInput)
+    if (!tagNames.length || createTagSaving) return
     if (createTags.length >= 5) {
       toast({ content: $t('site.communitiesPage.create.maxTags'), type: 'warning' })
       return
     }
+    const availableSlots = 5 - createTags.length
     createTagSaving = true
     try {
-      const response = await fetch(buildTagsEnsureUrl(), {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({ name: tagName }),
-      })
-      const payload = await response.json().catch(() => ({}))
-      if (!response.ok || !payload?.tag?.id) {
-        throw new Error($t('site.communitiesPage.create.addTagError'))
+      const nextTags = [...createTags]
+      for (const tagName of tagNames) {
+        if (nextTags.length >= 5) break
+        const response = await fetch(buildTagsEnsureUrl(), {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({ name: tagName }),
+        })
+        const payload = await response.json().catch(() => ({}))
+        if (!response.ok || !payload?.tag?.id) {
+          throw new Error($t('site.communitiesPage.create.addTagError'))
+        }
+        const nextTag = {
+          id: Number(payload.tag.id),
+          name: String(payload.tag.name ?? tagName),
+          lemma: payload.tag.lemma ? String(payload.tag.lemma) : null,
+        }
+        if (!nextTags.some((tag) => tag.id === nextTag.id)) {
+          nextTags.push(nextTag)
+        }
       }
-      const nextTag = {
-        id: Number(payload.tag.id),
-        name: String(payload.tag.name ?? tagName),
-        lemma: payload.tag.lemma ? String(payload.tag.lemma) : null,
-      }
-      if (createTags.some((tag) => tag.id === nextTag.id)) {
-        createTagInput = ''
-        return
-      }
-      createTags = [...createTags, nextTag].slice(0, 5)
+      createTags = nextTags.slice(0, 5)
       createTagInput = ''
+      if (tagNames.length > availableSlots) {
+        toast({ content: $t('site.communitiesPage.create.maxTags'), type: 'warning' })
+      }
     } catch (error) {
       toast({ content: $t('site.communitiesPage.create.addTagError'), type: 'error' })
     } finally {

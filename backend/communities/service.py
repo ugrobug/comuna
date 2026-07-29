@@ -241,7 +241,11 @@ def _parse_tag_payload(raw) -> list[str]:
     if isinstance(raw, str):
         parts = re.split(r"[,\n]", raw)
     elif isinstance(raw, (list, tuple)):
-        parts = raw
+        parts = []
+        for item in raw:
+            if item is None:
+                continue
+            parts.extend(re.split(r"[,\n]", str(item)))
     else:
         return []
     normalized: list[str] = []
