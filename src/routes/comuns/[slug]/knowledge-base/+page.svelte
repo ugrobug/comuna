@@ -103,6 +103,77 @@
       flatItems
   }
 
+  const refreshKnowledgeBase = async () => {
+    if (!comun?.slug) return
+    const response = await fetch(buildComunKnowledgeBaseUrl(comun.slug), {
+      headers: $siteToken ? { Authorization: `Bearer ${$siteToken}` } : undefined,
+    })
+    if (!response.ok) return
+    applyPayload(await response.json().catch(() => ({})))
+  }
+
+  const cloneKnowledgeBaseItems = (source: BackendComunKnowledgeBaseItem[]) =>
+    source.map((item) => ({ ...item }))
+
+  const applyOptimisticSiblingOrder = (
+    parentId: number | null,
+    orderedIds: number[],
+    movedItemIds: number[]
+  ) => {
+    const originalIndex = new Map(flatItems.map((item, index) => [Number(item.id), index]))
+    const optimisticItems = cloneKnowledgeBaseItems(flatItems)
+    const optimisticItemById = new Map(
+      optimisticItems.map((item) => [Number(item.id), item])
+    )
+    const movedIds = new Set(movedItemIds)
+
+    for (const [index, itemId] of orderedIds.entries()) {
+      const item = optimisticItemById.get(itemId)
+      if (!item) continue
+      item.sort_order = (index + 1) * 10
+      if (movedIds.has(itemId)) item.parent_id = parentId
+    }
+
+    const childrenByParent = new Map<number, BackendComunKnowledgeBaseItem[]>()
+    for (const item of optimisticItems) {
+      const rawParentId = Number(item.parent_id ?? 0)
+      const normalizedParent =
+        Number.isFinite(rawParentId) && rawParentId > 0 && optimisticItemById.has(rawParentId)
+          ? rawParentId
+          : 0
+      const siblings = childrenByParent.get(normalizedParent) ?? []
+      siblings.push(item)
+      childrenByParent.set(normalizedParent, siblings)
+    }
+
+    for (const siblings of childrenByParent.values()) {
+      siblings.sort((left, right) => {
+        const orderDifference = Number(left.sort_order ?? 0) - Number(right.sort_order ?? 0)
+        if (orderDifference) return orderDifference
+        return (originalIndex.get(Number(left.id)) ?? 0) - (originalIndex.get(Number(right.id)) ?? 0)
+      })
+    }
+
+    const reorderedItems: BackendComunKnowledgeBaseItem[] = []
+    const visited = new Set<number>()
+    const appendChildren = (currentParentId: number, depth: number) => {
+      for (const item of childrenByParent.get(currentParentId) ?? []) {
+        const itemId = Number(item.id)
+        if (visited.has(itemId)) continue
+        visited.add(itemId)
+        item.depth = depth
+        reorderedItems.push(item)
+        appendChildren(itemId, depth + 1)
+      }
+    }
+    appendChildren(0, 0)
+
+    for (const item of optimisticItems) {
+      if (!visited.has(Number(item.id))) reorderedItems.push(item)
+    }
+    flatItems = reorderedItems
+  }
+
   const itemTitle = (item: BackendComunKnowledgeBaseItem) =>
     String(item.title || (item.item_type === 'group' ? 'Группа' : 'Пост')).trim()
 
@@ -156,7 +227,8 @@
   const patchItem = async (
     item: BackendComunKnowledgeBaseItem,
     patch: Partial<BackendComunKnowledgeBaseItem>,
-    showToast = false
+    showToast = false,
+    applyResponse = true
   ) => {
     if (!comun?.slug || !canManage) return null
     const response = await fetch(buildComunKnowledgeBaseItemUrl(comun.slug, item.id), {
@@ -168,7 +240,7 @@
     if (!response.ok) {
       throw new Error(payload?.error || 'Не удалось обновить базу знаний')
     }
-    applyPayload(payload)
+    if (applyResponse) applyPayload(payload)
     if (showToast) toast({ content: 'База знаний обновлена', type: 'success' })
     return payload
   }
@@ -191,20 +263,28 @@
   const persistSiblingOrder = async (
     parentId: number | null,
     orderedIds: number[],
-    movedItemId?: number,
+    movedItemIds: number[] = [],
     fallbackItems: Map<number, BackendComunKnowledgeBaseItem> = new Map()
   ) => {
-    let payload: Record<string, unknown> | null = null
-    for (const [index, itemId] of orderedIds.entries()) {
-      const item = itemById.get(itemId) ?? fallbackItems.get(itemId)
-      if (!item) continue
-      const patch: Partial<BackendComunKnowledgeBaseItem> = { sort_order: (index + 1) * 10 }
-      if (itemId === movedItemId || Number(itemParentId(item) ?? 0) !== Number(parentId ?? 0)) {
-        patch.parent_id = parentId
-      }
-      payload = await patchItem(item, patch)
-    }
-    if (payload) applyPayload(payload)
+    const sourceItemById = new Map([
+      ...flatItems.map((item) => [Number(item.id), item] as const),
+      ...fallbackItems.entries(),
+    ])
+    const movedIds = new Set(movedItemIds)
+    await Promise.all(
+      orderedIds.map((itemId, index) => {
+        const item = sourceItemById.get(itemId)
+        if (!item) return Promise.resolve(null)
+        const patch: Partial<BackendComunKnowledgeBaseItem> = {
+          sort_order: (index + 1) * 10,
+        }
+        const currentParentId = Number(item.parent_id ?? 0) || null
+        if (movedIds.has(itemId) || currentParentId !== parentId) {
+          patch.parent_id = parentId
+        }
+        return patchItem(item, patch, false, false)
+      })
+    )
   }
 
   const moveRelativeToItem = async (
@@ -226,7 +306,9 @@
     const targetIndex = orderedIds.indexOf(Number(target.id))
     const insertIndex = position === 'before' ? targetIndex : targetIndex + 1
     orderedIds.splice(Math.max(insertIndex, 0), 0, draggedId)
-    await persistSiblingOrder(parentId, orderedIds, draggedId)
+    const sourceItems = new Map(flatItems.map((item) => [Number(item.id), item]))
+    applyOptimisticSiblingOrder(parentId, orderedIds, [draggedId])
+    await persistSiblingOrder(parentId, orderedIds, [draggedId], sourceItems)
   }
 
   const moveIntoGroup = async (draggedId: number, group: BackendComunKnowledgeBaseItem) => {
@@ -242,8 +324,10 @@
         .filter((itemId) => itemId !== draggedId),
       draggedId,
     ]
-    await persistSiblingOrder(groupId, orderedIds, draggedId)
     if (collapsedGroupIds.has(groupId)) setGroupCollapsed(groupId, false)
+    const sourceItems = new Map(flatItems.map((item) => [Number(item.id), item]))
+    applyOptimisticSiblingOrder(groupId, orderedIds, [draggedId])
+    await persistSiblingOrder(groupId, orderedIds, [draggedId], sourceItems)
   }
 
   const createGroupFromDrop = async (
@@ -266,19 +350,24 @@
     const targetIndex = originalSiblings.indexOf(Number(target.id))
     const parentSiblings = originalSiblings.filter((itemId) => itemId !== Number(target.id))
     parentSiblings.splice(Math.max(targetIndex, 0), 0, groupId)
-    await persistSiblingOrder(parentId, parentSiblings, groupId, new Map([[groupId, group]]))
+    await persistSiblingOrder(parentId, parentSiblings, [groupId], new Map([[groupId, group]]))
     await patchItem(target, { parent_id: groupId, sort_order: 10 })
     await patchItem(dragged, { parent_id: groupId, sort_order: 20 })
   }
 
   const withDragSave = async (action: () => Promise<void>) => {
     if (saving || !canManage) return
+    const previousFlatItems = cloneKnowledgeBaseItems(flatItems)
+    const previousItems = cloneKnowledgeBaseItems(items)
     saving = true
     errorMessage = ''
     try {
       await action()
       toast({ content: 'База знаний обновлена', type: 'success' })
     } catch (error) {
+      flatItems = previousFlatItems
+      items = previousItems
+      await refreshKnowledgeBase().catch(() => undefined)
       errorMessage = error instanceof Error ? error.message : 'Не удалось обновить базу знаний'
       toast({ content: errorMessage, type: 'error' })
     } finally {
