@@ -181,7 +181,6 @@
 
   const canUseComunInComposer = (comun: BackendComun) => {
     if (comun.can_moderate) return true
-    if (!comun.is_subscribed) return false
     return Boolean(comun.can_start_post || canPostWithoutCategory(comun) || writableCategoriesForComun(comun).length)
   }
 

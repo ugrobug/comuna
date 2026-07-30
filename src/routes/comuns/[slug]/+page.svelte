@@ -1626,7 +1626,7 @@
         </div>
         <div class="flex flex-wrap items-center gap-2">
           {#if canShowComunPostButton}
-            <Button size="sm" on:click={openComunPostEditor}>
+            <Button color="primary" size="sm" on:click={openComunPostEditor}>
               <span slot="prefix" class="text-base leading-none">+</span>
               {$t('routes.communityPage.addPost')}
             </Button>

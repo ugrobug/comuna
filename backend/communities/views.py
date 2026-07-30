@@ -2183,15 +2183,9 @@ def comuns_composer(request: HttpRequest) -> HttpResponse:
             "can_post": bool(can_post),
         }
 
-    composer_scope_filter = (
-        Q(slug__in=subscribed_comun_slugs)
-        | Q(creator_id=current_user.id)
-        | Q(moderators__id=current_user.id)
-    )
     queryset = (
         Comun.objects.filter(is_active=True)
         .exclude(slug__iexact="faq")
-        .filter(composer_scope_filter)
         .only(
             "id",
             "name",
@@ -2241,7 +2235,7 @@ def comuns_composer(request: HttpRequest) -> HttpResponse:
             category.id for category in categories if category_can_post_by_id.get(category.id)
         ]
         can_start_post = bool(can_post_without_category or can_post_category_ids)
-        if not can_moderate and (not is_subscribed or not can_start_post):
+        if not can_moderate and not can_start_post:
             continue
 
         if getattr(comun, "glossary_enabled", False):

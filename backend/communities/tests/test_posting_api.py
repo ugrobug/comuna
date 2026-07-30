@@ -73,6 +73,31 @@ class ComunPostingApiTests(TestCase):
         self.comun.refresh_from_db()
         self.assertEqual(self.comun.authors_count, 1)
 
+    def test_unsubscribed_user_can_create_post_in_open_category(self):
+        contributor = User.objects.create_user(username="open-category-author", password="secret")
+        self.client.force_login(contributor)
+
+        response = self.client.post(
+            reverse("comun-posts", kwargs={"slug": self.comun.slug}),
+            data=json.dumps(
+                {
+                    "title": "Пост без подписки",
+                    "content": "{\"time\":1772104218738,\"blocks\":[{\"type\":\"paragraph\",\"data\":{\"text\":\"Публикация в открытой рубрике\"}}]}",
+                    "author_source": "site",
+                    "comun_category_id": self.category.id,
+                }
+            ),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {user_service._issue_token(contributor)}",
+        )
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        post = Post.objects.get(id=response.json()["post"]["id"])
+        self.assertEqual(
+            ComunPostCategoryAssignment.objects.get(comun=self.comun, post=post).category_id,
+            self.category.id,
+        )
+
     def test_comun_authors_count_increments_once_per_author(self):
         for index in range(2):
             response = self.client.post(
@@ -991,6 +1016,12 @@ class ComunPostingApiTests(TestCase):
             slug="composer-unsubscribed",
             creator=self.user,
         )
+        unsubscribed_category = ComunCategory.objects.create(
+            comun=unsubscribed_comun,
+            name="Открытая рубрика",
+            slug="otkrytaya-rubrika",
+        )
+        unsubscribed_comun.categories.add(unsubscribed_category)
 
         restricted_comun = Comun.objects.create(
             name="Composer Restricted",
@@ -1029,7 +1060,7 @@ class ComunPostingApiTests(TestCase):
         comuns_by_slug = {comun["slug"]: comun for comun in payload["comuns"]}
 
         self.assertIn(subscribed_comun.slug, comuns_by_slug)
-        self.assertNotIn(unsubscribed_comun.slug, comuns_by_slug)
+        self.assertIn(unsubscribed_comun.slug, comuns_by_slug)
         self.assertNotIn(restricted_comun.slug, comuns_by_slug)
         self.assertIn(moderated_comun.slug, comuns_by_slug)
         self.assertIn("template_type_options", payload)
@@ -1043,6 +1074,12 @@ class ComunPostingApiTests(TestCase):
         self.assertTrue(subscribed_payload["categories"][0]["can_post"])
         self.assertNotIn("moderators", subscribed_payload)
         self.assertNotIn("rating", subscribed_payload)
+
+        unsubscribed_payload = comuns_by_slug[unsubscribed_comun.slug]
+        self.assertFalse(unsubscribed_payload["is_subscribed"])
+        self.assertTrue(unsubscribed_payload["can_start_post"])
+        self.assertIn(unsubscribed_category.id, unsubscribed_payload["can_post_category_ids"])
+        self.assertTrue(unsubscribed_payload["categories"][0]["can_post"])
 
         moderated_payload = comuns_by_slug[moderated_comun.slug]
         self.assertFalse(moderated_payload["is_subscribed"])
