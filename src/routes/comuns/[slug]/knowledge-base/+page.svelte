@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { browser } from '$app/environment'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import {
     buildComunKnowledgeBaseItemUrl,
@@ -8,6 +9,8 @@
   } from '$lib/api/backend'
   import { siteToken } from '$lib/siteAuth'
   import { toast } from 'mono-svelte'
+  import { ChevronRight, Icon } from 'svelte-hero-icons'
+  import { onMount } from 'svelte'
 
   export let data
 
@@ -18,10 +21,71 @@
   let errorMessage = ''
   let draggedItemId: number | null = null
   let dragOverKey = ''
+  let collapsedGroupIds = new Set<number>()
 
   $: canManage = Boolean($siteToken && comun?.can_moderate)
   $: comunBackPath = comun?.slug ? `/comuns/${encodeURIComponent(comun.slug)}` : '/comuns'
   $: itemById = new Map(flatItems.map((item) => [Number(item.id), item]))
+  $: visibleFlatItems = flatItems.filter(
+    (item) => !isHiddenByCollapsedGroup(item, collapsedGroupIds, itemById)
+  )
+
+  const collapsedGroupsStorageKey = () =>
+    `tambur.knowledge-base.collapsed-groups.v1:${String(comun?.slug || 'unknown')}`
+
+  const persistCollapsedGroups = () => {
+    if (!browser) return
+    window.localStorage.setItem(
+      collapsedGroupsStorageKey(),
+      JSON.stringify(Array.from(collapsedGroupIds).sort((a, b) => a - b))
+    )
+  }
+
+  const setGroupCollapsed = (groupId: number, collapsed: boolean) => {
+    const next = new Set(collapsedGroupIds)
+    if (collapsed) next.add(groupId)
+    else next.delete(groupId)
+    collapsedGroupIds = next
+    persistCollapsedGroups()
+  }
+
+  const toggleGroup = (item: BackendComunKnowledgeBaseItem) => {
+    if (item.item_type !== 'group') return
+    const groupId = Number(item.id)
+    setGroupCollapsed(groupId, !collapsedGroupIds.has(groupId))
+  }
+
+  const isGroupCollapsed = (item: BackendComunKnowledgeBaseItem) =>
+    item.item_type === 'group' && collapsedGroupIds.has(Number(item.id))
+
+  const isHiddenByCollapsedGroup = (
+    item: BackendComunKnowledgeBaseItem,
+    collapsedIds: Set<number>,
+    itemsById: Map<number, BackendComunKnowledgeBaseItem>
+  ) => {
+    const visited = new Set<number>()
+    let parentId = Number(item.parent_id ?? 0)
+    while (Number.isFinite(parentId) && parentId > 0 && !visited.has(parentId)) {
+      if (collapsedIds.has(parentId)) return true
+      visited.add(parentId)
+      parentId = Number(itemsById.get(parentId)?.parent_id ?? 0)
+    }
+    return false
+  }
+
+  onMount(() => {
+    if (!browser) return
+    try {
+      const stored = JSON.parse(window.localStorage.getItem(collapsedGroupsStorageKey()) || '[]')
+      collapsedGroupIds = new Set(
+        (Array.isArray(stored) ? stored : [])
+          .map(Number)
+          .filter((itemId) => Number.isFinite(itemId) && itemId > 0)
+      )
+    } catch {
+      collapsedGroupIds = new Set()
+    }
+  })
 
   const authHeaders = () => {
     if (!$siteToken) throw new Error('Нужна авторизация')
@@ -179,6 +243,7 @@
       draggedId,
     ]
     await persistSiblingOrder(groupId, orderedIds, draggedId)
+    if (collapsedGroupIds.has(groupId)) setGroupCollapsed(groupId, false)
   }
 
   const createGroupFromDrop = async (
@@ -238,8 +303,46 @@
   const draggedIdFromEvent = (event: DragEvent) =>
     Number(event.dataTransfer?.getData('text/plain') || draggedItemId || 0)
 
+  const setDragOverTarget = (event: DragEvent, key: string) => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+    dragOverKey = key
+  }
+
+  const relativeDropPosition = (
+    event: DragEvent,
+    target: BackendComunKnowledgeBaseItem
+  ): 'before' | 'into' | 'after' => {
+    const element = event.currentTarget as HTMLElement | null
+    const bounds = element?.getBoundingClientRect()
+    if (!bounds?.height) return 'into'
+    const ratio = Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height))
+    const edgeRatio = target.item_type === 'group' ? 0.25 : 0.35
+    if (ratio <= edgeRatio) return 'before'
+    if (ratio >= 1 - edgeRatio) return 'after'
+    return 'into'
+  }
+
+  const onDragOverItem = (event: DragEvent, target: BackendComunKnowledgeBaseItem) => {
+    const draggedId = draggedIdFromEvent(event)
+    if (!draggedId || draggedId === Number(target.id)) return
+    setDragOverTarget(event, `${relativeDropPosition(event, target)}-${target.id}`)
+  }
+
+  const onDragOverDropZone = (
+    event: DragEvent,
+    target: BackendComunKnowledgeBaseItem,
+    position: 'before' | 'after'
+  ) => {
+    const draggedId = draggedIdFromEvent(event)
+    if (!draggedId || draggedId === Number(target.id)) return
+    setDragOverTarget(event, `${position}-${target.id}`)
+  }
+
   const onDropZone = (event: DragEvent, target: BackendComunKnowledgeBaseItem, position: 'before' | 'after') => {
     event.preventDefault()
+    event.stopPropagation()
     const draggedId = draggedIdFromEvent(event)
     if (!draggedId) return
     withDragSave(() => moveRelativeToItem(draggedId, target, position))
@@ -247,8 +350,18 @@
 
   const onDropItem = (event: DragEvent, target: BackendComunKnowledgeBaseItem) => {
     event.preventDefault()
+    event.stopPropagation()
     const draggedId = draggedIdFromEvent(event)
     if (!draggedId || draggedId === Number(target.id)) return
+    const targetId = Number(target.id)
+    if (dragOverKey === `before-${targetId}`) {
+      withDragSave(() => moveRelativeToItem(draggedId, target, 'before'))
+      return
+    }
+    if (dragOverKey === `after-${targetId}`) {
+      withDragSave(() => moveRelativeToItem(draggedId, target, 'after'))
+      return
+    }
     withDragSave(() =>
       target.item_type === 'group'
         ? moveIntoGroup(draggedId, target)
@@ -338,24 +451,27 @@
     {/if}
     {#if flatItems.length}
       <div class={canManage ? 'flex flex-col gap-0' : 'flex flex-col gap-2'}>
-        {#each flatItems as item (item.id)}
+        {#each visibleFlatItems as item (item.id)}
           {#if canManage}
             <div
-              class="h-1 rounded-full transition {dragOverKey === `before-${item.id}` ? 'bg-blue-200 dark:bg-blue-900/50' : 'bg-transparent'}"
+              class="knowledge-drop-zone"
+              class:knowledge-drop-zone--active={dragOverKey === `before-${item.id}`}
               role="presentation"
-              on:dragenter={() => (dragOverKey = `before-${item.id}`)}
-              on:dragover|preventDefault={() => (dragOverKey = `before-${item.id}`)}
+              on:dragenter={(event) => onDragOverDropZone(event, item, 'before')}
+              on:dragover={(event) => onDragOverDropZone(event, item, 'before')}
               on:drop={(event) => onDropZone(event, item, 'before')}
             ></div>
           {/if}
           <article
             draggable={canManage && !saving}
             class={itemFrameClass(item)}
+            class:knowledge-item--drop-before={dragOverKey === `before-${item.id}`}
+            class:knowledge-item--drop-after={dragOverKey === `after-${item.id}`}
             style={itemLevelStyle(item)}
             on:dragstart={(event) => onDragStart(event, item)}
             on:dragend={onDragEnd}
-            on:dragenter={() => (dragOverKey = `into-${item.id}`)}
-            on:dragover|preventDefault={() => (dragOverKey = `into-${item.id}`)}
+            on:dragenter={(event) => onDragOverItem(event, item)}
+            on:dragover={(event) => onDragOverItem(event, item)}
             on:drop={(event) => onDropItem(event, item)}
           >
             {#if canManage}
@@ -364,7 +480,23 @@
                   ⋮⋮
                 </div>
                 {#if item.item_type === 'group'}
-                  <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-slate-100 text-xs text-slate-600 dark:bg-zinc-800 dark:text-zinc-300" aria-hidden="true">▾</span>
+                  <button
+                    type="button"
+                    class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-600 transition hover:bg-slate-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+                    aria-expanded={!isGroupCollapsed(item)}
+                    aria-label={isGroupCollapsed(item) ? 'Раскрыть группу' : 'Свернуть группу'}
+                    title={isGroupCollapsed(item) ? 'Раскрыть группу' : 'Свернуть группу'}
+                    draggable="false"
+                    on:click|stopPropagation={() => toggleGroup(item)}
+                    on:dragstart|stopPropagation
+                  >
+                    <Icon
+                      src={ChevronRight}
+                      size="16"
+                      mini
+                      class={`transition-transform ${isGroupCollapsed(item) ? '' : 'rotate-90'}`}
+                    />
+                  </button>
                   <div
                     class="min-w-0 flex-1 rounded-md px-1 py-0.5 text-lg font-bold text-slate-950 outline-none focus:bg-white focus:ring-2 focus:ring-blue-200 dark:text-zinc-50 dark:focus:bg-zinc-950 dark:focus:ring-blue-900"
                     contenteditable="true"
@@ -418,7 +550,21 @@
               </div>
             {:else if item.item_type === 'group'}
               <div class="flex items-center gap-2">
-                <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-slate-100 text-xs text-slate-600 dark:bg-zinc-800 dark:text-zinc-300" aria-hidden="true">▾</span>
+                <button
+                  type="button"
+                  class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-600 transition hover:bg-slate-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+                  aria-expanded={!isGroupCollapsed(item)}
+                  aria-label={isGroupCollapsed(item) ? 'Раскрыть группу' : 'Свернуть группу'}
+                  title={isGroupCollapsed(item) ? 'Раскрыть группу' : 'Свернуть группу'}
+                  on:click={() => toggleGroup(item)}
+                >
+                  <Icon
+                    src={ChevronRight}
+                    size="16"
+                    mini
+                    class={`transition-transform ${isGroupCollapsed(item) ? '' : 'rotate-90'}`}
+                  />
+                </button>
                 <div class="text-lg font-bold text-slate-950 dark:text-zinc-50">
                   {itemTitle(item)}
                 </div>
@@ -440,10 +586,11 @@
           </article>
           {#if canManage}
             <div
-              class="h-1 rounded-full transition {dragOverKey === `after-${item.id}` ? 'bg-blue-200 dark:bg-blue-900/50' : 'bg-transparent'}"
+              class="knowledge-drop-zone"
+              class:knowledge-drop-zone--active={dragOverKey === `after-${item.id}`}
               role="presentation"
-              on:dragenter={() => (dragOverKey = `after-${item.id}`)}
-              on:dragover|preventDefault={() => (dragOverKey = `after-${item.id}`)}
+              on:dragenter={(event) => onDragOverDropZone(event, item, 'after')}
+              on:dragover={(event) => onDragOverDropZone(event, item, 'after')}
               on:drop={(event) => onDropZone(event, item, 'after')}
             ></div>
           {/if}
@@ -456,3 +603,35 @@
     {/if}
   </section>
 </div>
+
+<style>
+  .knowledge-drop-zone {
+    position: relative;
+    z-index: 2;
+    height: 16px;
+    margin-block: -6px;
+  }
+
+  .knowledge-drop-zone::after {
+    position: absolute;
+    inset: 50% 0 auto;
+    height: 3px;
+    border-radius: 999px;
+    background: transparent;
+    content: '';
+    transform: translateY(-50%);
+    transition: background-color 120ms ease;
+  }
+
+  .knowledge-drop-zone--active::after {
+    background: #3b82f6;
+  }
+
+  .knowledge-item--drop-before {
+    box-shadow: inset 0 3px 0 #3b82f6;
+  }
+
+  .knowledge-item--drop-after {
+    box-shadow: inset 0 -3px 0 #3b82f6;
+  }
+</style>
