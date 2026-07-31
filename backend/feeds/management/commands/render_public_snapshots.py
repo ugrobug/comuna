@@ -8,11 +8,12 @@ import urllib.request
 from pathlib import Path
 
 from django.conf import settings
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
 from feeds.models import PublicFeedItem
 from feeds.post_paths import build_post_public_path
+from feeds.seo_indexing import seo_indexable_posts_queryset
 from feeds.views import _post_display_title
 
 
@@ -31,6 +32,7 @@ class Command(BaseCommand):
         parser.add_argument("--site-host", default="")
         parser.add_argument("--output-dir", default="")
         parser.add_argument("--posts", type=int, default=100)
+        parser.add_argument("--recent-posts", type=int, default=50)
         parser.add_argument("--timeout", type=int, default=15)
         parser.add_argument("--dry-run", action="store_true")
 
@@ -51,6 +53,7 @@ class Command(BaseCommand):
             or (Path(settings.STATIC_ROOT) / "html-snapshots")
         )
         posts_limit = max(0, int(options["posts"]))
+        recent_posts_limit = max(0, int(options["recent_posts"]))
         timeout = max(1, int(options["timeout"]))
         dry_run = bool(options["dry_run"])
 
@@ -59,10 +62,17 @@ class Command(BaseCommand):
             .select_related("post")
             .order_by("rank")[:posts_limit]
         )
+        recent_posts = list(
+            seo_indexable_posts_queryset()
+            .select_related("author")
+            .order_by("-created_at")[:recent_posts_limit]
+        )
         paths = ["/"]
-        for item in feed_items:
-            title = _post_display_title(item.post)
-            paths.append(build_post_public_path(item.post_id, title))
+        posts_by_id = {item.post_id: item.post for item in feed_items}
+        posts_by_id.update({post.id: post for post in recent_posts})
+        for post in posts_by_id.values():
+            title = _post_display_title(post)
+            paths.append(build_post_public_path(post.id, title))
 
         unique_paths = list(dict.fromkeys(paths))
         self.stdout.write(
@@ -119,6 +129,14 @@ class Command(BaseCommand):
             json.dumps(manifest, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+
+        minimum_successes = max(1, int(len(unique_paths) * 0.8))
+        if len(rendered) < minimum_successes:
+            shutil.rmtree(temp_root)
+            raise CommandError(
+                f"Rendered only {len(rendered)} of {len(unique_paths)} snapshots; "
+                "keeping the previous snapshot set."
+            )
 
         if output_root.exists():
             shutil.rmtree(output_root)

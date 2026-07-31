@@ -61,7 +61,11 @@ services:
     logging: *default-logging
     command: >-
       sh -c "until python -u manage.py materialize_sitemaps; do sleep 10; done;
-      while true; do python -u manage.py materialize_sitemaps || true; sleep 1200; done"
+      while true; do
+      python -u manage.py render_public_snapshots --posts 50 --recent-posts 50 || true;
+      sleep 1200;
+      python -u manage.py materialize_sitemaps || true;
+      done"
     env_file:
       - .env.backend
     environment:
@@ -70,6 +74,7 @@ services:
     depends_on:
       - db
     volumes:
+      - static_data:/app/staticfiles
       - sitemap_data:/app/sitemaps
     healthcheck:
       test: ["CMD-SHELL", "test -s /app/sitemaps/sitemap.xml"]
