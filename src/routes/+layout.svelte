@@ -30,7 +30,13 @@
   import { locale, t } from '$lib/translations'
   import { brandNameForLanguage } from '$lib/brand'
   import { stringifyJsonLd, toWellFormedUnicode } from '$lib/seoJsonLd'
-  import { normalizeInterfaceLanguage, postLanguageLocales, postLanguageOgLocales } from '$lib/postLanguages'
+  import {
+    languageFromPathname,
+    normalizeInterfaceLanguage,
+    originalPostLanguage,
+    postLanguageLocales,
+    postLanguageOgLocales,
+  } from '$lib/postLanguages'
   import { getDefaultColors } from '$lib/ui/presets'
   import { env } from '$env/dynamic/public'
   import YandexMetrika from '$lib/components/YandexMetrika.svelte'
@@ -92,7 +98,8 @@
     return `${siteBaseUrl}${cleanPath}`
   })()
   $: currentLanguage = normalizeInterfaceLanguage($locale) || 'ru'
-  $: shouldLoadAdsense = currentLanguage !== 'ru'
+  $: pageLanguage = languageFromPathname($page.url.pathname) || originalPostLanguage
+  $: shouldLoadAdsense = pageLanguage !== originalPostLanguage
   $: defaultTitle = brandNameForLanguage(currentLanguage)
   $: defaultDescription = $t('site.meta.defaultDescription')
   $: siteTitle = toWellFormedUnicode(
