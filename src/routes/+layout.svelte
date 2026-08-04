@@ -235,7 +235,9 @@
   <ToastContainer />
   <ExpandableImage />
   <ModalContainer />
-  <CookieNotice />
+  {#if !shouldLoadAdsense}
+    <CookieNotice />
+  {/if}
 
   <svelte:fragment slot="sidebar" let:style={s} let:class={c}>
     {#if !isFullBleedRoute}
