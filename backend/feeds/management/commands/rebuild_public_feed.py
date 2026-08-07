@@ -10,9 +10,8 @@ from feeds.models import Author, Post, PublicFeedItem, Tag
 from feeds.views import _publish_ready_filter
 from ratings.service import (
     calculate_author_ratings,
-    calculate_post_total_rating,
+    calculate_home_feed_post_metrics,
     get_rating_settings,
-    home_feed_community_day_key,
 )
 
 
@@ -75,6 +74,11 @@ class Command(BaseCommand):
             Author.objects.filter(id__in={post.author_id for post in candidates}),
             settings=rating_settings,
         )
+        post_score_map, community_day_key_map = calculate_home_feed_post_metrics(
+            candidates,
+            settings=rating_settings,
+            author_ratings=author_rating_map,
+        )
         home_posts_per_community_per_day = max(
             int(getattr(rating_settings, "home_posts_per_community_per_day", 3) or 3),
             1,
@@ -93,14 +97,10 @@ class Command(BaseCommand):
             if next_index is None:
                 next_index = 0
             post = remaining.pop(next_index)
-            post_score = calculate_post_total_rating(
-                post,
-                settings=rating_settings,
-                author_rating=author_rating_map.get(post.author_id, 0),
-            )
+            post_score = post_score_map.get(post.id, 0)
             if post_score < 0:
                 continue
-            community_day_key = home_feed_community_day_key(post)
+            community_day_key = community_day_key_map.get(post.id)
             if community_day_key is not None:
                 community_day_count = community_day_counts.get(community_day_key, 0)
                 if community_day_count >= home_posts_per_community_per_day:

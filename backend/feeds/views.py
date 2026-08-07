@@ -47,7 +47,7 @@ from communities.models import (
     ComunPostCategoryAssignment,
     ComunVote,
 )
-from rabotaem_backend.cache import anonymous_cache, has_auth_context
+from rabotaem_backend.cache import anonymous_cache
 from rabotaem_backend.media_urls import (
     media_storage_path_from_url,
     public_media_url,
@@ -156,10 +156,10 @@ from ratings.service import (
     apply_author_rating_delta as _apply_author_rating_delta,
     calculate_author_rating as _calculate_author_rating,
     calculate_author_ratings as _calculate_author_ratings,
+    calculate_home_feed_post_metrics as _calculate_home_feed_post_metrics,
     calculate_post_total_rating as _calculate_post_total_rating,
     format_rating_value as _format_rating_value,
     get_rating_settings as _get_rating_settings,
-    home_feed_community_day_key as _home_feed_community_day_key,
     user_max_author_rating as _user_max_author_rating,
 )
 from telegram_integration.media import download_telegram_file_by_path
@@ -3959,21 +3959,20 @@ def home_feed(request: HttpRequest) -> HttpResponse:
     only_read = request.GET.get("only_read") in {"1", "true", "True"}
     card_mode = request.GET.get("card") in {"1", "true", "True"}
     now = timezone.now()
-    if card_mode and not hide_read and not only_read and not has_auth_context(request):
+    current_user = _get_user_from_request(request)
+    if card_mode and not hide_read and not only_read:
         materialized_response = _materialized_home_feed_response(
             request,
             limit=limit,
             offset=offset,
             now=now,
             language=language,
+            current_user=current_user,
         )
         if materialized_response is not None:
             return materialized_response
 
-    read_user = (
-        _get_user_from_request(request) if (hide_read or only_read) else None
-    )
-    current_user = read_user or _get_user_from_request(request)
+    read_user = current_user if (hide_read or only_read) else None
     if only_read and not read_user:
         return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
     target_count = limit + offset
@@ -4086,6 +4085,11 @@ def home_feed(request: HttpRequest) -> HttpResponse:
         int(getattr(rating_settings, "home_posts_per_community_per_day", 3) or 3),
         1,
     )
+    post_score_map, community_day_key_map = _calculate_home_feed_post_metrics(
+        posts,
+        settings=rating_settings,
+        author_ratings=author_rating_map,
+    )
     community_day_counts: dict[tuple[int, object], int] = {}
 
     serialized_posts = []
@@ -4102,10 +4106,10 @@ def home_feed(request: HttpRequest) -> HttpResponse:
             next_index = 0
         post = remaining.pop(next_index)
         author_rating = author_rating_map.get(post.author_id, 0)
-        combined_rating = _post_rating_score(post, author_rating=author_rating)
+        combined_rating = round(float(post_score_map.get(post.id, 0)), 2)
         if combined_rating < 0:
             continue
-        community_day_key = _home_feed_community_day_key(post)
+        community_day_key = community_day_key_map.get(post.id)
         if community_day_key is not None:
             community_day_count = community_day_counts.get(community_day_key, 0)
             if community_day_count >= home_posts_per_community_per_day:
@@ -4361,17 +4365,21 @@ def _materialized_home_feed_response(
     offset: int,
     now=None,
     language: str = ORIGINAL_POST_LANGUAGE,
+    current_user: User | None = None,
 ) -> HttpResponse | None:
     items_query = PublicFeedItem.objects.filter(feed=PublicFeedItem.FEED_HOME)
     items_query = _filter_posts_for_language(items_query, language, prefix="post__")
+    items_query = _apply_user_hidden_content(items_query, current_user, prefix="post__")
     prefetches = ["post__tags"]
     translation_prefetch = _post_translation_prefetch(language, prefix="post__")
     if translation_prefetch:
         prefetches.append(translation_prefetch)
+    target_count = offset + limit
+    fetch_size = max(target_count * 5, 50)
     items = list(
         items_query.select_related("post", "post__author")
         .prefetch_related(*prefetches)
-        .order_by("rank")
+        .order_by("rank")[:fetch_size]
     )
     if not items:
         return None
@@ -4387,29 +4395,37 @@ def _materialized_home_feed_response(
             Author.objects.filter(id__in={item.post.author_id for item in items})
         ).items()
     }
+    posts = [item.post for item in items]
+    post_score_map, community_day_key_map = _calculate_home_feed_post_metrics(
+        posts,
+        settings=rating_settings,
+        author_ratings=author_rating_map,
+    )
+    _attach_materialized_post_user_votes(posts, current_user)
+    favorite_post_ids = _favorite_post_ids_for_user(posts, current_user)
     visible_items = []
     community_day_counts: dict[tuple[int, object], int] = {}
     for item in items:
-        author_rating = author_rating_map.get(item.post.author_id, 0)
-        score = _post_rating_score(item.post, author_rating=author_rating)
+        score = round(float(post_score_map.get(item.post_id, 0)), 2)
         if score < 0:
             continue
-        community_day_key = _home_feed_community_day_key(item.post)
+        community_day_key = community_day_key_map.get(item.post_id)
         if community_day_key is not None:
             community_day_count = community_day_counts.get(community_day_key, 0)
             if community_day_count >= home_posts_per_community_per_day:
                 continue
             community_day_counts[community_day_key] = community_day_count + 1
         visible_items.append((item, score))
-        if len(visible_items) >= offset + limit:
+        if len(visible_items) >= target_count:
             break
 
     serialized = [
         _serialize_lightweight_post_card(
             request,
             item.post,
-            None,
+            current_user,
             now=now,
+            is_favorite=item.post_id in favorite_post_ids,
             score_override=score,
             language=language,
         )
@@ -4422,6 +4438,22 @@ def _materialized_home_feed_response(
             "materialized": True,
         }
     )
+
+
+def _attach_materialized_post_user_votes(
+    posts: list[Post],
+    user: User | None,
+) -> None:
+    vote_by_post_id = {}
+    if user and posts:
+        vote_by_post_id = dict(
+            PostLike.objects.filter(
+                user=user,
+                post_id__in=[post.id for post in posts],
+            ).values_list("post_id", "value")
+        )
+    for post in posts:
+        post._current_user_vote = int(vote_by_post_id.get(post.id, 0))
 
 
 def _serialize_search_author_result(

@@ -7,6 +7,7 @@ import math
 from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.db.models import Count, F, Q, Sum
+from django.db.models.functions import Lower
 from django.utils import timezone
 
 from ratings.models import RatingSettings
@@ -360,10 +361,173 @@ def calculate_author_rating(author, *, settings: RatingSettings | None = None, c
 
 def calculate_author_ratings(authors, *, settings: RatingSettings | None = None, cutoff=None, now=None) -> dict[int, Decimal]:
     settings = settings or get_rating_settings()
-    return {
-        author.id: calculate_author_rating(author, settings=settings, cutoff=cutoff, now=now)
-        for author in authors
+    author_list = list(authors)
+    if not author_list:
+        return {}
+
+    Post = _post_model()
+    PostCommentLike = _post_comment_like_model()
+    author_ids = [author.id for author in author_list]
+    posts = Post.objects.filter(author_id__in=author_ids).filter(public_posts_filter(now))
+    if cutoff is not None:
+        posts = posts.filter(created_at__gte=cutoff)
+
+    post_totals_by_author = {
+        int(row["author_id"]): row
+        for row in posts.values("author_id").annotate(
+            votes=Sum("rating"),
+            comments=Sum("comments_count"),
+        )
     }
+    post_comment_likes_by_author = {
+        int(row["comment__post__author_id"]): int(row["total"] or 0)
+        for row in (
+            PostCommentLike.objects.filter(
+                comment__post__in=posts,
+                comment__is_deleted=False,
+            )
+            .values("comment__post__author_id")
+            .annotate(total=Count("id"))
+        )
+    }
+
+    username_keys = {
+        str(author.username or "").strip().lower()
+        for author in author_list
+        if str(author.username or "").strip()
+    }
+    authored_comment_likes = PostCommentLike.objects.filter(
+        comment__is_deleted=False,
+        comment__user__username__isnull=False,
+    )
+    if cutoff is not None:
+        authored_comment_likes = authored_comment_likes.filter(created_at__gte=cutoff)
+    comment_likes_by_username = {
+        str(row["username_key"] or ""): int(row["total"] or 0)
+        for row in (
+            authored_comment_likes.annotate(username_key=Lower("comment__user__username"))
+            .filter(username_key__in=username_keys)
+            .values("username_key")
+            .annotate(total=Count("id"))
+        )
+    }
+
+    result: dict[int, Decimal] = {}
+    for author in author_list:
+        post_totals = post_totals_by_author.get(author.id, {})
+        posts_rating = (
+            _decimal(post_totals.get("votes")) * _decimal(settings.post_vote_weight)
+            + _decimal(post_totals.get("comments")) * _decimal(settings.post_comment_weight)
+            + _decimal(post_comment_likes_by_author.get(author.id, 0))
+            * _decimal(settings.post_comment_like_weight)
+        )
+        username_key = str(author.username or "").strip().lower()
+        comment_rating = _decimal(comment_likes_by_username.get(username_key, 0)) * _decimal(
+            settings.author_comment_like_weight
+        )
+        result[author.id] = (
+            posts_rating * _decimal(settings.author_post_rating_weight) + comment_rating
+        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return result
+
+
+def _candidate_comuns_for_posts(posts) -> dict[int, object]:
+    post_list = list(posts)
+    if not post_list:
+        return {}
+
+    Comun = _comun_model()
+    slugs = {
+        str(post.raw_data.get("comun_slug") or "").strip()
+        for post in post_list
+        if isinstance(getattr(post, "raw_data", None), dict)
+        and str(post.raw_data.get("comun_slug") or "").strip()
+    }
+    author_ids = {post.author_id for post in post_list if getattr(post, "author_id", None)}
+    if not slugs and not author_ids:
+        return {}
+
+    comun_query = Q()
+    if slugs:
+        comun_query |= Q(slug__in=slugs)
+    if author_ids:
+        comun_query |= Q(telegram_source_author_id__in=author_ids)
+    comuns = list(
+        Comun.objects.filter(comun_query, is_active=True)
+        .exclude(slug__iexact="faq")
+        .order_by("-rating_score", "id")
+    )
+
+    comuns_by_slug: dict[str, list[object]] = {}
+    comuns_by_author_id: dict[int, list[object]] = {}
+    for comun in comuns:
+        comuns_by_slug.setdefault(str(comun.slug), []).append(comun)
+        if comun.telegram_source_author_id:
+            comuns_by_author_id.setdefault(int(comun.telegram_source_author_id), []).append(comun)
+
+    selected: dict[int, object] = {}
+    for post in post_list:
+        raw_data = post.raw_data if isinstance(getattr(post, "raw_data", None), dict) else {}
+        comun_slug = str(raw_data.get("comun_slug") or "").strip()
+        candidates = {
+            comun.id: comun
+            for comun in (
+                comuns_by_slug.get(comun_slug, [])
+                + comuns_by_author_id.get(int(getattr(post, "author_id", 0) or 0), [])
+            )
+        }
+        if candidates:
+            selected[post.id] = min(
+                candidates.values(),
+                key=lambda comun: (-float(comun.rating_score or 0), int(comun.id)),
+            )
+    return selected
+
+
+def calculate_home_feed_post_metrics(
+    posts,
+    *,
+    settings: RatingSettings | None = None,
+    author_ratings: dict[int, Decimal | float | int] | None = None,
+) -> tuple[dict[int, Decimal], dict[int, tuple[int, object]]]:
+    settings = settings or get_rating_settings()
+    post_list = list(posts)
+    if not post_list:
+        return {}, {}
+
+    if author_ratings is None:
+        authors_by_id = {
+            post.author_id: post.author
+            for post in post_list
+            if getattr(post, "author", None) is not None
+        }
+        author_ratings = calculate_author_ratings(
+            authors_by_id.values(),
+            settings=settings,
+        )
+
+    base_ratings = calculate_posts_base_rating(post_list, settings=settings)
+    comuns_by_post_id = _candidate_comuns_for_posts(post_list)
+    scores: dict[int, Decimal] = {}
+    community_day_keys: dict[int, tuple[int, object]] = {}
+    for post in post_list:
+        comun = comuns_by_post_id.get(post.id)
+        community_rating = (
+            _decimal(getattr(comun, "rating_score", 0))
+            * _decimal(settings.post_community_rating_weight)
+        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        scores[post.id] = (
+            base_ratings.get(post.id, Decimal("0"))
+            + community_rating
+            + _decimal(author_ratings.get(post.author_id, 0))
+            * _decimal(settings.post_author_rating_weight)
+        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        if comun is not None and getattr(post, "created_at", None) is not None:
+            community_day_keys[post.id] = (
+                int(comun.id),
+                timezone.localdate(post.created_at),
+            )
+    return scores, community_day_keys
 
 
 def calculate_post_total_rating(
@@ -451,6 +615,7 @@ __all__ = [
     "calculate_author_rating",
     "calculate_author_ratings",
     "calculate_community_rating_for_posts",
+    "calculate_home_feed_post_metrics",
     "calculate_post_base_rating",
     "calculate_post_total_rating",
     "calculate_posts_base_rating",
