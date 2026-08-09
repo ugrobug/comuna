@@ -37,6 +37,10 @@
     YOUTUBE_URL_PATTERN,
     youtubeVideoIdFromMatchGroups,
   } from '$lib/youtube'
+  import {
+    VK_VIDEO_URL_PATTERN,
+    vkVideoEmbedUrlFromMatchGroups,
+  } from '$lib/vkVideo'
   import { get } from 'svelte/store'
   import { Button, toast } from 'mono-svelte'
   import CustomInputTune from './CustomInputTune'
@@ -5301,119 +5305,14 @@
                   }
                 }
               },
-              vk: {
-                regex: /https?:\/\/vk\.com\/vkvideo\?z=video([-\d]+)_(\d+)(?:%.+)?/,
-                embedUrl:  '<%= remote_id %>',
-                html: "<iframe width='426' height='240' allow='autoplay; encrypted-media; fullscreen; picture-in-picture; screen-wake-lock;' frameborder='0' allowfullscreen></iframe>",
-                height: 300,
-                width: 426,
-                id: (groups: RegExpMatchArray) => {
-                  console.log('VK video parsing (vkvideo format) - Input:', {
-                    input: groups.input,
-                    groups: Array.from(groups)
-                  });
-                  
-                  try {
-                    // В массиве groups:
-                    // groups[0] содержит ID владельца (например "-220754053")
-                    // groups[1] содержит ID видео (например "456243385")
-                    const oid = groups[0];
-                    const vid = groups[1];
-                    
-                    if (!oid || !vid) {
-                      throw new Error('Could not extract video ID from vkvideo URL');
-                    }
-
-                    const result = {
-                      remote_id: `https://vk.com/video_ext.php?oid=${oid}&id=${vid}`,
-                      remote_id_oid: oid,
-                      remote_id_vid: vid
-                    };
-                    console.log('VK video parsing (vkvideo format) - Success!', result);
-                    return result.remote_id;
-                  } catch (error) {
-                    console.error('VK video parsing (vkvideo format) - Error:', error);
-                    return null;
-                  }
-                }
-              },
-              vkvideo: {
-                regex: /https?:\/\/vk\.com\/video([-\d]+)_(\d+)/,
+              vkVideo: {
+                regex: VK_VIDEO_URL_PATTERN,
                 embedUrl: '<%= remote_id %>',
                 html: "<iframe width='426' height='240' allow='autoplay; encrypted-media; fullscreen; picture-in-picture; screen-wake-lock;' frameborder='0' allowfullscreen></iframe>",
                 height: 300,
                 width: 426,
-                id: (groups: RegExpMatchArray) => {
-                  console.log('VK video parsing (direct format) - Input:', {
-                    input: groups.input,
-                    groups: Array.from(groups)
-                  });
-                  
-                  try {
-                  
-                    const oid = groups[0];
-                    const vid = groups[1];
-                    
-                    if (!oid || !vid) {
-                      throw new Error('Could not extract video ID from direct video URL');
-                    }
-
-                    const result = {
-                      remote_id: `https://vk.com/video_ext.php?oid=${oid}&id=${vid}`,
-                      remote_id_oid: oid,
-                      remote_id_vid: vid
-                    };
-                    console.log('VK video parsing (direct format) - Success!', result);
-                    return result.remote_id;
-
-                  } catch (error) {
-                    console.error('VK video parsing (direct format) - Error:', error);
-                    return null;
-                  }
-                }
-              },
-              vkvideoRu: {
-                // Пример URL: https://vkvideo.ru/video-1623507_456247959
-                regex: /https?:\/\/vkvideo\.ru\/video-([-\d]+)_(\d+)/,
-                embedUrl: '<%= remote_id %>',
-                html: "<iframe width='426' height='240' allow='autoplay; encrypted-media; fullscreen; picture-in-picture; screen-wake-lock;' frameborder='0' allowfullscreen></iframe>",
-                height: 300,
-                width: 426,
-                id: (groups: RegExpMatchArray) => {
-                  console.log('VK video parsing (vkvideo.ru format) - Input:', {
-                    input: groups.input,
-                    groups: Array.from(groups),
-                    match: {
-                      full: groups[0],
-                      oid: groups[1],
-                      vid: groups[2]
-                    }
-                  });
-                  
-                  try {
-                    // В массиве groups:
-                    // groups[0] содержит ID владельца (например "-220754053")
-                    // groups[1] содержит ID видео (например "456243385")
-                    const oid = groups[0];
-                    const vid = groups[1];
-                    
-                    if (!oid || !vid) {
-                      console.error('Missing oid or vid:', { oid, vid, groups: Array.from(groups) });
-                      throw new Error('Could not extract video ID from vkvideo.ru URL');
-                    }
-
-                    const result = {
-                      remote_id: `https://vkvideo.ru/video_ext.php?oid=-${oid}&id=${vid}`,
-                      remote_id_oid: oid,
-                      remote_id_vid: vid
-                    };
-                    console.log('VK video parsing (vkvideo.ru format) - Success!', result);
-                    return result.remote_id;
-                  } catch (error) {
-                    console.error('VK video parsing (vkvideo.ru format) - Error:', error);
-                    return null;
-                  }
-                }
+                id: (groups: Array<string | undefined>) =>
+                  vkVideoEmbedUrlFromMatchGroups(groups),
               }
             }
           },
