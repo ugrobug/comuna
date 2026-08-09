@@ -33,6 +33,10 @@
     buildOpenStreetMapEmbedUrl,
   } from '$lib/util'
   import { normalizeQuoteBlockData } from '$lib/quoteBlock'
+  import {
+    YOUTUBE_URL_PATTERN,
+    youtubeVideoIdFromMatchGroups,
+  } from '$lib/youtube'
   import { get } from 'svelte/store'
   import { Button, toast } from 'mono-svelte'
   import CustomInputTune from './CustomInputTune'
@@ -5240,7 +5244,15 @@
                 config: {
             services: {
               // Стандартные сервисы
-              youtube: true,
+              youtube: {
+                regex: YOUTUBE_URL_PATTERN,
+                embedUrl: 'https://www.youtube-nocookie.com/embed/<%= remote_id %>',
+                html: "<iframe style='width:100%;' height='320' frameborder='0' allow='accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share' allowfullscreen></iframe>",
+                height: 320,
+                width: 580,
+                id: (groups: Array<string | undefined>) =>
+                  youtubeVideoIdFromMatchGroups(groups),
+              },
               vimeo: true,
               coub: true,
               facebook: true,

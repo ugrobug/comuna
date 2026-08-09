@@ -2,6 +2,7 @@ import { client, getInstance } from '$lib/lemmy.js'
 import type { View } from '$lib/settings'
 import { isImage, isVideo } from '$lib/ui/image'
 import { canParseUrl, findClosestNumber } from '$lib/util'
+import { matchYouTubeUrl } from '$lib/youtube'
 import type { CommentView, PersonView, Post, PostView } from 'lemmy-js-client'
 
 export const isCommentMutable = (comment: CommentView, me: PersonView) =>
@@ -68,13 +69,8 @@ export const optimizeImageURL = (
   }
 }
 
-const YOUTUBE_REGEX =
-  /^(?:https?:\/\/)?(?:www\.|m\.)?(?:youtu\.be\/|youtube\.com\/(?:embed\/|shorts\/|live\/|v\/|watch\?v=|watch\?.+&v=))((\w|-){11})(?:\S+)?$/
-
 export const isYoutubeLink = (url?: string): RegExpMatchArray | null => {
-  if (!url) return null
-
-  return url?.match?.(YOUTUBE_REGEX)
+  return matchYouTubeUrl(url)
 }
 
 function formatTitle(title: string): string {

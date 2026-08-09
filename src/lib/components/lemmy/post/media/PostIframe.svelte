@@ -1,4 +1,6 @@
 <script lang="ts" context="module">
+  import { extractYouTubeVideoId } from '$lib/youtube'
+
   const youtubeDomain = (place: 'youtube' | 'invidious' | 'piped') => {
     switch (place) {
       case 'youtube': {
@@ -13,17 +15,6 @@
     }
   }
 
-  function youtubeVideoID(url: string): string | null {
-    const regex =
-      /^(?:https?:\/\/)?(?:www\.|m\.)?(?:youtu\.be\/|youtube\.com\/(?:embed\/|shorts\/|live\/|v\/|watch\?v=|watch\?.+&v=))((\w|-){11})(?:\S+)?$/
-    const match = url.match(regex)
-
-    if (match && match[1]) {
-      return match[1]
-    }
-
-    return null
-  }
 </script>
 
 <script lang="ts">
@@ -51,7 +42,7 @@
     if (type == 'youtube') {
       const url = new URL(inputUrl)
 
-      const videoID = youtubeVideoID(inputUrl)
+      const videoID = extractYouTubeVideoId(inputUrl)
 
       if (autoplay) url.searchParams.set('autoplay', '1')
 
