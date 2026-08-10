@@ -39,20 +39,21 @@
 </script>
 
 <Modal bind:open dismissable title="Встроить дорожную карту">
-  <div class="grid w-full min-w-0 gap-5 sm:min-w-[34rem]">
+  <div class="grid w-full min-w-0 max-w-full gap-5 sm:w-[34rem]">
     <p class="text-sm leading-6 text-slate-600 dark:text-zinc-300">
       Вставьте этот HTML-код на свой сайт. Виджет будет показывать публичную дорожную карту
       сообщества и обновляться автоматически.
     </p>
 
-    <label class="grid gap-2">
+    <label class="grid min-w-0 gap-2">
       <span class="text-sm font-medium text-slate-900 dark:text-zinc-100">Код для вставки</span>
       <textarea
         readonly
         rows="5"
+        wrap="soft"
         value={embedCode}
         on:focus={selectCode}
-        class="w-full resize-none rounded-lg border border-slate-300 bg-slate-50 p-3 font-mono text-xs leading-5 text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+        class="box-border w-full min-w-0 max-w-full resize-none overflow-x-hidden rounded-lg border border-slate-300 bg-slate-50 p-3 font-mono text-xs leading-5 text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
       ></textarea>
     </label>
 
