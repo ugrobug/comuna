@@ -1,8 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation'
   import { navigating, page } from '$app/stores'
-  import { profile } from '$lib/auth.js'
-  import ObjectAutocomplete from '$lib/components/lemmy/ObjectAutocomplete.svelte'
   import CommentItem from '$lib/components/lemmy/comment/CommentItem.svelte'
   import CommunityItem from '$lib/components/lemmy/community/CommunityItem.svelte'
   import Post from '$lib/components/lemmy/post/Post.svelte'
@@ -19,7 +17,7 @@
   import { searchParam } from '$lib/util.js'
   import Avatar from '$lib/components/ui/Avatar.svelte'
   import { Button, Select, Spinner, TextInput } from 'mono-svelte'
-  import { ChevronDown, Icon, MagnifyingGlass } from 'svelte-hero-icons'
+  import { Icon, MagnifyingGlass } from 'svelte-hero-icons'
   import { expoOut } from 'svelte/easing'
   import { slide } from 'svelte/transition'
   import { t } from '$lib/translations.js'
@@ -33,8 +31,6 @@
   let searchElement: HTMLInputElement
 
   let pageNum = data.page
-
-  let moreOptions = false
 
   function submitSearch() {
     const next = new URL($page.url)
@@ -108,28 +104,7 @@
     {/if}
     <option value="Users">{$t('content.users')}</option>
   </Select>
-  <Button
-    slot="summary"
-    size="square-lg"
-    color="tertiary"
-    class="self-end justify-self-center"
-    on:click={() => (moreOptions = !moreOptions)}
-  >
-    <Icon src={ChevronDown} size="20" mini />
-  </Button>
 </div>
-{#if moreOptions && !data.backend}
-  <div transition:slide={{ axis: 'y', easing: expoOut }} class="max-w-sm">
-    <ObjectAutocomplete
-      label={$t('nav.create.community')}
-      jwt={$profile?.jwt}
-      listing_type={'All'}
-      showWhenEmpty={true}
-      on:select={(c) =>
-        searchParam($page.url, 'community', c.detail?.id || undefined, 'page')}
-    />
-  </div>
-{/if}
 {#if data.backend}
   {#if !data.results?.communities?.length && !data.results?.posts?.length && !data.results?.authors?.length}
     <Placeholder
