@@ -221,7 +221,7 @@ export type FeedSettingsHydrationState = 'idle' | 'loading' | 'ready' | 'error'
 export const feedSettingsHydrationState = writable<FeedSettingsHydrationState>('idle')
 export const feedSettingsHydrated = writable(false)
 
-type BackendFeedSettings = {
+export type BackendFeedSettings = {
   home_feed?: string
   hide_read_posts?: boolean
   my_feed_authors?: string[]
@@ -236,6 +236,7 @@ type BackendFeedSettings = {
   interface_language?: string
   interface_language_manual?: boolean
   keyboard_shortcuts_hint_dismissed?: boolean
+  updated_at?: string | null
 }
 
 const feedSettingsDefaults = () => ({
@@ -400,6 +401,26 @@ export const loadBackendFeedSettings = async (token: string | null) => {
     feedSettingsHydrationState.set('error')
     feedSettingsHydrated.set(false)
     throw error
+  }
+}
+
+export const hydrateBackendFeedSettings = (
+  payload: BackendFeedSettings,
+  token: string
+) => {
+  if (!browser || !token) return
+
+  backendFeedSettingsToken = token
+  applyingBackendFeedSettings = true
+  try {
+    const nextSettings = settingsFromBackendPayload(get(userSettings), payload)
+    userSettings.set(nextSettings)
+    lastBackendFeedSettingsSnapshot = feedSettingsSnapshot(nextSettings)
+    backendFeedSettingsHydrated = true
+    feedSettingsHydrationState.set('ready')
+    feedSettingsHydrated.set(true)
+  } finally {
+    applyingBackendFeedSettings = false
   }
 }
 

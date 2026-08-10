@@ -1,9 +1,4 @@
-import {
-  buildAuthFeedSettingsUrl,
-  buildFavoritesFeedUrl,
-  buildHomeFeedUrl,
-  buildMyFeedUrl,
-} from '$lib/api/backend'
+import { buildFavoritesFeedUrl, buildHomeFeedUrl, buildMyFeedUrl } from '$lib/api/backend'
 import {
   languageFromAcceptLanguage,
   languageFromPathname,
@@ -23,27 +18,6 @@ const normalizeFeedType = (value: string | null | undefined): FeedType | null =>
 
 const authHeaders = (cookieHeader: string) =>
   cookieHeader ? { Cookie: cookieHeader } : undefined
-
-const loadFeedSettings = async (
-  fetch: typeof globalThis.fetch,
-  cookieHeader: string
-): Promise<{ authenticated: boolean; settings: Record<string, any> | null }> => {
-  if (!cookieHeader) return { authenticated: false, settings: null }
-
-  try {
-    const response = await fetch(buildAuthFeedSettingsUrl(), {
-      headers: authHeaders(cookieHeader),
-    })
-    const payload = await response.json().catch(() => ({}))
-    if (response.ok && payload?.settings) {
-      return { authenticated: true, settings: payload.settings }
-    }
-  } catch (error) {
-    console.error('Failed to load feed settings before home feed:', error)
-  }
-
-  return { authenticated: false, settings: null }
-}
 
 const buildInitialFeedUrl = (
   feedType: FeedType,
@@ -84,12 +58,14 @@ const buildInitialFeedUrl = (
   })
 }
 
-export const load: PageServerLoad = async ({ fetch, request, url }) => {
+export const load: PageServerLoad = async ({ fetch, parent, request, url }) => {
   const explicitFeedType = normalizeFeedType(url.searchParams.get('feed'))
   const readParam = url.searchParams.get('read')
   const readOnly = readParam === '1' || readParam === 'true' || readParam === 'yes'
   const cookieHeader = request.headers.get('cookie') || ''
-  const { authenticated, settings } = await loadFeedSettings(fetch, cookieHeader)
+  const parentData = await parent()
+  const settings = parentData.authBootstrap?.settings ?? null
+  const authenticated = Boolean(parentData.authBootstrap?.user)
   const savedFeedType = normalizeFeedType(settings?.home_feed)
   const feedType = explicitFeedType ?? savedFeedType ?? 'hot'
   const language =

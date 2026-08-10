@@ -16,12 +16,20 @@ from feeds.post_paths import build_post_public_path
 from feeds.seo_indexing import seo_indexable_posts_queryset
 from feeds.views import _post_display_title
 
+SNAPSHOT_LANGUAGES = ("ru", "en", "es", "pt", "de", "fr", "tr", "id")
+
 
 def _snapshot_file_for_path(root: Path, path: str) -> Path:
     normalized_path = "/" + path.strip("/")
     if normalized_path == "/":
         return root / "index.html"
     return root / normalized_path.strip("/") / "index.html"
+
+
+def _localized_snapshot_path(path: str, language: str) -> str:
+    if language == "ru" or path == "/":
+        return path
+    return f"/{language}{path}"
 
 
 class Command(BaseCommand):
@@ -34,6 +42,7 @@ class Command(BaseCommand):
         parser.add_argument("--posts", type=int, default=100)
         parser.add_argument("--recent-posts", type=int, default=50)
         parser.add_argument("--timeout", type=int, default=15)
+        parser.add_argument("--languages", nargs="+", default=list(SNAPSHOT_LANGUAGES))
         parser.add_argument("--dry-run", action="store_true")
 
     def handle(self, *args, **options):
@@ -55,6 +64,15 @@ class Command(BaseCommand):
         posts_limit = max(0, int(options["posts"]))
         recent_posts_limit = max(0, int(options["recent_posts"]))
         timeout = max(1, int(options["timeout"]))
+        languages = list(
+            dict.fromkeys(
+                language
+                for language in (str(value).strip().lower() for value in options["languages"])
+                if language in SNAPSHOT_LANGUAGES
+            )
+        )
+        if not languages:
+            raise CommandError("No supported snapshot languages were selected.")
         dry_run = bool(options["dry_run"])
 
         feed_items = list(
@@ -75,12 +93,18 @@ class Command(BaseCommand):
             paths.append(build_post_public_path(post.id, title))
 
         unique_paths = list(dict.fromkeys(paths))
+        render_tasks = [
+            (language, _localized_snapshot_path(path, language))
+            for language in languages
+            for path in unique_paths
+        ]
         self.stdout.write(
-            f"Rendering {len(unique_paths)} snapshots from {frontend_url} into {output_root}"
+            f"Rendering {len(render_tasks)} snapshots in {len(languages)} languages "
+            f"from {frontend_url} into {output_root}"
         )
         if dry_run:
-            for path in unique_paths:
-                self.stdout.write(path)
+            for language, path in render_tasks:
+                self.stdout.write(f"{language} {path}")
             return
 
         temp_root = output_root.with_name(f"{output_root.name}.tmp")
@@ -90,13 +114,14 @@ class Command(BaseCommand):
 
         rendered: list[dict[str, object]] = []
         failures: list[dict[str, object]] = []
-        for path in unique_paths:
+        for language, path in render_tasks:
             url = f"{frontend_url}{path}"
             request = urllib.request.Request(
                 url,
                 headers={
                     "Host": site_host,
                     "Accept": "text/html",
+                    "Accept-Language": language,
                     "User-Agent": "rabotaem-snapshot-renderer/1.0",
                 },
             )
@@ -104,24 +129,41 @@ class Command(BaseCommand):
                 with urllib.request.urlopen(request, timeout=timeout) as response:
                     status = int(getattr(response, "status", 200))
                     content_type = response.headers.get("Content-Type", "")
+                    response_url = getattr(response, "geturl", lambda: url)()
                     body = response.read()
             except (urllib.error.URLError, TimeoutError, ValueError) as exc:
-                failures.append({"path": path, "error": str(exc)})
+                failures.append({"language": language, "path": path, "error": str(exc)})
                 continue
 
             if status != 200 or b"<html" not in body[:2048].lower():
-                failures.append({"path": path, "status": status, "content_type": content_type})
+                failures.append(
+                    {
+                        "language": language,
+                        "path": path,
+                        "status": status,
+                        "content_type": content_type,
+                    }
+                )
                 continue
 
-            target = _snapshot_file_for_path(temp_root, path)
+            effective_path = urllib.parse.urlparse(response_url).path or path
+            target = _snapshot_file_for_path(temp_root / language, effective_path)
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(body)
-            rendered.append({"path": path, "bytes": len(body)})
+            rendered.append(
+                {
+                    "language": language,
+                    "path": effective_path,
+                    "requested_path": path,
+                    "bytes": len(body),
+                }
+            )
 
         manifest = {
             "generated_at": timezone.now().isoformat(),
             "frontend_url": frontend_url,
             "site_host": site_host,
+            "languages": languages,
             "rendered": rendered,
             "failures": failures,
         }
@@ -130,11 +172,11 @@ class Command(BaseCommand):
             encoding="utf-8",
         )
 
-        minimum_successes = max(1, int(len(unique_paths) * 0.8))
+        minimum_successes = max(1, int(len(render_tasks) * 0.8))
         if len(rendered) < minimum_successes:
             shutil.rmtree(temp_root)
             raise CommandError(
-                f"Rendered only {len(rendered)} of {len(unique_paths)} snapshots; "
+                f"Rendered only {len(rendered)} of {len(render_tasks)} snapshots; "
                 "keeping the previous snapshot set."
             )
 

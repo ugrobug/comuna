@@ -135,6 +135,7 @@ from special_projects.views import (
 )
 from telegram_integration.views import telegram_auth, telegram_webhook
 from users.views import (
+    auth_bootstrap,
     auth_chat_detail,
     auth_chat_messages,
     auth_chat_report_block,
@@ -300,6 +301,7 @@ urlpatterns = [
     path("api/auth/vk/", vk_auth, name="auth-vk"),
     path("api/auth/google/", social_auth, {"provider": "google"}, name="auth-google"),
     path("api/auth/apple/", social_auth, {"provider": "apple"}, name="auth-apple"),
+    path("api/auth/bootstrap/", auth_bootstrap, name="auth-bootstrap"),
     path("api/auth/me/", auth_me, name="auth-me"),
     path("api/auth/methods/", auth_methods, name="auth-methods"),
     path("api/auth/chats/", auth_chats, name="auth-chats"),

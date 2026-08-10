@@ -3221,6 +3221,7 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
         .order_by("-created_at")[offset : offset + limit]
     )
 
+    community_service._attach_post_user_votes(posts, current_user)
     favorite_post_ids = community_service._favorite_post_ids_for_user(posts, current_user)
     assignments = {
         assignment.post_id: assignment
@@ -3486,6 +3487,7 @@ def _serialize_comun_roadmap(
     )
     items = list(items_query.distinct())
     posts = [item.post for item in items]
+    community_service._attach_post_user_votes(posts, current_user)
     favorite_post_ids = community_service._favorite_post_ids_for_user(posts, current_user)
     serialized_items = []
     now = timezone.now()
@@ -3675,6 +3677,7 @@ def comun_roadmap_posts(request: HttpRequest, slug: str) -> HttpResponse:
         .prefetch_related(*post_prefetches)
         .order_by("-created_at", "-id")[:limit]
     )
+    community_service._attach_post_user_votes(posts, current_user)
     favorite_post_ids = community_service._favorite_post_ids_for_user(posts, current_user)
     return JsonResponse(
         {

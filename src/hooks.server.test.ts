@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { prioritizePreviewHeadTags } from './hooks.server'
+import { prioritizePreviewHeadTags, resolveRequestLanguage } from './hooks.server'
 
 describe('prioritizePreviewHeadTags', () => {
   it('keeps the full SSR document and moves preview metadata before stylesheets', () => {
@@ -27,5 +27,23 @@ describe('prioritizePreviewHeadTags', () => {
     expect(prioritizedHtml.indexOf('property="og:title"')).toBeLessThan(
       prioritizedHtml.indexOf('rel="stylesheet"')
     )
+  })
+})
+
+describe('resolveRequestLanguage', () => {
+  const bootstrap = {
+    user: { id: 1 },
+    settings: {
+      interface_language: 'en',
+      interface_language_manual: true,
+    },
+  } as any
+
+  it('uses a manual user language before the browser language', () => {
+    expect(resolveRequestLanguage('/', 'ru-RU,ru;q=0.9', bootstrap)).toBe('en')
+  })
+
+  it('keeps an explicit localized route above the user setting', () => {
+    expect(resolveRequestLanguage('/de/about', 'ru-RU', bootstrap)).toBe('de')
   })
 })

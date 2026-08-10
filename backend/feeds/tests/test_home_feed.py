@@ -1,14 +1,62 @@
 import json
 
+from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
 from communities.models import Comun
-from feeds.models import Author, Post, PostTranslation, PublicFeedItem
+from feeds.models import Author, Post, PostLike, PostTranslation, PublicFeedItem
 from ratings.models import RatingSettings
 
 
+User = get_user_model()
+
+
 class HomeFeedTests(TestCase):
+    def test_post_detail_returns_authenticated_user_vote(self):
+        user = User.objects.create_user(username="detail-voter", password="secret")
+        author = Author.objects.create(username="detail-vote-author")
+        post = Post.objects.create(
+            author=author,
+            message_id=997,
+            title="Voted post detail",
+            content="<p>Content</p>",
+            rating=-1,
+            is_pending=False,
+            is_blocked=False,
+        )
+        PostLike.objects.create(post=post, user=user, value=-1)
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("post-detail", args=[post.id]))
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        self.assertEqual(response.json()["post"]["user_vote"], -1)
+
+    def test_home_feed_returns_authenticated_user_vote(self):
+        user = User.objects.create_user(username="feed-voter", password="secret")
+        author = Author.objects.create(username="feed-vote-author")
+        post = Post.objects.create(
+            author=author,
+            message_id=998,
+            title="Voted feed post",
+            content="<p>Content</p>",
+            rating=1,
+            is_pending=False,
+            is_blocked=False,
+        )
+        PostLike.objects.create(post=post, user=user, value=1)
+        self.client.force_login(user)
+
+        response = self.client.get(
+            reverse("home-feed"),
+            {"card": "1", "limit": "10"},
+        )
+
+        self.assertEqual(response.status_code, 200, response.content.decode())
+        returned_post = next(item for item in response.json()["posts"] if item["id"] == post.id)
+        self.assertEqual(returned_post["user_vote"], 1)
+
     def test_post_detail_does_not_claim_missing_translation_is_translated(self):
         author = Author.objects.create(username="english-detail-source")
         post = Post.objects.create(

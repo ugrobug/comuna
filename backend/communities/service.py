@@ -1724,6 +1724,10 @@ def _favorite_post_ids_for_user(posts: list[Post], user: User | None) -> set[int
     return _feeds_views()._favorite_post_ids_for_user(posts, user)
 
 
+def _attach_post_user_votes(posts: list[Post], user: User | None) -> None:
+    _feeds_views()._attach_post_user_votes(posts, user)
+
+
 def _filter_posts_for_language(queryset, language: str, *, prefix: str = ""):
     return _feeds_views()._filter_posts_for_language(queryset, language, prefix=prefix)
 

@@ -1,6 +1,7 @@
 import { browser } from '$app/environment'
 import { env } from '$env/dynamic/public'
 import { userSettings } from '$lib/settings.js'
+import { hydrateSiteAuthBootstrap } from '$lib/siteAuth.js'
 import {
   languageFromPathname,
   normalizeInterfaceLanguage,
@@ -23,13 +24,17 @@ export const load = async ({ url, data }) => {
       normalizeInterfaceLanguage(navigator?.language))
     : null
   const normalizedLocale =
+    routeLocale ??
+    normalizeInterfaceLanguage(data?.language) ??
     savedLocale ??
     browserLocale ??
-    normalizeInterfaceLanguage(data?.language) ??
-    routeLocale ??
     originalPostLanguage
 
   await loadTranslations(normalizedLocale)
+
+  if (browser && data?.authBootstrap) {
+    hydrateSiteAuthBootstrap(data.authBootstrap)
+  }
 
   return
 }

@@ -533,6 +533,7 @@ def my_feed(request: HttpRequest) -> HttpResponse:
         )
     else:
         posts = index_posts
+    _fv()._attach_post_user_votes(posts, current_user)
     favorite_post_ids = _fv()._favorite_post_ids_for_user(posts, current_user)
 
     serialized = [

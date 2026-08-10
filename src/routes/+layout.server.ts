@@ -1,16 +1,8 @@
-import {
-  languageFromAcceptLanguage,
-  languageFromPathname,
-  originalPostLanguage,
-} from '$lib/postLanguages.js'
-import { loadTranslations } from '$lib/translations.js'
+import { originalPostLanguage } from '$lib/postLanguages.js'
 
-export const load = async ({ url, request }) => {
-  const language =
-    languageFromPathname(url.pathname) ||
-    languageFromAcceptLanguage(request.headers.get('Accept-Language')) ||
-    originalPostLanguage
-
-  await loadTranslations(language)
-  return { language }
+export const load = async ({ locals }) => {
+  return {
+    language: locals.language || originalPostLanguage,
+    authBootstrap: locals.authBootstrap || null,
+  }
 }

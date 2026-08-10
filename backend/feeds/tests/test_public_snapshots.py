@@ -15,6 +15,22 @@ from feeds.models import Author, Post
 LONG_CONTENT = f"<p>{'Полезный текст публикации ' * 12}</p>"
 
 
+class FakeSnapshotResponse:
+    def __init__(self, body: bytes):
+        self.status = 200
+        self.headers = {"Content-Type": "text/html; charset=utf-8"}
+        self._body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+    def read(self) -> bytes:
+        return self._body
+
+
 @override_settings(SITE_BASE_URL="https://tambur.pub")
 class RenderPublicSnapshotsTests(TestCase):
     def setUp(self) -> None:
@@ -67,3 +83,30 @@ class RenderPublicSnapshotsTests(TestCase):
                     )
 
             self.assertEqual(marker.read_text(encoding="utf-8"), "existing")
+
+    def test_renders_separate_snapshot_tree_for_each_language(self) -> None:
+        requested_languages: list[str] = []
+
+        def render(request, timeout):
+            del timeout
+            language = request.get_header("Accept-language")
+            requested_languages.append(language)
+            return FakeSnapshotResponse(f'<html lang="{language}"></html>'.encode())
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir) / "html-snapshots"
+            with patch(
+                "feeds.management.commands.render_public_snapshots.urllib.request.urlopen",
+                side_effect=render,
+            ):
+                call_command(
+                    "render_public_snapshots",
+                    posts=0,
+                    recent_posts=0,
+                    languages=["ru", "en"],
+                    output_dir=str(output_dir),
+                )
+
+            self.assertEqual(requested_languages, ["ru", "en"])
+            self.assertIn('lang="ru"', (output_dir / "ru" / "index.html").read_text())
+            self.assertIn('lang="en"', (output_dir / "en" / "index.html").read_text())

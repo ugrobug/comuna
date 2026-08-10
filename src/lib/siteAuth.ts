@@ -1,4 +1,5 @@
 import { browser } from '$app/environment'
+import type { AuthBootstrap } from '$lib/authBootstrap'
 import {
   buildAuthChatMessagesUrl,
   buildAuthChatReportBlockUrl,
@@ -19,7 +20,11 @@ import type {
   SitePostTemplate,
 } from '$lib/postTemplates'
 import { refreshSidebarComuns } from '$lib/communitySidebar'
-import { loadBackendFeedSettings, resetBackendFeedSettingsSync } from '$lib/settings'
+import {
+  hydrateBackendFeedSettings,
+  loadBackendFeedSettings,
+  resetBackendFeedSettingsSync,
+} from '$lib/settings'
 import { writable, get } from 'svelte/store'
 
 export type SiteAuthorLink = {
@@ -216,8 +221,27 @@ const initialToken: string | null = null
 
 export const siteToken = writable<string | null>(initialToken)
 export const siteUser = writable<SiteUser | null>(null)
+let siteAuthHydratedFromSsr = false
+let siteAuthBootstrapFingerprint = ''
+
+const clearSiteAuthBootstrapState = () => {
+  siteAuthHydratedFromSsr = false
+  siteAuthBootstrapFingerprint = ''
+}
 
 const buildUrl = (path: string) => `${getBackendBaseUrl()}${path}`
+
+export const hydrateSiteAuthBootstrap = (bootstrap: AuthBootstrap) => {
+  if (!browser) return
+  const fingerprint = `${bootstrap.user.id}:${bootstrap.settings.updated_at || ''}`
+  siteAuthHydratedFromSsr = true
+  siteToken.set(COOKIE_AUTH_SENTINEL)
+  siteUser.set(bootstrap.user)
+  syncSidebarComunsForAuthState(bootstrap.user)
+  if (fingerprint === siteAuthBootstrapFingerprint) return
+  siteAuthBootstrapFingerprint = fingerprint
+  hydrateBackendFeedSettings(bootstrap.settings, COOKIE_AUTH_SENTINEL)
+}
 let sidebarAuthIdentity = 'anon'
 
 const syncSidebarComunsForAuthState = (user: SiteUser | null) => {
@@ -313,6 +337,7 @@ export const refreshSiteUser = async () => {
   })
 
   if (!response.ok) {
+    clearSiteAuthBootstrapState()
     saveToken(null)
     resetBackendFeedSettingsSync()
     siteToken.set(null)
@@ -343,6 +368,7 @@ export const scheduleRefreshSiteUser = () => {
   refreshSiteUserScheduled = true
 
   const run = () => {
+    if (siteAuthHydratedFromSsr) return
     refreshSiteUser().catch((error) => {
       console.error('Failed to refresh site user:', error)
     })
@@ -688,6 +714,7 @@ export const logout = () => {
     console.error('Failed to revoke auth token:', error)
   })
   saveToken(null)
+  clearSiteAuthBootstrapState()
   resetBackendFeedSettingsSync()
   siteToken.set(null)
   siteUser.set(null)
@@ -714,6 +741,7 @@ export const deleteSiteAccount = async () => {
   }
 
   saveToken(null)
+  clearSiteAuthBootstrapState()
   resetBackendFeedSettingsSync()
   siteToken.set(null)
   siteUser.set(null)

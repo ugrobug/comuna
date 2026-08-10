@@ -121,6 +121,62 @@ export const aliases = new Map([
   ['he-IL', 'he'],
 ])
 
-export const { t, locale, locales, loading, loadTranslations } = new i18n(
-  config
-)
+export type TranslationInstance = InstanceType<typeof i18n>
+
+const clientTranslations = new i18n(config)
+const requestTranslationResolverSymbol = Symbol.for('tambur.request-translations')
+
+type RequestTranslationGlobal = typeof globalThis & {
+  [requestTranslationResolverSymbol]?: () => TranslationInstance | undefined
+}
+
+const activeTranslations = (): TranslationInstance =>
+  (globalThis as RequestTranslationGlobal)[requestTranslationResolverSymbol]?.() ??
+  clientTranslations
+
+export const createTranslationInstance = (): TranslationInstance => new i18n(config)
+
+export const registerRequestTranslationResolver = (
+  resolver: () => TranslationInstance | undefined
+) => {
+  ;(globalThis as RequestTranslationGlobal)[requestTranslationResolverSymbol] = resolver
+}
+
+type TranslationFunction = (key: string, ...params: any[]) => any
+
+export const t = {
+  subscribe: (run: (value: TranslationFunction) => void, invalidate?: (value?: any) => void) =>
+    activeTranslations().t.subscribe(run as any, invalidate as any),
+  get: ((key: string, ...params: any[]) =>
+    activeTranslations().t.get(key, ...params)) as TranslationFunction,
+}
+
+export const locale = {
+  subscribe: (...args: Parameters<TranslationInstance['locale']['subscribe']>) =>
+    activeTranslations().locale.subscribe(...args),
+  set: (...args: Parameters<TranslationInstance['locale']['set']>) =>
+    activeTranslations().locale.set(...args),
+  update: (...args: Parameters<TranslationInstance['locale']['update']>) =>
+    activeTranslations().locale.update(...args),
+  get: () => activeTranslations().locale.get(),
+  forceSet: (...args: Parameters<TranslationInstance['locale']['forceSet']>) =>
+    activeTranslations().locale.forceSet(...args),
+}
+
+export const locales = {
+  subscribe: (...args: Parameters<TranslationInstance['locales']['subscribe']>) =>
+    activeTranslations().locales.subscribe(...args),
+  get: () => activeTranslations().locales.get(),
+}
+
+export const loading = {
+  subscribe: (...args: Parameters<TranslationInstance['loading']['subscribe']>) =>
+    activeTranslations().loading.subscribe(...args),
+  get: () => activeTranslations().loading.get(),
+  toPromise: (...args: Parameters<TranslationInstance['loading']['toPromise']>) =>
+    activeTranslations().loading.toPromise(...args),
+}
+
+export const loadTranslations = (
+  ...args: Parameters<TranslationInstance['loadTranslations']>
+) => activeTranslations().loadTranslations(...args)

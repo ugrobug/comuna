@@ -246,6 +246,32 @@ def auth_me(request: HttpRequest) -> HttpResponse:
     )
 
 
+def auth_bootstrap(request: HttpRequest) -> HttpResponse:
+    if request.method != "GET":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    user = _get_user_from_request(request)
+    if not user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+
+    from my_feed.service import (
+        _get_or_create_user_feed_settings,
+        _serialize_user_feed_settings,
+    )
+
+    feed_settings = _get_or_create_user_feed_settings(user)
+    response = JsonResponse(
+        {
+            "ok": True,
+            "user": _serialize_user(user),
+            "settings": _serialize_user_feed_settings(feed_settings),
+        }
+    )
+    response["Cache-Control"] = "private, no-store, max-age=0"
+    response["Pragma"] = "no-cache"
+    return response
+
+
 @csrf_exempt
 def logout_user(request: HttpRequest) -> HttpResponse:
     if request.method != "POST":
@@ -542,6 +568,7 @@ __all__ = [
     "auth_chat_messages",
     "auth_chat_report_block",
     "auth_chats",
+    "auth_bootstrap",
     "auth_me",
     "auth_methods",
     "author_verification_code",

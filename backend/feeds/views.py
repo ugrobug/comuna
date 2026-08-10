@@ -2908,6 +2908,37 @@ def _favorite_post_ids_for_user(posts: list[Post], user: User | None) -> set[int
     )
 
 
+def _attach_post_user_votes(posts: Sequence[Post], user: User | None) -> None:
+    posts = [post for post in posts if post and post.id]
+    if not posts:
+        return
+    vote_by_post_id: dict[int, int] = {}
+    if user:
+        vote_by_post_id = {
+            int(post_id): int(value)
+            for post_id, value in PostLike.objects.filter(
+                user=user,
+                post_id__in=[post.id for post in posts],
+            ).values_list("post_id", "value")
+        }
+    for post in posts:
+        post._current_user_vote = vote_by_post_id.get(post.id, 0)
+
+
+def _post_user_vote(post: Post, user: User | None) -> int:
+    attached_vote = getattr(post, "_current_user_vote", None)
+    if attached_vote is not None:
+        return int(attached_vote)
+    if not user:
+        return 0
+    return int(
+        PostLike.objects.filter(user=user, post=post)
+        .values_list("value", flat=True)
+        .first()
+        or 0
+    )
+
+
 def _comment_translations_by_language(
     comments: Sequence[PostComment],
     language: str | None,
@@ -3774,6 +3805,7 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
                 "created_at": post.created_at.isoformat(),
                 "comments_count": post.comments_count,
                 "likes_count": post.rating,
+                "user_vote": _post_user_vote(post, current_user),
                 "views_count": _post_total_views(post, now),
                 "tags": _serialize_tags(post.tags.all()),
                 "is_favorite": (
@@ -4029,6 +4061,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
             posts_page_query.prefetch_related(*prefetches)
             .order_by("-created_at")[offset : offset + limit]
         )
+        _attach_post_user_votes(posts_page, current_user)
         favorite_post_ids = _favorite_post_ids_for_user(posts_page, current_user)
         serialized = []
         for post in posts_page:
@@ -4071,6 +4104,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
         .prefetch_related(*prefetches)
         .order_by("-created_at")[:fetch_size]
     )
+    _attach_post_user_votes(posts, current_user)
     favorite_post_ids = _favorite_post_ids_for_user(posts, current_user)
     author_ids = {post.author_id for post in posts}
     author_rating_map = {}
@@ -4196,6 +4230,7 @@ def favorites_feed(request: HttpRequest) -> HttpResponse:
 
     favorite_rows = list(filtered_favorites[offset : offset + limit])
     posts = [row.post for row in favorite_rows]
+    _attach_post_user_votes(posts, user)
     favorite_post_ids = {post.id for post in posts}
 
     serialized = []
@@ -4238,6 +4273,7 @@ def favorites_feed(request: HttpRequest) -> HttpResponse:
                 "rating": post.rating,
                 "comments_count": post.comments_count,
                 "likes_count": post.rating,
+                "user_vote": _post_user_vote(post, user),
                 "views_count": _post_total_views(post, now),
             }
         )
@@ -4297,6 +4333,7 @@ def _serialize_backend_post_card(
         "rating": post.rating,
         "comments_count": post.comments_count,
         "likes_count": post.rating,
+        "user_vote": _post_user_vote(post, current_user),
         "views_count": _post_total_views(post, now),
     }
 
@@ -4354,6 +4391,7 @@ def _serialize_lightweight_post_card(
         "rating": post.rating,
         "comments_count": post.comments_count,
         "likes_count": post.rating,
+        "user_vote": _post_user_vote(post, current_user),
         "views_count": _post_total_views(post, now),
     }
 
@@ -4755,6 +4793,7 @@ def search_content(request: HttpRequest) -> HttpResponse:
         )
         posts_by_id = {post.id: post for post in posts_page}
         posts_page = [posts_by_id[post_id] for post_id in posts_page_ids if post_id in posts_by_id]
+        _attach_post_user_votes(posts_page, current_user)
         favorite_post_ids = _favorite_post_ids_for_user(posts_page, current_user)
         for post in posts_page:
             _content, poll_payload = _content_with_live_poll(post, current_user)
@@ -4778,6 +4817,7 @@ def search_content(request: HttpRequest) -> HttpResponse:
                     "created_at": post.created_at.isoformat(),
                     "comments_count": post.comments_count,
                     "likes_count": post.rating,
+                    "user_vote": _post_user_vote(post, current_user),
                     "views_count": _post_total_views(post, now),
                     "tags": _serialize_tags(post.tags.all()),
                     "is_favorite": post.id in favorite_post_ids,
