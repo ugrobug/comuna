@@ -150,21 +150,22 @@
 <style>
   .google-login {
     position: relative;
-    min-height: 44px;
+    height: 48px;
     width: 100%;
   }
 
   .google-login__widget {
     display: flex;
-    min-height: 44px;
+    height: 48px;
     width: 100%;
     align-items: center;
     justify-content: center;
   }
 
   .google-login__fallback {
+    position: absolute;
+    inset: 0;
     display: flex;
-    min-height: 48px;
     width: 100%;
     align-items: center;
     gap: 12px;
