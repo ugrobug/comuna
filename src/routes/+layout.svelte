@@ -81,12 +81,14 @@
     $page.url.pathname === '/l' ||
     $page.url.pathname.startsWith('/l/')
   $: isSpecialProjectRoute = $page.url.pathname.startsWith('/s/')
-  $: isFullBleedRoute = isLandingRoute || isSpecialProjectRoute
+  $: isEmbedRoute = /^\/(?:[a-z]{2}\/)?embed\/roadmap\//.test($page.url.pathname)
+  $: isFullBleedRoute = isLandingRoute || isSpecialProjectRoute || isEmbedRoute
   $: isMobileNavigationExcludedRoute =
     /^\/(?:account\/(?:new-post|edit-post)|create\/post|edit\/post|drafts|login|signup)(?:\/|$)/.test(
       $page.url.pathname
     )
-  $: showMobileBottomNavigation = !isFullBleedRoute && !isMobileNavigationExcludedRoute
+  $: showMobileBottomNavigation =
+    !isEmbedRoute && !isFullBleedRoute && !isMobileNavigationExcludedRoute
   // Получаем текущий URL для канонической ссылки
   $: siteBaseUrl = (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '')
   $: canonicalUrl = (() => {
@@ -119,7 +121,7 @@
     $page.url.pathname
   )
   $: hasRouteManagedSeo =
-    isBackendPostRoute || isLocalizedStaticPageRoute || isCommunityDetailRoute
+    isBackendPostRoute || isLocalizedStaticPageRoute || isCommunityDetailRoute || isEmbedRoute
   const buildJsonLdTag = (json: string) =>
     json ? `<script type="application/ld+json">${json}</` + `script>` : ''
 
@@ -169,8 +171,10 @@
   })
 </script>
 
-<GoogleAnalytics />
-<YandexMetrika />
+{#if !isEmbedRoute}
+  <GoogleAnalytics />
+  <YandexMetrika />
+{/if}
 
 <svelte:head>
 
@@ -209,7 +213,7 @@
   {/if}
 
   {@html siteSchemaTag}
-  {#if shouldLoadAdsense}
+  {#if shouldLoadAdsense && !isEmbedRoute}
     <script
       async
       src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1110344676156197"
@@ -218,55 +222,61 @@
   {/if}
 </svelte:head>
 
-<Button
-  class="fixed -top-16 focus:top-0 left-0 m-4 z-[300] transition-all"
-  href="#main"
->
-  <Icon src={Forward} mini size="16" slot="prefix" />
-  Skip Navigation
-</Button>
-<Shell
-  dir={$locale == 'he' && $userSettings.useRtl ? 'rtl' : 'ltr'}
-  class="min-h-screen "
-  route={$page.route}
-  fullBleed={isFullBleedRoute}
->
-  <Moderation />
-  <ToastContainer />
-  <ExpandableImage />
-  <ModalContainer />
-  {#if !shouldLoadAdsense}
-    <CookieNotice />
-  {/if}
-
-  <svelte:fragment slot="sidebar" let:style={s} let:class={c}>
-    {#if !isFullBleedRoute}
-      {#await import('$lib/components/ui/sidebar/Sidebar.svelte') then { default: Sidebar }}
-        <Sidebar
-          route={$page.route.id ?? ''}
-          class="pt-14 md:pt-20 xl:pt-0 {c}"
-          style={s}
-        />
-      {/await}
-    {/if}
-  </svelte:fragment>
-  <main
-    slot="main"
-    let:style={s}
-    let:class={c}
-    class="{isFullBleedRoute
-      ? 'min-w-0 w-full flex flex-col h-full relative pt-14 md:pt-20 xl:pt-0'
-      : 'p-4 sm:p-6 min-w-0 w-full flex flex-col h-full relative pt-14 md:pt-20 xl:pt-0'} {showMobileBottomNavigation ? 'mobile-bottom-nav-space' : ''} {c}"
-    style={s}
-    id="main"
-  >
+{#if isEmbedRoute}
+  <main id="main" class="min-h-screen min-w-0 w-full">
     <slot />
   </main>
-  <Navbar slot="navbar" let:style={s} let:class={c} class={c} style={s} />
-</Shell>
+{:else}
+  <Button
+    class="fixed -top-16 focus:top-0 left-0 m-4 z-[300] transition-all"
+    href="#main"
+  >
+    <Icon src={Forward} mini size="16" slot="prefix" />
+    Skip Navigation
+  </Button>
+  <Shell
+    dir={$locale == 'he' && $userSettings.useRtl ? 'rtl' : 'ltr'}
+    class="min-h-screen "
+    route={$page.route}
+    fullBleed={isFullBleedRoute}
+  >
+    <Moderation />
+    <ToastContainer />
+    <ExpandableImage />
+    <ModalContainer />
+    {#if !shouldLoadAdsense}
+      <CookieNotice />
+    {/if}
 
-{#if showMobileBottomNavigation}
-  <MobileBottomNavigation />
+    <svelte:fragment slot="sidebar" let:style={s} let:class={c}>
+      {#if !isFullBleedRoute}
+        {#await import('$lib/components/ui/sidebar/Sidebar.svelte') then { default: Sidebar }}
+          <Sidebar
+            route={$page.route.id ?? ''}
+            class="pt-14 md:pt-20 xl:pt-0 {c}"
+            style={s}
+          />
+        {/await}
+      {/if}
+    </svelte:fragment>
+    <main
+      slot="main"
+      let:style={s}
+      let:class={c}
+      class="{isFullBleedRoute
+        ? 'min-w-0 w-full flex flex-col h-full relative pt-14 md:pt-20 xl:pt-0'
+        : 'p-4 sm:p-6 min-w-0 w-full flex flex-col h-full relative pt-14 md:pt-20 xl:pt-0'} {showMobileBottomNavigation ? 'mobile-bottom-nav-space' : ''} {c}"
+      style={s}
+      id="main"
+    >
+      <slot />
+    </main>
+    <Navbar slot="navbar" let:style={s} let:class={c} class={c} style={s} />
+  </Shell>
+
+  {#if showMobileBottomNavigation}
+    <MobileBottomNavigation />
+  {/if}
 {/if}
 
 <style>

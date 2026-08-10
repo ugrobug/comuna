@@ -3,6 +3,7 @@
   import { onDestroy } from 'svelte'
   import { toast } from 'mono-svelte'
   import {
+    CodeBracket,
     Icon,
     MagnifyingGlass,
     Plus,
@@ -10,6 +11,7 @@
   } from 'svelte-hero-icons'
   import Portal from '$lib/mono/popover/Portal.svelte'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
+  import RoadmapEmbedModal from '$lib/components/comuns/RoadmapEmbedModal.svelte'
   import {
     buildBackendPostPath,
     buildComunRoadmapItemUrl,
@@ -51,6 +53,7 @@
 
   let comun: BackendComun | null = data?.comun ?? null
   let items: BackendComunRoadmapItem[] = Array.isArray(data?.items) ? data.items : []
+  let embedModalOpen = false
   let addModalOpen = false
   let selectedStage: BackendComunRoadmapStage = 'planned'
   let searchQuery = ''
@@ -399,12 +402,24 @@
         <div class="truncate text-sm text-slate-600 dark:text-zinc-400">{comun.name}</div>
       {/if}
     </div>
-    <a
-      href={comun?.slug ? `/comuns/${encodeURIComponent(comun.slug)}` : '/comuns'}
-      class="inline-flex items-center rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-900 transition hover:bg-slate-50 dark:border-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-800/60"
-    >
-      Назад к сообществу
-    </a>
+    <div class="flex flex-wrap items-center gap-2">
+      {#if canManageRoadmap}
+        <button
+          type="button"
+          class="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-900 transition hover:bg-slate-50 dark:border-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-800/60"
+          on:click={() => (embedModalOpen = true)}
+        >
+          <Icon src={CodeBracket} size="17" micro />
+          Встроить
+        </button>
+      {/if}
+      <a
+        href={comun?.slug ? `/comuns/${encodeURIComponent(comun.slug)}` : '/comuns'}
+        class="inline-flex items-center rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-900 transition hover:bg-slate-50 dark:border-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-800/60"
+      >
+        Назад к сообществу
+      </a>
+    </div>
   </div>
 
   <section class="roadmap-page-shell overflow-hidden rounded-3xl">
@@ -491,6 +506,15 @@
     </div>
   </section>
 </div>
+
+{#if canManageRoadmap}
+  <RoadmapEmbedModal
+    bind:open={embedModalOpen}
+    slug={comun?.slug || ''}
+    communityName={comun?.name || ''}
+    language={data?.language || 'ru'}
+  />
+{/if}
 
 {#if addModalOpen}
   <Portal class="roadmap-add-portal">
