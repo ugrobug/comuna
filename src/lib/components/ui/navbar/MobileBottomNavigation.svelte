@@ -60,8 +60,8 @@
     : $profile?.jwt
       ? '/inbox'
       : '/account?next=%2Fnotifications'
-  $: createPostPath = $siteUser ? '/account/new-post?new=1' : '/account?next=%2Faccount%2Fnew-post%3Fnew%3D1'
-  $: createCommunityPath = $siteUser ? '/comuns?create=1' : '/account?next=%2Fcomuns%3Fcreate%3D1'
+  $: createPostPath = $siteUser ? '/account/new-post?new=1' : '/login?next=%2Faccount%2Fnew-post%3Fnew%3D1'
+  $: createCommunityPath = $siteUser ? '/comuns?create=1' : '/login?next=%2Fcomuns%3Fcreate%3D1'
   $: projectAboutPath = localizedProjectPath(PUBLIC_PROJECT_ABOUT)
   $: projectAdvertisementPath = localizedProjectPath(PUBLIC_PROJECT_ADVERTISEMENT)
   $: projectAppsPath = localizedProjectPath(PUBLIC_PROJECT_APPS)
