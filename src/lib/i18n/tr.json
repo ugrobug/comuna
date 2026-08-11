@@ -1278,6 +1278,17 @@
             "maskHint": "Admin only. The selected mask will be saved for your next comments.",
             "imageAlt": "Image {{index}}",
             "removeImage": "Remove image",
+            "question": {
+                "solved": "Soru çözüldü",
+                "receivedAnswer": "Doğru yanıt alındı",
+                "changeAnswer": "Doğru yanıtı değiştir",
+                "selectTitle": "Doğru yanıtı seçin",
+                "selectHint": "Soruyu en iyi yanıtlayan yorumu seçin.",
+                "noComments": "Henüz yanıt yok. Yorumlara bir yanıt yazın; otomatik olarak doğru yanıt olarak işaretlenecektir.",
+                "writeAnswer": "Doğru yanıtı yaz",
+                "acceptedAnswer": "Doğru yanıt",
+                "errors": { "select": "Doğru yanıt seçilemedi" }
+            },
             "errors": {
                 "load": "Failed to load comments",
                 "loadFallback": "Loading error",
@@ -1634,6 +1645,10 @@
                 "bug_report": {
                     "label": "Hata raporu",
                     "description": "Platform, tarayıcı, hata kodu ve ekran görüntüsü."
+                },
+                "question": {
+                    "label": "Soru",
+                    "description": "Doğru yanıtın yorumlar arasından seçildiği bir soru."
                 },
                 "tweet": {
                     "label": "Tweet",

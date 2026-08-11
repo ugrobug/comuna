@@ -8,6 +8,7 @@
     Flag,
     PencilSquare,
     Trash,
+    CheckCircle,
   } from 'svelte-hero-icons'
   import { Menu, MenuButton } from 'mono-svelte'
   import Avatar from '$lib/components/ui/Avatar.svelte'
@@ -55,6 +56,7 @@
 
   $: isAuthor = postAuthor && node.comment.user.username === postAuthor
   $: isDeleted = Boolean(node.comment.is_deleted)
+  $: isAcceptedAnswer = Boolean(node.comment.is_accepted_answer && !isDeleted)
   $: commentDate = new Date(node.comment.created_at)
   $: commenterProfileUrl =
     node.comment.user?.is_deleted
@@ -186,7 +188,10 @@
   targetId={node.comment.id}
 />
 
-<li class={itemClass} id={`site-comment-${node.comment.id}`}>
+<li
+  class={`${itemClass} ${isAcceptedAnswer ? 'border-emerald-300 bg-emerald-50/60 dark:border-emerald-700 dark:bg-emerald-950/20' : ''}`}
+  id={`site-comment-${node.comment.id}`}
+>
   <div class="flex gap-2 sm:gap-3">
     <Avatar
       url={node.comment.user?.avatar_url || undefined}
@@ -215,6 +220,12 @@
         {#if isAuthor}
           <span class="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-600">
             {$t('site.comments.authorBadge')}
+          </span>
+        {/if}
+        {#if isAcceptedAnswer}
+          <span class="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
+            <Icon src={CheckCircle} size="13" mini />
+            {$t('site.comments.question.acceptedAnswer')}
           </span>
         {/if}
         <RelativeDate date={commentDate} />

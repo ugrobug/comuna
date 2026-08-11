@@ -47,7 +47,7 @@ from communities.models import (
     ComunPostCategoryAssignment,
     ComunVote,
 )
-from rabotaem_backend.cache import anonymous_cache
+from rabotaem_backend.cache import anonymous_cache, bump_public_cache_prefix
 from rabotaem_backend.media_urls import (
     media_storage_path_from_url,
     public_media_url,
@@ -63,6 +63,7 @@ from editor.models import (
     POST_TEMPLATE_TYPE_MOVIE_REVIEW as MODEL_POST_TEMPLATE_TYPE_MOVIE_REVIEW,
     POST_TEMPLATE_TYPE_MUSIC_RELEASE as MODEL_POST_TEMPLATE_TYPE_MUSIC_RELEASE,
     POST_TEMPLATE_TYPE_POST_VOTE_POLL as MODEL_POST_TEMPLATE_TYPE_POST_VOTE_POLL,
+    POST_TEMPLATE_TYPE_QUESTION as MODEL_POST_TEMPLATE_TYPE_QUESTION,
     PostPollVote,
     PostRatingVote,
     PostTemplateConfig,
@@ -81,6 +82,7 @@ from editor.serializers import (
     _serialize_post_rating_block,
     _serialize_post_ratings,
     _serialize_post_template,
+    _serialize_question_answer,
     _user_can_manage_bug_report_status,
 )
 from editor.service import (
@@ -725,6 +727,7 @@ def _serialize_site_comment(
     can_edit: bool = False,
     translation: PostCommentTranslation | None = None,
     language: str | None = None,
+    accepted_answer_id: int | None = None,
 ) -> dict:
     is_translated = bool(
         translation
@@ -749,6 +752,9 @@ def _serialize_site_comment(
         "likes_count": likes_count,
         "liked_by_me": liked_by_me,
         "can_edit": can_edit,
+        "is_accepted_answer": bool(
+            accepted_answer_id and comment.id == accepted_answer_id and not comment.is_deleted
+        ),
         "user": _serialize_comment_user(comment),
     }
 
@@ -2997,6 +3003,7 @@ def post_comments(request: HttpRequest, post_id: int) -> HttpResponse:
                 can_edit=_can_edit_site_comment(user, comment),
                 translation=translations_by_comment_id.get(comment.id),
                 language=language,
+                accepted_answer_id=post.accepted_answer_id,
             )
             for comment in comments
         ]
@@ -3005,6 +3012,7 @@ def post_comments(request: HttpRequest, post_id: int) -> HttpResponse:
                 "ok": True,
                 "comments": serialized,
                 "comment_masks": _comment_personas_for_user(user),
+                "question_answer": _serialize_question_answer(post, user),
             }
         )
 
@@ -3138,6 +3146,13 @@ def comment_detail(request: HttpRequest, comment_id: int) -> HttpResponse:
 
     comment.is_deleted = True
     comment.save(update_fields=["is_deleted", "updated_at"])
+    if comment.post.accepted_answer_id == comment.id:
+        comment.post.accepted_answer = None
+        comment.post.question_solved_at = None
+        comment.post.save(
+            update_fields=["accepted_answer", "question_solved_at", "updated_at"]
+        )
+        bump_public_cache_prefix("post-comments")
     Post.objects.filter(id=comment.post_id, comments_count__gt=0).update(
         comments_count=F("comments_count") - 1
     )
@@ -3148,6 +3163,66 @@ def comment_detail(request: HttpRequest, comment_id: int) -> HttpResponse:
     )
 
     return JsonResponse({"ok": True, "comment_id": comment.id})
+
+
+@csrf_exempt
+def question_answer_update(request: HttpRequest, post_id: int) -> HttpResponse:
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    user = _get_user_from_request(request)
+    if not user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+
+    try:
+        post = Post.objects.select_related("author").get(
+            id=post_id,
+            is_blocked=False,
+            is_pending=False,
+            author__is_blocked=False,
+        )
+    except Post.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "post not found"}, status=404)
+
+    template_payload = _serialize_post_template(post)
+    if (
+        not isinstance(template_payload, dict)
+        or str(template_payload.get("type") or "").strip()
+        != MODEL_POST_TEMPLATE_TYPE_QUESTION
+    ):
+        return JsonResponse({"ok": False, "error": "post is not a question"}, status=400)
+    if not _user_can_manage_site_post(user, post):
+        return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+        comment_id = int(payload.get("comment_id"))
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return JsonResponse({"ok": False, "error": "invalid comment id"}, status=400)
+
+    try:
+        comment = PostComment.objects.get(id=comment_id, post=post, is_deleted=False)
+    except PostComment.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "comment not found"}, status=404)
+
+    post.accepted_answer = comment
+    post.question_solved_at = timezone.now()
+    post.save(update_fields=["accepted_answer", "question_solved_at", "updated_at"])
+    bump_public_cache_prefix("post-comments")
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "question_answer": _serialize_question_answer(post, user),
+            "comment": _serialize_site_comment(
+                comment,
+                liked_by_me=PostCommentLike.objects.filter(comment=comment, user=user).exists(),
+                likes_count=PostCommentLike.objects.filter(comment=comment).count(),
+                can_edit=_can_edit_site_comment(user, comment),
+                accepted_answer_id=comment.id,
+            ),
+        }
+    )
 
 
 @csrf_exempt
@@ -3788,6 +3863,7 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
                 "enabled_template_editor_blocks": _serialize_enabled_template_editor_blocks(template_payload),
                 "can_manage_bug_report_status": _user_can_manage_bug_report_status(current_user, post),
                 "bug_report_confirmation": _serialize_bug_report_confirmation(post, current_user),
+                "question_answer": _serialize_question_answer(post, current_user),
                 "vote_poll_participations": _serialize_post_vote_poll_participations(post),
                 "comun": community_service._serialize_post_comun(
                     request,

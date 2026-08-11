@@ -3,6 +3,7 @@ const PERSONALIZED_POST_FIELDS = [
   'user_vote',
   'can_manage_bug_report_status',
   'bug_report_confirmation',
+  'question_answer',
   'vote_poll_participations',
   'poll',
   'post_ratings',

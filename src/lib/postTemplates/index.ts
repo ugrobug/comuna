@@ -7,6 +7,7 @@ export type BuiltinPostTemplateType =
   | 'post_vote_poll'
   | 'music_release'
   | 'bug_report'
+  | 'question'
   | 'tweet'
 export type PostTemplateType = BuiltinPostTemplateType | string
 export type PostTemplateCode = 'basic' | PostTemplateType
@@ -121,6 +122,16 @@ export type TweetTemplate = {
   data: Record<string, never>
 }
 
+export type QuestionTemplate = {
+  type: 'question'
+  version: 1
+  data: {
+    is_solved?: boolean
+    accepted_comment_id?: number | null
+    solved_at?: string | null
+  }
+}
+
 export type CustomPostTemplate = {
   type: string
   version: 1
@@ -132,6 +143,7 @@ export type SitePostTemplate =
   | PostVotePollTemplate
   | MusicReleaseTemplate
   | BugReportTemplate
+  | QuestionTemplate
   | TweetTemplate
   | CustomPostTemplate
 
@@ -147,6 +159,7 @@ export const POST_TEMPLATE_TYPE_OPTIONS: PostTemplateTypeOption[] = [
   { value: 'post_vote_poll', label: 'Голосование за посты' },
   { value: 'music_release', label: 'Музыкальный релиз' },
   { value: 'bug_report', label: 'Баг-репорт', description: 'Платформа, браузер, код ошибки и скриншот.' },
+  { value: 'question', label: 'Вопрос', description: 'Вопрос с выбором правильного ответа из комментариев.' },
   { value: 'tweet', label: 'Твит', description: 'До 280 символов и один медиаблок с изображениями.' },
 ]
 
@@ -212,6 +225,7 @@ const TEMPLATE_EDITOR_BLOCKS_BY_TEMPLATE: Record<string, TemplateEditorBlockOpti
   post_vote_poll: BLOCKS_WITHOUT_MOVIE_CARD,
   music_release: BLOCKS_WITHOUT_MOVIE_CARD,
   bug_report: BLOCKS_WITHOUT_MOVIE_CARD,
+  question: BLOCKS_WITHOUT_MOVIE_CARD,
   tweet: ALL_TEMPLATE_EDITOR_BLOCK_OPTIONS.filter((option) => option.type === 'gallery'),
 }
 
@@ -999,6 +1013,14 @@ export const buildPostTemplatePayload = (
   if (templateType === 'tweet') {
     return {
       type: 'tweet',
+      version: 1,
+      data: {},
+    }
+  }
+
+  if (templateType === 'question') {
+    return {
+      type: 'question',
       version: 1,
       data: {},
     }

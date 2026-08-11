@@ -41,6 +41,10 @@ export const buildPostCommentsUrl = (id: number | string, language?: string): st
   return `${base}?${params.toString()}`
 }
 
+export const buildQuestionAnswerUrl = (id: number | string): string => {
+  return `${getBackendBaseUrl()}/api/posts/${encodeURIComponent(id)}/question-answer/`
+}
+
 export const buildCommentDetailUrl = (id: number | string): string => {
   return `${getBackendBaseUrl()}/api/comments/${encodeURIComponent(id)}/`
 }
@@ -1361,10 +1365,18 @@ export type BackendPost = {
   can_manage?: boolean
   can_manage_bug_report_status?: boolean
   bug_report_confirmation?: BackendBugReportConfirmation | null
+  question_answer?: BackendQuestionAnswer | null
   tags?: BackendTag[]
   comun_category?: BackendComunCategory | null
   comun_category_id?: number | null
   author?: BackendAuthor
+}
+
+export type BackendQuestionAnswer = {
+  is_solved: boolean
+  accepted_comment_id?: number | null
+  solved_at?: string | null
+  can_select_answer?: boolean
 }
 
 export const isSpecialProjectPost = (post: BackendPost | null | undefined): boolean => {
@@ -1419,6 +1431,7 @@ export const backendPostToPostView = (
       comun_can_manage_roadmap: Boolean(post.comun?.can_manage_roadmap),
       can_manage_bug_report_status: Boolean(post.can_manage_bug_report_status),
       bug_report_confirmation: post.bug_report_confirmation ?? null,
+      question_answer: post.question_answer ?? null,
       vote_poll_participations: post.vote_poll_participations ?? [],
       poll: post.poll ?? null,
       post_ratings: post.post_ratings ?? {},

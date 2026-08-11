@@ -90,6 +90,10 @@
   $: bugReportConfirmation = (
     post.post as { bug_report_confirmation?: BackendBugReportConfirmation | null }
   ).bug_report_confirmation ?? null
+  $: questionAnswer = (
+    post.post as { question_answer?: { is_solved?: boolean } | null }
+  ).question_answer ?? (backendTemplate?.type === 'question' ? backendTemplate.data : null)
+  $: questionSolved = Boolean(questionAnswer?.is_solved)
   $: backendPoll = (post.post as { poll?: BackendPoll | null }).poll ?? null
   $: backendPostRatings = (
     post.post as { post_ratings?: Record<string, BackendPostRating> | null }
@@ -313,6 +317,7 @@
       data-sveltekit-preload-data="off"
     >
       <div class="text-2xl font-medium text-black dark:text-white" style="margin-bottom: 0;">
+        {#if questionSolved}<span class="text-emerald-600 dark:text-emerald-400" aria-label={$t('site.comments.question.solved')}>✓</span>{' '}{/if}
         {post.post.name}
       </div>
     </a>

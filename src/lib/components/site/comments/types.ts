@@ -12,6 +12,7 @@ export type SiteComment = {
   likes_count?: number
   liked_by_me?: boolean
   can_edit?: boolean
+  is_accepted_answer?: boolean
   user: {
     id?: number | null
     username: string

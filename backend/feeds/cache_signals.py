@@ -17,6 +17,8 @@ _POST_DETAIL_FIELDS = {
     "is_blocked",
     "publish_at",
     "raw_data",
+    "accepted_answer",
+    "question_solved_at",
 }
 
 

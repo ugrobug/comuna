@@ -366,6 +366,14 @@ class Post(models.Model):
     is_blocked = models.BooleanField(default=False)
     publish_at = models.DateTimeField(null=True, blank=True)
     raw_data = models.JSONField(default=dict, blank=True)
+    accepted_answer = models.ForeignKey(
+        "PostComment",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="accepted_for_questions",
+    )
+    question_solved_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

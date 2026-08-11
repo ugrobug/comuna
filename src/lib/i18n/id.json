@@ -1301,6 +1301,17 @@
             "maskHint": "Admin only. The selected mask will be saved for your next comments.",
             "imageAlt": "Image {{index}}",
             "removeImage": "Remove image",
+            "question": {
+                "solved": "Pertanyaan terjawab",
+                "receivedAnswer": "Jawaban yang benar telah diterima",
+                "changeAnswer": "Ubah jawaban yang benar",
+                "selectTitle": "Pilih jawaban yang benar",
+                "selectHint": "Pilih komentar yang paling tepat menjawab pertanyaan.",
+                "noComments": "Belum ada jawaban. Tulis jawaban di komentar dan jawaban tersebut akan otomatis ditandai sebagai jawaban yang benar.",
+                "writeAnswer": "Tulis jawaban yang benar",
+                "acceptedAnswer": "Jawaban yang benar",
+                "errors": { "select": "Gagal memilih jawaban yang benar" }
+            },
             "errors": {
                 "load": "Failed to load comments",
                 "loadFallback": "Loading error",
@@ -1657,6 +1668,10 @@
                 "bug_report": {
                     "label": "Laporan bug",
                     "description": "Platform, browser, kode error, dan tangkapan layar."
+                },
+                "question": {
+                    "label": "Pertanyaan",
+                    "description": "Pertanyaan dengan jawaban benar yang dipilih dari komentar."
                 },
                 "tweet": {
                     "label": "Tweet",

@@ -1189,6 +1189,17 @@
             "maskHint": "Admin only. The selected mask will be saved for your next comments.",
             "imageAlt": "Image {{index}}",
             "removeImage": "Remove image",
+            "question": {
+                "solved": "Pregunta resuelta",
+                "receivedAnswer": "Se recibió una respuesta correcta",
+                "changeAnswer": "Cambiar la respuesta correcta",
+                "selectTitle": "Selecciona la respuesta correcta",
+                "selectHint": "Elige el comentario que mejor responda a la pregunta.",
+                "noComments": "Todavía no hay respuestas. Publica una respuesta en los comentarios y se marcará automáticamente como correcta.",
+                "writeAnswer": "Escribir la respuesta correcta",
+                "acceptedAnswer": "Respuesta correcta",
+                "errors": { "select": "No se pudo seleccionar la respuesta correcta" }
+            },
             "errors": {
                 "load": "Failed to load comments",
                 "loadFallback": "Loading error",
@@ -1545,6 +1556,10 @@
                 "bug_report": {
                     "label": "Reporte de error",
                     "description": "Plataforma, navegador, código de error y captura."
+                },
+                "question": {
+                    "label": "Pregunta",
+                    "description": "Una pregunta cuya respuesta correcta se elige entre los comentarios."
                 },
                 "tweet": {
                     "label": "Tuit",

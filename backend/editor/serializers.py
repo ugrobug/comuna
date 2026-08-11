@@ -8,6 +8,7 @@ from editor import service as editor_service
 from editor.models import (
     POST_TEMPLATE_TYPE_BUG_REPORT,
     POST_TEMPLATE_TYPE_POST_VOTE_POLL,
+    POST_TEMPLATE_TYPE_QUESTION,
     PostBugReportConfirmation,
     PostRatingVote,
     PostTemplateConfig,
@@ -32,7 +33,24 @@ def _serialize_post_template(post: Post) -> dict | None:
     normalized_template, _template_error = editor_service._normalize_post_template_payload(
         raw_data.get("template")
     )
-    return rewrite_public_media_payload(normalized_template)
+    serialized = rewrite_public_media_payload(normalized_template)
+    if (
+        isinstance(serialized, dict)
+        and str(serialized.get("type") or "").strip() == POST_TEMPLATE_TYPE_QUESTION
+    ):
+        serialized = dict(serialized)
+        data = dict(serialized.get("data") or {})
+        data.update(
+            {
+                "is_solved": bool(post.accepted_answer_id),
+                "accepted_comment_id": post.accepted_answer_id,
+                "solved_at": post.question_solved_at.isoformat()
+                if post.question_solved_at
+                else None,
+            }
+        )
+        serialized["data"] = data
+    return serialized
 
 
 def _content_with_live_poll(post: Post, user: User | None = None) -> tuple[str, dict | None]:
@@ -192,6 +210,23 @@ def _serialize_bug_report_confirmation(post: Post, user: User | None) -> dict | 
     }
 
 
+def _serialize_question_answer(post: Post, user: User | None) -> dict | None:
+    template_payload = _serialize_post_template(post)
+    if (
+        not isinstance(template_payload, dict)
+        or str(template_payload.get("type") or "").strip() != POST_TEMPLATE_TYPE_QUESTION
+    ):
+        return None
+    return {
+        "is_solved": bool(post.accepted_answer_id),
+        "accepted_comment_id": post.accepted_answer_id,
+        "solved_at": post.question_solved_at.isoformat()
+        if post.question_solved_at
+        else None,
+        "can_select_answer": editor_service._user_can_manage_site_post(user, post),
+    }
+
+
 def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None = None) -> dict:
     author_channel_url, author_title = _fv()._author_display_fields(
         request, post.author, post.channel_url
@@ -267,6 +302,7 @@ def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None
         "can_manage": editor_service._user_can_manage_site_post(user, post),
         "can_manage_bug_report_status": _user_can_manage_bug_report_status(user, post),
         "bug_report_confirmation": _serialize_bug_report_confirmation(post, user),
+        "question_answer": _serialize_question_answer(post, user),
         "author": {
             "username": post.author.username,
             "title": author_title,
@@ -289,5 +325,6 @@ __all__ = [
     "_serialize_post_rating_block",
     "_serialize_post_ratings",
     "_serialize_post_template",
+    "_serialize_question_answer",
     "_user_can_manage_bug_report_status",
 ]

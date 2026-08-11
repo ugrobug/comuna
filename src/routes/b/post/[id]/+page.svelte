@@ -24,6 +24,7 @@
   import { parseSerializedEditorModel, looksLikeSerializedEditorModel } from '$lib/util'
   import { mergePostDetailPersonalization } from '$lib/postDetailRefresh'
   import { locale, t } from '$lib/translations'
+  import { Icon, CheckCircle } from 'svelte-hero-icons'
 
   export let data
 
@@ -33,6 +34,7 @@
   let lastVisitedPostId: number | null = null
   let lastAuthenticatedPostKey = ''
   let showOriginalPost = false
+  let postCommentsComponent: { openAnswerSelector: () => void } | null = null
 
   const stripHtml = (value: string) =>
     value.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
@@ -488,6 +490,20 @@
         userUrlOverride={backendAuthorPath(postData.author)}
         communityUrlOverride={backendPostCommunityPath(postData)}
       />
+      {#if postData?.question_answer?.can_select_answer}
+        <div class="mt-4 border-t border-slate-200 pt-4 dark:border-zinc-800">
+          <button
+            type="button"
+            class="inline-flex items-center gap-2 rounded-md bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700"
+            on:click={() => postCommentsComponent?.openAnswerSelector()}
+          >
+            <Icon src={CheckCircle} size="18" />
+            {postData.question_answer.is_solved
+              ? $t('site.comments.question.changeAnswer')
+              : $t('site.comments.question.receivedAnswer')}
+          </button>
+        </div>
+      {/if}
     </div>
 
     {#if postData?.comun?.slug}
@@ -495,9 +511,14 @@
     {/if}
 
     <PostComments
+      bind:this={postCommentsComponent}
       postId={postData.id}
       postAuthor={postData.author?.username ?? null}
       language={currentLanguage}
+      questionAnswer={postData.question_answer ?? null}
+      on:questionanswerchange={(event) => {
+        postData = { ...postData, question_answer: event.detail }
+      }}
     />
   {/if}
 </div>
