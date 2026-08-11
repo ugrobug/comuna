@@ -42,6 +42,7 @@
     type SitePostTemplate,
   } from '$lib/postTemplates'
   import { t } from '$lib/translations'
+  import { shouldHidePostContent } from '$lib/postVisibility'
 
   export let post: PostView
   export let actions: boolean = true
@@ -71,6 +72,7 @@
       })
       .map((content) => ({ content }))
   )
+  $: hideByTag = shouldHidePostContent(rule, showFullBody)
   $: communityName = post.community?.name || ''
   $: communityTitle = post.community?.title || ''
   type VotePollParticipation = {
@@ -321,7 +323,7 @@
       style="grid-area:embed;"
       class={view == 'list' || view == 'compact' ? '' : 'contents'}
     >
-      {#if rule != 'hide' && !hideBackendPreviewMedia}
+      {#if !hideByTag && !hideBackendPreviewMedia}
         <PostMedia
           post={post.post}
           blur={rule == 'blur' ? true : undefined}
@@ -347,7 +349,7 @@
   {/key}
 
   <!-- Оборачиваем тело поста в ссылку -->
-  {#if post.post.body && !post.post.nsfw && view != 'compact' && !hideBody && rule != 'hide'}
+  {#if post.post.body && !post.post.nsfw && view != 'compact' && !hideBody && !hideByTag}
     {#if showFullBody}
       <div style="grid-area: body;">
         {#if activeVotePollParticipation}

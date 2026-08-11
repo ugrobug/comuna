@@ -19,3 +19,8 @@ export const isBackendPostVisible = (
 
   return true
 }
+
+export type PostTagRule = 'blur' | 'hide' | undefined
+
+export const shouldHidePostContent = (rule: PostTagRule, showFullBody: boolean) =>
+  rule === 'hide' && !showFullBody
