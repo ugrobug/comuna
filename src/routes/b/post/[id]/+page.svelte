@@ -22,6 +22,7 @@
     truncateUnicodeText,
   } from '$lib/seoJsonLd'
   import { parseSerializedEditorModel, looksLikeSerializedEditorModel } from '$lib/util'
+  import { mergePostDetailPersonalization } from '$lib/postDetailRefresh'
   import { locale, t } from '$lib/translations'
 
   export let data
@@ -316,7 +317,10 @@
       })
       const payload = await response.json().catch(() => null)
       if (response.ok && payload?.post?.id === postData.id) {
-        postData = payload.post
+        const personalizedPost = mergePostDetailPersonalization(postData, payload.post)
+        if (personalizedPost !== postData) {
+          postData = personalizedPost
+        }
       }
     } catch (error) {
       console.error('Failed to refresh post for current user:', error)

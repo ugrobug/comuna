@@ -6,4 +6,5 @@ class FeedsConfig(AppConfig):
     name = "feeds"
 
     def ready(self):
+        import feeds.cache_signals  # noqa: F401
         import feeds.translation_signals  # noqa: F401
