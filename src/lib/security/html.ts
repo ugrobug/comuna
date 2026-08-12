@@ -53,6 +53,7 @@ const GLOBAL_ATTRIBUTES = new Set([
   'aria-label',
   'aria-pressed',
   'hidden',
+  'data-option-index',
   'data-compare-position',
   'data-poll-multiple',
   'data-poll-closed',

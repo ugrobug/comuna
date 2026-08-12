@@ -18,4 +18,15 @@ describe('post HTML sanitizer', () => {
     expect(sanitized).toContain('data-draft-comment-button="intro-block"')
     expect(sanitized).not.toContain('onclick')
   })
+
+  it('keeps the option index required by inline poll voting', () => {
+    const sanitized = sanitizePostHtml(`
+      <div class="post-poll" data-poll-id="poll-1" data-poll-closed="0">
+        <div class="post-poll-option" data-option-index="2">Option</div>
+      </div>
+    `)
+
+    expect(sanitized).toContain('data-option-index="2"')
+    expect(sanitized).toContain('data-poll-id="poll-1"')
+  })
 })
