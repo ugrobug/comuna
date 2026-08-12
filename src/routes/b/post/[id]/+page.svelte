@@ -490,21 +490,22 @@
         userUrlOverride={backendAuthorPath(postData.author)}
         communityUrlOverride={backendPostCommunityPath(postData)}
       />
-      {#if postData?.question_answer?.can_select_answer}
-        <div class="mt-4 border-t border-slate-200 pt-4 dark:border-zinc-800">
-          <button
-            type="button"
-            class="inline-flex items-center gap-2 rounded-md bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700"
-            on:click={() => postCommentsComponent?.openAnswerSelector()}
-          >
-            <Icon src={CheckCircle} size="18" />
-            {postData.question_answer.is_solved
-              ? $t('site.comments.question.changeAnswer')
-              : $t('site.comments.question.receivedAnswer')}
-          </button>
-        </div>
-      {/if}
     </div>
+
+    {#if postData?.question_answer?.can_select_answer}
+      <div class="relative z-10 flex">
+        <button
+          type="button"
+          class="inline-flex items-center gap-2 rounded-md bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-700"
+          on:click={() => postCommentsComponent?.openAnswerSelector()}
+        >
+          <Icon src={CheckCircle} size="18" />
+          {postData.question_answer.is_solved
+            ? $t('site.comments.question.changeAnswer')
+            : $t('site.comments.question.receivedAnswer')}
+        </button>
+      </div>
+    {/if}
 
     {#if postData?.comun?.slug}
       <PostCommunityBanner comun={postData.comun} />

@@ -38,6 +38,7 @@
   let selectingAnswerId: number | null = null
   let answerSelectionError = ''
   let acceptNextOwnComment = false
+  let answerMutationVersion = 0
   $: availableAnswers = comments.filter((comment) => !comment.is_deleted)
 
   $: effectiveCommentsLanguage = language || $locale || 'ru'
@@ -78,6 +79,7 @@
 
   const loadComments = async () => {
     if (!browser) return
+    const mutationVersion = answerMutationVersion
     loading = true
     error = ''
     try {
@@ -92,6 +94,10 @@
         throw new Error($t('site.comments.errors.load'))
       }
       const data = await response.json()
+      if (mutationVersion !== answerMutationVersion) {
+        loading = false
+        return
+      }
       comments = normalizeList((data.comments ?? []) as SiteComment[])
       if (data.question_answer) {
         questionAnswer = data.question_answer as BackendQuestionAnswer
@@ -110,8 +116,28 @@
 
   const selectQuestionAnswer = async (commentId: number) => {
     if (!$siteToken || selectingAnswerId !== null) return false
+    const previousQuestionAnswer = questionAnswer
+    const previousComments = comments
+    const optimisticQuestionAnswer: BackendQuestionAnswer = {
+      ...(questionAnswer ?? {}),
+      is_solved: true,
+      accepted_comment_id: commentId,
+      solved_at: new Date().toISOString(),
+      can_select_answer: questionAnswer?.can_select_answer ?? true,
+    }
+
     selectingAnswerId = commentId
+    answerMutationVersion += 1
     answerSelectionError = ''
+    questionAnswer = optimisticQuestionAnswer
+    comments = comments.map((comment) => ({
+      ...comment,
+      is_accepted_answer: comment.id === commentId,
+    }))
+    rebuildTree()
+    dispatch('questionanswerchange', optimisticQuestionAnswer)
+    answerSelectorOpen = false
+
     try {
       const response = await fetch(buildQuestionAnswerUrl(postId), {
         method: 'POST',
@@ -132,10 +158,16 @@
       }))
       rebuildTree()
       dispatch('questionanswerchange', questionAnswer)
-      answerSelectorOpen = false
       return true
     } catch (err) {
+      questionAnswer = previousQuestionAnswer
+      comments = previousComments
+      rebuildTree()
+      if (previousQuestionAnswer) {
+        dispatch('questionanswerchange', previousQuestionAnswer)
+      }
       answerSelectionError = (err as Error)?.message || $t('site.comments.question.errors.select')
+      answerSelectorOpen = true
       return false
     } finally {
       selectingAnswerId = null
