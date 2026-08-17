@@ -42,6 +42,30 @@ Disallow: /
 User-agent: RyteBot
 Disallow: /
 
+User-agent: Amazonbot
+Disallow: /
+
+User-agent: SERankingBacklinksBot
+Disallow: /
+
+User-agent: DotBot
+Disallow: /
+
+User-agent: Sogou web spider
+Disallow: /
+
+User-agent: Sogou inst spider
+Disallow: /
+
+User-agent: Sogou spider2
+Disallow: /
+
+User-agent: Sogou Pic Spider
+Disallow: /
+
+User-agent: Baiduspider
+Disallow: /
+
 User-agent: *
 Disallow: /admin/
 Disallow: /settings/
