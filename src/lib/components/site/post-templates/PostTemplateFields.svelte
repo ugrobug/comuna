@@ -21,6 +21,7 @@
     bugReportPlatformLabel,
     bugReportPlatformLabels,
     createEmptyBugReportTemplateData,
+    createEmptyEventTemplateData,
     createEmptyMusicReleaseTemplateData,
     createEmptyMovieReviewTemplateData,
     createEmptyPostVotePollTemplateData,
@@ -30,12 +31,14 @@
     musicReleaseStyleLabel,
     normalizeAllowedPostTemplateTypes,
     normalizeBugReportTemplateData,
+    normalizeEventTemplateData,
     normalizePostTemplateTypeOptions,
     normalizeMusicReleaseTemplateData,
     normalizeMovieReviewTemplateData,
     normalizePostVotePollTemplateData,
     postVotePollOptionLabel,
     type BugReportTemplateData,
+    type EventTemplateData,
     type MusicReleaseTemplateData,
     type MovieReviewTemplateData,
     type PostTemplateType,
@@ -50,6 +53,7 @@
   export let postVotePollData: PostVotePollTemplateData = createEmptyPostVotePollTemplateData()
   export let musicReleaseData: MusicReleaseTemplateData = createEmptyMusicReleaseTemplateData()
   export let bugReportData: BugReportTemplateData = createEmptyBugReportTemplateData()
+  export let eventData: EventTemplateData = createEmptyEventTemplateData()
   export let allowedTemplateTypes: string[] | undefined = undefined
   export let templateTypeOptions: PostTemplateTypeOption[] = POST_TEMPLATE_TYPE_OPTIONS
   export let showTypeSelector = true
@@ -83,6 +87,7 @@
   let bugBrowserValues: string[] = []
   let bugBrowserSet = new Set<string>()
   let bugBrowserLabelValues: string[] = []
+  let eventDateTimeInput = ''
   let templateMenuOpen = false
   let templateMenuRef: HTMLDivElement | null = null
   let hasTemplateTypeChoice = false
@@ -257,6 +262,12 @@
   $: bugBrowserValues = normalizeBugReportTemplateData(bugReportData).browsers ?? []
   $: bugBrowserSet = new Set(bugBrowserValues)
   $: bugBrowserLabelValues = bugReportBrowserLabels(bugBrowserValues)
+  $: eventDateTimeInput = formatDateTimeLocalValue(eventData.starts_at)
+
+  const onEventDateTimeChange = (event: Event) => {
+    const input = event.currentTarget as HTMLInputElement | null
+    eventData = normalizeEventTemplateData({ starts_at: input?.value || '' })
+  }
 
   const toggleWatchProvider = (provider: string, enabled: boolean) => {
     const next = new Set(watchProviderValues)
@@ -1072,6 +1083,20 @@
         </div>
       </div>
     </div>
+    {:else if templateType === 'event'}
+    <label class="flex max-w-md flex-col gap-1">
+      <span class="text-sm text-slate-700 dark:text-zinc-300">{$t('site.templateFields.eventDate')}</span>
+      <input
+        type="datetime-local"
+        required
+        value={eventDateTimeInput}
+        on:change={onEventDateTimeChange}
+        class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+      />
+      <span class="text-xs text-slate-500 dark:text-zinc-400">
+        {$t('site.templateFields.eventDateHint')}
+      </span>
+    </label>
     {:else if templateType === 'tweet'}
     <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-300">
       <div class="font-medium text-slate-900 dark:text-zinc-100">{$t('site.templateFields.tweetTemplate')}</div>

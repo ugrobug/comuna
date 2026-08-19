@@ -4,6 +4,7 @@ const PERSONALIZED_POST_FIELDS = [
   'can_manage_bug_report_status',
   'bug_report_confirmation',
   'question_answer',
+  'event_attendance',
   'vote_poll_participations',
   'poll',
   'post_ratings',

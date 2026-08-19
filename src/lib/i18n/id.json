@@ -1581,6 +1581,8 @@
             "imdbFilled": "Fields filled from IMDb{{sources}}",
             "fillError": "Failed to fill fields",
             "publicationType": "Publication type",
+            "eventDate": "Tanggal dan waktu acara",
+            "eventDateHint": "Peserta akan menerima pengingat satu hari sebelumnya.",
             "title": "Title",
             "titlePlaceholder": "For example, Dune: Part Two",
             "originalTitle": "Original title",
@@ -1673,11 +1675,25 @@
                     "label": "Pertanyaan",
                     "description": "Pertanyaan dengan jawaban benar yang dipilih dari komentar."
                 },
+                "event": {
+                    "label": "Acara",
+                    "description": "Postingan dengan tanggal, kalender, dan pengingat peserta."
+                },
                 "tweet": {
                     "label": "Tweet",
                     "description": "Hingga 280 karakter dan satu blok media berisi gambar."
                 }
             }
+        },
+        "event": {
+            "title": "Acara",
+            "addToCalendar": "Tambahkan ke kalender",
+            "chooseCalendar": "Pilih kalender",
+            "closeCalendarPicker": "Tutup pilihan kalender",
+            "going": "Saya akan hadir",
+            "notGoing": "Saya tidak hadir",
+            "saving": "Menyimpan...",
+            "reminderHint": "Kami akan mengingatkan Anda satu hari sebelum acara."
         },
         "errors": {
             "authorNotFound": "Penulis tidak ditemukan",

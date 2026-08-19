@@ -8,6 +8,7 @@ export type BuiltinPostTemplateType =
   | 'music_release'
   | 'bug_report'
   | 'question'
+  | 'event'
   | 'tweet'
 export type PostTemplateType = BuiltinPostTemplateType | string
 export type PostTemplateCode = 'basic' | PostTemplateType
@@ -132,6 +133,16 @@ export type QuestionTemplate = {
   }
 }
 
+export type EventTemplateData = {
+  starts_at?: string
+}
+
+export type EventTemplate = {
+  type: 'event'
+  version: 1
+  data: EventTemplateData
+}
+
 export type CustomPostTemplate = {
   type: string
   version: 1
@@ -144,6 +155,7 @@ export type SitePostTemplate =
   | MusicReleaseTemplate
   | BugReportTemplate
   | QuestionTemplate
+  | EventTemplate
   | TweetTemplate
   | CustomPostTemplate
 
@@ -160,6 +172,7 @@ export const POST_TEMPLATE_TYPE_OPTIONS: PostTemplateTypeOption[] = [
   { value: 'music_release', label: 'Музыкальный релиз' },
   { value: 'bug_report', label: 'Баг-репорт', description: 'Платформа, браузер, код ошибки и скриншот.' },
   { value: 'question', label: 'Вопрос', description: 'Вопрос с выбором правильного ответа из комментариев.' },
+  { value: 'event', label: 'Событие', description: 'Пост с датой события, календарем и напоминанием участникам.' },
   { value: 'tweet', label: 'Твит', description: 'До 280 символов и один медиаблок с изображениями.' },
 ]
 
@@ -226,6 +239,7 @@ const TEMPLATE_EDITOR_BLOCKS_BY_TEMPLATE: Record<string, TemplateEditorBlockOpti
   music_release: BLOCKS_WITHOUT_MOVIE_CARD,
   bug_report: BLOCKS_WITHOUT_MOVIE_CARD,
   question: BLOCKS_WITHOUT_MOVIE_CARD,
+  event: BLOCKS_WITHOUT_MOVIE_CARD,
   tweet: ALL_TEMPLATE_EDITOR_BLOCK_OPTIONS.filter((option) => option.type === 'gallery'),
 }
 
@@ -752,6 +766,10 @@ export const createEmptyBugReportTemplateData = (): BugReportTemplateData => ({
   screenshot_url: '',
 })
 
+export const createEmptyEventTemplateData = (): EventTemplateData => ({
+  starts_at: '',
+})
+
 const normalizeMovieReviewGenre = (value: unknown): string => {
   const raw = trimOrEmpty(value)
   if (!raw) return ''
@@ -946,12 +964,22 @@ export const normalizeBugReportTemplateData = (
   }
 }
 
+export const normalizeEventTemplateData = (
+  value: Partial<EventTemplateData> | null | undefined
+): EventTemplateData => {
+  const raw = trimOrEmpty(value?.starts_at)
+  if (!raw) return { starts_at: '' }
+  const timestamp = Date.parse(raw)
+  return { starts_at: Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : raw }
+}
+
 export const buildPostTemplatePayload = (
   templateType: '' | PostTemplateType,
   movieReviewData: Partial<MovieReviewTemplateData> | null | undefined,
   postVotePollData?: Partial<PostVotePollTemplateData> | null | undefined,
   musicReleaseData?: Partial<MusicReleaseTemplateData> | null | undefined,
-  bugReportData?: Partial<BugReportTemplateData> | null | undefined
+  bugReportData?: Partial<BugReportTemplateData> | null | undefined,
+  eventData?: Partial<EventTemplateData> | null | undefined
 ): SitePostTemplate | null => {
   if (templateType === 'movie_review') {
     const normalized = normalizeMovieReviewTemplateData(movieReviewData)
@@ -1026,6 +1054,14 @@ export const buildPostTemplatePayload = (
     }
   }
 
+  if (templateType === 'event') {
+    return {
+      type: 'event',
+      version: 1,
+      data: normalizeEventTemplateData(eventData),
+    }
+  }
+
   const customTemplateType = normalizeTemplateCode(templateType)
   if (customTemplateType && customTemplateType !== 'basic') {
     return {
@@ -1066,6 +1102,12 @@ export const isTweetTemplate = (
   template: SitePostTemplate | null | undefined
 ): template is TweetTemplate => {
   return template?.type === 'tweet' && typeof template.data === 'object'
+}
+
+export const isEventTemplate = (
+  template: SitePostTemplate | null | undefined
+): template is EventTemplate => {
+  return template?.type === 'event' && typeof template.data === 'object'
 }
 
 const stripHtmlTags = (value: string): string =>

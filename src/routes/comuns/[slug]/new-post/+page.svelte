@@ -25,6 +25,7 @@
   import {
     buildPostTemplatePayload,
     createEmptyBugReportTemplateData,
+    createEmptyEventTemplateData,
     createEmptyMusicReleaseTemplateData,
     createEmptyMovieReviewTemplateData,
     createEmptyPostVotePollTemplateData,
@@ -34,6 +35,7 @@
     normalizeTemplateEditorBlockSettings,
     resolveEnabledTemplateEditorBlockTypes,
     type BugReportTemplateData,
+    type EventTemplateData,
     type MusicReleaseTemplateData,
     type MovieReviewTemplateData,
     type PostVotePollTemplateData,
@@ -61,6 +63,7 @@
   let createPostVotePollData: PostVotePollTemplateData = createEmptyPostVotePollTemplateData()
   let createMusicReleaseData: MusicReleaseTemplateData = createEmptyMusicReleaseTemplateData()
   let createBugReportData: BugReportTemplateData = createEmptyBugReportTemplateData()
+  let createEventData: EventTemplateData = createEmptyEventTemplateData()
   let comunAllowedTemplateTypes: string[] = ['basic']
   let templateTypeOptions: PostTemplateTypeOption[] = []
   let templateEditorBlockSettings: TemplateEditorBlockSettings = {}
@@ -467,13 +470,18 @@
       createError = 'Текст поста не может быть пустым.'
       return
     }
+    if (createTemplateType === 'event' && !createEventData.starts_at) {
+      createError = 'Укажите дату и время события.'
+      return
+    }
 
     const template = buildPostTemplatePayload(
       createTemplateType,
       createMovieReviewData,
       createPostVotePollData,
       createMusicReleaseData,
-      createBugReportData
+      createBugReportData,
+      createEventData
     )
     if (
       comun?.forbid_external_links &&
@@ -771,6 +779,7 @@
           bind:postVotePollData={createPostVotePollData}
           bind:musicReleaseData={createMusicReleaseData}
           bind:bugReportData={createBugReportData}
+          bind:eventData={createEventData}
           allowedTemplateTypes={comunAllowedTemplateTypes}
           {templateTypeOptions}
         />
@@ -814,6 +823,7 @@
               createPostVotePollData = createEmptyPostVotePollTemplateData()
               createMusicReleaseData = createEmptyMusicReleaseTemplateData()
               createBugReportData = createEmptyBugReportTemplateData()
+              createEventData = createEmptyEventTemplateData()
               createError = ''
             }}
             disabled={creating}

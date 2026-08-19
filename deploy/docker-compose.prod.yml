@@ -159,6 +159,25 @@ services:
     volumes:
       - ./secrets:/app/secrets:ro
 
+  event-reminders:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+    restart: unless-stopped
+    logging: *default-logging
+    command: sh -c "while true; do python manage.py send_event_reminders_due || true; sleep 60; done"
+    env_file:
+      - .env.backend
+    environment:
+      TELEGRAM_USE_POLLING: "0"
+    extra_hosts:
+      - "api.telegram.org:149.154.167.220"
+      - "oauth.telegram.org:149.154.167.220"
+    depends_on:
+      - db
+    volumes:
+      - ./secrets:/app/secrets:ro
+
   content-translation-tasks:
     build:
       context: ..

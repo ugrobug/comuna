@@ -3,10 +3,12 @@ from __future__ import annotations
 from django.contrib.auth import get_user_model
 from django.db.models import Avg, Count
 from django.http import HttpRequest
+from django.utils import timezone
 
 from editor import service as editor_service
 from editor.models import (
     POST_TEMPLATE_TYPE_BUG_REPORT,
+    POST_TEMPLATE_TYPE_EVENT,
     POST_TEMPLATE_TYPE_POST_VOTE_POLL,
     POST_TEMPLATE_TYPE_QUESTION,
     PostBugReportConfirmation,
@@ -227,6 +229,23 @@ def _serialize_question_answer(post: Post, user: User | None) -> dict | None:
     }
 
 
+def _serialize_event_attendance(post: Post, user: User | None) -> dict | None:
+    template_payload = _serialize_post_template(post)
+    if (
+        not isinstance(template_payload, dict)
+        or str(template_payload.get("type") or "").strip() != POST_TEMPLATE_TYPE_EVENT
+    ):
+        return None
+    starts_at = post.event_starts_at
+    return {
+        "starts_at": starts_at.isoformat() if starts_at else None,
+        "is_attending": bool(
+            user and post.event_attendances.filter(user=user).exists()
+        ),
+        "can_attend": bool(starts_at and starts_at > timezone.now()),
+    }
+
+
 def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None = None) -> dict:
     author_channel_url, author_title = _fv()._author_display_fields(
         request, post.author, post.channel_url
@@ -303,6 +322,7 @@ def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None
         "can_manage_bug_report_status": _user_can_manage_bug_report_status(user, post),
         "bug_report_confirmation": _serialize_bug_report_confirmation(post, user),
         "question_answer": _serialize_question_answer(post, user),
+        "event_attendance": _serialize_event_attendance(post, user),
         "author": {
             "username": post.author.username,
             "title": author_title,
@@ -326,5 +346,6 @@ __all__ = [
     "_serialize_post_ratings",
     "_serialize_post_template",
     "_serialize_question_answer",
+    "_serialize_event_attendance",
     "_user_can_manage_bug_report_status",
 ]

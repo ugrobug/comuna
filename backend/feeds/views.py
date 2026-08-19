@@ -64,6 +64,7 @@ from editor.models import (
     POST_TEMPLATE_TYPE_MUSIC_RELEASE as MODEL_POST_TEMPLATE_TYPE_MUSIC_RELEASE,
     POST_TEMPLATE_TYPE_POST_VOTE_POLL as MODEL_POST_TEMPLATE_TYPE_POST_VOTE_POLL,
     POST_TEMPLATE_TYPE_QUESTION as MODEL_POST_TEMPLATE_TYPE_QUESTION,
+    POST_TEMPLATE_TYPE_EVENT as MODEL_POST_TEMPLATE_TYPE_EVENT,
     PostPollVote,
     PostRatingVote,
     PostTemplateConfig,
@@ -83,6 +84,7 @@ from editor.serializers import (
     _serialize_post_ratings,
     _serialize_post_template,
     _serialize_question_answer,
+    _serialize_event_attendance,
     _user_can_manage_bug_report_status,
 )
 from editor.service import (
@@ -138,6 +140,7 @@ from .models import (
     PostCommentTranslation,
     PostCommentLike,
     PostFavorite,
+    PostEventAttendance,
     PostLike,
     PostRead,
     PublicFeedItem,
@@ -3226,6 +3229,61 @@ def question_answer_update(request: HttpRequest, post_id: int) -> HttpResponse:
 
 
 @csrf_exempt
+def event_attendance_update(request: HttpRequest, post_id: int) -> HttpResponse:
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
+
+    user = _get_user_from_request(request)
+    if not user:
+        return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
+
+    try:
+        post = (
+            Post.objects.select_related("author")
+            .filter(
+                id=post_id,
+                is_blocked=False,
+                is_pending=False,
+                author__is_blocked=False,
+            )
+            .filter(_publish_ready_filter(timezone.now()))
+            .get()
+        )
+    except Post.DoesNotExist:
+        return JsonResponse({"ok": False, "error": "post not found"}, status=404)
+
+    template_payload = _serialize_post_template(post)
+    if (
+        not isinstance(template_payload, dict)
+        or str(template_payload.get("type") or "").strip()
+        != MODEL_POST_TEMPLATE_TYPE_EVENT
+    ):
+        return JsonResponse({"ok": False, "error": "post is not an event"}, status=400)
+    if not post.event_starts_at or post.event_starts_at <= timezone.now():
+        return JsonResponse({"ok": False, "error": "event has already started"}, status=400)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8")) if request.body else {}
+    except json.JSONDecodeError:
+        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
+
+    requested_attending = payload.get("attending")
+    existing = PostEventAttendance.objects.filter(post=post, user=user).first()
+    attending = not bool(existing) if requested_attending is None else bool(requested_attending)
+    if attending:
+        PostEventAttendance.objects.get_or_create(post=post, user=user)
+    elif existing:
+        existing.delete()
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "event_attendance": _serialize_event_attendance(post, user),
+        }
+    )
+
+
+@csrf_exempt
 def comment_like(request: HttpRequest, comment_id: int) -> HttpResponse:
     if request.method != "POST":
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
@@ -3864,6 +3922,7 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
                 "can_manage_bug_report_status": _user_can_manage_bug_report_status(current_user, post),
                 "bug_report_confirmation": _serialize_bug_report_confirmation(post, current_user),
                 "question_answer": _serialize_question_answer(post, current_user),
+                "event_attendance": _serialize_event_attendance(post, current_user),
                 "vote_poll_participations": _serialize_post_vote_poll_participations(post),
                 "comun": community_service._serialize_post_comun(
                     request,

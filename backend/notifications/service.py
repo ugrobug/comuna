@@ -108,6 +108,14 @@ NOTIFICATION_EVENT_DEFINITIONS: list[dict[str, Any]] = [
         "settings_hidden": True,
     },
     {
+        "key": "event_reminder",
+        "title": "Напоминание о событии",
+        "description": "Напомнить за сутки о событии, на которое вы собираетесь.",
+        "default_site_enabled": True,
+        "default_telegram_enabled": True,
+        "default_push_enabled": True,
+    },
+    {
         "key": SPECIAL_PROJECT_NOTIFICATION_KEY,
         "title": "Оповещения спецпроектов",
         "description": "Новые материалы, напоминания и финальные уведомления по спецпроектам.",

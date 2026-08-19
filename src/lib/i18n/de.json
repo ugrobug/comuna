@@ -1306,6 +1306,8 @@
             "imdbFilled": "Fields filled from IMDb{{sources}}",
             "fillError": "Failed to fill fields",
             "publicationType": "Publication type",
+            "eventDate": "Datum und Uhrzeit der Veranstaltung",
+            "eventDateHint": "Teilnehmende erhalten einen Tag vor Beginn eine Erinnerung.",
             "title": "Title",
             "titlePlaceholder": "For example, Dune: Part Two",
             "originalTitle": "Original title",
@@ -1398,11 +1400,25 @@
                     "label": "Frage",
                     "description": "Eine Frage, deren richtige Antwort aus den Kommentaren ausgewählt wird."
                 },
+                "event": {
+                    "label": "Veranstaltung",
+                    "description": "Ein Beitrag mit Termin, Kalenderexport und Erinnerungen."
+                },
                 "tweet": {
                     "label": "Tweet",
                     "description": "Bis zu 280 Zeichen und ein Medienblock mit Bildern."
                 }
             }
+        },
+        "event": {
+            "title": "Veranstaltung",
+            "addToCalendar": "Zum Kalender hinzufügen",
+            "chooseCalendar": "Kalender auswählen",
+            "closeCalendarPicker": "Kalenderauswahl schließen",
+            "going": "Ich nehme teil",
+            "notGoing": "Ich nehme nicht teil",
+            "saving": "Speichern...",
+            "reminderHint": "Wir erinnern dich einen Tag vor der Veranstaltung."
         },
         "errors": {
             "authorNotFound": "Autor nicht gefunden",

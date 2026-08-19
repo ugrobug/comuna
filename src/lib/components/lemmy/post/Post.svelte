@@ -36,8 +36,10 @@
   } from '$lib/api/backend'
   import { siteToken } from '$lib/siteAuth'
   import PostTemplateHeader from '$lib/components/site/post-templates/PostTemplateHeader.svelte'
+  import EventTemplateFooter from '$lib/components/site/post-templates/EventTemplateFooter.svelte'
   import {
     isMovieReviewTemplate,
+    isEventTemplate,
     type BugReportTemplate,
     type SitePostTemplate,
   } from '$lib/postTemplates'
@@ -94,6 +96,7 @@
     post.post as { question_answer?: { is_solved?: boolean } | null }
   ).question_answer ?? (backendTemplate?.type === 'question' ? backendTemplate.data : null)
   $: questionSolved = Boolean(questionAnswer?.is_solved)
+  $: eventAttendance = (post.post as { event_attendance?: import('$lib/api/backend').BackendEventAttendance | null }).event_attendance ?? null
   $: backendPoll = (post.post as { poll?: BackendPoll | null }).poll ?? null
   $: backendPostRatings = (
     post.post as { post_ratings?: Record<string, BackendPostRating> | null }
@@ -405,6 +408,14 @@
           on:draftblockcomment
           class="relative text-slate-600 dark:text-zinc-400"
         />
+        {#if isEventTemplate(backendTemplate) && isBackendPost}
+          <EventTemplateFooter
+            template={backendTemplate}
+            attendance={eventAttendance}
+            postId={post.post.id}
+            title={post.post.name}
+          />
+        {/if}
         {#if backendTags.length}
           <div class="mt-4 flex flex-wrap gap-2">
             {#each backendTags as tag}

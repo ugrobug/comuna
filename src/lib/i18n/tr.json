@@ -1558,6 +1558,8 @@
             "imdbFilled": "Fields filled from IMDb{{sources}}",
             "fillError": "Failed to fill fields",
             "publicationType": "Publication type",
+            "eventDate": "Etkinlik tarihi ve saati",
+            "eventDateHint": "Katılımcılar bir gün önce hatırlatma alır.",
             "title": "Title",
             "titlePlaceholder": "For example, Dune: Part Two",
             "originalTitle": "Original title",
@@ -1650,11 +1652,25 @@
                     "label": "Soru",
                     "description": "Doğru yanıtın yorumlar arasından seçildiği bir soru."
                 },
+                "event": {
+                    "label": "Etkinlik",
+                    "description": "Tarih, takvim ve katılımcı hatırlatmaları içeren gönderi."
+                },
                 "tweet": {
                     "label": "Tweet",
                     "description": "280 karaktere kadar metin ve görseller içeren bir medya bloğu."
                 }
             }
+        },
+        "event": {
+            "title": "Etkinlik",
+            "addToCalendar": "Takvime ekle",
+            "chooseCalendar": "Takvim seçin",
+            "closeCalendarPicker": "Takvim seçimini kapat",
+            "going": "Katılacağım",
+            "notGoing": "Katılmayacağım",
+            "saving": "Kaydediliyor...",
+            "reminderHint": "Etkinlikten bir gün önce hatırlatacağız."
         },
         "errors": {
             "authorNotFound": "Yazar bulunamadı",

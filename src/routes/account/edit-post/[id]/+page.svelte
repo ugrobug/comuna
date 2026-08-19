@@ -33,10 +33,12 @@
     TWEET_TEMPLATE_MAX_LENGTH,
     buildPostTemplatePayload,
     createEmptyBugReportTemplateData,
+    createEmptyEventTemplateData,
     createEmptyMusicReleaseTemplateData,
     createEmptyMovieReviewTemplateData,
     createEmptyPostVotePollTemplateData,
     isBugReportTemplate,
+    isEventTemplate,
     isRecognizedPostTemplateType,
     isMovieReviewTemplate,
     isMusicReleaseTemplate,
@@ -45,6 +47,7 @@
     normalizeAllowedPostTemplateTypeOverrides,
     normalizeAllowedPostTemplateTypes,
     normalizeBugReportTemplateData,
+    normalizeEventTemplateData,
     normalizePostTemplateTypeOptions,
     normalizeMusicReleaseTemplateData,
     normalizeMovieReviewTemplateData,
@@ -54,6 +57,7 @@
     tweetTemplateCharacterCount,
     validateTweetTemplateContent,
     type BugReportTemplateData,
+    type EventTemplateData,
     type MusicReleaseTemplateData,
     type MovieReviewTemplateData,
     type PostTemplateType,
@@ -131,6 +135,7 @@
   let editPostVotePollData: PostVotePollTemplateData = createEmptyPostVotePollTemplateData()
   let editMusicReleaseData: MusicReleaseTemplateData = createEmptyMusicReleaseTemplateData()
   let editBugReportData: BugReportTemplateData = createEmptyBugReportTemplateData()
+  let editEventData: EventTemplateData = createEmptyEventTemplateData()
   let allowedTemplateTypes: string[] = ['basic']
 
   let saving = false
@@ -274,7 +279,8 @@
       editMovieReviewData,
       editPostVotePollData,
       editMusicReleaseData,
-      editBugReportData
+      editBugReportData,
+      editEventData
     )
 
   const buildEditPayload = () => {
@@ -483,6 +489,7 @@
     editPostVotePollData = createEmptyPostVotePollTemplateData()
     editMusicReleaseData = createEmptyMusicReleaseTemplateData()
     editBugReportData = createEmptyBugReportTemplateData()
+    editEventData = createEmptyEventTemplateData()
     editTemplateType = isRecognizedPostTemplateType(currentPost.template?.type)
       ? currentPost.template.type
       : ''
@@ -494,6 +501,8 @@
       editMusicReleaseData = normalizeMusicReleaseTemplateData(currentPost.template.data)
     } else if (isBugReportTemplate(currentPost.template)) {
       editBugReportData = normalizeBugReportTemplateData(currentPost.template.data)
+    } else if (isEventTemplate(currentPost.template)) {
+      editEventData = normalizeEventTemplateData(currentPost.template.data)
     }
     const tagNames = (currentPost.tags ?? []).map((tag) =>
       typeof tag === 'string' ? tag : tag.name
@@ -664,6 +673,10 @@
     }
     if (!editComunSlug) {
       saveError = 'Выберите сообщество'
+      return false
+    }
+    if (editTemplateType === 'event' && !editEventData.starts_at) {
+      saveError = 'Укажите дату и время события'
       return false
     }
     if (isTweetTemplateType(editTemplateType)) {
@@ -1085,6 +1098,7 @@
           bind:postVotePollData={editPostVotePollData}
           bind:musicReleaseData={editMusicReleaseData}
           bind:bugReportData={editBugReportData}
+          bind:eventData={editEventData}
           {allowedTemplateTypes}
           {templateTypeOptions}
           showTypeSelector={false}

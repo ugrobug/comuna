@@ -90,6 +90,7 @@
     { value: 'post_vote_poll', label: 'Голосование за посты' },
     { value: 'music_release', label: 'Музыкальный релиз' },
     { value: 'bug_report', label: 'Баг-репорт' },
+    { value: 'event', label: 'Событие' },
     { value: 'tweet', label: 'Твит' },
   ]
   const fallbackCustomTemplateBlockPlacementOptions = [

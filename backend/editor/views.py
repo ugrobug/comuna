@@ -13,6 +13,7 @@ from django.contrib.auth import get_user_model
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.db.models import Q
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from django.utils.text import get_valid_filename
 from django.views.decorators.csrf import csrf_exempt
 from PIL import Image, UnidentifiedImageError
@@ -22,6 +23,7 @@ from editor.models import (
     DraftBlockComment,
     DraftBlockCommentThread,
     POST_TEMPLATE_TYPE_BUG_REPORT,
+    POST_TEMPLATE_TYPE_EVENT,
     POST_TEMPLATE_TYPE_MOVIE_REVIEW,
     PostBugReportConfirmation,
     PostPollVote,
@@ -131,6 +133,33 @@ def _bug_report_status_label(status: str) -> str:
         "resolved": "Решена",
         "rejected": "Отклонена",
     }.get(str(status or "").strip(), str(status or "").strip() or "Рассмотрение")
+
+
+def _event_starts_at_from_template(template_payload: dict | None):
+    if (
+        not isinstance(template_payload, dict)
+        or str(template_payload.get("type") or "").strip() != POST_TEMPLATE_TYPE_EVENT
+    ):
+        return None
+    data = template_payload.get("data")
+    if not isinstance(data, dict):
+        return None
+    parsed = parse_datetime(str(data.get("starts_at") or "").strip())
+    if parsed and timezone.is_naive(parsed):
+        parsed = timezone.make_aware(parsed, timezone.get_current_timezone())
+    return parsed
+
+
+def _event_publish_error(template_payload: dict | None, *, is_draft: bool) -> str | None:
+    if is_draft:
+        return None
+    if (
+        isinstance(template_payload, dict)
+        and str(template_payload.get("type") or "").strip() == POST_TEMPLATE_TYPE_EVENT
+        and _event_starts_at_from_template(template_payload) is None
+    ):
+        return "event date is required"
+    return None
 
 
 def _notify_bug_report_status_changed(
@@ -780,6 +809,9 @@ def user_posts(request: HttpRequest) -> HttpResponse:
         )
         if template_content_error:
             return JsonResponse({"ok": False, "error": template_content_error}, status=400)
+        event_publish_error = _event_publish_error(template_payload, is_draft=is_draft)
+        if event_publish_error:
+            return JsonResponse({"ok": False, "error": event_publish_error}, status=400)
 
         if not is_draft and not title:
             return JsonResponse({"ok": False, "error": "title is required"}, status=400)
@@ -880,6 +912,7 @@ def user_posts(request: HttpRequest) -> HttpResponse:
             is_pending=is_draft,
             is_blocked=False,
             publish_at=publish_at,
+            event_starts_at=_event_starts_at_from_template(template_payload),
         )
         _sync_comun_category_assignment(
             post=post,
@@ -1102,6 +1135,12 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
     )
     if template_content_error:
         return JsonResponse({"ok": False, "error": template_content_error}, status=400)
+    event_publish_error = _event_publish_error(
+        effective_template_payload_for_validation,
+        is_draft=target_is_draft,
+    )
+    if event_publish_error:
+        return JsonResponse({"ok": False, "error": event_publish_error}, status=400)
 
     next_author = post.author
     if author_in_payload:
@@ -1227,6 +1266,10 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
     if raw_data_changed:
         post.raw_data = raw_data
 
+    previous_event_starts_at = post.event_starts_at
+    if template_in_payload:
+        post.event_starts_at = _event_starts_at_from_template(template_payload)
+
     post.is_pending = target_is_draft
     if target_is_draft:
         post.publish_at = None
@@ -1261,9 +1304,15 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
             "is_pending",
             "publish_at",
             "raw_data",
+            "event_starts_at",
             "updated_at",
         ]
     )
+    if previous_event_starts_at != post.event_starts_at:
+        if post.event_starts_at is None:
+            post.event_attendances.all().delete()
+        else:
+            post.event_attendances.update(reminder_sent_at=None)
     if current_is_draft and not target_is_draft:
         post.draft_accesses.all().delete()
         post.draft_comment_threads.all().delete()

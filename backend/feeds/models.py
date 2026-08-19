@@ -374,6 +374,7 @@ class Post(models.Model):
         related_name="accepted_for_questions",
     )
     question_solved_at = models.DateTimeField(null=True, blank=True)
+    event_starts_at = models.DateTimeField(null=True, blank=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -1011,6 +1012,31 @@ class PostFavorite(models.Model):
 
     def __str__(self) -> str:
         return f"{self.post_id}:{self.user_id}"
+
+
+class PostEventAttendance(models.Model):
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="event_attendances")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="event_attendances")
+    reminder_sent_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("post", "user"),
+                name="feeds_post_event_attendance_unique",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=("reminder_sent_at", "post"),
+                name="event_attendance_due_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"event-attendance:{self.post_id}:{self.user_id}"
 
 
 class PublicFeedItem(models.Model):

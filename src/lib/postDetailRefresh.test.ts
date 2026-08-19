@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { mergePostDetailPersonalization } from './postDetailRefresh'
 
 describe('mergePostDetailPersonalization', () => {
-  const serverPost = {
+  const serverPost: Record<string, any> = {
     id: 21960,
     title: 'Партизанская реклама ресторана',
     content: 'serialized-full-content',
@@ -50,5 +50,19 @@ describe('mergePostDetailPersonalization', () => {
       can_moderate: true,
     })
     expect(refreshed.author).toEqual({ username: 'author', can_manage: true })
+  })
+
+  it('updates event attendance without replacing post content', () => {
+    const refreshed = mergePostDetailPersonalization(serverPost, {
+      content: '',
+      event_attendance: {
+        starts_at: '2026-08-20T15:00:00Z',
+        is_attending: true,
+        can_attend: true,
+      },
+    })
+
+    expect(refreshed.content).toBe(serverPost.content)
+    expect(refreshed.event_attendance?.is_attending).toBe(true)
   })
 })

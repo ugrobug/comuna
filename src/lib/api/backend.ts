@@ -1334,6 +1334,12 @@ export type BackendBugReportConfirmation = {
   confirmed: boolean
 }
 
+export type BackendEventAttendance = {
+  starts_at?: string | null
+  is_attending: boolean
+  can_attend: boolean
+}
+
 export type BackendPost = {
   id: number
   title: string
@@ -1366,6 +1372,7 @@ export type BackendPost = {
   can_manage_bug_report_status?: boolean
   bug_report_confirmation?: BackendBugReportConfirmation | null
   question_answer?: BackendQuestionAnswer | null
+  event_attendance?: BackendEventAttendance | null
   tags?: BackendTag[]
   comun_category?: BackendComunCategory | null
   comun_category_id?: number | null
@@ -1432,6 +1439,7 @@ export const backendPostToPostView = (
       can_manage_bug_report_status: Boolean(post.can_manage_bug_report_status),
       bug_report_confirmation: post.bug_report_confirmation ?? null,
       question_answer: post.question_answer ?? null,
+      event_attendance: post.event_attendance ?? null,
       vote_poll_participations: post.vote_poll_participations ?? [],
       poll: post.poll ?? null,
       post_ratings: post.post_ratings ?? {},

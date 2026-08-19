@@ -40,6 +40,7 @@ from editor.models import (
     POST_TEMPLATE_TYPE_POST_VOTE_POLL,
     POST_TEMPLATE_TYPE_TWEET,
     POST_TEMPLATE_TYPE_BUG_REPORT,
+    POST_TEMPLATE_TYPE_EVENT,
     ComunCustomPostTemplate,
     ComunCustomPostTemplateBlock,
     ComunCustomPostTemplateField,
@@ -1204,6 +1205,16 @@ def _normalize_template_datetime(value: object) -> tuple[str, str | None]:
     return parsed.astimezone(dt_timezone.utc).isoformat().replace("+00:00", "Z"), None
 
 
+def _normalize_event_template_data(raw_data: object) -> tuple[dict, str | None]:
+    source = raw_data if isinstance(raw_data, dict) else {}
+    starts_at, starts_at_error = _normalize_template_datetime(
+        source.get("starts_at") or source.get("date")
+    )
+    if starts_at_error:
+        return {}, "invalid event date"
+    return {"starts_at": starts_at}, None
+
+
 def _normalize_template_bool(value: object) -> bool:
     if isinstance(value, bool):
         return value
@@ -1494,6 +1505,7 @@ def _serialize_post_template_type_options() -> list[dict]:
     descriptions_by_type: dict[str, str] = {
         POST_TEMPLATE_TYPE_TWEET: "До 280 символов и один медиаблок с изображениями.",
         POST_TEMPLATE_TYPE_BUG_REPORT: "Платформа, браузер, код ошибки и скриншот.",
+        POST_TEMPLATE_TYPE_EVENT: "Пост с датой события, календарем и напоминанием участникам.",
     }
     try:
         for template_type, description in PostTemplateConfig.objects.filter(
@@ -2080,6 +2092,23 @@ def _normalize_post_template_payload(
             return None, template_error
         return {
             "type": POST_TEMPLATE_TYPE_BUG_REPORT,
+            "version": 1,
+            "data": normalized_data,
+        }, None
+
+    if template_type == POST_TEMPLATE_TYPE_EVENT:
+        template_data_input = raw_template.get("data")
+        if template_data_input is None:
+            template_data_input = {
+                key: raw_template.get(key)
+                for key in ("starts_at", "date")
+                if raw_template.get(key) is not None
+            }
+        normalized_data, template_error = _normalize_event_template_data(template_data_input)
+        if template_error:
+            return None, template_error
+        return {
+            "type": POST_TEMPLATE_TYPE_EVENT,
             "version": 1,
             "data": normalized_data,
         }, None

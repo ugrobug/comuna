@@ -38,6 +38,7 @@
     TWEET_TEMPLATE_MAX_LENGTH,
     buildPostTemplatePayload,
     createEmptyBugReportTemplateData,
+    createEmptyEventTemplateData,
     createEmptyMusicReleaseTemplateData,
     createEmptyMovieReviewTemplateData,
     createEmptyPostVotePollTemplateData,
@@ -51,6 +52,7 @@
     tweetTemplateCharacterCount,
     validateTweetTemplateContent,
     type BugReportTemplateData,
+    type EventTemplateData,
     type MusicReleaseTemplateData,
     type MovieReviewTemplateData,
     type PostVotePollTemplateData,
@@ -105,6 +107,7 @@
   let createPostVotePollData: PostVotePollTemplateData = createEmptyPostVotePollTemplateData()
   let createMusicReleaseData: MusicReleaseTemplateData = createEmptyMusicReleaseTemplateData()
   let createBugReportData: BugReportTemplateData = createEmptyBugReportTemplateData()
+  let createEventData: EventTemplateData = createEmptyEventTemplateData()
   let templateEditorBlockSettings: TemplateEditorBlockSettings = {}
   let firstDraftChangeAt: number | null = null
   let firstDraftAutosaveCompleted = false
@@ -359,7 +362,8 @@
       createMovieReviewData,
       createPostVotePollData,
       createMusicReleaseData,
-      createBugReportData
+      createBugReportData,
+      createEventData
     )
 
   const buildDraftPayload = () => {
@@ -503,6 +507,7 @@
     postVotePollData: createPostVotePollData,
     musicReleaseData: createMusicReleaseData,
     bugReportData: createBugReportData,
+    eventData: createEventData,
   })
 
   const localDraftStorageKey = () =>
@@ -559,6 +564,7 @@
       createMusicReleaseData =
         parsed?.musicReleaseData ?? createEmptyMusicReleaseTemplateData()
       createBugReportData = parsed?.bugReportData ?? createEmptyBugReportTemplateData()
+      createEventData = parsed?.eventData ?? createEmptyEventTemplateData()
       draftId = Number.isFinite(nextDraftId) && nextDraftId > 0 ? nextDraftId : null
       firstDraftChangeAt =
         Number.isFinite(nextFirstChangeAt) && nextFirstChangeAt > 0 ? nextFirstChangeAt : null
@@ -890,6 +896,7 @@
     createPostVotePollData = createEmptyPostVotePollTemplateData()
     createMusicReleaseData = createEmptyMusicReleaseTemplateData()
     createBugReportData = createEmptyBugReportTemplateData()
+    createEventData = createEmptyEventTemplateData()
     createError = ''
     draftError = ''
     clearLocalDraftBuffer()
@@ -1025,6 +1032,10 @@
     }
     if (isEditorContentEmpty(createContent)) {
       createError = 'Текст поста не может быть пустым.'
+      return
+    }
+    if (createTemplateType === 'event' && !createEventData.starts_at) {
+      createError = 'Укажите дату и время события.'
       return
     }
     if (isTweetTemplateType(createTemplateType)) {
@@ -1449,6 +1460,7 @@
           bind:postVotePollData={createPostVotePollData}
           bind:musicReleaseData={createMusicReleaseData}
           bind:bugReportData={createBugReportData}
+          bind:eventData={createEventData}
           allowedTemplateTypes={selectedAllowedTemplateTypes}
           {templateTypeOptions}
           showTypeSelector={false}
