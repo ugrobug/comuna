@@ -1115,6 +1115,16 @@
     },
     "logout": "Log out",
     "site": {
+        "hiddenContent": {
+            "author": "Anda menyembunyikan penulis ini",
+            "post": "Anda menyembunyikan postingan ini",
+            "tag": "Anda menyembunyikan postingan dengan tag «{{label}}»",
+            "community": "Anda menyembunyikan postingan dari komunitas ini",
+            "settings": "Konten ini disembunyikan oleh pengaturan Anda",
+            "description": "Anda dapat menampilkannya sekali atau mengembalikannya ke feed biasa.",
+            "showOnce": "Tampilkan sekali",
+            "showAlways": "Selalu tampilkan"
+        },
         "draftShare": {
             "button": "Bagikan",
             "title": "Bagikan draf",

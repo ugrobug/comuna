@@ -6,6 +6,7 @@
   import Post from '$lib/components/lemmy/post/Post.svelte'
   import PostComments from '$lib/components/site/PostComments.svelte'
   import PostCommunityBanner from '$lib/components/site/PostCommunityBanner.svelte'
+  import HiddenContentNotice from '$lib/components/feeds/HiddenContentNotice.svelte'
   import {
     backendAuthorPath,
     backendPostCommunityPath,
@@ -24,6 +25,11 @@
   import { parseSerializedEditorModel, looksLikeSerializedEditorModel } from '$lib/util'
   import { mergePostDetailPersonalization } from '$lib/postDetailRefresh'
   import { locale, t } from '$lib/translations'
+  import { userSettings } from '$lib/settings'
+  import {
+    clearHiddenContentReasons,
+    getBackendPostHiddenReasons,
+  } from '$lib/postVisibility'
   import { Icon, CheckCircle } from 'svelte-hero-icons'
 
   export let data
@@ -34,6 +40,7 @@
   let lastVisitedPostId: number | null = null
   let lastAuthenticatedPostKey = ''
   let showOriginalPost = false
+  let showHiddenContentOnce = false
   let postCommentsComponent: { openAnswerSelector: () => void } | null = null
 
   const stripHtml = (value: string) =>
@@ -222,11 +229,17 @@
           content: postData.original_content || postData.content,
         }
       : postData
+  $: hiddenContentReasons = postData
+    ? getBackendPostHiddenReasons(postData, $userSettings)
+    : []
+  $: primaryHiddenContentReason = hiddenContentReasons[0] ?? null
+  $: hiddenContentBlocked = Boolean(primaryHiddenContentReason && !showHiddenContentOnce)
   $: if (data.post !== lastRoutePost) {
     lastRoutePost = data.post
     postData = data.post
     lastAuthenticatedPostKey = ''
     showOriginalPost = false
+    showHiddenContentOnce = false
   }
   $: if (!canShowOriginalPost && showOriginalPost) {
     showOriginalPost = false
@@ -376,6 +389,11 @@
     globalThis.setTimeout(run, 1000)
   }
 
+  const showHiddenContentAlways = () => {
+    userSettings.update((settings) => clearHiddenContentReasons(settings, hiddenContentReasons))
+    showHiddenContentOnce = true
+  }
+
   $: if (browser && postData?.id && !translationUnavailable && $siteToken) {
     void refreshPostForCurrentUser()
   }
@@ -464,6 +482,13 @@
         </div>
       {/if}
     </section>
+  {:else if hiddenContentBlocked && primaryHiddenContentReason}
+    <HiddenContentNotice
+      reason={primaryHiddenContentReason.kind}
+      label={primaryHiddenContentReason.label ?? ''}
+      on:showonce={() => (showHiddenContentOnce = true)}
+      on:showalways={showHiddenContentAlways}
+    />
   {:else}
     <div class="rounded-xl border border-slate-200 border-b-slate-300 bg-white p-4 dark:border-zinc-800 dark:border-t-zinc-700 dark:bg-zinc-900 sm:p-6">
       {#if canShowOriginalPost}

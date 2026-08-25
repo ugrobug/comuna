@@ -61,19 +61,22 @@
   export let currentWelcomePostId: number | null | undefined = undefined
   export let draftReviewEnabled = false
   export let draftCommentCounts: Record<string, number> = {}
+  export let ignoreTagRules = false
 
   $: postUrl = linkOverride ?? postLink(post.post)
   $: isBackendPost = Boolean(linkOverride)
   $: type = mediaType(post.post.url, view)
-  $: rule = getTagRule(
-    backendTags
-      .flatMap((tag) => {
-        const lemma = getTagKey(tag)
-        const name = normalizeTag(getTagName(tag))
-        return lemma === name ? [lemma] : [lemma, name]
-      })
-      .map((content) => ({ content }))
-  )
+  $: rule = ignoreTagRules
+    ? undefined
+    : getTagRule(
+        backendTags
+          .flatMap((tag) => {
+            const lemma = getTagKey(tag)
+            const name = normalizeTag(getTagName(tag))
+            return lemma === name ? [lemma] : [lemma, name]
+          })
+          .map((content) => ({ content }))
+      )
   $: hideByTag = shouldHidePostContent(rule, showFullBody)
   $: communityName = post.community?.name || ''
   $: communityTitle = post.community?.title || ''

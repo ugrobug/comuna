@@ -5,6 +5,7 @@
   import { onDestroy, onMount } from 'svelte'
   import LoginModal from '$lib/components/auth/LoginModal.svelte'
   import FeedPostsList from '$lib/components/feeds/FeedPostsList.svelte'
+  import HiddenContentNotice from '$lib/components/feeds/HiddenContentNotice.svelte'
   import {
     buildPublicUserProfileUrl,
     type BackendPost,
@@ -24,7 +25,7 @@
   import { userSettings } from '$lib/settings'
   import { brandNameForLanguage } from '$lib/brand'
   import { locale, t } from '$lib/translations'
-  import { isBackendPostVisible } from '$lib/postVisibility'
+  import { clearHiddenContentReasons, isBackendPostVisible } from '$lib/postVisibility'
 
   export let data
 
@@ -45,6 +46,7 @@
   let loginModalOpen = false
   let profileTab: 'posts' | 'drafts' = 'posts'
   let lastOwnerProfileId: number | null = null
+  let showHiddenAuthorOnce = false
   let lastPostsRef = data.posts
   let lastProfileRef = data.profile
   let lastComunsRef = data.comuns
@@ -67,7 +69,16 @@
     comuns = data.comuns ?? []
   }
 
-  $: visiblePosts = posts.filter((post) => isBackendPostVisible(post, $userSettings))
+  $: profileUsername = (profile?.username ?? '').trim()
+  $: authorHiddenOnPortal = Boolean(
+    profileUsername &&
+      ($userSettings.hiddenAuthors ?? []).some(
+        (value) => value.trim().toLowerCase() === profileUsername.toLowerCase()
+      )
+  )
+  $: visiblePosts = showHiddenAuthorOnce
+    ? posts
+    : posts.filter((post) => isBackendPostVisible(post, $userSettings))
   $: isOwnProfile = Boolean(profile?.id && $siteUser?.id && profile.id === $siteUser.id)
   $: ownerDrafts = ownerPosts.filter((item) => item.is_draft)
   $: currentProfileId = profile?.id ?? null
@@ -78,6 +89,7 @@
     ownerPostsError = ''
     ownerPosts = []
     profileTab = 'posts'
+    showHiddenAuthorOnce = false
   }
 
   const formatNumber = (value: number | undefined) => {
@@ -246,6 +258,16 @@
     }
   }
 
+  const showHiddenAuthorAlways = () => {
+    if (!profileUsername) return
+    userSettings.update((settings) =>
+      clearHiddenContentReasons(settings, [
+        { kind: 'author', values: [profileUsername], label: profileUsername },
+      ])
+    )
+    showHiddenAuthorOnce = true
+  }
+
   $: if (isOwnProfile && $siteToken && !ownerPostsLoaded && !ownerPostsLoading) {
     void loadOwnerPosts()
   }
@@ -387,8 +409,19 @@
         </button>
       {/if}
     </div>
-    {#if profileTab === 'posts' && visiblePosts.length}
-      <FeedPostsList posts={visiblePosts} {loadingMore} />
+    {#if profileTab === 'posts' && authorHiddenOnPortal && !showHiddenAuthorOnce}
+      <HiddenContentNotice
+        reason="author"
+        label={profileUsername}
+        on:showonce={() => (showHiddenAuthorOnce = true)}
+        on:showalways={showHiddenAuthorAlways}
+      />
+    {:else if profileTab === 'posts' && visiblePosts.length}
+      <FeedPostsList
+        posts={visiblePosts}
+        {loadingMore}
+        respectHiddenContent={!showHiddenAuthorOnce}
+      />
     {:else if profileTab === 'posts'}
       <div class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-4 text-sm text-slate-500 dark:text-zinc-400">
         {$t('site.publicUser.emptyPosts')}

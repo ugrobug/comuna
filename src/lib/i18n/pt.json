@@ -973,6 +973,16 @@
         }
     },
     "site": {
+        "hiddenContent": {
+            "author": "Você ocultou este autor",
+            "post": "Você ocultou esta publicação",
+            "tag": "Você ocultou publicações com a tag «{{label}}»",
+            "community": "Você ocultou publicações desta comunidade",
+            "settings": "Este conteúdo está oculto pelas suas configurações",
+            "description": "Você pode mostrá-lo apenas desta vez ou restaurá-lo nos seus feeds.",
+            "showOnce": "Mostrar uma vez",
+            "showAlways": "Mostrar sempre"
+        },
         "draftShare": {
             "button": "Compartilhar",
             "title": "Compartilhar rascunho",

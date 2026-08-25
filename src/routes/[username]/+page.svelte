@@ -1,6 +1,7 @@
 <script lang="ts">
   import { browser } from '$app/environment'
   import FeedPostsList from '$lib/components/feeds/FeedPostsList.svelte'
+  import HiddenContentNotice from '$lib/components/feeds/HiddenContentNotice.svelte'
   import { buildAuthorPostsUrl, type BackendPost } from '$lib/api/backend'
   import { env } from '$env/dynamic/public'
   import { userSettings } from '$lib/settings'
@@ -8,7 +9,7 @@
   import { onDestroy, onMount } from 'svelte'
   import { brandNameForLanguage } from '$lib/brand'
   import { locale, t } from '$lib/translations'
-  import { isBackendPostVisible } from '$lib/postVisibility'
+  import { clearHiddenContentReasons, isBackendPostVisible } from '$lib/postVisibility'
 
   export let data
 
@@ -27,6 +28,8 @@
   }
   const scrollThreshold = 400
   let scrollRaf: number | null = null
+  let showHiddenAuthorOnce = false
+  let lastHiddenAuthorUsername = ''
 
   const formatNumber = (value: number | undefined) => {
     if (!value && value !== 0) return '—'
@@ -34,7 +37,13 @@
   }
 
   $: authorUsername = data.author?.username ?? ''
-  $: visiblePosts = posts.filter((post: BackendPost) => isBackendPostVisible(post, $userSettings))
+  $: if (authorUsername !== lastHiddenAuthorUsername) {
+    lastHiddenAuthorUsername = authorUsername
+    showHiddenAuthorOnce = false
+  }
+  $: visiblePosts = showHiddenAuthorOnce
+    ? posts
+    : posts.filter((post: BackendPost) => isBackendPostVisible(post, $userSettings))
   $: authorHiddenOnPortal = Boolean(
     authorUsername &&
       ($userSettings.hiddenAuthors ?? []).some(
@@ -52,6 +61,16 @@
     (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '') + '/'
   ).toString()
 
+  const showHiddenAuthorAlways = () => {
+    if (!authorUsername) return
+    userSettings.update((settings) =>
+      clearHiddenContentReasons(settings, [
+        { kind: 'author', values: [authorUsername], label: authorUsername },
+      ])
+    )
+    showHiddenAuthorOnce = true
+  }
+
   const buildPageUrl = (offset: number) => {
     const username = data.author?.username
     if (!username) return ''
@@ -62,7 +81,7 @@
   }
 
   const loadMore = async () => {
-    if (loadingMore || !hasMore || authorHiddenOnPortal) return
+    if (loadingMore || !hasMore || (authorHiddenOnPortal && !showHiddenAuthorOnce)) return
     const url = buildPageUrl(posts.length)
     if (!url) return
     loadingMore = true
@@ -174,8 +193,19 @@
 
   <div class="text-lg font-semibold text-slate-900 dark:text-zinc-100">{$t('site.authorProfile.postsTitle')}</div>
 
-  {#if visiblePosts?.length}
-    <FeedPostsList posts={visiblePosts} {loadingMore} />
+  {#if authorHiddenOnPortal && !showHiddenAuthorOnce}
+    <HiddenContentNotice
+      reason="author"
+      label={authorUsername}
+      on:showonce={() => (showHiddenAuthorOnce = true)}
+      on:showalways={showHiddenAuthorAlways}
+    />
+  {:else if visiblePosts?.length}
+    <FeedPostsList
+      posts={visiblePosts}
+      {loadingMore}
+      respectHiddenContent={!showHiddenAuthorOnce}
+    />
   {:else}
     <div class="text-base text-slate-500">{$t('site.authorProfile.emptyPosts')}</div>
   {/if}

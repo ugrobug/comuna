@@ -1092,6 +1092,16 @@
         "created": "Oluşturuldu"
     },
     "site": {
+        "hiddenContent": {
+            "author": "Bu yazarı gizlediniz",
+            "post": "Bu gönderiyi gizlediniz",
+            "tag": "«{{label}}» etiketli gönderileri gizlediniz",
+            "community": "Bu topluluğun gönderilerini gizlediniz",
+            "settings": "Bu içerik ayarlarınız nedeniyle gizli",
+            "description": "İçeriği yalnızca bu kez gösterebilir veya normal akışlarınıza geri alabilirsiniz.",
+            "showOnce": "Bir kez göster",
+            "showAlways": "Her zaman göster"
+        },
         "draftShare": {
             "button": "Paylaş",
             "title": "Taslağı paylaş",

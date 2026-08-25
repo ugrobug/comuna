@@ -1067,6 +1067,16 @@
         "incorrect_login_5": "Petite question, regardez-vous les touches sur lesquelles vous appuyez ?"
     },
     "site": {
+        "hiddenContent": {
+            "author": "Vous avez masqué cet auteur",
+            "post": "Vous avez masqué cette publication",
+            "tag": "Vous avez masqué les publications avec le tag « {{label}} »",
+            "community": "Vous avez masqué les publications de cette communauté",
+            "settings": "Ce contenu est masqué par vos paramètres",
+            "description": "Vous pouvez l’afficher une seule fois ou le restaurer dans vos fils habituels.",
+            "showOnce": "Afficher une fois",
+            "showAlways": "Toujours afficher"
+        },
         "draftShare": {
             "button": "Partager",
             "title": "Partager le brouillon",

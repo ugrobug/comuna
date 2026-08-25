@@ -25,6 +25,8 @@
   export let hideTitle = false
   export let comunCategories: BackendComunCategory[] = []
   export let currentWelcomePostId: number | null | undefined = undefined
+  export let respectHiddenContent = true
+  export let ignoreTagRules = false
   export let postClass =
     'feed-shortcut-post rounded-2xl border border-slate-200/80 bg-white/95 px-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/85 sm:px-5'
 
@@ -42,7 +44,9 @@
     dispatch('hide', event.detail)
   }
 
-  $: visiblePosts = posts.filter((post) => isBackendPostVisible(post, $userSettings))
+  $: visiblePosts = respectHiddenContent
+    ? posts.filter((post) => isBackendPostVisible(post, $userSettings))
+    : posts
 
   const forward = (event: CustomEvent) => {
     dispatch(event.type, event.detail)
@@ -82,6 +86,7 @@
         hideSubscribe={isSpecialProjectPost(backendPost)}
         {comunCategories}
         {currentWelcomePostId}
+        {ignoreTagRules}
         on:hide={(event) => handleHide(backendPost.id, event)}
         on:categorychange={forward}
         on:pinned={forward}

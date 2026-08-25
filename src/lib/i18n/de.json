@@ -840,6 +840,16 @@
         }
     },
     "site": {
+        "hiddenContent": {
+            "author": "Du hast diesen Autor ausgeblendet",
+            "post": "Du hast diesen Beitrag ausgeblendet",
+            "tag": "Du hast Beiträge mit dem Tag „{{label}}“ ausgeblendet",
+            "community": "Du hast Beiträge aus dieser Community ausgeblendet",
+            "settings": "Dieser Inhalt ist durch deine Einstellungen ausgeblendet",
+            "description": "Du kannst ihn einmalig anzeigen oder dauerhaft wieder einblenden.",
+            "showOnce": "Einmal anzeigen",
+            "showAlways": "Immer anzeigen"
+        },
         "draftShare": {
             "button": "Teilen",
             "title": "Entwurf teilen",

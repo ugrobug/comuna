@@ -5,6 +5,7 @@
   import { onDestroy, onMount } from 'svelte'
   import { Button, toast } from 'mono-svelte'
   import FeedPostsList from '$lib/components/feeds/FeedPostsList.svelte'
+  import HiddenContentNotice from '$lib/components/feeds/HiddenContentNotice.svelte'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import { buildTagPostsUrl, type BackendPost } from '$lib/api/backend'
   import { userSettings } from '$lib/settings'
@@ -30,10 +31,16 @@
   }
   const scrollThreshold = 400
   let scrollRaf: number | null = null
+  let showHiddenTagOnce = false
+  let lastHiddenTagKey = ''
 
   $: tagName = data.tag?.name ?? data.tag ?? ''
   $: tagLemma = normalizeTag(data.tag?.lemma ?? tagName)
   $: tagKey = tagLemma
+  $: if (tagKey !== lastHiddenTagKey) {
+    lastHiddenTagKey = tagKey
+    showHiddenTagOnce = false
+  }
   $: isBlacklisted = Boolean(tagKey && $userSettings.tagRules?.[tagKey] === 'hide')
 
   $: siteTitle = brandNameForLanguage($locale)
@@ -143,6 +150,16 @@
       type: 'success',
     })
   }
+
+  const showHiddenTagAlways = () => {
+    if (!tagKey) return
+    userSettings.update((settings) => {
+      const nextRules = { ...(settings.tagRules ?? {}) }
+      delete nextRules[tagKey]
+      return { ...settings, tagRules: nextRules }
+    })
+    showHiddenTagOnce = true
+  }
 </script>
 
 <div class="flex flex-col gap-6 max-w-3xl">
@@ -150,19 +167,28 @@
     <h1 class="text-2xl font-bold">Посты по тегу: «{tagName}»</h1>
   </Header>
 
-  <div class="flex flex-wrap items-center gap-3">
-    <Button
-      size="sm"
-      color="secondary"
-      on:click={toggleBlacklist}
-    >
-      {isBlacklisted ? 'Убрать из черного списка' : 'Добавить тег в черный список'}
-    </Button>
-  </div>
-
-  {#if visiblePosts?.length}
-    <FeedPostsList posts={visiblePosts} {loadingMore} />
+  {#if isBlacklisted && !showHiddenTagOnce}
+    <HiddenContentNotice
+      reason="tag"
+      label={tagName}
+      on:showonce={() => (showHiddenTagOnce = true)}
+      on:showalways={showHiddenTagAlways}
+    />
   {:else}
+    <div class="flex flex-wrap items-center gap-3">
+      <Button size="sm" color="secondary" on:click={toggleBlacklist}>
+        {isBlacklisted ? 'Убрать из черного списка' : 'Добавить тег в черный список'}
+      </Button>
+    </div>
+  {/if}
+
+  {#if (!isBlacklisted || showHiddenTagOnce) && visiblePosts?.length}
+    <FeedPostsList
+      posts={visiblePosts}
+      {loadingMore}
+      ignoreTagRules={showHiddenTagOnce}
+    />
+  {:else if !isBlacklisted || showHiddenTagOnce}
     <div class="text-base text-slate-500">По этому тегу пока нет публикаций.</div>
   {/if}
 </div>

@@ -41,6 +41,7 @@
     VK_VIDEO_URL_PATTERN,
     vkVideoEmbedUrlFromMatchGroups,
   } from '$lib/vkVideo'
+  import { findDzenUrl, type DzenUrlMatch } from '$lib/dzen'
   import { get } from 'svelte/store'
   import { Button, toast } from 'mono-svelte'
   import CustomInputTune from './CustomInputTune'
@@ -4708,7 +4709,95 @@
     updateMarkdown(data)
   }
 
+  const appendTextWithLineBreaks = (fragment: DocumentFragment, value: string) => {
+    value.split('\n').forEach((part, index) => {
+      if (index > 0) fragment.appendChild(document.createElement('br'))
+      if (part) fragment.appendChild(document.createTextNode(part))
+    })
+  }
+
+  const buildDzenLinkHtml = (clipboardText: string, match: DzenUrlMatch): string => {
+    const sourceIndex = clipboardText.indexOf(match.source)
+    const before = sourceIndex >= 0 ? clipboardText.slice(0, sourceIndex) : ''
+    const after = sourceIndex >= 0 ? clipboardText.slice(sourceIndex + match.source.length) : ''
+    const link = `<a href="${escapeInlineHtml(match.href)}" target="_blank" rel="noopener">${escapeInlineHtml(match.source)}</a>`
+    return `${escapeInlineHtml(before)}${link}${escapeInlineHtml(after)}`.replace(/\n/g, '<br>')
+  }
+
+  const insertDzenLinkFromClipboard = async (
+    clipboardText: string,
+    match: DzenUrlMatch
+  ) => {
+    const selection = window.getSelection()
+    const range = selection?.rangeCount ? selection.getRangeAt(0) : null
+    const rangeElement = range
+      ? (range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+          ? range.commonAncestorContainer
+          : range.commonAncestorContainer.parentElement) as HTMLElement | null
+      : null
+    const editable = rangeElement?.closest<HTMLElement>('[contenteditable="true"]') ?? null
+
+    if (range && editable && element.contains(editable)) {
+      const sourceIndex = clipboardText.indexOf(match.source)
+      const before = sourceIndex >= 0 ? clipboardText.slice(0, sourceIndex) : ''
+      const after = sourceIndex >= 0 ? clipboardText.slice(sourceIndex + match.source.length) : ''
+      const fragment = document.createDocumentFragment()
+      appendTextWithLineBreaks(fragment, before)
+
+      const link = document.createElement('a')
+      link.href = match.href
+      link.target = '_blank'
+      link.rel = 'noopener'
+      link.textContent = match.source
+      fragment.appendChild(link)
+      appendTextWithLineBreaks(fragment, after)
+
+      const lastNode = fragment.lastChild
+      range.deleteContents()
+      range.insertNode(fragment)
+      if (lastNode) {
+        range.setStartAfter(lastNode)
+        range.collapse(true)
+        selection?.removeAllRanges()
+        selection?.addRange(range)
+      }
+      editable.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }))
+    } else {
+      const currentBlockIndex =
+        typeof editor.blocks?.getCurrentBlockIndex === 'function'
+          ? editor.blocks.getCurrentBlockIndex()
+          : -1
+      const blocksCount =
+        typeof editor.blocks?.getBlocksCount === 'function'
+          ? editor.blocks.getBlocksCount()
+          : 0
+      const insertIndex = currentBlockIndex >= 0
+        ? Math.min(currentBlockIndex + 1, blocksCount)
+        : blocksCount
+      await editor.blocks.insert(
+        'paragraph',
+        { text: buildDzenLinkHtml(clipboardText, match) },
+        {},
+        insertIndex,
+        true
+      )
+    }
+
+    const data = await editor.save()
+    updateMarkdown(data)
+  }
+
   const handleEditorPaste = async (event: ClipboardEvent) => {
+    const target = event.target as HTMLElement | null
+    const clipboardText = event.clipboardData?.getData('text/plain')?.trim() ?? ''
+    const dzenMatch = target?.closest('input, textarea') ? null : findDzenUrl(clipboardText)
+    if (dzenMatch) {
+      event.preventDefault()
+      event.stopPropagation()
+      await insertDzenLinkFromClipboard(clipboardText, dzenMatch)
+      return
+    }
+
     const imageFile = getPastedImageFile(event)
     if (!imageFile) return
 

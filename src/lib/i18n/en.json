@@ -1115,6 +1115,16 @@
     },
     "logout": "Log out",
     "site": {
+        "hiddenContent": {
+            "author": "You hid this author",
+            "post": "You hid this post",
+            "tag": "You hid posts tagged “{{label}}”",
+            "community": "You hid posts from this community",
+            "settings": "This content is hidden by your settings",
+            "description": "You can reveal it for this visit or restore it to your regular feeds.",
+            "showOnce": "Show once",
+            "showAlways": "Always show"
+        },
         "draftShare": {
             "button": "Share",
             "title": "Share draft",

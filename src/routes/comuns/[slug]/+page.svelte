@@ -6,6 +6,7 @@
   import { Button, Modal, toast } from 'mono-svelte'
   import WelcomePostDropdown from '$lib/components/comuns/WelcomePostDropdown.svelte'
   import FeedPostsList from '$lib/components/feeds/FeedPostsList.svelte'
+  import HiddenContentNotice from '$lib/components/feeds/HiddenContentNotice.svelte'
   import {
     buildComunGlossaryPath,
     buildComunKnowledgeBasePath,
@@ -21,7 +22,12 @@
   import { createSiteChat, refreshSiteUser, siteToken, siteUser, uploadSiteImage } from '$lib/siteAuth'
   import { env } from '$env/dynamic/public'
   import { userSettings } from '$lib/settings'
-  import { isBackendPostVisible } from '$lib/postVisibility'
+  import {
+    clearHiddenContentReasons,
+    getBackendPostHiddenReasons,
+    isBackendPostVisible,
+    type HiddenContentReason,
+  } from '$lib/postVisibility'
   import { deserializeEditorModel } from '$lib/util'
   import { brandNameForLanguage } from '$lib/brand'
   import { locale, t } from '$lib/translations'
@@ -77,6 +83,8 @@
   let categoryFilterElement: HTMLDivElement | null = null
   let comunHeaderDetailsOpen = false
   let lastComunHeaderDetailsSlug = ''
+  let hiddenContentComunSlug = ''
+  let showHiddenContentOnce = false
   type ComunUserOption = { id: number; username: string; display_name?: string | null }
   let settingsUserOptions: ComunUserOption[] = []
   let settingsUserSearchTimer: ReturnType<typeof setTimeout> | null = null
@@ -230,6 +238,10 @@
     lastComunHeaderDetailsSlug = comun?.slug ?? ''
     comunHeaderDetailsOpen = false
   }
+  $: if ((comun?.slug ?? '') !== hiddenContentComunSlug) {
+    hiddenContentComunSlug = comun?.slug ?? ''
+    showHiddenContentOnce = false
+  }
   $: incomingCategoryFilterSlugs = normalizeCategorySlugList(
     data?.selectedCategorySlugs ??
       (data?.selectedCategory?.slug
@@ -266,7 +278,9 @@
         : uncategorizedPostsCount
   }
 
-  $: visiblePosts = posts.filter((post) => isBackendPostVisible(post, $userSettings))
+  $: visiblePosts = showHiddenContentOnce
+    ? posts
+    : posts.filter((post) => isBackendPostVisible(post, $userSettings))
 
   const isModerator = () => Boolean(comun?.can_moderate && $siteToken)
   const canManageComunModerators = () => Boolean(comun?.can_manage_moderators && $siteToken)
@@ -296,6 +310,31 @@
       can_moderate: Boolean(comun?.can_moderate),
     },
   })
+  const collectHiddenContentReasons = (
+    sourcePosts: BackendPost[],
+    settings: typeof $userSettings
+  ): HiddenContentReason[] => {
+    const reasons: HiddenContentReason[] = []
+    const seen = new Set<string>()
+    for (const post of sourcePosts) {
+      for (const reason of getBackendPostHiddenReasons(post, settings)) {
+        const key = `${reason.kind}:${reason.values.join(',')}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        reasons.push(reason)
+      }
+    }
+    return reasons
+  }
+  $: communityPagePosts = [
+    ...(comun?.welcome_post ? [withCurrentComunContext(comun.welcome_post)] : []),
+    ...posts.map(withCurrentComunContext),
+  ]
+  $: communityHiddenContentReasons = collectHiddenContentReasons(
+    communityPagePosts,
+    $userSettings
+  )
+  $: primaryCommunityHiddenReason = communityHiddenContentReasons[0] ?? null
   const handlePostCategoryChange = (
     event: CustomEvent<{
       postId: number
@@ -366,7 +405,11 @@
   $: minimumAuthorRatingToPost = Math.max(Number(comun?.minimum_author_rating_to_post ?? 0) || 0, 0)
   $: comunCategories = comun?.categories ?? []
   $: feedPosts = visiblePosts.map(withCurrentComunContext)
-  $: welcomeFeedPosts = comun?.welcome_post ? [withCurrentComunContext(comun.welcome_post)] : []
+  $: welcomeFeedPosts = comun?.welcome_post
+    ? showHiddenContentOnce || isBackendPostVisible(comun.welcome_post, $userSettings)
+      ? [withCurrentComunContext(comun.welcome_post)]
+      : []
+    : []
   $: currentWelcomePostId = comun?.welcome_post_id ?? comun?.welcome_post?.id ?? null
   $: hasComunCategories = comunCategories.length > 0
   $: hasUserWritableComunCategory = comunCategories.some(
@@ -1093,6 +1136,13 @@
     url.searchParams.set('limit', String(pageSize))
     url.searchParams.set('offset', String(offset))
     return url.toString()
+  }
+
+  const showCommunityHiddenContentAlways = () => {
+    userSettings.update((settings) =>
+      clearHiddenContentReasons(settings, communityHiddenContentReasons)
+    )
+    showHiddenContentOnce = true
   }
 
   const reloadContentLanguage = async (language: string) => {
@@ -1850,6 +1900,15 @@
     </div>
   {/if}
 
+  {#if primaryCommunityHiddenReason && !showHiddenContentOnce}
+    <HiddenContentNotice
+      reason={primaryCommunityHiddenReason.kind}
+      label={primaryCommunityHiddenReason.label ?? ''}
+      on:showonce={() => (showHiddenContentOnce = true)}
+      on:showalways={showCommunityHiddenContentAlways}
+    />
+  {/if}
+
   {#if comun?.welcome_post && welcomeFeedPosts.length}
     <section class="rounded-2xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/60 dark:bg-blue-950/20 p-4 sm:p-5">
       <div class="mb-3 text-sm font-semibold text-blue-800 dark:text-blue-300">
@@ -1861,6 +1920,8 @@
         hideCommunity={true}
         {comunCategories}
         {currentWelcomePostId}
+        respectHiddenContent={!showHiddenContentOnce}
+        ignoreTagRules={showHiddenContentOnce}
         on:categorychange={handlePostCategoryChange}
         on:pinned={handleWelcomePostPinned}
         on:unpinned={handleWelcomePostUnpinned}
@@ -1875,11 +1936,13 @@
       hideCommunity={true}
       {comunCategories}
       {currentWelcomePostId}
+      respectHiddenContent={!showHiddenContentOnce}
+      ignoreTagRules={showHiddenContentOnce}
       on:categorychange={handlePostCategoryChange}
       on:pinned={handleWelcomePostPinned}
       on:unpinned={handleWelcomePostUnpinned}
     />
-  {:else}
+  {:else if !primaryCommunityHiddenReason || showHiddenContentOnce}
     <div class="rounded-2xl border border-slate-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/85 p-6 text-slate-600 dark:text-zinc-400">
       <div class="flex flex-col gap-4">
         <div>

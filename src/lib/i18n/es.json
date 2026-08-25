@@ -1003,6 +1003,16 @@
         "slurs": "Su aporte contiene un término prohibido por esta instancia."
     },
     "site": {
+        "hiddenContent": {
+            "author": "Has ocultado a este autor",
+            "post": "Has ocultado esta publicación",
+            "tag": "Has ocultado las publicaciones con la etiqueta «{{label}}»",
+            "community": "Has ocultado las publicaciones de esta comunidad",
+            "settings": "Este contenido está oculto por tu configuración",
+            "description": "Puedes mostrarlo solo esta vez o restaurarlo en tus feeds habituales.",
+            "showOnce": "Mostrar una vez",
+            "showAlways": "Mostrar siempre"
+        },
         "draftShare": {
             "button": "Compartir",
             "title": "Compartir borrador",
