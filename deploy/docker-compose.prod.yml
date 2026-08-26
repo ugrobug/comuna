@@ -63,14 +63,20 @@ services:
       sh -c "until python -u manage.py rebuild_public_feed; do sleep 10; done;
       while true; do
       sleep 300;
+      python -u manage.py rehydrate_post_images --limit 100 --missing-images-only --created-after-hours 336 || true;
       python -u manage.py rebuild_public_feed || true;
       done"
     env_file:
       - .env.backend
     environment:
       TELEGRAM_USE_POLLING: "0"
+    extra_hosts:
+      - "api.telegram.org:149.154.167.220"
+      - "oauth.telegram.org:149.154.167.220"
     depends_on:
       - db
+    volumes:
+      - media_data:/app/media
 
   sitemap-materializer:
     build:

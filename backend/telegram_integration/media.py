@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import secrets
+import time
 import urllib.parse
 import urllib.request
 from urllib.error import URLError
@@ -12,6 +14,34 @@ from rabotaem_backend.images import save_image_with_variants
 from rabotaem_backend.media_urls import public_media_url, public_url
 
 _TELEGRAM_FILE_RE = re.compile(r"https?://api\.telegram\.org/file/bot[^/\s<>'\"]+/(.+)")
+_TELEGRAM_DOWNLOAD_ATTEMPTS = 3
+_TELEGRAM_RETRY_DELAY_SECONDS = 0.35
+_TELEGRAM_REQUEST_TIMEOUT_SECONDS = 5
+logger = logging.getLogger(__name__)
+
+
+def _retry_delay(attempt: int) -> None:
+    time.sleep(_TELEGRAM_RETRY_DELAY_SECONDS * (attempt + 1))
+
+
+def _download_bytes(url: str) -> bytes | None:
+    for attempt in range(_TELEGRAM_DOWNLOAD_ATTEMPTS):
+        try:
+            with urllib.request.urlopen(
+                url,
+                timeout=_TELEGRAM_REQUEST_TIMEOUT_SECONDS,
+            ) as response:
+                return response.read()
+        except (URLError, TimeoutError, OSError) as exc:
+            if attempt + 1 >= _TELEGRAM_DOWNLOAD_ATTEMPTS:
+                logger.warning(
+                    "Telegram file download failed after %s attempts: %s",
+                    _TELEGRAM_DOWNLOAD_ATTEMPTS,
+                    exc.__class__.__name__,
+                )
+                return None
+            _retry_delay(attempt)
+    return None
 
 
 def build_public_media_url(path: str) -> str:
@@ -49,10 +79,8 @@ def download_telegram_file_by_path(file_path: str, token: str) -> str | None:
     if not file_path or not token:
         return None
     url = f"https://api.telegram.org/file/bot{token}/{file_path}"
-    try:
-        with urllib.request.urlopen(url, timeout=10) as response:
-            data = response.read()
-    except URLError:
+    data = _download_bytes(url)
+    if data is None:
         return None
     ext = os.path.splitext(file_path)[1].lower()
     if not ext or len(ext) > 8:
@@ -65,10 +93,8 @@ def download_telegram_file_by_path(file_path: str, token: str) -> str | None:
 def download_telegram_file_by_url(url: str) -> str | None:
     if not url:
         return None
-    try:
-        with urllib.request.urlopen(url, timeout=10) as response:
-            data = response.read()
-    except URLError:
+    data = _download_bytes(url)
+    if data is None:
         return None
     ext = os.path.splitext(urllib.parse.urlparse(url).path)[1].lower()
     if not ext or len(ext) > 8:
@@ -93,11 +119,24 @@ def download_telegram_file_by_id(file_id: str, token: str) -> str | None:
 def _fetch_telegram_json(method: str, token: str, payload: dict) -> dict | None:
     url = f"https://api.telegram.org/bot{token}/{method}"
     data = urllib.parse.urlencode(payload).encode("utf-8")
-    try:
-        with urllib.request.urlopen(url, data=data, timeout=10) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except (URLError, json.JSONDecodeError):
-        return None
+    for attempt in range(_TELEGRAM_DOWNLOAD_ATTEMPTS):
+        try:
+            with urllib.request.urlopen(
+                url,
+                data=data,
+                timeout=_TELEGRAM_REQUEST_TIMEOUT_SECONDS,
+            ) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except (URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
+            if attempt + 1 >= _TELEGRAM_DOWNLOAD_ATTEMPTS:
+                logger.warning(
+                    "Telegram getFile failed after %s attempts: %s",
+                    _TELEGRAM_DOWNLOAD_ATTEMPTS,
+                    exc.__class__.__name__,
+                )
+                return None
+            _retry_delay(attempt)
+    return None
 
 
 __all__ = [

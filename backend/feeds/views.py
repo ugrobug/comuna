@@ -167,7 +167,7 @@ from ratings.service import (
     get_rating_settings as _get_rating_settings,
     user_max_author_rating as _user_max_author_rating,
 )
-from telegram_integration.media import download_telegram_file_by_path
+from telegram_integration.media import download_telegram_file_by_id
 from telegram_integration.models import TelegramAccount
 from users.models import (
     AuthorAdmin,
@@ -2099,13 +2099,7 @@ def _extract_photo_url(message: dict, token: str) -> str | None:
     file_id = _extract_photo_file_id(message)
     if not file_id:
         return None
-    file_info = _fetch_telegram_json("getFile", token, {"file_id": file_id})
-    if not file_info or not file_info.get("ok") or not file_info.get("result"):
-        return None
-    file_path = file_info["result"].get("file_path")
-    if not file_path:
-        return None
-    return download_telegram_file_by_path(file_path, token)
+    return download_telegram_file_by_id(file_id, token)
 
 
 def _extract_audio_file_id(message: dict) -> str | None:
@@ -2138,15 +2132,7 @@ def _extract_audio_url(message: dict, token: str | None) -> str:
     if not file_id:
         return ""
 
-    file_info = _fetch_telegram_json("getFile", token, {"file_id": file_id})
-    if not file_info or not file_info.get("ok") or not file_info.get("result"):
-        return ""
-
-    file_path = file_info["result"].get("file_path")
-    if not file_path:
-        return ""
-
-    audio_url = download_telegram_file_by_path(file_path, token) or ""
+    audio_url = download_telegram_file_by_id(file_id, token) or ""
     if audio_url:
         message["audio_url"] = audio_url
     return audio_url

@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import re
+from datetime import timedelta
 from html import escape
 from typing import Iterable
 
-from django.conf import settings
 from django.core.management.base import BaseCommand
+from django.db.models import Q
 from django.utils import timezone
 
-from django.db.models import Q
-
 from feeds.models import Post
+from rabotaem_backend.media_urls import media_storage_path_from_url
 from telegram_integration.media import (
     download_telegram_file_by_id,
     download_telegram_file_by_path,
@@ -29,6 +29,8 @@ class Command(BaseCommand):
     def add_arguments(self, parser) -> None:
         parser.add_argument("--limit", type=int, default=0)
         parser.add_argument("--post-id", type=int, default=0)
+        parser.add_argument("--missing-images-only", action="store_true")
+        parser.add_argument("--created-after-hours", type=int, default=0)
         parser.add_argument("--dry-run", action="store_true")
 
     def handle(self, *args, **options) -> None:
@@ -39,6 +41,8 @@ class Command(BaseCommand):
 
         limit = options["limit"] or 0
         post_id = options["post_id"] or 0
+        missing_images_only = options["missing_images_only"]
+        created_after_hours = max(options["created_after_hours"] or 0, 0)
         dry_run = options["dry_run"]
 
         qs = (
@@ -53,6 +57,12 @@ class Command(BaseCommand):
         )
         if post_id:
             qs = qs.filter(id=post_id)
+        if missing_images_only:
+            qs = qs.exclude(content__icontains="<img")
+        if created_after_hours:
+            qs = qs.filter(
+                created_at__gte=timezone.now() - timedelta(hours=created_after_hours)
+            )
         if limit:
             qs = qs[:limit]
 
@@ -216,9 +226,7 @@ class Command(BaseCommand):
     def _is_local_url(url: str) -> bool:
         if not url:
             return False
-        if url.startswith("/media/"):
-            return True
-        return url.startswith(settings.SITE_BASE_URL.rstrip("/") + settings.MEDIA_URL)
+        return media_storage_path_from_url(url) is not None
 
     @staticmethod
     def _unique_nonempty(values: list[str]) -> list[str]:
