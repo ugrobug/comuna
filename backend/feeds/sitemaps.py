@@ -35,10 +35,11 @@ from feeds.seo_indexing import (
     seo_indexable_comuns_queryset,
     seo_indexable_posts_queryset,
 )
+from feeds.translation_quality import post_meets_translation_quality
 from landing_pages.models import LandingPage
 
 
-SITEMAP_MATERIALIZER_VERSION = 3
+SITEMAP_MATERIALIZER_VERSION = 4
 SITEMAP_SHARD_SIZE = 5_000
 ORIGINAL_LANGUAGE = "ru"
 TRANSLATED_LANGUAGES = ("en", "es", "pt", "de", "fr", "tr", "id")
@@ -310,7 +311,14 @@ def _build_post_files(queryset: QuerySet, start: int, end: int, base_url: str) -
     ).only("post_id", "language", "title", "updated_at", "status")
     posts = list(
         queryset.filter(id__gte=start, id__lte=end)
-        .only("id", "title", "original_language", "created_at", "updated_at")
+        .only(
+            "id",
+            "title",
+            "original_language",
+            "translation_text_length",
+            "created_at",
+            "updated_at",
+        )
         .prefetch_related(Prefetch("translations", queryset=translations, to_attr="_sitemap_translations"))
         .order_by("id")
     )
@@ -333,14 +341,15 @@ def _build_post_files(queryset: QuerySet, start: int, end: int, base_url: str) -
                 _utc_timestamp(post.updated_at or post.created_at),
             )
         }
-        for translation in getattr(post, "_sitemap_translations", []):
-            if translation.language == original_language:
-                continue
-            title = (translation.title or "").strip() or original_title
-            path = build_post_public_path(post.id, title)
-            if translation.language != ORIGINAL_LANGUAGE:
-                path = f"/{translation.language}{path}"
-            versions[translation.language] = (path, _utc_timestamp(translation.updated_at))
+        if post_meets_translation_quality(post):
+            for translation in getattr(post, "_sitemap_translations", []):
+                if translation.language == original_language:
+                    continue
+                title = (translation.title or "").strip() or original_title
+                path = build_post_public_path(post.id, title)
+                if translation.language != ORIGINAL_LANGUAGE:
+                    path = f"/{translation.language}{path}"
+                versions[translation.language] = (path, _utc_timestamp(translation.updated_at))
 
         alternates = tuple(
             SitemapAlternate(language, f"{base_url}{versions[language][0]}")

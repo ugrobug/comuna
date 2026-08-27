@@ -48,6 +48,10 @@ from feeds.models import (
     StaticPageTranslation,
 )
 from feeds.preview import build_post_preview
+from feeds.translation_quality import (
+    MIN_POST_TRANSLATION_TEXT_LENGTH,
+    post_meets_translation_quality,
+)
 
 
 class PostTranslationError(Exception):
@@ -880,6 +884,13 @@ def translate_static_page_to_language(page: StaticPageContent, language: str) ->
 
 
 def queue_post_translation(post: Post, languages: list[str]) -> list[PostTranslation]:
+    if not _post_translation_context_is_allowed(post):
+        raise PostTranslationError("Пост недоступен для перевода")
+    if not post_meets_translation_quality(post):
+        raise PostTranslationError(
+            "Для перевода содержимое поста должно содержать не менее "
+            f"{MIN_POST_TRANSLATION_TEXT_LENGTH} символов без учета заголовка и хештегов"
+        )
     normalized_languages = [
         language
         for language in _normalize_translation_languages(languages)
@@ -1269,6 +1280,10 @@ def _scheduled_at_for(post: Post, kind: str):
 
 
 def _post_is_translatable(post: Post) -> bool:
+    return _post_translation_context_is_allowed(post) and post_meets_translation_quality(post)
+
+
+def _post_translation_context_is_allowed(post: Post) -> bool:
     if not post.pk or post.is_blocked or post.is_pending:
         return False
     if post.publish_at and post.publish_at > timezone.now():
@@ -1284,7 +1299,7 @@ def _comment_is_translatable(comment: PostComment) -> bool:
     post = getattr(comment, "post", None)
     if post is None:
         post = Post.objects.filter(pk=comment.post_id).select_related("author").first()
-    return bool(post and _post_is_translatable(post))
+    return bool(post and _post_translation_context_is_allowed(post))
 
 
 def _comun_is_translatable(comun: Comun) -> bool:

@@ -24,6 +24,7 @@ from feeds.translation_service import (
     _scheduled_at_for,
     post_translation_record_is_current,
 )
+from feeds.translation_quality import post_meets_translation_quality
 
 
 WHEREFILMED_PRIORITY_AT = datetime(2000, 1, 1, tzinfo=datetime_timezone.utc)
@@ -240,6 +241,8 @@ def _post_is_translatable_for_backfill(
     negative_source_author_ids: set[int],
 ) -> bool:
     if not post.pk or post.is_blocked or post.is_pending:
+        return False
+    if not post_meets_translation_quality(post):
         return False
     if post.publish_at and post.publish_at > now:
         return True

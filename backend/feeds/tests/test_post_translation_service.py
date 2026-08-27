@@ -18,6 +18,7 @@ from feeds.models import (
     CONTENT_TRANSLATION_TASK_STATUS_DONE,
     CONTENT_TRANSLATION_TASK_STATUS_FAILED,
     CONTENT_TRANSLATION_TASK_STATUS_PENDING,
+    CONTENT_TRANSLATION_TASK_STATUS_RUNNING,
     Comun,
     ContentTranslationRun,
     ContentTranslationSettings,
@@ -40,6 +41,7 @@ from feeds.translation_service import (
 )
 
 User = get_user_model()
+TRANSLATABLE_CONTENT = f"<p>{'Первый содержательный абзац. ' * 24}</p>"
 
 
 class FakeOpenRouterResponse:
@@ -65,7 +67,7 @@ class PostTranslationServiceTests(TestCase):
             author=self.author,
             message_id=1,
             title="Заголовок",
-            content="<p>Первый абзац</p>",
+            content=TRANSLATABLE_CONTENT,
         )
 
     @patch("feeds.translation_service.requests.post")
@@ -343,6 +345,26 @@ class PostTranslationServiceTests(TestCase):
         self.assertIn("tr", command)
         self.assertIn("id", command)
 
+    @patch("feeds.translation_service.subprocess.Popen")
+    def test_short_post_is_not_queued_for_translation(self, popen_mock) -> None:
+        short_post = Post.objects.create(
+            author=self.author,
+            message_id=99,
+            title="Очень длинный заголовок " * 8,
+            content="<p>Короткий текст #длинный_хештег</p>",
+        )
+
+        with self.assertRaisesRegex(PostTranslationError, "не менее 500 символов"):
+            queue_post_translation(short_post, ["en"])
+
+        self.assertFalse(
+            ContentTranslationTask.objects.filter(
+                kind=CONTENT_TRANSLATION_KIND_POST,
+                object_id=short_post.pk,
+            ).exists()
+        )
+        popen_mock.assert_not_called()
+
     def test_post_save_schedules_auto_translation_after_ten_minutes(self) -> None:
         task = ContentTranslationTask.objects.get(
             kind=CONTENT_TRANSLATION_KIND_POST,
@@ -386,6 +408,26 @@ class PostTranslationServiceTests(TestCase):
         self.assertEqual(task.source_updated_at, comment.updated_at)
         self.assertGreaterEqual(task.scheduled_at, comment.updated_at + timedelta(minutes=1))
 
+    def test_short_parent_post_does_not_block_comment_translation(self) -> None:
+        short_post = Post.objects.create(
+            author=self.author,
+            message_id=98,
+            title="Короткий пост",
+            content="<p>Короткий текст</p>",
+        )
+        comment = PostComment.objects.create(
+            post=short_post,
+            user=self.user,
+            body="Комментарий переводится независимо от длины поста",
+        )
+
+        self.assertTrue(
+            ContentTranslationTask.objects.filter(
+                kind=CONTENT_TRANSLATION_KIND_COMMENT,
+                object_id=comment.pk,
+            ).exists()
+        )
+
     def test_negative_comun_does_not_schedule_auto_translation(self) -> None:
         comun = Comun.objects.create(
             name="Минусовая комуна",
@@ -408,7 +450,7 @@ class PostTranslationServiceTests(TestCase):
             author=self.author,
             message_id=2,
             title="Второй заголовок",
-            content="<p>Второй абзац</p>",
+            content=TRANSLATABLE_CONTENT,
         )
         due_at = timezone.now() - timedelta(minutes=1)
         ContentTranslationTask.objects.filter(
@@ -492,7 +534,7 @@ class PostTranslationServiceTests(TestCase):
             author=self.author,
             message_id=2,
             title="Второй заголовок",
-            content="<p>Второй абзац</p>",
+            content=TRANSLATABLE_CONTENT,
         )
         ContentTranslationTask.objects.filter(
             kind=CONTENT_TRANSLATION_KIND_POST,

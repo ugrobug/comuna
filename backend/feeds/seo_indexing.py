@@ -7,6 +7,7 @@ from django.utils import timezone
 from communities.models import Comun
 from feeds.language_detection import post_language_text
 from feeds.models import Post, PostComment
+from feeds.translation_quality import post_meets_translation_quality
 
 
 MIN_POST_TEXT_LENGTH = 200
@@ -104,6 +105,14 @@ def post_is_seo_indexable(post: Post, *, now=None) -> bool:
     if post.author_id:
         blocked_filter |= Q(telegram_source_author_id=post.author_id)
     return not inactive_comuns.filter(blocked_filter).exists()
+
+
+def post_language_is_seo_indexable(post: Post, language: str, *, now=None) -> bool:
+    if not post_is_seo_indexable(post, now=now):
+        return False
+    if language == post.original_language:
+        return True
+    return post_meets_translation_quality(post)
 
 
 def comun_public_posts_queryset(comun: Comun, *, now=None) -> QuerySet:

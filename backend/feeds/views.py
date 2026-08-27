@@ -122,7 +122,8 @@ from editor.service import (
 )
 from ratings.models import AuthorRatingEvent
 from .post_paths import build_post_public_path
-from .seo_indexing import post_is_seo_indexable
+from .seo_indexing import post_language_is_seo_indexable
+from .translation_quality import post_meets_translation_quality
 from .models import (
     Author,
     ContentReport,
@@ -2725,6 +2726,8 @@ def _post_language_versions(post: Post) -> list[dict]:
         }
     ]
     translations = _translation_by_language(post)
+    if not post_meets_translation_quality(post):
+        return versions
     for language in PUBLIC_POST_LANGUAGES:
         if language == original_language:
             continue
@@ -3900,7 +3903,11 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
                 "og_locale": PUBLIC_POST_OG_LOCALES[language],
                 "is_translated": translation is not None,
                 "translation_unavailable": translation_unavailable,
-                "seo_indexable": post_is_seo_indexable(post, now=now),
+                "seo_indexable": post_language_is_seo_indexable(
+                    post,
+                    language,
+                    now=now,
+                ),
                 "language_versions": language_versions,
                 "available_languages": [version["language"] for version in language_versions],
                 "template": template_payload,

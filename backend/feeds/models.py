@@ -339,6 +339,7 @@ class Post(models.Model):
     tags = models.ManyToManyField(Tag, blank=True, related_name="posts")
     content = models.TextField(blank=True)
     seo_text_length = models.PositiveIntegerField(default=0, db_index=True)
+    translation_text_length = models.PositiveIntegerField(default=0, db_index=True)
     preview_content = models.TextField(blank=True)
     preview_image_url = models.TextField(blank=True)
     original_language = models.CharField(
@@ -410,6 +411,7 @@ class Post(models.Model):
             {"content", "raw_data"} & set(update_fields)
         )
         should_refresh_seo_text = update_fields is None or "content" in set(update_fields)
+        should_refresh_translation_text = update_fields is None or "content" in set(update_fields)
         if should_refresh_preview:
             from feeds.preview import build_post_preview
 
@@ -427,6 +429,14 @@ class Post(models.Model):
             if update_fields is not None:
                 kwargs["update_fields"] = list(
                     set(kwargs["update_fields"]) | {"seo_text_length"}
+                )
+        if should_refresh_translation_text:
+            from feeds.translation_quality import post_translation_text_length
+
+            self.translation_text_length = post_translation_text_length(self.content)
+            if update_fields is not None:
+                kwargs["update_fields"] = list(
+                    set(kwargs["update_fields"]) | {"translation_text_length"}
                 )
         super().save(*args, **kwargs)
 

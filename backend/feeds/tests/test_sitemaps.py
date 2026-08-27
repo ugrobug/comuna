@@ -27,7 +27,7 @@ from landing_pages.models import LandingPage
 
 
 SITE_BASE_URL = "https://tambur.pub"
-LONG_CONTENT = f"<p>{'Полезный текст публикации ' * 12}</p>"
+LONG_CONTENT = f"<p>{'Полезный текст публикации ' * 24}</p>"
 User = get_user_model()
 
 
@@ -382,3 +382,44 @@ class MaterializedSitemapTests(TestCase):
         )
         self.assertIn("/comuns/sparse-community", refreshed_xml)
         self.assertIn("/comuns/sparse-community/roadmap", refreshed_xml)
+
+    def test_short_post_translation_is_noindex_and_excluded_from_hreflang_and_sitemap(self) -> None:
+        short_translated_post = Post.objects.create(
+            id=5095,
+            author=self.author,
+            message_id=95,
+            title="Оригинальный короткий пост",
+            content=f"<p>{'Содержательный текст ' * 18} #неучитываемыйтег</p>",
+        )
+        PostTranslation.objects.create(
+            post=short_translated_post,
+            language="en",
+            title="Short translated post",
+            content="<p>Translated text</p>",
+            status="translated",
+        )
+
+        self.assertGreaterEqual(short_translated_post.seo_text_length, 200)
+        self.assertLess(short_translated_post.translation_text_length, 500)
+
+        self._materialize()
+        all_xml = "".join(
+            path.read_text(encoding="utf-8")
+            for path in self.output_dir.glob("sitemap*.xml")
+        )
+        original_url = f"{SITE_BASE_URL}/b/post/{short_translated_post.id}-"
+        translated_url = f"{SITE_BASE_URL}/en/b/post/{short_translated_post.id}-"
+        self.assertIn(original_url, all_xml)
+        self.assertNotIn(translated_url, all_xml)
+
+        original_response = self.client.get(f"/api/posts/{short_translated_post.id}/?lang=ru")
+        translated_response = self.client.get(f"/api/posts/{short_translated_post.id}/?lang=en")
+        self.assertTrue(original_response.json()["post"]["seo_indexable"])
+        self.assertFalse(translated_response.json()["post"]["seo_indexable"])
+        self.assertEqual(
+            [
+                version["language"]
+                for version in translated_response.json()["post"]["language_versions"]
+            ],
+            ["ru"],
+        )
