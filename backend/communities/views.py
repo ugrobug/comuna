@@ -2468,6 +2468,21 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
         comun.knowledge_base_enabled = bool(body.get("knowledge_base_enabled"))
     if "community_map_enabled" in body:
         comun.community_map_enabled = bool(body.get("community_map_enabled"))
+    if "telegram_ai_summary_prompt" in body:
+        if not current_user or current_user.id != comun.creator_id:
+            return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
+        if not comun.telegram_ai_summary_enabled:
+            return JsonResponse(
+                {"ok": False, "error": "ai features are not enabled"},
+                status=403,
+            )
+        telegram_ai_summary_prompt = str(body.get("telegram_ai_summary_prompt") or "").strip()
+        if len(telegram_ai_summary_prompt) > 3000:
+            return JsonResponse(
+                {"ok": False, "error": "summary prompt is too long"},
+                status=400,
+            )
+        comun.telegram_ai_summary_prompt = telegram_ai_summary_prompt
     if "roadmap_category_ids" in body:
         requested_roadmap_category_ids = community_service._parse_int_list(body.get("roadmap_category_ids"))
         active_category_ids = set(

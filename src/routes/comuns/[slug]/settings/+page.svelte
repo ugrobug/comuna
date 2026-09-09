@@ -323,6 +323,9 @@
       roadmap_enabled: Boolean(value?.roadmap_enabled ?? false),
       knowledge_base_enabled: Boolean(value?.knowledge_base_enabled ?? false),
       community_map_enabled: Boolean(value?.community_map_enabled ?? false),
+      telegram_ai_summary_prompt: value?.telegram_ai_summary_enabled
+        ? String(value?.telegram_ai_summary_prompt ?? '').trim()
+        : '',
       minimum_author_rating_to_post: Math.max(
         Number(value?.minimum_author_rating_to_post ?? 0) || 0,
         0
@@ -1008,6 +1011,10 @@
           roadmap_enabled: Boolean(settingsDraft.roadmap_enabled ?? false),
           knowledge_base_enabled: Boolean(settingsDraft.knowledge_base_enabled ?? false),
           community_map_enabled: Boolean(settingsDraft.community_map_enabled ?? false),
+          telegram_ai_summary_prompt:
+            canManageComunModerators() && settingsDraft.telegram_ai_summary_enabled
+              ? String(settingsDraft.telegram_ai_summary_prompt ?? '').trim()
+              : undefined,
           minimum_author_rating_to_post: Math.max(
             Number(settingsDraft.minimum_author_rating_to_post ?? 0) || 0,
             0
@@ -1495,6 +1502,44 @@
               </div>
             {/if}
           </div>
+
+          {#if canManageComunModerators() && settingsDraft.telegram_ai_summary_enabled}
+            <div class="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/40">
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div class="text-base font-semibold text-slate-950 dark:text-zinc-50">
+                    Промт для ИИ-саммари
+                  </div>
+                  <div class="mt-1 text-sm text-slate-500 dark:text-zinc-400">
+                    Эти инструкции будут добавляться к запросу, когда бот делает саммари сообщений из привязанного Telegram-чата.
+                  </div>
+                </div>
+                <span class="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">
+                  ИИ функции одобрены
+                </span>
+              </div>
+              <label class="flex flex-col gap-2">
+                <span class="text-sm font-medium text-slate-700 dark:text-zinc-300">
+                  Дополнительные инструкции для саммари
+                </span>
+                <textarea
+                  value={settingsDraft.telegram_ai_summary_prompt ?? ''}
+                  maxlength="3000"
+                  rows="7"
+                  placeholder="Например: выдели принятые решения, ответственных и следующие шаги. Сохрани важные ссылки и числа. Пиши нейтрально и без вводных фраз."
+                  class="min-h-40 resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm leading-relaxed text-slate-900 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                  on:input={(event) =>
+                    patchSettingsDraft({
+                      telegram_ai_summary_prompt: (event.currentTarget as HTMLTextAreaElement).value,
+                    })}
+                ></textarea>
+                <span class="flex flex-wrap justify-between gap-2 text-xs text-slate-500 dark:text-zinc-400">
+                  <span>Если оставить поле пустым, бот использует стандартный промт.</span>
+                  <span>{String(settingsDraft.telegram_ai_summary_prompt ?? '').length} / 3000</span>
+                </span>
+              </label>
+            </div>
+          {/if}
 
           {#if canManageComunModerators()}
             <div class="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/40">

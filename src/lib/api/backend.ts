@@ -1014,6 +1014,8 @@ export type BackendComun = {
   roadmap_enabled?: boolean
   knowledge_base_enabled?: boolean
   community_map_enabled?: boolean
+  telegram_ai_summary_enabled?: boolean
+  telegram_ai_summary_prompt?: string
   roadmap_category_ids?: number[]
   roadmap_categories?: BackendComunCategory[]
   glossary_terms?: BackendComunGlossaryTerm[]

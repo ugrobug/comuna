@@ -147,10 +147,18 @@ class Comun(models.Model):
     telegram_chat_title = models.CharField(max_length=255, blank=True, verbose_name="Название Telegram-чата")
     telegram_ai_summary_enabled = models.BooleanField(
         default=False,
-        verbose_name="ИИ-саммари сообщений Telegram",
+        verbose_name="ИИ функции",
         help_text=(
             "Разрешает участникам привязанного Telegram-чата создавать заявки "
             "в базу знаний из ИИ-саммари пересланных сообщений."
+        ),
+    )
+    telegram_ai_summary_prompt = models.TextField(
+        blank=True,
+        verbose_name="Промт для ИИ-саммари Telegram",
+        help_text=(
+            "Дополнительные инструкции создателя сообщества для саммари "
+            "сообщений из привязанного Telegram-чата."
         ),
     )
     moderators = models.ManyToManyField(

@@ -96,6 +96,7 @@ class ComunAdmin(admin.ModelAdmin):
         "telegram_chat_id",
         "telegram_chat_title",
         "telegram_ai_summary_enabled",
+        "telegram_ai_summary_prompt",
         "categories",
         "allowed_post_templates",
         "rating_score",

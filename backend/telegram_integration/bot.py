@@ -1569,7 +1569,10 @@ def _handle_forward_batch_action(
         try:
             from telegram_integration.ai import summarize_telegram_messages
 
-            title, source_text = summarize_telegram_messages(source_text)
+            title, source_text = summarize_telegram_messages(
+                source_text,
+                custom_prompt=comun.telegram_ai_summary_prompt,
+            )
         except Exception as error:
             _reset_forward_batch_processing(chat_id)
             _send_bot_message(chat_id, f"Не удалось сделать саммари: {str(error)[:500]}")
@@ -1624,6 +1627,9 @@ def _handle_forward_batch_action(
             source_payload={
                 "source": "telegram_forward_batch",
                 "ai_summary": action == "sum",
+                "ai_summary_prompt": (
+                    comun.telegram_ai_summary_prompt if action == "sum" else ""
+                ),
                 "messages": messages,
             },
         )

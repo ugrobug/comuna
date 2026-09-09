@@ -629,6 +629,13 @@ def _serialize_comun(
     if include_activity:
         payload["activity"] = _serialize_comun_activity(request, comun)
     if include_manage_fields:
+        payload["telegram_ai_summary_enabled"] = bool(comun.telegram_ai_summary_enabled)
+        if (
+            current_user
+            and current_user.id == comun.creator_id
+            and comun.telegram_ai_summary_enabled
+        ):
+            payload["telegram_ai_summary_prompt"] = comun.telegram_ai_summary_prompt
         payload["category_ids"] = [category.id for category in categories]
         payload["roadmap_category_ids"] = [category.id for category in roadmap_categories]
         payload["moderator_ids"] = [moderator.id for moderator in moderators]

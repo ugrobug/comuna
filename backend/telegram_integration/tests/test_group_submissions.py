@@ -352,11 +352,13 @@ class TelegramGroupSubmissionTests(TestCase):
         self.comun.telegram_chat_id = -1001
         self.comun.telegram_chat_title = "Chat"
         self.comun.telegram_ai_summary_enabled = True
+        self.comun.telegram_ai_summary_prompt = "Выделяй решения и следующие шаги."
         self.comun.save(
             update_fields=[
                 "telegram_chat_id",
                 "telegram_chat_title",
                 "telegram_ai_summary_enabled",
+                "telegram_ai_summary_prompt",
                 "updated_at",
             ]
         )
@@ -389,13 +391,22 @@ class TelegramGroupSubmissionTests(TestCase):
             patch(
                 "telegram_integration.ai.summarize_telegram_messages",
                 return_value=("Итоги обсуждения", "Команда приняла полезное решение."),
-            ),
+            ) as summarize_mock,
             patch("notifications.service.send_site_notification_to_push"),
         ):
             telegram_bot._handle_callback_query(callback)
 
+        self.assertEqual(
+            summarize_mock.call_args.kwargs["custom_prompt"],
+            "Выделяй решения и следующие шаги.",
+        )
+        self.assertIn("Длинное обсуждение решения", summarize_mock.call_args.args[0])
         submission = ComunTelegramSubmission.objects.get()
         self.assertEqual(submission.request_type, ComunTelegramSubmission.TYPE_KNOWLEDGE_BASE)
         self.assertEqual(submission.title, "Итоги обсуждения")
         self.assertEqual(submission.source_text, "Команда приняла полезное решение.")
         self.assertTrue(submission.source_payload["ai_summary"])
+        self.assertEqual(
+            submission.source_payload["ai_summary_prompt"],
+            "Выделяй решения и следующие шаги.",
+        )
