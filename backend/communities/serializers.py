@@ -630,6 +630,7 @@ def _serialize_comun(
         payload["activity"] = _serialize_comun_activity(request, comun)
     if include_manage_fields:
         payload["telegram_ai_summary_enabled"] = bool(comun.telegram_ai_summary_enabled)
+        payload["telegram_chat_title"] = comun.telegram_chat_title
         if (
             current_user
             and current_user.id == comun.creator_id

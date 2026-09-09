@@ -18,7 +18,7 @@
     type BackendComunCategory,
     type BackendTag,
   } from '$lib/api/backend'
-  import { siteToken, uploadSiteImage } from '$lib/siteAuth'
+  import { fetchVerificationCode, siteToken, uploadSiteImage } from '$lib/siteAuth'
   import {
     normalizeAllowedPostTemplateTypeOverrides,
     normalizeAllowedPostTemplateTypes,
@@ -68,7 +68,13 @@
   }
   type SettingsOptionType = 'users' | 'tags' | 'authors'
   type TemplateTypeOption = { value: PostTemplateCode; label: string; description?: string }
-  type ComunSettingsTabKey = 'description' | 'moderation' | 'categories' | 'applications' | 'rules'
+  type ComunSettingsTabKey =
+    | 'description'
+    | 'moderation'
+    | 'telegram'
+    | 'categories'
+    | 'applications'
+    | 'rules'
   type ComunFeatureApplicationKey =
     | 'glossary_enabled'
     | 'knowledge_base_enabled'
@@ -112,6 +118,7 @@
   const comunSettingsTabs: Array<{ value: ComunSettingsTabKey; label: string }> = [
     { value: 'description', label: 'Описание' },
     { value: 'moderation', label: 'Модерирование' },
+    { value: 'telegram', label: 'Telegram' },
     { value: 'categories', label: 'Категории и шаблоны' },
     { value: 'applications', label: 'Приложения' },
     { value: 'rules', label: 'Правила' },
@@ -149,6 +156,11 @@
   let settingsTemplateTypeOptions: TemplateTypeOption[] = fallbackTemplateTypeOptions
   let installedCommunityApplications: ComunApplication[] = []
   let settingsTelegramChannelOptions: ComunTelegramChannelOption[] = []
+  let telegramChannelSetupOpen = false
+  let telegramVerificationCode = ''
+  let telegramVerificationCodeLoading = false
+  let telegramVerificationCodeError = ''
+  let telegramChannelsRefreshing = false
   let settingsLogoInput: HTMLInputElement | null = null
   let settingsTab: ComunSettingsTabKey = 'description'
   const settingsOptionSearchTimers: Partial<Record<SettingsOptionType, ReturnType<typeof setTimeout>>> = {}
@@ -564,6 +576,73 @@
     const target = event.currentTarget as HTMLInputElement | null
     const nextValue = target?.value ?? ''
     setDraftTelegramChannel(nextValue, null)
+  }
+
+  const loadTelegramVerificationCode = async () => {
+    telegramChannelSetupOpen = true
+    telegramVerificationCodeLoading = true
+    telegramVerificationCodeError = ''
+    try {
+      telegramVerificationCode = await fetchVerificationCode()
+    } catch (error) {
+      telegramVerificationCodeError =
+        error instanceof Error ? error.message : 'Не удалось получить код подтверждения'
+    } finally {
+      telegramVerificationCodeLoading = false
+    }
+  }
+
+  const copyTelegramVerificationCode = async () => {
+    if (!browser || !telegramVerificationCode) return
+    try {
+      await navigator.clipboard.writeText(telegramVerificationCode)
+      toast({ content: 'Код скопирован', type: 'success' })
+    } catch {
+      toast({ content: 'Не удалось скопировать код', type: 'error' })
+    }
+  }
+
+  const refreshTelegramChannelOptions = async () => {
+    if (!$siteToken || !slug || telegramChannelsRefreshing) return
+    telegramChannelsRefreshing = true
+    try {
+      const comunUrl = new URL(buildComunUrl(slug, { includeSettings: true }), window.location.origin)
+      comunUrl.searchParams.set('_', String(Date.now()))
+      const response = await fetch(comunUrl.toString(), {
+        headers: { Authorization: `Bearer ${$siteToken}` },
+        cache: 'no-store',
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Не удалось обновить список каналов')
+      }
+      settingsTelegramChannelOptions = payload.comun?.options?.telegram_channels ?? []
+      const currentUsername = String(settingsDraft?.telegram_channel_username ?? '')
+        .trim()
+        .replace(/^https?:\/\/t\.me\//i, '')
+        .replace(/^@/, '')
+        .split(/[/?#]/, 1)[0]
+        .toLowerCase()
+      const confirmedChannel = settingsTelegramChannelOptions.find(
+        (channel) => channel.username.toLowerCase() === currentUsername
+      )
+      if (confirmedChannel) {
+        setDraftTelegramChannel(confirmedChannel.username, confirmedChannel)
+      }
+      toast({
+        content: confirmedChannel
+          ? `Канал @${confirmedChannel.username} подтвержден и выбран`
+          : 'Список подтвержденных каналов обновлен',
+        type: 'success',
+      })
+    } catch (error) {
+      toast({
+        content: error instanceof Error ? error.message : 'Не удалось обновить список каналов',
+        type: 'error',
+      })
+    } finally {
+      telegramChannelsRefreshing = false
+    }
   }
 
   const setDraftModeratorIds = (ids: number[]) => {
@@ -1452,95 +1531,6 @@
             </div>
           </div>
 
-          <div class="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/40">
-            <div class="text-base font-semibold text-slate-950 dark:text-zinc-50">
-              Telegram-канал сообщества
-            </div>
-            <div class="text-sm text-slate-500 dark:text-zinc-400">
-              Укажите публичный @username канала или выберите уже подтвержденный канал.
-            </div>
-            <input
-              value={settingsDraft.telegram_channel_username ?? ''}
-              on:input={onTelegramChannelInput}
-              placeholder="@mychannel или https://t.me/mychannel"
-              class="rounded-xl border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2"
-            />
-
-            {#if settingsTelegramChannelOptions.length}
-              <div class="flex flex-col gap-2">
-                <div class="text-xs uppercase tracking-wide text-slate-500 dark:text-zinc-400">
-                  Ваши подтвержденные каналы
-                </div>
-                <div class="flex flex-wrap gap-2">
-                  {#each settingsTelegramChannelOptions as author}
-                    <button
-                      type="button"
-                      class={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm transition ${
-                        Number(selectedTelegramSourceAuthor?.id) === Number(author.id)
-                          ? 'border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-zinc-900'
-                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800'
-                      }`}
-                      on:click={() => setDraftTelegramChannel(author.username, author)}
-                    >
-                      <span>@{author.username}</span>
-                      {#if author.title}
-                        <span class="text-xs opacity-70">{author.title}</span>
-                      {/if}
-                    </button>
-                  {/each}
-                </div>
-              </div>
-            {/if}
-
-            {#if selectedTelegramSourceAuthor}
-              <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/20 dark:text-emerald-200">
-                Канал уже связан с сообществом: @{selectedTelegramSourceAuthor.username}
-              </div>
-            {:else if pendingTelegramChannelUsername}
-              <div class="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200">
-                Канал сохранен в ожидании: {pendingTelegramChannelUsername.startsWith('@') ? pendingTelegramChannelUsername : `@${pendingTelegramChannelUsername}`}. После сохранения завершите подключение в боте и отправьте код подтверждения.
-              </div>
-            {/if}
-          </div>
-
-          {#if canManageComunModerators() && settingsDraft.telegram_ai_summary_enabled}
-            <div class="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/40">
-              <div class="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div class="text-base font-semibold text-slate-950 dark:text-zinc-50">
-                    Промт для ИИ-саммари
-                  </div>
-                  <div class="mt-1 text-sm text-slate-500 dark:text-zinc-400">
-                    Эти инструкции будут добавляться к запросу, когда бот делает саммари сообщений из привязанного Telegram-чата.
-                  </div>
-                </div>
-                <span class="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">
-                  ИИ функции одобрены
-                </span>
-              </div>
-              <label class="flex flex-col gap-2">
-                <span class="text-sm font-medium text-slate-700 dark:text-zinc-300">
-                  Дополнительные инструкции для саммари
-                </span>
-                <textarea
-                  value={settingsDraft.telegram_ai_summary_prompt ?? ''}
-                  maxlength="3000"
-                  rows="7"
-                  placeholder="Например: выдели принятые решения, ответственных и следующие шаги. Сохрани важные ссылки и числа. Пиши нейтрально и без вводных фраз."
-                  class="min-h-40 resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm leading-relaxed text-slate-900 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
-                  on:input={(event) =>
-                    patchSettingsDraft({
-                      telegram_ai_summary_prompt: (event.currentTarget as HTMLTextAreaElement).value,
-                    })}
-                ></textarea>
-                <span class="flex flex-wrap justify-between gap-2 text-xs text-slate-500 dark:text-zinc-400">
-                  <span>Если оставить поле пустым, бот использует стандартный промт.</span>
-                  <span>{String(settingsDraft.telegram_ai_summary_prompt ?? '').length} / 3000</span>
-                </span>
-              </label>
-            </div>
-          {/if}
-
           {#if canManageComunModerators()}
             <div class="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/40">
               <div>
@@ -1707,6 +1697,221 @@
               {:else if normalizedBlockedTagSearch}
                 <div class="px-3 py-2 text-sm text-slate-500 dark:text-zinc-400">
                   Теги не найдены
+                </div>
+              {/if}
+            </div>
+          </div>
+        {:else if settingsTab === 'telegram'}
+          <div class="flex flex-col gap-5">
+            <div class="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/40">
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <div class="text-base font-semibold text-slate-950 dark:text-zinc-50">
+                    Telegram-канал
+                  </div>
+                  <div class="mt-1 text-sm text-slate-500 dark:text-zinc-400">
+                    Посты выбранного канала будут попадать в это сообщество.
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  on:click={() => (telegramChannelSetupOpen = !telegramChannelSetupOpen)}
+                >
+                  {telegramChannelSetupOpen ? 'Скрыть подключение' : 'Подключить новый канал'}
+                </Button>
+              </div>
+
+              <label class="flex flex-col gap-2">
+                <span class="text-sm font-medium text-slate-700 dark:text-zinc-300">
+                  Канал сообщества
+                </span>
+                <input
+                  value={settingsDraft.telegram_channel_username ?? ''}
+                  on:input={onTelegramChannelInput}
+                  placeholder="@mychannel или https://t.me/mychannel"
+                  class="rounded-xl border border-slate-300 bg-white px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900"
+                />
+              </label>
+
+              {#if settingsTelegramChannelOptions.length}
+                <div class="flex flex-col gap-2">
+                  <div class="text-xs uppercase tracking-wide text-slate-500 dark:text-zinc-400">
+                    Ваши подтвержденные каналы
+                  </div>
+                  <div class="flex flex-wrap gap-2">
+                    {#each settingsTelegramChannelOptions as author}
+                      <button
+                        type="button"
+                        class={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm transition ${
+                          Number(selectedTelegramSourceAuthor?.id) === Number(author.id)
+                            ? 'border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-zinc-900'
+                            : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800'
+                        }`}
+                        on:click={() => setDraftTelegramChannel(author.username, author)}
+                      >
+                        <span>@{author.username}</span>
+                        {#if author.title}
+                          <span class="text-xs opacity-70">{author.title}</span>
+                        {/if}
+                      </button>
+                    {/each}
+                  </div>
+                </div>
+              {:else}
+                <div class="text-sm text-slate-500 dark:text-zinc-400">
+                  Подтвержденных каналов пока нет. Подключите канал по инструкции ниже.
+                </div>
+              {/if}
+
+              {#if selectedTelegramSourceAuthor}
+                <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/20 dark:text-emerald-200">
+                  Выбран подтвержденный канал: @{selectedTelegramSourceAuthor.username}
+                </div>
+              {:else if pendingTelegramChannelUsername}
+                <div class="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200">
+                  @{pendingTelegramChannelUsername.replace(/^@/, '')} ещё не подтвержден для вашего аккаунта. Подключите его по инструкции ниже, затем выберите в списке.
+                </div>
+              {/if}
+
+              {#if telegramChannelSetupOpen || !settingsTelegramChannelOptions.length || pendingTelegramChannelUsername}
+                <div class="border-t border-slate-200 pt-4 dark:border-zinc-800">
+                  <div class="text-sm font-semibold text-slate-950 dark:text-zinc-50">
+                    Как подключить новый канал
+                  </div>
+                  <ol class="mt-3 grid gap-4 text-sm text-slate-700 dark:text-zinc-300 lg:grid-cols-3">
+                    <li class="flex gap-3">
+                      <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white dark:bg-white dark:text-zinc-900">1</span>
+                      <div>
+                        <div class="font-medium text-slate-900 dark:text-zinc-100">Получите код</div>
+                        <div class="mt-1 text-slate-500 dark:text-zinc-400">Он подтвердит, что канал принадлежит вашему аккаунту.</div>
+                      </div>
+                    </li>
+                    <li class="flex gap-3">
+                      <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white dark:bg-white dark:text-zinc-900">2</span>
+                      <div>
+                        <div class="font-medium text-slate-900 dark:text-zinc-100">Отправьте код боту</div>
+                        <div class="mt-1 text-slate-500 dark:text-zinc-400">Откройте @comuna_tg_bot и отправьте код одним сообщением.</div>
+                      </div>
+                    </li>
+                    <li class="flex gap-3">
+                      <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white dark:bg-white dark:text-zinc-900">3</span>
+                      <div>
+                        <div class="font-medium text-slate-900 dark:text-zinc-100">Добавьте бота в канал</div>
+                        <div class="mt-1 text-slate-500 dark:text-zinc-400">Назначьте бота администратором, затем обновите список каналов здесь.</div>
+                      </div>
+                    </li>
+                  </ol>
+
+                  <div class="mt-4 flex flex-wrap items-center gap-2">
+                    <Button
+                      size="sm"
+                      color="primary"
+                      on:click={loadTelegramVerificationCode}
+                      loading={telegramVerificationCodeLoading}
+                      disabled={telegramVerificationCodeLoading}
+                    >
+                      Получить код
+                    </Button>
+                    {#if telegramVerificationCode}
+                      <code class="rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-900 dark:bg-zinc-900 dark:text-zinc-100">
+                        {telegramVerificationCode}
+                      </code>
+                      <Button size="sm" on:click={copyTelegramVerificationCode}>Скопировать</Button>
+                    {/if}
+                    <a
+                      class="inline-flex min-h-9 items-center rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-800 transition hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-900"
+                      href="https://t.me/comuna_tg_bot"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Открыть бота
+                    </a>
+                    <Button
+                      size="sm"
+                      on:click={refreshTelegramChannelOptions}
+                      loading={telegramChannelsRefreshing}
+                      disabled={telegramChannelsRefreshing}
+                    >
+                      Обновить список
+                    </Button>
+                  </div>
+                  {#if telegramVerificationCodeError}
+                    <div class="mt-2 text-sm text-red-600 dark:text-red-400">
+                      {telegramVerificationCodeError}
+                    </div>
+                  {/if}
+                </div>
+              {/if}
+            </div>
+
+            <div class="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/40">
+              <div>
+                <div class="text-base font-semibold text-slate-950 dark:text-zinc-50">
+                  Telegram-чат
+                </div>
+                <div class="mt-1 text-sm text-slate-500 dark:text-zinc-400">
+                  Подключите групповой чат, чтобы искать по базе знаний и собирать сообщения в заявки.
+                </div>
+              </div>
+
+              {#if settingsDraft.telegram_chat_title}
+                <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/20 dark:text-emerald-200">
+                  Подключен чат «{settingsDraft.telegram_chat_title}».
+                </div>
+              {:else}
+                <div class="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-zinc-800 dark:bg-zinc-900/60">
+                  <div class="text-sm text-slate-700 dark:text-zinc-300">
+                    Добавьте @comuna_tg_bot в групповой чат, затем отправьте в этом чате команду:
+                  </div>
+                  <code class="w-fit max-w-full overflow-x-auto rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-900 dark:bg-zinc-950 dark:text-zinc-100">/link_comun {slug}</code>
+                  <div>
+                    <a
+                      class="inline-flex min-h-9 items-center rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-800 transition hover:bg-white dark:border-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-800"
+                      href="https://t.me/comuna_tg_bot?startgroup=true"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Добавить бота в чат
+                    </a>
+                  </div>
+                </div>
+              {/if}
+
+              {#if canManageComunModerators() && settingsDraft.telegram_ai_summary_enabled}
+                <div class="border-t border-slate-200 pt-4 dark:border-zinc-800">
+                  <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div class="text-sm font-semibold text-slate-950 dark:text-zinc-50">
+                        Промт для ИИ-саммари
+                      </div>
+                      <div class="mt-1 text-sm text-slate-500 dark:text-zinc-400">
+                        Инструкции применяются, когда бот делает саммари сообщений из этого чата.
+                      </div>
+                    </div>
+                    <span class="text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                      ИИ функции одобрены
+                    </span>
+                  </div>
+                  <label class="mt-3 flex flex-col gap-2">
+                    <span class="text-sm font-medium text-slate-700 dark:text-zinc-300">
+                      Дополнительные инструкции для саммари
+                    </span>
+                    <textarea
+                      value={settingsDraft.telegram_ai_summary_prompt ?? ''}
+                      maxlength="3000"
+                      rows="7"
+                      placeholder="Например: выдели принятые решения, ответственных и следующие шаги. Сохрани важные ссылки и числа."
+                      class="min-h-40 resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm leading-relaxed text-slate-900 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                      on:input={(event) =>
+                        patchSettingsDraft({
+                          telegram_ai_summary_prompt: (event.currentTarget as HTMLTextAreaElement).value,
+                        })}
+                    ></textarea>
+                    <span class="flex flex-wrap justify-between gap-2 text-xs text-slate-500 dark:text-zinc-400">
+                      <span>Если оставить поле пустым, бот использует стандартный промт.</span>
+                      <span>{String(settingsDraft.telegram_ai_summary_prompt ?? '').length} / 3000</span>
+                    </span>
+                  </label>
                 </div>
               {/if}
             </div>

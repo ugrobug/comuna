@@ -73,10 +73,12 @@ class ComunManagementPermissionTests(TestCase):
     def test_ai_summary_prompt_is_visible_only_to_owner_when_ai_features_are_enabled(self):
         self.comun.telegram_ai_summary_enabled = True
         self.comun.telegram_ai_summary_prompt = "Выделяй решения и ответственных."
+        self.comun.telegram_chat_title = "Чат сообщества"
         self.comun.save(
             update_fields=[
                 "telegram_ai_summary_enabled",
                 "telegram_ai_summary_prompt",
+                "telegram_chat_title",
                 "updated_at",
             ]
         )
@@ -91,6 +93,7 @@ class ComunManagementPermissionTests(TestCase):
             owner_payload["telegram_ai_summary_prompt"],
             "Выделяй решения и ответственных.",
         )
+        self.assertEqual(owner_payload["telegram_chat_title"], "Чат сообщества")
 
         self._authenticate(self.moderator)
         response = self.client.get(f"{self.url}?include_settings=1")
