@@ -755,21 +755,34 @@ export const fetchVerificationCode = async () => {
     throw new Error('Нужна авторизация')
   }
 
-  const response = await fetch(buildUrl('/api/auth/verification-code/'), {
-    method: 'POST',
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-  })
+  const abortController = new AbortController()
+  const timeoutId = setTimeout(() => abortController.abort(), 10_000)
 
-  const data = await response.json()
-  if (!response.ok || !data?.code) {
-    throw new Error(data?.error || 'Не удалось получить код')
+  try {
+    const response = await fetch(buildUrl('/api/auth/verification-code/'), {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      cache: 'no-store',
+      signal: abortController.signal,
+    })
+
+    const data = await parseApiResponse(response)
+    if (!response.ok || !data?.code) {
+      throw new Error(data?.error || 'Не удалось получить код')
+    }
+
+    return data.code as string
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Сервер не ответил. Попробуйте получить код ещё раз.')
+    }
+    throw error
+  } finally {
+    clearTimeout(timeoutId)
   }
-
-  return data.code as string
 }
 
 export const fetchUserPosts = async (
