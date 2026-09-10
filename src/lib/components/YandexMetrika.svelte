@@ -1,8 +1,17 @@
 <script lang="ts">
   import { env } from '$env/dynamic/public';
-  import { onMount } from 'svelte';
+  import { page } from '$app/stores';
+  import { onDestroy, onMount } from 'svelte';
+  import { startMeaningfulReadTracking } from '$lib/productAnalytics';
   
   const PUBLIC_YM_MEASUREMENT_ID = env.PUBLIC_YM_MEASUREMENT_ID || '106046128';
+  let mounted = false;
+  let stopMeaningfulReadTracking: () => void = () => undefined;
+
+  $: if (mounted && $page.url.pathname) {
+    stopMeaningfulReadTracking();
+    stopMeaningfulReadTracking = startMeaningfulReadTracking($page.url.pathname);
+  }
 
   onMount(() => {
   
@@ -38,6 +47,7 @@
       }
     })(window, document, "script", `https://mc.yandex.ru/metrika/tag.js?id=${PUBLIC_YM_MEASUREMENT_ID}`, "ym");
 
+    window.__TAMBUR_YM_COUNTER_ID__ = Number(PUBLIC_YM_MEASUREMENT_ID);
     window.ym(Number(PUBLIC_YM_MEASUREMENT_ID), "init", {
       ssr: true,
       webvisor:true,
@@ -46,7 +56,10 @@
       trackLinks: true,
       accurateTrackBounce: true
     });
+    mounted = true;
   });
+
+  onDestroy(() => stopMeaningfulReadTracking());
 </script>
 
 <noscript>

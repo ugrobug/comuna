@@ -10,6 +10,7 @@
   import EditorJS from '$lib/components/editor/EditorJS.svelte'
   import { onDestroy, onMount, tick } from 'svelte'
   import { t } from '$lib/translations'
+  import { trackProductEvent } from '$lib/productAnalytics'
   import { deserializeEditorModel, postPayloadContainsExternalLinks } from '$lib/util'
   import {
     applyGlossaryAutoLinkMatches,
@@ -459,6 +460,9 @@
       } else {
         await createComunPost(pending.comunSlug, pending.payload)
       }
+      trackProductEvent('post_published', {
+        community: pending.comunSlug,
+      })
       clearLocalDraftBuffer()
       draftId = null
       draftShareToken = ''

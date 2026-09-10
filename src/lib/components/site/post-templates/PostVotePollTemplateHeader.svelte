@@ -16,6 +16,7 @@
     type PostVotePollTemplateItem,
   } from '$lib/postTemplates'
   import { t } from '$lib/translations'
+  import { trackProductEvent } from '$lib/productAnalytics'
 
   export let template: PostVotePollTemplate
   export let fallbackTitle = ''
@@ -340,6 +341,9 @@
       }
       if (!response.ok || !payload?.ok) {
         throw new Error(payload?.error || $t('site.template.poll.voteError'))
+      }
+      if (selection.length) {
+        trackProductEvent('vote_created', { kind: 'poll', post_id: pollPostId })
       }
       await refreshPollState(token)
     } catch (error) {

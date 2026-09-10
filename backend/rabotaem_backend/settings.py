@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     "users.apps.UsersConfig",
     "notifications.apps.NotificationsConfig",
     "moderator.apps.ModeratorConfig",
+    "product_analytics.apps.ProductAnalyticsConfig",
     "post.apps.PostConfig",
     "ratings.apps.RatingsConfig",
     "editor.apps.EditorConfig",
@@ -129,6 +130,13 @@ CACHES = {
 
 PUBLIC_API_CACHE_SECONDS = int(os.environ.get("PUBLIC_API_CACHE_SECONDS", "60"))
 PUBLIC_API_STALE_SECONDS = int(os.environ.get("PUBLIC_API_STALE_SECONDS", "300"))
+ANALYTICS_API_RATE_LIMIT_PER_MINUTE = int(
+    os.environ.get("ANALYTICS_API_RATE_LIMIT_PER_MINUTE", "60")
+)
+ANALYTICS_API_REQUIRE_HTTPS = os.environ.get(
+    "ANALYTICS_API_REQUIRE_HTTPS",
+    "0" if DEBUG else "1",
+) == "1"
 SNAPSHOT_FRONTEND_URL = os.environ.get("SNAPSHOT_FRONTEND_URL", "http://frontend:3000")
 PUBLIC_HTML_SNAPSHOT_ROOT = os.environ.get("PUBLIC_HTML_SNAPSHOT_ROOT", "")
 SITEMAP_OUTPUT_DIR = os.environ.get(

@@ -5,6 +5,7 @@
   import { siteToken } from '$lib/siteAuth'
   import { locale, t } from '$lib/translations'
   import type { BackendComun } from '$lib/api/backend'
+  import { trackProductEvent } from '$lib/productAnalytics'
   import { ArrowRight, Check, Icon, UserGroup } from 'svelte-hero-icons'
 
   export let comun: BackendComun
@@ -56,9 +57,11 @@
       nextComuns.delete(slug)
       delete nextCategoryMap[slug]
       countDelta -= 1
+      trackProductEvent('community_unsubscribed', { community: slug })
     } else {
       nextComuns.add(slug)
       countDelta += 1
+      trackProductEvent('community_subscribed', { community: slug })
     }
     $userSettings = {
       ...$userSettings,

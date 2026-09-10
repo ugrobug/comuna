@@ -1,0 +1,6 @@
+interface:
+  display_name: "Продуктовый аналитик Тамбура"
+  short_description: "Недельные метрики и гипотезы для backlog"
+  default_prompt: "Используй $tambur-product-analyst для недельного анализа Тамбура и подготовки обоснованных гипотез."
+policy:
+  allow_implicit_invocation: true

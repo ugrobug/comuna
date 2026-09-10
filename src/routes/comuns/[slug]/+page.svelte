@@ -32,6 +32,7 @@
   import { brandNameForLanguage } from '$lib/brand'
   import { locale, t } from '$lib/translations'
   import { normalizeInterfaceLanguage } from '$lib/postLanguages'
+  import { trackProductEvent } from '$lib/productAnalytics'
   import { ChatBubbleLeftRight, ChevronDown, GlobeAlt, Icon } from 'svelte-hero-icons'
 
   export let data
@@ -1016,6 +1017,7 @@
       myFeedComuns: Array.from(next),
       myFeedComunCategories: nextCategoryMap,
     }
+    trackProductEvent('community_unsubscribed', { community: slug })
     subscriptionCategoriesOpen = false
     toast({ content: $t('routes.communityPage.removedFromFeed') })
   }
@@ -1040,6 +1042,7 @@
       myFeedComuns: Array.from(next),
       myFeedComunCategories: nextCategoryMap,
     }
+    trackProductEvent('community_subscribed', { community: slug })
     subscriptionCategoriesOpen = comunCategorySlugs.length > 0
     toast({ content: $t('routes.communityPage.addedToFeed') })
   }

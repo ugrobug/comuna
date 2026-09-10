@@ -3,6 +3,7 @@
   import { buildPostRatingVoteUrl, type BackendPostRating } from '$lib/api/backend'
   import { siteToken } from '$lib/siteAuth'
   import { t } from '$lib/translations'
+  import { trackProductEvent } from '$lib/productAnalytics'
 
   export let postId: number | null = null
   export let rating: BackendPostRating | null = null
@@ -65,6 +66,7 @@
       if (payload?.post_rating && typeof payload.post_rating === 'object') {
         localRating = { ...payload.post_rating }
       }
+      trackProductEvent('vote_created', { kind: 'rating', post_id: postId })
     } catch (error) {
       toast({
         content: (error as Error)?.message ?? $t('site.template.rating.saveError'),

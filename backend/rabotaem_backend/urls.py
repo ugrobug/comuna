@@ -93,6 +93,12 @@ from moderator.views import (
     moderator_translation_settings,
     moderator_translation_settings_update,
 )
+from product_analytics.views import (
+    agent_community_analytics,
+    agent_community_analytics_list,
+    agent_product_analytics,
+    agent_site_analytics,
+)
 from notifications.views import (
     auth_notification_read,
     auth_notification_push_devices,
@@ -355,6 +361,26 @@ urlpatterns = [
     path("api/auth/verification-code/", author_verification_code, name="auth-verification-code"),
     path("api/auth/posts/", user_posts, name="auth-posts"),
     path("api/moderator/analytics/", moderator_analytics, name="moderator-analytics"),
+    path(
+        "api/agent/v1/analytics/site/",
+        agent_site_analytics,
+        name="agent-site-analytics",
+    ),
+    path(
+        "api/agent/v1/analytics/product/",
+        agent_product_analytics,
+        name="agent-product-analytics",
+    ),
+    path(
+        "api/agent/v1/analytics/communities/",
+        agent_community_analytics_list,
+        name="agent-community-analytics-list",
+    ),
+    path(
+        "api/agent/v1/analytics/communities/<slug:slug>/",
+        agent_community_analytics,
+        name="agent-community-analytics",
+    ),
     path("api/moderator/chat-reports/", moderator_chat_reports, name="moderator-chat-reports"),
     path(
         "api/moderator/chat-reports/<int:report_id>/",

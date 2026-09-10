@@ -11,6 +11,7 @@
   import { Icon, XMark } from 'svelte-hero-icons'
   import { composeCommentBody, splitCommentBodyImages } from './imageMarkdown'
   import { t } from '$lib/translations'
+  import { trackProductEvent } from '$lib/productAnalytics'
   import type { SiteComment, SiteCommentMask } from './types'
 
   export let postId: number
@@ -168,6 +169,10 @@
       if (data?.comment) {
         dispatch('comment', data.comment as SiteComment)
         if (!commentId) {
+          trackProductEvent('comment_created', {
+            post_id: postId,
+            is_reply: Boolean(parentId),
+          })
           value = ''
           imageUrls = []
           lastObservedValue = ''

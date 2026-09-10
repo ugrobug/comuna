@@ -20,6 +20,7 @@ import type {
   SitePostTemplate,
 } from '$lib/postTemplates'
 import { refreshSidebarComuns } from '$lib/communitySidebar'
+import { trackProductEvent } from '$lib/productAnalytics'
 import {
   hydrateBackendFeedSettings,
   loadBackendFeedSettings,
@@ -515,6 +516,7 @@ export const register = async (payload: {
   loadBackendFeedSettings(data.token).catch((error) => {
     console.error('Failed to load feed settings:', error)
   })
+  trackProductEvent('signup_completed', { method: 'email' })
   return data.user as SiteUser
 }
 
@@ -619,6 +621,9 @@ export const loginTelegram = async (payload: TelegramAuthPayload) => {
   loadBackendFeedSettings(data.token).catch((error) => {
     console.error('Failed to load feed settings:', error)
   })
+  if (payload.auth_intent === 'signup') {
+    trackProductEvent('signup_completed', { method: 'telegram' })
+  }
   return data.user as SiteUser
 }
 
@@ -659,6 +664,9 @@ export const loginVK = async (payload: VkAuthPayload) => {
   loadBackendFeedSettings(data.token).catch((error) => {
     console.error('Failed to load feed settings:', error)
   })
+  if (payload.auth_intent === 'signup') {
+    trackProductEvent('signup_completed', { method: 'vk' })
+  }
   return data.user as SiteUser
 }
 
@@ -701,6 +709,9 @@ export const loginSocial = async (
   loadBackendFeedSettings(data.token).catch((error) => {
     console.error('Failed to load feed settings:', error)
   })
+  if (payload.auth_intent === 'signup') {
+    trackProductEvent('signup_completed', { method: provider })
+  }
   return data.user as SiteUser
 }
 
