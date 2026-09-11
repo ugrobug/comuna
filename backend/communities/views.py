@@ -11,6 +11,7 @@ from datetime import timedelta
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
+from editor.scheduling import parse_publish_at, set_schedule_state
 from django.db import transaction
 from django.db.models import Count, Max, OuterRef, Prefetch, Q, Subquery, Sum
 from django.http import HttpRequest, HttpResponse, JsonResponse
@@ -2955,6 +2956,7 @@ def comun_vote(request: HttpRequest, slug: str) -> HttpResponse:
 
 @csrf_exempt
 @anonymous_cache(prefix="comun-posts", seconds=45)
+@transaction.atomic
 def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
     current_user = user_views._get_user_from_request(request)
     try:
@@ -2979,6 +2981,10 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
         except json.JSONDecodeError:
             return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
 
+        try:
+            publish_at = parse_publish_at(payload.get("publish_at"))
+        except ValueError as error:
+            return JsonResponse({"ok": False, "error": str(error)}, status=400)
         title = str(payload.get("title") or "").strip()
         content = str(payload.get("content") or "").strip()
         template_payload, template_error = editor_service._normalize_post_template_payload(
@@ -3067,6 +3073,7 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
         }
         editor_service._sync_template_derived_raw_data(raw_data, template_payload, content)
 
+        raw_data = set_schedule_state(raw_data, publish_at=publish_at, is_draft=False, actor_id=current_user.id)
         post = Post.objects.create(
             author=author,
             message_id=message_id,
@@ -3080,9 +3087,9 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
             channel_url=(author.invite_url or author.channel_url or ""),
             source_url=(author.invite_url or author.channel_url or ""),
             raw_data=raw_data,
-            is_pending=False,
+            is_pending=publish_at is not None,
             is_blocked=False,
-            publish_at=None,
+            publish_at=publish_at,
         )
         community_service._apply_post_tags(post, explicit_tags)
         if category:

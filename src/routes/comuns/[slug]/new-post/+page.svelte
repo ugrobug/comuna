@@ -1,4 +1,8 @@
 <script lang="ts">
+  import PublishSchedule from '$lib/components/editor/PublishSchedule.svelte'
+  import { scheduleError } from '$lib/postSchedule'
+  let publishAt: string | null = null
+
   import { browser } from '$app/environment'
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
@@ -83,11 +87,12 @@
   let pendingGlossaryCreate: PendingCreatePost | null = null
 
   type CreateComunPostPayload = {
+    publish_at?: string | null
     title: string
     content: string
     author_source: 'site'
     comun_category_id: number | null
-    template?: unknown
+    template?: ReturnType<typeof buildPostTemplatePayload>
   }
 
   type PendingCreatePost = {
@@ -418,10 +423,10 @@
     try {
       await createComunPost(comun.slug, pending.payload)
       toast({
-        content: 'Пост опубликован в сообществе',
+        content: pending.payload.publish_at ? 'Публикация запланирована' : 'Пост опубликован в сообществе',
         type: 'success',
       })
-      await goto(`/comuns/${comun.slug}`)
+      await goto(pending.payload.publish_at ? `/id${$siteUser?.id}?tab=drafts` : `/comuns/${comun.slug}`)
     } catch (error) {
       createError = (error as Error)?.message ?? 'Не удалось создать пост'
     } finally {
@@ -445,7 +450,8 @@
 
   const createPost = async () => {
     if (!$siteUser || !comun?.slug) return
-    createError = ''
+    createError = scheduleError(publishAt)
+    if (createError) return
 
     if (!canOpenComunEditor) {
       createError =
@@ -498,6 +504,7 @@
 
     const pending: PendingCreatePost = {
       payload: {
+        publish_at: publishAt,
         title: createTitle.trim(),
         content: createContent.trim(),
         author_source: 'site',
@@ -810,11 +817,13 @@
             loading={creating}
             disabled={creating}
           >
-            Опубликовать в сообщество
+            {publishAt ? 'Запланировать' : 'Опубликовать в сообщество'}
           </Button>
+          <PublishSchedule bind:value={publishAt} disabled={creating} />
           <Button
             color="ghost"
             on:click={() => {
+              publishAt = null
               createTitle = ''
               createContent = ''
               createCategoryId = ''

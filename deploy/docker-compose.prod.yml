@@ -165,6 +165,25 @@ services:
     volumes:
       - ./secrets:/app/secrets:ro
 
+  scheduled-posts:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+    restart: unless-stopped
+    logging: *default-logging
+    command: python -u manage.py publish_scheduled_posts --loop
+    env_file:
+      - .env.backend
+    environment:
+      TELEGRAM_USE_POLLING: "0"
+    extra_hosts:
+      - "api.telegram.org:149.154.167.220"
+    depends_on:
+      - db
+    volumes:
+      - media_data:/app/media
+      - ./secrets:/app/secrets:ro
+
   event-reminders:
     build:
       context: ..

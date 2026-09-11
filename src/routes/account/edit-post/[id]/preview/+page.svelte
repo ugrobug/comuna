@@ -1,4 +1,6 @@
 <script lang="ts">
+  import PublishSchedule from '$lib/components/editor/PublishSchedule.svelte'
+  let publishAt: string | null = null
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
@@ -38,6 +40,7 @@
       }
       const loadedPost = await fetchUserPost(data.postId)
       post = loadedPost
+      publishAt = loadedPost.publish_at ?? null
     } catch (error) {
       loadError = (error as Error)?.message ?? 'Не удалось загрузить предпросмотр'
     } finally {
@@ -50,9 +53,9 @@
     actionLoading = true
     loadError = ''
     try {
-      const updated = await updateUserPost(post.id, { is_draft: false })
-      toast({ content: 'Черновик опубликован', type: 'success' })
-      await goto(buildBackendPostPath(updated))
+      const updated = await updateUserPost(post.id, { is_draft: false, publish_at: publishAt })
+      toast({ content: updated.is_scheduled ? 'Публикация запланирована' : 'Пост опубликован', type: 'success' })
+      await goto(updated.is_scheduled ? `${profileDraftsPath}?tab=drafts` : buildBackendPostPath(updated))
     } catch (error) {
       loadError = (error as Error)?.message ?? 'Не удалось опубликовать черновик'
     } finally {
@@ -113,8 +116,9 @@
 
     <div class="flex flex-wrap gap-2">
       <Button color="primary" on:click={publishDraft} loading={actionLoading} disabled={actionLoading}>
-        Опубликовать
+        {publishAt ? 'Запланировать' : 'Опубликовать'}
       </Button>
+      <PublishSchedule bind:value={publishAt} disabled={actionLoading} />
       <Button color="ghost" href={editPath} disabled={actionLoading}>
         Редактировать
       </Button>

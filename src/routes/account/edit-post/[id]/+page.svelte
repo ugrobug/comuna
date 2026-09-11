@@ -1,4 +1,8 @@
 <script lang="ts">
+  import PublishSchedule from '$lib/components/editor/PublishSchedule.svelte'
+  import { scheduleError } from '$lib/postSchedule'
+  let publishAt: string | null = null
+
   import { browser } from '$app/environment'
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
@@ -87,7 +91,8 @@
     comun_slug?: string
     comun_category_id: number | null
     tags: string[]
-    template: unknown
+    template: ReturnType<typeof buildPostTemplatePayload>
+    publish_at?: string | null
     is_draft?: boolean
   }
 
@@ -146,6 +151,7 @@
   let lastObservedEditSnapshot = ''
   let lastSavedEditSnapshot = ''
   let currentEditSnapshot = ''
+  let draftAutosavePromise: Promise<SiteUserPost> | null = null
   let autosaveTimeout: ReturnType<typeof setTimeout> | null = null
   let draftSavedNoticeVisible = false
   let draftSavedNoticeTimer: ReturnType<typeof setTimeout> | null = null
@@ -288,6 +294,7 @@
     const template = buildTemplate()
     const useSiteAuthor = Boolean(post?.is_draft)
     return {
+      publish_at: post?.is_draft || post?.is_scheduled ? publishAt : undefined,
       title: editTitle,
       content: editContent.trim(),
       author_source: useSiteAuthor ? ('site' as const) : undefined,
@@ -376,10 +383,12 @@
   const submitDraftPublishPayload = async (payload: EditPostPayload) => {
     if (!post) return
     publishing = true
+    clearAutosaveTimeout()
     try {
+      if (draftAutosavePromise) await draftAutosavePromise
       const updated = await updateUserPost(post.id, payload)
-      toast({ content: 'Черновик опубликован', type: 'success' })
-      await goto(buildBackendPostPath(updated))
+      toast({ content: updated.is_scheduled ? 'Публикация запланирована' : 'Пост опубликован', type: 'success' })
+      await goto(updated.is_scheduled ? `${profileDraftsPath}?tab=drafts` : buildBackendPostPath(updated))
     } catch (err) {
       saveError = (err as Error)?.message ?? 'Не удалось опубликовать черновик'
     } finally {
@@ -477,6 +486,7 @@
   }
 
   const fillForm = (currentPost: SiteUserPost) => {
+    publishAt = currentPost.publish_at ?? null
     editTitle = currentPost.title || ''
     editContent = normalizeEditorJsContent(currentPost.content || '')
     editComunSlug =
@@ -614,10 +624,11 @@
       autosaving = true
       const sentSnapshot = JSON.stringify(buildEditPayload())
       try {
-        const updated = await updateUserPost(postId, {
+        draftAutosavePromise = updateUserPost(postId, {
           ...buildEditPayload(),
           is_draft: true,
         })
+        const updated = await draftAutosavePromise
         post = updated
         lastSavedEditSnapshot = sentSnapshot
         lastObservedEditSnapshot = JSON.stringify(buildEditPayload())
@@ -628,6 +639,7 @@
       } catch (err) {
         saveError = (err as Error)?.message ?? 'Не удалось сохранить черновик'
       } finally {
+        draftAutosavePromise = null
         autosaving = false
         if (JSON.stringify(buildEditPayload()) !== lastSavedEditSnapshot) {
           queueDraftAutosave()
@@ -689,9 +701,26 @@
     return true
   }
 
+  const cancelScheduledPublication = async () => {
+    if (!post || saving) return
+    saving = true
+    saveError = ''
+    try {
+      const updated = await updateUserPost(post.id, { ...buildEditPayload(), is_draft: true })
+      post = updated
+      fillForm(updated)
+      toast({ content: 'Публикация отменена. Пост сохранён в черновиках.', type: 'success' })
+    } catch (error) {
+      saveError = (error as Error).message
+    } finally {
+      saving = false
+    }
+  }
+
   const savePublishedEdit = async () => {
     if (!post) return
-    saveError = ''
+    saveError = scheduleError(post?.is_draft || post?.is_scheduled ? publishAt : null)
+    if (saveError) return
     clearAutosaveTimeout()
     if (!validateForPublish()) return
     const payload = buildEditPayload() as EditPostPayload
@@ -705,8 +734,9 @@
   }
 
   const publishDraft = async () => {
-    if (!post || saving) return
-    saveError = ''
+    if (!post || saving || autosaving) return
+    saveError = scheduleError(post?.is_draft || post?.is_scheduled ? publishAt : null)
+    if (saveError) return
     clearAutosaveTimeout()
     if (!validateForPublish()) return
     const payload = {
@@ -826,7 +856,7 @@
 <div class="flex flex-col gap-6 max-w-3xl">
   <Header pageHeader>
     <h1 class="text-2xl font-bold">
-      {#if post?.is_draft}Черновик{:else}Редактирование поста{/if}
+      {#if post?.is_draft}Черновик{:else if post?.is_scheduled}Отложенный пост{:else}Редактирование поста{/if}
     </h1>
   </Header>
 
@@ -1167,20 +1197,25 @@
               color="primary"
               on:click={publishDraft}
               loading={publishing}
-              disabled={publishing}
+              disabled={publishing || autosaving}
             >
-              Опубликовать
+              {publishAt ? 'Запланировать' : 'Опубликовать'}
             </Button>
+            <PublishSchedule bind:value={publishAt} disabled={publishing || autosaving} />
             <Button color="ghost" on:click={openDraftShare} disabled={!draftShareUrl || publishing}>
               {$t('site.draftShare.button')}
             </Button>
           {:else}
             <Button color="primary" on:click={savePublishedEdit} loading={saving} disabled={saving}>
-              Сохранить
+              {post.is_scheduled && !publishAt ? 'Опубликовать сейчас' : 'Сохранить'}
             </Button>
+            {#if post.is_scheduled}
+              <PublishSchedule bind:value={publishAt} disabled={saving} />
+              <Button color="ghost" disabled={saving} on:click={cancelScheduledPublication}>Отменить публикацию</Button>
+            {/if}
             <Button
               color="ghost"
-              href={buildBackendPostPath(post)}
+              href={post.is_scheduled ? `/account/edit-post/${post.id}/preview` : buildBackendPostPath(post)}
               target="_blank"
               rel="noreferrer"
               disabled={saving}

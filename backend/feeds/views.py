@@ -998,6 +998,8 @@ def _maybe_notify_post_added_to_voting(
     actor: User | None = None,
     previous_category: ComunCategory | None = None,
 ) -> None:
+    if post.is_pending or post.is_blocked:
+        return
     if not _is_voting_comun_category(category):
         return
     if _is_voting_comun_category(previous_category):

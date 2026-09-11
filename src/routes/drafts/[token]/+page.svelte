@@ -151,8 +151,8 @@
     loadError = ''
     try {
       const updated = await updateUserPost(draft.id, { is_draft: false })
-      toast({ content: $t('site.draftReview.published'), type: 'success' })
-      await goto(buildBackendPostPath(updated))
+      toast({ content: updated.is_scheduled ? 'Публикация запланирована' : $t('site.draftReview.published'), type: 'success' })
+      await goto(updated.is_scheduled ? `${profileDraftsPath}?tab=drafts` : buildBackendPostPath(updated))
     } catch (error) {
       loadError = (error as Error)?.message ?? $t('site.draftReview.publishError')
     } finally {
@@ -256,7 +256,7 @@
         {#if isDraftOwner}
           <div class="mt-4 flex flex-wrap gap-2">
             <Button color="primary" on:click={publishDraft} loading={actionLoading} disabled={actionLoading}>
-              {$t('site.draftReview.publish')}
+              {draft?.publish_at ? 'Запланировать' : $t('site.draftReview.publish')}
             </Button>
             <Button color="ghost" href={editPath} disabled={actionLoading}>
               {$t('site.draftReview.edit')}

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { formatPublishAt } from '$lib/postSchedule'
   import { browser } from '$app/environment'
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
@@ -44,7 +45,7 @@
   let chatOpening = false
   let chatError = ''
   let loginModalOpen = false
-  let profileTab: 'posts' | 'drafts' = 'posts'
+  let profileTab: 'posts' | 'drafts' = $page.url.searchParams.get('tab') === 'drafts' ? 'drafts' : 'posts'
   let lastOwnerProfileId: number | null = null
   let showHiddenAuthorOnce = false
   let lastPostsRef = data.posts
@@ -80,7 +81,7 @@
     ? posts
     : posts.filter((post) => isBackendPostVisible(post, $userSettings))
   $: isOwnProfile = Boolean(profile?.id && $siteUser?.id && profile.id === $siteUser.id)
-  $: ownerDrafts = ownerPosts.filter((item) => item.is_draft)
+  $: ownerDrafts = ownerPosts.filter((item) => item.is_draft || item.is_scheduled)
   $: currentProfileId = profile?.id ?? null
   $: if (currentProfileId !== lastOwnerProfileId) {
     lastOwnerProfileId = currentProfileId
@@ -88,7 +89,7 @@
     ownerPostsLoaded = false
     ownerPostsError = ''
     ownerPosts = []
-    profileTab = 'posts'
+    profileTab = $page.url.searchParams.get('tab') === 'drafts' ? 'drafts' : 'posts'
     showHiddenAuthorOnce = false
   }
 
@@ -201,7 +202,7 @@
       let total = 0
       const collected: SiteUserPost[] = []
       do {
-        const payload = await fetchUserPosts(50, offset, { draftsOnly: true })
+        const payload = await fetchUserPosts(50, offset, { draftsOnly: true, includeScheduled: true })
         const nextItems = payload.posts ?? []
         total = Number(payload.total ?? 0)
         if (!nextItems.length) break
@@ -405,7 +406,7 @@
           }`}
           on:click={() => (profileTab = 'drafts')}
         >
-          {$t('site.publicUser.drafts')}
+          Черновики и отложенные
         </button>
       {/if}
     </div>
@@ -447,6 +448,9 @@
                   {draft.title || $t('site.publicUser.untitledDraft')}
                 </a>
                 <div class="mt-1 text-sm text-slate-500 dark:text-zinc-400">
+                  {#if draft.is_scheduled && draft.publish_at}
+                    <p class="mb-1 font-medium text-sky-700 dark:text-sky-300">Запланировано: {formatPublishAt(draft.publish_at)}</p>
+                  {/if}
                   <span>
                     {$t('site.publicUser.updated')} {new Intl.DateTimeFormat($locale || 'ru', {
                       day: '2-digit',

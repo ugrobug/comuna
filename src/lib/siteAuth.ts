@@ -75,6 +75,7 @@ export type SiteUserPost = {
   created_at: string
   updated_at?: string
   is_pending?: boolean
+  is_scheduled?: boolean
   is_draft?: boolean
   draft_share_token?: string | null
   publish_at?: string | null
@@ -799,7 +800,7 @@ export const fetchVerificationCode = async () => {
 export const fetchUserPosts = async (
   limit = 20,
   offset = 0,
-  options?: { draftsOnly?: boolean }
+  options?: { draftsOnly?: boolean; includeScheduled?: boolean }
 ) => {
   const token = get(siteToken)
   if (!token) {
@@ -810,6 +811,7 @@ export const fetchUserPosts = async (
     limit: String(limit),
     offset: String(offset),
   })
+  if (options?.includeScheduled) params.set('include_scheduled', '1')
   if (options?.draftsOnly) {
     params.set('drafts_only', '1')
   }
@@ -856,6 +858,7 @@ export const fetchUserPost = async (postId: number) => {
 export const updateUserPost = async (
   postId: number,
   payload: {
+    publish_at?: string | null
     title?: string
     content?: string
     author_source?: 'site'
@@ -917,6 +920,7 @@ export const deleteUserPost = async (postId: number) => {
 }
 
 export const createUserPost = async (payload: {
+  publish_at?: string | null
   title?: string
   content?: string
   author_source?: 'site'
@@ -1122,6 +1126,7 @@ export const revokeDraftAccess = async (postId: number, userId: number) => {
 export const createComunPost = async (
   comunSlug: string,
   payload: {
+    publish_at?: string | null
     title: string
     content: string
     author_source?: 'site'

@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import os
 import secrets
-from datetime import timedelta
 
 from communities import views as community_views
 from communities import service as community_service
@@ -11,6 +10,7 @@ from communities.models import Comun, ComunCategory, ComunPostCategoryAssignment
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -52,6 +52,7 @@ from editor.service import (
     _template_not_allowed_error,
     movie_review_autofill_template_from_imdb,
 )
+from editor.scheduling import parse_publish_at, is_scheduled, set_schedule_state
 from editor import service as editor_service
 from feeds.language_detection import detect_post_language, post_language_fallback_for_user
 from feeds.models import Post, PostDraftAccess
@@ -763,6 +764,7 @@ def draft_access(request: HttpRequest, post_id: int) -> HttpResponse:
 
 
 @csrf_exempt
+@transaction.atomic
 def user_posts(request: HttpRequest) -> HttpResponse:
     user = _fv()._get_user_from_request(request)
     if not user:
@@ -781,6 +783,10 @@ def user_posts(request: HttpRequest) -> HttpResponse:
         author_source = (payload.get("author_source") or "").strip().lower()
         author_username = (payload.get("author_username") or "").strip()
         is_draft = bool(payload.get("is_draft"))
+        try:
+            requested_publish_at = parse_publish_at(payload.get("publish_at"), require_future=not is_draft)
+        except ValueError as error:
+            return JsonResponse({"ok": False, "error": str(error)}, status=400)
         comun, comun_error = _resolve_payload_comun(
             user,
             payload,
@@ -881,8 +887,7 @@ def user_posts(request: HttpRequest) -> HttpResponse:
             message_id = _fv()._generate_manual_message_id(author)
         except ValueError:
             return JsonResponse({"ok": False, "error": "unable to create post"}, status=500)
-        delay_days = max(int(author.publish_delay_days or 0), 0)
-        publish_at = timezone.now() + timedelta(days=delay_days) if (delay_days and not is_draft) else None
+        publish_at = requested_publish_at
 
         raw_data = {
             "source": "manual",
@@ -891,6 +896,7 @@ def user_posts(request: HttpRequest) -> HttpResponse:
         raw_data = _apply_comun_membership_to_raw_data(raw_data, comun, comun_category)
         _sync_template_derived_raw_data(raw_data, template_payload, content)
         raw_data = _set_post_draft_state(raw_data, is_draft)
+        raw_data = set_schedule_state(raw_data, publish_at=publish_at, is_draft=is_draft, actor_id=user.id)
 
         post = Post.objects.create(
             author=author,
@@ -909,7 +915,7 @@ def user_posts(request: HttpRequest) -> HttpResponse:
             channel_url=channel_url,
             source_url=channel_url,
             raw_data=raw_data,
-            is_pending=is_draft,
+            is_pending=is_draft or publish_at is not None,
             is_blocked=False,
             publish_at=publish_at,
             event_starts_at=_event_starts_at_from_template(template_payload),
@@ -922,7 +928,7 @@ def user_posts(request: HttpRequest) -> HttpResponse:
         )
         community_service.sync_comun_map_points_for_post(post, comun=comun)
         _fv()._apply_post_tags(post, explicit_tags)
-        if not is_draft:
+        if not post.is_pending:
             _fv()._maybe_notify_new_author(author, post)
             _fv()._maybe_notify_post_published_to_subscribers(
                 post,
@@ -963,7 +969,10 @@ def user_posts(request: HttpRequest) -> HttpResponse:
         "yes",
     }
     if drafts_only:
-        posts_qs = posts_qs.filter(raw_data__draft=True)
+        draft_filter = Q(raw_data__draft=True)
+        if request.GET.get("include_scheduled") == "1":
+            draft_filter |= Q(raw_data__scheduled_publication=True)
+        posts_qs = posts_qs.filter(draft_filter)
 
     total = posts_qs.count()
     posts = posts_qs[offset : offset + limit]
@@ -1025,6 +1034,7 @@ def user_upload(request: HttpRequest) -> HttpResponse:
 
 
 @csrf_exempt
+@transaction.atomic
 def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
     user = _fv()._get_user_from_request(request)
     if not user:
@@ -1033,7 +1043,7 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)
 
     try:
-        post = Post.objects.select_related("author").get(
+        post = Post.objects.select_for_update(of=("self",)).select_related("author").get(
             id=post_id, is_blocked=False, author__is_blocked=False
         )
     except Post.DoesNotExist:
@@ -1087,6 +1097,20 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
 
     current_is_draft = _is_post_draft(post)
     target_is_draft = bool(payload.get("is_draft")) if draft_in_payload else current_is_draft
+    current_is_scheduled = is_scheduled(post)
+    next_publish_at = post.publish_at
+    try:
+        if "publish_at" in payload:
+            next_publish_at = parse_publish_at(payload["publish_at"], require_future=False)
+            if not current_is_draft and not current_is_scheduled and next_publish_at != post.publish_at:
+                raise ValueError("Время публикации можно менять только у черновика или отложенного поста.")
+        if not target_is_draft and (current_is_draft or next_publish_at != post.publish_at):
+            next_publish_at = parse_publish_at(
+                next_publish_at.isoformat() if next_publish_at else None
+            )
+    except ValueError as error:
+        return JsonResponse({"ok": False, "error": str(error)}, status=400)
+
 
     next_comun, comun_error = _resolve_payload_comun(
         user,
@@ -1270,12 +1294,15 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
     if template_in_payload:
         post.event_starts_at = _event_starts_at_from_template(template_payload)
 
-    post.is_pending = target_is_draft
-    if target_is_draft:
-        post.publish_at = None
-    elif current_is_draft and not target_is_draft:
-        delay_days = max(int(post.author.publish_delay_days or 0), 0)
-        post.publish_at = timezone.now() + timedelta(days=delay_days) if delay_days else None
+    post.publish_at = next_publish_at
+    if current_is_draft or current_is_scheduled or target_is_draft:
+        post.raw_data = set_schedule_state(
+            raw_data, publish_at=post.publish_at, is_draft=target_is_draft, actor_id=user.id
+        )
+    post.is_pending = target_is_draft or is_scheduled(post)
+    publishing_now = (current_is_draft or current_is_scheduled) and not post.is_pending
+    if publishing_now:
+        post.created_at = timezone.now()
 
     if not target_is_draft and (
         current_is_draft
@@ -1305,6 +1332,7 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
             "publish_at",
             "raw_data",
             "event_starts_at",
+            "created_at",
             "updated_at",
         ]
     )
@@ -1328,7 +1356,7 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
     else:
         explicit_tags = [tag.name for tag in post.tags.all()]
     _fv()._apply_post_tags(post, explicit_tags)
-    if current_is_draft and not target_is_draft:
+    if publishing_now:
         _fv()._maybe_notify_new_author(post.author, post)
         _fv()._maybe_notify_post_published_to_subscribers(
             post,
@@ -1336,8 +1364,8 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
             comun=next_comun,
             category=next_comun_category,
         )
-    if next_comun and not target_is_draft and (
-        current_is_draft or next_comun.id not in previous_comun_ids
+    if next_comun and not post.is_pending and (
+        publishing_now or next_comun.id not in previous_comun_ids
     ):
         community_service._maybe_increment_comun_author_count_for_post(post, comun=next_comun)
     if (

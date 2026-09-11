@@ -292,6 +292,7 @@ def _serialize_post_for_user(request: HttpRequest, post: Post, user: User | None
         "is_pending": post.is_pending,
         "is_draft": is_draft,
         "publish_at": post.publish_at.isoformat() if post.publish_at else None,
+        "is_scheduled": bool((post.raw_data or {}).get("scheduled_publication")),
         "comun_slug": comun_slug or None,
         "comun": (
             {

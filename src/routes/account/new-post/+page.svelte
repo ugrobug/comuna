@@ -1,4 +1,8 @@
 <script lang="ts">
+  import PublishSchedule from '$lib/components/editor/PublishSchedule.svelte'
+  import { scheduleError } from '$lib/postSchedule'
+  let publishAt: string | null = null
+
   import { browser } from '$app/environment'
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
@@ -155,12 +159,13 @@
   }
 
   type CreatePostPayload = {
+    publish_at?: string | null
     title: string
     content: string
     author_source: 'site'
     comun_category_id: number | null
     tags?: string[]
-    template?: unknown
+    template?: ReturnType<typeof buildPostTemplatePayload>
   }
 
   type PendingCreatePost = {
@@ -371,6 +376,7 @@
     const tags = buildTags()
     const template = buildTemplate()
     return {
+      publish_at: publishAt,
       title: createTitle.trim(),
       content: createContent.trim(),
       author_source: 'site' as const,
@@ -444,6 +450,7 @@
   const submitCreatePostPayload = async (pending: PendingCreatePost) => {
     creating = true
     try {
+      if (draftSavePromise) await draftSavePromise
       if (draftId) {
         try {
           await updateUserPost(draftId, {
@@ -460,7 +467,7 @@
       } else {
         await createComunPost(pending.comunSlug, pending.payload)
       }
-      trackProductEvent('post_published', {
+      if (!pending.payload.publish_at) trackProductEvent('post_published', {
         community: pending.comunSlug,
       })
       clearLocalDraftBuffer()
@@ -469,10 +476,10 @@
       resetForm()
       toast({
         content:
-          'Ваш пост опубликован! Не забудьте поделиться ссылкой на него в социальных сетях',
+          pending.payload.publish_at ? 'Публикация запланирована. Пост появится в выбранное время.' : 'Ваш пост опубликован! Не забудьте поделиться ссылкой на него в социальных сетях',
         type: 'success',
       })
-      await goto(`/comuns/${encodeURIComponent(pending.comunSlug)}`)
+      await goto(pending.payload.publish_at ? `/id${$siteUser?.id}?tab=drafts` : `/comuns/${encodeURIComponent(pending.comunSlug)}`)
     } catch (err) {
       createError = (err as Error)?.message ?? 'Не удалось создать пост'
     } finally {
@@ -500,6 +507,7 @@
   }
 
   const buildLocalDraftState = () => ({
+    publishAt,
     title: createTitle,
     content: createContent,
     tags: createTags,
@@ -555,6 +563,7 @@
       const nextFirstChangeAt = Number(parsed?.first_change_at ?? 0)
       const authorExists =
         !nextAuthor || publishIdentityOptions.some((item) => item.value === nextAuthor)
+      publishAt = typeof parsed?.publishAt === 'string' && !Number.isNaN(Date.parse(parsed.publishAt)) ? parsed.publishAt : null
       createTitle = String(parsed?.title || '')
       createContent = String(parsed?.content || '')
       createTags = String(parsed?.tags || '')
@@ -885,6 +894,7 @@
   }
 
   const resetForm = () => {
+    publishAt = null
     clearAutosaveTimeout()
     if (!draftId) {
       firstDraftChangeAt = null
@@ -1029,6 +1039,8 @@
     if (!$siteUser) return
     createError = ''
     draftError = ''
+    createError = scheduleError(publishAt)
+    if (createError) return
     clearAutosaveTimeout()
     if (!createTitle.trim()) {
       createError = 'Укажите заголовок поста.'
@@ -1078,6 +1090,7 @@
     const pending: PendingCreatePost = {
       comunSlug: createComunSlug,
       payload: {
+        publish_at: publishAt,
         title: createTitle.trim(),
         content: createContent.trim(),
         author_source: 'site' as const,
@@ -1575,8 +1588,9 @@
             loading={creating}
             disabled={creating}
           >
-            Опубликовать
+            {publishAt ? 'Запланировать' : 'Опубликовать'}
           </Button>
+          <PublishSchedule bind:value={publishAt} disabled={creating} />
           <Button
             color="ghost"
             on:click={openDraftShare}
