@@ -1,4 +1,4 @@
-import type { ELK, ElkNode } from 'elkjs/lib/elk-api'
+import type { ElkNode } from 'elkjs/lib/elk-api'
 import type { ExploreEdge, ExploreNode } from './types'
 
 export type Coordinate = { x: number; y: number }
@@ -21,7 +21,7 @@ export function nodeSize(node: ExploreNode, measure: (text: string) => number = 
 
 /** Finite initial layout; no simulation or collision constraints run while dragging. */
 export class GraphLayout {
-  constructor(private engine: Pick<ELK, 'layout'>) {}
+  constructor(private engine: { layout(graph: ElkNode): Promise<ElkNode> }) {}
 
   async arrange(nodes: ExploreNode[], edges: ExploreEdge[], sizes = new Map<number, NodeSize>(), previous: GraphPoint[] = [], direction: 'RIGHT' | 'DOWN' = 'RIGHT'): Promise<GraphDrawing> {
     const ordered = [...nodes].sort((a, b) => a.id - b.id)
