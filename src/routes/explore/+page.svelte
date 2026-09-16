@@ -14,7 +14,7 @@
   let loading = true, error = '', loginOpen = false
   let query = '', filters: number[] = [], selected: number | null = null
   let showProperties = false, listView = false, busy: number | null = null
-  let filtersOpen = true
+  let filtersOpen = false
   $: visible = filterNodes(data.nodes, data.properties, filters, query)
   $: visibleIds = new Set(visible.map(node => node.id))
   $: edges = data.edges.filter(edge => visibleIds.has(edge.source) && visibleIds.has(edge.target))
@@ -37,7 +37,10 @@
     } catch (problem) { error = (problem as Error).message }
     finally { busy = null }
   }
-  onMount(load)
+  onMount(() => {
+    filtersOpen = window.matchMedia('(min-width: 701px)').matches
+    void load()
+  })
 </script>
 
 <svelte:head><title>Explore — карта увлечений | Тамбур</title><meta name="description" content="Найдите новое увлечение и сообщество по интересам. Исследуйте связи, выбирайте компанию, бюджет и сложность." /></svelte:head>
