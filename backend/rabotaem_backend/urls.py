@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
-from django.urls import path, re_path
+from django.urls import include, path, re_path
 
 from communities.views import (
     comun_analytics,
@@ -163,6 +163,7 @@ from users.views import (
 )
 
 urlpatterns = [
+    path("api/explore/", include("explore.urls")),
     path("admin/", admin.site.urls),
     path("api/authors/<str:username>/posts/", author_posts, name="author-posts"),
     path("api/tags/", tags_list, name="tag-list"),

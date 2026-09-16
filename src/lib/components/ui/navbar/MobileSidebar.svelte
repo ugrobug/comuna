@@ -14,6 +14,7 @@
     Bookmark,
     ChevronDown,
     Plus,
+    ChartBar,
   } from 'svelte-hero-icons'
   import { notifications, profile } from '$lib/auth.js'
   import SidebarButton from '$lib/components/ui/sidebar/SidebarButton.svelte'
@@ -120,6 +121,9 @@
       on:click={handleNavigation}
     >
       <span slot="label">{$t('site.nav.hot')}</span>
+    </SidebarButton>
+    <SidebarButton icon={ChartBar} href="/explore" on:click={handleNavigation}>
+      <span slot="label">Explore · Увлечения</span>
     </SidebarButton>
     <SidebarButton
       icon={UserGroup}

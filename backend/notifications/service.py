@@ -28,6 +28,14 @@ SPECIAL_PROJECT_NOTIFICATION_EVENT_KEYS = {
 
 NOTIFICATION_EVENT_DEFINITIONS: list[dict[str, Any]] = [
     {
+        "key": "explore_new_community",
+        "title": "Новое сообщество в ваших увлечениях",
+        "description": "В Explore добавлено сообщество к элементу или его подразделам, на которые вы подписаны.",
+        "default_site_enabled": True,
+        "default_telegram_enabled": False,
+        "default_push_enabled": False,
+    },
+    {
         "key": "post_comment",
         "title": "Новый комментарий к вашему посту",
         "description": "Кто-то оставил комментарий под вашим постом.",

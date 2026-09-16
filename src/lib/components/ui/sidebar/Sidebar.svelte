@@ -167,6 +167,10 @@
     </div>
   {/if}
 
+  <SidebarButton icon={ChartBar} href="/explore">
+    <span slot="label">Explore · Увлечения</span>
+  </SidebarButton>
+
   <div class="flex flex-col gap-2">
       <button
         type="button"

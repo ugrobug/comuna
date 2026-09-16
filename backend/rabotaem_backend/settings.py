@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     "feeds.apps.FeedsConfig",
     "my_feed.apps.MyFeedConfig",
     "communities.apps.CommunitiesConfig",
+    "explore.apps.ExploreConfig",
     "users.apps.UsersConfig",
     "notifications.apps.NotificationsConfig",
     "moderator.apps.ModeratorConfig",
