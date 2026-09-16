@@ -82,7 +82,8 @@
     $page.url.pathname.startsWith('/l/')
   $: isSpecialProjectRoute = $page.url.pathname.startsWith('/s/')
   $: isEmbedRoute = /^\/(?:[a-z]{2}\/)?embed\/roadmap\//.test($page.url.pathname)
-  $: isFullBleedRoute = isLandingRoute || isSpecialProjectRoute || isEmbedRoute
+  $: isExploreRoute = /^\/explore\/?$/.test($page.url.pathname)
+  $: isFullBleedRoute = isLandingRoute || isSpecialProjectRoute || isEmbedRoute || isExploreRoute
   $: isMobileNavigationExcludedRoute =
     /^\/(?:account\/(?:new-post|edit-post)|create\/post|edit\/post|drafts|login|signup)(?:\/|$)/.test(
       $page.url.pathname
