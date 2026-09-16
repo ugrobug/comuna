@@ -13,9 +13,9 @@ export function graphTitle(title: string) {
 /** Node rectangles include the halo, title and optional property line. */
 export function nodeSize(node: ExploreNode, measure: (text: string) => number = text => text.length * 10, propertyLabel = ''): NodeSize {
   return {
-    width: Math.max(88, measure(graphTitle(node.title)) + 24, measure(propertyLabel) + 24),
-    height: node.kind === 'community' ? (propertyLabel ? 110 : 94) : (propertyLabel ? 121 : 105),
-    anchorY: 38,
+    width: Math.max(64, measure(graphTitle(node.title)) + 16, measure(propertyLabel) + 16),
+    height: node.kind === 'community' ? (propertyLabel ? 85 : 69) : (propertyLabel ? 96 : 80),
+    anchorY: 28,
   }
 }
 
@@ -31,53 +31,69 @@ export class GraphLayout {
     const graph: ElkNode = {
       id: 'explore',
       layoutOptions: {
-        'elk.algorithm': 'layered',
-        'elk.direction': direction,
-        'elk.aspectRatio': direction === 'DOWN' ? '0.6' : '1.6',
-        'elk.edgeRouting': 'ORTHOGONAL',
+        'elk.algorithm': 'force',
+        'elk.aspectRatio': direction === 'DOWN' ? '0.65' : '1.4',
         'elk.randomSeed': '1',
-        'elk.spacing.nodeNode': '44',
-        'elk.spacing.componentComponent': '70',
-        'elk.spacing.edgeNode': '24',
-        'elk.spacing.edgeEdge': '14',
-        'elk.layered.spacing.nodeNodeBetweenLayers': '80',
-        'elk.layered.spacing.edgeNodeBetweenLayers': '24',
-        'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
-        'elk.layered.crossingMinimization.greedySwitch.type': 'TWO_SIDED',
-        'elk.layered.thoroughness': '20',
-        'elk.separateConnectedComponents': 'true',
+        'elk.force.iterations': '400',
+        'elk.spacing.nodeNode': '24',
+        // One organic cloud, including isolated nodes, rather than a grid of components.
+        'elk.separateConnectedComponents': 'false',
         'elk.padding': '[top=24,left=24,bottom=24,right=24]',
       },
-      children: ordered.map(node => {
-        const size = dimensions.get(node.id)!
-        return {
-          id: String(node.id), width: size.width, height: size.height,
-          layoutOptions: { 'elk.portConstraints': 'FIXED_POS' },
-          ports: [
-            { id: `${node.id}-in`, x: 0, y: size.anchorY, width: 0, height: 0, layoutOptions: { 'elk.port.side': 'WEST' } },
-            { id: `${node.id}-out`, x: size.width, y: size.anchorY, width: 0, height: 0, layoutOptions: { 'elk.port.side': 'EAST' } },
-          ],
-        }
-      }),
-      edges: links.map(edge => ({ id: String(edge.id), sources: [`${edge.source}-out`], targets: [`${edge.target}-in`] })),
+      children: ordered.map(node => ({ id: String(node.id), ...dimensions.get(node.id)! })),
+      edges: links.map(edge => ({ id: String(edge.id), sources: [String(edge.source)], targets: [String(edge.target)] })),
     }
     if (!nodes.length) return { points: [], routes: new Map() }
     const result = await this.engine.layout(graph)
-    const old = new Map(previous.filter(point => point.fixed).map(point => [point.id, point]))
     const points = (result.children ?? []).map(child => {
-      const id = Number(child.id), size = dimensions.get(id)!, prior = old.get(id)
-      return { id, ...size, x: prior?.x ?? (child.x ?? 0) + size.width / 2, y: prior?.y ?? (child.y ?? 0) + size.anchorY, fixed: Boolean(prior) }
+      const id = Number(child.id), size = dimensions.get(id)!
+      return { id, ...size, x: (child.x ?? 0) + size.width / 2, y: (child.y ?? 0) + size.height / 2, fixed: false }
     })
-    const routes = new Map<number, Coordinate[]>()
-    for (const edge of result.edges ?? []) {
-      const section = edge.sections?.[0]
-      if (section) routes.set(Number(edge.id), [section.startPoint, ...(section.bendPoints ?? []), section.endPoint])
+    this.pack(points)
+    // Apply user positions only after automatic packing: manual overlaps are intentional.
+    const old = new Map(previous.filter(point => point.fixed).map(point => [point.id, point]))
+    for (const point of points) {
+      const prior = old.get(point.id)
+      if (prior) { point.x = prior.x; point.y = prior.y; point.fixed = true }
     }
-    return { points, routes }
+    return { points, routes: new Map() }
+  }
+
+  /** Compact the force cloud, then find nearby free space without snapping to rows. */
+  private pack(points: GraphPoint[]) {
+    if (!points.length) return
+    const center = {
+      x: points.reduce((sum, point) => sum + point.x, 0) / points.length,
+      y: points.reduce((sum, point) => sum + point.y, 0) / points.length,
+    }
+    const width = Math.max(...points.map(p => p.x + p.width / 2)) - Math.min(...points.map(p => p.x - p.width / 2))
+    const height = Math.max(...points.map(p => p.y + p.height / 2)) - Math.min(...points.map(p => p.y - p.height / 2))
+    const area = points.reduce((sum, p) => sum + p.width * p.height, 0)
+    const compression = Math.min(0.8, Math.sqrt(area / (0.7 * width * height)))
+    // Here x/y are rectangle centers; convert to circle anchors once all boxes fit.
+    for (const point of points) {
+      point.x = (point.x - center.x) * compression
+      point.y = (point.y - center.y) * compression
+    }
+    const placed: GraphPoint[] = []
+    const ordered = [...points].sort((a, b) => Math.hypot(a.x, a.y) - Math.hypot(b.x, b.y) || a.id - b.id)
+    for (const point of ordered) {
+      const target = { x: point.x, y: point.y }
+      let attempt = 0
+      while (placed.some(other => Math.abs(point.x - other.x) < (point.width + other.width) / 2 + 8 && Math.abs(point.y - other.y) < (point.height + other.height) / 2 + 8)) {
+        // A golden-angle spiral samples all directions, including for identical centers.
+        const angle = ++attempt * 2.399963229728653 + point.id * 0.73
+        const radius = 6 * Math.sqrt(attempt)
+        point.x = target.x + Math.cos(angle) * radius
+        point.y = target.y + Math.sin(angle) * radius
+      }
+      placed.push(point)
+    }
+    for (const point of points) point.y += point.anchorY - point.height / 2
   }
 }
 
-/** Only an edge incident to a manually moved node switches to a free straight line. */
+/** Straight links keep the organic graph free of right-angle routing. */
 export function edgeCoordinates(edge: ExploreEdge, byId: Map<number, GraphPoint>, routes: Map<number, Coordinate[]>): Coordinate[] {
   const a = byId.get(edge.source), b = byId.get(edge.target)
   if (!a || !b) return []

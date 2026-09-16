@@ -45,7 +45,7 @@ describe('initial graph layout', () => {
     expect(drawing.points.every(p => Number.isFinite(p.x) && Number.isFinite(p.y))).toBe(true)
     expectNoOverlap(drawing.points)
   })
-  it.each(['RIGHT', 'DOWN'] as const)('untangles branches without routing through nodes (%s)', async direction => {
+  it.each(['RIGHT', 'DOWN'] as const)('keeps a branched cloud separated with straight links (%s)', async direction => {
     const nodes = Array.from({ length: 9 }, (_, i) => node(i + 1, []))
     const edges = [[1, 2], [1, 3], [2, 4], [3, 4], [5, 6], [5, 7], [7, 8]].map(([source, target], id) => ({ id, source, target }))
     const drawing = await layout.arrange(nodes, edges, new Map(), [], direction)
@@ -59,16 +59,26 @@ describe('initial graph layout', () => {
           expect(crosses(lines[i][a - 1], lines[i][a], lines[j][b - 1], lines[j][b])).toBe(false)
         }
       }
-      for (const point of drawing.points.filter(p => p.id !== edges[i].source && p.id !== edges[i].target)) {
-        const box = bounds(point)
-        for (let a = 1; a < lines[i].length; a++) {
-          const p = lines[i][a - 1], q = lines[i][a]
-          const horizontalHit = p.y === q.y && p.y > box.top && p.y < box.bottom && Math.max(p.x, q.x) > box.left && Math.min(p.x, q.x) < box.right
-          const verticalHit = p.x === q.x && p.x > box.left && p.x < box.right && Math.max(p.y, q.y) > box.top && Math.min(p.y, q.y) < box.bottom
-          expect(horizontalHit || verticalHit).toBe(false)
-        }
-      }
+      expect(lines[i]).toHaveLength(2)
+
     }
+  })
+  it('packs disconnected interests into a compact irregular cloud', async () => {
+    const drawing = await layout.arrange(Array.from({ length: 24 }, (_, i) => node(i + 1, [])), [])
+    expectNoOverlap(drawing.points)
+    const boxes = drawing.points.map(bounds)
+    const width = Math.max(...boxes.map(b => b.right)) - Math.min(...boxes.map(b => b.left))
+    const height = Math.max(...boxes.map(b => b.bottom)) - Math.min(...boxes.map(b => b.top))
+    const area = drawing.points.reduce((sum, p) => sum + p.width * p.height, 0)
+    expect(area / (width * height)).toBeGreaterThan(0.3)
+    expect(new Set(drawing.points.map(p => Math.round(p.x))).size).toBeGreaterThan(18)
+    expect(new Set(drawing.points.map(p => Math.round(p.y))).size).toBeGreaterThan(18)
+  })
+  it('separates coincident seed positions, including visible property labels', async () => {
+    const nodes = Array.from({ length: 30 }, (_, i) => node(i + 1, []))
+    const coincident = new GraphLayout({ layout: async graph => ({ ...graph, children: graph.children?.map(child => ({ ...child, x: 0, y: 0 })) }) })
+    const sizes = new Map(nodes.map(n => [n.id, nodeSize(n, text => text.length * 10, 'Можно одному · С друзьями')]))
+    expectNoOverlap((await coincident.arrange(nodes, [], sizes)).points)
   })
   it('supports cycles and dense nonplanar graphs without overlapping nodes', async () => {
     const nodes = Array.from({ length: 6 }, (_, i) => node(i + 1, []))
@@ -81,7 +91,8 @@ describe('initial graph layout', () => {
     const edges = [{ id: 1, source: 1, target: 2 }, { id: 2, source: 2, target: 99 }]
     const a = await layout.arrange(nodes, edges), b = await layout.arrange([...nodes].reverse(), edges)
     expect(a.points).toEqual(b.points)
-    expect(a.routes.size).toBe(1)
+    expect(a.points).toEqual((await layout.arrange(nodes, edges.slice(0, 1))).points)
+    expect(edgeCoordinates(edges[1], new Map(a.points.map(p => [p.id, p])), a.routes)).toEqual([])
     expect(await layout.arrange([], edges)).toEqual({ points: [], routes: new Map() })
   })
   it('allows manual overlap, keeps moved positions on filtering, and can reset them', async () => {
