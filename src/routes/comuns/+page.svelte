@@ -314,13 +314,13 @@
   const openCreate = async () => {
     if (!canCreate()) {
       if (!$siteToken) {
-        goto('/account?next=/comuns?create=1')
+        goto(`/account?next=${encodeURIComponent(`/comuns?${new URLSearchParams({ create: '1', name: $page.url.searchParams.get('name') ?? '' })}`)}`)
         return
       }
 
       const user = $siteUser ?? (await refreshSiteUser())
       if (!user) {
-        goto('/account?next=/comuns?create=1')
+        goto(`/account?next=${encodeURIComponent(`/comuns?${new URLSearchParams({ create: '1', name: $page.url.searchParams.get('name') ?? '' })}`)}`)
         return
       }
       if (!canCreate(user)) {
@@ -333,6 +333,7 @@
 
   $: if (browser && $page.url.searchParams.get('create') === '1' && !createIntentHandled) {
     createIntentHandled = true
+    name = ($page.url.searchParams.get('name') ?? '').trim()
     void openCreate()
   }
 

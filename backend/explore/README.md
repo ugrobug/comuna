@@ -41,6 +41,9 @@ graph. Layout generations prevent stale filter results from replacing the curren
 Manual dragging is unconstrained; fixed positions
 survive filtering. The “Упорядочить” button restores automatic placement. The Svelte SVG
 component handles dragging, panning, zooming, keyboard selection and neighborhood emphasis.
+Selecting a node opens an anchored card with its optional description and subscription
+actions. Interest cards link to community creation with the name prefilled; guests
+authenticate first and then continue to that form. New graph connections remain manual.
 A list view offers the same subscription/navigation actions without requiring spatial
 navigation. Filters apply OR inside each property, AND between different properties,
 and AND with title/description search. Missing properties do not match active filters.

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy, createEventDispatcher } from 'svelte'
+  import { NodePopover } from '$lib/explore/NodePopover'
   import ELK from 'elkjs/lib/elk-api'
   import elkWorkerUrl from 'elkjs/lib/elk-worker.min.js?url'
   import { GraphLayout, graphTitle, nodeSize, edgeCoordinates, edgePath, type Coordinate, type GraphPoint } from '$lib/explore/GraphLayout'
@@ -10,7 +11,7 @@
   export let selected: number | null = null
   export let showProperties = false
   export let filtersOpen = false
-  const dispatch = createEventDispatcher<{ select: number }>()
+  const dispatch = createEventDispatcher<{ select: number; dismiss: void }>()
   let svg: SVGSVGElement
   let canvas: HTMLDivElement
   let engine: InstanceType<typeof ELK>
@@ -25,6 +26,16 @@
   let drag: { id: number | null; x: number; y: number; moved: boolean; startX: number; startY: number } | null = null
   let suppressClick = false
   let signature = ''
+  let cardWidth = 320, cardHeight = 220
+  $: cardTop = width > 700 ? 100 : 155
+  $: cardLeft = width > 700 && filtersOpen ? Math.min(370, width - 340) : 10
+  $: activePoint = points.find(point => point.id === selected)
+  $: cardPosition = NodePopover.place({ x: (activePoint?.x ?? 0) * scale + tx, y: (activePoint?.y ?? 0) * scale + ty }, { width: cardWidth, height: cardHeight }, { width, height }, 24 * scale, cardTop, cardLeft)
+  function measureCard(element: HTMLElement) {
+    const resize = new ResizeObserver(() => { cardWidth = element.offsetWidth; cardHeight = element.offsetHeight })
+    resize.observe(element)
+    return { destroy: () => resize.disconnect() }
+  }
   $: nextSignature = JSON.stringify([nodes.map(node => [node.id, node.kind, node.title, node.show_properties, node.property_ids]), edges, showProperties, properties, width <= 700])
   $: if (ready && signature !== nextSignature) { signature = nextSignature; void rebuild() }
   $: if (ready && !arranging) { filtersOpen; width; height; fit() }
@@ -97,6 +108,7 @@
     if (!drag) return
     suppressClick = drag.moved
     if (drag.id !== null && !drag.moved) dispatch('select', drag.id)
+    if (drag.id === null && !drag.moved) dispatch('dismiss')
     drag = null
     if (svg.hasPointerCapture(event.pointerId)) svg.releasePointerCapture(event.pointerId)
   }
@@ -110,6 +122,8 @@
   })
   onDestroy(() => { ready = false; generation++; observer?.disconnect(); engine?.terminateWorker() })
 </script>
+
+<svelte:window on:keydown={(event) => { if (event.key === 'Escape' && selected !== null) dispatch('dismiss') }} />
 
 <div class="graph-canvas" bind:this={canvas}>
   {#if arranging}<p class="layout-status" role="status">Раскладываем граф…</p>{:else if layoutError}<div class="layout-status" role="alert">{layoutError} <button on:click={() => rebuild()}>Повторить</button></div>{/if}
@@ -138,11 +152,17 @@
       {/each}
     </g>
   </svg>
+  {#if activePoint && !arranging && !layoutError}
+    <section class="node-popover" aria-label="Действия с выбранным узлом" use:measureCard style:left={`${cardPosition.x}px`} style:top={`${cardPosition.y}px`} style:max-height={`${Math.max(100, height - cardTop - 80)}px`}>
+      <slot />
+    </section>
+  {/if}
   <div class="controls"><button aria-label="Уменьшить граф" on:click={() => zoom(1 / 1.2)}>−</button><span>{Math.round(scale * 100)}%</span><button aria-label="Увеличить граф" on:click={() => zoom(1.2)}>+</button><button on:click={fit}>Весь граф</button><button disabled={arranging} on:click={() => rebuild(false)}>Упорядочить</button></div>
   <p class="hint">Перетаскивайте узлы и поле · прокрутка меняет масштаб</p>
 </div>
 
 <style>
+  .node-popover{position:absolute;z-index:2;width:320px;max-width:calc(100% - 20px);box-sizing:border-box;overflow:auto;padding:16px;border:1px solid #b2b8ca60;border-radius:16px;background:var(--explore-surface,#fff);box-shadow:0 10px 32px #30375124;color:var(--explore-ink,#35405a)}
   .pending{visibility:hidden}.layout-status{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:13px;color:#8174ce}.controls button:disabled{opacity:.5;cursor:wait}
   .graph-canvas{position:relative;min-width:0;height:100%;min-height:0;background-color:var(--explore-canvas,#f6f7fb);background-image:radial-gradient(#b9c2d340 .9px,transparent .9px);background-size:22px 22px;overflow:hidden}svg{display:block;width:100%;height:100%;min-height:0;touch-action:none;cursor:grab}svg:active{cursor:grabbing}path{fill:none;stroke-linejoin:round;stroke:#c6cedc;stroke-width:1.4;transition:stroke .2s}path.connected{stroke:#8174ce;stroke-width:2.2}.node{cursor:pointer;outline:none;transition:opacity .2s}.node.muted{opacity:.4}.halo{fill:transparent;stroke:transparent;stroke-width:1.5}.node.selected .halo,.node:focus .halo{fill:#8174ce18;stroke:#9284d1}.node.neighbor .halo{fill:#8174ce0c}.core{fill:#8174ce;stroke:#e6e1f9;stroke-width:2.8}.core.community{fill:#dc9b50;stroke:#f7e8d6;stroke-width:3}.node.selected .core{fill:#6555b4}.node.selected .core.community{fill:#c4883c}text{font:500 13px system-ui;fill:var(--explore-ink,#35405a);paint-order:stroke;stroke:var(--explore-canvas,#f6f7fb);stroke-width:4px;stroke-linejoin:round}.property-label{font-size:10px;fill:#788398}.legend{position:absolute;bottom:48px;left:20px;display:flex;gap:18px;font-size:11px;color:#7a8295;pointer-events:none}.legend span{display:flex;align-items:center;gap:7px}i{width:8px;height:8px;border-radius:50%}.element{background:#8174ce}.community{background:#dc9b50}.controls{position:absolute;bottom:20px;right:20px;display:flex;align-items:center;gap:8px;border:1px solid #dce1ea;border-radius:12px;background:var(--explore-surface,#fff);padding:5px;color:var(--explore-ink,#35405a)}button{border:0;background:transparent;font-size:13px;padding:7px;cursor:pointer}button:hover{background:#8174ce15;border-radius:8px}.controls span{font-size:10px;min-width:34px;text-align:center}.hint{position:absolute;bottom:22px;left:20px;font-size:10px;color:#8b94a5;pointer-events:none}@media(max-width:700px){text{font-size:13px}.property-label{font-size:10px}.hint{display:none}.graph-canvas,svg{min-height:0}.controls{right:10px;bottom:10px}.legend{left:12px;top:130px;bottom:auto;gap:12px}}
 </style>
