@@ -1014,7 +1014,8 @@ def user_upload(request: HttpRequest) -> HttpResponse:
         ext = ".jpg"
     filename = f"uploads/manual/{base_name}-{secrets.token_hex(8)}{ext}"
     upload.seek(0)
-    image_set = save_image_with_variants(data=upload.read(), original_path=filename)
+    # Interactive uploads favor encoding speed while retaining all responsive sizes.
+    image_set = save_image_with_variants(data=upload.read(), original_path=filename, webp_method=4)
     url = _absolute_storage_url(request, image_set.default_url)
 
     return JsonResponse(

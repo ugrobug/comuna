@@ -1,4 +1,5 @@
 <script lang="ts">
+  let imageUploadPending = false
   import PublishSchedule from '$lib/components/editor/PublishSchedule.svelte'
   import { scheduleError } from '$lib/postSchedule'
   let publishAt: string | null = null
@@ -449,6 +450,7 @@
   }
 
   const createPost = async () => {
+    if (imageUploadPending) return
     if (!$siteUser || !comun?.slug) return
     createError = scheduleError(publishAt)
     if (createError) return
@@ -793,6 +795,7 @@
 
         {#key `editor-template-${editorTemplateBlocksKey}`}
           <EditorJS
+            bind:hasPendingUploads={imageUploadPending}
             bind:value={createContent}
             placeholder="Текст поста"
             postTemplateType={createTemplateType}
@@ -815,11 +818,11 @@
             color="primary"
             on:click={createPost}
             loading={creating}
-            disabled={creating}
+            disabled={imageUploadPending || creating}
           >
             {publishAt ? 'Запланировать' : 'Опубликовать в сообщество'}
           </Button>
-          <PublishSchedule bind:value={publishAt} disabled={creating} />
+          <PublishSchedule bind:value={publishAt} disabled={imageUploadPending || creating} />
           <Button
             color="ghost"
             on:click={() => {
@@ -835,7 +838,7 @@
               createEventData = createEmptyEventTemplateData()
               createError = ''
             }}
-            disabled={creating}
+            disabled={imageUploadPending || creating}
           >
             Очистить
           </Button>

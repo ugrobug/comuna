@@ -1,6 +1,8 @@
 <script lang="ts">
   import { createEventDispatcher, onMount, onDestroy } from 'svelte'
   import { profile } from '$lib/auth'
+  import { createImageTool } from './createImageTool'
+  import { getClipboardImages } from './imageClipboard'
   import { uploadSiteImage, siteToken } from '$lib/siteAuth'
   import {
     getTemplateEditorBlockTypes,
@@ -55,8 +57,10 @@
       return { url: await uploadSiteImage(file), useWebp: false }
     }
     if ($profile?.jwt) {
+      const url = await uploadImage(file, $profile.instance, $profile.jwt)
+      if (!url) throw new Error('Не удалось загрузить изображение')
       return {
-        url: await uploadImage(file, $profile.instance, $profile.jwt),
+        url,
         useWebp: true,
       }
     }
@@ -2421,204 +2425,40 @@
   }
 
   // Кастомный плагин для изображений
-  class CustomImageTool {
-    private api: any;
-    private data: { file: { url: string; alt: string; title: string }; caption: string };
-    private config: any;
-    private isUploading: boolean = false;
-    private shouldAutoOpenPicker: boolean = false;
-
-    static get toolbox() {
-      return {
-        title: 'Изображение',
-        icon: `<img src="${icons.image}" width="16" height="16" />`
+  const CustomImageTool = createImageTool({
+    icon: icons.image,
+    upload: uploadEditorImage,
+    onError: (error) => {
+      const message = humanizeUploadError(error)
+      toast({ content: message, type: 'error' })
+      return message
+    },
+    onPendingChange: (delta) => {
+      pendingImageUploads = Math.max(0, pendingImageUploads + delta)
+      if (pendingImageUploads > 0) {
+        hasPendingUploads = true
+      } else if (editor) {
+        // Sync the bound post before enabling publication; onChange is debounced.
+        void editor.save().then((data: any) => {
+          updateMarkdown(data, true)
+          if (pendingImageUploads === 0) hasPendingUploads = false
+        }).catch(() => {
+          toast({ content: 'Не удалось обновить пост после загрузки изображения', type: 'error' })
+        })
+      } else {
+        hasPendingUploads = false
       }
-    }
-
-    constructor({ data, config, api }: { data?: { file: { url: string; alt: string; title: string }; caption: string }, config?: any, api?: any }) {
-      this.api = api
-      const caption = data?.caption || data?.file?.alt || data?.file?.title || ''
-      this.data = {
-        file: {
-          url: data?.file?.url || '',
-          alt: caption,
-          title: data?.file?.title || ''
-        },
-        caption
-      }
-      this.config = config || {}
-      this.shouldAutoOpenPicker = !Boolean(data?.file?.url)
-    }
-
-    render() {
-      const wrapper = document.createElement('div')
-      wrapper.classList.add('image-tool__wrapper')
-      
-      const imageWrapper = document.createElement('div')
-      imageWrapper.classList.add('image-tool__image-wrapper')
-      
-      const image = document.createElement('img')
-      image.src = this.data.file.url
-      image.alt = this.data.file.alt
-      image.title = this.data.file.title
-      
-      let previewControl: HTMLDivElement | null = null
-      if (showPostSettings) {
-        previewControl = document.createElement('div')
-        previewControl.classList.add('image-tool__preview-control')
-
-        // Показываем контрол только если изображение уже загружено
-        if (!this.data.file.url) {
-          previewControl.style.display = 'none'
-        }
-
-        const isPreview = Boolean(this.data.file.url && this.data.file.url === previewImage)
-        previewControl.classList.toggle('active', isPreview)
-        previewControl.innerHTML = `
-          <span class="preview-star">${isPreview ? '★' : '☆'}</span>
-          <span class="preview-text">Вывести в ленте</span>
-        `
-        previewControl.onclick = (e) => {
-          e.preventDefault()
-          e.stopPropagation()
-          if (this.data.file.url) {
-            // Если выбираем новое изображение, сначала очищаем все остальные
-            if (this.data.file.url !== previewImage) {
-              // Находим все контролы в редакторе
-              const allControls = document.querySelectorAll('.image-tool__preview-control')
-              allControls.forEach(control => {
-                control.classList.remove('active')
-                const star = control.querySelector('.preview-star')
-                if (star) {
-                  star.textContent = '☆'
-                }
-              })
-            }
-
-            // Устанавливаем новое значение previewImage
-            previewImage = this.data.file.url === previewImage ? '' : this.data.file.url
-
-            // Обновляем текущий контрол
-            previewControl?.classList.toggle('active', Boolean(this.data.file.url === previewImage))
-            const star = previewControl?.querySelector('.preview-star')
-            if (star) {
-              star.textContent = this.data.file.url === previewImage ? '★' : '☆'
-            }
-
-            editor.save().then(updateMarkdown)
-          }
-        }
-      }
-      
-      const caption = document.createElement('textarea')
-      caption.classList.add('image-tool__caption')
-      caption.setAttribute('aria-label', 'Подпись изображения')
-      caption.placeholder = 'Подпись изображения'
-      caption.value = this.data.caption
-      caption.oninput = () => {
-        this.data.caption = caption.value
-        this.data.file.alt = caption.value
-        image.alt = caption.value
-      }
-      
-      const input = document.createElement('input')
-      input.type = 'file'
-      input.accept = 'image/*'
-      input.style.display = 'none'
-      
-      const button = document.createElement('button')
-      button.classList.add('image-tool__button')
-      button.textContent = 'Загрузить изображение'
-      button.onclick = (e) => {
-        e.preventDefault()
-        e.stopPropagation()
-        input.click()
-      }
-      
-      const loader = document.createElement('div')
-      loader.classList.add('image-tool__loader')
-      loader.innerHTML = `
-        <div class="image-tool__loader-spinner"></div>
-        <div class="image-tool__loader-text">Загрузка изображения...</div>
-      `
-      
-      input.onchange = async (e: Event) => {
-        const target = e.target as HTMLInputElement
-        if (!target.files) return
-        
-        const file = target.files[0]
-        if (file) {
-          try {
-            this.isUploading = true
-            wrapper.appendChild(loader)
-            button.disabled = true
-            button.textContent = 'Загрузка...'
-            
-            const uploaded = await uploadEditorImage(file)
-            if (uploaded?.url) {
-              this.data.file.url = uploaded.useWebp
-                ? `${uploaded.url}?format=webp`
-                : uploaded.url
-              image.src = this.data.file.url
-              
-              // Показываем контрол "Вывести в ленте" после успешной загрузки
-              if (previewControl) {
-                previewControl.style.display = 'flex'
-
-                // Обновляем состояние контрола
-                const isNowPreview = Boolean(this.data.file.url === previewImage)
-                previewControl.classList.toggle('active', isNowPreview)
-                const star = previewControl.querySelector('.preview-star')
-                if (star) {
-                  star.textContent = isNowPreview ? '★' : '☆'
-                }
-              }
-            }
-          } catch (error) {
-            console.error('Ошибка при загрузке изображения:', error)
-            toast({
-              content: humanizeUploadError(error),
-              type: 'error'
-            })
-          } finally {
-            this.isUploading = false
-            wrapper.removeChild(loader)
-            button.disabled = false
-            button.textContent = 'Загрузить изображение'
-          }
-        }
-      }
-      
-      imageWrapper.appendChild(image)
-      if (previewControl) {
-        imageWrapper.appendChild(previewControl)
-      }
-      wrapper.appendChild(imageWrapper)
-      
-      wrapper.appendChild(button)
-      wrapper.appendChild(input)
-      
-      wrapper.appendChild(caption)
-
-      // When a new image block is added from the toolbox, immediately open
-      // the file picker to avoid an extra click on the upload button.
-      if (this.shouldAutoOpenPicker && !this.data.file.url) {
-        this.shouldAutoOpenPicker = false
-        button.textContent = 'Выберите изображение'
-        try {
-          input.click()
-        } catch (error) {
-          console.warn('Не удалось автоматически открыть выбор файла:', error)
-        }
-      }
-      
-      return wrapper
-    }
-
-    save() {
-      return this.data
-    }
-  }
+    },
+    showPostSettings: () => showPostSettings,
+    getPreview: () => previewImage,
+    setPreview: (url) => {
+      previewImage = url
+      element.querySelectorAll('.image-tool__preview-control').forEach((control) => {
+        control.classList.remove('active')
+        control.textContent = '☆ Вывести в ленте'
+      })
+    },
+  })
 
   class MapTool {
     private data: { lat: number | null; lng: number | null; zoom: number; raw: string }
@@ -4379,6 +4219,8 @@
     image_url?: string | null
   }
 
+  export let hasPendingUploads = false
+  let pendingImageUploads = 0
   export let value = ''
   export let placeholder = ''
   export let label = ''
@@ -4569,7 +4411,6 @@
   let markdownOutput = ''
   let destroyBlockDragAndDrop: (() => void) | null = null
   let isImageBlockEnabled = true
-  let isUploadingPastedImage = false
   let reviewMarkerSyncTimer: ReturnType<typeof setTimeout> | null = null
 
   const syncEditorReviewMarkers = () => {
@@ -4656,57 +4497,17 @@
     if (editor) queueReviewMarkerSync()
   }
 
-  const getPastedImageFile = (event: ClipboardEvent): File | null => {
-    const clipboardData = event.clipboardData
-    if (!clipboardData) return null
-
-    const itemFile = Array.from(clipboardData.items || [])
-      .find((item) => item.kind === 'file' && item.type.startsWith('image/'))
-      ?.getAsFile()
-    if (itemFile) return itemFile
-
-    return Array.from(clipboardData.files || [])
-      .find((file) => file.type.startsWith('image/')) || null
-  }
-
-  const insertImageFromClipboard = async (file: File) => {
+  const insertImagesFromClipboard = (files: File[]) => {
     if (!editor) return
-
-    const uploaded = await uploadEditorImage(file)
-    if (!uploaded?.url) {
-      throw new Error('Не удалось загрузить изображение')
-    }
-
-    const imageUrl = uploaded.useWebp ? `${uploaded.url}?format=webp` : uploaded.url
-    const currentBlockIndex =
-      typeof editor.blocks?.getCurrentBlockIndex === 'function'
-        ? editor.blocks.getCurrentBlockIndex()
-        : -1
-    const blocksCount =
-      typeof editor.blocks?.getBlocksCount === 'function'
-        ? editor.blocks.getBlocksCount()
-        : 0
+    const currentBlockIndex = editor.blocks.getCurrentBlockIndex()
+    const blocksCount = editor.blocks.getBlocksCount()
     const insertIndex = currentBlockIndex >= 0
       ? Math.min(currentBlockIndex + 1, blocksCount)
       : blocksCount
-
-    await editor.blocks.insert(
-      'image',
-      {
-        file: {
-          url: imageUrl,
-          alt: '',
-          title: ''
-        },
-        caption: ''
-      },
-      {},
-      insertIndex,
-      true
-    )
-
-    const data = await editor.save()
-    updateMarkdown(data)
+    // Insert immediately at the paste position; each block owns its upload.
+    files.forEach((file, offset) => {
+      editor.blocks.insert('image', { uploadFile: file }, {}, insertIndex + offset, true)
+    })
   }
 
   const appendTextWithLineBreaks = (fragment: DocumentFragment, value: string) => {
@@ -4788,6 +4589,22 @@
   }
 
   const handleEditorPaste = async (event: ClipboardEvent) => {
+    const imageFiles = getClipboardImages(event.clipboardData)
+    if (imageFiles.length) {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      if (!isImageBlockEnabled) {
+        toast({ content: 'В этом типе публикации блок изображения недоступен', type: 'error' })
+        return
+      }
+      try {
+        insertImagesFromClipboard(imageFiles)
+      } catch (error) {
+        toast({ content: humanizeUploadError(error), type: 'error' })
+      }
+      return
+    }
+
     const target = event.target as HTMLElement | null
     const clipboardText = event.clipboardData?.getData('text/plain')?.trim() ?? ''
     const dzenMatch = target?.closest('input, textarea') ? null : findDzenUrl(clipboardText)
@@ -4795,36 +4612,6 @@
       event.preventDefault()
       event.stopPropagation()
       await insertDzenLinkFromClipboard(clipboardText, dzenMatch)
-      return
-    }
-
-    const imageFile = getPastedImageFile(event)
-    if (!imageFile) return
-
-    event.preventDefault()
-    event.stopPropagation()
-
-    if (!isImageBlockEnabled) {
-      toast({
-        content: 'В этом типе публикации блок изображения недоступен',
-        type: 'error'
-      })
-      return
-    }
-
-    if (isUploadingPastedImage) return
-    isUploadingPastedImage = true
-
-    try {
-      await insertImageFromClipboard(imageFile)
-    } catch (error) {
-      console.error('Ошибка при вставке изображения из буфера:', error)
-      toast({
-        content: humanizeUploadError(error),
-        type: 'error'
-      })
-    } finally {
-      isUploadingPastedImage = false
     }
   }
 
@@ -5066,11 +4853,11 @@
   }
 
   // Функция для обновления markdown
-  const updateMarkdown = (data: any) => {
+  const updateMarkdown = (data: any, force = false) => {
     console.log('📄 updateMarkdown вызван с данными:', data);
     
     // Устанавливаем флаг что обновление идёт изнутри (только если не обновляем извне)
-    if (!isUpdatingFromInternal) {
+    if (!isUpdatingFromInternal || force) {
       isUpdatingFromInternal = true
       
       // Добавляем дополнительные данные в JSON
@@ -6211,17 +5998,18 @@
   }
 
   :global(.image-tool__loader) {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    background: rgba(255, 255, 255, 0.8);
-    border-radius: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    color: #2563eb;
+    font-size: 0.875rem;
+  }
+
+  :global(.image-tool__error) {
+    color: #dc2626;
+    font-size: 0.875rem;
+  }
+
+  :global(.image-tool__wrapper [hidden]) {
+    display: none;
   }
 
   :global(.image-tool__loader-spinner) {

@@ -1,4 +1,5 @@
 <script lang="ts">
+  let imageUploadPending = false
   import PublishSchedule from '$lib/components/editor/PublishSchedule.svelte'
   import { scheduleError } from '$lib/postSchedule'
   let publishAt: string | null = null
@@ -1036,6 +1037,7 @@
   }
 
   const createPost = async () => {
+    if (imageUploadPending) return
     if (!$siteUser) return
     createError = ''
     draftError = ''
@@ -1123,6 +1125,7 @@
   }
 
   const openDraftShare = async () => {
+    if (imageUploadPending) return
     if (draftActionPending) return
     draftActionPending = 'share'
     draftError = ''
@@ -1136,6 +1139,7 @@
   }
 
   const openDraftPreview = async () => {
+    if (imageUploadPending) return
     if (draftActionPending) return
     draftActionPending = 'preview'
     draftError = ''
@@ -1484,6 +1488,7 @@
         />
         {#key `editor-template-${editorTemplateBlocksKey}`}
           <EditorJS
+            bind:hasPendingUploads={imageUploadPending}
             bind:value={createContent}
             placeholder="Текст поста"
             postTemplateType={createTemplateType}
@@ -1586,16 +1591,16 @@
             color="primary"
             on:click={createPost}
             loading={creating}
-            disabled={creating}
+            disabled={imageUploadPending || creating}
           >
             {publishAt ? 'Запланировать' : 'Опубликовать'}
           </Button>
-          <PublishSchedule bind:value={publishAt} disabled={creating} />
+          <PublishSchedule bind:value={publishAt} disabled={imageUploadPending || creating} />
           <Button
             color="ghost"
             on:click={openDraftShare}
             loading={draftActionPending === 'share'}
-            disabled={creating || draftActionPending !== null}
+            disabled={imageUploadPending || creating || draftActionPending !== null}
           >
             {$t('site.draftShare.button')}
           </Button>
@@ -1603,11 +1608,11 @@
             color="ghost"
             on:click={openDraftPreview}
             loading={draftActionPending === 'preview'}
-            disabled={creating || draftActionPending !== null}
+            disabled={imageUploadPending || creating || draftActionPending !== null}
           >
             Предпросмотр
           </Button>
-          <Button color="ghost" on:click={resetForm} disabled={creating}>
+          <Button color="ghost" on:click={resetForm} disabled={imageUploadPending || creating}>
             Очистить
           </Button>
         </div>

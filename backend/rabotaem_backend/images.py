@@ -32,7 +32,7 @@ def _storage_url(path: str) -> str:
     return default_storage.url(path)
 
 
-def _save_webp_variant(image: Image.Image, path: str, width: int) -> SavedImageVariant | None:
+def _save_webp_variant(image: Image.Image, path: str, width: int, *, method: int = 6) -> SavedImageVariant | None:
     if image.width <= 0 or image.height <= 0:
         return None
     target_width = min(width, image.width)
@@ -45,7 +45,7 @@ def _save_webp_variant(image: Image.Image, path: str, width: int) -> SavedImageV
         variant_image = variant_image.convert("RGBA" if "A" in variant_image.getbands() else "RGB")
 
     output = io.BytesIO()
-    variant_image.save(output, format="WEBP", quality=82, method=6)
+    variant_image.save(output, format="WEBP", quality=82, method=method)
     content = ContentFile(output.getvalue())
     content.content_type = "image/webp"
     saved_path = default_storage.save(path, content)
@@ -58,6 +58,7 @@ def save_image_with_variants(
     original_path: str,
     variant_widths: tuple[int, ...] = IMAGE_VARIANT_WIDTHS,
     keep_original: bool = True,
+    webp_method: int = 6,
 ) -> SavedImageSet:
     original_path = default_storage.save(original_path, ContentFile(data))
     original_url = _storage_url(original_path)
@@ -89,7 +90,7 @@ def save_image_with_variants(
         if width > image.width and variants:
             continue
         variant_path = f"{root}-{width}.webp"
-        variant = _save_webp_variant(image, variant_path, width)
+        variant = _save_webp_variant(image, variant_path, width, method=webp_method)
         if variant is not None:
             variants.append(variant)
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+  let imageUploadPending = false
   import PublishSchedule from '$lib/components/editor/PublishSchedule.svelte'
   import { scheduleError } from '$lib/postSchedule'
   let publishAt: string | null = null
@@ -702,6 +703,7 @@
   }
 
   const cancelScheduledPublication = async () => {
+    if (imageUploadPending) return
     if (!post || saving) return
     saving = true
     saveError = ''
@@ -718,6 +720,7 @@
   }
 
   const savePublishedEdit = async () => {
+    if (imageUploadPending) return
     if (!post) return
     saveError = scheduleError(post?.is_draft || post?.is_scheduled ? publishAt : null)
     if (saveError) return
@@ -734,6 +737,7 @@
   }
 
   const publishDraft = async () => {
+    if (imageUploadPending) return
     if (!post || saving || autosaving) return
     saveError = scheduleError(post?.is_draft || post?.is_scheduled ? publishAt : null)
     if (saveError) return
@@ -753,6 +757,7 @@
   }
 
   const openDraftShare = async () => {
+    if (imageUploadPending) return
     await flushDraftAutosave()
     if (!post?.id || !draftShareUrl) return
     draftShareOpen = true
@@ -1141,6 +1146,7 @@
           <div class="flex min-w-0 flex-col gap-2">
             {#key `edit-editor-template-${editorTemplateBlocksKey}`}
               <EditorJS
+                bind:hasPendingUploads={imageUploadPending}
                 bind:value={editContent}
                 placeholder="Текст поста"
                 postTemplateType={editTemplateType}
@@ -1197,28 +1203,28 @@
               color="primary"
               on:click={publishDraft}
               loading={publishing}
-              disabled={publishing || autosaving}
+              disabled={imageUploadPending || publishing || autosaving}
             >
               {publishAt ? 'Запланировать' : 'Опубликовать'}
             </Button>
-            <PublishSchedule bind:value={publishAt} disabled={publishing || autosaving} />
-            <Button color="ghost" on:click={openDraftShare} disabled={!draftShareUrl || publishing}>
+            <PublishSchedule bind:value={publishAt} disabled={imageUploadPending || publishing || autosaving} />
+            <Button color="ghost" on:click={openDraftShare} disabled={imageUploadPending || !draftShareUrl || publishing}>
               {$t('site.draftShare.button')}
             </Button>
           {:else}
-            <Button color="primary" on:click={savePublishedEdit} loading={saving} disabled={saving}>
+            <Button color="primary" on:click={savePublishedEdit} loading={saving} disabled={imageUploadPending || saving}>
               {post.is_scheduled && !publishAt ? 'Опубликовать сейчас' : 'Сохранить'}
             </Button>
             {#if post.is_scheduled}
-              <PublishSchedule bind:value={publishAt} disabled={saving} />
-              <Button color="ghost" disabled={saving} on:click={cancelScheduledPublication}>Отменить публикацию</Button>
+              <PublishSchedule bind:value={publishAt} disabled={imageUploadPending || saving} />
+              <Button color="ghost" disabled={imageUploadPending || saving} on:click={cancelScheduledPublication}>Отменить публикацию</Button>
             {/if}
             <Button
               color="ghost"
               href={post.is_scheduled ? `/account/edit-post/${post.id}/preview` : buildBackendPostPath(post)}
               target="_blank"
               rel="noreferrer"
-              disabled={saving}
+              disabled={imageUploadPending || saving}
             >
               Открыть пост
             </Button>
