@@ -14,7 +14,7 @@
   let loading = true, error = '', loginOpen = false
   let query = '', filters: number[] = [], selected: number | null = null
   let showProperties = false, listView = false, busy: number | null = null
-  let filtersOpen = false
+  let filtersOpen = true
   $: visible = filterNodes(data.nodes, data.properties, filters, query)
   $: visibleIds = new Set(visible.map(node => node.id))
   $: edges = data.edges.filter(edge => visibleIds.has(edge.source) && visibleIds.has(edge.target))
