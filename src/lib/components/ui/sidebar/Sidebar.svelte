@@ -15,6 +15,7 @@
     ChartBar,
   } from 'svelte-hero-icons'
   import { notifications, profile } from '$lib/auth.js'
+  import { graphIcon } from '$lib/explore/graphIcon'
   import SidebarButton from '$lib/components/ui/sidebar/SidebarButton.svelte'
   import { Badge } from 'mono-svelte'
   import { locale, t } from '$lib/translations'
@@ -136,6 +137,9 @@
     <SidebarButton icon={UserGroup} href="/?feed=mine" active={currentFeed === 'mine'}>
       <span slot="label">{$t('site.sidebar.myFeed')}</span>
     </SidebarButton>
+    <SidebarButton icon={graphIcon} href="/explore">
+      <span slot="label">Исследовать</span>
+    </SidebarButton>
     <SidebarButton icon={Bookmark} href="/?feed=favorites" active={currentFeed === 'favorites'}>
       <span slot="label">{$t('site.sidebar.favorites')}</span>
     </SidebarButton>
@@ -166,10 +170,6 @@
       </SidebarButton>
     </div>
   {/if}
-
-  <SidebarButton icon={ChartBar} href="/explore">
-    <span slot="label">Explore · Увлечения</span>
-  </SidebarButton>
 
   <div class="flex flex-col gap-2">
       <button
