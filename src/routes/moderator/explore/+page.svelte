@@ -10,49 +10,72 @@
   let data = emptyGraph(), loading = true, busy = false, error = '', notice = ''
   let search = '', communitySearch = '', edgeSearch = ''
   let connections: HTMLElement
+  let nodeForm: HTMLFormElement
   let editing: number | undefined
   let kind: 'element' | 'community' = 'element'
   let title = '', description = '', communityId: number | null = null
   let propertyIds: number[] = [], showProperties = false, active = true
   let source: number | null = null, target: number | null = null
+  let savedDraft = draftKey()
   $: nodes = data.nodes.filter(node => node.title.toLocaleLowerCase('ru').includes(search.toLocaleLowerCase('ru')))
   $: nodeNames = new Map(data.nodes.map(node => [node.id, node.title]))
   $: visibleEdges = data.edges.filter(edge => `${nodeNames.get(edge.source)} ${nodeNames.get(edge.target)}`.toLocaleLowerCase('ru').includes(edgeSearch.trim().toLocaleLowerCase('ru')))
   $: linkedCommunityIds = new Set(data.nodes.filter(node => node.id !== editing).map(node => node.community_id))
   $: communityOptions = (data.communities ?? []).filter(item => !linkedCommunityIds.has(item.id) && item.name.toLocaleLowerCase('ru').includes(communitySearch.toLocaleLowerCase('ru')))
 
+  function draftData() {
+    return { kind, title, description, community_id: kind === 'community' ? communityId : null,
+      property_ids: [...propertyIds].sort((a, b) => a - b), show_properties: showProperties, is_active: active }
+  }
+  function draftKey() { return JSON.stringify(draftData()) }
+  async function switchDraft(next: () => void) {
+    if (busy) return
+    if (draftKey() !== savedDraft && !await save()) return
+    next()
+  }
   function reset(nextKind: 'element' | 'community' = 'element') {
     editing = undefined; kind = nextKind; title = ''; description = ''; communityId = null
     propertyIds = []; showProperties = false; active = true; communitySearch = ''
+    savedDraft = draftKey()
+  }
+  function openNode(id: number) {
+    return switchDraft(() => {
+      const node = data.nodes.find(item => item.id === id)
+      if (node) edit(node)
+    })
   }
   function edit(node: ExploreNode) {
     editing = node.id; kind = node.kind; title = node.title; description = node.description
     communityId = node.community_id; propertyIds = [...node.property_ids]
     showProperties = node.show_properties; active = node.is_active; communitySearch = ''
-    error = ''; notice = ''
+    error = ''; notice = ''; savedDraft = draftKey()
   }
   async function load() { data = await api.graph(true) }
   async function action(operation: () => Promise<unknown>, message: string) {
-    if (busy) return
+    if (busy) return false
     busy = true; error = ''; notice = ''
-    try { await operation(); await load(); notice = message }
-    catch (problem) { error = (problem as Error).message }
+    try { await operation(); await load(); notice = message; return true }
+    catch (problem) { error = (problem as Error).message; return false }
     finally { busy = false }
   }
-  function save() {
-    return action(async () => {
-      const result = await api.saveNode({ kind, title, description, community_id: kind === 'community' ? communityId : null, property_ids: propertyIds, show_properties: showProperties, is_active: active }, editing)
+  async function save() {
+    if (busy || !nodeForm.reportValidity()) return false
+    const saved = await action(async () => {
+      const result = await api.saveNode(draftData(), editing)
       editing = result.id
       source = result.id; target = null
       if (kind === 'community') title = data.communities?.find(item => item.id === communityId)?.name ?? title
-    }, 'Узел и свойства сохранены.')
+    }, 'Узел и свойства сохранены. Связи можно добавить позже.')
+    if (saved) savedDraft = draftKey()
+    return saved
   }
   function remove() {
     if (!editing || !window.confirm('Убрать узел из Explore вместе с его связями и подписками? Само сообщество останется на сайте.')) return
     const id = editing
     return action(async () => { await api.removeNode(id); reset() }, 'Узел удалён из графа.')
   }
-  function connectEditing() {
+  async function connectEditing() {
+    if (busy || (draftKey() !== savedDraft && !await save())) return
     source = editing ?? null; target = null
     connections.scrollIntoView({ behavior: 'smooth', block: 'start' })
     document.getElementById('edge-target')?.focus({ preventScroll: true })
@@ -75,11 +98,12 @@
   {#if loading}<p role="status">Загрузка…</p>{:else if !$siteUser?.is_staff}<section class="panel"><h2>Доступ только модераторам сайта</h2><a href="/account?next=%2Fmoderator%2Fexplore">Войти в аккаунт</a></section>
   {:else}
     <div class="columns">
-      <section class="panel nodes"><h2>Узлы <small>{data.nodes.length}</small></h2><div class="new-buttons"><button disabled={busy} on:click={() => reset('element')}>+ Элемент</button><button disabled={busy} on:click={() => reset('community')}>+ Сообщество</button></div><input aria-label="Найти узел" placeholder="Поиск по названию" bind:value={search} />
-        <div class="node-list">{#each nodes as node (node.id)}<button disabled={busy} class:selected={editing === node.id} on:click={() => edit(node)}><span>{node.title}</span><small>{node.kind === 'element' ? 'Элемент' : 'Сообщество'}{!node.is_active ? ' · скрыт' : ''}</small></button>{/each}{#if !nodes.length}<p class="hint">{search ? 'По этому названию узлов не найдено.' : 'Узлов пока нет. Добавьте первый элемент.'}</p>{/if}</div>
+      <section class="panel nodes"><h2>Узлы <small>{data.nodes.length}</small></h2><div class="new-buttons"><button disabled={busy} on:click={() => switchDraft(() => reset('element'))}>+ Элемент</button><button disabled={busy} on:click={() => switchDraft(() => reset('community'))}>+ Сообщество</button></div><input aria-label="Найти узел" placeholder="Поиск по названию" bind:value={search} />
+        <div class="node-list">{#each nodes as node (node.id)}<button disabled={busy} class:selected={editing === node.id} on:click={() => openNode(node.id)}><span>{node.title}</span><small>{node.kind === 'element' ? 'Элемент' : 'Сообщество'}{!node.is_active ? ' · скрыт' : ''}</small></button>{/each}{#if !nodes.length}<p class="hint">{search ? 'По этому названию узлов не найдено.' : 'Узлов пока нет. Добавьте первый элемент.'}</p>{/if}</div>
       </section>
-      <form class="panel node-form" on:submit|preventDefault={save}>
+      <form class="panel node-form" bind:this={nodeForm} on:submit|preventDefault={save}>
         <h2>{editing ? 'Редактировать' : 'Добавить'} {kind === 'element' ? 'элемент' : 'сообщество'}</h2>
+        <p class="hint">При переходе к другому или новому узлу изменения сохраняются автоматически. Связи можно добавить позже.</p>
         {#if kind === 'element'}<label>Название<input required maxlength="160" bind:value={title} disabled={busy} /></label>
         {:else if editing}<label>Сообщество<input value={title} disabled /></label>
         {:else}<label>Поиск сообщества<input placeholder="Начните вводить название" bind:value={communitySearch} disabled={busy} /></label><label>Существующее сообщество<select required bind:value={communityId} disabled={busy}><option value={null}>Выберите сообщество</option>{#each communityOptions as item}<option value={item.id}>{item.name}</option>{/each}</select></label><p class="hint">Каждое сообщество добавляется один раз; к нему можно провести несколько связей.</p>{/if}
