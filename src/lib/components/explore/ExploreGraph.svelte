@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy, createEventDispatcher } from 'svelte'
   import { NodePopover } from '$lib/explore/NodePopover'
+  import { GraphDrag } from '$lib/explore/GraphDrag'
   import ELK from 'elkjs/lib/elk-api'
   import elkWorkerUrl from 'elkjs/lib/elk-worker.min.js?url'
   import { GraphLayout, graphTitle, nodeSize, edgeCoordinates, edgePath, type Coordinate, type GraphPoint } from '$lib/explore/GraphLayout'
@@ -23,7 +24,7 @@
   let points: GraphPoint[] = []
   let ready = false
   let scale = 1, tx = 0, ty = 0
-  let drag: { id: number | null; x: number; y: number; moved: boolean; startX: number; startY: number } | null = null
+  let drag: { id: number | null; group: GraphDrag | null; x: number; y: number; moved: boolean; startX: number; startY: number } | null = null
   let suppressClick = false
   let signature = ''
   let cardWidth = 320, cardHeight = 220
@@ -90,7 +91,7 @@
     event.stopPropagation()
     svg.setPointerCapture(event.pointerId)
     const p = point(event)
-    drag = { id, x: p.x, y: p.y, startX: p.x, startY: p.y, moved: false }
+    drag = { id, group: id === null ? null : new GraphDrag(nodeById.get(id)!, edges), x: p.x, y: p.y, startX: p.x, startY: p.y, moved: false }
   }
   function move(event: PointerEvent) {
     if (!drag) return
@@ -98,10 +99,7 @@
     if (Math.hypot(p.x - drag.startX, p.y - drag.startY) > 3) drag.moved = true
     if (!drag.moved) return
     if (drag.id === null) { tx += dx; ty += dy }
-    else {
-      const node = byId.get(drag.id)
-      if (node) { node.fixed = true; node.x += dx / scale; node.y += dy / scale; points = [...points] }
-    }
+    else if (drag.group) points = drag.group.move(points, dx / scale, dy / scale)
     drag.x = p.x; drag.y = p.y
   }
   function stop(event: PointerEvent) {
