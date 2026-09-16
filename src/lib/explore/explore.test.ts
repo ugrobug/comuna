@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { filterNodes, type ExploreNode, type ExploreProperty } from './types'
-import { GraphLayout } from './GraphLayout'
+import ELK from 'elkjs/lib/elk.bundled.js'
+import { GraphLayout, edgeCoordinates, nodeSize, type GraphPoint, type Coordinate } from './GraphLayout'
 
 const node = (id: number, properties: number[]): ExploreNode => ({ id, title: `Увлечение ${id}`, kind: 'element', description: '', property_ids: properties, show_properties: false, is_active: true, community_id: null, community_url: null, subscribed: false })
 const properties: ExploreProperty[] = [
@@ -20,20 +21,78 @@ describe('Explore filters', () => {
     expect(filterNodes(nodes, properties, [3], ' УВЛЕЧЕНИЕ 2 ').map(item => item.id)).toEqual([2])
   })
 })
-describe('graph layout', () => {
-  it('keeps a graph with multiple parents finite and settles within bounded steps', () => {
-    const nodes = Array.from({ length: 100 }, (_, i) => node(i + 1, []))
+const bounds = (p: GraphPoint) => ({ left: p.x - p.width / 2, right: p.x + p.width / 2, top: p.y - p.anchorY, bottom: p.y - p.anchorY + p.height })
+function expectNoOverlap(points: GraphPoint[]) {
+  for (let i = 0; i < points.length; i++) for (let j = i + 1; j < points.length; j++) {
+    const a = bounds(points[i]), b = bounds(points[j])
+    expect(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top).toBe(true)
+  }
+}
+function crosses(a: Coordinate, b: Coordinate, c: Coordinate, d: Coordinate) {
+  const side = (p: Coordinate, q: Coordinate, r: Coordinate) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x)
+  return side(a, b, c) * side(a, b, d) < -0.001 && side(c, d, a) * side(c, d, b) < -0.001
+}
+const engine = new ELK()
+const layout = new GraphLayout(engine)
+describe('initial graph layout', () => {
+  it('separates circles, long titles and property labels in a large graph', async () => {
+    const nodes = Array.from({ length: 100 }, (_, i) => ({ ...node(i + 1, []), title: 'Очень длинное название увлечения ' + i }))
     const edges = nodes.slice(1).map(item => ({ id: item.id, source: Math.floor(item.id / 2), target: item.id }))
     edges.push({ id: 101, source: 3, target: 5 })
-    const layout = new GraphLayout(nodes, edges)
-    for (let i = 0; i < 190; i++) layout.step()
-    expect(layout.step()).toBe(false)
-    expect(layout.points.every(point => Number.isFinite(point.x) && Number.isFinite(point.y))).toBe(true)
-    expect(new Set(layout.points.map(point => `${point.x},${point.y}`)).size).toBe(100)
+    const sizes = new Map(nodes.map(item => [item.id, nodeSize(item, text => text.length * 10, 'Можно одному · С друзьями')]))
+    const drawing = await layout.arrange(nodes, edges, sizes)
+    expect(drawing.points).toHaveLength(100)
+    expect(drawing.points.every(p => Number.isFinite(p.x) && Number.isFinite(p.y))).toBe(true)
+    expectNoOverlap(drawing.points)
   })
-  it('preserves user positions when rebuilding and tolerates filtered-out edges', () => {
-    const layout = new GraphLayout([node(1, [])], [{ id: 1, source: 1, target: 2 }], [{ id: 1, x: 100, y: 200, vx: 0, vy: 0, fixed: true }])
-    expect(layout.points[0].x).toBe(100)
-    expect(() => layout.step()).not.toThrow()
+  it.each(['RIGHT', 'DOWN'] as const)('untangles branches without routing through nodes (%s)', async direction => {
+    const nodes = Array.from({ length: 9 }, (_, i) => node(i + 1, []))
+    const edges = [[1, 2], [1, 3], [2, 4], [3, 4], [5, 6], [5, 7], [7, 8]].map(([source, target], id) => ({ id, source, target }))
+    const drawing = await layout.arrange(nodes, edges, new Map(), [], direction)
+    expectNoOverlap(drawing.points)
+    const byId = new Map(drawing.points.map(p => [p.id, p]))
+    const lines = edges.map(edge => edgeCoordinates(edge, byId, drawing.routes))
+    for (let i = 0; i < edges.length; i++) {
+      for (let j = i + 1; j < edges.length; j++) {
+        if ([edges[i].source, edges[i].target].some(id => id === edges[j].source || id === edges[j].target)) continue
+        for (let a = 1; a < lines[i].length; a++) for (let b = 1; b < lines[j].length; b++) {
+          expect(crosses(lines[i][a - 1], lines[i][a], lines[j][b - 1], lines[j][b])).toBe(false)
+        }
+      }
+      for (const point of drawing.points.filter(p => p.id !== edges[i].source && p.id !== edges[i].target)) {
+        const box = bounds(point)
+        for (let a = 1; a < lines[i].length; a++) {
+          const p = lines[i][a - 1], q = lines[i][a]
+          const horizontalHit = p.y === q.y && p.y > box.top && p.y < box.bottom && Math.max(p.x, q.x) > box.left && Math.min(p.x, q.x) < box.right
+          const verticalHit = p.x === q.x && p.x > box.left && p.x < box.right && Math.max(p.y, q.y) > box.top && Math.min(p.y, q.y) < box.bottom
+          expect(horizontalHit || verticalHit).toBe(false)
+        }
+      }
+    }
+  })
+  it('supports cycles and dense nonplanar graphs without overlapping nodes', async () => {
+    const nodes = Array.from({ length: 6 }, (_, i) => node(i + 1, []))
+    const edges = [1, 2, 3].flatMap(source => [4, 5, 6].map(target => ({ id: source * 10 + target, source, target })))
+    edges.push({ id: 100, source: 6, target: 1 })
+    expectNoOverlap((await layout.arrange(nodes, edges)).points)
+  })
+  it('is deterministic across API node ordering and ignores filtered-out edges', async () => {
+    const nodes = [node(1, []), node(2, []), node(3, [])]
+    const edges = [{ id: 1, source: 1, target: 2 }, { id: 2, source: 2, target: 99 }]
+    const a = await layout.arrange(nodes, edges), b = await layout.arrange([...nodes].reverse(), edges)
+    expect(a.points).toEqual(b.points)
+    expect(a.routes.size).toBe(1)
+    expect(await layout.arrange([], edges)).toEqual({ points: [], routes: new Map() })
+  })
+  it('allows manual overlap, keeps moved positions on filtering, and can reset them', async () => {
+    const nodes = [node(1, []), node(2, [])], edges = [{ id: 1, source: 1, target: 2 }]
+    const initial = await layout.arrange(nodes, edges)
+    const [a, b] = initial.points
+    a.x = b.x; a.y = b.y; a.fixed = true
+    const path = edgeCoordinates(edges[0], new Map(initial.points.map(p => [p.id, p])), initial.routes)
+    expect(path).toEqual([a, b])
+    const next = await layout.arrange(nodes, edges, new Map(), initial.points)
+    expect(next.points.find(p => p.id === 1)).toMatchObject({ x: a.x, y: a.y, fixed: true })
+    expectNoOverlap((await layout.arrange(nodes, edges)).points)
   })
 })

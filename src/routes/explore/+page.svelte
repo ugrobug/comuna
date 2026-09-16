@@ -64,7 +64,7 @@
       {#if loading}<div class="empty" role="status"><span class="empty-symbol">◌</span><h2>Собираем карту интересов…</h2></div>
       {:else if !visible.length}<div class="empty"><span class="empty-symbol">◎</span><h2>{data.nodes.length ? 'Ничего не найдено' : 'Карта скоро появится'}</h2><p>{data.nodes.length ? 'Попробуйте другие свойства или сбросьте фильтры.' : 'Мы собираем увлечения и сообщества в одну карту.'}</p>{#if data.nodes.length}<button on:click={() => { filters = []; query = '' }}>Сбросить фильтры</button>{/if}</div>
       {:else if listView}<div class="node-list">{#each visible as node (node.id)}<article><button class="node-title" on:click={() => selected = node.id}><span class:community={node.kind === 'community'} class="dot"></span>{node.title}</button><small>{node.kind === 'community' ? 'Сообщество' : 'Увлечение'}</small><div><button disabled={busy !== null} on:click={() => subscribe(node)}>{node.subscribed ? 'Вы подписаны ✓' : node.kind === 'community' ? 'Подписаться' : 'Следить за обновлениями'}</button>{#if node.community_url}<a href={node.community_url}>Перейти ↗</a>{/if}</div></article>{/each}</div>
-      {:else}<ExploreGraph nodes={visible} {edges} properties={data.properties} selected={active?.id ?? null} {showProperties} on:select={(event) => selected = event.detail} />{/if}
+      {:else}<ExploreGraph nodes={visible} {edges} properties={data.properties} selected={active?.id ?? null} {showProperties} {filtersOpen} on:select={(event) => selected = event.detail} />{/if}
     </section>
     {#if active && !listView}
       <section class="node-actions" aria-label="Действия с выбранным узлом">

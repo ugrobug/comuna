@@ -34,7 +34,11 @@ branches do not participate. Notifications are in-site only and honor the site p
 
 ## UI
 
-Framework-independent `GraphLayout` owns the deterministic force layout. The Svelte SVG
+Framework-independent `GraphLayout` uses ELK layered layout with measured node/title/property
+rectangles and routed edges. The browser runs the layout in a worker before showing the
+graph. Layout generations prevent stale filter results from replacing the current graph.
+Manual dragging is unconstrained; incident edges become straight and fixed positions
+survive filtering. The “Упорядочить” button restores automatic placement. The Svelte SVG
 component handles dragging, panning, zooming, keyboard selection and neighborhood emphasis.
 A list view offers the same subscription/navigation actions without requiring spatial
 navigation. Filters apply OR inside each property, AND between different properties,
