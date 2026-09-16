@@ -52,6 +52,8 @@ class GraphQuery:
         return {
             "nodes": [{"id": node.pk, "kind": node.kind, "title": node.label,
                        "description": node.description, "is_active": node.is_active,
+                       "community_description": node.community.product_description if node.community_id else "",
+                       "subscribers_count": node.community.subscribers_count if node.community_id else None,
                        "show_properties": node.show_properties,
                        "property_ids": [option.pk for option in node.properties.all()],
                        "community_id": node.community_id,
@@ -183,6 +185,8 @@ class SubscriptionService:
             settings.my_feed_comun_categories = categories
             settings.save(update_fields=["my_feed_comuns", "my_feed_comun_categories", "updated_at"])
             _sync_comun_subscriber_counts(previous, _serialize_user_feed_settings(settings), user_id=user.pk)
+            node.community.refresh_from_db(fields=["subscribers_count"])
+            return node.community.subscribers_count
         elif enabled:
             Subscription.objects.get_or_create(user=user, node=node)
         else:

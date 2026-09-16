@@ -3,6 +3,8 @@ export type ExploreNode = {
   kind: 'element' | 'community'
   title: string
   description: string
+  community_description?: string
+  subscribers_count?: number | null
   property_ids: number[]
   show_properties: boolean
   is_active: boolean

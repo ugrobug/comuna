@@ -20,5 +20,5 @@ export class ExploreApi {
   removeNode(id: number) { return this.request(`nodes/${id}/`, 'DELETE') }
   addEdge(source: number, target: number) { return this.request('edges/', 'POST', { source, target }) }
   removeEdge(id: number) { return this.request(`edges/${id}/`, 'DELETE') }
-  subscribe(id: number, enabled: boolean) { return this.request<{ subscribed: boolean }>(`nodes/${id}/subscription/`, enabled ? 'POST' : 'DELETE') }
+  subscribe(id: number, enabled: boolean) { return this.request<{ subscribed: boolean; subscribers_count?: number | null }>(`nodes/${id}/subscription/`, enabled ? 'POST' : 'DELETE') }
 }

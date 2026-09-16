@@ -31,6 +31,7 @@
   $: visibleIds = new Set(visible.map(node => node.id))
   $: edges = data.edges.filter(edge => visibleIds.has(edge.source) && visibleIds.has(edge.target))
   $: active = visible.find(node => node.id === selected) ?? null
+  $: activeDescription = active?.kind === 'community' ? active.community_description?.trim() || active.description : active?.description ?? ''
 
   async function load() {
     loading = true; error = ''
@@ -44,7 +45,7 @@
     busy = node.id; error = ''
     try {
       const result = await api.subscribe(node.id, !node.subscribed)
-      data = { ...data, nodes: data.nodes.map(item => item.id === node.id ? { ...item, subscribed: result.subscribed } : item) }
+      data = { ...data, nodes: data.nodes.map(item => item.id === node.id ? { ...item, subscribed: result.subscribed, subscribers_count: result.subscribers_count ?? item.subscribers_count } : item) }
       if (node.kind === 'community') await loadBackendFeedSettings($siteToken)
     } catch (problem) { error = (problem as Error).message }
     finally { busy = null }
@@ -83,11 +84,12 @@
         <ExploreGraph nodes={visible} {edges} properties={data.properties} selected={active?.id ?? null} {showProperties} {filtersOpen} on:select={(event) => selected = event.detail} on:dismiss={() => selected = null}>
           {#if active}
             <div class="selected-title"><span class="dot" class:community={active.kind === 'community'}></span><h2>{active.title}</h2><button class="close-selection" aria-label="Снять выделение" on:click={() => selected = null}>×</button></div>
-            {#if active.description.trim()}<p class="node-description">{active.description}</p>{/if}
+            {#if active.kind === 'community'}<p class="subscriber-count">Подписчиков: {new Intl.NumberFormat('ru-RU').format(active.subscribers_count ?? 0)}</p>{/if}
+            {#if activeDescription.trim()}<p class="node-description">{activeDescription}</p>{/if}
             <div class="node-actions">
               <button class="subscribe" class:subscribed={active.subscribed} disabled={busy !== null} on:click={() => subscribe(active!)}>{busy === active.id ? 'Сохраняем…' : active.subscribed ? 'Отписаться' : active.kind === 'community' ? 'Подписаться' : 'Следить за обновлениями'}</button>
               {#if active.community_url}<a class="open-community" href={active.community_url}>Перейти в сообщество ↗</a>{/if}
-              {#if active.kind === 'element'}<button class="create-community" on:click={() => createCommunity(active!.title)}>Сделать сообщество «{active.title}»</button>{/if}
+              {#if active.kind === 'element'}<button class="create-community" on:click={() => createCommunity(active!.title)}>Создать сообщество по «{active.title}»</button>{/if}
             </div>
           {/if}
         </ExploreGraph>
@@ -116,6 +118,7 @@
   .node-actions{display:flex;flex-direction:column;align-items:stretch;gap:10px;margin-top:14px}
   .selected-title{display:flex;align-items:center;gap:8px;min-width:0}.selected-title h2{flex:1;font-size:15px;font-weight:600;overflow-wrap:anywhere}.close-selection{align-self:flex-start}
   .node-description{font-size:13px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere;margin-top:12px}
+  .subscriber-count{font-size:12px;color:#8b91a2;margin-top:8px}
   .subscribe{padding:10px 14px;border-radius:10px;background:#7766be;color:white;font-size:12px}.subscribe.subscribed{background:#edf5f2;color:#338a72}.open-community{font-size:12px;color:#8174ce;text-align:center;padding:6px}
   .create-community{border:1px solid #8174ce60;border-radius:10px;padding:10px 12px;color:#8174ce;font-size:12px;line-height:1.5;overflow-wrap:anywhere}
   .empty{height:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:100px 30px 40px;background:var(--explore-canvas)}.empty-symbol{font-size:50px;color:#a59bc3}.empty h2{font-size:19px;margin:18px 0 10px}.empty p{color:#8790a3;font-size:13px}.empty button{margin-top:20px;font-size:13px;color:#8174ce}

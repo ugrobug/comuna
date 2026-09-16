@@ -25,6 +25,8 @@
   let ready = false
   let scale = 1, tx = 0, ty = 0
   let drag: { id: number | null; group: GraphDrag | null; x: number; y: number; moved: boolean; startX: number; startY: number } | null = null
+  let spring: GraphDrag | null = null
+  let springFrame = 0, springTime = 0
   let suppressClick = false
   let signature = ''
   let cardWidth = 320, cardHeight = 220
@@ -49,6 +51,7 @@
     return showProperties && node.show_properties ? node.property_ids.slice(0, 2).map(id => labels.get(id)).filter(Boolean).join(' · ') : ''
   }
   async function rebuild(preserveManual = true) {
+    stopSprings()
     const request = ++generation
     arranging = true; layoutError = ''
     try {
@@ -86,12 +89,30 @@
   function point(event: PointerEvent) {
     return new DOMPoint(event.clientX, event.clientY).matrixTransform(svg.getScreenCTM()!.inverse())
   }
+  function stopSprings() {
+    if (springFrame) cancelAnimationFrame(springFrame)
+    springFrame = 0; spring = null
+  }
+  function stepSprings(time: number) {
+    springFrame = 0
+    if (!spring || !ready || arranging) return
+    // A callback queued within a frame can precede performance.now() from that frame.
+    const result = spring.step(points, Math.max(1 / 240, (time - springTime) / 1000))
+    springTime = time; points = result.points
+    if (result.moving) springFrame = requestAnimationFrame(stepSprings)
+    else spring = null
+  }
+  function follow(group: GraphDrag) {
+    spring = group
+    if (!springFrame) { springTime = performance.now(); springFrame = requestAnimationFrame(stepSprings) }
+  }
   function start(event: PointerEvent, id: number | null = null) {
     if (event.button !== 0 || arranging || layoutError) return
     event.stopPropagation()
+    stopSprings()
     svg.setPointerCapture(event.pointerId)
     const p = point(event)
-    drag = { id, group: id === null ? null : new GraphDrag(nodeById.get(id)!, edges), x: p.x, y: p.y, startX: p.x, startY: p.y, moved: false }
+    drag = { id, group: id === null ? null : new GraphDrag(nodeById.get(id)!, edges, points), x: p.x, y: p.y, startX: p.x, startY: p.y, moved: false }
   }
   function move(event: PointerEvent) {
     if (!drag) return
@@ -99,7 +120,10 @@
     if (Math.hypot(p.x - drag.startX, p.y - drag.startY) > 3) drag.moved = true
     if (!drag.moved) return
     if (drag.id === null) { tx += dx; ty += dy }
-    else if (drag.group) points = drag.group.move(points, dx / scale, dy / scale)
+    else if (drag.group) {
+      points = drag.group.move(points, dx / scale, dy / scale)
+      follow(drag.group)
+    }
     drag.x = p.x; drag.y = p.y
   }
   function stop(event: PointerEvent) {
@@ -118,7 +142,7 @@
     observer.observe(canvas)
     ready = true
   })
-  onDestroy(() => { ready = false; generation++; observer?.disconnect(); engine?.terminateWorker() })
+  onDestroy(() => { stopSprings(); ready = false; generation++; observer?.disconnect(); engine?.terminateWorker() })
 </script>
 
 <svelte:window on:keydown={(event) => { if (event.key === 'Escape' && selected !== null) dispatch('dismiss') }} />

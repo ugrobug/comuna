@@ -98,9 +98,11 @@ class SubscriptionView(ExploreView):
     login_required = True
 
     def post(self, request, node_id):
-        SubscriptionService.set(self.user, node_id, True)
-        return JsonResponse({"subscribed": True})
+        return self.set_subscription(node_id, True)
 
     def delete(self, request, node_id):
-        SubscriptionService.set(self.user, node_id, False)
-        return JsonResponse({"subscribed": False})
+        return self.set_subscription(node_id, False)
+
+    def set_subscription(self, node_id, enabled):
+        count = SubscriptionService.set(self.user, node_id, enabled)
+        return JsonResponse({"subscribed": enabled, "subscribers_count": count})

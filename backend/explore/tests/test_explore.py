@@ -45,6 +45,27 @@ class ExploreTests(TestCase):
             self.assertEqual(self.request(method, path).status_code, 401)
         self.assertEqual(self.client.get("/api/explore/manage/").status_code, 401)
 
+    def test_community_card_reads_current_description_and_subscribers(self):
+        self.community.product_description = "Поездки и встречи велосипедистов."
+        self.community.subscribers_count = 1234
+        self.community.save(update_fields=["product_description", "subscribers_count"])
+        self.club.description = "Описание узла в графе"
+        self.club.save(update_fields=["description"])
+        nodes = {item["id"]: item for item in self.client.get("/api/explore/").json()["nodes"]}
+        self.assertEqual(nodes[self.club.pk]["community_description"], self.community.product_description)
+        self.assertEqual(nodes[self.club.pk]["subscribers_count"], 1234)
+        self.assertEqual(nodes[self.club.pk]["description"], "Описание узла в графе")
+        self.assertIsNone(nodes[self.root.pk]["subscribers_count"])
+
+    def test_subscription_response_returns_updated_count_without_double_counting(self):
+        path = f"nodes/{self.club.pk}/subscription/"
+        for _ in range(2):
+            response = self.request("post", path, token=self.member_token)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json(), {"subscribed": True, "subscribers_count": 1})
+        response = self.request("delete", path, token=self.member_token)
+        self.assertEqual(response.json(), {"subscribed": False, "subscribers_count": 0})
+
     def test_regular_user_cannot_manage_global_graph(self):
         self.community.moderators.add(self.member)
         self.assertEqual(self.request("post", "nodes/", {"title": "Нельзя"}, self.member_token).status_code, 403)
