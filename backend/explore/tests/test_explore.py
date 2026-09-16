@@ -80,13 +80,51 @@ class ExploreTests(TestCase):
         change = self.request("patch", f"nodes/{self.root.pk}/", {"kind": "community", "community_id": self.community.pk}, self.staff_token)
         self.assertEqual(change.status_code, 400)
 
-    def test_multiple_parents_are_supported_but_cycles_and_duplicates_rejected(self):
+    def test_multiple_parents_supported_and_self_links_and_duplicate_pairs_rejected(self):
         self.link(self.root, self.child)
         self.link(self.other, self.child)
-        for source, target in [(self.child, self.root), (self.root, self.root), (self.root, self.child), (self.club, self.child)]:
+        for source, target in [(self.child, self.root), (self.root, self.root), (self.root, self.child)]:
             with self.assertRaises(ValidationError):
                 self.link(source, target)
         self.assertEqual(self.child.incoming_edges.count(), 2)
+
+    def test_new_elements_are_immediately_available_for_connections(self):
+        created = self.request("post", "nodes/", {"title": "Ракеточный спорт"}, self.staff_token)
+        self.assertEqual(created.status_code, 201)
+        node_id = created.json()["id"]
+        graph = self.client.get("/api/explore/manage/", HTTP_AUTHORIZATION=f"Bearer {self.staff_token}").json()
+        self.assertIn(node_id, [node["id"] for node in graph["nodes"]])
+        linked = self.request("post", "edges/", {"source": self.root.pk, "target": node_id}, self.staff_token)
+        self.assertEqual(linked.status_code, 201, linked.content)
+
+    def test_community_can_be_selected_first_and_still_notifies_element_subscribers(self):
+        SubscriptionService.set(self.member, self.root.pk, True)
+        response = self.request("post", "edges/", {"source": self.club.pk, "target": self.root.pk}, self.staff_token)
+        self.assertEqual(response.status_code, 201, response.content)
+        edge = Edge.objects.get(pk=response.json()["id"])
+        self.assertEqual((edge.source_id, edge.target_id), (self.root.pk, self.club.pk))
+        self.assertEqual(GraphQuery().communities_under(self.root.pk), {self.community.pk})
+        self.assertEqual(SiteNotification.objects.filter(user=self.member, event_key="explore_new_community").count(), 1)
+        duplicate = self.request("post", "edges/", {"source": self.root.pk, "target": self.club.pk}, self.staff_token)
+        self.assertEqual(duplicate.status_code, 400)
+
+    def test_cycles_terminate_and_notify_once(self):
+        self.link(self.root, self.child)
+        self.link(self.child, self.other)
+        self.link(self.other, self.root)
+        SubscriptionService.set(self.member, self.root.pk, True)
+        SubscriptionService.set(self.member, self.child.pk, True)
+        self.link(self.other, self.club)
+        self.assertEqual(GraphQuery().communities_under(self.root.pk), {self.community.pk})
+        self.assertEqual(SiteNotification.objects.filter(user=self.member, event_key="explore_new_community").count(), 1)
+
+    def test_communities_can_be_linked_to_each_other(self):
+        community = Comun.objects.create(name="Второй клуб", slug="explore-second-club")
+        club = Node.objects.create(kind="community", title=community.name, community=community)
+        edge = self.link(self.club, club)
+        self.assertEqual((edge.source_id, edge.target_id), (self.club.pk, club.pk))
+        with self.assertRaises(ValidationError):
+            self.link(club, self.club)
 
     def test_subscriptions_are_idempotent_and_unsubscribe(self):
         path = f"nodes/{self.root.pk}/subscription/"

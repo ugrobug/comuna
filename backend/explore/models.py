@@ -30,7 +30,7 @@ class PropertyOption(models.Model):
 
 
 class GraphState(models.Model):
-    """A shared write lock prevents concurrent edits from introducing cycles."""
+    """A shared write lock serializes graph edits and notification snapshots."""
     revision = models.PositiveBigIntegerField(default=0)
 
 
@@ -81,20 +81,8 @@ class Edge(models.Model):
         super().clean()
         if self.source_id == self.target_id:
             raise ValidationError("Нельзя связать элемент с самим собой.")
-        if self.source.kind != Node.Kind.ELEMENT:
-            raise ValidationError("Родителем связи должен быть элемент.")
-        # Multiple parents are supported; directed cycles are not categories.
-        adjacent = {}
-        for source, target in Edge.objects.exclude(pk=self.pk).values_list("source_id", "target_id"):
-            adjacent.setdefault(source, []).append(target)
-        visited, pending = set(), [self.target_id]
-        while pending:
-            current = pending.pop()
-            if current == self.source_id:
-                raise ValidationError("Эта связь создаёт цикл. Выберите другого родителя.")
-            if current not in visited:
-                visited.add(current)
-                pending.extend(adjacent.get(current, []))
+        if Edge.objects.exclude(pk=self.pk).filter(source_id=self.target_id, target_id=self.source_id).exists():
+            raise ValidationError("Эти узлы уже связаны.")
 
 
 class Subscription(models.Model):

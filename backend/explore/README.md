@@ -8,8 +8,10 @@
 - `Node` represents either an interest element or one existing `feeds.Comun`.
   A community has one graph node. Deleting its graph node does not delete the community.
 - `Edge` points from a parent element to a child element/community. Multiple parents
-  are allowed (Motorcycles → Pitbike ← Tourism); self-links, duplicate links,
-  community parents and directed cycles are rejected.
+  are allowed (Motorcycles → Pitbike ← Tourism). Any pair of node kinds can be linked,
+  including communities. Community/element selections are normalized to element →
+  community regardless of selection order. Cycles are allowed; traversal uses a visited
+  set. Self-links and duplicate pairs (including reversed pairs) are rejected.
 - `PropertyDefinition` / `PropertyOption` provide the fixed five-property catalog.
   `Node.properties` is a many-to-many relation: every property allows multiple values.
   `show_properties` controls display only, never matching. No inherited properties.
@@ -17,7 +19,7 @@
   existing counters and subscription events.
 
 All moderator writes go through `GraphEditor.apply()`: one transaction and a shared
-`GraphState` row lock protect cycle validation and notification snapshots. The
+`GraphState` row lock protect duplicate validation and notification snapshots. The
 moderator UI is the write interface; no alternative editable Django admin bypasses
 this service. `GraphQuery` supplies graph reads and descendant traversal;
 `SubscriptionService` handles subscriptions; class-based views handle authentication
