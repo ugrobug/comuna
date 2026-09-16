@@ -48,7 +48,10 @@ export class GraphDrag {
         const dx = point.x - anchor.x, dy = point.y - anchor.y, distance = Math.hypot(dx, dy)
         const ux = distance > 0.001 ? dx / distance : spring.directionX
         const uy = distance > 0.001 ? dy / distance : spring.directionY
-        const force = -45 * cooling * (distance - spring.length)
+        // Links pull when stretched, but go slack when the pointer approaches a
+        // neighbor. Restoring a compressed long link would launch that neighbor
+        // away from the group; only local collisions should push nodes apart.
+        const force = -45 * cooling * Math.max(0, distance - spring.length)
         spring.vx = (spring.vx + force * ux * dt) * Math.exp(-7 * dt)
         spring.vy = (spring.vy + force * uy * dt) * Math.exp(-7 * dt)
         point.x += spring.vx * dt; point.y += spring.vy * dt

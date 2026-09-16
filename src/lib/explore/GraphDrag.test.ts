@@ -12,6 +12,23 @@ const edges = [
 const distance = (a: GraphPoint, b: GraphPoint) => Math.hypot(a.x - b.x, a.y - b.y)
 
 describe('spring following while dragging an interest', () => {
+  it.each([[1050, 0], [0, 1050], [-1050, 0]])('does not launch a category when its long link is compressed toward %j', (dx, dy) => {
+    const before = points().slice(0, 2)
+    before[1].x = dx / 1050 * 1200; before[1].y = dy / 1050 * 1200
+    const drag = new GraphDrag({ id: 1, kind: 'element' }, edges, before)
+    let current = before, furthest = 0, moving = true
+    for (let i = 0; i < 30; i++) {
+      current = drag.step(drag.move(current, dx / 30, dy / 30), 1 / 60).points
+      furthest = Math.max(furthest, distance(current[1], before[1]))
+    }
+    for (let i = 0; i < 600 && moving; i++) {
+      const frame = drag.step(current, 1 / 60)
+      current = frame.points; moving = frame.moving
+      furthest = Math.max(furthest, distance(current[1], before[1]))
+    }
+    expect(moving).toBe(false)
+    expect(furthest).toBeLessThan(1)
+  })
   it('moves the grabbed node immediately while direct neighbors follow gradually', () => {
     const before = points(), drag = new GraphDrag({ id: 1, kind: 'element' }, edges, before)
     const moved = drag.move(before, -100, 40)
@@ -41,7 +58,9 @@ describe('spring following while dragging an interest', () => {
     }
     expect(crossedRestLength).toBe(true)
     expect(moving).toBe(false)
-    expect(Math.abs(distance(current[0], current[1]) - restLength)).toBeLessThan(0.2)
+    // A slack link permits gentle overshoot instead of pushing the node back out.
+    expect(distance(current[0], current[1])).toBeLessThan(restLength)
+    expect(distance(current[0], current[1])).toBeGreaterThan(restLength * 0.6)
     expect(Math.abs(current[1].x - (before[1].x - 100))).toBeGreaterThan(1)
     expect(current[0]).toMatchObject({ x: -100, y: 40 })
     expect(current[3]).toBe(before[3])

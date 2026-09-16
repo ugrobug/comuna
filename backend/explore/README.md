@@ -42,8 +42,10 @@ Manual dragging is unconstrained; fixed positions
 survive filtering. The “Упорядочить” button restores automatic placement. The Svelte SVG
 component handles dragging, panning, zooming, keyboard selection and neighborhood emphasis.
 Dragging an interest moves the grabbed node immediately; directly connected visible
-nodes follow damped springs in either edge direction. Link lengths and angles can change
-while moving; neighbors settle after release. Moving followers repel each other and
+nodes follow damped springs in either edge direction. Springs pull stretched links but
+go slack when compressed, so approaching a category cannot launch it outward to restore
+an old link length. Link lengths and angles can change while moving; neighbors settle
+after release. Moving followers repel each other and
 the dragged node using their full label bounds. Unrelated nodes remain freely positioned. Springs yield at contact so a crowded
 group spreads and comes to rest without pulling its labels back into a pile. Further neighbors stay still, communities
 can be dragged individually, and moved positions remain manual. Animation stops on a
