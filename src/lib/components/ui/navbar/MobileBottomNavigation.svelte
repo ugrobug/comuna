@@ -28,6 +28,7 @@
   } from 'svelte-hero-icons'
 
   const PUBLIC_PROJECT_ABOUT = env.PUBLIC_PROJECT_ABOUT || '/about'
+  export let measuredHeight = 0
   const PUBLIC_PROJECT_ADVERTISEMENT =
     env.PUBLIC_PROJECT_ADVRTISEMENT || '/advertisement'
   const PUBLIC_PROJECT_APPS = env.PUBLIC_PROJECT_APPS || '/apps'
@@ -119,6 +120,7 @@
 {/if}
 
 <nav
+  bind:offsetHeight={measuredHeight}
   class="mobile-bottom-nav fixed inset-x-0 bottom-0 z-[900] border-t border-slate-200 bg-white/95 backdrop-blur-xl dark:border-zinc-800 dark:bg-zinc-950/95 md:hidden"
   aria-label={$t('nav.menu.label')}
 >

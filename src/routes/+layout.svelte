@@ -60,6 +60,8 @@
   })
 
   let barTimeout: any = 0
+  let topNavigationHeight = 56
+  let bottomNavigationHeight = 73
 
   $: {
     if (browser) {
@@ -89,7 +91,7 @@
       $page.url.pathname
     )
   $: showMobileBottomNavigation =
-    !isEmbedRoute && !isFullBleedRoute && !isMobileNavigationExcludedRoute
+    !isEmbedRoute && (!isFullBleedRoute || isExploreRoute) && !isMobileNavigationExcludedRoute
   // Получаем текущий URL для канонической ссылки
   $: siteBaseUrl = (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '')
   $: canonicalUrl = (() => {
@@ -266,25 +268,29 @@
       let:class={c}
       class="{isFullBleedRoute
         ? 'min-w-0 w-full flex flex-col h-full relative pt-14 md:pt-20 xl:pt-0'
-        : 'p-4 sm:p-6 min-w-0 w-full flex flex-col h-full relative pt-14 md:pt-20 xl:pt-0'} {showMobileBottomNavigation ? 'mobile-bottom-nav-space' : ''} {c}"
-      style={s}
+        : 'p-4 sm:p-6 min-w-0 w-full flex flex-col h-full relative pt-14 md:pt-20 xl:pt-0'} {showMobileBottomNavigation && !isExploreRoute ? 'mobile-bottom-nav-space' : ''} {c}"
+      style={`${s}; --explore-top-nav: ${topNavigationHeight}px; --explore-bottom-nav: ${bottomNavigationHeight}px`}
       id="main"
     >
       <slot />
     </main>
-    <Navbar slot="navbar" let:style={s} let:class={c} class={c} style={s} />
+    <Navbar slot="navbar" let:style={s} let:class={c} class={c} style={s} bind:measuredHeight={topNavigationHeight} />
   </Shell>
 
   {#if showMobileBottomNavigation}
-    <MobileBottomNavigation />
+    <MobileBottomNavigation bind:measuredHeight={bottomNavigationHeight} />
   {/if}
 {/if}
 
 <style>
-  @media (max-width: 700px) {
+  @media (max-width: 767px) {
     :global(.explore-shell) { height: 100dvh; min-height: 0 !important; grid-template-rows: 0 minmax(0, 1fr); }
     :global(.explore-shell > .content) { height: 100%; min-height: 0; }
-    :global(.explore-shell .shell-main) { min-height: 0; }
+    :global(.explore-shell .shell-main) {
+      min-height: 0;
+      padding-top: var(--explore-top-nav, 56px) !important;
+      padding-bottom: var(--explore-bottom-nav, 73px) !important;
+    }
   }
   :global(.mobile-bottom-nav-space) {
     padding-bottom: calc(6rem + env(safe-area-inset-bottom, 0px)) !important;

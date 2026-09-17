@@ -30,6 +30,8 @@
   import { getRandomTaglineFromSite, hasTaglines } from '$lib/taglineUtils.js';
   import Markdown from '$lib/components/markdown/Markdown.svelte';
 
+  export let measuredHeight = 0
+
   $: brandName = brandNameForLanguage($locale)
   
   // Переменная для случайного слогана
@@ -73,6 +75,7 @@
 
 <CommandsWrapper bind:open={promptOpen} />
 <nav
+  bind:offsetHeight={measuredHeight}
   class="flex flex-row gap-2 items-center w-full mx-auto z-[1000] box-border p-0 md:p-0.5
   @container backdrop-blur-xl 
   bg-slate-50/80 dark:bg-zinc-950/80
