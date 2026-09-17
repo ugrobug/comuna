@@ -21,4 +21,19 @@ describe('node action card placement', () => {
     expect(point.y).toBeGreaterThanOrEqual(155)
     expect(point.y + card.height).toBeLessThanOrEqual(670)
   })
+  it.each([.03, .5, 3])('fits long cards in the visible mobile viewport at graph scale %s', scale => {
+    for (const canvas of [{ width: 320, height: 528 }, { width: 667, height: 263 }]) {
+      // Simulate a partially visible canvas, including the on-screen keyboard.
+      const visible = { x: 0, y: 30, width: canvas.width, height: canvas.height - 90 }
+      const bounds = NodePopover.bounds(canvas, 155, 10, visible)
+      const oversized = { width: 320, height: 900 }
+      for (const anchor of [{ x: -1000 * scale, y: -1000 * scale }, { x: 2000 * scale, y: 3000 * scale }]) {
+        const position = NodePopover.place(anchor, oversized, canvas, 24 * scale, 155, 10, visible)
+        expect(position.x).toBeGreaterThanOrEqual(visible.x)
+        expect(position.y).toBeGreaterThanOrEqual(visible.y)
+        expect(position.x + Math.min(oversized.width, bounds.width)).toBeLessThanOrEqual(visible.x + visible.width)
+        expect(position.y + Math.min(oversized.height, bounds.height)).toBeLessThanOrEqual(visible.y + visible.height)
+      }
+    }
+  })
 })

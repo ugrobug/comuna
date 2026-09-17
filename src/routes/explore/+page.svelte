@@ -100,6 +100,7 @@
 <LoginModal bind:open={loginOpen} registrationSource="explore" registrationPath="/explore" on:success={authenticated} />
 
 <style>
+  @media(max-width:700px){.explore-page{flex:1;min-height:0 !important;height:auto !important}}
   .explore-page{--explore-ink:#2d3650;--explore-surface:#fff;--explore-canvas:#f6f7fb;color:var(--explore-ink);width:100%;min-width:0;min-height:360px;box-sizing:border-box}
   .explore-workspace{position:relative;width:100%;height:100%;isolation:isolate;overflow:hidden}
   .graph-area{position:absolute;inset:0;min-width:0}

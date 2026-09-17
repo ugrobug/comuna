@@ -237,7 +237,7 @@
   </Button>
   <Shell
     dir={$locale == 'he' && $userSettings.useRtl ? 'rtl' : 'ltr'}
-    class="min-h-screen "
+    class="min-h-screen {isExploreRoute ? 'explore-shell' : ''}"
     route={$page.route}
     fullBleed={isFullBleedRoute}
   >
@@ -281,6 +281,11 @@
 {/if}
 
 <style>
+  @media (max-width: 700px) {
+    :global(.explore-shell) { height: 100dvh; min-height: 0 !important; grid-template-rows: 0 minmax(0, 1fr); }
+    :global(.explore-shell > .content) { height: 100%; min-height: 0; }
+    :global(.explore-shell .shell-main) { min-height: 0; }
+  }
   :global(.mobile-bottom-nav-space) {
     padding-bottom: calc(6rem + env(safe-area-inset-bottom, 0px)) !important;
   }

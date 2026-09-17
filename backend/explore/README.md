@@ -50,6 +50,11 @@ the dragged node using their full label bounds. Unrelated nodes remain freely po
 group spreads and comes to rest without pulling its labels back into a pile. Further neighbors stay still, communities
 can be dragged individually, and moved positions remain manual. Animation stops on a
 new gesture, layout rebuild or unmount.
+Two-finger gestures on the graph zoom around the moving finger midpoint and pan the
+graph without scaling the page. Starting a pinch cancels node dragging; lifting a finger
+does not select or jump a node. The mobile workspace fills the dynamic viewport below
+navigation. Cards are constrained to the visible viewport independently of graph zoom,
+with internal scrolling for long descriptions and short/landscape screens.
 Selecting a node opens an anchored card with its optional description and subscription
 actions. Community cards use the current community description and subscriber count;
 subscription responses refresh the displayed count. Interest cards link to community creation with the name prefilled; guests

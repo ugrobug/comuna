@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy, createEventDispatcher } from 'svelte'
-  import { NodePopover } from '$lib/explore/NodePopover'
+  import { NodePopover, type PopoverBounds } from '$lib/explore/NodePopover'
+  import { GraphPinch } from '$lib/explore/GraphPinch'
   import { GraphDrag } from '$lib/explore/GraphDrag'
   import ELK from 'elkjs/lib/elk-api'
   import elkWorkerUrl from 'elkjs/lib/elk-worker.min.js?url'
@@ -24,6 +25,9 @@
   let points: GraphPoint[] = []
   let ready = false
   let scale = 1, tx = 0, ty = 0
+  const pointers = new Map<number, Coordinate>()
+  let pinch: GraphPinch | null = null
+  let visibleViewport: PopoverBounds | undefined
   let drag: { id: number | null; group: GraphDrag | null; x: number; y: number; moved: boolean; startX: number; startY: number } | null = null
   let spring: GraphDrag | null = null
   let springFrame = 0, springTime = 0
@@ -33,7 +37,16 @@
   $: cardTop = width > 700 ? 100 : 155
   $: cardLeft = width > 700 && filtersOpen ? Math.min(370, width - 340) : 10
   $: activePoint = points.find(point => point.id === selected)
-  $: cardPosition = NodePopover.place({ x: (activePoint?.x ?? 0) * scale + tx, y: (activePoint?.y ?? 0) * scale + ty }, { width: cardWidth, height: cardHeight }, { width, height }, 24 * scale, cardTop, cardLeft)
+  $: cardBounds = NodePopover.bounds({ width, height }, cardTop, cardLeft, visibleViewport)
+  $: cardPosition = NodePopover.place({ x: (activePoint?.x ?? 0) * scale + tx, y: (activePoint?.y ?? 0) * scale + ty }, { width: cardWidth, height: cardHeight }, { width, height }, 24 * scale, cardTop, cardLeft, visibleViewport)
+  function measureViewport() {
+    const rect = canvas.getBoundingClientRect(), viewport = window.visualViewport
+    const x = Math.max(0, (viewport?.offsetLeft ?? 0) - rect.left)
+    const y = Math.max(0, (viewport?.offsetTop ?? 0) - rect.top)
+    visibleViewport = { x, y,
+      width: Math.max(0, Math.min(rect.width, (viewport?.offsetLeft ?? 0) + (viewport?.width ?? window.innerWidth) - rect.left) - x),
+      height: Math.max(0, Math.min(rect.height, (viewport?.offsetTop ?? 0) + (viewport?.height ?? window.innerHeight) - rect.top) - y) }
+  }
   function measureCard(element: HTMLElement) {
     const resize = new ResizeObserver(() => { cardWidth = element.offsetWidth; cardHeight = element.offsetHeight })
     resize.observe(element)
@@ -112,9 +125,24 @@
     stopSprings()
     svg.setPointerCapture(event.pointerId)
     const p = point(event)
+    pointers.set(event.pointerId, p)
+    if (pointers.size >= 2) {
+      const [a, b] = [...pointers.values()]
+      pinch = new GraphPinch(a, b, { scale, tx, ty })
+      drag = null; suppressClick = true
+      return
+    }
+    suppressClick = false
     drag = { id, group: id === null ? null : new GraphDrag(nodeById.get(id)!, edges, points), x: p.x, y: p.y, startX: p.x, startY: p.y, moved: false }
   }
   function move(event: PointerEvent) {
+    if (!pointers.has(event.pointerId)) return
+    pointers.set(event.pointerId, point(event))
+    if (pinch) {
+      const [a, b] = [...pointers.values()]
+      if (a && b) ({ scale, tx, ty } = pinch.move(a, b))
+      return
+    }
     if (!drag) return
     const p = point(event), dx = p.x - drag.x, dy = p.y - drag.y
     if (Math.hypot(p.x - drag.startX, p.y - drag.startY) > 3) drag.moved = true
@@ -127,20 +155,32 @@
     drag.x = p.x; drag.y = p.y
   }
   function stop(event: PointerEvent) {
-    if (!drag) return
-    suppressClick = drag.moved
-    if (drag.id !== null && !drag.moved) dispatch('select', drag.id)
-    if (drag.id === null && !drag.moved) dispatch('dismiss')
+    if (!pointers.delete(event.pointerId)) return
+    if (drag) {
+      suppressClick = drag.moved || event.type !== 'pointerup'
+      if (!suppressClick && drag.id !== null) dispatch('select', drag.id)
+      if (!suppressClick && drag.id === null) dispatch('dismiss')
+    }
     drag = null
+    const [a, b] = [...pointers.values()]
+    pinch = a && b ? new GraphPinch(a, b, { scale, tx, ty }) : null
     if (svg.hasPointerCapture(event.pointerId)) svg.releasePointerCapture(event.pointerId)
   }
-  function select(id: number) { if (!suppressClick) dispatch('select', id); suppressClick = false }
+  function select(id: number) { if (!suppressClick) dispatch('select', id) }
   onMount(() => {
     engine = new ELK({ workerUrl: elkWorkerUrl })
     layout = new GraphLayout(engine)
-    observer = new ResizeObserver(([entry]) => { width = entry.contentRect.width; height = entry.contentRect.height })
+    observer = new ResizeObserver(([entry]) => { width = entry.contentRect.width; height = entry.contentRect.height; measureViewport() })
     observer.observe(canvas)
+    window.visualViewport?.addEventListener('resize', measureViewport)
+    window.visualViewport?.addEventListener('scroll', measureViewport)
+    window.addEventListener('scroll', measureViewport, true)
     ready = true
+    return () => {
+      window.visualViewport?.removeEventListener('resize', measureViewport)
+      window.visualViewport?.removeEventListener('scroll', measureViewport)
+      window.removeEventListener('scroll', measureViewport, true)
+    }
   })
   onDestroy(() => { stopSprings(); ready = false; generation++; observer?.disconnect(); engine?.terminateWorker() })
 </script>
@@ -151,7 +191,9 @@
   {#if arranging}<p class="layout-status" role="status">Раскладываем граф…</p>{:else if layoutError}<div class="layout-status" role="alert">{layoutError} <button on:click={() => rebuild()}>Повторить</button></div>{/if}
   <div class="legend"><span><i class="element"></i>Увлечение</span><span><i class="community"></i>Сообщество</span></div>
   <svg bind:this={svg} viewBox={`0 0 ${width} ${height}`} class:pending={arranging || Boolean(layoutError)} aria-hidden={arranging || Boolean(layoutError)} aria-label="Граф увлечений: выберите узел, перетащите его или переместите поле" role="group"
-    on:pointerdown={(event) => start(event)} on:pointermove={move} on:pointerup={stop} on:pointercancel={stop}
+    on:pointerdown={(event) => start(event)} on:pointermove={move} on:pointerup={stop} on:pointercancel={stop} on:lostpointercapture={stop}
+    on:touchstart|nonpassive={(event) => { if (event.touches.length > 1) event.preventDefault() }}
+    on:touchmove|nonpassive={(event) => { if (event.touches.length > 1) event.preventDefault() }}
     on:wheel|nonpassive|preventDefault={(event) => zoom(event.deltaY < 0 ? 1.08 : 1 / 1.08)}>
     <g transform={`translate(${tx},${ty}) scale(${scale})`}>
       {#each edges as edge (edge.id)}
@@ -175,7 +217,7 @@
     </g>
   </svg>
   {#if activePoint && !arranging && !layoutError}
-    <section class="node-popover" aria-label="Действия с выбранным узлом" use:measureCard style:left={`${cardPosition.x}px`} style:top={`${cardPosition.y}px`} style:max-height={`${Math.max(100, height - cardTop - 80)}px`}>
+    <section class="node-popover" aria-label="Действия с выбранным узлом" use:measureCard style:left={`${cardPosition.x}px`} style:top={`${cardPosition.y}px`} style:max-width={`${cardBounds.width}px`} style:max-height={`${cardBounds.height}px`}>
       <slot />
     </section>
   {/if}
