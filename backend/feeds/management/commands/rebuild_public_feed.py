@@ -40,7 +40,7 @@ class Command(BaseCommand):
         base_query = (
             Post.objects.filter(
                 is_blocked=False,
-                is_pending=False,
+                companion_matched_at__isnull=True, is_pending=False,
                 author__is_blocked=False,
             )
             .filter(_publish_ready_filter(now))

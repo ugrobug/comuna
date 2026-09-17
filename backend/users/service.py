@@ -1064,7 +1064,7 @@ def _build_public_user_profile_payload(
             Post.objects.filter(
                 author_id__in=author_ids,
                 is_blocked=False,
-                is_pending=False,
+                companion_matched_at__isnull=True, is_pending=False,
                 author__is_blocked=False,
             )
             .filter(_fv()._publish_ready_filter(now))

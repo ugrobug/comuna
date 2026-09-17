@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from editor.companions import companion_publish_error, sync_companion_search
+
 import json
 import os
 import secrets
@@ -815,13 +817,14 @@ def user_posts(request: HttpRequest) -> HttpResponse:
         )
         if template_content_error:
             return JsonResponse({"ok": False, "error": template_content_error}, status=400)
-        event_publish_error = _event_publish_error(template_payload, is_draft=is_draft)
+        event_publish_error = (_event_publish_error(template_payload, is_draft=is_draft)
+            or companion_publish_error(template_payload, is_draft=is_draft, publish_at=requested_publish_at))
         if event_publish_error:
             return JsonResponse({"ok": False, "error": event_publish_error}, status=400)
 
         if not is_draft and not title:
             return JsonResponse({"ok": False, "error": "title is required"}, status=400)
-        if not is_draft and not content:
+        if not is_draft and not content and (template_payload or {}).get("type") != "companion":
             return JsonResponse({"ok": False, "error": "content is required"}, status=400)
 
         author, author_error = _resolve_manual_post_author(
@@ -920,6 +923,7 @@ def user_posts(request: HttpRequest) -> HttpResponse:
             publish_at=publish_at,
             event_starts_at=_event_starts_at_from_template(template_payload),
         )
+        sync_companion_search(post, user)
         _sync_comun_category_assignment(
             post=post,
             comun=comun,
@@ -959,6 +963,7 @@ def user_posts(request: HttpRequest) -> HttpResponse:
 
     posts_qs = (
         Post.objects.filter(author_id__in=author_ids, is_blocked=False, author__is_blocked=False)
+        .filter(Q(companion_matched_at__isnull=True) | Q(companion_search__organizer=user))
         .select_related("author")
         .prefetch_related("tags")
         .order_by("-created_at")
@@ -1061,6 +1066,14 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
     if not is_linked and not is_personal_author_owner and not can_staff_delete:
         return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
 
+    from editor.models import CompanionSearch
+    invitation = CompanionSearch.objects.filter(post=post).first()
+    if invitation and invitation.organizer_id != user.id:
+        return JsonResponse({"ok": False, "error": "Изменить поиск спутника может только создатель объявления."}, status=403)
+
+    if post.companion_matched_at and request.method not in {"GET", "DELETE"}:
+        return JsonResponse({"ok": False, "error": "Встреча уже подтверждена. Договорённость сохранена в чате."}, status=409)
+
     if request.method == "GET":
         if not is_linked and not is_personal_author_owner and not user.is_staff:
             return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
@@ -1147,6 +1160,8 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
         if isinstance(post.raw_data, dict) and isinstance(post.raw_data.get("template"), dict)
         else None
     )
+    if invitation and invitation.responses.exists() and template_in_payload and template_payload != current_template_payload:
+        return JsonResponse({"ok": False, "error": "На объявление уже откликнулись. Место, время и описание встречи менять нельзя."}, status=409)
     if template_in_payload:
         template_payload = _preserve_bug_report_status(template_payload, current_template_payload)
     effective_template_payload_for_validation = (
@@ -1160,10 +1175,9 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
     )
     if template_content_error:
         return JsonResponse({"ok": False, "error": template_content_error}, status=400)
-    event_publish_error = _event_publish_error(
-        effective_template_payload_for_validation,
-        is_draft=target_is_draft,
-    )
+    event_publish_error = (_event_publish_error(
+        effective_template_payload_for_validation, is_draft=target_is_draft,
+    ) or companion_publish_error(effective_template_payload_for_validation, is_draft=target_is_draft, publish_at=next_publish_at))
     if event_publish_error:
         return JsonResponse({"ok": False, "error": event_publish_error}, status=400)
 
@@ -1337,6 +1351,7 @@ def user_post_update(request: HttpRequest, post_id: int) -> HttpResponse:
             "updated_at",
         ]
     )
+    sync_companion_search(post, user)
     if previous_event_starts_at != post.event_starts_at:
         if post.event_starts_at is None:
             post.event_attendances.all().delete()
@@ -1455,7 +1470,7 @@ def bug_report_confirmation_update(request: HttpRequest, post_id: int) -> HttpRe
         now = timezone.now()
         post = (
             Post.objects.select_related("author")
-            .filter(is_blocked=False, is_pending=False, author__is_blocked=False)
+            .filter(is_blocked=False, companion_matched_at__isnull=True, is_pending=False, author__is_blocked=False)
             .filter(_fv()._publish_ready_filter(now))
             .get(id=post_id)
         )
@@ -1491,7 +1506,7 @@ def post_poll_vote(request: HttpRequest, post_id: int) -> HttpResponse:
     try:
         now = timezone.now()
         post = (
-            Post.objects.filter(is_blocked=False, is_pending=False, author__is_blocked=False)
+            Post.objects.filter(is_blocked=False, companion_matched_at__isnull=True, is_pending=False, author__is_blocked=False)
             .filter(_fv()._publish_ready_filter(now))
             .get(id=post_id)
         )
@@ -1571,7 +1586,7 @@ def post_rating_vote(request: HttpRequest, post_id: int) -> HttpResponse:
     try:
         now = timezone.now()
         post = (
-            Post.objects.filter(is_blocked=False, is_pending=False, author__is_blocked=False)
+            Post.objects.filter(is_blocked=False, companion_matched_at__isnull=True, is_pending=False, author__is_blocked=False)
             .filter(_fv()._publish_ready_filter(now))
             .get(id=post_id)
         )

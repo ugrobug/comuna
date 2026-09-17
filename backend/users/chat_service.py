@@ -131,6 +131,7 @@ def _serialize_chat_message(message: SiteChatMessage) -> dict:
         "sender": _serialize_chat_user(sender),
         "sender_id": message.sender_id,
         "body": message.body,
+        "event": message.event or None,
         "delivered_at": message.delivered_at.isoformat() if message.delivered_at else None,
         "read_at": message.read_at.isoformat() if message.read_at else None,
         "created_at": message.created_at.isoformat(),

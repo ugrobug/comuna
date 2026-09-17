@@ -1,3 +1,4 @@
+from editor.companions import companion_publish_error, sync_companion_search
 import io
 import json
 import math
@@ -1225,7 +1226,7 @@ def _serialize_comun(
         welcome_post = (
             Post.objects.select_related("author")
             .prefetch_related("tags")
-            .filter(id=comun.welcome_post_id, is_blocked=False, author__is_blocked=False)
+            .filter(id=comun.welcome_post_id, companion_matched_at__isnull=True, is_blocked=False, author__is_blocked=False)
             .first()
         )
         if welcome_post and community_service._post_belongs_to_comun(comun, welcome_post):
@@ -1549,7 +1550,7 @@ def _comun_posts_base_queryset(comun: Comun, now=None):
         Post.objects.filter(
             source_filter,
             is_blocked=False,
-            is_pending=False,
+            companion_matched_at__isnull=True, is_pending=False,
             author__is_blocked=False,
         )
         .filter(_fv()._publish_ready_filter(now))
@@ -2991,6 +2992,7 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
             payload.get("template"),
             resolve_post_refs=True,
         )
+        template_error = template_error or companion_publish_error(template_payload, publish_at=publish_at)
         if template_error:
             return JsonResponse({"ok": False, "error": template_error}, status=400)
         template_content_error = editor_service._validate_template_content_constraints(
@@ -3001,7 +3003,7 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
             return JsonResponse({"ok": False, "error": template_content_error}, status=400)
         if not title:
             return JsonResponse({"ok": False, "error": "title is required"}, status=400)
-        if not content:
+        if not content and (template_payload or {}).get("type") != "companion":
             return JsonResponse({"ok": False, "error": "content is required"}, status=400)
         if bool(getattr(comun, "forbid_external_links", False)) and _payload_contains_external_links(
             title=title,
@@ -3091,6 +3093,7 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
             is_blocked=False,
             publish_at=publish_at,
         )
+        sync_companion_search(post, current_user)
         community_service._apply_post_tags(post, explicit_tags)
         if category:
             ComunPostCategoryAssignment.objects.update_or_create(
@@ -3288,7 +3291,7 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
 
 def _comun_knowledge_base_queryset(comun: Comun):
     return (
-        ComunKnowledgeBaseItem.objects.filter(comun=comun, is_active=True)
+        ComunKnowledgeBaseItem.objects.filter(comun=comun, is_active=True, post__companion_matched_at__isnull=True)
         .select_related("post", "post__author", "parent")
         .order_by("parent_id", "sort_order", "title", "id")
     )
@@ -3325,7 +3328,7 @@ def _knowledge_base_post_for_comun(comun: Comun, post_id: int | None) -> Post | 
     if not membership_filter:
         return None
     return (
-        Post.objects.filter(id=post_id, is_blocked=False, author__is_blocked=False)
+        Post.objects.filter(id=post_id, companion_matched_at__isnull=True, is_blocked=False, author__is_blocked=False)
         .filter(membership_filter)
         .select_related("author")
         .first()
@@ -3491,7 +3494,7 @@ def _serialize_comun_roadmap(
     items_query = (
         ComunRoadmapItem.objects.filter(
             comun=comun,
-            post__is_pending=False,
+            post__companion_matched_at__isnull=True, post__is_pending=False,
             post__is_blocked=False,
             post__author__is_blocked=False,
         )
@@ -3848,7 +3851,7 @@ def comun_map(request: HttpRequest, slug: str) -> HttpResponse:
     points = ComunMapPoint.objects.filter(
         comun=comun,
         post__is_blocked=False,
-        post__is_pending=False,
+        post__companion_matched_at__isnull=True, post__is_pending=False,
         post__author__is_blocked=False,
     )
     points = community_service._filter_posts_for_language(
@@ -4283,7 +4286,7 @@ def comun_post_category_update(request: HttpRequest, slug: str, post_id: int) ->
         return JsonResponse({"ok": False, "error": "post not found in comun"}, status=404)
 
     post = (
-        Post.objects.filter(id=post_id, is_blocked=False, is_pending=False, author__is_blocked=False)
+        Post.objects.filter(id=post_id, is_blocked=False, companion_matched_at__isnull=True, is_pending=False, author__is_blocked=False)
         .filter(community_service._publish_ready_filter(timezone.now()))
         .filter(membership_filter)
         .distinct()

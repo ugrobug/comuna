@@ -506,10 +506,10 @@ def _generate_manual_message_id(author: Author) -> int:
 def _maybe_notify_new_author(author: Author, post: Post) -> None:
     if author.first_post_notified:
         return
-    if post.is_pending or post.is_blocked:
+    if post.companion_matched_at or post.is_pending or post.is_blocked:
         return
     already_published = (
-        Post.objects.filter(author=author, is_pending=False, is_blocked=False)
+        Post.objects.filter(author=author, companion_matched_at__isnull=True, is_pending=False, is_blocked=False)
         .exclude(id=post.id)
         .exists()
     )
@@ -998,7 +998,7 @@ def _maybe_notify_post_added_to_voting(
     actor: User | None = None,
     previous_category: ComunCategory | None = None,
 ) -> None:
-    if post.is_pending or post.is_blocked:
+    if post.companion_matched_at or post.is_pending or post.is_blocked:
         return
     if not _is_voting_comun_category(category):
         return
@@ -1110,7 +1110,7 @@ def _maybe_notify_post_published_to_subscribers(
     comun: Comun | None = None,
     category: ComunCategory | None = None,
 ) -> None:
-    if post.is_pending or post.is_blocked:
+    if post.companion_matched_at or post.is_pending or post.is_blocked:
         return
     comun = comun or community_service._post_comun(post)
     if not comun:
@@ -1543,7 +1543,7 @@ def _post_rating_score(post: Post, *, author_rating=None, base_rating=None) -> f
 
 def _author_posts_rating_filter(now) -> Q:
     return (
-        Q(posts__is_blocked=False, posts__is_pending=False)
+        Q(posts__is_blocked=False, posts__companion_matched_at__isnull=True, posts__is_pending=False)
         & (Q(posts__publish_at__isnull=True) | Q(posts__publish_at__lte=now))
     )
 
@@ -2843,7 +2843,7 @@ def _serialize_post_vote_poll_participations(
         candidates = list(
             Post.objects.filter(
                 is_blocked=False,
-                is_pending=False,
+                companion_matched_at__isnull=True, is_pending=False,
                 author__is_blocked=False,
             )
             .filter(_publish_ready_filter(now))
@@ -2961,11 +2961,15 @@ def _comment_translations_by_language(
 @csrf_exempt
 @anonymous_cache(prefix="post-comments", seconds=60)
 def post_comments(request: HttpRequest, post_id: int) -> HttpResponse:
+    user = _get_user_from_request(request)
+    visibility = Q(companion_matched_at__isnull=True)
+    if user:
+        visibility |= Q(companion_search__organizer=user) | Q(companion_search__selected_user=user)
     try:
         now = timezone.now()
         post = (
             Post.objects.select_related("author")
-            .filter(is_blocked=False, is_pending=False, author__is_blocked=False)
+            .filter(visibility, is_blocked=False, is_pending=False, author__is_blocked=False)
             .filter(_publish_ready_filter(now))
             .get(id=post_id)
         )
@@ -3172,7 +3176,7 @@ def question_answer_update(request: HttpRequest, post_id: int) -> HttpResponse:
         post = Post.objects.select_related("author").get(
             id=post_id,
             is_blocked=False,
-            is_pending=False,
+            companion_matched_at__isnull=True, is_pending=False,
             author__is_blocked=False,
         )
     except Post.DoesNotExist:
@@ -3234,7 +3238,7 @@ def event_attendance_update(request: HttpRequest, post_id: int) -> HttpResponse:
             .filter(
                 id=post_id,
                 is_blocked=False,
-                is_pending=False,
+                companion_matched_at__isnull=True, is_pending=False,
                 author__is_blocked=False,
             )
             .filter(_publish_ready_filter(timezone.now()))
@@ -3294,7 +3298,7 @@ def comment_like(request: HttpRequest, comment_id: int) -> HttpResponse:
         return JsonResponse({"ok": False, "error": "comment not found"}, status=404)
 
     now = timezone.now()
-    is_public_post = (not comment.post.is_pending) and (
+    is_public_post = (not comment.post.is_pending) and not comment.post.companion_matched_at and (
         comment.post.publish_at is None or comment.post.publish_at <= now
     )
     if not is_public_post:
@@ -3352,7 +3356,7 @@ def post_report(request: HttpRequest, post_id: int) -> HttpResponse:
 
     post = (
         Post.objects.select_related("author")
-        .filter(is_blocked=False, is_pending=False, author__is_blocked=False)
+        .filter(is_blocked=False, companion_matched_at__isnull=True, is_pending=False, author__is_blocked=False)
         .filter(_publish_ready_filter(timezone.now()))
         .filter(id=post_id)
         .first()
@@ -3391,7 +3395,7 @@ def comment_report(request: HttpRequest, comment_id: int) -> HttpResponse:
             id=comment_id,
             is_deleted=False,
             post__is_blocked=False,
-            post__is_pending=False,
+            post__companion_matched_at__isnull=True, post__is_pending=False,
             post__author__is_blocked=False,
         )
         .filter(
@@ -3429,7 +3433,7 @@ def post_like(request: HttpRequest, post_id: int) -> HttpResponse:
         now = timezone.now()
         post = (
             Post.objects.select_related("author")
-            .filter(is_blocked=False, is_pending=False, author__is_blocked=False)
+            .filter(is_blocked=False, companion_matched_at__isnull=True, is_pending=False, author__is_blocked=False)
             .filter(_publish_ready_filter(now))
             .get(id=post_id)
         )
@@ -3508,7 +3512,7 @@ def post_favorite(request: HttpRequest, post_id: int) -> HttpResponse:
     try:
         now = timezone.now()
         post = (
-            Post.objects.filter(is_blocked=False, is_pending=False, author__is_blocked=False)
+            Post.objects.filter(is_blocked=False, companion_matched_at__isnull=True, is_pending=False, author__is_blocked=False)
             .filter(_publish_ready_filter(now))
             .get(id=post_id)
         )
@@ -3572,7 +3576,7 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
 
     now = timezone.now()
     posts = list(
-        Post.objects.filter(author=author, is_blocked=False, is_pending=False)
+        Post.objects.filter(author=author, is_blocked=False, companion_matched_at__isnull=True, is_pending=False)
         .filter(_publish_ready_filter(now))
         .prefetch_related("tags")
         .order_by("-created_at")
@@ -3581,7 +3585,7 @@ def author_posts(request: HttpRequest, username: str) -> HttpResponse:
     favorite_post_ids = _favorite_post_ids_for_user(posts, current_user)
 
     posts_count = (
-        Post.objects.filter(author=author, is_blocked=False, is_pending=False)
+        Post.objects.filter(author=author, is_blocked=False, companion_matched_at__isnull=True, is_pending=False)
         .filter(_publish_ready_filter(now))
         .count()
     )
@@ -3766,7 +3770,7 @@ def tag_posts(request: HttpRequest, tag: str) -> HttpResponse:
         Post.objects.filter(
             tags__in=tags_qs,
             is_blocked=False,
-            is_pending=False,
+            companion_matched_at__isnull=True, is_pending=False,
             author__is_blocked=False,
         )
         .filter(_publish_ready_filter(now))
@@ -3830,6 +3834,10 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
     language = _normalize_post_language(request.GET.get("lang"))
     if language is None:
         return JsonResponse({"ok": False, "error": "unsupported language"}, status=404)
+    current_user = _get_user_from_request(request)
+    visibility = Q(companion_matched_at__isnull=True)
+    if current_user:
+        visibility |= Q(companion_search__organizer=current_user) | Q(companion_search__selected_user=current_user)
     try:
         now = timezone.now()
         post = (
@@ -3853,7 +3861,7 @@ def post_detail(request: HttpRequest, post_id: int) -> HttpResponse:
                     to_attr="_translated_versions",
                 ),
             )
-            .filter(is_blocked=False, is_pending=False, author__is_blocked=False)
+            .filter(visibility, is_blocked=False, is_pending=False, author__is_blocked=False)
             .filter(_publish_ready_filter(now))
             .get(id=post_id)
         )
@@ -3961,7 +3969,7 @@ def post_social_image(request: HttpRequest, post_id: int) -> HttpResponse:
         now = timezone.now()
         post = (
             Post.objects.select_related("author")
-            .filter(is_blocked=False, is_pending=False, author__is_blocked=False)
+            .filter(is_blocked=False, companion_matched_at__isnull=True, is_pending=False, author__is_blocked=False)
             .filter(_publish_ready_filter(now))
             .get(id=post_id)
         )
@@ -4021,7 +4029,7 @@ def post_read(request: HttpRequest, post_id: int) -> HttpResponse:
     if not user:
         return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
     try:
-        post = Post.objects.get(id=post_id, is_blocked=False, author__is_blocked=False)
+        post = Post.objects.get(id=post_id, companion_matched_at__isnull=True, is_blocked=False, author__is_blocked=False)
     except Post.DoesNotExist:
         return JsonResponse({"ok": False, "error": "post not found"}, status=404)
     PostRead.objects.get_or_create(post=post, user=user)
@@ -4035,7 +4043,7 @@ def post_view(request: HttpRequest, post_id: int) -> HttpResponse:
     try:
         now = timezone.now()
         post = (
-            Post.objects.filter(is_blocked=False, is_pending=False, author__is_blocked=False)
+            Post.objects.filter(is_blocked=False, companion_matched_at__isnull=True, is_pending=False, author__is_blocked=False)
             .filter(_publish_ready_filter(now))
             .get(id=post_id)
         )
@@ -4152,7 +4160,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
     base_query = (
         Post.objects.filter(
             is_blocked=False,
-            is_pending=False,
+            companion_matched_at__isnull=True, is_pending=False,
             author__is_blocked=False,
         )
         .filter(_publish_ready_filter(now))
@@ -4338,7 +4346,7 @@ def favorites_feed(request: HttpRequest) -> HttpResponse:
         PostFavorite.objects.filter(
             user=user,
             post__is_blocked=False,
-            post__is_pending=False,
+            post__companion_matched_at__isnull=True, post__is_pending=False,
             post__author__is_blocked=False,
         )
         .filter(Q(post__publish_at__isnull=True) | Q(post__publish_at__lte=now))
@@ -4535,7 +4543,7 @@ def _materialized_home_feed_response(
     language: str = ORIGINAL_POST_LANGUAGE,
     current_user: User | None = None,
 ) -> HttpResponse | None:
-    items_query = PublicFeedItem.objects.filter(feed=PublicFeedItem.FEED_HOME)
+    items_query = PublicFeedItem.objects.filter(feed=PublicFeedItem.FEED_HOME, post__companion_matched_at__isnull=True)
     items_query = _filter_posts_for_language(items_query, language, prefix="post__")
     items_query = _apply_user_hidden_content(items_query, current_user, prefix="post__")
     prefetches = ["post__tags"]
@@ -4857,7 +4865,7 @@ def search_content(request: HttpRequest) -> HttpResponse:
         base_posts_qs = (
             Post.objects.filter(
                 is_blocked=False,
-                is_pending=False,
+                companion_matched_at__isnull=True, is_pending=False,
                 author__is_blocked=False,
             )
             .filter(_publish_ready_filter(now))

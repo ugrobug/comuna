@@ -33,6 +33,9 @@ export const cachedJson = async <T>(
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`)
     }
+    if (response.headers.get('cache-control')?.includes('no-store')) {
+      cache.delete(key)
+    }
     return (await response.json()) as T
   })
 

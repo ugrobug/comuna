@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from functools import wraps
 from hashlib import sha256
 from typing import Callable
@@ -41,6 +43,35 @@ def public_cache_control(response: HttpResponse, *, seconds: int | None = None) 
     return response
 
 
+def contains_dynamic_invitation(response: HttpResponse) -> bool:
+    if getattr(response, "streaming", False) or "application/json" not in response.get("Content-Type", ""):
+        return False
+    if b'companion' not in response.content:
+        return False
+
+    def contains(value):
+        if isinstance(value, dict):
+            return value.get("type") == "companion" or value.get("kind") == "companion_confirmed" or any(contains(item) for item in value.values())
+        return isinstance(value, list) and any(contains(item) for item in value)
+
+    try:
+        return contains(json.loads(response.content))
+    except (ValueError, UnicodeDecodeError):
+        return False
+
+
+class DynamicPostPrivacyMiddleware:
+    """Keep invitations out of intermediary caches, including embedded welcome posts."""
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        if contains_dynamic_invitation(response):
+            response["Cache-Control"] = "private, no-store"
+        return response
+
+
 def anonymous_cache(
     *,
     prefix: str,
@@ -58,6 +89,15 @@ def anonymous_cache(
                 response = view_func(request, *args, **kwargs)
                 patch_vary_headers(response, ["Cookie", "Authorization"])
                 return response
+
+            # Invitation detail/actions must never outlive a match in any cache layer.
+            post_id = kwargs.get("post_id")
+            if post_id:
+                from feeds.models import Post
+                if Post.objects.filter(id=post_id, raw_data__template__type="companion").exists():
+                    response = view_func(request, *args, **kwargs)
+                    response["Cache-Control"] = "private, no-store"
+                    return response
 
             version = cache.get(_cache_prefix_version_key(prefix)) or 1
             key_digest = sha256(request.get_full_path().encode("utf-8")).hexdigest()
@@ -77,7 +117,10 @@ def anonymous_cache(
             response = view_func(request, *args, **kwargs)
             if not cache_authenticated:
                 patch_vary_headers(response, ["Cookie", "Authorization"])
-            if response.status_code == 200:
+            if contains_dynamic_invitation(response):
+                response["Cache-Control"] = "private, no-store"
+                return response
+            if response.status_code == 200 and "no-store" not in response.get("Cache-Control", ""):
                 public_cache_control(response, seconds=timeout)
                 cache.set(
                     cache_key,

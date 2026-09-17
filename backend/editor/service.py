@@ -41,6 +41,7 @@ from editor.models import (
     POST_TEMPLATE_TYPE_TWEET,
     POST_TEMPLATE_TYPE_BUG_REPORT,
     POST_TEMPLATE_TYPE_EVENT,
+    POST_TEMPLATE_TYPE_COMPANION,
     ComunCustomPostTemplate,
     ComunCustomPostTemplateBlock,
     ComunCustomPostTemplateField,
@@ -1268,7 +1269,7 @@ def _normalize_post_vote_poll_template_items(
             Post.objects.filter(
                 id__in=ordered_post_ids,
                 is_blocked=False,
-                is_pending=False,
+                companion_matched_at__isnull=True, is_pending=False,
                 author__is_blocked=False,
             )
             .filter(_fv()._publish_ready_filter(now))
@@ -2095,6 +2096,12 @@ def _normalize_post_template_payload(
             "version": 1,
             "data": normalized_data,
         }, None
+
+    if template_type == POST_TEMPLATE_TYPE_COMPANION:
+        from editor.companions import normalize_companion_data
+
+        data, error = normalize_companion_data(raw_template.get("data"))
+        return ({"type": POST_TEMPLATE_TYPE_COMPANION, "version": 1, "data": data}, error)
 
     if template_type == POST_TEMPLATE_TYPE_EVENT:
         template_data_input = raw_template.get("data")

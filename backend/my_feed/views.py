@@ -128,7 +128,7 @@ def _source_candidate_queryset(
         FeedSourcePost.objects.filter(source_type=source_type, source_id__in=source_ids)
         .filter(
             post__is_blocked=False,
-            post__is_pending=False,
+            post__companion_matched_at__isnull=True, post__is_pending=False,
             post__author__is_blocked=False,
         )
         .filter(Q(post__publish_at__isnull=True) | Q(post__publish_at__lte=now))
@@ -453,7 +453,7 @@ def my_feed(request: HttpRequest) -> HttpResponse:
         Post.objects.filter(
             selection_filter,
             is_blocked=False,
-            is_pending=False,
+            companion_matched_at__isnull=True, is_pending=False,
             author__is_blocked=False,
         )
         .filter(_fv()._publish_ready_filter(now))

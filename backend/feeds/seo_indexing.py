@@ -25,7 +25,7 @@ def public_posts_queryset(queryset: QuerySet | None = None, *, now=None) -> Quer
     return (
         base_queryset.filter(
             is_blocked=False,
-            is_pending=False,
+            companion_matched_at__isnull=True, is_pending=False,
             author__is_blocked=False,
         )
         .filter(Q(publish_at__isnull=True) | Q(publish_at__lte=current_time))
@@ -65,7 +65,7 @@ def seo_indexable_posts_queryset(
         is_deleted=False,
         seo_text_length__gte=MIN_LONG_COMMENT_LENGTH,
     )
-    public_posts = public_posts_queryset(queryset, now=now).annotate(
+    public_posts = public_posts_queryset(queryset, now=now).filter(Q(raw_data__template__type__isnull=True) | ~Q(raw_data__template__type="companion")).annotate(
         _seo_has_long_comment=Exists(long_comment)
     )
     public_posts = public_posts.filter(
@@ -77,6 +77,8 @@ def seo_indexable_posts_queryset(
 
 def post_is_seo_indexable(post: Post, *, now=None) -> bool:
     current_time = now or timezone.now()
+    if post.companion_matched_at or (post.raw_data or {}).get("template", {}).get("type") == "companion":
+        return False
     if post.is_blocked or post.is_pending or getattr(post.author, "is_blocked", False):
         return False
     if post.publish_at and post.publish_at > current_time:

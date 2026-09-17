@@ -9,6 +9,7 @@ export type BuiltinPostTemplateType =
   | 'bug_report'
   | 'question'
   | 'event'
+  | 'companion'
   | 'tweet'
 export type PostTemplateType = BuiltinPostTemplateType | string
 export type PostTemplateCode = 'basic' | PostTemplateType
@@ -133,6 +134,32 @@ export type QuestionTemplate = {
   }
 }
 
+export type CompanionTemplateData = {
+  description: string
+  starts_at: string
+  place: string
+  lat: number | null
+  lng: number | null
+  radius_m: number | null
+}
+export type CompanionTemplate = { type: 'companion'; version: 1; data: CompanionTemplateData }
+export const createEmptyCompanionTemplateData = (): CompanionTemplateData => ({
+  description: '', starts_at: '', place: '', lat: null, lng: null, radius_m: null,
+})
+export const normalizeCompanionTemplateData = (value?: Partial<CompanionTemplateData> | null): CompanionTemplateData => ({
+  ...createEmptyCompanionTemplateData(), ...value,
+  starts_at: normalizeEventTemplateData(value).starts_at || '',
+})
+export const validateCompanionTemplate = (value: CompanionTemplateData, publishAt?: string | null): string => {
+  if (!value.description.trim()) return 'Кратко опишите, куда вы зовёте спутника.'
+  if (value.lat == null || value.lng == null) return 'Выберите точку на карте.'
+  if (!value.starts_at || !Number.isFinite(Date.parse(value.starts_at)) || Date.parse(value.starts_at) <= Math.max(Date.now(), publishAt ? Date.parse(publishAt) : 0)) return 'Время встречи должно быть позже публикации и текущего времени.'
+  if (value.radius_m != null && (!Number.isFinite(value.radius_m) || value.radius_m < 0 || value.radius_m > 100000)) return 'Радиус должен быть от 0 до 100 000 м.'
+  return ''
+}
+export const isCompanionTemplate = (template: SitePostTemplate | null | undefined): template is CompanionTemplate =>
+  template?.type === 'companion' && typeof template.data === 'object'
+
 export type EventTemplateData = {
   starts_at?: string
 }
@@ -156,6 +183,7 @@ export type SitePostTemplate =
   | BugReportTemplate
   | QuestionTemplate
   | EventTemplate
+  | CompanionTemplate
   | TweetTemplate
   | CustomPostTemplate
 
@@ -172,6 +200,7 @@ export const POST_TEMPLATE_TYPE_OPTIONS: PostTemplateTypeOption[] = [
   { value: 'music_release', label: 'Музыкальный релиз' },
   { value: 'bug_report', label: 'Баг-репорт', description: 'Платформа, браузер, код ошибки и скриншот.' },
   { value: 'question', label: 'Вопрос', description: 'Вопрос с выбором правильного ответа из комментариев.' },
+  { value: 'companion', label: 'Поиск спутника', description: 'Место и время встречи, отклики и выбор одного участника.' },
   { value: 'event', label: 'Событие', description: 'Пост с датой события, календарем и напоминанием участникам.' },
   { value: 'tweet', label: 'Твит', description: 'До 280 символов и один медиаблок с изображениями.' },
 ]
@@ -240,6 +269,7 @@ const TEMPLATE_EDITOR_BLOCKS_BY_TEMPLATE: Record<string, TemplateEditorBlockOpti
   bug_report: BLOCKS_WITHOUT_MOVIE_CARD,
   question: BLOCKS_WITHOUT_MOVIE_CARD,
   event: BLOCKS_WITHOUT_MOVIE_CARD,
+  companion: BLOCKS_WITHOUT_MOVIE_CARD,
   tweet: ALL_TEMPLATE_EDITOR_BLOCK_OPTIONS.filter((option) => option.type === 'gallery'),
 }
 
@@ -979,7 +1009,8 @@ export const buildPostTemplatePayload = (
   postVotePollData?: Partial<PostVotePollTemplateData> | null | undefined,
   musicReleaseData?: Partial<MusicReleaseTemplateData> | null | undefined,
   bugReportData?: Partial<BugReportTemplateData> | null | undefined,
-  eventData?: Partial<EventTemplateData> | null | undefined
+  eventData?: Partial<EventTemplateData> | null | undefined,
+  companionData?: Partial<CompanionTemplateData> | null | undefined
 ): SitePostTemplate | null => {
   if (templateType === 'movie_review') {
     const normalized = normalizeMovieReviewTemplateData(movieReviewData)
@@ -1052,6 +1083,10 @@ export const buildPostTemplatePayload = (
       version: 1,
       data: {},
     }
+  }
+
+  if (templateType === 'companion') {
+    return { type: 'companion', version: 1, data: normalizeCompanionTemplateData(companionData) }
   }
 
   if (templateType === 'event') {

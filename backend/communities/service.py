@@ -1143,7 +1143,7 @@ def sync_comun_map_points_for_post(
         return 0
 
     ComunMapPoint.objects.filter(post=post).delete()
-    if bool(getattr(post, "is_pending", False)) or bool(getattr(post, "is_blocked", False)):
+    if post.companion_matched_at or bool(getattr(post, "is_pending", False)) or bool(getattr(post, "is_blocked", False)):
         return 0
 
     comun = comun or _post_comun(post)
@@ -1580,7 +1580,7 @@ def _maybe_increment_comun_author_count_for_post(
 ) -> bool:
     if not post or not getattr(post, "author_id", None):
         return False
-    if bool(getattr(post, "is_pending", False)) or bool(getattr(post, "is_blocked", False)):
+    if post.companion_matched_at or bool(getattr(post, "is_pending", False)) or bool(getattr(post, "is_blocked", False)):
         return False
     if not _post_author_is_site_user(post):
         return False
@@ -1652,7 +1652,7 @@ def _comun_posts_base_queryset(comun: Comun, now=None):
         Post.objects.filter(
             membership_filter,
             is_blocked=False,
-            is_pending=False,
+            companion_matched_at__isnull=True, is_pending=False,
             author__is_blocked=False,
         )
         .filter(_publish_ready_filter(now))

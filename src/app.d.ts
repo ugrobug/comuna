@@ -10,6 +10,7 @@ declare global {
   namespace App {
     // interface Error {}
     interface Locals {
+      noStore?: boolean
       instance?: string
       authBootstrap?: AuthBootstrap | null
       language?: PostLanguageCode

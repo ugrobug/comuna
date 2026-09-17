@@ -31,6 +31,9 @@
     buildPostTemplatePayload,
     createEmptyBugReportTemplateData,
     createEmptyEventTemplateData,
+    createEmptyCompanionTemplateData,
+    validateCompanionTemplate,
+    type CompanionTemplateData,
     createEmptyMusicReleaseTemplateData,
     createEmptyMovieReviewTemplateData,
     createEmptyPostVotePollTemplateData,
@@ -68,6 +71,7 @@
   let createPostVotePollData: PostVotePollTemplateData = createEmptyPostVotePollTemplateData()
   let createMusicReleaseData: MusicReleaseTemplateData = createEmptyMusicReleaseTemplateData()
   let createBugReportData: BugReportTemplateData = createEmptyBugReportTemplateData()
+  let createCompanionData: CompanionTemplateData = createEmptyCompanionTemplateData()
   let createEventData: EventTemplateData = createEmptyEventTemplateData()
   let comunAllowedTemplateTypes: string[] = ['basic']
   let templateTypeOptions: PostTemplateTypeOption[] = []
@@ -474,9 +478,13 @@
       createError = 'Укажите заголовок поста.'
       return
     }
-    if (isEditorContentEmpty(createContent)) {
+    if (createTemplateType !== 'companion' && isEditorContentEmpty(createContent)) {
       createError = 'Текст поста не может быть пустым.'
       return
+    }
+    if (createTemplateType === 'companion') {
+      createError = validateCompanionTemplate(createCompanionData, publishAt)
+      if (createError) return
     }
     if (createTemplateType === 'event' && !createEventData.starts_at) {
       createError = 'Укажите дату и время события.'
@@ -489,7 +497,8 @@
       createPostVotePollData,
       createMusicReleaseData,
       createBugReportData,
-      createEventData
+      createEventData,
+      createCompanionData
     )
     if (
       comun?.forbid_external_links &&
@@ -789,6 +798,7 @@
           bind:musicReleaseData={createMusicReleaseData}
           bind:bugReportData={createBugReportData}
           bind:eventData={createEventData}
+          bind:companionData={createCompanionData}
           allowedTemplateTypes={comunAllowedTemplateTypes}
           {templateTypeOptions}
         />
@@ -835,6 +845,7 @@
               createPostVotePollData = createEmptyPostVotePollTemplateData()
               createMusicReleaseData = createEmptyMusicReleaseTemplateData()
               createBugReportData = createEmptyBugReportTemplateData()
+              createCompanionData = createEmptyCompanionTemplateData()
               createEventData = createEmptyEventTemplateData()
               createError = ''
             }}

@@ -1,3 +1,4 @@
+from editor.companion_views import companion_search
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
@@ -169,6 +170,7 @@ urlpatterns = [
     path("api/tags/", tags_list, name="tag-list"),
     path("api/tags/ensure/", tags_ensure, name="tag-ensure"),
     path("api/tags/<str:tag>/posts/", tag_posts, name="tag-posts"),
+    path("api/posts/<int:post_id>/companion/", companion_search, name="post-companion"),
     path("api/posts/<int:post_id>/", post_detail, name="post-detail"),
     path("api/posts/<int:post_id>/social-image.jpg", post_social_image, name="post-social-image"),
     path("api/posts/<int:post_id>/comments/", post_comments, name="post-comments"),

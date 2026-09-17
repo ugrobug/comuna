@@ -16,6 +16,7 @@ POST_TEMPLATE_TYPE_TWEET = "tweet"
 POST_TEMPLATE_TYPE_BUG_REPORT = "bug_report"
 POST_TEMPLATE_TYPE_QUESTION = "question"
 POST_TEMPLATE_TYPE_EVENT = "event"
+POST_TEMPLATE_TYPE_COMPANION = "companion"
 POST_TEMPLATE_TYPE_CHOICES = (
     (POST_TEMPLATE_TYPE_BASIC, "Пост"),
     (POST_TEMPLATE_TYPE_MOVIE_REVIEW, "Кинообзор"),
@@ -25,6 +26,7 @@ POST_TEMPLATE_TYPE_CHOICES = (
     (POST_TEMPLATE_TYPE_BUG_REPORT, "Баг-репорт"),
     (POST_TEMPLATE_TYPE_QUESTION, "Вопрос"),
     (POST_TEMPLATE_TYPE_EVENT, "Событие"),
+    (POST_TEMPLATE_TYPE_COMPANION, "Поиск спутника"),
 )
 POST_TEMPLATE_TYPE_VALUES = {value for value, _label in POST_TEMPLATE_TYPE_CHOICES}
 POST_TEMPLATE_TYPE_LABELS = dict(POST_TEMPLATE_TYPE_CHOICES)
@@ -99,6 +101,7 @@ POST_TEMPLATE_EDITOR_BLOCKS_BY_TEMPLATE = {
     POST_TEMPLATE_TYPE_BUG_REPORT: POST_TEMPLATE_EDITOR_BLOCK_BASIC_VALUES,
     POST_TEMPLATE_TYPE_QUESTION: POST_TEMPLATE_EDITOR_BLOCK_BASIC_VALUES,
     POST_TEMPLATE_TYPE_EVENT: POST_TEMPLATE_EDITOR_BLOCK_BASIC_VALUES,
+    POST_TEMPLATE_TYPE_COMPANION: POST_TEMPLATE_EDITOR_BLOCK_BASIC_VALUES,
 }
 
 COMUN_CUSTOM_TEMPLATE_BLOCK_PLACEMENT_AVAILABLE = "available"
@@ -672,6 +675,29 @@ class PostBugReportConfirmation(models.Model):
         return f"{self.post_id}:{self.user_id}"
 
 
+
+class CompanionSearch(models.Model):
+    post = models.OneToOneField("feeds.Post", on_delete=models.CASCADE, related_name="companion_search")
+    organizer = models.ForeignKey(User, on_delete=models.CASCADE, related_name="companion_searches")
+    selected_user = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name="companion_matches")
+    chat = models.ForeignKey("feeds.SiteChat", null=True, blank=True, on_delete=models.SET_NULL, related_name="companion_searches")
+
+    class Meta:
+        app_label = "feeds"
+
+
+class CompanionResponse(models.Model):
+    search = models.ForeignKey(CompanionSearch, on_delete=models.CASCADE, related_name="responses")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="companion_responses")
+    message = models.CharField(max_length=500, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        app_label = "feeds"
+        ordering = ("created_at", "id")
+        constraints = [models.UniqueConstraint(fields=("search", "user"), name="companion_response_unique")]
+
+
 __all__ = [
     "COMUN_CUSTOM_TEMPLATE_BLOCK_PLACEMENT_AVAILABLE",
     "COMUN_CUSTOM_TEMPLATE_BLOCK_PLACEMENT_HEADER",
@@ -699,6 +725,9 @@ __all__ = [
     "POST_TEMPLATE_TYPE_TWEET",
     "POST_TEMPLATE_TYPE_QUESTION",
     "POST_TEMPLATE_TYPE_EVENT",
+    "POST_TEMPLATE_TYPE_COMPANION",
+    "CompanionSearch",
+    "CompanionResponse",
     "POST_TEMPLATE_TYPE_CHOICES",
     "POST_TEMPLATE_TYPE_VALUES",
     "POST_TEMPLATE_TYPE_LABELS",

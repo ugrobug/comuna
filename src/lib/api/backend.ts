@@ -1198,7 +1198,20 @@ export type BackendSiteChatUser = {
   is_deleted?: boolean
 }
 
+export type BackendChatEvent = {
+  kind: 'companion_confirmed'
+  post_id: number
+  title: string
+  starts_at: string
+  description: string
+  place: string
+  lat: number
+  lng: number
+  radius_m: number | null
+}
+
 export type BackendSiteChatMessage = {
+  event?: BackendChatEvent | null
   id: number
   chat_id: number
   sender: BackendSiteChatUser

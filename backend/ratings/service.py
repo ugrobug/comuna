@@ -224,7 +224,7 @@ def apply_author_rating_delta(
 
 def public_posts_filter(now=None) -> Q:
     current_time = now or timezone.now()
-    return Q(is_blocked=False, is_pending=False, author__is_blocked=False) & (
+    return Q(is_blocked=False, companion_matched_at__isnull=True, is_pending=False, author__is_blocked=False) & (
         Q(publish_at__isnull=True) | Q(publish_at__lte=current_time)
     )
 
@@ -570,7 +570,7 @@ def list_top_authors(
 
     normalized_period = normalize_top_authors_period(period, default="month")
     current_time = now or timezone.now()
-    posts_filter = Q(posts__is_blocked=False, posts__is_pending=False) & (
+    posts_filter = Q(posts__is_blocked=False, posts__companion_matched_at__isnull=True, posts__is_pending=False) & (
         Q(posts__publish_at__isnull=True) | Q(posts__publish_at__lte=current_time)
     )
 

@@ -36,6 +36,8 @@
   } from '$lib/api/backend'
   import { siteToken } from '$lib/siteAuth'
   import PostTemplateHeader from '$lib/components/site/post-templates/PostTemplateHeader.svelte'
+  import CompanionTemplateCard from '$lib/components/site/post-templates/CompanionTemplateCard.svelte'
+  import { isCompanionTemplate } from '$lib/postTemplates'
   import EventTemplateFooter from '$lib/components/site/post-templates/EventTemplateFooter.svelte'
   import {
     isMovieReviewTemplate,
@@ -360,7 +362,7 @@
   {/key}
 
   <!-- Оборачиваем тело поста в ссылку -->
-  {#if post.post.body && !post.post.nsfw && view != 'compact' && !hideBody && !hideByTag}
+  {#if (post.post.body || isCompanionTemplate(backendTemplate)) && !post.post.nsfw && (view != 'compact' || isCompanionTemplate(backendTemplate)) && (!hideBody || isCompanionTemplate(backendTemplate)) && !hideByTag}
     {#if showFullBody}
       <div style="grid-area: body;">
         {#if activeVotePollParticipation}
@@ -394,9 +396,12 @@
             />
           </div>
         {/if}
+        {#if isCompanionTemplate(backendTemplate) && isBackendPost}
+          <CompanionTemplateCard template={backendTemplate} postId={post.post.id} full />
+        {/if}
         <PostBody
           element="section"
-          body={post.post.body}
+          body={post.post.body || ''}
           template={backendTemplate}
           poll={backendPoll}
           postRatings={backendPostRatings}
@@ -467,10 +472,13 @@
             />
           </div>
           {/if}
+          {#if isCompanionTemplate(backendTemplate)}
+            <CompanionTemplateCard template={backendTemplate} postId={post.post.id} />
+          {/if}
           {#if !hideBodyForTemplatePreview}
             <PostBody
               element="section"
-              body={post.post.body}
+              body={post.post.body || ''}
               template={backendTemplate}
               poll={backendPoll}
               postRatings={backendPostRatings}
@@ -497,7 +505,7 @@
         >
           <PostBody
             element="section"
-            body={post.post.body}
+            body={post.post.body || ''}
             template={backendTemplate}
             poll={backendPoll}
             postRatings={backendPostRatings}

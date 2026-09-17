@@ -11,6 +11,9 @@
   export let attendance: BackendEventAttendance | null = null
   export let postId: number
   export let title: string
+  export let calendarDescription = ''
+  export let calendarLocation = ''
+  export let confirmed = false
 
   let updating = false
   let calendarPickerOpen = false
@@ -42,7 +45,7 @@
     const end = new Date(startsAtDate.getTime() + 60 * 60 * 1000)
     const postUrl = `${window.location.origin}${$page.url.pathname}`
 
-    return { start: startsAtDate, end, postUrl }
+    return { start: startsAtDate, end, postUrl, description: calendarDescription ? `${calendarDescription}\n${postUrl}` : postUrl }
   }
 
   const downloadCalendarEvent = () => {
@@ -60,7 +63,9 @@
       `DTSTART:${toIcsDate(event.start)}`,
       `DTEND:${toIcsDate(event.end)}`,
       `SUMMARY:${escapeIcs(title)}`,
-      `DESCRIPTION:${escapeIcs(event.postUrl)}`,
+      `DESCRIPTION:${escapeIcs(event.description)}`,
+      `LOCATION:${escapeIcs(calendarLocation)}`,
+      ...(confirmed ? ['STATUS:CONFIRMED'] : []),
       `URL:${escapeIcs(event.postUrl)}`,
       'END:VEVENT',
       'END:VCALENDAR',
@@ -84,13 +89,15 @@
       url.searchParams.set('action', 'TEMPLATE')
       url.searchParams.set('text', title)
       url.searchParams.set('dates', `${toIcsDate(event.start)}/${toIcsDate(event.end)}`)
-      url.searchParams.set('details', event.postUrl)
+      url.searchParams.set('details', event.description)
+      url.searchParams.set('location', calendarLocation)
     } else if (provider === 'yandex') {
       url = new URL('https://calendar.yandex.ru/event')
       url.searchParams.set('name', title)
       url.searchParams.set('start_ts', event.start.toISOString())
       url.searchParams.set('end_ts', event.end.toISOString())
-      url.searchParams.set('description', event.postUrl)
+      url.searchParams.set('description', event.description)
+      url.searchParams.set('location', calendarLocation)
     } else {
       url = new URL('https://outlook.live.com/calendar/0/deeplink/compose')
       url.searchParams.set('path', '/calendar/action/compose')
@@ -98,7 +105,8 @@
       url.searchParams.set('subject', title)
       url.searchParams.set('startdt', event.start.toISOString())
       url.searchParams.set('enddt', event.end.toISOString())
-      url.searchParams.set('body', event.postUrl)
+      url.searchParams.set('body', event.description)
+      url.searchParams.set('location', calendarLocation)
     }
 
     calendarPickerOpen = false

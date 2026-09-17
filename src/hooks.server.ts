@@ -1,4 +1,4 @@
-import type { Handle } from '@sveltejs/kit'
+import type { Handle, HandleFetch } from '@sveltejs/kit'
 import type { AuthBootstrap } from '$lib/authBootstrap'
 import { brandNameForLanguage } from '$lib/brand'
 import {
@@ -153,6 +153,14 @@ export const resolveRequestLanguage = (
   languageFromAcceptLanguage(acceptLanguage) ||
   originalPostLanguage
 
+export const handleFetch: HandleFetch = async ({ event, request, fetch }) => {
+  const response = await fetch(request)
+  if (new URL(request.url).pathname.startsWith('/api/') && response.headers.get('cache-control')?.includes('no-store')) {
+    event.locals.noStore = true
+  }
+  return response
+}
+
 export const handle: Handle = async ({ event, resolve }) => {
   const authBootstrap = await loadAuthBootstrap(event)
   event.locals.authBootstrap = authBootstrap
@@ -186,7 +194,7 @@ export const handle: Handle = async ({ event, resolve }) => {
   }
   headers.set('Content-Language', postLanguageLocales[language])
   appendVary(headers, 'Accept-Language')
-  if (authBootstrap) {
+  if (authBootstrap || event.locals.noStore) {
     headers.set('Cache-Control', 'private, no-store, max-age=0')
   }
   return new Response(response.body, {

@@ -116,6 +116,14 @@ NOTIFICATION_EVENT_DEFINITIONS: list[dict[str, Any]] = [
         "settings_hidden": True,
     },
     {
+        "key": "companion_response",
+        "title": "Отклик на поиск спутника",
+        "description": "Кто-то хочет присоединиться к вашей встрече.",
+        "default_site_enabled": True,
+        "default_telegram_enabled": False,
+        "default_push_enabled": True,
+    },
+    {
         "key": "event_reminder",
         "title": "Напоминание о событии",
         "description": "Напомнить за сутки о событии, на которое вы собираетесь.",

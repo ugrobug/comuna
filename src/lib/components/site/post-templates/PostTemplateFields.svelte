@@ -1,4 +1,6 @@
 <script lang="ts">
+  import CompanionTemplateFields from './CompanionTemplateFields.svelte'
+  import { createEmptyCompanionTemplateData, type CompanionTemplateData } from '$lib/postTemplates'
   import { onDestroy, onMount } from 'svelte'
   import { TextInput, toast } from 'mono-svelte'
   import {
@@ -48,6 +50,7 @@
   } from '$lib/postTemplates'
   import { t } from '$lib/translations'
 
+  export let companionData: CompanionTemplateData = createEmptyCompanionTemplateData()
   export let templateType: '' | PostTemplateType = ''
   export let movieReviewData: MovieReviewTemplateData = createEmptyMovieReviewTemplateData()
   export let postVotePollData: PostVotePollTemplateData = createEmptyPostVotePollTemplateData()
@@ -96,9 +99,9 @@
 
   const templateOptionKey = (value: string) => value || 'basic'
   const templateOptionLabel = (option: PostTemplateTypeOption) =>
-    $t(`site.templateFields.types.${templateOptionKey(option.value)}.label`) || option.label
+    option.value === 'companion' ? option.label : $t(`site.templateFields.types.${templateOptionKey(option.value)}.label`) || option.label
   const templateOptionDescription = (option: PostTemplateTypeOption) =>
-    option.description
+    option.value === 'companion' ? option.description : option.description
       ? $t(`site.templateFields.types.${templateOptionKey(option.value)}.description`) || option.description
       : ''
 
@@ -1083,6 +1086,8 @@
         </div>
       </div>
     </div>
+    {:else if templateType === 'companion'}
+      <CompanionTemplateFields bind:data={companionData} />
     {:else if templateType === 'event'}
     <label class="flex max-w-md flex-col gap-1">
       <span class="text-sm text-slate-700 dark:text-zinc-300">{$t('site.templateFields.eventDate')}</span>

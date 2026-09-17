@@ -8,6 +8,7 @@ import urllib.request
 from pathlib import Path
 
 from django.conf import settings
+from django.db.models import Q
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
@@ -76,7 +77,7 @@ class Command(BaseCommand):
         dry_run = bool(options["dry_run"])
 
         feed_items = list(
-            PublicFeedItem.objects.filter(feed=PublicFeedItem.FEED_HOME)
+            PublicFeedItem.objects.filter(feed=PublicFeedItem.FEED_HOME, post__companion_matched_at__isnull=True).filter(Q(post__raw_data__template__type__isnull=True) | ~Q(post__raw_data__template__type="companion"))
             .select_related("post")
             .order_by("rank")[:posts_limit]
         )
@@ -114,6 +115,7 @@ class Command(BaseCommand):
 
         rendered: list[dict[str, object]] = []
         failures: list[dict[str, object]] = []
+        skipped_private = 0
         for language, path in render_tasks:
             url = f"{frontend_url}{path}"
             request = urllib.request.Request(
@@ -130,6 +132,9 @@ class Command(BaseCommand):
                     status = int(getattr(response, "status", 200))
                     content_type = response.headers.get("Content-Type", "")
                     response_url = getattr(response, "geturl", lambda: url)()
+                    if "no-store" in response.headers.get("Cache-Control", ""):
+                        skipped_private += 1
+                        continue
                     body = response.read()
             except (urllib.error.URLError, TimeoutError, ValueError) as exc:
                 failures.append({"language": language, "path": path, "error": str(exc)})
@@ -173,7 +178,7 @@ class Command(BaseCommand):
         )
 
         minimum_successes = max(1, int(len(render_tasks) * 0.8))
-        if len(rendered) < minimum_successes:
+        if len(rendered) + skipped_private < minimum_successes:
             shutil.rmtree(temp_root)
             raise CommandError(
                 f"Rendered only {len(rendered)} of {len(render_tasks)} snapshots; "

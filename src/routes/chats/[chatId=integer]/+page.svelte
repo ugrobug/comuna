@@ -1,4 +1,5 @@
 <script lang="ts">
+  import EventTemplateFooter from '$lib/components/site/post-templates/EventTemplateFooter.svelte'
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
   import { onDestroy, onMount, tick } from 'svelte'
@@ -230,14 +231,31 @@
             {@const mine = message.sender_id === $siteUser?.id}
             <div class={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
               <div class={`max-w-[80%] rounded-2xl px-4 py-2 text-sm shadow-sm ${
-                mine
+                message.event ? 'border border-violet-200 bg-violet-50 text-slate-900 dark:border-violet-900 dark:bg-zinc-900 dark:text-zinc-100' : mine
                   ? 'bg-slate-900 text-white dark:bg-zinc-100 dark:text-zinc-900'
                   : 'bg-slate-100 text-slate-900 dark:bg-zinc-800 dark:text-zinc-100'
               }`}>
+                {#if message.event}<div class="mb-2 text-xs font-semibold text-violet-700 dark:text-violet-300">Подтверждение встречи · Тамбур</div>{/if}
                 <div class="whitespace-pre-wrap break-words">{message.body}</div>
-                <div class={`mt-1 flex items-center gap-1 text-[11px] ${mine ? 'justify-end text-white/70 dark:text-zinc-500' : 'text-slate-500 dark:text-zinc-400'}`}>
+                {#if message.event?.kind === 'companion_confirmed'}
+                  <div class="mt-3 space-y-2">
+                    <h3 class="font-semibold">{message.event.title}</h3>
+                    <p class="whitespace-pre-wrap">{message.event.description}</p>
+                    <a class="block text-violet-700 underline dark:text-violet-300" href={`https://www.openstreetmap.org/?mlat=${message.event.lat}&mlon=${message.event.lng}#map=15/${message.event.lat}/${message.event.lng}`} target="_blank" rel="noopener noreferrer">{message.event.place || 'Место встречи на карте'}</a>
+                    {#if message.event.radius_m}<p>Радиус: {message.event.radius_m} м</p>{/if}
+                  </div>
+                  <EventTemplateFooter
+                    template={{ type: 'event', version: 1, data: { starts_at: message.event.starts_at } }}
+                    postId={message.event.post_id}
+                    title={message.event.title}
+                    calendarDescription={message.event.description + (message.event.radius_m ? `\nРадиус: ${message.event.radius_m} м` : '')}
+                    calendarLocation={`${message.event.place || 'Место встречи'} (${message.event.lat}, ${message.event.lng})`}
+                    confirmed
+                  />
+                {/if}
+                <div class={`mt-1 flex items-center gap-1 text-[11px] ${mine && !message.event ? 'justify-end text-white/70 dark:text-zinc-500' : 'text-slate-500 dark:text-zinc-400'}`}>
                   {formatMessageTime(message.created_at)}
-                  {#if mine}
+                  {#if mine && !message.event}
                     <span
                       class={`text-[11px] font-semibold leading-none ${message.read_at ? 'text-sky-300 dark:text-sky-600' : 'text-white/70 dark:text-zinc-500'}`}
                       title={messageStatusLabel(message)}

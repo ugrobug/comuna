@@ -19,6 +19,7 @@ _POST_DETAIL_FIELDS = {
     "raw_data",
     "accepted_answer",
     "question_solved_at",
+    "companion_matched_at",
 }
 
 

@@ -39,6 +39,11 @@
     buildPostTemplatePayload,
     createEmptyBugReportTemplateData,
     createEmptyEventTemplateData,
+    createEmptyCompanionTemplateData,
+    normalizeCompanionTemplateData,
+    isCompanionTemplate,
+    validateCompanionTemplate,
+    type CompanionTemplateData,
     createEmptyMusicReleaseTemplateData,
     createEmptyMovieReviewTemplateData,
     createEmptyPostVotePollTemplateData,
@@ -141,6 +146,7 @@
   let editPostVotePollData: PostVotePollTemplateData = createEmptyPostVotePollTemplateData()
   let editMusicReleaseData: MusicReleaseTemplateData = createEmptyMusicReleaseTemplateData()
   let editBugReportData: BugReportTemplateData = createEmptyBugReportTemplateData()
+  let editCompanionData: CompanionTemplateData = createEmptyCompanionTemplateData()
   let editEventData: EventTemplateData = createEmptyEventTemplateData()
   let allowedTemplateTypes: string[] = ['basic']
 
@@ -287,7 +293,8 @@
       editPostVotePollData,
       editMusicReleaseData,
       editBugReportData,
-      editEventData
+      editEventData,
+      editCompanionData
     )
 
   const buildEditPayload = () => {
@@ -500,6 +507,7 @@
     editPostVotePollData = createEmptyPostVotePollTemplateData()
     editMusicReleaseData = createEmptyMusicReleaseTemplateData()
     editBugReportData = createEmptyBugReportTemplateData()
+    editCompanionData = createEmptyCompanionTemplateData()
     editEventData = createEmptyEventTemplateData()
     editTemplateType = isRecognizedPostTemplateType(currentPost.template?.type)
       ? currentPost.template.type
@@ -512,6 +520,8 @@
       editMusicReleaseData = normalizeMusicReleaseTemplateData(currentPost.template.data)
     } else if (isBugReportTemplate(currentPost.template)) {
       editBugReportData = normalizeBugReportTemplateData(currentPost.template.data)
+    } else if (isCompanionTemplate(currentPost.template)) {
+      editCompanionData = normalizeCompanionTemplateData(currentPost.template.data)
     } else if (isEventTemplate(currentPost.template)) {
       editEventData = normalizeEventTemplateData(currentPost.template.data)
     }
@@ -680,13 +690,17 @@
       return false
     }
     const trimmedContent = editContent.trim()
-    if (!trimmedContent || isEditorContentEmpty(trimmedContent)) {
+    if (editTemplateType !== 'companion' && (!trimmedContent || isEditorContentEmpty(trimmedContent))) {
       saveError = 'Текст поста не может быть пустым'
       return false
     }
     if (!editComunSlug) {
       saveError = 'Выберите сообщество'
       return false
+    }
+    if (editTemplateType === 'companion') {
+      saveError = validateCompanionTemplate(editCompanionData, publishAt)
+      if (saveError) return false
     }
     if (editTemplateType === 'event' && !editEventData.starts_at) {
       saveError = 'Укажите дату и время события'
@@ -1134,6 +1148,7 @@
           bind:musicReleaseData={editMusicReleaseData}
           bind:bugReportData={editBugReportData}
           bind:eventData={editEventData}
+          bind:companionData={editCompanionData}
           {allowedTemplateTypes}
           {templateTypeOptions}
           showTypeSelector={false}
