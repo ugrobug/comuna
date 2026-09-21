@@ -8,11 +8,9 @@
   export let verificationCode = ''
   export let verificationCodeLoading = false
   export let verificationCodeError = ''
-  export let creatingComunByAuthorId: number | null = null
 
   const dispatch = createEventDispatcher<{
     loadCode: void
-    createComun: { id?: number; username: string }
   }>()
 </script>
 
@@ -23,6 +21,9 @@
       {$t('settings.telegramChannels.adminConfirmDescription')}
     </p>
     <div class="mt-4 flex flex-wrap items-center gap-3">
+      <a href="/comuns?create=1" class="text-sm text-blue-600 hover:underline dark:text-blue-400">
+        {$t('settings.telegramChannels.createOnSite')}
+      </a>
       <Button
         size="sm"
         color="primary"
@@ -94,14 +95,12 @@
                   {$t('settings.telegramChannels.communitySettings')}
                 </a>
               {:else}
-                <Button
-                  size="sm"
-                  on:click={() => dispatch('createComun', author)}
-                  loading={creatingComunByAuthorId === author.id}
-                  disabled={creatingComunByAuthorId !== null}
+                <a
+                  class="inline-flex items-center rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                  href="/comuns"
                 >
-                  {$t('settings.telegramChannels.createFromChannel')}
-                </Button>
+                  {$t('settings.telegramChannels.chooseCommunity')}
+                </a>
               {/if}
             </div>
           </li>

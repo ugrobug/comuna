@@ -1713,115 +1713,14 @@ def comun_create_from_telegram_channel(request: HttpRequest) -> HttpResponse:
     if not current_user:
         return JsonResponse({"ok": False, "error": "unauthorized"}, status=401)
 
-    can_create_comun, minimum_rating, max_author_rating = _comun_creation_access_state(current_user)
-    if not can_create_comun:
-        return JsonResponse(
-            {
-                "ok": False,
-                "error": "insufficient author rating",
-                "reason": "insufficient_author_rating",
-                "minimum_author_rating": minimum_rating,
-                "max_author_rating": max_author_rating,
-            },
-            status=403,
-        )
-
-    try:
-        body = json.loads(request.body.decode("utf-8") or "{}")
-    except json.JSONDecodeError:
-        return JsonResponse({"ok": False, "error": "invalid json"}, status=400)
-
-    author_id = _parse_post_reference_to_id(body.get("author_id"))
-    author_username = _normalize_telegram_channel_username(
-        body.get("author_username") or body.get("telegram_channel_username")
-    )
-
-    author_queryset = Author.objects.filter(is_blocked=False)
-    if author_id:
-        author_queryset = author_queryset.filter(id=author_id)
-    elif author_username:
-        author_queryset = author_queryset.filter(username__iexact=author_username)
-    else:
-        return JsonResponse({"ok": False, "error": "author required"}, status=400)
-
-    author = author_queryset.first()
-    if not author:
-        return JsonResponse({"ok": False, "error": "author not found"}, status=404)
-
-    if (
-        not current_user.is_staff
-        and not AuthorAdmin.objects.filter(
-            user=current_user,
-            author=author,
-            verified_at__isnull=False,
-        ).exists()
-    ):
-        return JsonResponse({"ok": False, "error": "forbidden"}, status=403)
-
-    _attach_pending_comuns_for_author(author)
-    existing_comun = _author_telegram_source_comun(author)
-    if existing_comun and existing_comun.is_active:
-        existing_comun = (
-            Comun.objects.filter(id=existing_comun.id)
-            .select_related("creator", "welcome_post", "telegram_source_author")
-            .prefetch_related("moderators", "excluded_authors", "categories", "tags", "blocked_tags")
-            .first()
-        )
-        return JsonResponse(
-            {
-                "ok": True,
-                "created": False,
-                "comun": _serialize_comun(
-                    request,
-                    existing_comun,
-                    current_user=current_user,
-                    include_manage_fields=True,
-                    include_options=True,
-                    include_activity=True,
-                ),
-            }
-        )
-
-    base_name = (author.title or "").strip() or f"@{author.username}"
-    comun_name = _generate_unique_comun_name(base_name, author.username)
-    comun_slug = _generate_unique_comun_slug(author.username or comun_name)
-    if not comun_slug:
-        comun_slug = _generate_unique_comun_slug(comun_name)
-    if not comun_slug:
-        return JsonResponse({"ok": False, "error": "unable to generate comun slug"}, status=400)
-
-    comun = Comun.objects.create(
-        name=comun_name,
-        slug=comun_slug,
-        creator=current_user,
-        logo_url=_fv()._author_avatar_url(request, author) or "",
-        product_description=(author.description or "").strip(),
-        telegram_source_author=author,
-        telegram_channel_username=_normalize_telegram_channel_username(author.username),
-        only_moderators_can_post=True,
-    )
-    comun.moderators.add(current_user)
-    bump_public_cache_prefix("comuns-catalog")
-    bump_public_cache_prefix("comuns-sidebar")
-    comun = (
-        Comun.objects.filter(id=comun.id)
-        .select_related("creator", "welcome_post", "telegram_source_author")
-        .prefetch_related("moderators", "excluded_authors", "categories", "tags", "blocked_tags")
-        .get()
-    )
     return JsonResponse(
         {
-            "ok": True,
-            "created": True,
-            "comun": _serialize_comun(
-                request,
-                comun,
-                current_user=current_user,
-                include_manage_fields=True,
-                include_options=True,
-                include_activity=True,
-            ),
-        }
+            "ok": False,
+            "error": "Сначала создайте сообщество на сайте, затем привяжите Telegram-канал в его настройках.",
+            "reason": "create_community_on_site",
+            "create_url": "/comuns?create=1",
+        },
+        status=410,
     )
 
 

@@ -9,11 +9,13 @@ from telegram_integration import bot, polling
 from telegram_integration.models import BotSession
 from users.models import AuthorAdmin, AuthorVerificationCode
 from feeds.models import Author
+from communities.models import Comun
 
 
 User = get_user_model()
 
 
+@override_settings(TELEGRAM_BOT_TOKEN="")
 class TelegramBotVerificationTests(TestCase):
     @patch("telegram_integration.bot._send_bot_message")
     def test_verification_code_can_be_saved_before_channel_is_connected(self, send_message):
@@ -30,12 +32,10 @@ class TelegramBotVerificationTests(TestCase):
         send_message.assert_called_once()
         self.assertIn("Код подтверждения принят", send_message.call_args.args[1])
 
-    @patch("telegram_integration.bot.community_service._ensure_telegram_channel_comun_for_author")
     @patch("telegram_integration.bot._send_bot_message")
     def test_verified_user_is_attached_when_channel_connects(
         self,
         send_message,
-        ensure_comun,
     ):
         user = User.objects.create_user(username="reader")
         BotSession.objects.create(
@@ -64,9 +64,9 @@ class TelegramBotVerificationTests(TestCase):
         self.assertEqual(author.admin_chat_id, 123456)
         self.assertEqual(link.telegram_user_id, 123456)
         self.assertIsNotNone(link.verified_at)
-        ensure_comun.assert_called_once_with(author)
+        self.assertFalse(Comun.objects.exists())
         send_message.assert_called_once()
-        self.assertIn("настройки нужного сообщества", send_message.call_args.args[1])
+        self.assertIn("сначала создайте сообщество на сайте", send_message.call_args.args[1])
 
 
 @override_settings(TELEGRAM_BOT_TOKEN="token")

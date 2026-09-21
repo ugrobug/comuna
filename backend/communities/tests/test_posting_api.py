@@ -3,7 +3,7 @@ from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.db import connection
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
@@ -737,6 +737,7 @@ class ComunPostingApiTests(TestCase):
         self.assertEqual(payload.get("total_count"), 1)
         self.assertEqual(payload["posts"][0]["id"], post.id)
 
+    @override_settings(MEDIA_URL="/media/", MEDIA_LEGACY_URL="", SITE_BASE_URL="")
     def test_verified_channel_owner_claims_unowned_linked_comun(self):
         telegram_author = Author.objects.create(
             username="unit-channel",
@@ -767,17 +768,17 @@ class ComunPostingApiTests(TestCase):
 
     def test_verified_channel_owner_claims_pending_channel_comun(self):
         telegram_author = Author.objects.create(
-            username="pending-channel",
+            username="pending_channel",
             title="Pending Channel",
             channel_id=778,
-            channel_url="https://t.me/pending-channel",
-            avatar_url="https://example.com/pending-channel.jpg",
+            channel_url="https://t.me/pending_channel",
+            avatar_url="https://example.com/pending_channel.jpg",
         )
         comun = Comun.objects.create(
             name="Pending Channel",
-            slug="pending-channel-comun",
+            slug="pending_channel-comun",
             creator=None,
-            telegram_channel_username="pending-channel",
+            telegram_channel_username="pending_channel",
         )
         AuthorAdmin.objects.create(
             user=self.user,
@@ -790,10 +791,10 @@ class ComunPostingApiTests(TestCase):
         comun.refresh_from_db()
         self.assertEqual(comun.creator_id, self.user.id)
         self.assertEqual(comun.telegram_source_author_id, telegram_author.id)
-        self.assertEqual(comun.logo_url, "https://example.com/pending-channel.jpg")
+        self.assertEqual(comun.logo_url, "https://example.com/pending_channel.jpg")
         self.assertTrue(comun.moderators.filter(id=self.user.id).exists())
 
-    def test_telegram_author_without_owner_gets_unowned_comun(self):
+    def test_telegram_author_without_owner_does_not_create_comun(self):
         telegram_author = Author.objects.create(
             username="orphan-channel",
             title="Orphan Channel",
@@ -804,13 +805,10 @@ class ComunPostingApiTests(TestCase):
 
         comun = community_service._ensure_telegram_channel_comun_for_author(telegram_author)
 
-        self.assertIsNotNone(comun)
-        self.assertIsNone(comun.creator_id)
-        self.assertEqual(comun.logo_url, "https://example.com/orphan-channel.jpg")
-        self.assertEqual(comun.telegram_source_author_id, telegram_author.id)
-        self.assertTrue(comun.only_moderators_can_post)
+        self.assertIsNone(comun)
+        self.assertFalse(Comun.objects.filter(telegram_source_author=telegram_author).exists())
 
-    def test_create_from_telegram_channel_defaults_to_moderator_only(self):
+    def test_create_from_telegram_channel_is_disabled(self):
         telegram_author = Author.objects.create(
             username="managed-channel",
             title="Managed Channel",
@@ -823,21 +821,16 @@ class ComunPostingApiTests(TestCase):
             verified_at=timezone.now(),
         )
 
+        count_before = Comun.objects.count()
         response = self.client.post(
             reverse("comun-create-from-telegram-channel"),
             data=json.dumps({"author_id": telegram_author.id}),
             content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {user_service._issue_token(self.user)}",
         )
-
-        self.assertEqual(response.status_code, 200, response.content.decode())
-        payload = response.json()
-        self.assertTrue(payload.get("ok"))
-        self.assertTrue(payload.get("created"))
-        self.assertTrue(payload["comun"]["only_moderators_can_post"])
-
-        comun = Comun.objects.get(telegram_source_author=telegram_author)
-        self.assertTrue(comun.only_moderators_can_post)
-        self.assertTrue(comun.moderators.filter(id=self.user.id).exists())
+        self.assertEqual(response.status_code, 410, response.content.decode())
+        self.assertEqual(response.json()["reason"], "create_community_on_site")
+        self.assertEqual(Comun.objects.count(), count_before)
 
     def test_interface_created_comun_remains_open_by_default(self):
         response = self.client.post(

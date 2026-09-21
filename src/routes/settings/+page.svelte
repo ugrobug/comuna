@@ -1,7 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation'
   import NotificationSettingsPanel from '$lib/components/notifications/NotificationSettingsPanel.svelte'
-  import { subscribeToComunBySlug } from '$lib/settings'
   import { defaultSettings, userSettings } from '$lib/settings'
   import { interfaceLanguageOptions } from '$lib/interfaceLanguages'
   import Setting from './Setting.svelte'
@@ -22,10 +21,7 @@
   import { loadTranslations, locale, t } from '$lib/translations'
   import Header from '$lib/components/ui/layout/pages/Header.svelte'
   import { profile } from '$lib/auth'
-  import {
-    buildComunFromTelegramChannelUrl,
-    buildTagsListUrl,
-  } from '$lib/api/backend'
+  import { buildTagsListUrl } from '$lib/api/backend'
   import { normalizeTag } from '$lib/tags'
   import {
     deleteSiteAccount,
@@ -55,7 +51,6 @@
   let channelVerificationCode = ''
   let channelVerificationCodeLoading = false
   let channelVerificationCodeError = ''
-  let creatingComunByAuthorId: number | null = null
   let selectedInterfaceLanguage =
     ($userSettings.languageManuallySelected ? $userSettings.language : normalizeInterfaceLanguage($locale)) ?? 'ru'
   let syncedInterfaceLanguage = selectedInterfaceLanguage
@@ -275,50 +270,6 @@
     }
   }
 
-  const authHeaders = () => {
-    if (!$siteToken) throw new Error($t('settings.siteProfile.authRequired'))
-    return {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${$siteToken}`,
-    }
-  }
-
-  const createComunFromAuthor = async (author: { id?: number; username: string }) => {
-    const authorId = Number(author?.id ?? 0)
-    if (!authorId || creatingComunByAuthorId) return
-    creatingComunByAuthorId = authorId
-    try {
-      const response = await fetch(buildComunFromTelegramChannelUrl(), {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({
-          author_id: authorId,
-          author_username: author.username,
-        }),
-      })
-      const payload = await response.json().catch(() => ({}))
-      if (!response.ok || !payload?.comun?.slug) {
-        throw new Error(payload?.error || $t('settings.telegramChannels.createFailed'))
-      }
-      subscribeToComunBySlug(payload.comun.slug)
-      await refreshSiteUser()
-      toast({
-        content: payload?.created === false
-          ? $t('settings.telegramChannels.exists')
-          : $t('settings.telegramChannels.created'),
-        type: 'success',
-      })
-      await goto(`/comuns/${payload.comun.slug}/settings`)
-    } catch (error) {
-      toast({
-        content: (error as Error)?.message ?? $t('settings.telegramChannels.createFailed'),
-        type: 'error',
-      })
-    } finally {
-      creatingComunByAuthorId = null
-    }
-  }
-
   const loadChannelVerificationCode = async () => {
     channelVerificationCodeLoading = true
     channelVerificationCodeError = ''
@@ -519,9 +470,7 @@
         verificationCode={channelVerificationCode}
         verificationCodeLoading={channelVerificationCodeLoading}
         verificationCodeError={channelVerificationCodeError}
-        {creatingComunByAuthorId}
         on:loadCode={loadChannelVerificationCode}
-        on:createComun={(event) => createComunFromAuthor(event.detail)}
       />
     </Section>
   {/if}

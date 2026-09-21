@@ -1006,12 +1006,11 @@
         },
         "telegramChannels": {
             "title": "Telegram channel links",
-            "createFailed": "Failed to create community",
-            "created": "Community created",
-            "exists": "Community already exists",
             "codeFailed": "Failed to get code",
+            "createOnSite": "Create a community on the website",
+            "chooseCommunity": "Choose a community to link",
             "adminConfirmTitle": "Channel admin confirmation",
-            "adminConfirmDescription": "Get a code and send it to the bot. The bot will confirm that you are a channel admin.",
+            "adminConfirmDescription": "First create a community on the website. In its settings → Telegram, enter an existing public channel and save. Get a code, send it to the bot and add the bot as a channel administrator. Then check the link in the community settings. The bot does not create communities.",
             "getCode": "Get code",
             "sendCodeToBot": "Send the code to the Telegram bot -",
             "confirmedTitle": "Your confirmed channels",
@@ -1028,7 +1027,6 @@
             "inviteLink": "Invite link",
             "openCommunity": "Open community",
             "communitySettings": "Community settings",
-            "createFromChannel": "Create community from channel",
             "emptyConfirmed": "No confirmed channels yet."
         },
         "myFeed": {

@@ -917,12 +917,11 @@
         },
         "telegramChannels": {
             "title": "Vinculación de canales de Telegram",
-            "createFailed": "No se pudo crear la comunidad",
-            "created": "Comunidad creada",
-            "exists": "La comunidad ya existe",
             "codeFailed": "No se pudo obtener el código",
+            "createOnSite": "Crear una comunidad en el sitio",
+            "chooseCommunity": "Elegir una comunidad para vincular",
             "adminConfirmTitle": "Confirmación de administrador del canal",
-            "adminConfirmDescription": "Obtén un código y envíalo al bot. El bot confirmará que eres administrador del canal.",
+            "adminConfirmDescription": "Primero crea una comunidad en el sitio. En sus ajustes → Telegram, introduce un canal público existente y guarda. Obtén un código, envíalo al bot y añádelo como administrador del canal. Después comprueba la vinculación en los ajustes de la comunidad. El bot no crea comunidades.",
             "getCode": "Obtener código",
             "sendCodeToBot": "Envía el código al bot de Telegram -",
             "confirmedTitle": "Tus canales confirmados",
@@ -939,7 +938,6 @@
             "inviteLink": "Enlace de invitación",
             "openCommunity": "Abrir comunidad",
             "communitySettings": "Configuración de comunidad",
-            "createFromChannel": "Crear comunidad desde el canal",
             "emptyConfirmed": "Aún no hay canales confirmados."
         },
         "myFeed": {

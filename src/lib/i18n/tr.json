@@ -986,12 +986,11 @@
         },
         "telegramChannels": {
             "title": "Telegram kanallarını bağlama",
-            "createFailed": "Topluluk oluşturulamadı",
-            "created": "Topluluk oluşturuldu",
-            "exists": "Topluluk zaten var",
             "codeFailed": "Kod alınamadı",
+            "createOnSite": "Sitede topluluk oluştur",
+            "chooseCommunity": "Bağlanacak topluluğu seç",
             "adminConfirmTitle": "Kanal yöneticisi doğrulaması",
-            "adminConfirmDescription": "Bir kod alın ve bota gönderin. Bot kanal yöneticisi olduğunuzu doğrular.",
+            "adminConfirmDescription": "Önce sitede bir topluluk oluşturun. Ayarlar → Telegram bölümünde mevcut bir herkese açık kanalı girip kaydedin. Onay kodunu bota gönderin ve botu kanal yöneticisi olarak ekleyin. Ardından topluluk ayarlarından bağlantıyı kontrol edin. Bot topluluk oluşturmaz.",
             "getCode": "Kod al",
             "sendCodeToBot": "Kodu Telegram botuna gönderin -",
             "confirmedTitle": "Doğrulanmış kanallarınız",
@@ -1008,7 +1007,6 @@
             "inviteLink": "Davet bağlantısı",
             "openCommunity": "Topluluğu aç",
             "communitySettings": "Topluluk ayarları",
-            "createFromChannel": "Kanaldan topluluk oluştur",
             "emptyConfirmed": "Henüz doğrulanmış kanal yok."
         },
         "myFeed": {

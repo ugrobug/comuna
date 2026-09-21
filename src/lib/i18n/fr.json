@@ -769,12 +769,11 @@
         },
         "telegramChannels": {
             "title": "Liaison des canaux Telegram",
-            "createFailed": "Impossible de créer la communauté",
-            "created": "Communauté créée",
-            "exists": "La communauté existe déjà",
             "codeFailed": "Impossible d’obtenir le code",
+            "createOnSite": "Créer une communauté sur le site",
+            "chooseCommunity": "Choisir une communauté à associer",
             "adminConfirmTitle": "Confirmation d’administrateur de chaîne",
-            "adminConfirmDescription": "Obtenez un code et envoyez-le au bot. Le bot confirmera que vous êtes administrateur de la chaîne.",
+            "adminConfirmDescription": "Créez d’abord une communauté sur le site. Dans ses paramètres → Telegram, indiquez un canal public existant et enregistrez. Envoyez le code de confirmation au bot et ajoutez-le comme administrateur du canal. Vérifiez ensuite l’association dans les paramètres de la communauté. Le bot ne crée pas de communautés.",
             "getCode": "Obtenir le code",
             "sendCodeToBot": "Envoyez le code au bot Telegram -",
             "confirmedTitle": "Vos chaînes confirmées",
@@ -791,7 +790,6 @@
             "inviteLink": "Lien d’invitation",
             "openCommunity": "Ouvrir la communauté",
             "communitySettings": "Paramètres de la communauté",
-            "createFromChannel": "Créer une communauté depuis la chaîne",
             "emptyConfirmed": "Aucune chaîne confirmée pour le moment."
         },
         "myFeed": {

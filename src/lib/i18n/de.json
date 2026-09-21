@@ -779,12 +779,11 @@
         },
         "telegramChannels": {
             "title": "Telegram-Kanäle verknüpfen",
-            "createFailed": "Community konnte nicht erstellt werden",
-            "created": "Community erstellt",
-            "exists": "Community existiert bereits",
             "codeFailed": "Code konnte nicht abgerufen werden",
+            "createOnSite": "Community auf der Website erstellen",
+            "chooseCommunity": "Community zum Verknüpfen auswählen",
             "adminConfirmTitle": "Bestätigung als Kanaladministrator",
-            "adminConfirmDescription": "Erhalte einen Code und sende ihn an den Bot. Der Bot bestätigt, dass du Kanaladministrator bist.",
+            "adminConfirmDescription": "Erstellen Sie zuerst eine Community auf der Website. Tragen Sie unter Einstellungen → Telegram einen bestehenden öffentlichen Kanal ein und speichern Sie. Senden Sie den Bestätigungscode an den Bot und fügen Sie ihn als Kanaladministrator hinzu. Prüfen Sie danach die Verknüpfung. Der Bot erstellt keine Communities.",
             "getCode": "Code erhalten",
             "sendCodeToBot": "Sende den Code an den Telegram-Bot -",
             "confirmedTitle": "Deine bestätigten Kanäle",
@@ -801,7 +800,6 @@
             "inviteLink": "Einladungslink",
             "openCommunity": "Community öffnen",
             "communitySettings": "Community-Einstellungen",
-            "createFromChannel": "Community aus Kanal erstellen",
             "emptyConfirmed": "Noch keine bestätigten Kanäle."
         },
         "myFeed": {

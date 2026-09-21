@@ -29,7 +29,6 @@ from telegram_integration.media import is_private_telegram_file_url
 from users.models import AuthorAdmin, AuthorVerificationCode
 
 _BOT_ID: int | None = None
-CHANNEL_FLOW_CREATE = "create_comun"
 CHANNEL_FLOW_EXISTING = "link_existing"
 User = get_user_model()
 
@@ -839,7 +838,7 @@ def _send_channel_settings_menu(chat_id: int, author: Author) -> None:
 
 def _channel_management_keyboard(chat_id: int) -> dict:
     inline_keyboard: list[list[dict]] = [
-        [{"text": "Создать сообщество под канал", "callback_data": "channel_flow:create"}],
+        [{"text": "Создать сообщество на сайте", "url": "https://tambur.pub/comuns?create=1"}],
         [{"text": "Привязать к существующему сообществу", "callback_data": "channel_flow:existing"}],
     ]
     if _get_admin_authors(chat_id):
@@ -852,8 +851,9 @@ def _channel_management_keyboard(chat_id: int) -> dict:
 def _send_channel_management_menu(chat_id: int, message_id: int | None = None) -> None:
     text = (
         "Управление каналами:\n"
-        "1) Можно создать новое сообщество под Telegram-канал.\n"
-        "2) Можно привязать канал к уже существующему сообществу на сайте.\n"
+        "1) Сначала создайте сообщество на сайте: https://tambur.pub/comuns?create=1\n"
+        "2) Затем подтвердите существующий Telegram-канал через бота и выберите его "
+        "в настройках сообщества на сайте. Бот не создаёт сообщества.\n"
         "3) Если канал уже подключен, можно изменить его настройки."
     )
     keyboard = _channel_management_keyboard(chat_id)
@@ -925,7 +925,7 @@ def _send_notification_settings_menu(chat_id: int, message_id: int | None = None
     _send_bot_message_with_keyboard(chat_id, text, keyboard)
 
 
-def _send_setup_options(chat_id: int, *, channel_flow: str) -> None:
+def _send_setup_options(chat_id: int) -> None:
     BotSession.objects.update_or_create(
         telegram_user_id=chat_id,
         defaults={
@@ -935,7 +935,7 @@ def _send_setup_options(chat_id: int, *, channel_flow: str) -> None:
             "mode_selected": False,
             "auto_publish": True,
             "publish_delay_days": 0,
-            "channel_flow": channel_flow,
+            "channel_flow": CHANNEL_FLOW_EXISTING,
         },
     )
     _send_bot_message_with_keyboard(
@@ -950,19 +950,13 @@ def _send_setup_options(chat_id: int, *, channel_flow: str) -> None:
             ]
         },
     )
-    if channel_flow == CHANNEL_FLOW_EXISTING:
-        _send_bot_message(
-            chat_id,
-            "Если хотите привязать канал к существующему сообществу, получите код "
-            "подтверждения в настройках профиля на сайте, отправьте его в этот бот, "
-            "а затем выберите канал в настройках сообщества на сайте.",
-        )
-    else:
-        _send_bot_message(
-            chat_id,
-            "Под ваш канал на сайте будет создано одноименное сообщество. "
-            "Чтобы управлять им, зарегистрируйтесь на сайте Тамбур.",
-        )
+    _send_bot_message(
+        chat_id,
+        "Сначала создайте сообщество на сайте: https://tambur.pub/comuns?create=1\n"
+        "Затем откройте его настройки → Telegram, укажите существующий канал и сохраните. "
+        "Получите код подтверждения и отправьте его в этот бот. "
+        "После подтверждения канал будет привязан к вашему сообществу.",
+    )
     _send_bot_message_with_keyboard(
         chat_id,
         "Выберите задержку публикации:",
@@ -978,7 +972,7 @@ def _send_setup_options(chat_id: int, *, channel_flow: str) -> None:
 
 
 def _send_setup_instructions(
-    chat_id: int, auto_publish: bool, delay_days: int, channel_flow: str
+    chat_id: int, auto_publish: bool, delay_days: int
 ) -> None:
     publish_line = (
         "Новые посты будут публиковаться автоматически."
@@ -991,32 +985,20 @@ def _send_setup_instructions(
         if delay_days
         else "Публикация без задержки."
     )
-    if channel_flow == CHANNEL_FLOW_EXISTING:
-        text = (
-            "Отлично! Теперь:\n"
-            "1) Получите код подтверждения в настройках профиля на сайте Тамбур.\n"
-            "2) Отправьте этот код в бот.\n"
-            "3) Добавьте бота в админы канала.\n"
-            "4) Дайте права на чтение - их достаточно для работы бота.\n"
-            "5) После подключения канала откройте настройки сообщества на сайте и "
-            "выберите этот Telegram-канал.\n"
-            "6) По желанию добавьте ссылку приглашения на канал.\n"
-            "7) Для старых постов - пересылайте их сюда, и они появятся на сайте.\n"
-            f"{publish_line}\n"
-            f"{delay_line}"
-        )
-    else:
-        text = (
-            "Отлично! Теперь:\n"
-            "1) Под ваш канал на сайте будет создано одноименное сообщество.\n"
-            "2) Чтобы управлять им, зарегистрируйтесь на сайте Тамбур.\n"
-            "3) Добавьте бота в админы канала.\n"
-            "4) Дайте права на чтение - их достаточно для работы бота.\n"
-            "5) По желанию добавьте ссылку приглашения на канал.\n"
-            "6) Для старых постов - пересылайте их сюда, и они появятся на сайте.\n"
-            f"{publish_line}\n"
-            f"{delay_line}"
-        )
+    text = (
+        "Порядок подключения:\n"
+        "1) Создайте сообщество на сайте: https://tambur.pub/comuns?create=1\n"
+        "2) Откройте настройки сообщества → Telegram, укажите существующий публичный "
+        "канал с @username и сохраните.\n"
+        "3) Получите код подтверждения там же и отправьте его в этот бот.\n"
+        "4) Добавьте бота в администраторы канала.\n"
+        "5) Вернитесь в настройки сообщества и проверьте привязку канала. "
+        "Если канал ещё не выбран, выберите его и сохраните настройки.\n"
+        "6) После привязки можно пересылать сюда старые посты канала для публикации.\n"
+        "Сообщества создаются только на сайте.\n"
+        f"{publish_line}\n"
+        f"{delay_line}"
+    )
     _send_bot_message(
         chat_id, text
     )
@@ -1031,7 +1013,6 @@ def _maybe_send_setup_instructions(chat_id: int) -> None:
             chat_id,
             session.auto_publish,
             session.publish_delay_days,
-            session.channel_flow or CHANNEL_FLOW_CREATE,
         )
         session.instructions_sent = True
         session.save(update_fields=["instructions_sent", "updated_at"])
@@ -1069,7 +1050,9 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
         if not _is_bot_admin(chat_id, token):
             return
         _refresh_author_from_telegram(author, chat_id, token)
-    community_service._ensure_telegram_channel_comun_for_author(author)
+    comun = community_service._ensure_telegram_channel_comun_for_author(author)
+    if not comun or not comun.is_active:
+        return
 
     raw_text = _fv()._extract_plain_text(message)
     explicit_tags = _fv()._extract_hashtags(raw_text)
@@ -1287,18 +1270,17 @@ def _handle_verification_code(chat_id: int, code: str) -> None:
 
     if linked:
         linked_message = "Канал подтверждён: " + ", ".join(linked)
-        if session.channel_flow == CHANNEL_FLOW_EXISTING:
-            linked_message += (
-                ". Теперь откройте настройки нужного сообщества на сайте и выберите "
-                "этот Telegram-канал."
-            )
+        linked_message += (
+            ". Проверьте привязку в настройках сообщества на сайте → Telegram. "
+            "Если сообщества ещё нет, сначала создайте его: https://tambur.pub/comuns?create=1"
+        )
         _send_bot_message(chat_id, linked_message)
         return
 
     _send_bot_message(
         chat_id,
         "Код подтверждения принят. Теперь добавьте бота в канал или перешлите сюда пост из "
-        "канала. После подключения канал можно будет привязать к сообществу на сайте.",
+        "канала. Сообщество нужно заранее создать на сайте: https://tambur.pub/comuns?create=1",
     )
 
 
@@ -1683,12 +1665,12 @@ def _handle_private_message(message: dict) -> None:
             "Как пользоваться ботом:\n"
             "1) В разделе \"Управление оповещениями\" можно посмотреть и изменить "
             "Telegram-оповещения из сайта.\n"
-            "2) В разделе \"Управление каналами\" можно либо создать сообщество под "
-            "канал, либо привязать канал к уже существующему сообществу.\n"
-            "3) Для работы с каналом добавьте бота админом и дайте права на чтение - "
-            "этого достаточно.\n"
-            "4) Если канал нужно привязать к существующему сообществу, получите код "
-            "подтверждения в настройках профиля на сайте и отправьте его сюда.\n"
+            "2) Создайте сообщество на сайте: https://tambur.pub/comuns?create=1\n"
+            "3) В настройках сообщества → Telegram укажите существующий публичный "
+            "канал, сохраните, получите код подтверждения и отправьте его сюда.\n"
+            "4) Добавьте бота администратором канала, затем проверьте привязку в "
+            "настройках сообщества. В боте можно выбрать режим и задержку публикации. "
+            "Сообщества создаются только на сайте.\n"
             "5) В групповом чате используйте /link_comun slug для привязки и /search "
             "для поиска. Перешлите сообщения из привязанного чата сюда, чтобы предложить "
             "их в базу знаний или глоссарий.\n"
@@ -1817,6 +1799,17 @@ def _handle_private_message(message: dict) -> None:
                             "updated_at",
                         ]
                     )
+
+        linked_comun = community_service._ensure_telegram_channel_comun_for_author(author)
+        if not linked_comun or not linked_comun.is_active:
+            _send_bot_message(
+                chat_id,
+                "Канал ещё не привязан к сообществу. Сначала создайте сообщество "
+                "на сайте: https://tambur.pub/comuns?create=1\n"
+                "Затем привяжите канал в настройках сообщества → Telegram "
+                "и повторите пересылку поста.",
+            )
+            return
 
         existing_post = Post.objects.filter(
             author__username__iexact=forward_chat.get("username"),
@@ -1949,23 +1942,19 @@ def _handle_my_chat_member(update: dict) -> None:
         _refresh_author_from_telegram(author, f"@{username}", token)
     community_service._ensure_telegram_channel_comun_for_author(author)
 
-    channel_flow = session.channel_flow if session else ""
-    if channel_flow == CHANNEL_FLOW_EXISTING:
-        if session and session.verified_user_id:
-            text = (
-                f"Канал @{author.username} подключён. Теперь откройте настройки нужного "
-                "сообщества на сайте и выберите этот Telegram-канал."
-            )
-        else:
-            text = (
-                f"Канал @{author.username} подключён. Теперь получите код подтверждения "
-                "в настройках профиля на сайте, отправьте его в бот, а затем выберите "
-                "этот Telegram-канал в настройках сообщества."
-            )
+    linked_comun = community_service._author_telegram_source_comun(author)
+    if linked_comun:
+        text = (
+            f"Канал @{author.username} привязан к сообществу «{linked_comun.name}».\n"
+            f"https://tambur.pub/comuns/{linked_comun.slug}"
+        )
     else:
         text = (
-            f"Канал @{author.username} подключён. Для него на сайте будет создано "
-            "одноименное сообщество. Чтобы управлять им, зарегистрируйтесь на сайте Тамбур."
+            f"Канал @{author.username} подключён к боту. Чтобы публиковать его посты, "
+            "сначала создайте сообщество на сайте: https://tambur.pub/comuns?create=1\n"
+            "В настройках сообщества → Telegram укажите канал и сохраните. "
+            "Получите код подтверждения там же и отправьте его в бот, "
+            "затем проверьте привязку. Бот не создаёт сообщества."
         )
     _send_bot_message(admin_chat_id, text)
 
@@ -2010,13 +1999,14 @@ def _handle_callback_query(callback_query: dict) -> None:
         return
 
     if data == "channel_flow:create" and chat_id:
-        _answer_callback_query(callback_id, "Открываю настройку канала")
-        _send_setup_options(chat_id, channel_flow=CHANNEL_FLOW_CREATE)
+        _answer_callback_query(callback_id, "Создайте сообщество на сайте")
+        BotSession.objects.filter(telegram_user_id=chat_id).update(channel_flow=CHANNEL_FLOW_EXISTING)
+        _send_channel_management_menu(chat_id, message_id)
         return
 
     if data == "channel_flow:existing" and chat_id:
         _answer_callback_query(callback_id, "Открываю настройку канала")
-        _send_setup_options(chat_id, channel_flow=CHANNEL_FLOW_EXISTING)
+        _send_setup_options(chat_id)
         return
 
     if data == "channel_flow:settings" and chat_id:

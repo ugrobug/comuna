@@ -658,58 +658,9 @@ def _claim_unowned_comun_for_author(comun: Comun, author: Author | None) -> bool
 def _ensure_telegram_channel_comun_for_author(author: Author | None) -> Comun | None:
     if not author:
         return None
-    normalized_username = _normalize_telegram_channel_username(author.username)
-    if not normalized_username:
-        return None
-
-    current_comun = _author_telegram_source_comun(author)
-    if current_comun:
-        _claim_unowned_comun_for_author(current_comun, author)
-        _sync_comun_logo_from_author(current_comun, author)
-        return current_comun
-
-    comun = (
-        Comun.objects.filter(
-            telegram_channel_username__iexact=normalized_username,
-            telegram_source_author__isnull=True,
-            is_active=True,
-        )
-        .order_by("id")
-        .first()
-    )
-    if comun:
-        _claim_unowned_comun_for_author(comun, author)
-        logo_synced = _sync_comun_logo_from_author(comun, author)
-        comun.telegram_source_author = author
-        comun.telegram_channel_username = normalized_username
-        update_fields = ["telegram_source_author", "telegram_channel_username", "updated_at"]
-        if logo_synced:
-            update_fields.append("logo_url")
-        comun.save(update_fields=update_fields)
-        return comun
-
-    verified_owner_ids = _verified_author_owner_ids(author)
-    owner_id = int(verified_owner_ids[0]) if verified_owner_ids else None
-    base_name = (author.title or "").strip() or f"@{author.username}"
-    comun_name = _generate_unique_comun_name(base_name, author.username)
-    comun_slug = _generate_unique_comun_slug(author.username or comun_name)
-    if not comun_slug:
-        comun_slug = _generate_unique_comun_slug(comun_name)
-    if not comun_slug:
-        return None
-    comun = Comun.objects.create(
-        name=comun_name,
-        slug=comun_slug,
-        creator_id=owner_id,
-        logo_url=_author_avatar_logo_url(author),
-        product_description=(author.description or "").strip(),
-        telegram_source_author=author,
-        telegram_channel_username=normalized_username,
-        only_moderators_can_post=True,
-    )
-    if owner_id:
-        comun.moderators.add(owner_id)
-    return comun
+    # Only attach channels to communities explicitly created on the website.
+    _attach_pending_comuns_for_author(author)
+    return _author_telegram_source_comun(author)
 
 
 def _attach_pending_comuns_for_author(author: Author | None) -> None:

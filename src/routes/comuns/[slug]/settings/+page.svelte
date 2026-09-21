@@ -1710,14 +1710,14 @@
                     Telegram-канал
                   </div>
                   <div class="mt-1 text-sm text-slate-500 dark:text-zinc-400">
-                    Посты выбранного канала будут попадать в это сообщество.
+                    Сообщество уже создано. Теперь привяжите существующий публичный Telegram-канал — его посты будут попадать сюда.
                   </div>
                 </div>
                 <Button
                   size="sm"
                   on:click={() => (telegramChannelSetupOpen = !telegramChannelSetupOpen)}
                 >
-                  {telegramChannelSetupOpen ? 'Скрыть подключение' : 'Подключить новый канал'}
+                  {telegramChannelSetupOpen ? 'Скрыть подключение' : 'Привязать существующий канал'}
                 </Button>
               </div>
 
@@ -1776,7 +1776,7 @@
               {#if telegramChannelSetupOpen || !settingsTelegramChannelOptions.length || pendingTelegramChannelUsername}
                 <div class="border-t border-slate-200 pt-4 dark:border-zinc-800">
                   <div class="text-sm font-semibold text-slate-950 dark:text-zinc-50">
-                    Как подключить новый канал
+                    Как привязать существующий канал
                   </div>
                   <ol class="mt-3 grid gap-4 text-sm text-slate-700 dark:text-zinc-300 lg:grid-cols-3">
                     <li class="flex gap-3">
@@ -1797,7 +1797,7 @@
                       <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white dark:bg-white dark:text-zinc-900">3</span>
                       <div>
                         <div class="font-medium text-slate-900 dark:text-zinc-100">Добавьте бота в канал</div>
-                        <div class="mt-1 text-slate-500 dark:text-zinc-400">Назначьте бота администратором, затем обновите список каналов здесь.</div>
+                        <div class="mt-1 text-slate-500 dark:text-zinc-400">Назначьте бота администратором, затем обновите список здесь, выберите канал и сохраните настройки.</div>
                       </div>
                     </li>
                   </ol>

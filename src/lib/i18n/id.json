@@ -1006,12 +1006,11 @@
         },
         "telegramChannels": {
             "title": "Tautan kanal Telegram",
-            "createFailed": "Gagal membuat komunitas",
-            "created": "Komunitas dibuat",
-            "exists": "Komunitas sudah ada",
             "codeFailed": "Gagal mendapatkan kode",
+            "createOnSite": "Buat komunitas di situs",
+            "chooseCommunity": "Pilih komunitas untuk ditautkan",
             "adminConfirmTitle": "Konfirmasi admin kanal",
-            "adminConfirmDescription": "Dapatkan kode dan kirim ke bot. Bot akan mengonfirmasi bahwa Anda admin kanal.",
+            "adminConfirmDescription": "Buat komunitas di situs terlebih dahulu. Di pengaturan → Telegram, masukkan kanal publik yang sudah ada lalu simpan. Kirim kode konfirmasi ke bot dan tambahkan bot sebagai administrator kanal. Setelah itu, periksa tautannya di pengaturan komunitas. Bot tidak membuat komunitas.",
             "getCode": "Dapatkan kode",
             "sendCodeToBot": "Kirim kode ke bot Telegram -",
             "confirmedTitle": "Kanal terkonfirmasi Anda",
@@ -1028,7 +1027,6 @@
             "inviteLink": "Tautan undangan",
             "openCommunity": "Buka komunitas",
             "communitySettings": "Pengaturan komunitas",
-            "createFromChannel": "Buat komunitas dari kanal",
             "emptyConfirmed": "Belum ada kanal terkonfirmasi."
         },
         "myFeed": {

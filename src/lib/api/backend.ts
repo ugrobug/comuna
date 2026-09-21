@@ -150,10 +150,6 @@ export const buildComunsSidebarUrl = (options?: { language?: string }): string =
   return `${getBackendBaseUrl()}/api/comuns/sidebar/${query ? `?${query}` : ''}`
 }
 
-export const buildComunFromTelegramChannelUrl = (): string => {
-  return `${getBackendBaseUrl()}/api/comuns/from-telegram-channel/`
-}
-
 export const buildComunUrl = (
   slug: string,
   options?: {
