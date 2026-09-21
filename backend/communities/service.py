@@ -907,7 +907,7 @@ def _comun_logo_url(request: HttpRequest | None, comun: Comun | None) -> str | N
 
 
 def _author_is_telegram_channel_source(author: Author | None) -> bool:
-    if not author:
+    if not author or str(getattr(author, "channel_url", "")).startswith("https://max.ru/"):
         return False
     return bool(
         getattr(author, "channel_url", "")
@@ -946,11 +946,11 @@ def _comun_manual_posts_filter(comun: Comun) -> Q | None:
     comun_slug = str(getattr(comun, "slug", "") or "").strip()
     if not comun_slug:
         return None
-    return Q(raw_data__source="manual_comun", raw_data__comun_slug=comun_slug)
+    return Q(raw_data__source__in=["manual_comun", "max"], raw_data__comun_slug=comun_slug)
 
 
 def _telegram_channel_author_filter() -> Q:
-    return (
+    return ~Q(author__channel_url__startswith="https://max.ru/") & (
         Q(author__channel_id__isnull=False)
         | Q(author__channel_url__gt="")
         | Q(author__invite_url__gt="")

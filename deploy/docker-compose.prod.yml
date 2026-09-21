@@ -165,6 +165,22 @@ services:
     volumes:
       - ./secrets:/app/secrets:ro
 
+  max-events:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+    restart: unless-stopped
+    logging: *default-logging
+    command: python -u manage.py process_max_events --loop
+    env_file:
+      - .env.backend
+    environment:
+      TELEGRAM_USE_POLLING: "0"
+    depends_on:
+      - db
+    volumes:
+      - media_data:/app/media
+
   scheduled-posts:
     build:
       context: ..

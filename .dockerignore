@@ -17,3 +17,9 @@ deploy/.env*
 *.sql
 *.dump
 *.backup
+
+# Local environment files must not enter build contexts.
+backend/.env
+backend/.env.*
+.env
+.env.*

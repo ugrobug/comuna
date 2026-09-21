@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from max_integration.notifications import enabled as max_notification_enabled, enqueue as enqueue_max_notification
+
 from typing import Any
 
 from django.contrib.auth import get_user_model
@@ -428,7 +430,7 @@ def create_user_notification(
         pref.push_enabled if pref else definition.get("default_push_enabled", True)
     )
 
-    if not is_site and not is_telegram and not is_push:
+    if not is_site and not is_telegram and not is_push and not max_notification_enabled(user, event_key):
         return None
 
     now = timezone.now()
@@ -450,6 +452,7 @@ def create_user_notification(
         send_site_notification_to_telegram(notification)
     if is_push:
         send_site_notification_to_push(notification)
+    enqueue_max_notification(notification)
     return notification
 
 
@@ -495,7 +498,7 @@ def create_grouped_user_notification(
     is_push = bool(force_push) if force_push is not None else bool(
         pref.push_enabled if pref else definition.get("default_push_enabled", True)
     )
-    if not is_site and not is_telegram and not is_push:
+    if not is_site and not is_telegram and not is_push and not max_notification_enabled(user, event_key):
         return None
 
     now = timezone.now()
@@ -579,6 +582,7 @@ def create_grouped_user_notification(
         send_site_notification_to_telegram(notification)
     if is_push:
         send_site_notification_to_push(notification)
+    enqueue_max_notification(notification)
     return notification
 
 
@@ -635,6 +639,7 @@ def deliver_grouped_notification(notification: SiteNotification, *, now=None) ->
         send_site_notification_to_telegram(notification)
     if notification.is_push:
         send_site_notification_to_push(notification)
+    enqueue_max_notification(notification)
     return notification
 
 

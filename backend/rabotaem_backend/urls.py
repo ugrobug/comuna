@@ -1,3 +1,4 @@
+from max_integration import views as max_views
 from editor.companion_views import companion_search
 from django.conf import settings
 from django.conf.urls.static import static
@@ -164,6 +165,9 @@ from users.views import (
 )
 
 urlpatterns = [
+    path("api/max/webhook/", max_views.webhook, name="max-webhook"),
+    path("api/max/account/", max_views.account, name="max-account"),
+    path("api/comuns/<slug:slug>/max/", max_views.community, name="comun-max"),
     path("api/explore/", include("explore.urls")),
     path("admin/", admin.site.urls),
     path("api/authors/<str:username>/posts/", author_posts, name="author-posts"),

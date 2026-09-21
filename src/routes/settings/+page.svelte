@@ -1,4 +1,5 @@
 <script lang="ts">
+  import MaxConnectionPanel from "$lib/components/users/MaxConnectionPanel.svelte"
   import { goto } from '$app/navigation'
   import NotificationSettingsPanel from '$lib/components/notifications/NotificationSettingsPanel.svelte'
   import { defaultSettings, userSettings } from '$lib/settings'
@@ -475,6 +476,9 @@
     </Section>
   {/if}
   {#if $siteUser}
+    <Section id="max" title="MAX">
+      <MaxConnectionPanel />
+    </Section>
     <Section id="notifications" title={$t('settings.notifications.title')}>
       <NotificationSettingsPanel />
     </Section>

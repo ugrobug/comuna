@@ -1,4 +1,5 @@
 <script lang="ts">
+  import MaxConnectionPanel from "$lib/components/users/MaxConnectionPanel.svelte"
   import { browser } from '$app/environment'
   import { goto } from '$app/navigation'
   import { page } from '$app/stores'
@@ -72,6 +73,7 @@
     | 'description'
     | 'moderation'
     | 'telegram'
+    | 'max'
     | 'categories'
     | 'applications'
     | 'rules'
@@ -119,6 +121,7 @@
     { value: 'description', label: 'Описание' },
     { value: 'moderation', label: 'Модерирование' },
     { value: 'telegram', label: 'Telegram' },
+    { value: 'max', label: 'MAX' },
     { value: 'categories', label: 'Категории и шаблоны' },
     { value: 'applications', label: 'Приложения' },
     { value: 'rules', label: 'Правила' },
@@ -162,7 +165,7 @@
   let telegramVerificationCodeError = ''
   let telegramChannelsRefreshing = false
   let settingsLogoInput: HTMLInputElement | null = null
-  let settingsTab: ComunSettingsTabKey = 'description'
+  let settingsTab: ComunSettingsTabKey = $page.url.searchParams.get('tab') === 'max' ? 'max' : 'description'
   const settingsOptionSearchTimers: Partial<Record<SettingsOptionType, ReturnType<typeof setTimeout>>> = {}
   const settingsOptionSearchTokens: Record<SettingsOptionType, number> = {
     users: 0,
@@ -1920,6 +1923,8 @@
               {/if}
             </div>
           </div>
+        {:else if settingsTab === 'max'}
+          <MaxConnectionPanel comunSlug={$page.params.slug} />
         {:else if settingsTab === 'applications'}
           <div class="flex flex-col gap-5">
             <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

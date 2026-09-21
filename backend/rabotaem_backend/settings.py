@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     "ratings.apps.RatingsConfig",
     "editor.apps.EditorConfig",
     "telegram_integration.apps.TelegramIntegrationConfig",
+    "max_integration.apps.MaxIntegrationConfig",
     "special_projects.apps.SpecialProjectsConfig",
     "landing_pages.apps.LandingPagesConfig",
     "legacy_migration.apps.LegacyMigrationConfig",
@@ -269,6 +270,10 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
 TELEGRAM_USE_POLLING = os.environ.get("TELEGRAM_USE_POLLING", "0") == "1"
+
+MAX_BOT_TOKEN = os.environ.get("MAX_BOT_TOKEN", "")
+MAX_BOT_USERNAME = os.environ.get("MAX_BOT_USERNAME", "se14353168_bot").lstrip("@")
+MAX_WEBHOOK_SECRET = os.environ.get("MAX_WEBHOOK_SECRET", "")
 TELEGRAM_ADMIN_CHAT_ID = os.environ.get("TELEGRAM_ADMIN_CHAT_ID", "")
 TELEGRAM_OIDC_CLIENT_ID = os.environ.get("TELEGRAM_OIDC_CLIENT_ID", "")
 if not TELEGRAM_OIDC_CLIENT_ID and TELEGRAM_BOT_TOKEN.split(":", 1)[0].isdigit():
