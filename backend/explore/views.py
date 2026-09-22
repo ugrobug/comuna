@@ -11,6 +11,7 @@ from communities.models import Comun
 from users.service import _get_user_from_request
 from .models import Edge, Node
 from .services import GraphEditor, GraphQuery, SubscriptionService
+from .images import NodeImageService
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -75,6 +76,18 @@ class NodeDetailView(ExploreView):
     def delete(self, request, node_id):
         GraphEditor.apply(lambda: get_object_or_404(Node, pk=node_id).delete())
         return JsonResponse({"ok": True})
+
+
+class NodeImageView(ExploreView):
+    staff_required = True
+
+    def post(self, request, node_id):
+        node = NodeImageService.replace(node_id, request.FILES.get("image"))
+        return JsonResponse({"image_url": node.image.url})
+
+    def delete(self, request, node_id):
+        NodeImageService.remove(node_id)
+        return JsonResponse({"image_url": None})
 
 
 class EdgeListView(ExploreView):

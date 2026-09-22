@@ -42,6 +42,7 @@ class Node(models.Model):
     kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.ELEMENT)
     title = models.CharField(max_length=160)
     description = models.TextField(blank=True, max_length=4000)
+    image = models.ImageField(upload_to="explore/cards/", blank=True)
     community = models.OneToOneField("feeds.Comun", null=True, blank=True, on_delete=models.CASCADE, related_name="explore_node")
     properties = models.ManyToManyField(PropertyOption, blank=True, related_name="nodes")
     show_properties = models.BooleanField(default=False)

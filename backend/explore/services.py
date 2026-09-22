@@ -52,6 +52,7 @@ class GraphQuery:
         return {
             "nodes": [{"id": node.pk, "kind": node.kind, "title": node.label,
                        "description": node.description, "is_active": node.is_active,
+                       "image_url": node.image.url if node.image else None,
                        "community_description": node.community.product_description if node.community_id else "",
                        "subscribers_count": node.community.subscribers_count if node.community_id else None,
                        "show_properties": node.show_properties,

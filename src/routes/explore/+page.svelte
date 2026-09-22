@@ -130,6 +130,7 @@
           {:else if active}
             <div class="inspector-navigation"><span>{active.kind === 'community' ? 'Сообщество' : 'Увлечение'}</span>{#if history.length}<button on:click={back}>← Назад</button>{/if}</div>
             <div class="selected-title"><span class="dot" class:community={active.kind === 'community'}></span><h2>{active.title}</h2><button class="close-selection" aria-label="Снять выделение" on:click={dismiss}>×</button></div>
+            {#if active.image_url}<img class="node-image" src={api.imageUrl(active.image_url)} alt={active.title} width="640" height="360" loading="lazy" decoding="async" />{/if}
             {#if active.kind === 'community'}<p class="subscriber-count">Подписчиков: {new Intl.NumberFormat('ru-RU').format(active.subscribers_count ?? 0)}</p>{/if}
             {#if activeDescription.trim()}<p class="node-description">{activeDescription}</p>{:else}<p class="description-empty">Описание пока не добавлено. Исследуйте связи ниже.</p>{/if}
             {#if activeProperties.length && (active.show_properties || showProperties)}
@@ -162,6 +163,7 @@
 <LoginModal bind:open={loginOpen} registrationSource="explore" registrationPath="/explore" on:success={authenticated} />
 
 <style>
+  .node-image{display:block;width:100%;height:auto;aspect-ratio:16/9;object-fit:cover;border-radius:10px;margin-top:12px}
   @media(max-width:767px){.explore-page{flex:1;min-height:0 !important;height:auto !important}}
   .explore-page{--explore-ink:#2d3650;--explore-surface:#fff;--explore-canvas:#f6f7fb;color:var(--explore-ink);width:100%;min-width:0;min-height:360px;box-sizing:border-box}
   .explore-workspace{position:relative;width:100%;height:100%;isolation:isolate;overflow:hidden}

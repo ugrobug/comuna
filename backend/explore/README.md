@@ -55,17 +55,31 @@ graph without scaling the page. Starting a pinch cancels node dragging; lifting 
 does not select or jump a node. The mobile workspace fills the dynamic viewport below
 navigation. Cards are constrained to the visible viewport independently of graph zoom,
 with internal scrolling for long descriptions and short/landscape screens.
-Selecting a node opens an anchored card with its optional description and subscription
+Selecting a node opens a docked card with its optional description and subscription
 actions. Community cards use the current community description and subscriber count;
 subscription responses refresh the displayed count. Interest cards link to community creation with the name prefilled; guests
 authenticate first and then continue to that form. New graph connections remain manual.
-A list view offers the same subscription/navigation actions without requiring spatial
-navigation. Filters apply OR inside each property, AND between different properties,
+Pinned nodes form a temporary collection that can be highlighted together without
+locking selection. Filters apply OR inside each property, AND between different properties,
 and AND with title/description search. Missing properties do not match active filters.
 
 The initial migration seeds only the five example interests from the feature request;
 all further content and community connections are managed manually. No community
 is created automatically or assigned inferred properties.
+
+## Card images
+
+Staff upload/replace or delete a node cover at `/api/explore/nodes/<id>/image/`
+(multipart POST with `image`, or DELETE). `NodeImageService` accepts JPEG, PNG,
+WebP and GIF up to 10 MiB / 25 megapixels. It applies EXIF orientation, center-crops
+to 16:9 at up to 640×360 without upscaling, removes metadata, and stores only a
+static WebP with quality 75. GIF uses its first frame. Images are optional for both
+interests and community nodes. Replaced/deleted files are removed after transaction
+commit; failed database writes remove the newly stored file instead.
+
+The moderator form saves pending node edits before uploading and previews the
+processed file. The graph response contains only image URLs; image elements are
+created only inside the selected node's card, never for graph circles or pinned lists.
 
 ## Verification
 
