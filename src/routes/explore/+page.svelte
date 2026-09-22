@@ -16,6 +16,7 @@
   let loading = true, error = '', loginOpen = false
   let query = '', filters: number[] = [], selected: number | null = null
   let showProperties = false, focusOnly = false, busy: number | null = null
+  let selectionLocked = false
   let history: number[] = []
   let filtersOpen = false
   let pendingCommunityTitle: string | null = null
@@ -29,7 +30,9 @@
       createCommunity(title)
     } else void load()
   }
-  $: visible = filterNodes(data.nodes, data.properties, filters, query)
+  $: filtered = filterNodes(data.nodes, data.properties, filters, query)
+  $: pinnedNode = selectionLocked ? data.nodes.find(node => node.id === selected) : null
+  $: visible = pinnedNode && !filtered.some(node => node.id === pinnedNode.id) ? [...filtered, pinnedNode] : filtered
   $: visibleIds = new Set(visible.map(node => node.id))
   $: edges = data.edges.filter(edge => visibleIds.has(edge.source) && visibleIds.has(edge.target))
   $: active = visible.find(node => node.id === selected) ?? null
@@ -45,16 +48,19 @@
     selected = id
   }
   function selectNode(id: number) {
+    if (selectionLocked) return
     if (selected !== null && selected !== id) history = [...history, selected].slice(-50)
     revealNode(id)
   }
   function back() {
+    if (selectionLocked) return
     const id = history[history.length - 1]
     if (id === undefined) return
     history = history.slice(0, -1)
     revealNode(id)
   }
-  function dismiss() { selected = null; history = []; focusOnly = false }
+  function clearSelection() { selected = null; history = []; focusOnly = false; selectionLocked = false }
+  function dismiss() { if (!selectionLocked) clearSelection() }
 
   async function load() {
     loading = true; error = ''
@@ -105,8 +111,8 @@
       {:else}
         <ExploreGraph nodes={visible} {edges} properties={data.properties} selected={active?.id ?? null} {showProperties} {filtersOpen} {focusOnly} on:select={(event) => selectNode(event.detail)} on:dismiss={dismiss}>
           {#if active}
-            <div class="inspector-navigation"><span>{active.kind === 'community' ? 'Сообщество' : 'Увлечение'}</span>{#if history.length}<button on:click={back}>← Назад</button>{/if}</div>
-            <div class="selected-title"><span class="dot" class:community={active.kind === 'community'}></span><h2>{active.title}</h2><button class="close-selection" aria-label="Снять выделение" on:click={dismiss}>×</button></div>
+            <div class="inspector-navigation"><span>{active.kind === 'community' ? 'Сообщество' : 'Увлечение'}</span>{#if history.length}<button disabled={selectionLocked} on:click={back}>← Назад</button>{/if}</div>
+            <div class="selected-title"><span class="dot" class:community={active.kind === 'community'}></span><h2>{active.title}</h2><button class="close-selection" aria-label="Снять выделение" on:click={clearSelection}>×</button></div>
             {#if active.kind === 'community'}<p class="subscriber-count">Подписчиков: {new Intl.NumberFormat('ru-RU').format(active.subscribers_count ?? 0)}</p>{/if}
             {#if activeDescription.trim()}<p class="node-description">{activeDescription}</p>{:else}<p class="description-empty">Описание пока не добавлено. Исследуйте связи ниже.</p>{/if}
             {#if activeProperties.length && (active.show_properties || showProperties)}
@@ -114,11 +120,12 @@
             {/if}
             <div class="explore-connections">
               <label class="focus-toggle"><input type="checkbox" bind:checked={focusOnly} />Только прямые связи</label>
+              <label class="focus-toggle" title="Сохранять выделение при нажатии на другие точки и поле графа"><input type="checkbox" bind:checked={selectionLocked} />Зафиксировать</label>
               {#each [{ title: 'Связанные увлечения', nodes: relatedInterests }, { title: 'Сообщества', nodes: relatedCommunities }] as group}
                 {#if group.nodes.length}
                   <h3>{group.title} <span>{group.nodes.length}</span></h3>
                   <div class="connection-links">{#each group.nodes as node (node.id)}
-                    <button on:click={() => selectNode(node.id)}><span class="dot" class:community={node.kind === 'community'}></span><span class="connection-title">{node.title}{#if !visibleIds.has(node.id)}<small>Вне текущих фильтров</small>{/if}</span><span aria-hidden="true">→</span></button>
+                    <button disabled={selectionLocked} on:click={() => selectNode(node.id)}><span class="dot" class:community={node.kind === 'community'}></span><span class="connection-title">{node.title}{#if !visibleIds.has(node.id)}<small>Вне текущих фильтров</small>{/if}</span><span aria-hidden="true">→</span></button>
                   {/each}</div>
                 {/if}
               {/each}
@@ -166,6 +173,7 @@
   .description-empty{font-size:12px;line-height:1.5;color:#8790a3;margin-top:10px}
   .explore-connections{margin-top:16px;padding-top:14px;border-top:1px solid #b2b8ca40}.explore-connections h3{font-size:12px;font-weight:600;margin:16px 0 8px}.explore-connections h3 span{color:#8790a3;margin-left:5px;font-weight:400}
   .focus-toggle{display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer}.focus-toggle input{accent-color:#8174ce}
+  .focus-toggle + .focus-toggle{margin-top:10px}.connection-links button:disabled,.inspector-navigation button:disabled{cursor:default}
   .connection-links{display:flex;flex-direction:column;gap:5px}.connection-links button{display:flex;align-items:center;gap:9px;padding:9px;border-radius:9px;background:#8174ce0a;text-align:left;font-size:12px;line-height:1.4}.connection-links button:hover{background:#8174ce20}.connection-title{flex:1;overflow-wrap:anywhere}.connection-title small{display:block;font-size:10px;color:#8790a3;margin-top:2px}
   .node-properties{font-size:12px;margin-top:12px}.node-properties summary{cursor:pointer;color:#8174ce}.node-properties p{display:flex;flex-direction:column;gap:3px;margin-top:8px;line-height:1.5}.node-properties strong{font-weight:550}
 
