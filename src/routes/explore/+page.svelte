@@ -16,7 +16,8 @@
   let loading = true, error = '', loginOpen = false
   let query = '', filters: number[] = [], selected: number | null = null
   let showProperties = false, focusOnly = false, busy: number | null = null
-  let selectionLocked = false
+  let pinnedIds: number[] = []
+  let pinnedOpen = false
   let history: number[] = []
   let filtersOpen = false
   let pendingCommunityTitle: string | null = null
@@ -31,8 +32,9 @@
     } else void load()
   }
   $: filtered = filterNodes(data.nodes, data.properties, filters, query)
-  $: pinnedNode = selectionLocked ? data.nodes.find(node => node.id === selected) : null
-  $: visible = pinnedNode && !filtered.some(node => node.id === pinnedNode.id) ? [...filtered, pinnedNode] : filtered
+  $: pinnedNodes = data.nodes.filter(node => pinnedIds.includes(node.id))
+  $: highlightedPins = pinnedOpen ? pinnedNodes.map(node => node.id) : []
+  $: visible = pinnedOpen ? [...filtered, ...pinnedNodes.filter(node => !filtered.some(item => item.id === node.id))] : filtered
   $: visibleIds = new Set(visible.map(node => node.id))
   $: edges = data.edges.filter(edge => visibleIds.has(edge.source) && visibleIds.has(edge.target))
   $: active = visible.find(node => node.id === selected) ?? null
@@ -43,24 +45,32 @@
   $: relatedCommunities = connections.filter(node => node.kind === 'community')
   $: activeProperties = data.properties.map(property => ({ ...property, options: property.options.filter(option => active?.property_ids.includes(option.id)) })).filter(property => property.options.length)
   function revealNode(id: number) {
-    if (!visibleIds.has(id)) { filters = []; query = '' }
+    if (!filtered.some(node => node.id === id)) { filters = []; query = '' }
     filtersOpen = false
+    pinnedOpen = false
     selected = id
   }
   function selectNode(id: number) {
-    if (selectionLocked) return
     if (selected !== null && selected !== id) history = [...history, selected].slice(-50)
     revealNode(id)
   }
   function back() {
-    if (selectionLocked) return
     const id = history[history.length - 1]
     if (id === undefined) return
     history = history.slice(0, -1)
     revealNode(id)
   }
-  function clearSelection() { selected = null; history = []; focusOnly = false; selectionLocked = false }
-  function dismiss() { if (!selectionLocked) clearSelection() }
+  function dismiss() { selected = null; history = []; focusOnly = false; pinnedOpen = false }
+  function togglePin(id: number) {
+    pinnedIds = pinnedIds.includes(id) ? pinnedIds.filter(item => item !== id) : [...pinnedIds, id]
+    if (!pinnedIds.length) pinnedOpen = false
+  }
+  function togglePinned() {
+    const open = !pinnedOpen
+    dismiss()
+    filtersOpen = false
+    pinnedOpen = open
+  }
 
   async function load() {
     loading = true; error = ''
@@ -91,7 +101,8 @@
   <div class="explore-workspace">
     <header class="toolbar">
       <h1>Explore<span>Карта увлечений</span></h1>
-      <input class="search" aria-label="Поиск увлечения или сообщества" placeholder="Увлечение или сообщество" bind:value={query} />
+      {#if pinnedNodes.length}<button class="pinned-button" class:chosen={pinnedOpen} aria-expanded={pinnedOpen} on:click={togglePinned}>Зафиксированные · {pinnedNodes.length}</button>{/if}
+      <input class="search" aria-label="Поиск увлечения или сообщества" placeholder="Увлечение или сообщество" bind:value={query} on:focus={() => { if (pinnedOpen) dismiss() }} />
       <button class="filter-button" class:chosen={filtersOpen} aria-expanded={filtersOpen} aria-controls="explore-filters" on:click={() => { if (!filtersOpen) dismiss(); filtersOpen = !filtersOpen }}>Фильтры{filters.length ? ` · ${filters.length}` : ''} ▾</button>
 
       {#if $siteUser?.is_staff}<a class="manage" href="/moderator/explore" aria-label="Управление графом">Управление ↗</a>{/if}
@@ -109,10 +120,16 @@
       {#if loading}<div class="empty" role="status"><span class="empty-symbol">◌</span><h2>Собираем карту интересов…</h2></div>
       {:else if !visible.length}<div class="empty"><span class="empty-symbol">◎</span><h2>{data.nodes.length ? 'Ничего не найдено' : 'Карта скоро появится'}</h2><p>{data.nodes.length ? 'Попробуйте другие свойства или сбросьте фильтры.' : 'Мы собираем увлечения и сообщества в одну карту.'}</p>{#if data.nodes.length}<button on:click={() => { filters = []; query = '' }}>Сбросить фильтры</button>{/if}</div>
       {:else}
-        <ExploreGraph nodes={visible} {edges} properties={data.properties} selected={active?.id ?? null} {showProperties} {filtersOpen} {focusOnly} on:select={(event) => selectNode(event.detail)} on:dismiss={dismiss}>
-          {#if active}
-            <div class="inspector-navigation"><span>{active.kind === 'community' ? 'Сообщество' : 'Увлечение'}</span>{#if history.length}<button disabled={selectionLocked} on:click={back}>← Назад</button>{/if}</div>
-            <div class="selected-title"><span class="dot" class:community={active.kind === 'community'}></span><h2>{active.title}</h2><button class="close-selection" aria-label="Снять выделение" on:click={clearSelection}>×</button></div>
+        <ExploreGraph nodes={visible} {edges} properties={data.properties} selected={active?.id ?? null} {highlightedPins} {showProperties} {filtersOpen} {focusOnly} on:select={(event) => selectNode(event.detail)} on:dismiss={dismiss}>
+          {#if pinnedOpen}
+            <div class="selected-title"><h2>Зафиксированные · {pinnedNodes.length}</h2><button class="close-selection" aria-label="Закрыть зафиксированные" on:click={dismiss}>×</button></div>
+            <p class="description-empty">Выберите точку, чтобы продолжить исследование. Этот набор останется под рукой.</p>
+            <div class="connection-links pinned-links">{#each pinnedNodes as node (node.id)}
+              <div class="pinned-row"><button on:click={() => selectNode(node.id)}><span class="dot" class:community={node.kind === 'community'}></span><span class="connection-title">{node.title}</span><span aria-hidden="true">→</span></button><button aria-label={`Открепить «${node.title}»`} on:click={() => togglePin(node.id)}>×</button></div>
+            {/each}</div>
+          {:else if active}
+            <div class="inspector-navigation"><span>{active.kind === 'community' ? 'Сообщество' : 'Увлечение'}</span>{#if history.length}<button on:click={back}>← Назад</button>{/if}</div>
+            <div class="selected-title"><span class="dot" class:community={active.kind === 'community'}></span><h2>{active.title}</h2><button class="close-selection" aria-label="Снять выделение" on:click={dismiss}>×</button></div>
             {#if active.kind === 'community'}<p class="subscriber-count">Подписчиков: {new Intl.NumberFormat('ru-RU').format(active.subscribers_count ?? 0)}</p>{/if}
             {#if activeDescription.trim()}<p class="node-description">{activeDescription}</p>{:else}<p class="description-empty">Описание пока не добавлено. Исследуйте связи ниже.</p>{/if}
             {#if activeProperties.length && (active.show_properties || showProperties)}
@@ -120,12 +137,12 @@
             {/if}
             <div class="explore-connections">
               <label class="focus-toggle"><input type="checkbox" bind:checked={focusOnly} />Только прямые связи</label>
-              <label class="focus-toggle" title="Сохранять выделение при нажатии на другие точки и поле графа"><input type="checkbox" bind:checked={selectionLocked} />Зафиксировать</label>
+              <label class="focus-toggle" title="Добавить в зафиксированные, чтобы вернуться к этой точке позже"><input type="checkbox" checked={pinnedIds.includes(active.id)} on:change={() => togglePin(active!.id)} />Зафиксировать</label>
               {#each [{ title: 'Связанные увлечения', nodes: relatedInterests }, { title: 'Сообщества', nodes: relatedCommunities }] as group}
                 {#if group.nodes.length}
                   <h3>{group.title} <span>{group.nodes.length}</span></h3>
                   <div class="connection-links">{#each group.nodes as node (node.id)}
-                    <button disabled={selectionLocked} on:click={() => selectNode(node.id)}><span class="dot" class:community={node.kind === 'community'}></span><span class="connection-title">{node.title}{#if !visibleIds.has(node.id)}<small>Вне текущих фильтров</small>{/if}</span><span aria-hidden="true">→</span></button>
+                    <button on:click={() => selectNode(node.id)}><span class="dot" class:community={node.kind === 'community'}></span><span class="connection-title">{node.title}{#if !visibleIds.has(node.id)}<small>Вне текущих фильтров</small>{/if}</span><span aria-hidden="true">→</span></button>
                   {/each}</div>
                 {/if}
               {/each}
@@ -154,6 +171,7 @@
   h1 span{font-size:12px;letter-spacing:0;font-weight:400;color:#8b91a2}
   .search{box-sizing:border-box;width:240px;max-width:100%;border:1px solid #b2b8ca50;border-radius:10px;padding:10px 12px;font-size:12px;background:transparent}
   .filter-button{padding:10px 12px;border:1px solid #b2b8ca50;border-radius:10px;font-size:12px;white-space:nowrap}
+  .pinned-button{padding:8px 10px;border:1px solid #8174ce50;border-radius:10px;font-size:12px;white-space:nowrap;color:#8174ce}
   .chosen{background:#8174ce18;color:#8174ce}
   .manage{font-size:12px;color:#8174ce;white-space:nowrap}
   .filters{position:absolute;z-index:4;top:92px;left:20px;width:330px;max-width:calc(100% - 40px);max-height:calc(100% - 112px);overflow:auto;border:1px solid #b2b8ca40;background:var(--explore-surface);border-radius:16px;padding:18px;box-shadow:0 12px 35px #3037511a;box-sizing:border-box}
@@ -173,12 +191,13 @@
   .description-empty{font-size:12px;line-height:1.5;color:#8790a3;margin-top:10px}
   .explore-connections{margin-top:16px;padding-top:14px;border-top:1px solid #b2b8ca40}.explore-connections h3{font-size:12px;font-weight:600;margin:16px 0 8px}.explore-connections h3 span{color:#8790a3;margin-left:5px;font-weight:400}
   .focus-toggle{display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer}.focus-toggle input{accent-color:#8174ce}
-  .focus-toggle + .focus-toggle{margin-top:10px}.connection-links button:disabled,.inspector-navigation button:disabled{cursor:default}
+  .focus-toggle + .focus-toggle{margin-top:10px}
+  .pinned-links{margin-top:14px}.pinned-row{display:flex;gap:5px}.pinned-row>button:first-child{flex:1;min-width:0}.pinned-row>button:last-child{flex-shrink:0}
   .connection-links{display:flex;flex-direction:column;gap:5px}.connection-links button{display:flex;align-items:center;gap:9px;padding:9px;border-radius:9px;background:#8174ce0a;text-align:left;font-size:12px;line-height:1.4}.connection-links button:hover{background:#8174ce20}.connection-title{flex:1;overflow-wrap:anywhere}.connection-title small{display:block;font-size:10px;color:#8790a3;margin-top:2px}
   .node-properties{font-size:12px;margin-top:12px}.node-properties summary{cursor:pointer;color:#8174ce}.node-properties p{display:flex;flex-direction:column;gap:3px;margin-top:8px;line-height:1.5}.node-properties strong{font-weight:550}
 
   button{cursor:pointer}button:disabled{cursor:wait;opacity:.55}button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid #8174ce;outline-offset:3px}
   :global(.dark) .explore-page{--explore-ink:#d9dfec;--explore-surface:#242631;--explore-canvas:#1d202a}.explore-page :global(.property-pickers details){border-color:#b2b8ca40}
   @media(max-width:1000px){h1 span{display:none}.search{width:200px}}
-  @media(max-width:700px){.toolbar{top:10px;left:10px;right:10px;padding:10px;gap:8px}h1{font-size:21px;order:0}.manage{order:2;font-size:10px}.search{order:3;flex:1 1 calc(100% - 120px);min-width:0;width:auto}.filter-button{order:4}.filters{top:120px;left:10px;max-width:calc(100% - 20px);max-height:calc(100% - 140px);width:340px}.error{top:120px}}
+  @media(max-width:700px){.toolbar{top:10px;left:10px;right:10px;padding:10px;gap:8px}h1{font-size:21px;order:0}.pinned-button{order:1;font-size:11px}.manage{order:2;font-size:10px}.search{order:3;flex:1 1 calc(100% - 120px);min-width:0;width:auto}.filter-button{order:4}.filters{top:120px;left:10px;max-width:calc(100% - 20px);max-height:calc(100% - 140px);width:340px}.error{top:120px}}
 </style>

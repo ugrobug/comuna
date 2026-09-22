@@ -12,6 +12,7 @@
   export let edges: ExploreEdge[] = []
   export let properties: ExploreProperty[] = []
   export let selected: number | null = null
+  export let highlightedPins: number[] = []
   export let showProperties = false
   export let filtersOpen = false
   export let focusOnly = false
@@ -57,10 +58,15 @@
   }
   $: nextSignature = JSON.stringify([nodes.map(node => [node.id, node.kind, node.title, node.show_properties, node.property_ids]), edges, showProperties, properties, width <= 700])
   $: if (ready && signature !== nextSignature) { signature = nextSignature; void rebuild() }
-  $: if (ready && !arranging) { filtersOpen; width; height; selectionArea; if (selected !== null) focusSelected(); else fit() }
+  $: if (ready && !arranging) { filtersOpen; width; height; selectionArea; if (highlightedPins.length) focusPinned(); else if (selected !== null) focusSelected(); else fit() }
   $: byId = new Map(points.map(point => [point.id, point]))
   $: nodeById = new Map(nodes.map(node => [node.id, node]))
-  $: neighbors = new Set(edges.flatMap(edge => edge.source === selected ? [edge.target] : edge.target === selected ? [edge.source] : []))
+  $: selectedIds = new Set(selected === null ? highlightedPins : [selected])
+  $: hasSelection = selectedIds.size > 0
+  $: neighbors = new Set(edges.flatMap(edge => [
+    ...(selectedIds.has(edge.source) ? [edge.target] : []),
+    ...(selectedIds.has(edge.target) ? [edge.source] : []),
+  ]))
   $: labels = new Map(properties.flatMap(property => property.options.map(option => [option.id, option.label] as const)))
 
   function propertyText(node: ExploreNode) {
@@ -112,6 +118,11 @@
       tx = selectionArea.x + selectionArea.width / 2 - target.x * scale
       ty = selectionArea.y + selectionArea.height / 2 - (target.y - target.anchorY + target.height / 2) * scale
     }
+  }
+  function focusPinned() {
+    stopSprings()
+    const view = focusNodes(points.filter(point => highlightedPins.includes(point.id)), selectionArea)
+    if (view) ({ scale, tx, ty } = view)
   }
   function zoom(factor: number) {
     const next = Math.max(.03, Math.min(3, scale * factor))
@@ -203,7 +214,7 @@
   onDestroy(() => { stopSprings(); ready = false; generation++; observer?.disconnect(); engine?.terminateWorker() })
 </script>
 
-<svelte:window on:keydown={(event) => { if (event.key === 'Escape' && selected !== null) dispatch('dismiss') }} />
+<svelte:window on:keydown={(event) => { if (event.key === 'Escape' && hasSelection) dispatch('dismiss') }} />
 
 <div class="graph-canvas" bind:this={canvas}>
   {#if arranging}<p class="layout-status" role="status">Раскладываем граф…</p>{:else if layoutError}<div class="layout-status" role="alert">{layoutError} <button on:click={() => rebuild()}>Повторить</button></div>{/if}
@@ -215,12 +226,12 @@
     on:wheel|nonpassive|preventDefault={(event) => zoom(event.deltaY < 0 ? 1.08 : 1 / 1.08)}>
     <g transform={`translate(${tx},${ty}) scale(${scale})`}>
       {#each edges as edge (edge.id)}
-        <path d={edgePath(edgeCoordinates(edge, byId, routes))} class:connected={edge.source === selected || edge.target === selected} class:muted={selected !== null && edge.source !== selected && edge.target !== selected} class:concealed={focusOnly && selected !== null && edge.source !== selected && edge.target !== selected} />
+        <path d={edgePath(edgeCoordinates(edge, byId, routes))} class:connected={selectedIds.has(edge.source) || selectedIds.has(edge.target)} class:muted={hasSelection && !selectedIds.has(edge.source) && !selectedIds.has(edge.target)} class:concealed={focusOnly && hasSelection && !selectedIds.has(edge.source) && !selectedIds.has(edge.target)} />
       {/each}
       {#each points as p (p.id)}
         {@const node = nodeById.get(p.id)!}
-        <g transform={`translate(${p.x},${p.y})`} role="button" tabindex={focusOnly && selected !== null && selected !== p.id && !neighbors.has(p.id) ? -1 : 0} aria-hidden={focusOnly && selected !== null && selected !== p.id && !neighbors.has(p.id)} aria-label={`${node.title}, ${node.kind === 'community' ? 'сообщество' : 'элемент'}`} aria-pressed={selected === p.id}
-          class="node" class:concealed={focusOnly && selected !== null && selected !== p.id && !neighbors.has(p.id)} class:selected={selected === p.id} class:neighbor={neighbors.has(p.id)} class:muted={selected !== null && selected !== p.id && !neighbors.has(p.id)}
+        <g transform={`translate(${p.x},${p.y})`} role="button" tabindex={focusOnly && hasSelection && !selectedIds.has(p.id) && !neighbors.has(p.id) ? -1 : 0} aria-hidden={focusOnly && hasSelection && !selectedIds.has(p.id) && !neighbors.has(p.id)} aria-label={`${node.title}, ${node.kind === 'community' ? 'сообщество' : 'элемент'}`} aria-pressed={selectedIds.has(p.id)}
+          class="node" class:concealed={focusOnly && hasSelection && !selectedIds.has(p.id) && !neighbors.has(p.id)} class:selected={selectedIds.has(p.id)} class:neighbor={neighbors.has(p.id)} class:muted={hasSelection && !selectedIds.has(p.id) && !neighbors.has(p.id)}
           on:pointerdown={(event) => start(event, p.id)} on:click={() => select(p.id)} on:keydown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); dispatch('select', p.id) } }}>
           <circle class="halo" r={node.kind === 'community' ? 24 : 23.8} />
           <circle class:community={node.kind === 'community'} class="core" r={node.kind === 'community' ? 11 : 14.7} />
@@ -234,9 +245,9 @@
       {/each}
     </g>
   </svg>
-  {#if activePoint && !arranging && !layoutError}
+  {#if (activePoint || highlightedPins.length) && !arranging && !layoutError}
     {#key selected}
-    <section class="node-inspector" aria-label="Выбранное увлечение или сообщество" style:left={`${cardPosition.x}px`} style:top={`${cardPosition.y}px`} style:width={`${width > 700 ? cardWidth : cardBounds.width}px`} style:max-height={`${cardHeight}px`} style:height={width > 700 ? undefined : `${cardHeight}px`}>
+    <section class="node-inspector" aria-label={highlightedPins.length ? 'Зафиксированные узлы' : 'Выбранное увлечение или сообщество'} style:left={`${cardPosition.x}px`} style:top={`${cardPosition.y}px`} style:width={`${width > 700 ? cardWidth : cardBounds.width}px`} style:max-height={`${cardHeight}px`} style:height={width > 700 ? undefined : `${cardHeight}px`}>
       <slot />
     </section>
     {/key}
