@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy, createEventDispatcher } from 'svelte'
   import { NodePopover, type PopoverBounds } from '$lib/explore/NodePopover'
+  import { focusNodes } from '$lib/explore/GraphSelection'
   import { GraphPinch } from '$lib/explore/GraphPinch'
   import { GraphDrag } from '$lib/explore/GraphDrag'
   import ELK from 'elkjs/lib/elk-api'
@@ -13,6 +14,7 @@
   export let selected: number | null = null
   export let showProperties = false
   export let filtersOpen = false
+  export let focusOnly = false
   const dispatch = createEventDispatcher<{ select: number; dismiss: void }>()
   let svg: SVGSVGElement
   let canvas: HTMLDivElement
@@ -33,12 +35,18 @@
   let springFrame = 0, springTime = 0
   let suppressClick = false
   let signature = ''
-  let cardWidth = 320, cardHeight = 220
-  $: cardTop = width > 700 ? 100 : 155
-  $: cardLeft = width > 700 && filtersOpen ? Math.min(370, width - 340) : 10
+  $: cardTop = width > 700 ? 100 : 125
   $: activePoint = points.find(point => point.id === selected)
-  $: cardBounds = NodePopover.bounds({ width, height }, cardTop, cardLeft, visibleViewport)
-  $: cardPosition = NodePopover.place({ x: (activePoint?.x ?? 0) * scale + tx, y: (activePoint?.y ?? 0) * scale + ty }, { width: cardWidth, height: cardHeight }, { width, height }, 24 * scale, cardTop, cardLeft, visibleViewport)
+  $: cardBounds = NodePopover.bounds({ width, height }, cardTop, 10, visibleViewport)
+  $: cardWidth = Math.min(340, cardBounds.width)
+  $: cardHeight = width > 700 ? cardBounds.height : Math.min(340, height * .44, cardBounds.height)
+  $: cardPosition = { x: width > 700 ? cardBounds.x + cardBounds.width - cardWidth : cardBounds.x,
+    y: width > 700 ? cardBounds.y : cardBounds.y + cardBounds.height - cardHeight }
+  $: selectionArea = {
+    x: width > 1050 && filtersOpen ? 370 : cardBounds.x,
+    y: cardBounds.y,
+    width: Math.max(80, (width > 700 ? cardPosition.x - 20 : cardBounds.x + cardBounds.width) - (width > 1050 && filtersOpen ? 370 : cardBounds.x)),
+    height: Math.max(60, (width > 700 ? cardBounds.height : cardPosition.y - cardBounds.y - 16)) }
   function measureViewport() {
     const rect = canvas.getBoundingClientRect(), viewport = window.visualViewport
     const x = Math.max(0, (viewport?.offsetLeft ?? 0) - rect.left)
@@ -47,14 +55,9 @@
       width: Math.max(0, Math.min(rect.width, (viewport?.offsetLeft ?? 0) + (viewport?.width ?? window.innerWidth) - rect.left) - x),
       height: Math.max(0, Math.min(rect.height, (viewport?.offsetTop ?? 0) + (viewport?.height ?? window.innerHeight) - rect.top) - y) }
   }
-  function measureCard(element: HTMLElement) {
-    const resize = new ResizeObserver(() => { cardWidth = element.offsetWidth; cardHeight = element.offsetHeight })
-    resize.observe(element)
-    return { destroy: () => resize.disconnect() }
-  }
   $: nextSignature = JSON.stringify([nodes.map(node => [node.id, node.kind, node.title, node.show_properties, node.property_ids]), edges, showProperties, properties, width <= 700])
   $: if (ready && signature !== nextSignature) { signature = nextSignature; void rebuild() }
-  $: if (ready && !arranging) { filtersOpen; width; height; fit() }
+  $: if (ready && !arranging) { filtersOpen; width; height; selectionArea; if (selected !== null) focusSelected(); else fit() }
   $: byId = new Map(points.map(point => [point.id, point]))
   $: nodeById = new Map(nodes.map(node => [node.id, node]))
   $: neighbors = new Set(edges.flatMap(edge => edge.source === selected ? [edge.target] : edge.target === selected ? [edge.source] : []))
@@ -94,6 +97,21 @@
     scale = Math.min(1.5, availableWidth / (maxX - minX), availableHeight / (maxY - minY))
     tx = left + availableWidth / 2 - (minX + maxX) / 2 * scale
     ty = top + availableHeight / 2 - (minY + maxY) / 2 * scale
+  }
+  function focusSelected(includeNeighbors = false) {
+    const target = points.find(point => point.id === selected)
+    if (!target) return
+    stopSprings()
+    if (includeNeighbors) {
+      const view = focusNodes(points.filter(point => point.id === selected || neighbors.has(point.id)), selectionArea)
+      if (view) ({ scale, tx, ty } = view)
+    } else {
+      const view = focusNodes([target], selectionArea)
+      if (!view) return
+      scale = Math.min(view.scale, Math.max(.65, Math.min(1.25, scale)))
+      tx = selectionArea.x + selectionArea.width / 2 - target.x * scale
+      ty = selectionArea.y + selectionArea.height / 2 - (target.y - target.anchorY + target.height / 2) * scale
+    }
   }
   function zoom(factor: number) {
     const next = Math.max(.03, Math.min(3, scale * factor))
@@ -197,12 +215,12 @@
     on:wheel|nonpassive|preventDefault={(event) => zoom(event.deltaY < 0 ? 1.08 : 1 / 1.08)}>
     <g transform={`translate(${tx},${ty}) scale(${scale})`}>
       {#each edges as edge (edge.id)}
-        <path d={edgePath(edgeCoordinates(edge, byId, routes))} class:connected={edge.source === selected || edge.target === selected} />
+        <path d={edgePath(edgeCoordinates(edge, byId, routes))} class:connected={edge.source === selected || edge.target === selected} class:muted={selected !== null && edge.source !== selected && edge.target !== selected} class:concealed={focusOnly && selected !== null && edge.source !== selected && edge.target !== selected} />
       {/each}
       {#each points as p (p.id)}
         {@const node = nodeById.get(p.id)!}
-        <g transform={`translate(${p.x},${p.y})`} role="button" tabindex="0" aria-label={`${node.title}, ${node.kind === 'community' ? 'сообщество' : 'элемент'}`} aria-pressed={selected === p.id}
-          class="node" class:selected={selected === p.id} class:neighbor={neighbors.has(p.id)} class:muted={selected !== null && selected !== p.id && !neighbors.has(p.id)}
+        <g transform={`translate(${p.x},${p.y})`} role="button" tabindex={focusOnly && selected !== null && selected !== p.id && !neighbors.has(p.id) ? -1 : 0} aria-hidden={focusOnly && selected !== null && selected !== p.id && !neighbors.has(p.id)} aria-label={`${node.title}, ${node.kind === 'community' ? 'сообщество' : 'элемент'}`} aria-pressed={selected === p.id}
+          class="node" class:concealed={focusOnly && selected !== null && selected !== p.id && !neighbors.has(p.id)} class:selected={selected === p.id} class:neighbor={neighbors.has(p.id)} class:muted={selected !== null && selected !== p.id && !neighbors.has(p.id)}
           on:pointerdown={(event) => start(event, p.id)} on:click={() => select(p.id)} on:keydown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); dispatch('select', p.id) } }}>
           <circle class="halo" r={node.kind === 'community' ? 24 : 23.8} />
           <circle class:community={node.kind === 'community'} class="core" r={node.kind === 'community' ? 11 : 14.7} />
@@ -217,16 +235,18 @@
     </g>
   </svg>
   {#if activePoint && !arranging && !layoutError}
-    <section class="node-popover" aria-label="Действия с выбранным узлом" use:measureCard style:left={`${cardPosition.x}px`} style:top={`${cardPosition.y}px`} style:max-width={`${cardBounds.width}px`} style:max-height={`${cardBounds.height}px`}>
+    {#key selected}
+    <section class="node-inspector" aria-label="Выбранное увлечение или сообщество" style:left={`${cardPosition.x}px`} style:top={`${cardPosition.y}px`} style:width={`${width > 700 ? cardWidth : cardBounds.width}px`} style:max-height={`${cardHeight}px`} style:height={width > 700 ? undefined : `${cardHeight}px`}>
       <slot />
     </section>
+    {/key}
   {/if}
-  <div class="controls"><button aria-label="Уменьшить граф" on:click={() => zoom(1 / 1.2)}>−</button><span>{Math.round(scale * 100)}%</span><button aria-label="Увеличить граф" on:click={() => zoom(1.2)}>+</button><button on:click={fit}>Весь граф</button><button disabled={arranging} on:click={() => rebuild(false)}>Упорядочить</button></div>
-  <p class="hint">Перетаскивайте узлы и поле · прокрутка меняет масштаб</p>
+  <div class="controls"><button aria-label="Уменьшить граф" on:click={() => zoom(1 / 1.2)}>−</button><span>{Math.round(scale * 100)}%</span><button aria-label="Увеличить граф" on:click={() => zoom(1.2)}>+</button>{#if selected !== null}<button on:click={() => focusSelected(true)}>Показать связи</button>{/if}<button on:click={() => { dispatch('dismiss'); fit() }}>Весь граф</button><button disabled={arranging} on:click={() => rebuild(false)}>Упорядочить</button></div>
+  <p class="hint">Выбирайте точки, чтобы изучать связи · перетаскивайте поле</p>
 </div>
 
 <style>
-  .node-popover{position:absolute;z-index:2;width:320px;max-width:calc(100% - 20px);box-sizing:border-box;overflow:auto;padding:16px;border:1px solid #b2b8ca60;border-radius:16px;background:var(--explore-surface,#fff);box-shadow:0 10px 32px #30375124;color:var(--explore-ink,#35405a)}
+  .node-inspector{overscroll-behavior:contain;position:absolute;z-index:2;width:320px;max-width:calc(100% - 20px);box-sizing:border-box;overflow:auto;padding:16px;border:1px solid #b2b8ca60;border-radius:16px;background:var(--explore-surface,#fff);box-shadow:0 10px 32px #30375124;color:var(--explore-ink,#35405a)}
   .pending{visibility:hidden}.layout-status{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:13px;color:#8174ce}.controls button:disabled{opacity:.5;cursor:wait}
-  .graph-canvas{position:relative;min-width:0;height:100%;min-height:0;background-color:var(--explore-canvas,#f6f7fb);background-image:radial-gradient(#b9c2d340 .9px,transparent .9px);background-size:22px 22px;overflow:hidden}svg{display:block;width:100%;height:100%;min-height:0;touch-action:none;cursor:grab}svg:active{cursor:grabbing}path{fill:none;stroke-linejoin:round;stroke:#c6cedc;stroke-width:1.4;transition:stroke .2s}path.connected{stroke:#8174ce;stroke-width:2.2}.node{cursor:pointer;outline:none;transition:opacity .2s}.node.muted{opacity:.4}.halo{fill:transparent;stroke:transparent;stroke-width:1.5}.node.selected .halo,.node:focus .halo{fill:#8174ce18;stroke:#9284d1}.node.neighbor .halo{fill:#8174ce0c}.core{fill:#8174ce;stroke:#e6e1f9;stroke-width:2.8}.core.community{fill:#dc9b50;stroke:#f7e8d6;stroke-width:3}.node.selected .core{fill:#6555b4}.node.selected .core.community{fill:#c4883c}text{font:500 13px system-ui;fill:var(--explore-ink,#35405a);paint-order:stroke;stroke:var(--explore-canvas,#f6f7fb);stroke-width:4px;stroke-linejoin:round}.property-label{font-size:10px;fill:#788398}.legend{position:absolute;bottom:48px;left:20px;display:flex;gap:18px;font-size:11px;color:#7a8295;pointer-events:none}.legend span{display:flex;align-items:center;gap:7px}i{width:8px;height:8px;border-radius:50%}.element{background:#8174ce}.community{background:#dc9b50}.controls{position:absolute;bottom:20px;right:20px;display:flex;align-items:center;gap:8px;border:1px solid #dce1ea;border-radius:12px;background:var(--explore-surface,#fff);padding:5px;color:var(--explore-ink,#35405a)}button{border:0;background:transparent;font-size:13px;padding:7px;cursor:pointer}button:hover{background:#8174ce15;border-radius:8px}.controls span{font-size:10px;min-width:34px;text-align:center}.hint{position:absolute;bottom:22px;left:20px;font-size:10px;color:#8b94a5;pointer-events:none}@media(max-width:700px){text{font-size:13px}.property-label{font-size:10px}.hint{display:none}.graph-canvas,svg{min-height:0}.controls{right:10px;bottom:26px}.legend{left:12px;top:130px;bottom:auto;gap:12px}}
+  .graph-canvas{position:relative;min-width:0;height:100%;min-height:0;background-color:var(--explore-canvas,#f6f7fb);background-image:radial-gradient(#b9c2d340 .9px,transparent .9px);background-size:22px 22px;overflow:hidden}svg{display:block;width:100%;height:100%;min-height:0;touch-action:none;cursor:grab}svg:active{cursor:grabbing}path{fill:none;stroke-linejoin:round;stroke:#c6cedc;stroke-width:1.4;transition:stroke .2s}path.connected{stroke:#8174ce;stroke-width:3;vector-effect:non-scaling-stroke}path.muted{opacity:.16}.concealed{visibility:hidden;pointer-events:none}.node{cursor:pointer;outline:none;transition:opacity .2s}.node.muted{opacity:.22}.halo{fill:transparent;stroke:transparent;stroke-width:1.5}.node.selected .halo,.node:focus-visible .halo{fill:#8174ce28;stroke:#8174ce;stroke-width:3;vector-effect:non-scaling-stroke}.node.selected text{font-weight:750}.node:focus-visible .halo{stroke-dasharray:4 3}.node.neighbor .halo{fill:#8174ce0c}.core{fill:#8174ce;stroke:#e6e1f9;stroke-width:2.8}.core.community{fill:#dc9b50;stroke:#f7e8d6;stroke-width:3}.node.selected .core{fill:#6555b4}.node.selected .core.community{fill:#c4883c}text{font:500 13px system-ui;fill:var(--explore-ink,#35405a);paint-order:stroke;stroke:var(--explore-canvas,#f6f7fb);stroke-width:4px;stroke-linejoin:round}.property-label{font-size:10px;fill:#788398}.legend{position:absolute;bottom:48px;left:20px;display:flex;gap:18px;font-size:11px;color:#7a8295;pointer-events:none}.legend span{display:flex;align-items:center;gap:7px}i{width:8px;height:8px;border-radius:50%}.element{background:#8174ce}.community{background:#dc9b50}.controls{position:absolute;bottom:20px;right:20px;display:flex;align-items:center;gap:8px;border:1px solid #dce1ea;border-radius:12px;background:var(--explore-surface,#fff);padding:5px;color:var(--explore-ink,#35405a)}button{border:0;background:transparent;font-size:13px;padding:7px;cursor:pointer}button:hover{background:#8174ce15;border-radius:8px}.controls span{font-size:10px;min-width:34px;text-align:center}.hint{position:absolute;bottom:22px;left:20px;font-size:10px;color:#8b94a5;pointer-events:none}@media(max-width:700px){text{font-size:13px}.property-label{font-size:10px}.hint{display:none}.graph-canvas,svg{min-height:0}.controls{right:10px;left:10px;bottom:16px;justify-content:center;gap:2px}.controls button{font-size:11px;padding:6px}.legend{max-width:calc(100% - 24px)}.legend{left:12px;top:130px;bottom:auto;gap:12px}}
 </style>
