@@ -2,6 +2,7 @@
   import { onMount, onDestroy, createEventDispatcher } from 'svelte'
   import { NodePopover, type PopoverBounds } from '$lib/explore/NodePopover'
   import { focusNodes } from '$lib/explore/GraphSelection'
+  import MobileNodeCard from './MobileNodeCard.svelte'
   import { GraphPinch } from '$lib/explore/GraphPinch'
   import { GraphDrag } from '$lib/explore/GraphDrag'
   import ELK from 'elkjs/lib/elk-api'
@@ -247,9 +248,13 @@
   </svg>
   {#if (activePoint || highlightedPins.length) && !arranging && !layoutError}
     {#key selected}
+    {#if width <= 700 && activePoint}
+      <MobileNodeCard label={nodeById.get(activePoint.id)?.kind === 'community' ? 'Карточка сообщества' : 'Карточка увлечения'} on:dismiss={() => dispatch('dismiss')}><slot /></MobileNodeCard>
+    {:else}
     <section class="node-inspector" aria-label={highlightedPins.length ? 'Зафиксированные узлы' : 'Выбранное увлечение или сообщество'} style:left={`${cardPosition.x}px`} style:top={`${cardPosition.y}px`} style:width={`${width > 700 ? cardWidth : cardBounds.width}px`} style:max-height={`${cardHeight}px`} style:height={width > 700 ? undefined : `${cardHeight}px`}>
       <slot />
     </section>
+    {/if}
     {/key}
   {/if}
   <div class="controls"><button aria-label="Уменьшить граф" on:click={() => zoom(1 / 1.2)}>−</button><span>{Math.round(scale * 100)}%</span><button aria-label="Увеличить граф" on:click={() => zoom(1.2)}>+</button>{#if selected !== null}<button on:click={() => focusSelected(true)}>Показать связи</button>{/if}<button on:click={() => { dispatch('dismiss'); fit() }}>Весь граф</button><button disabled={arranging} on:click={() => rebuild(false)}>Упорядочить</button></div>
