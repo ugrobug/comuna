@@ -99,6 +99,7 @@
     on:focus
     previewButton={false}
     tools={true}
+    toolbarPreset="comment"
   >
     <div slot="actions" class="p-2 flex flex-row items-center w-full bg-white dark:bg-zinc-950 gap-1">
       <div class="flex-1"></div>

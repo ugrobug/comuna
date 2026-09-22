@@ -27,6 +27,7 @@
   export let label: string | undefined = undefined
   export let previewButton: boolean = true
   export let tools: boolean = true
+  export let toolbarPreset: 'full' | 'comment' = 'full'
   export let disabled: boolean = false
   export let rows: number = 2
   export let autoFocus: boolean = false
@@ -457,27 +458,40 @@ overflow-hidden transition-colors {$$props.class}"
               <Icon src={Link} size="16" micro />
             </Button>
           </span>
-          <Button
-            on:click={() => wrapSelection('\n# ', '')}
-            title="Header"
-            size="square-md"
-          >
-            <Icon src={H1} size="16" micro />
-          </Button>
-          <Button
-            on:click={() => wrapSelection('~~', '~~')}
-            title="Strikethrough"
-            size="square-md"
-          >
-            <Icon src={Strikethrough} size="16" micro />
-          </Button>
-          <Button
-            on:click={() => wrapSelection('\n> ', '')}
-            title="Quote"
-            size="square-md"
-          >
-            <span class="font-bold font-serif text-lg">"</span>
-          </Button>
+          {#if images && toolbarPreset === 'comment'}
+            <Button
+              on:click={openImageUpload}
+              title="Изображение"
+              size="square-md"
+              loading={uploadingInlineImage}
+              disabled={disabled || uploadingInlineImage}
+            >
+              <Icon src={Photo} size="16" micro />
+            </Button>
+          {/if}
+          {#if toolbarPreset === 'full'}
+            <Button
+              on:click={() => wrapSelection('\n# ', '')}
+              title="Header"
+              size="square-md"
+            >
+              <Icon src={H1} size="16" micro />
+            </Button>
+            <Button
+              on:click={() => wrapSelection('~~', '~~')}
+              title="Strikethrough"
+              size="square-md"
+            >
+              <Icon src={Strikethrough} size="16" micro />
+            </Button>
+            <Button
+              on:click={() => wrapSelection('\n> ', '')}
+              title="Quote"
+              size="square-md"
+            >
+              <span class="font-bold font-serif text-lg">"</span>
+            </Button>
+          {/if}
           <Button
             on:click={() => wrapSelection('\n- ', '')}
             title="List"
@@ -500,27 +514,29 @@ overflow-hidden transition-colors {$$props.class}"
           >
             <Icon src={ExclamationTriangle} micro size="16" />
           </Button>
-          <Button
-            on:click={() => wrapSelection('~', '~')}
-            title="Subscript"
-            size="square-md"
-          >
-            <span class="font-bold">
-              X
-              <sub>1</sub>
-            </span>
-          </Button>
-          <Button
-            on:click={() => wrapSelection('^', '^')}
-            title="Superscript"
-            size="square-md"
-          >
-            <span class="font-bold">
-              X
-              <sup>1</sup>
-            </span>
-          </Button>
-          {#if images}
+          {#if toolbarPreset === 'full'}
+            <Button
+              on:click={() => wrapSelection('~', '~')}
+              title="Subscript"
+              size="square-md"
+            >
+              <span class="font-bold">
+                X
+                <sub>1</sub>
+              </span>
+            </Button>
+            <Button
+              on:click={() => wrapSelection('^', '^')}
+              title="Superscript"
+              size="square-md"
+            >
+              <span class="font-bold">
+                X
+                <sup>1</sup>
+              </span>
+            </Button>
+          {/if}
+          {#if images && toolbarPreset === 'full'}
             <Button
               on:click={openImageUpload}
               title="Изображение"

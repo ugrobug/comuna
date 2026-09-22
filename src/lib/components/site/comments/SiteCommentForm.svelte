@@ -217,6 +217,7 @@
     rows={4}
     {autoFocus}
     tools={true}
+    toolbarPreset="comment"
     previewButton={false}
     images={true}
     imageUploadHandler={uploadCommentImage}
