@@ -5,6 +5,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from feeds.models import Author, Post, PostComment
+from editor.models import PostTemplateConfig
 from users.models import AuthorAdmin
 from users.service import _issue_token
 
@@ -14,6 +15,7 @@ User = get_user_model()
 
 class QuestionAnswerApiTests(TestCase):
     def setUp(self):
+        PostTemplateConfig.objects.update_or_create(template_type="question", defaults={"is_active": True})
         self.owner = User.objects.create_user(username="question_owner", password="password")
         self.outsider = User.objects.create_user(username="question_outsider", password="password")
         self.answerer = User.objects.create_user(username="question_answerer", password="password")

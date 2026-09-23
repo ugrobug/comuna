@@ -1,17 +1,19 @@
 import json
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from communities.models import Comun
 from feeds.models import Author, Post, PostLike, PostTranslation, PublicFeedItem
 from ratings.models import RatingSettings
+from users.service import _issue_token
 
 
 User = get_user_model()
 
 
+@override_settings(CACHES={"default": {"BACKEND": "django.core.cache.backends.dummy.DummyCache"}})
 class HomeFeedTests(TestCase):
     def test_post_detail_returns_authenticated_user_vote(self):
         user = User.objects.create_user(username="detail-voter", password="secret")
@@ -26,7 +28,7 @@ class HomeFeedTests(TestCase):
             is_blocked=False,
         )
         PostLike.objects.create(post=post, user=user, value=-1)
-        self.client.force_login(user)
+        self.client.defaults["HTTP_AUTHORIZATION"] = f"Bearer {_issue_token(user)}"
 
         response = self.client.get(reverse("post-detail", args=[post.id]))
 
@@ -46,7 +48,7 @@ class HomeFeedTests(TestCase):
             is_blocked=False,
         )
         PostLike.objects.create(post=post, user=user, value=1)
-        self.client.force_login(user)
+        self.client.defaults["HTTP_AUTHORIZATION"] = f"Bearer {_issue_token(user)}"
 
         response = self.client.get(
             reverse("home-feed"),

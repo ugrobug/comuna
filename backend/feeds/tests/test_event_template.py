@@ -6,6 +6,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from editor.service import _normalize_post_template_payload
+from editor.models import PostTemplateConfig
 from feeds.models import Author, Post, PostEventAttendance
 from notifications.event_reminders import send_event_reminders_due
 from notifications.models import SiteNotification
@@ -17,6 +18,7 @@ User = get_user_model()
 
 class EventTemplateTests(TestCase):
     def setUp(self):
+        PostTemplateConfig.objects.update_or_create(template_type="event", defaults={"is_active": True})
         self.user = User.objects.create_user(username="event_guest", password="password")
         self.author = Author.objects.create(username="event_author", title="Event author")
         self.starts_at = timezone.now() + timedelta(hours=23)

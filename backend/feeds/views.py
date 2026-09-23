@@ -48,6 +48,8 @@ from communities.models import (
     ComunVote,
 )
 from rabotaem_backend.cache import anonymous_cache, bump_public_cache_prefix
+from rabotaem_backend.read_context import with_read_context
+from feeds.home_reader import HomeFeedReader, HomeFeedCardBatch
 from rabotaem_backend.media_urls import (
     media_storage_path_from_url,
     public_media_url,
@@ -4150,6 +4152,7 @@ def _apply_user_hidden_content(queryset, user, *, prefix: str = ""):
 
 
 @anonymous_cache(prefix="home-feed", seconds=45)
+@with_read_context
 def home_feed(request: HttpRequest) -> HttpResponse:
     language = _request_post_language(request)
     limit_raw = request.GET.get("limit", "10")
@@ -4207,10 +4210,15 @@ def home_feed(request: HttpRequest) -> HttpResponse:
         .filter(has_hidden_home_tag=False)
         .exclude(id__in=hidden_home_comun_category_post_ids)
     )
-    base_query = _filter_posts_for_language(base_query, language)
+    reader = HomeFeedReader(language=language)
+    base_query = reader.for_language(base_query)
     base_query = _apply_user_hidden_content(base_query, current_user)
     if hidden_home_comun_slugs:
         hidden_home_comun_post_ids = Post.objects.filter(
+            # The outer feed already requires these flags. Repeating them here
+            # lets PostgreSQL use the existing partial community-source index.
+            is_blocked=False,
+            is_pending=False,
             raw_data__source="manual_comun",
             raw_data__comun_slug__in=hidden_home_comun_slugs,
         ).exclude(
@@ -4228,20 +4236,34 @@ def home_feed(request: HttpRequest) -> HttpResponse:
         base_query = base_query.annotate(recently_read=Exists(recent_read_marker))
 
     if only_read:
-        posts_page_query = base_query.filter(recently_read=True).select_related("author")
+        posts_page_query = base_query.filter(recently_read=True)
         prefetches = ["tags"]
         translation_prefetch = _post_translation_prefetch(language)
         if translation_prefetch:
             prefetches.append(translation_prefetch)
-        posts_page = list(
-            posts_page_query.prefetch_related(*prefetches)
-            .order_by("-created_at")[offset : offset + limit]
+        posts_page = reader.load(
+            posts_page_query, offset=offset, limit=limit,
+            ordering=("-created_at", "pk"),
+            related=("author",), prefetches=prefetches,
         )
+        HomeFeedCardBatch(
+            prepare_authors=_prepare_post_card_authors,
+            prepare_communities=community_service._prepare_post_card_comuns,
+        ).prepare(request, posts_page, current_user)
         _attach_post_user_votes(posts_page, current_user)
         favorite_post_ids = _favorite_post_ids_for_user(posts_page, current_user)
+        author_rating_map = {
+            author_id: round(float(value), 2)
+            for author_id, value in _calculate_author_ratings(
+                {post.author_id: post.author for post in posts_page}.values()
+            ).items()
+        }
+        score_map, _ = _calculate_home_feed_post_metrics(
+            posts_page, author_ratings=author_rating_map,
+        )
         serialized = []
         for post in posts_page:
-            author_rating = round(float(_calculate_author_rating(post.author)), 2)
+            author_rating = author_rating_map.get(post.author_id, 0)
             if card_mode:
                 serialized.append(
                     _serialize_lightweight_post_card(
@@ -4251,6 +4273,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
                         now=now,
                         is_favorite=post.id in favorite_post_ids,
                         author_rating=author_rating,
+                        score_override=float(score_map[post.id]),
                         language=language,
                     )
                 )
@@ -4263,6 +4286,7 @@ def home_feed(request: HttpRequest) -> HttpResponse:
                     now=now,
                     is_favorite=post.id in favorite_post_ids,
                     author_rating=author_rating,
+                    score_override=float(score_map[post.id]),
                     language=language,
                 )
             )
@@ -4275,13 +4299,10 @@ def home_feed(request: HttpRequest) -> HttpResponse:
     translation_prefetch = _post_translation_prefetch(language)
     if translation_prefetch:
         prefetches.append(translation_prefetch)
-    posts = list(
-        posts_query.select_related("author")
-        .prefetch_related(*prefetches)
-        .order_by("-created_at")[:fetch_size]
+    posts = reader.load(
+        posts_query, limit=fetch_size, ordering=("-created_at", "pk"),
+        related=("author",), prefetches=prefetches,
     )
-    _attach_post_user_votes(posts, current_user)
-    favorite_post_ids = _favorite_post_ids_for_user(posts, current_user)
     author_ids = {post.author_id for post in posts}
     author_rating_map = {}
     if author_ids:
@@ -4302,11 +4323,11 @@ def home_feed(request: HttpRequest) -> HttpResponse:
     )
     community_day_counts: dict[tuple[int, object], int] = {}
 
-    serialized_posts = []
+    selected_posts = []
     remaining = posts[:]
     last_author_id = None
 
-    while remaining and len(serialized_posts) < target_count:
+    while remaining and len(selected_posts) < target_count:
         next_index = None
         for idx, candidate in enumerate(remaining):
             if candidate.author_id != last_author_id:
@@ -4325,36 +4346,30 @@ def home_feed(request: HttpRequest) -> HttpResponse:
             if community_day_count >= home_posts_per_community_per_day:
                 continue
             community_day_counts[community_day_key] = community_day_count + 1
-        if card_mode:
-            serialized_posts.append(
-                _serialize_lightweight_post_card(
-                    request,
-                    post,
-                    current_user,
-                    now=now,
-                    is_favorite=post.id in favorite_post_ids,
-                    author_rating=author_rating,
-                    language=language,
-                )
-            )
-        else:
-            serialized_posts.append(
-                _serialize_backend_post_card(
-                    request,
-                    post,
-                    current_user,
-                    now=now,
-                    is_favorite=post.id in favorite_post_ids,
-                    author_rating=author_rating,
-                    language=language,
-                )
-            )
+        selected_posts.append(post)
         last_author_id = post.author_id
 
+    page_posts = selected_posts[offset : offset + limit]
+    HomeFeedCardBatch(
+        prepare_authors=_prepare_post_card_authors,
+        prepare_communities=community_service._prepare_post_card_comuns,
+    ).prepare(request, page_posts, current_user)
+    _attach_post_user_votes(page_posts, current_user)
+    favorite_post_ids = _favorite_post_ids_for_user(page_posts, current_user)
+    serialize = _serialize_lightweight_post_card if card_mode else _serialize_backend_post_card
+    serialized_posts = [
+        serialize(
+            request, post, current_user, now=now,
+            is_favorite=post.id in favorite_post_ids,
+            author_rating=author_rating_map.get(post.author_id, 0),
+            score_override=float(post_score_map[post.id]), language=language,
+        )
+        for post in page_posts
+    ]
     return JsonResponse(
         {
             "ok": True,
-            "posts": serialized_posts[offset : offset + limit],
+            "posts": serialized_posts,
         }
     )
 
@@ -4584,7 +4599,8 @@ def _materialized_home_feed_response(
     current_user: User | None = None,
 ) -> HttpResponse | None:
     items_query = PublicFeedItem.objects.filter(feed=PublicFeedItem.FEED_HOME, post__companion_matched_at__isnull=True)
-    items_query = _filter_posts_for_language(items_query, language, prefix="post__")
+    reader = HomeFeedReader(language=language)
+    items_query = reader.for_language(items_query, prefix="post__")
     items_query = _apply_user_hidden_content(items_query, current_user, prefix="post__")
     prefetches = ["post__tags"]
     translation_prefetch = _post_translation_prefetch(language, prefix="post__")
@@ -4592,10 +4608,10 @@ def _materialized_home_feed_response(
         prefetches.append(translation_prefetch)
     target_count = offset + limit
     fetch_size = max(target_count * 5, 50)
-    items = list(
-        items_query.select_related("post", "post__author")
-        .prefetch_related(*prefetches)
-        .order_by("rank")[:fetch_size]
+    items = reader.load(
+        items_query, limit=fetch_size, ordering=("rank",),
+        related=("post", "post__author"),
+        prefetches=prefetches,
     )
     if not items:
         return None
@@ -4617,8 +4633,6 @@ def _materialized_home_feed_response(
         settings=rating_settings,
         author_ratings=author_rating_map,
     )
-    _attach_materialized_post_user_votes(posts, current_user)
-    favorite_post_ids = _favorite_post_ids_for_user(posts, current_user)
     visible_items = []
     community_day_counts: dict[tuple[int, object], int] = {}
     for item in items:
@@ -4635,6 +4649,14 @@ def _materialized_home_feed_response(
         if len(visible_items) >= target_count:
             break
 
+    page_items = visible_items[offset : offset + limit]
+    page_posts = [item.post for item, _ in page_items]
+    HomeFeedCardBatch(
+        prepare_authors=_prepare_post_card_authors,
+        prepare_communities=community_service._prepare_post_card_comuns,
+    ).prepare(request, page_posts, current_user)
+    _attach_materialized_post_user_votes(page_posts, current_user)
+    favorite_post_ids = _favorite_post_ids_for_user(page_posts, current_user)
     serialized = [
         _serialize_lightweight_post_card(
             request,
@@ -4645,7 +4667,7 @@ def _materialized_home_feed_response(
             score_override=score,
             language=language,
         )
-        for item, score in visible_items[offset : offset + limit]
+        for item, score in page_items
     ]
     return JsonResponse(
         {

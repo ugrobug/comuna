@@ -730,9 +730,9 @@ def _is_telegram_channel_author(author: Author | None) -> bool:
     return _author_telegram_source_comun(author) is not None
 
 
-def _prepare_post_card_comuns(posts: list[Post], *, known_comun: Comun) -> None:
+def _prepare_post_card_comuns(posts: list[Post], *, known_comun: Comun | None = None) -> None:
     """Preserve slug -> category assignment -> source precedence in a batch."""
-    by_slug = {known_comun.slug: known_comun} if known_comun.is_active else {}
+    by_slug = {known_comun.slug: known_comun} if known_comun and known_comun.is_active else {}
     missing_slugs = {_post_comun_slug(post) for post in posts} - set(by_slug) - {""}
     if missing_slugs:
         by_slug.update({
