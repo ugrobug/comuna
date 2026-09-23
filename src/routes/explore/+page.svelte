@@ -5,6 +5,7 @@
   import { siteToken, siteUser } from '$lib/siteAuth'
   import { loadBackendFeedSettings } from '$lib/settings'
   import LoginModal from '$lib/components/auth/LoginModal.svelte'
+  import GraphEditor from '$lib/components/explore/GraphEditor.svelte'
   import ExploreGraph from '$lib/components/explore/ExploreGraph.svelte'
   import PropertyPicker from '$lib/components/explore/PropertyPicker.svelte'
   import { ExploreApi } from '$lib/explore/api'
@@ -13,6 +14,30 @@
 
   const api = new ExploreApi()
   let data = emptyGraph()
+  let editingGraph = false, switchingEditor = false
+  let editor: GraphEditor
+  async function enterEditor() {
+    if (!$siteUser?.is_staff || switchingEditor) return
+    switchingEditor = true; error = ''
+    try {
+      const managed = await api.graph(true)
+      data = managed; editingGraph = true; filtersOpen = false; pinnedOpen = false; focusOnly = false; filters = []; query = ''
+    } catch (problem) { error = (problem as Error).message }
+    finally { switchingEditor = false }
+  }
+  async function exitEditor() {
+    if (switchingEditor) return
+    switchingEditor = true; error = ''
+    try {
+      if (editor && !await editor.flush()) return
+      data = await api.graph(); editingGraph = false; dismiss()
+    } catch (problem) { error = (problem as Error).message }
+    finally { switchingEditor = false }
+  }
+  function graphSelect(id: number) {
+    if (editingGraph) void editor?.selectFromGraph(id)
+    else selectNode(id)
+  }
   let loading = true, error = '', loginOpen = false
   let query = '', filters: number[] = [], selected: number | null = null
   let showProperties = false, focusOnly = false, busy: number | null = null
@@ -74,7 +99,7 @@
 
   async function load() {
     loading = true; error = ''
-    try { data = await api.graph() }
+    try { data = await api.graph(editingGraph && Boolean($siteUser?.is_staff)) }
     catch (problem) { error = (problem as Error).message }
     finally { loading = false }
   }
@@ -101,12 +126,13 @@
   <div class="explore-workspace">
     <header class="toolbar">
       <h1>Explore<span>Карта увлечений</span></h1>
-      {#if pinnedNodes.length}<button class="pinned-button" class:chosen={pinnedOpen} aria-expanded={pinnedOpen} on:click={togglePinned}>Зафиксированные · {pinnedNodes.length}</button>{/if}
+      {#if !editingGraph && pinnedNodes.length}<button class="pinned-button" class:chosen={pinnedOpen} aria-expanded={pinnedOpen} on:click={togglePinned}>Зафиксированные · {pinnedNodes.length}</button>{/if}
       <input class="search" aria-label="Поиск увлечения или сообщества" placeholder="Увлечение или сообщество" bind:value={query} on:focus={() => { if (pinnedOpen) dismiss() }} />
-      <button class="filter-button" class:chosen={filtersOpen} aria-expanded={filtersOpen} aria-controls="explore-filters" on:click={() => { if (!filtersOpen) dismiss(); filtersOpen = !filtersOpen }}>Фильтры{filters.length ? ` · ${filters.length}` : ''} ▾</button>
+      <button disabled={editingGraph} class="filter-button" class:chosen={filtersOpen} aria-expanded={filtersOpen} aria-controls="explore-filters" on:click={() => { if (!filtersOpen) dismiss(); filtersOpen = !filtersOpen }}>Фильтры{filters.length ? ` · ${filters.length}` : ''} ▾</button>
 
-      {#if $siteUser?.is_staff}<a class="manage" href="/moderator/explore" aria-label="Управление графом">Управление ↗</a>{/if}
+      {#if $siteUser?.is_staff}<button class="manage" class:chosen={editingGraph} disabled={switchingEditor || loading} aria-pressed={editingGraph} on:click={() => editingGraph ? exitEditor() : enterEditor()}>{editingGraph ? 'Готово' : 'Редактировать граф'}</button>{/if}
     </header>
+    {#if editingGraph && $siteUser?.is_staff}<GraphEditor bind:this={editor} bind:data initialNode={selected} on:select={(event) => { if (event.detail === null) selected = null; else revealNode(event.detail) }} on:close={exitEditor} />{/if}
     {#if filtersOpen}
       <section id="explore-filters" class="filters" aria-label="Фильтры графа">
         <div class="section-title"><h2>Найти своё</h2><button aria-label="Закрыть фильтры" on:click={() => filtersOpen = false}>×</button></div>
@@ -120,7 +146,7 @@
       {#if loading}<div class="empty" role="status"><span class="empty-symbol">◌</span><h2>Собираем карту интересов…</h2></div>
       {:else if !visible.length}<div class="empty"><span class="empty-symbol">◎</span><h2>{data.nodes.length ? 'Ничего не найдено' : 'Карта скоро появится'}</h2><p>{data.nodes.length ? 'Попробуйте другие свойства или сбросьте фильтры.' : 'Мы собираем увлечения и сообщества в одну карту.'}</p>{#if data.nodes.length}<button on:click={() => { filters = []; query = '' }}>Сбросить фильтры</button>{/if}</div>
       {:else}
-        <ExploreGraph nodes={visible} {edges} properties={data.properties} selected={active?.id ?? null} {highlightedPins} {showProperties} {filtersOpen} {focusOnly} on:select={(event) => selectNode(event.detail)} on:dismiss={dismiss}>
+        <ExploreGraph nodes={visible} {edges} properties={data.properties} selected={active?.id ?? null} {highlightedPins} {showProperties} {filtersOpen} {focusOnly} editable={editingGraph && Boolean($siteUser?.is_staff)} on:select={(event) => graphSelect(event.detail)} on:editEdge={(event) => editor?.editEdge(event.detail)} on:dismiss={() => { if (!editingGraph) dismiss() }}>
           {#if pinnedOpen}
             <div class="selected-title"><h2>Зафиксированные · {pinnedNodes.length}</h2><button class="close-selection" aria-label="Закрыть зафиксированные" on:click={dismiss}>×</button></div>
             <p class="description-empty">Выберите точку, чтобы продолжить исследование. Этот набор останется под рукой.</p>
@@ -175,7 +201,7 @@
   .filter-button{padding:10px 12px;border:1px solid #b2b8ca50;border-radius:10px;font-size:12px;white-space:nowrap}
   .pinned-button{padding:8px 10px;border:1px solid #8174ce50;border-radius:10px;font-size:12px;white-space:nowrap;color:#8174ce}
   .chosen{background:#8174ce18;color:#8174ce}
-  .manage{font-size:12px;color:#8174ce;white-space:nowrap}
+  .manage{padding:8px;border-radius:8px;font-size:12px;color:#8174ce;white-space:nowrap}
   .filters{position:absolute;z-index:4;top:92px;left:20px;width:330px;max-width:calc(100% - 40px);max-height:calc(100% - 112px);overflow:auto;border:1px solid #b2b8ca40;background:var(--explore-surface);border-radius:16px;padding:18px;box-shadow:0 12px 35px #3037511a;box-sizing:border-box}
   .section-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}.section-title h2{font-size:15px;font-weight:600}.section-title button,.close-selection{font-size:22px;line-height:1;padding:4px 8px;color:#8b91a2}
   .toggle{display:flex;align-items:center;gap:8px;font-size:12px;margin:18px 0;line-height:1.5}.toggle input{accent-color:#8174ce}

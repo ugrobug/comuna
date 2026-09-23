@@ -27,6 +27,7 @@ export class ExploreApi {
   removeImage(id: number) { return this.request(`nodes/${id}/image/`, 'DELETE') }
   imageUrl(url: string) { return url.startsWith('/') ? `${getBackendBaseUrl()}${url}` : url }
   addEdge(source: number, target: number) { return this.request('edges/', 'POST', { source, target }) }
+  saveEdge(source: number, target: number, id?: number) { return this.request<{ id: number }>(id ? `edges/${id}/` : 'edges/', id ? 'PATCH' : 'POST', { source, target }) }
   removeEdge(id: number) { return this.request(`edges/${id}/`, 'DELETE') }
   subscribe(id: number, enabled: boolean) { return this.request<{ subscribed: boolean; subscribers_count?: number | null }>(`nodes/${id}/subscription/`, enabled ? 'POST' : 'DELETE') }
 }

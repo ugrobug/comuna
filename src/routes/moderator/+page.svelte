@@ -952,7 +952,7 @@
   </section>
 
   <nav class="moderator-tabs" aria-label="Разделы модераторской">
-    <a href="/moderator/explore" class="px-4 py-2">Explore — граф увлечений ↗</a>
+    <a href="/explore" class="px-4 py-2">Explore — граф увлечений ↗</a>
     <button
       type="button"
       class:active={activeTab === 'analytics'}

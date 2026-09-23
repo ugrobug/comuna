@@ -1,7 +1,7 @@
 # Explore
 
 `explore` is an independent Django app with its own tables and migrations. Public UI:
-`/explore`; site moderator UI: `/moderator/explore`; API: `/api/explore/`.
+`/explore` (including staff-only inline editing); `/moderator/explore` redirects there; API: `/api/explore/`.
 
 ## Domain and write boundary
 
@@ -91,3 +91,14 @@ npm run build
 ```
 
 Deployment requires `python manage.py migrate` and the normal nginx restart.
+
+### Inline moderation
+
+Site staff enable “Редактировать граф” on `/explore`. The managed graph includes hidden
+nodes (dashed circles). Clicking a node opens its form; clicking a line edits its endpoints.
+The overlay creates interests and nodes for existing communities, edits properties/images,
+and creates, updates or removes links. Endpoints can be searched or picked on the graph.
+Drafts save before switching nodes or exiting; failed validation keeps the current draft.
+The editor collapses while picking endpoints so the graph stays accessible on mobile.
+All mutations and managed reads require `is_staff` on the server, including edge PATCH;
+edge replacement uses the same atomic graph lock, validation and notification boundary.

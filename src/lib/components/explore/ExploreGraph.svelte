@@ -17,7 +17,8 @@
   export let showProperties = false
   export let filtersOpen = false
   export let focusOnly = false
-  const dispatch = createEventDispatcher<{ select: number; dismiss: void }>()
+  export let editable = false
+  const dispatch = createEventDispatcher<{ select: number; dismiss: void; editEdge: ExploreEdge }>()
   let svg: SVGSVGElement
   let canvas: HTMLDivElement
   let engine: InstanceType<typeof ELK>
@@ -228,17 +229,21 @@
     <g transform={`translate(${tx},${ty}) scale(${scale})`}>
       {#each edges as edge (edge.id)}
         <path d={edgePath(edgeCoordinates(edge, byId, routes))} class:connected={selectedIds.has(edge.source) || selectedIds.has(edge.target)} class:muted={hasSelection && !selectedIds.has(edge.source) && !selectedIds.has(edge.target)} class:concealed={focusOnly && hasSelection && !selectedIds.has(edge.source) && !selectedIds.has(edge.target)} />
+        {#if editable}
+          <path class="edge-hit" d={edgePath(edgeCoordinates(edge, byId, routes))} role="button" tabindex="0" aria-label={`Изменить связь: ${nodeById.get(edge.source)?.title} — ${nodeById.get(edge.target)?.title}`}
+            on:pointerdown|stopPropagation on:click|stopPropagation={() => dispatch('editEdge', edge)} on:keydown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); dispatch('editEdge', edge) } }} />
+        {/if}
       {/each}
       {#each points as p (p.id)}
         {@const node = nodeById.get(p.id)!}
         <g transform={`translate(${p.x},${p.y})`} role="button" tabindex={focusOnly && hasSelection && !selectedIds.has(p.id) && !neighbors.has(p.id) ? -1 : 0} aria-hidden={focusOnly && hasSelection && !selectedIds.has(p.id) && !neighbors.has(p.id)} aria-label={`${node.title}, ${node.kind === 'community' ? 'сообщество' : 'элемент'}`} aria-pressed={selectedIds.has(p.id)}
-          class="node" class:concealed={focusOnly && hasSelection && !selectedIds.has(p.id) && !neighbors.has(p.id)} class:selected={selectedIds.has(p.id)} class:neighbor={neighbors.has(p.id)} class:muted={hasSelection && !selectedIds.has(p.id) && !neighbors.has(p.id)}
+          class="node" class:hidden-node={!node.is_active} class:concealed={focusOnly && hasSelection && !selectedIds.has(p.id) && !neighbors.has(p.id)} class:selected={selectedIds.has(p.id)} class:neighbor={neighbors.has(p.id)} class:muted={hasSelection && !selectedIds.has(p.id) && !neighbors.has(p.id)}
           on:pointerdown={(event) => start(event, p.id)} on:click={() => select(p.id)} on:keydown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); dispatch('select', p.id) } }}>
           <circle class="halo" r={node.kind === 'community' ? 24 : 23.8} />
           <circle class:community={node.kind === 'community'} class="core" r={node.kind === 'community' ? 11 : 14.7} />
           {#if node.subscribed}<circle cx={node.kind === 'community' ? 15 : 11} cy={node.kind === 'community' ? -14 : -10} r="5" fill="#22a88a" stroke="white" stroke-width="2" />{/if}
           <text y={node.kind === 'community' ? 32 : 43} text-anchor="middle">{graphTitle(node.title)}</text>
-          <title>{node.title}</title>
+          <title>{node.title}{!node.is_active ? ' · скрыт от посетителей' : ''}</title>
           {#if showProperties && node.show_properties && node.property_ids.length}
             <text class="property-label" y={node.kind === 'community' ? 48 : 59} text-anchor="middle">{propertyText(node)}</text>
           {/if}
@@ -246,7 +251,7 @@
       {/each}
     </g>
   </svg>
-  {#if (activePoint || highlightedPins.length) && !arranging && !layoutError}
+  {#if !editable && (activePoint || highlightedPins.length) && !arranging && !layoutError}
     {#key selected}
     {#if width <= 700 && activePoint}
       <MobileNodeCard label={nodeById.get(activePoint.id)?.kind === 'community' ? 'Карточка сообщества' : 'Карточка увлечения'} on:dismiss={() => dispatch('dismiss')}><slot /></MobileNodeCard>
@@ -262,6 +267,7 @@
 </div>
 
 <style>
+  path.edge-hit{stroke:transparent;stroke-width:16;vector-effect:non-scaling-stroke;pointer-events:stroke;cursor:pointer}path.edge-hit:hover,path.edge-hit:focus-visible{stroke:#8174ce44;stroke-width:8;outline:none}.node.hidden-node .core{stroke-dasharray:3 3;fill-opacity:.45}
   .node-inspector{overscroll-behavior:contain;position:absolute;z-index:2;width:320px;max-width:calc(100% - 20px);box-sizing:border-box;overflow:auto;padding:16px;border:1px solid #b2b8ca60;border-radius:16px;background:var(--explore-surface,#fff);box-shadow:0 10px 32px #30375124;color:var(--explore-ink,#35405a)}
   .pending{visibility:hidden}.layout-status{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:13px;color:#8174ce}.controls button:disabled{opacity:.5;cursor:wait}
   .graph-canvas{position:relative;min-width:0;height:100%;min-height:0;background-color:var(--explore-canvas,#f6f7fb);background-image:radial-gradient(#b9c2d340 .9px,transparent .9px);background-size:22px 22px;overflow:hidden}svg{display:block;width:100%;height:100%;min-height:0;touch-action:none;cursor:grab}svg:active{cursor:grabbing}path{fill:none;stroke-linejoin:round;stroke:#c6cedc;stroke-width:1.4;transition:stroke .2s}path.connected{stroke:#8174ce;stroke-width:1.25;vector-effect:non-scaling-stroke}path.muted{opacity:.16}.concealed{visibility:hidden;pointer-events:none}.node{cursor:pointer;outline:none;transition:opacity .2s}.node.muted{opacity:.22}.halo{fill:transparent;stroke:transparent;stroke-width:1.5}.node.selected .halo,.node:focus-visible .halo{fill:#8174ce28;stroke:#8174ce;stroke-width:3;vector-effect:non-scaling-stroke}.node.selected text{font-weight:750}.node:focus-visible .halo{stroke-dasharray:4 3}.node.neighbor .halo{fill:#8174ce0c}.core{fill:#8174ce;stroke:#e6e1f9;stroke-width:2.8}.core.community{fill:#dc9b50;stroke:#f7e8d6;stroke-width:3}.node.selected .core{fill:#6555b4}.node.selected .core.community{fill:#c4883c}text{font:500 13px system-ui;fill:var(--explore-ink,#35405a);paint-order:stroke;stroke:var(--explore-canvas,#f6f7fb);stroke-width:4px;stroke-linejoin:round}.property-label{font-size:10px;fill:#788398}.legend{position:absolute;bottom:48px;left:20px;display:flex;gap:18px;font-size:11px;color:#7a8295;pointer-events:none}.legend span{display:flex;align-items:center;gap:7px}i{width:8px;height:8px;border-radius:50%}.element{background:#8174ce}.community{background:#dc9b50}.controls{position:absolute;bottom:20px;right:20px;display:flex;align-items:center;gap:8px;border:1px solid #dce1ea;border-radius:12px;background:var(--explore-surface,#fff);padding:5px;color:var(--explore-ink,#35405a)}button{border:0;background:transparent;font-size:13px;padding:7px;cursor:pointer}button:hover{background:#8174ce15;border-radius:8px}.controls span{font-size:10px;min-width:34px;text-align:center}.hint{position:absolute;bottom:22px;left:20px;font-size:10px;color:#8b94a5;pointer-events:none}@media(max-width:700px){text{font-size:13px}.property-label{font-size:10px}.hint{display:none}.graph-canvas,svg{min-height:0}.controls{right:10px;left:10px;bottom:16px;justify-content:center;gap:2px}.controls button{font-size:11px;padding:6px}.legend{max-width:calc(100% - 24px)}.legend{left:12px;top:130px;bottom:auto;gap:12px}}

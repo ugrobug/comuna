@@ -102,6 +102,11 @@ class EdgeListView(ExploreView):
 class EdgeDetailView(ExploreView):
     staff_required = True
 
+    def patch(self, request, edge_id):
+        data = self.body()
+        edge = GraphEditor.apply(lambda: GraphEditor.add_edge(data, edge_id))
+        return JsonResponse({"id": edge.pk})
+
     def delete(self, request, edge_id):
         GraphEditor.apply(lambda: get_object_or_404(Edge, pk=edge_id).delete())
         return JsonResponse({"ok": True})

@@ -149,11 +149,13 @@ class GraphEditor:
         return node
 
     @staticmethod
-    def add_edge(data):
+    def add_edge(data, edge_id=None):
         ids = [data.get("source"), data.get("target")]
         if any(type(item) is not int or item <= 0 for item in ids):
             raise ValidationError("Укажите оба узла связи.")
-        edge = Edge(source=get_object_or_404(Node, pk=ids[0]), target=get_object_or_404(Node, pk=ids[1]))
+        edge = get_object_or_404(Edge, pk=edge_id) if edge_id else Edge()
+        edge.source = get_object_or_404(Node, pk=ids[0])
+        edge.target = get_object_or_404(Node, pk=ids[1])
         # Community placement is independent of the order selected in the UI.
         # Keep it below the element so existing descendant subscriptions work.
         if edge.source.kind == Node.Kind.COMMUNITY and edge.target.kind == Node.Kind.ELEMENT:

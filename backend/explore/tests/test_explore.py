@@ -109,6 +109,47 @@ class ExploreTests(TestCase):
                 self.link(source, target)
         self.assertEqual(self.child.incoming_edges.count(), 2)
 
+    def test_only_staff_can_mutate_nodes_and_links(self):
+        edge = self.link(self.root, self.child)
+        for token, status in [(None, 401), (self.member_token, 403)]:
+            for method, path, body in [
+                ("post", "nodes/", {"title": "Denied"}),
+                ("patch", f"nodes/{self.root.pk}/", {"title": "Denied"}),
+                ("delete", f"nodes/{self.root.pk}/", {}),
+                ("post", "edges/", {"source": self.root.pk, "target": self.other.pk}),
+                ("patch", f"edges/{edge.pk}/", {"source": self.root.pk, "target": self.other.pk}),
+                ("delete", f"edges/{edge.pk}/", {}),
+            ]:
+                with self.subTest(token=bool(token), method=method, path=path):
+                    self.assertEqual(self.request(method, path, body, token).status_code, status)
+        edge.refresh_from_db()
+        self.root.refresh_from_db()
+        self.assertEqual(edge.target_id, self.child.pk)
+        self.assertEqual(self.root.title, "Велоспорт")
+
+    def test_staff_retargets_edge_atomically_and_notifies_new_community(self):
+        edge = self.link(self.root, self.child)
+        SubscriptionService.set(self.member, self.root.pk, True)
+        response = self.request("patch", f"edges/{edge.pk}/",
+                                {"source": self.club.pk, "target": self.root.pk}, self.staff_token)
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json(), {"id": edge.pk})
+        edge.refresh_from_db()
+        self.assertEqual((edge.source_id, edge.target_id), (self.root.pk, self.club.pk))
+        self.assertEqual(SiteNotification.objects.filter(user=self.member, event_key="explore_new_community").count(), 1)
+        # Saving the same endpoints again does not re-announce the community.
+        self.request("patch", f"edges/{edge.pk}/", {"source": self.root.pk, "target": self.club.pk}, self.staff_token)
+        self.assertEqual(SiteNotification.objects.filter(user=self.member, event_key="explore_new_community").count(), 1)
+
+    def test_invalid_edge_update_keeps_original_connection(self):
+        edge = self.link(self.root, self.child)
+        self.link(self.root, self.other)
+        for source, target in [(self.root.pk, self.root.pk), (self.root.pk, self.other.pk), (self.other.pk, self.root.pk)]:
+            response = self.request("patch", f"edges/{edge.pk}/", {"source": source, "target": target}, self.staff_token)
+            self.assertEqual(response.status_code, 400, response.content)
+            edge.refresh_from_db()
+            self.assertEqual((edge.source_id, edge.target_id), (self.root.pk, self.child.pk))
+
     def test_new_elements_are_immediately_available_for_connections(self):
         created = self.request("post", "nodes/", {"title": "Ракеточный спорт"}, self.staff_token)
         self.assertEqual(created.status_code, 201)
