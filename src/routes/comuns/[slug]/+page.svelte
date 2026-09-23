@@ -60,7 +60,7 @@
   )
   let categoryFilterExplicit = Boolean(data.categoryFilterExplicit ?? selectedCategorySlug)
   let lastCategoryFilterDataSignature = ''
-  let hasMore = posts.length === pageSize
+  let hasMore = data.hasMore ?? posts.length === pageSize
   let loadingMore = false
   let loadingCategory = false
   let lastPostsRef = data.posts
@@ -228,7 +228,7 @@
   $: if (data?.posts && data.posts !== lastPostsRef) {
     lastPostsRef = data.posts
     posts = data.posts ?? []
-    hasMore = posts.length === pageSize
+    hasMore = data.hasMore ?? posts.length === pageSize
     loadingMore = false
   }
   $: if (data?.comun && data.comun !== lastComunRef) {
@@ -1138,7 +1138,46 @@
     )
     url.searchParams.set('limit', String(pageSize))
     url.searchParams.set('offset', String(offset))
+    url.searchParams.set('include_counts', '0')
+    url.searchParams.set('include_comun', '0')
+    url.searchParams.set('include_editor', '0')
     return url.toString()
+  }
+
+  let countsMounted = false
+  let countsRequestKey = ''
+  let countsController: AbortController | null = null
+  $: nextCountsRequestKey = JSON.stringify([
+    comun?.slug, contentLanguage, categoryFilterExplicit, selectedCategorySlugs, $siteToken,
+  ])
+  $: if (countsMounted && comun?.slug && nextCountsRequestKey !== countsRequestKey) {
+    countsRequestKey = nextCountsRequestKey
+    void loadCounts(countsRequestKey)
+  }
+
+  const loadCounts = async (requestKey: string) => {
+    countsController?.abort()
+    const controller = new AbortController()
+    countsController = controller
+    categoryCounts = []
+    totalPostsCount = null
+    uncategorizedPostsCount = 0
+    const url = new URL(buildPostsUrl(0))
+    url.searchParams.set('counts_only', '1')
+    try {
+      const response = await fetch(url.toString(), {
+        signal: controller.signal,
+        headers: $siteToken ? { Authorization: `Bearer ${$siteToken}` } : undefined,
+      })
+      if (!response.ok) return
+      const payload = await response.json()
+      if (controller.signal.aborted || requestKey !== countsRequestKey) return
+      categoryCounts = Array.isArray(payload.category_counts) ? payload.category_counts : []
+      totalPostsCount = typeof payload.total_count === 'number' ? payload.total_count : null
+      uncategorizedPostsCount = Math.max(Number(payload.uncategorized_count) || 0, 0)
+    } catch (error) {
+      if (!controller.signal.aborted) console.error('Failed to load community counts', error)
+    }
   }
 
   const showCommunityHiddenContentAlways = () => {
@@ -1199,7 +1238,9 @@
       posts = [...posts, ...nextPosts]
     }
     hasMore =
-      typeof totalPostsCount === 'number'
+      typeof payload?.has_more === 'boolean'
+        ? payload.has_more
+        : typeof totalPostsCount === 'number'
         ? posts.length < totalPostsCount
         : nextPosts.length === pageSize
   }
@@ -1556,6 +1597,7 @@
 
   onMount(() => {
     if (!browser) return
+    countsMounted = true
     if ($siteToken && !$siteUser) {
       void refreshSiteUser().catch(() => null)
     }
@@ -1566,6 +1608,7 @@
   })
 
   onDestroy(() => {
+    countsController?.abort()
     if (browser) {
       window.removeEventListener('scroll', onScroll)
       window.removeEventListener('keydown', onWindowKeydown)

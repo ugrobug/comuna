@@ -26,6 +26,9 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from communities import serializers as community_serializers
 from communities import service as community_service
 from communities.analytics import build_community_analytics
+from communities.feed_reader import CommunityFeedReader
+from rabotaem_backend.read_context import with_read_context
+from ratings.service import calculate_home_feed_post_metrics
 from communities.models import (
     Comun,
     ComunCategory,
@@ -2271,14 +2274,25 @@ def comun_glossary_image_upload(request: HttpRequest, slug: str) -> HttpResponse
     return JsonResponse({"ok": True, "image_path": image_path, "image_url": image_url})
 
 
+def _comun_feed_prefetches():
+    return [
+        Prefetch("moderators", queryset=User.objects.select_related("site_profile").order_by("username")),
+        Prefetch("excluded_authors", queryset=Author.objects.order_by("username")),
+        "categories",
+        Prefetch("tags", queryset=Tag.objects.order_by("name")),
+        Prefetch("blocked_tags", queryset=Tag.objects.order_by("name")),
+    ]
+
+
 @csrf_exempt
+@with_read_context
 def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
     current_user = user_views._get_user_from_request(request)
     try:
         comun = (
             Comun.objects.filter(slug=slug)
             .select_related("creator", "welcome_post", "telegram_source_author")
-            .prefetch_related("moderators", "excluded_authors", "categories", "tags", "blocked_tags")
+            .prefetch_related(*_comun_feed_prefetches())
             .get()
         )
     except Comun.DoesNotExist:
@@ -2634,7 +2648,7 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
     comun = (
         Comun.objects.filter(id=comun.id)
         .select_related("creator", "welcome_post", "telegram_source_author")
-        .prefetch_related("moderators", "excluded_authors", "categories", "tags", "blocked_tags")
+        .prefetch_related(*_comun_feed_prefetches())
         .get()
     )
     if comun_translation_content_changed:
@@ -2856,6 +2870,7 @@ def comun_vote(request: HttpRequest, slug: str) -> HttpResponse:
 
 @csrf_exempt
 @anonymous_cache(prefix="comun-posts", seconds=45)
+@with_read_context
 @transaction.atomic
 def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
     current_user = user_views._get_user_from_request(request)
@@ -2863,7 +2878,7 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
         comun = (
             Comun.objects.filter(slug=slug)
             .select_related("creator", "welcome_post", "telegram_source_author")
-            .prefetch_related("moderators", "excluded_authors", "categories", "blocked_tags")
+            .prefetch_related(*_comun_feed_prefetches())
             .get()
         )
     except Comun.DoesNotExist:
@@ -3088,62 +3103,27 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
     all_posts_query = _comun_posts_base_queryset(comun, now)
     if comun.welcome_post_id:
         all_posts_query = all_posts_query.exclude(id=comun.welcome_post_id)
-    all_posts_query = community_service._filter_posts_for_language(all_posts_query, language)
-
-    all_total_count = all_posts_query.count()
-    category_count_rows = (
-        ComunPostCategoryAssignment.objects.filter(
-            comun_id=comun.id,
-            category_id__isnull=False,
-            post_id__in=all_posts_query.values("id"),
-        )
-        .values("category_id")
-        .annotate(count=Count("post_id", distinct=True))
-    )
-    category_counts_map = {
-        int(row["category_id"]): int(row["count"] or 0) for row in category_count_rows if row.get("category_id")
-    }
-    category_counts_payload = [
-        {
-            "category_id": category.id,
-            "slug": category.slug,
-            "count": category_counts_map.get(category.id, 0),
-        }
-        for category in visible_categories
-    ]
-    uncategorized_count = max(
-        all_total_count - sum(item["count"] for item in category_counts_payload),
-        0,
-    )
-
-    base_query = all_posts_query
-    if category_filter_explicit:
-        selected_category_ids = [category.id for category in selected_categories]
-        if not selected_category_ids:
-            base_query = base_query.none()
-        else:
-            base_query = base_query.filter(
-                comun_category_assignments__comun_id=comun.id,
-                comun_category_assignments__category_id__in=selected_category_ids,
-            )
-    elif selected_category:
-        base_query = base_query.filter(
-            comun_category_assignments__comun_id=comun.id,
-            comun_category_assignments__category_id=selected_category.id,
-        )
-
-    total_count = base_query.count() if category_filter_explicit else all_total_count
+    reader = CommunityFeedReader(all_posts_query, community=comun, language=language)
+    category_ids = [category.id for category in selected_categories] if category_filter_explicit else None
+    counts_only = _request_flag(request, "counts_only")
+    include_counts = counts_only or request.GET.get("include_counts") != "0"
+    counts = reader.counts(visible_categories, category_ids) if include_counts else {}
+    if counts_only:
+        response = JsonResponse({"ok": True, **counts})
+        # Counters can change as soon as an invitation is accepted.
+        response["Cache-Control"] = "private, no-store"
+        return response
 
     post_prefetches = ["tags"]
     translation_prefetch = community_service._post_translation_prefetch(language)
     if translation_prefetch:
         post_prefetches.append(translation_prefetch)
-    posts = list(
-        base_query.select_related("author")
-        .prefetch_related(*post_prefetches)
-        .distinct()
-        .order_by("-created_at")[offset : offset + limit]
+    posts, has_more = reader.page(
+        offset=offset, limit=limit, prefetches=post_prefetches, category_ids=category_ids,
     )
+    community_service._prepare_post_card_comuns(posts, known_comun=comun)
+    _fv()._prepare_post_card_authors(request, posts)
+    scores, _day_keys = calculate_home_feed_post_metrics(posts, author_ratings={}) if posts else ({}, {})
 
     community_service._attach_post_user_votes(posts, current_user)
     favorite_post_ids = community_service._favorite_post_ids_for_user(posts, current_user)
@@ -3163,6 +3143,8 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
             now=now,
             is_favorite=post.id in favorite_post_ids,
             language=language,
+            score_override=scores.get(post.id),
+            include_editor=request.GET.get("include_editor") != "0",
         )
         assignment = assignments.get(post.id)
         if assignment and assignment.category_id:
@@ -3176,14 +3158,14 @@ def comun_posts(request: HttpRequest, slug: str) -> HttpResponse:
     return JsonResponse(
         {
             "ok": True,
-            "comun": _serialize_comun(request, comun, current_user=current_user, language=language),
+            **({"comun": _serialize_comun(request, comun, current_user=current_user, language=language)}
+               if request.GET.get("include_comun") != "0" else {}),
             "posts": serialized_posts,
             "selected_category": serialize_category(selected_category),
             "selected_category_slugs": [category.slug for category in selected_categories],
             "category_filter_explicit": category_filter_explicit,
-            "total_count": total_count,
-            "category_counts": category_counts_payload,
-            "uncategorized_count": uncategorized_count,
+            "has_more": has_more,
+            **counts,
         }
     )
 

@@ -63,6 +63,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    "rabotaem_backend.performance.ApiTimingMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "rabotaem_backend.cache.DynamicPostPrivacyMiddleware",

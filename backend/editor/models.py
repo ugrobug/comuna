@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from rabotaem_backend.read_context import memoize_read
+
 import re
 
 from django.contrib.auth import get_user_model
@@ -178,6 +180,7 @@ def normalize_post_template_type_code(value: object) -> str:
     return code
 
 
+@memoize_read
 def configured_post_template_type_values() -> set[str]:
     try:
         values = {
@@ -224,6 +227,7 @@ def post_template_type_label(template_type: object) -> str:
     return code
 
 
+@memoize_read
 def post_template_type_choices() -> tuple[tuple[str, str], ...]:
     try:
         configs = list(

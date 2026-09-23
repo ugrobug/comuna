@@ -28,6 +28,9 @@ export const load = async ({ fetch, params, url, parent }) => {
     url.origin
   )
   postsUrl.searchParams.set('limit', String(PAGE_SIZE))
+  postsUrl.searchParams.set('include_counts', '0')
+  postsUrl.searchParams.set('include_comun', '0')
+  postsUrl.searchParams.set('include_editor', '0')
   const postsResponse = await fetch(postsUrl.toString())
   if (!postsResponse.ok) {
     if (postsResponse.status === 404) {
@@ -40,6 +43,7 @@ export const load = async ({ fetch, params, url, parent }) => {
   return {
     comun: parentData.comun ?? postsPayload?.comun ?? null,
     posts: postsPayload?.posts ?? [],
+    hasMore: Boolean(postsPayload?.has_more),
     selectedCategory: postsPayload?.selected_category ?? null,
     selectedCategorySlugs: Array.isArray(postsPayload?.selected_category_slugs)
       ? postsPayload.selected_category_slugs

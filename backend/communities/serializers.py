@@ -467,11 +467,14 @@ def _serialize_comun(
     roadmap_categories = [
         category for category in categories if int(category.id) in roadmap_category_ids
     ]
-    moderators = list(comun.moderators.select_related("site_profile").order_by("username"))
-    excluded_authors = list(comun.excluded_authors.filter(is_blocked=False).order_by("username"))
+    moderators = (
+        list(comun.moderators.all()) if "moderators" in getattr(comun, "_prefetched_objects_cache", {})
+        else list(comun.moderators.select_related("site_profile").order_by("username"))
+    )
+    excluded_authors = sorted((author for author in comun.excluded_authors.all() if not author.is_blocked), key=lambda author: author.username)
     telegram_source_author = getattr(comun, "telegram_source_author", None)
-    tags = list(comun.tags.filter(is_active=True).order_by("name"))
-    blocked_tags = list(comun.blocked_tags.filter(is_active=True).order_by("name"))
+    tags = sorted((tag for tag in comun.tags.all() if tag.is_active), key=lambda tag: tag.name)
+    blocked_tags = sorted((tag for tag in comun.blocked_tags.all() if tag.is_active), key=lambda tag: tag.name)
     glossary_terms = list(community_service._active_comun_glossary_queryset(comun).order_by("sort_order", "term"))
     welcome_post_payload = None
     can_moderate = community_service._comun_is_moderator(current_user, comun)

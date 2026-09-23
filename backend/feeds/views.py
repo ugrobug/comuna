@@ -385,11 +385,49 @@ def _serialize_post_author(
     return payload
 
 
+def _prepare_post_card_authors(request: HttpRequest, posts: list[Post]) -> None:
+    authors = {
+        post.author_id: post.author for post in posts
+        if not post.author.channel_url and post.author.channel_id is None
+    }
+    if not authors:
+        return
+    linked = {}
+    for row in (
+        AuthorAdmin.objects.filter(author_id__in=authors, verified_at__isnull=False)
+        .order_by("created_at", "id").values("author_id", "user_id")
+    ):
+        linked.setdefault(row["author_id"], row["user_id"])
+    user_filter = Q(pk__in=list(linked.values()))
+    for author_id, author in authors.items():
+        if author_id not in linked:
+            user_filter |= Q(username__iexact=(author.username or "").strip())
+    users = list(
+        User.objects.filter(user_filter).select_related("site_profile", "telegram_account", "vk_account").order_by("pk")
+    )
+    by_id = {user.pk: user for user in users}
+    by_name = {}
+    for user in users:
+        by_name.setdefault(user.username.lower(), user)
+    cache = getattr(request, "_personal_author_site_user_cache", {})
+    for post in posts:
+        if post.author_id not in authors:
+            continue
+        author = post.author
+        user = by_id.get(linked[author.pk]) if author.pk in linked else by_name.get((author.username or "").strip().lower())
+        cache[author.pk] = user
+        author._card_site_user_id = user.pk if user else None
+    request._personal_author_site_user_cache = cache
+
+
 def _site_user_id_for_author(author: Author | None) -> int | None:
     if not author:
         return None
     if author.channel_url or author.channel_id is not None:
         return None
+
+    if hasattr(author, "_card_site_user_id"):
+        return author._card_site_user_id
 
     linked_user_id = (
         AuthorAdmin.objects.filter(author=author, verified_at__isnull=False)
@@ -4428,6 +4466,8 @@ def _serialize_backend_post_card(
     is_favorite: bool = False,
     author_rating: int | float = 0,
     language: str = ORIGINAL_POST_LANGUAGE,
+    score_override: int | float | None = None,
+    include_editor: bool = True,
 ) -> dict:
     now = now or timezone.now()
     _content, poll_payload = _content_with_live_poll(post, current_user)
@@ -4446,7 +4486,7 @@ def _serialize_backend_post_card(
         "language": language,
         "is_translated": translation is not None,
         "template": template_payload,
-        "enabled_template_editor_blocks": _serialize_enabled_template_editor_blocks(template_payload),
+        **({"enabled_template_editor_blocks": _serialize_enabled_template_editor_blocks(template_payload)} if include_editor else {}),
         "can_manage_bug_report_status": _user_can_manage_bug_report_status(current_user, post),
         "bug_report_confirmation": _serialize_bug_report_confirmation(post, current_user),
         "comun": community_service._serialize_post_comun(request, post, current_user),
@@ -4467,7 +4507,7 @@ def _serialize_backend_post_card(
         ),
         "tags": _serialize_tags(post.tags.all()),
         "is_favorite": is_favorite,
-        "score": _post_rating_score(post, author_rating=author_rating),
+        "score": float(score_override) if score_override is not None else _post_rating_score(post, author_rating=author_rating),
         "rating": post.rating,
         "comments_count": post.comments_count,
         "likes_count": post.rating,

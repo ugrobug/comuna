@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from rabotaem_backend.read_context import memoize_read
+
 import base64
 import json
 import re
@@ -1502,6 +1504,7 @@ def _sync_template_derived_raw_data(
         raw_data.pop("poll_html", None)
 
 
+@memoize_read
 def _serialize_post_template_type_options() -> list[dict]:
     descriptions_by_type: dict[str, str] = {
         POST_TEMPLATE_TYPE_TWEET: "До 280 символов и один медиаблок с изображениями.",
@@ -1890,6 +1893,7 @@ def _sync_comun_custom_post_templates(
     return None
 
 
+@memoize_read
 def _template_editor_blocks_by_template() -> dict[str, list[str]]:
     payload: dict[str, list[str]] = {
         template_type: default_enabled_template_editor_blocks(template_type)

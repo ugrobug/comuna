@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from rabotaem_backend.read_context import memoize_read
+
 from django.contrib.auth import get_user_model
 from django.db.models import Avg, Count
 from django.http import HttpRequest
@@ -169,6 +171,11 @@ def _serialize_enabled_template_editor_blocks(
     template_payload: dict | None = None,
 ) -> list[str]:
     template_type = editor_service._template_type_from_payload(template_payload)
+    return _enabled_blocks_for_template_type(template_type)
+
+
+@memoize_read
+def _enabled_blocks_for_template_type(template_type: str) -> list[str]:
     config = (
         PostTemplateConfig.objects.filter(template_type=template_type, is_active=True)
         .values("enabled_editor_blocks")

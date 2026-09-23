@@ -594,6 +594,8 @@ def _comun_is_moderator(user: User | None, comun: Comun) -> bool:
         return False
     if comun.creator_id == user.id:
         return True
+    if "moderators" in getattr(comun, "_prefetched_objects_cache", {}):
+        return any(moderator.pk == user.pk for moderator in comun.moderators.all())
     return comun.moderators.filter(id=user.id).exists()
 
 
@@ -728,7 +730,39 @@ def _is_telegram_channel_author(author: Author | None) -> bool:
     return _author_telegram_source_comun(author) is not None
 
 
+def _prepare_post_card_comuns(posts: list[Post], *, known_comun: Comun) -> None:
+    """Preserve slug -> category assignment -> source precedence in a batch."""
+    by_slug = {known_comun.slug: known_comun} if known_comun.is_active else {}
+    missing_slugs = {_post_comun_slug(post) for post in posts} - set(by_slug) - {""}
+    if missing_slugs:
+        by_slug.update({
+            comun.slug: comun
+            for comun in Comun.objects.filter(slug__in=missing_slugs, is_active=True).prefetch_related("moderators")
+        })
+    pending = []
+    for post in posts:
+        comun = by_slug.get(_post_comun_slug(post))
+        if comun is not None:
+            post._card_comun = comun
+        else:
+            pending.append(post)
+    assigned = {}
+    if pending:
+        for assignment in (
+            ComunPostCategoryAssignment.objects.filter(post_id__in=[post.pk for post in pending], comun__is_active=True)
+            .select_related("comun")
+            .prefetch_related("comun__moderators")
+            .order_by("comun__sort_order", "comun__name")
+        ):
+            assigned.setdefault(assignment.post_id, assignment.comun)
+    for post in pending:
+        comun = assigned.get(post.pk) or _author_telegram_source_comun(post.author)
+        post._card_comun = comun if comun and comun.is_active else None
+
+
 def _post_comun(post: Post) -> Comun | None:
+    if hasattr(post, "_card_comun"):
+        return post._card_comun
     comun_slug = _post_comun_slug(post)
     if comun_slug:
         comun = Comun.objects.filter(slug=comun_slug, is_active=True).first()
@@ -1615,10 +1649,10 @@ def _comun_posts_base_queryset(comun: Comun, now=None):
         base_query = base_query.exclude(channel_author_filter & ~Q(author_id=telegram_source_author_id))
     else:
         base_query = base_query.exclude(channel_author_filter)
-    excluded_author_ids = list(comun.excluded_authors.values_list("id", flat=True))
+    excluded_author_ids = [author.id for author in comun.excluded_authors.all()]
     if excluded_author_ids:
         base_query = base_query.exclude(author_id__in=excluded_author_ids)
-    blocked_tags = list(comun.blocked_tags.filter(is_active=True))
+    blocked_tags = [tag for tag in comun.blocked_tags.all() if tag.is_active]
     blocked_tag_ids = [tag.id for tag in blocked_tags if tag.id]
     blocked_tag_lemmas = [
         (tag.lemma or _lemmatize_tag(tag.name) or "").strip().lower()
@@ -1695,6 +1729,8 @@ def _serialize_backend_post_card(
     now=None,
     is_favorite: bool = False,
     language: str = "ru",
+    score_override=None,
+    include_editor: bool = True,
 ) -> dict:
     return _feeds_views()._serialize_backend_post_card(
         request,
@@ -1703,6 +1739,8 @@ def _serialize_backend_post_card(
         now=now,
         is_favorite=is_favorite,
         language=language,
+        score_override=score_override,
+        include_editor=include_editor,
     )
 
 

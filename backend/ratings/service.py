@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from rabotaem_backend.read_context import memoize_read
+
 from datetime import timedelta
 from decimal import Decimal, ROUND_HALF_UP
 import math
@@ -46,6 +48,7 @@ def _post_comment_like_model():
     return apps.get_model("feeds", "PostCommentLike")
 
 
+@memoize_read
 def get_rating_settings() -> RatingSettings:
     settings, _created = RatingSettings.objects.get_or_create(pk=1)
     return settings
