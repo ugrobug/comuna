@@ -188,13 +188,6 @@ export const buildComunSettingsOptionsUrl = (
   return `${getBackendBaseUrl()}/api/comuns/${encodeURIComponent(slug)}/settings-options/?${params.toString()}`
 }
 
-export const buildComunCustomTemplateEditorPath = (
-  slug: string,
-  templateRef: string | number
-): string => {
-  return `/comuns/${encodeURIComponent(slug)}/settings/templates/${encodeURIComponent(String(templateRef))}`
-}
-
 export const buildComunGlossaryPath = (slug: string): string => {
   return `/comuns/${encodeURIComponent(slug)}/glossary`
 }

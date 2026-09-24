@@ -15,15 +15,9 @@
   export let searchPlaceholder = 'Поиск шаблона...'
   export let helperText = ''
   export let allowEmpty = false
-  export let actionLabel = ''
-  export let actionDisabled = false
-  export let customItems: Array<{ id: string; label: string }> = []
-  export let customItemsTitle = 'Пользовательские шаблоны'
 
   const dispatch = createEventDispatcher<{
     change: PostTemplateCode[]
-    action: void
-    customitemclick: string
   }>()
 
   let query = ''
@@ -55,16 +49,6 @@
       .map((option) => option.value)
       .filter((optionValue) => nextSelected.has(optionValue))
     dispatch('change', nextValues)
-  }
-
-  const triggerAction = () => {
-    if (disabled || actionDisabled || !actionLabel) return
-    dispatch('action')
-  }
-
-  const triggerCustomItemClick = (id: string) => {
-    if (disabled) return
-    dispatch('customitemclick', id)
   }
 </script>
 
@@ -115,38 +99,6 @@
           <div class="template-type-dropdown__empty">Шаблоны не найдены</div>
         {/if}
       </div>
-
-      {#if customItems.length}
-        <div class="template-type-dropdown__section">
-          <div class="template-type-dropdown__section-title">{customItemsTitle}</div>
-          <div class="template-type-dropdown__custom-items">
-            {#each customItems as item}
-              <button
-                type="button"
-                class="template-type-dropdown__custom-item"
-                disabled={disabled}
-                on:click={() => triggerCustomItemClick(item.id)}
-              >
-                <span>{item.label}</span>
-                <span class="template-type-dropdown__custom-item-arrow">→</span>
-              </button>
-            {/each}
-          </div>
-        </div>
-      {/if}
-
-      {#if actionLabel}
-        <div class="template-type-dropdown__section">
-          <button
-            type="button"
-            class="template-type-dropdown__action"
-            disabled={disabled || actionDisabled}
-            on:click={triggerAction}
-          >
-            {actionLabel}
-          </button>
-        </div>
-      {/if}
     </div>
   </details>
 
@@ -337,74 +289,5 @@
   :global(.dark) .template-type-dropdown__chip {
     background: rgb(39 39 42);
     color: rgb(228 228 231);
-  }
-
-  .template-type-dropdown__section {
-    margin-top: 0.85rem;
-    padding-top: 0.85rem;
-    border-top: 1px solid rgb(226 232 240);
-  }
-
-  :global(.dark) .template-type-dropdown__section {
-    border-top-color: rgb(63 63 70);
-  }
-
-  .template-type-dropdown__section-title {
-    margin-bottom: 0.55rem;
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: rgb(100 116 139);
-  }
-
-  :global(.dark) .template-type-dropdown__section-title {
-    color: rgb(161 161 170);
-  }
-
-  .template-type-dropdown__custom-items {
-    display: grid;
-    gap: 0.45rem;
-  }
-
-  .template-type-dropdown__custom-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    width: 100%;
-    padding: 0.75rem 0.85rem;
-    border: 1px solid rgb(226 232 240);
-    border-radius: 0.8rem;
-    background: rgb(255 255 255);
-    color: rgb(15 23 42);
-    text-align: left;
-  }
-
-  :global(.dark) .template-type-dropdown__custom-item {
-    border-color: rgb(63 63 70);
-    background: rgb(39 39 42 / 0.75);
-    color: rgb(244 244 245);
-  }
-
-  .template-type-dropdown__custom-item-arrow {
-    color: rgb(148 163 184);
-  }
-
-  .template-type-dropdown__action {
-    width: 100%;
-    min-height: 2.75rem;
-    padding: 0.75rem 0.95rem;
-    border: 1px dashed rgb(148 163 184);
-    border-radius: 0.8rem;
-    background: rgb(248 250 252);
-    color: rgb(15 23 42);
-    font-weight: 600;
-  }
-
-  :global(.dark) .template-type-dropdown__action {
-    border-color: rgb(113 113 122);
-    background: rgb(39 39 42 / 0.72);
-    color: rgb(244 244 245);
   }
 </style>

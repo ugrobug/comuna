@@ -10,12 +10,10 @@
   import TemplateTypeDropdown from '$lib/components/comuns/TemplateTypeDropdown.svelte'
   import WelcomePostDropdown from '$lib/components/comuns/WelcomePostDropdown.svelte'
   import {
-    buildComunCustomTemplateEditorPath,
     buildComunSettingsOptionsUrl,
     buildComunUrl,
     buildTagsEnsureUrl,
     type BackendComun,
-    type BackendComunCustomTemplate,
     type BackendComunCategory,
     type BackendTag,
   } from '$lib/api/backend'
@@ -88,10 +86,6 @@
     description: string
     featureKey: ComunFeatureApplicationKey
   }
-  type CustomTemplateBlockOption = { value: string; label: string }
-  type CustomTemplatePlacement = '' | 'available' | 'header' | 'footer'
-  type CustomTemplateFieldType = 'text' | 'file' | 'select' | 'checkbox'
-  type CustomTemplateFieldPlacement = 'available' | 'header' | 'footer'
   const fallbackTemplateTypeOptions: TemplateTypeOption[] = [
     { value: 'basic', label: 'Пост' },
     { value: 'movie_review', label: 'Кинообзор' },
@@ -100,22 +94,6 @@
     { value: 'bug_report', label: 'Баг-репорт' },
     { value: 'event', label: 'Событие' },
     { value: 'tweet', label: 'Твит' },
-  ]
-  const fallbackCustomTemplateBlockPlacementOptions = [
-    { value: 'available', label: 'Доступен в шаблоне' },
-    { value: 'header', label: 'Хедер' },
-    { value: 'footer', label: 'Футер' },
-  ]
-  const fallbackCustomTemplateFieldTypeOptions = [
-    { value: 'text', label: 'Текст' },
-    { value: 'file', label: 'Файл' },
-    { value: 'select', label: 'Выбор значений' },
-    { value: 'checkbox', label: 'Чекбокс' },
-  ]
-  const fallbackCustomTemplateFieldPlacementOptions = [
-    { value: 'available', label: 'Текст' },
-    { value: 'header', label: 'Хедер' },
-    { value: 'footer', label: 'Футер' },
   ]
   const comunSettingsTabs: Array<{ value: ComunSettingsTabKey; label: string }> = [
     { value: 'description', label: 'Описание' },
@@ -284,48 +262,6 @@
     return normalized.length ? normalized : fallbackTemplateTypeOptions
   }
 
-  const comunCustomTemplates = (value: BackendComun | null): BackendComunCustomTemplate[] =>
-    Array.isArray(value?.custom_templates)
-      ? value.custom_templates.map((template, index) => ({
-          id: Number(template?.id) > 0 ? Number(template?.id) : undefined,
-          name: String(template?.name ?? '').trim(),
-          slug: String(template?.slug ?? '').trim() || undefined,
-          sort_order: Number(template?.sort_order ?? index),
-          blocks: Array.isArray(template?.blocks)
-            ? template.blocks.map((block, blockIndex) => ({
-                id: Number(block?.id) > 0 ? Number(block?.id) : undefined,
-                block_type: String(block?.block_type ?? '').trim(),
-                placement: (String(block?.placement ?? '').trim() || 'available') as
-                  | 'available'
-                  | 'header'
-                  | 'footer',
-                is_required: Boolean(block?.is_required),
-                sort_order: Number(block?.sort_order ?? blockIndex),
-              }))
-            : [],
-          fields: Array.isArray(template?.fields)
-            ? template.fields.map((field, fieldIndex) => ({
-                id: Number(field?.id) > 0 ? Number(field?.id) : undefined,
-                key: String(field?.key ?? '').trim() || undefined,
-                label: String(field?.label ?? '').trim(),
-                field_type: (String(field?.field_type ?? '').trim() || 'text') as
-                  | 'text'
-                  | 'file'
-                  | 'select'
-                  | 'checkbox',
-                placement: (String(field?.placement ?? '').trim() || 'header') as CustomTemplateFieldPlacement,
-                is_required: Boolean(field?.is_required),
-                options: Array.isArray(field?.options)
-                  ? field.options
-                      .map((option) => String(option ?? '').trim())
-                      .filter(Boolean)
-                  : [],
-                sort_order: Number(field?.sort_order ?? fieldIndex),
-              }))
-            : [],
-        }))
-      : []
-
   const settingsComparable = (value: BackendComun | null) =>
     JSON.stringify({
       name: (value?.name ?? '').trim(),
@@ -448,9 +384,6 @@
       void loadSettingsOptions(type, normalizedQuery)
     }, 250)
   }
-
-  const customTemplateEditorPath = (templateRef = 'new') =>
-    buildComunCustomTemplateEditorPath(slug, templateRef)
 
   const refreshComunManage = async () => {
     if (!slug) return
@@ -850,17 +783,6 @@
   const closeApplicationsCatalog = () => {
     applicationsCatalogOpen = false
   }
-
-  const customTemplateManagementItems = (value: BackendComun | null) =>
-    comunCustomTemplates(value).map((template, index) => ({
-      id: String(template.slug ?? template.id ?? index),
-      label: String(template.name ?? '').trim() || `Шаблон ${index + 1}`,
-    }))
-
-  const openCreateCustomTemplateEditor = () => goto(customTemplateEditorPath('new'))
-
-  const openEditCustomTemplateEditor = (templateRef: string) =>
-    goto(customTemplateEditorPath(templateRef))
 
   const clearDraftLogo = () => {
     if (!settingsDraft) return
@@ -1989,12 +1911,7 @@
                   options={settingsTemplateTypeOptions}
                   selectedValues={comunAllowedTemplateTypes(settingsDraft)}
                   disabled={settingsSaving}
-                  actionLabel={canManageComunModerators() ? 'Создать шаблон' : ''}
-                  customItems={canManageComunModerators() ? customTemplateManagementItems(settingsDraft) : []}
-                  customItemsTitle="Пользовательские шаблоны"
                   on:change={(event) => setDraftAllowedTemplateTypes(event.detail)}
-                  on:action={openCreateCustomTemplateEditor}
-                  on:customitemclick={(event) => openEditCustomTemplateEditor(String(event.detail))}
                 />
                 <div class="flex flex-col gap-2 rounded-xl bg-slate-50 dark:bg-zinc-900/60 px-3 py-3">
                   <label class="flex items-start gap-2 cursor-pointer">
