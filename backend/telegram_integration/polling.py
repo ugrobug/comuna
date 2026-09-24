@@ -24,6 +24,33 @@ _polling_started = False
 _polling_lock_handle = None
 
 
+class TelegramUpdateProcessor:
+    """Advance the polling cursor only after the current update succeeds."""
+
+    def __init__(self):
+        self.offset: int | None = None
+
+    def process(self, updates):
+        handlers = {
+            "channel_post": _handle_channel_post,
+            "edited_channel_post": _handle_channel_post,
+            "message": _handle_message,
+            "callback_query": _handle_callback_query,
+            "my_chat_member": _handle_my_chat_member,
+            "inline_query": _handle_inline_query,
+        }
+        for update in updates:
+            update_id = update.get("update_id")
+            if isinstance(update_id, int) and self.offset is not None and update_id < self.offset:
+                continue
+            for kind, handler in handlers.items():
+                if kind in update:
+                    handler(update[kind])
+                    break
+            if isinstance(update_id, int):
+                self.offset = update_id + 1
+
+
 def _acquire_polling_lock() -> bool:
     global _polling_lock_handle
     if _polling_lock_handle is not None:
@@ -41,9 +68,9 @@ def _acquire_polling_lock() -> bool:
 
 
 def _polling_loop(token: str) -> None:
-    offset: int | None = None
+    processor = TelegramUpdateProcessor()
     print("Telegram polling started")
-    _fetch_telegram_json("deleteWebhook", token, {"drop_pending_updates": True})
+    _fetch_telegram_json("deleteWebhook", token, {"drop_pending_updates": False})
     while True:
         try:
             payload: dict[str, Any] = {
@@ -53,8 +80,8 @@ def _polling_loop(token: str) -> None:
                     '"callback_query","my_chat_member","inline_query"]'
                 ),
             }
-            if offset is not None:
-                payload["offset"] = offset
+            if processor.offset is not None:
+                payload["offset"] = processor.offset
             response = _fetch_telegram_json("getUpdates", token, payload)
             if not response or not response.get("ok"):
                 time.sleep(2)
@@ -63,24 +90,9 @@ def _polling_loop(token: str) -> None:
             updates = response.get("result") or []
             if updates:
                 print(f"Telegram polling received {len(updates)} updates")
-            for update in updates:
-                update_id = update.get("update_id")
-                if isinstance(update_id, int):
-                    offset = update_id + 1
-                if "channel_post" in update:
-                    _handle_channel_post(update["channel_post"])
-                elif "edited_channel_post" in update:
-                    _handle_channel_post(update["edited_channel_post"])
-                elif "message" in update:
-                    _handle_message(update["message"])
-                elif "callback_query" in update:
-                    _handle_callback_query(update["callback_query"])
-                elif "my_chat_member" in update:
-                    _handle_my_chat_member(update["my_chat_member"])
-                elif "inline_query" in update:
-                    _handle_inline_query(update["inline_query"])
+            processor.process(updates)
         except Exception as exc:
-            print(f"Telegram polling error: {exc}")
+            logger.warning("Telegram update failed; cursor retained (error=%s)", type(exc).__name__)
             time.sleep(2)
 
 

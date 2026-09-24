@@ -26,6 +26,7 @@ from feeds.language_detection import detect_post_language
 from feeds.models import Author, Post
 from telegram_integration.models import BotSession, TelegramAccount
 from telegram_integration.media import is_private_telegram_file_url
+from telegram_integration.channel_posts import TelegramChannelPostWriter, TelegramMediaDownloadError
 from users.models import AuthorAdmin, AuthorVerificationCode
 
 _BOT_ID: int | None = None
@@ -57,29 +58,8 @@ def _unique_nonempty(values: list[str]) -> list[str]:
     return unique_values
 
 
-def _merge_media_group_image(
-    raw_data: dict,
-    *,
-    image_url: str | None,
-    photo_file_id: str | None,
-    media_group_id: str,
-) -> dict:
-    next_raw_data = dict(raw_data or {})
-    existing_urls = _unique_nonempty(list(next_raw_data.get("gallery_urls") or []))
-    existing_file_ids = _unique_nonempty(list(next_raw_data.get("gallery_file_ids") or []))
-    photo_file_seen = bool(photo_file_id and photo_file_id in existing_file_ids)
-
-    if image_url and not photo_file_seen and image_url not in existing_urls:
-        existing_urls.append(image_url)
-    next_raw_data["gallery_urls"] = existing_urls
-
-    if photo_file_id and not photo_file_seen:
-        existing_file_ids.append(photo_file_id)
-    if existing_file_ids:
-        next_raw_data["gallery_file_ids"] = existing_file_ids
-
-    next_raw_data["media_group_id"] = media_group_id
-    return next_raw_data
+def _merge_media_group_image(raw_data: dict, **kwargs) -> dict:
+    return TelegramChannelPostWriter.merge_image(raw_data, **kwargs)
 
 
 def _fetch_telegram_json(method: str, token: str, payload: dict) -> dict | None:
@@ -1042,8 +1022,6 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
     if author.is_blocked:
         return
 
-    media_group_id = message.get("media_group_id") or ""
-
     token = settings.TELEGRAM_BOT_TOKEN
     chat_id = chat.get("id")
     if token and chat_id:
@@ -1059,153 +1037,22 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
     formatted_text = _fv()._format_telegram_text(raw_text, _fv()._extract_entities(message))
     photo_file_id = _fv()._extract_photo_file_id(message)
     image_url = _fv()._extract_photo_url(message, token) if token else None
-    gallery_urls = [image_url] if image_url else []
     embed_html, embed_label = _fv()._extract_telegram_embed(message, username, token)
     poll_html, poll_label = _fv()._extract_telegram_poll(message)
-    if media_group_id:
-        with transaction.atomic():
-            Author.objects.select_for_update().filter(pk=author.pk)
-            existing_group_post = (
-                Post.objects.select_for_update()
-                .filter(author=author, media_group_id=media_group_id)
-                .first()
-            )
-            if not existing_group_post:
-                existing_by_message = (
-                    Post.objects.select_for_update()
-                    .filter(author=author, message_id=message_id)
-                    .first()
-                )
-                if existing_by_message and not existing_by_message.media_group_id:
-                    existing_group_post = existing_by_message
-                    existing_group_post.media_group_id = media_group_id
-
-            if existing_group_post:
-                raw_data = _merge_media_group_image(
-                    existing_group_post.raw_data or {},
-                    image_url=image_url,
-                    photo_file_id=photo_file_id,
-                    media_group_id=media_group_id,
-                )
-                existing_urls = list(raw_data.get("gallery_urls") or [])
-                if not raw_data.get("formatted_text") and formatted_text:
-                    raw_data["formatted_text"] = formatted_text
-                if embed_html and not raw_data.get("embed_html"):
-                    raw_data["embed_html"] = embed_html
-                if poll_html and not raw_data.get("poll_html"):
-                    raw_data["poll_html"] = poll_html
-                base_text = raw_data.get("formatted_text") or formatted_text
-                content = _fv()._build_content_with_images(
-                    base_text,
-                    existing_urls,
-                    raw_data.get("embed_html") or embed_html,
-                    raw_data.get("poll_html") or poll_html,
-                )
-                existing_group_post.content = content
-                existing_group_post.original_language = detect_post_language(
-                    existing_group_post.title,
-                    content,
-                    fallback=existing_group_post.original_language,
-                )
-                existing_group_post.raw_data = raw_data
-                existing_group_post.channel_url = f"https://t.me/{username}"
-                existing_group_post.source_url = (
-                    f"{existing_group_post.channel_url}/{existing_group_post.message_id}"
-                )
-                existing_group_post.save(
-                    update_fields=[
-                        "content",
-                        "original_language",
-                        "raw_data",
-                        "channel_url",
-                        "source_url",
-                        "media_group_id",
-                        "updated_at",
-                    ]
-                )
-                if not explicit_tags:
-                    explicit_tags = [tag.name for tag in existing_group_post.tags.all()]
-                _fv()._apply_post_tags(existing_group_post, explicit_tags)
-                return
-
-    has_publishable_content = bool(formatted_text.strip() or gallery_urls or embed_html or poll_html)
-    if not has_publishable_content:
-        return
-
-    content = _fv()._build_content_with_images(formatted_text, gallery_urls, embed_html, poll_html)
-    title = _fv()._build_title(raw_text)
-    if not title and poll_label:
-        title = poll_label
-    if not title and image_url:
-        title = "Фото"
-    if not title and embed_label:
-        title = embed_label
-    channel_url = f"https://t.me/{username}"
-    source_url = f"{channel_url}/{message_id}"
-    delay_days = max(int(author.publish_delay_days or 0), 0)
-    publish_at = timezone.now() + timedelta(days=delay_days) if delay_days else None
-
-    requires_approval = (not author.auto_publish and author.admin_chat_id) and not force_publish
-
-    raw_data = dict(message)
-    if photo_file_id:
-        raw_data["photo_file_id"] = photo_file_id
-    if media_group_id:
-        raw_data["media_group_id"] = media_group_id
-    if media_group_id and gallery_urls:
-        raw_data["gallery_urls"] = gallery_urls
-        raw_data["formatted_text"] = formatted_text
-    if media_group_id and photo_file_id:
-        raw_data["gallery_file_ids"] = [photo_file_id]
-    if embed_html:
-        raw_data["embed_html"] = embed_html
-    if poll_html:
-        raw_data["poll_html"] = poll_html
-    post, created = Post.objects.get_or_create(
-        author=author,
-        message_id=message_id,
-        defaults={
-            "title": title,
-            "content": content,
-            "original_language": detect_post_language(title, content),
-            "source_url": source_url,
-            "channel_url": channel_url,
-            "raw_data": raw_data,
-            "is_pending": requires_approval,
-            "media_group_id": media_group_id,
-            "publish_at": publish_at,
-        },
+    if photo_file_id and not image_url:
+        raise TelegramMediaDownloadError("Telegram photo download failed; update must be retried")
+    post, created = TelegramChannelPostWriter(_fv()).save(
+        author=author, message=message, raw_text=raw_text, formatted_text=formatted_text,
+        explicit_tags=explicit_tags, photo_file_id=photo_file_id, image_url=image_url,
+        embed_html=embed_html, embed_label=embed_label, poll_html=poll_html,
+        poll_label=poll_label, force_publish=force_publish,
     )
-
     if not created:
-        post.title = title
-        post.content = content
-        post.source_url = source_url
-        post.channel_url = channel_url
-        post.raw_data = raw_data
-        post.original_language = detect_post_language(
-            post.title,
-            post.content,
-            fallback=post.original_language,
-        )
-        if media_group_id and not post.media_group_id:
-            post.media_group_id = media_group_id
-        post.save(
-            update_fields=[
-                "title",
-                "content",
-                "source_url",
-                "channel_url",
-                "raw_data",
-                "original_language",
-                "media_group_id",
-                "updated_at",
-            ]
-        )
-    elif requires_approval:
+        return
+    if post.is_pending:
         _send_bot_message_with_keyboard(
             author.admin_chat_id,
-            f"Новый пост из канала @{author.username}:\n{title}\n\nОпубликуем?",
+            f"Новый пост из канала @{author.username}:\n{post.title}\n\nОпубликуем?",
             {
                 "inline_keyboard": [
                     [
@@ -1215,9 +1062,8 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
                 ]
             },
         )
-    elif created and not requires_approval:
+    else:
         _fv()._maybe_notify_new_author(author, post)
-    _fv()._apply_post_tags(post, explicit_tags)
 
 
 def _attach_verified_user_to_author(chat_id: int, author: Author) -> None:

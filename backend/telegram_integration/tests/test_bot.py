@@ -3,7 +3,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 
 from telegram_integration import bot, polling
 from telegram_integration.models import BotSession
@@ -85,4 +85,27 @@ class TelegramPollingTests(TestCase):
 
         acquire_lock.assert_called_once()
         thread_cls.assert_not_called()
+
+
+class TelegramUpdateProcessorTests(SimpleTestCase):
+    @patch("telegram_integration.polling._handle_channel_post")
+    def test_failure_keeps_cursor_at_failed_update(self, handler):
+        processor = polling.TelegramUpdateProcessor()
+        updates = [{"update_id": i, "channel_post": {"message_id": i}} for i in (10, 11, 12)]
+        handler.side_effect = [None, RuntimeError("temporary")]
+        with self.assertRaises(RuntimeError):
+            processor.process(updates)
+        self.assertEqual(processor.offset, 11)
+        handler.reset_mock(side_effect=True)
+        processor.process(updates)
+        self.assertEqual([c.args[0]["message_id"] for c in handler.call_args_list], [11, 12])
+        self.assertEqual(processor.offset, 13)
+
+    @patch("telegram_integration.polling.time.sleep", side_effect=KeyboardInterrupt)
+    @patch("telegram_integration.polling._fetch_telegram_json", return_value=None)
+    def test_startup_preserves_pending_updates(self, fetch, sleep):
+        with self.assertRaises(KeyboardInterrupt):
+            polling._polling_loop("test-token")
+        self.assertEqual(fetch.call_args_list[0].args, (
+            "deleteWebhook", "test-token", {"drop_pending_updates": False}))
         self.assertFalse(polling._polling_started)
