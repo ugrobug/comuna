@@ -31,6 +31,8 @@
   let searchElement: HTMLInputElement
 
   let pageNum = data.page
+  $: pageNum = data.page
+  $: hasMore = Math.max(data.results?.total_posts || 0, data.results?.total_authors || 0, data.results?.total_communities || 0) > data.page * (data.results?.limit || 20)
 
   function submitSearch() {
     const next = new URL($page.url)
@@ -44,7 +46,7 @@
       next.searchParams.delete('q')
     }
 
-    goto(next, { invalidateAll: true })
+    goto(next)
   }
 </script>
 
@@ -106,7 +108,9 @@
   </Select>
 </div>
 {#if data.backend}
-  {#if !data.results?.communities?.length && !data.results?.posts?.length && !data.results?.authors?.length}
+  {#if data.error}
+    <div role="alert" class="mt-4 text-red-600">{data.error}</div>
+  {:else if !data.results?.communities?.length && !data.results?.posts?.length && !data.results?.authors?.length}
     <Placeholder
       icon={MagnifyingGlass}
       title={$t('routes.search.noResults.title')}
@@ -182,6 +186,12 @@
         {/each}
       </div>
     {/if}
+  {/if}
+  {#if data.hasQuery && (data.page > 1 || hasMore)}
+    <div class="mt-6">
+      <Pageination bind:page={pageNum} {hasMore}
+        on:change={(p) => searchParam($page.url, 'page', p.detail.toString())} />
+    </div>
   {/if}
 {:else if data.hasQuery && data.results}
   {#await data.streamed.object}

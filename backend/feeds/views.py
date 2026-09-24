@@ -28,7 +28,6 @@ from html import escape, unescape
 from django.db import IntegrityError, transaction
 from django.db.models import Avg, Count, Exists, F, IntegerField, OuterRef, Prefetch, Q, Sum, Value
 from django.db.models.functions import Cast, Coalesce
-from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
 
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect, JsonResponse
@@ -50,6 +49,7 @@ from communities.models import (
 from rabotaem_backend.cache import anonymous_cache, bump_public_cache_prefix
 from rabotaem_backend.read_context import with_read_context
 from feeds.home_reader import HomeFeedReader, HomeFeedCardBatch
+from feeds.search import SearchOptions, SearchReader, SearchService
 from rabotaem_backend.media_urls import (
     media_storage_path_from_url,
     public_media_url,
@@ -388,10 +388,11 @@ def _serialize_post_author(
 
 
 def _prepare_post_card_authors(request: HttpRequest, posts: list[Post]) -> None:
-    authors = {
-        post.author_id: post.author for post in posts
-        if not post.author.channel_url and post.author.channel_id is None
-    }
+    _prepare_author_profiles(request, [post.author for post in posts])
+
+
+def _prepare_author_profiles(request: HttpRequest, items: list[Author]) -> None:
+    authors = {author.pk: author for author in items if not author.channel_url and author.channel_id is None}
     if not authors:
         return
     linked = {}
@@ -412,10 +413,9 @@ def _prepare_post_card_authors(request: HttpRequest, posts: list[Post]) -> None:
     for user in users:
         by_name.setdefault(user.username.lower(), user)
     cache = getattr(request, "_personal_author_site_user_cache", {})
-    for post in posts:
-        if post.author_id not in authors:
+    for author in items:
+        if author.pk not in authors:
             continue
-        author = post.author
         user = by_id.get(linked[author.pk]) if author.pk in linked else by_name.get((author.username or "").strip().lower())
         cache[author.pk] = user
         author._card_site_user_id = user.pk if user else None
@@ -4694,22 +4694,6 @@ def _attach_materialized_post_user_votes(
         post._current_user_vote = int(vote_by_post_id.get(post.id, 0))
 
 
-def _serialize_search_author_result(
-    request: HttpRequest,
-    author: Author,
-) -> dict:
-    author_channel_url, author_title = _author_display_fields(request, author)
-    return {
-        "username": author.username,
-        "title": author_title,
-        "avatar_url": _author_avatar_for_display(request, author),
-        "description": author.description,
-        "channel_url": author_channel_url or "",
-        "subscribers_count": author.subscribers_count,
-        "author_rating": round(float(_calculate_author_rating(author)), 2),
-    }
-
-
 def _serialize_search_site_user_result(
     request: HttpRequest,
     user: User,
@@ -4746,256 +4730,77 @@ def _serialize_search_comun_result(
     }
 
 
-def _search_author_result_rank(item: dict, query: str) -> tuple[int, str]:
-    normalized_query = (query or "").strip().lower()
-    username = str(item.get("username") or "").strip().lower()
-    title = str(item.get("title") or "").strip().lower()
-    if not normalized_query:
-        return (10, username)
-    if username == normalized_query:
-        return (0, username)
-    if title == normalized_query:
-        return (1, username)
-    if username.startswith(normalized_query):
-        return (2, username)
-    if title.startswith(normalized_query):
-        return (3, username)
-    if normalized_query in username:
-        return (4, username)
-    if normalized_query in title:
-        return (5, username)
-    return (6, username)
+class SearchPresenter:
+    """Request-scoped presentation; the legacy API keeps complete card fields."""
+    def __init__(self, request, user, *, suggestions=False):
+        self.request = request
+        self.user = user
+        self.suggestions = suggestions
+        self.dynamic = False
 
+    def thumbnail(self, url):
+        # Use the existing declared 320px variant. Never perform network I/O or
+        # invent an ungenerated 72px file while serving a keystroke.
+        if not url:
+            return None
+        if _media_storage_path_from_url(url):
+            return _local_webp_variant_url(self.request, url, target_width=320)
+        return url
 
-def _search_comun_result_rank(item: dict, query: str) -> tuple[int, float, str]:
-    normalized_query = (query or "").strip().lower()
-    name = str(item.get("name") or "").strip().lower()
-    slug = str(item.get("slug") or "").strip().lower()
-    product_description = str(item.get("product_description") or "").strip().lower()
-    target_audience = str(item.get("target_audience") or "").strip().lower()
-    rating_score = float(item.get("rating_score") or 0)
-    if not normalized_query:
-        return (10, -rating_score, name)
-    if name == normalized_query:
-        return (0, -rating_score, name)
-    if slug == normalized_query:
-        return (1, -rating_score, name)
-    if name.startswith(normalized_query):
-        return (2, -rating_score, name)
-    if slug.startswith(normalized_query):
-        return (3, -rating_score, name)
-    if normalized_query in name:
-        return (4, -rating_score, name)
-    if normalized_query in slug:
-        return (5, -rating_score, name)
-    if normalized_query in product_description:
-        return (6, -rating_score, name)
-    if normalized_query in target_audience:
-        return (7, -rating_score, name)
-    return (8, -rating_score, name)
+    @staticmethod
+    def excerpt(value):
+        return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", str(value or ""))).strip()[:96]
 
+    def communities(self, rows):
+        result = [_serialize_search_comun_result(self.request, row) for row in rows]
+        if self.suggestions:
+            return [dict(id=row["id"], name=row["name"], slug=row["slug"],
+                         logo_url=self.thumbnail(row["logo_url"]),
+                         product_description=self.excerpt(row["product_description"] or row["target_audience"]))
+                    for row in result]
+        return result
 
-SEARCH_CONFIG = "simple"
+    def people(self, rows):
+        authors = [obj for kind, obj in rows if kind == "author"]
+        _prepare_author_profiles(self.request, authors)
+        ratings = _calculate_author_ratings(authors) if authors and not self.suggestions else {}
+        result = []
+        for kind, obj in rows:
+            if kind == "user":
+                value = _serialize_search_site_user_result(self.request, obj)
+            else:
+                channel, title = _author_display_fields(self.request, obj)
+                value = dict(username=obj.username, title=title, avatar_url=_author_avatar_for_display(self.request, obj),
+                             description=obj.description, channel_url=channel or "", subscribers_count=obj.subscribers_count,
+                             author_rating=round(float(ratings.get(obj.pk, 0)), 2))
+            if self.suggestions:
+                value = dict(username=value["username"], title=value["title"],
+                             avatar_url=self.thumbnail(value["avatar_url"]), description=self.excerpt(value["description"]))
+            result.append(value)
+        return result
 
-
-def _search_prefix_query(raw_query: str) -> SearchQuery | None:
-    terms = [
-        term.lower()
-        for term in re.findall(r"\w+", raw_query or "", flags=re.UNICODE)
-        if term.strip()
-    ]
-    if not terms:
-        return None
-    raw_tsquery = " & ".join(f"{term}:*" for term in terms[:8])
-    return SearchQuery(raw_tsquery, config=SEARCH_CONFIG, search_type="raw")
-
-
-def _post_search_vector() -> SearchVector:
-    return SearchVector("title", "content", config=SEARCH_CONFIG)
-
-
-def _author_search_vector() -> SearchVector:
-    return SearchVector("username", "title", "description", config=SEARCH_CONFIG)
-
-
-def _comun_search_vector() -> SearchVector:
-    return SearchVector(
-        "name",
-        "slug",
-        "product_description",
-        "target_audience",
-        "rules_text",
-        config=SEARCH_CONFIG,
-    )
-
-
-def _user_search_vector() -> SearchVector:
-    return SearchVector("username", "first_name", "last_name", config=SEARCH_CONFIG)
-
-
-def _page_with_next(queryset, offset: int, limit: int) -> tuple[list, int]:
-    items = list(queryset[offset : offset + limit + 1])
-    page_items = items[:limit]
-    total_hint = offset + len(page_items) + (1 if len(items) > limit else 0)
-    return page_items, total_hint
-
-
-@anonymous_cache(prefix="search", seconds=30)
-def search_content(request: HttpRequest) -> HttpResponse:
-    query = (request.GET.get("q") or "").strip()
-    if not query:
-        return JsonResponse(
-            {
-                "ok": True,
-                "query": "",
-                "page": 1,
-                "limit": 0,
-                "posts": [],
-                "authors": [],
-                "communities": [],
-                "total_posts": 0,
-                "total_authors": 0,
-                "total_communities": 0,
-            }
-        )
-
-    type_filter = (request.GET.get("type") or "All").lower()
-    sort = (request.GET.get("sort") or "New").lower()
-    current_user = _get_user_from_request(request)
-
-    limit_raw = request.GET.get("limit", "20")
-    page_raw = request.GET.get("page", "1")
-    try:
-        limit = min(max(int(limit_raw), 1), 50)
-    except ValueError:
-        limit = 20
-    try:
-        page = max(int(page_raw), 1)
-    except ValueError:
-        page = 1
-
-    offset = (page - 1) * limit
-    search_query = _search_prefix_query(query)
-    if search_query is None:
-        return JsonResponse(
-            {
-                "ok": True,
-                "query": query,
-                "page": page,
-                "limit": limit,
-                "posts": [],
-                "authors": [],
-                "communities": [],
-                "total_posts": 0,
-                "total_authors": 0,
-                "total_communities": 0,
-            }
-        )
-
-    posts: list[dict] = []
-    authors: list[dict] = []
-    communities: list[dict] = []
-    total_posts = 0
-    total_authors = 0
-    total_communities = 0
-
-    if type_filter in ("all", "communities"):
-        comun_vector = _comun_search_vector()
-        comun_qs = (
-            Comun.objects.filter(is_active=True)
-            .annotate(search_vector=comun_vector)
-            .filter(search_vector=search_query)
-            .annotate(search_rank=SearchRank(comun_vector, search_query))
-            .order_by("-search_rank", "-rating_score", "name")
-        )
-        comun_page, total_communities = _page_with_next(comun_qs, offset, limit)
-        communities.extend(
-            _serialize_search_comun_result(request, comun)
-            for comun in comun_page
-        )
-
-    if type_filter in ("all", "posts"):
-        author_vector = _author_search_vector()
-        matching_author_ids = list(
-            Author.objects.filter(is_blocked=False)
-            .annotate(search_vector=author_vector)
-            .filter(search_vector=search_query)
-            .values_list("id", flat=True)[:50]
-        )
-        now = timezone.now()
-        post_vector = _post_search_vector()
-        base_posts_qs = (
-            Post.objects.filter(
-                is_blocked=False,
-                companion_matched_at__isnull=True, is_pending=False,
-                author__is_blocked=False,
-            )
-            .filter(_publish_ready_filter(now))
-        )
-        candidate_limit = min(max(offset + limit + 1, limit + 1) * 4, 200)
-        post_candidates_by_id: dict[int, Post] = {}
-
-        text_posts_qs = (
-            base_posts_qs
-            .annotate(search_vector=post_vector)
-            .filter(search_vector=search_query)
-        )
-        if sort == "new":
-            text_post_ids = list(
-                text_posts_qs.order_by().values_list("id", flat=True)[:candidate_limit]
-            )
-            text_posts = (
-                base_posts_qs.filter(id__in=text_post_ids)
-                .select_related("author")
-                .prefetch_related("tags")
-            )
-        else:
-            text_posts = (
-                text_posts_qs.annotate(search_rank=SearchRank(post_vector, search_query))
-                .select_related("author")
-                .prefetch_related("tags")
-                .order_by("-search_rank", "-created_at")[:candidate_limit]
-            )
-        for post in text_posts:
-            post_candidates_by_id[post.id] = post
-
-        if matching_author_ids:
-            author_posts = (
-                base_posts_qs.filter(author_id__in=matching_author_ids)
-                .select_related("author")
-                .prefetch_related("tags")
-                .order_by("-created_at")[:candidate_limit]
-            )
-            for post in author_posts:
-                post_candidates_by_id.setdefault(post.id, post)
-
-        post_candidates = list(post_candidates_by_id.values())
-        if sort == "new":
-            post_candidates.sort(key=lambda post: post.created_at, reverse=True)
-        else:
-            post_candidates.sort(
-                key=lambda post: (
-                    getattr(post, "search_rank", 0) or 0,
-                    post.created_at,
-                ),
-                reverse=True,
-            )
-
-        posts_page = post_candidates[offset : offset + limit]
-        total_posts = offset + len(posts_page) + (
-            1 if len(post_candidates) > offset + limit else 0
-        )
-        posts_page_ids = [post.id for post in posts_page]
-        posts_page = list(
-            base_posts_qs.filter(id__in=posts_page_ids)
-            .select_related("author")
-            .prefetch_related("tags")
-        )
-        posts_by_id = {post.id: post for post in posts_page}
-        posts_page = [posts_by_id[post_id] for post_id in posts_page_ids if post_id in posts_by_id]
-        _attach_post_user_votes(posts_page, current_user)
-        favorite_post_ids = _favorite_post_ids_for_user(posts_page, current_user)
-        for post in posts_page:
+    def posts(self, rows, *, now):
+        request, current_user = self.request, self.user
+        HomeFeedCardBatch(prepare_authors=_prepare_post_card_authors,
+                          prepare_communities=community_service._prepare_post_card_comuns).prepare(request, rows, current_user)
+        if self.suggestions:
+            result = []
+            for post in rows:
+                raw = post.raw_data if isinstance(post.raw_data, dict) else {}
+                template = raw.get("template") or {}
+                self.dynamic |= isinstance(template, dict) and template.get("type") == "companion"
+                _, title = _author_display_fields(request, post.author, post.channel_url)
+                comun = community_service._post_comun(post)
+                preview, thumbnail = _extract_post_preview_image_urls(request, post, template)
+                result.append(dict(id=post.pk, title=_post_display_title(post),
+                                   thumbnail_url=self.thumbnail(thumbnail or preview),
+                                   author=dict(username=post.author.username),
+                                   description=self.excerpt(comun.name if comun else title)))
+            return result
+        _attach_post_user_votes(rows, current_user)
+        favorite_post_ids = _favorite_post_ids_for_user(rows, current_user)
+        posts = []
+        for post in rows:
             _content, poll_payload = _content_with_live_poll(post, current_user)
             template_payload = _serialize_post_template(post)
             author_channel_url, author_title = _author_display_fields(
@@ -5032,65 +4837,33 @@ def search_content(request: HttpRequest) -> HttpResponse:
                 }
             )
 
-    if type_filter in ("all", "users", "authors"):
-        author_vector = _author_search_vector()
-        authors_qs = (
-            Author.objects.filter(is_blocked=False)
-            .annotate(search_vector=author_vector)
-            .filter(search_vector=search_query)
-            .annotate(search_rank=SearchRank(author_vector, search_query))
-            .order_by("-search_rank", "username")
-        )
-        combined_author_results: list[dict] = []
-        seen_usernames: set[str] = set()
+        return posts
 
-        for author in authors_qs[: offset + limit + 10]:
-            serialized = _serialize_search_author_result(request, author)
-            normalized_username = str(serialized.get("username") or "").strip().lower()
-            if not normalized_username or normalized_username in seen_usernames:
-                continue
-            seen_usernames.add(normalized_username)
-            combined_author_results.append(serialized)
 
-        if type_filter in ("all", "users"):
-            user_vector = _user_search_vector()
-            users_qs = (
-                User.objects.filter(is_active=True)
-                .annotate(search_vector=user_vector)
-                .filter(search_vector=search_query)
-                .annotate(search_rank=SearchRank(user_vector, search_query))
-                .select_related("site_profile", "telegram_account", "vk_account")
-                .order_by("-search_rank", "username")
-                .distinct()
-            )
-            for user in users_qs[: offset + limit + 10]:
-                normalized_username = (user.username or "").strip().lower()
-                if not normalized_username or normalized_username in seen_usernames:
-                    continue
-                seen_usernames.add(normalized_username)
-                combined_author_results.append(
-                    _serialize_search_site_user_result(request, user)
-                )
+def _search_response(request, *, suggestions=False):
+    try:
+        options = SearchOptions.parse(request.GET, suggestions=suggestions)
+    except ValueError as error:
+        return JsonResponse({"ok": False, "error": str(error)}, status=400)
+    user = _get_user_from_request(request)
+    presenter = SearchPresenter(request, user, suggestions=suggestions)
+    payload = SearchService(SearchReader(options, publish_ready_filter=_publish_ready_filter), presenter).execute()
+    response = JsonResponse(payload)
+    if suggestions and (presenter.dynamic or user):
+        response["Cache-Control"] = "private, no-store"
+    return response
 
-        authors.extend(combined_author_results[offset : offset + limit])
-        total_authors = offset + len(authors) + (
-            1 if len(combined_author_results) > offset + limit else 0
-        )
 
-    return JsonResponse(
-        {
-            "ok": True,
-            "query": query,
-            "page": page,
-            "limit": limit,
-            "posts": posts,
-            "authors": authors,
-            "communities": communities,
-            "total_posts": total_posts,
-            "total_authors": total_authors,
-            "total_communities": total_communities,
-        }
-    )
+@anonymous_cache(prefix="search", seconds=30)
+@with_read_context
+def search_content(request: HttpRequest) -> HttpResponse:
+    return _search_response(request)
+
+
+@anonymous_cache(prefix="search-suggest", seconds=30)
+@with_read_context
+def search_suggestions(request: HttpRequest) -> HttpResponse:
+    return _search_response(request, suggestions=True)
 
 
 from telegram_integration import bot as telegram_bot

@@ -768,7 +768,7 @@ export const buildMyFeedUrl = (
   return query ? `${base}?${query}` : base
 }
 
-export const buildSearchUrl = (
+export const buildSearchPath = (
   query: string,
   page = 1,
   limit = 20,
@@ -782,8 +782,20 @@ export const buildSearchUrl = (
     type: type,
     sort: sort,
   })
-  return `${getBackendBaseUrl()}/api/search/?${params.toString()}`
+  return `/api/search/?${params.toString()}`
 }
+
+export const buildSearchUrl = (...args: Parameters<typeof buildSearchPath>): string =>
+  `${getBackendBaseUrl()}${buildSearchPath(...args)}`
+
+export type SearchSuggestionPayload = {
+  posts?: { id: number; title: string; description: string; thumbnail_url?: string | null }[]
+  authors?: { username: string; title: string; description: string; avatar_url?: string | null }[]
+  communities?: { id: number; slug: string; name: string; product_description: string; logo_url?: string | null }[]
+}
+
+export const buildSearchSuggestionsUrl = (query: string): string =>
+  `${getBackendBaseUrl()}/api/search/suggest/?${new URLSearchParams({ q: query })}`
 
 export type BackendTopAuthorPeriod = 'week' | 'month' | 'all'
 

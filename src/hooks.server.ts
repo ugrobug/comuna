@@ -1,4 +1,5 @@
 import type { Handle, HandleFetch } from '@sveltejs/kit'
+import { SearchBackendProxy } from '$lib/server/SearchBackendProxy'
 import type { AuthBootstrap } from '$lib/authBootstrap'
 import { brandNameForLanguage } from '$lib/brand'
 import {
@@ -154,7 +155,8 @@ export const resolveRequestLanguage = (
   originalPostLanguage
 
 export const handleFetch: HandleFetch = async ({ event, request, fetch }) => {
-  const response = await fetch(request)
+  const upstream = new SearchBackendProxy(process.env.INTERNAL_BACKEND_URL).resolve(request, event.url.origin)
+  const response = await fetch(upstream)
   if (new URL(request.url).pathname.startsWith('/api/') && response.headers.get('cache-control')?.includes('no-store')) {
     event.locals.noStore = true
   }

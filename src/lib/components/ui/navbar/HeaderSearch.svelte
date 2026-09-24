@@ -4,10 +4,8 @@
   import {
     backendAuthorPath,
     buildBackendPostPath,
-    buildSearchUrl,
-    type BackendAuthor,
-    type BackendComun,
-    type BackendPost,
+    buildSearchSuggestionsUrl,
+    type SearchSuggestionPayload,
   } from '$lib/api/backend'
   import { t } from '$lib/translations'
   import {
@@ -18,12 +16,7 @@
     UserGroup,
   } from 'svelte-hero-icons'
   import { onDestroy } from 'svelte'
-
-  type SearchPayload = {
-    posts?: BackendPost[]
-    authors?: BackendAuthor[]
-    communities?: BackendComun[]
-  }
+  import { SuggestionController } from '$lib/search/SuggestionController'
 
   type Suggestion = {
     key: string
@@ -46,8 +39,8 @@
   let suggestionGroups: SuggestionGroup[] = []
   let loading = false
   let open = false
-  let searchTimer: ReturnType<typeof setTimeout> | undefined
-  let requestId = 0
+  let failed = false
+  let syncedRoute = ''
   let rootElement: HTMLDivElement
 
   const stripText = (value: string | null | undefined, max = 96) => {
@@ -56,12 +49,12 @@
     return `${normalized.slice(0, max).trim()}...`
   }
 
-  const buildSuggestionGroups = (payload: SearchPayload): SuggestionGroup[] => {
+  const buildSuggestionGroups = (payload: SearchSuggestionPayload): SuggestionGroup[] => {
     const communities = (payload.communities ?? []).slice(0, 3).map((community) => ({
       key: `community-${community.id}`,
       href: `/comuns/${encodeURIComponent(community.slug)}`,
       title: community.name,
-      description: stripText(community.product_description || community.target_audience),
+      description: stripText(community.product_description),
       image: community.logo_url,
       type: 'community' as const,
     }))
@@ -70,8 +63,8 @@
       key: `post-${post.id}`,
       href: buildBackendPostPath(post),
       title: post.title,
-      description: stripText(post.comun?.name || post.author?.title || post.author?.username || post.content),
-      image: post.preview_image_url || post.thumbnail_url,
+      description: stripText(post.description),
+      image: post.thumbnail_url,
       type: 'post' as const,
     }))
 
@@ -91,61 +84,38 @@
     ].filter((group) => group.items.length)
   }
 
-  const runSearch = async (rawQuery: string) => {
-    const normalized = rawQuery.trim()
-    const currentRequest = ++requestId
-
-    if (normalized.length < 2) {
-      loading = false
-      suggestionGroups = []
-      open = false
-      return
-    }
-
-    loading = true
-    open = true
-
-    try {
-      const response = await fetch(buildSearchUrl(normalized, 1, 5, 'All', 'New'))
+  const controller = new SuggestionController<SearchSuggestionPayload>(
+    async (value, signal) => {
+      const response = await fetch(buildSearchSuggestionsUrl(value), { signal })
       if (!response.ok) throw new Error(`HTTP ${response.status}`)
-      const payload = (await response.json()) as SearchPayload
-      if (currentRequest !== requestId) return
-      suggestionGroups = buildSuggestionGroups(payload)
-    } catch {
-      if (currentRequest === requestId) suggestionGroups = []
-    } finally {
-      if (currentRequest === requestId) loading = false
-    }
-  }
-
-  const scheduleSearch = () => {
-    if (searchTimer) clearTimeout(searchTimer)
-    const normalized = query.trim()
-    if (normalized.length < 2) {
-      suggestionGroups = []
-      loading = false
-      open = false
-      return
-    }
-    searchTimer = setTimeout(() => {
-      void runSearch(normalized)
-    }, 220)
-  }
+      const cacheControl = response.headers.get('Cache-Control') || ''
+      return {
+        payload: await response.json(),
+        cacheable: cacheControl.includes('public') && !cacheControl.includes('no-store'),
+      }
+    },
+    (state) => {
+      open = state.open
+      loading = state.loading
+      failed = Boolean(state.failed)
+      suggestionGroups = state.payload ? buildSuggestionGroups(state.payload) : []
+    },
+  )
 
   const submitSearch = async () => {
     const normalized = query.trim()
     if (!normalized) return
-    open = false
+    controller.close()
     await goto(`/search?q=${encodeURIComponent(normalized)}&type=All`)
   }
 
   const selectSuggestion = () => {
-    open = false
+    controller.close()
   }
 
   const closeFromOutside = (event: MouseEvent) => {
     if (!rootElement?.contains(event.target as Node)) {
-      open = false
+      controller.close()
     }
   }
 
@@ -162,17 +132,16 @@
   }
   $: suggestionsCount = suggestionGroups.reduce((total, group) => total + group.items.length, 0)
 
-  $: if (query !== undefined) {
-    scheduleSearch()
+  $: {
+    const route = `${$page.url.pathname}?${$page.url.searchParams.get('q') || ''}`
+    if (route !== syncedRoute) {
+      syncedRoute = route
+      controller.close()
+      if ($page.url.pathname === '/search') query = $page.url.searchParams.get('q') || ''
+    }
   }
 
-  $: if ($page.url.searchParams.get('q') !== query && $page.url.pathname === '/search') {
-    query = $page.url.searchParams.get('q') || ''
-  }
-
-  onDestroy(() => {
-    if (searchTimer) clearTimeout(searchTimer)
-  })
+  onDestroy(() => controller.destroy())
 </script>
 
 <svelte:window on:mousedown={closeFromOutside} />
@@ -188,16 +157,16 @@
     <input
       bind:value={query}
       type="search"
+      maxlength="512"
       autocomplete="off"
       spellcheck="false"
       class="h-9 w-full rounded-full border border-slate-200 bg-white/80 py-0 pl-9 pr-3 text-sm text-slate-900 outline-none transition focus:border-primary-400 focus:bg-white focus:ring-2 focus:ring-primary-500/20 dark:border-zinc-800 dark:bg-zinc-950/70 dark:text-zinc-100 dark:focus:border-primary-500 {compact ? 'h-10 text-base' : ''}"
       placeholder={placeholder || $t('nav.search')}
       aria-label={$t('nav.search')}
-      on:focus={() => {
-        if (query.trim().length >= 2) open = true
-      }}
+      on:input={(event) => controller.search(event.currentTarget.value)}
+      on:focus={() => controller.search(query)}
       on:keydown={(event) => {
-        if (event.key === 'Escape') open = false
+        if (event.key === 'Escape') controller.close()
       }}
     />
   </form>
@@ -211,6 +180,8 @@
           <span class="h-3 w-3 rounded-full border-2 border-slate-300 border-t-primary-500 animate-spin"></span>
           {$t('nav.search')}
         </div>
+      {:else if failed}
+        <div role="alert" class="px-3 py-3 text-sm text-red-600">{$t('message.error')}</div>
       {:else if suggestionsCount}
         <div class="max-h-[70vh] overflow-y-auto py-1">
           {#each suggestionGroups as group (group.type)}
@@ -226,7 +197,7 @@
                 >
                   <div class="flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-100 text-slate-500 dark:bg-zinc-800 dark:text-zinc-400">
                     {#if suggestion.image}
-                      <img src={suggestion.image} alt="" class="h-full w-full object-cover" />
+                      <img src={suggestion.image} alt="" width="36" height="36" decoding="async" class="h-full w-full object-cover" />
                     {:else}
                       <Icon src={iconForType(suggestion.type)} size="18" mini />
                     {/if}

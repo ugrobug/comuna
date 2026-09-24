@@ -5,7 +5,7 @@ import {
   type BackendPost,
   backendPostCommunityPath,
   buildBackendPostPath,
-  buildSearchUrl,
+  buildSearchPath,
   backendPostToPostView,
 } from '$lib/api/backend'
 import { client, getClient } from '$lib/lemmy.js'
@@ -28,9 +28,11 @@ export async function load({ url, fetch }): Promise<any> {
     (url.searchParams.get('listing_type') as ListingType) || 'All'
 
   if (env.PUBLIC_BACKEND_URL && hasQuery) {
-    const response = await fetch(buildSearchUrl(query, page, 20, type))
+    const response = await fetch(buildSearchPath(query, page, 20, type))
     if (!response.ok) {
+      const failure = await response.json().catch(() => null)
       return {
+        error: typeof failure?.error === 'string' ? failure.error : `HTTP ${response.status}`,
         backend: true,
         hasQuery,
         page: page,
