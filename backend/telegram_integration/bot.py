@@ -27,6 +27,7 @@ from feeds.models import Author, Post
 from telegram_integration.models import BotSession, TelegramAccount
 from telegram_integration.media import is_private_telegram_file_url
 from telegram_integration.channel_posts import TelegramChannelPostWriter, TelegramMediaDownloadError
+from telegram_integration.channel_access import TelegramChannelAccessVerifier
 from users.models import AuthorAdmin, AuthorVerificationCode
 
 _BOT_ID: int | None = None
@@ -79,7 +80,9 @@ def _get_bot_id(token: str) -> int | None:
     return None
 
 
-def _is_bot_admin(chat_id: int, token: str) -> bool:
+def _is_bot_admin(chat_id: int, token: str, *, require_verified: bool = False) -> bool:
+    if require_verified:
+        return TelegramChannelAccessVerifier(token, lambda: _get_bot_id(token)).is_admin(chat_id)
     bot_id = _get_bot_id(token)
     if not bot_id:
         return False
@@ -1025,7 +1028,7 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
     token = settings.TELEGRAM_BOT_TOKEN
     chat_id = chat.get("id")
     if token and chat_id:
-        if not _is_bot_admin(chat_id, token):
+        if not _is_bot_admin(chat_id, token, require_verified=True):
             return
         _refresh_author_from_telegram(author, chat_id, token)
     comun = community_service._ensure_telegram_channel_comun_for_author(author)
