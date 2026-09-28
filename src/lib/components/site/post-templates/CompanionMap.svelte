@@ -46,6 +46,7 @@
       if (disposed) return
       leaflet = module
       map = leaflet.map(element, { scrollWheelZoom: false }).setView([lat ?? 55.7558, lng ?? 37.6176], lat == null ? 10 : 14)
+      map.attributionControl.setPrefix(false)
       leaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
