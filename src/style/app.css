@@ -107,15 +107,11 @@ h2 {
   text-decoration: none;
 }
 
-:global(a.btn-primary),
-:global(.btn-primary) {
-  color: var(--btn-primary-color) !important;
-}
-
-:global(a.btn-primary:hover),
-:global(.btn-primary:hover),
-:global(a.btn-primary:focus),
-:global(.btn-primary:focus) {
+/* This is a global stylesheet: Svelte's :global() syntax is not processed here.
+   Keep link-button labels distinct from the ordinary link colors in posts. */
+.btn-primary,
+.btn-primary:hover,
+.btn-primary:focus {
   color: var(--btn-primary-color) !important;
 }
 
@@ -132,15 +128,6 @@ h2 {
 
 .dark .btn-primary:hover {
   background-color: var(--btn-primary-background-hover);
-}
-
-:global(.dark) :global(p) :global(a.btn-primary),
-:global(.dark) :global(p) :global(.btn-primary),
-:global(.dark) :global(p) :global(a.btn-primary:hover),
-:global(.dark) :global(p) :global(.btn-primary:hover),
-:global(.dark) :global(p) :global(a.btn-primary:focus),
-:global(.dark) :global(p) :global(.btn-primary:focus) {
-  color: #e4e4e7 !important;
 }
 
 @font-face {
