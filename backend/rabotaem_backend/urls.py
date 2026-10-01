@@ -1,3 +1,4 @@
+from feeds.mention_views import mention_suggestions
 from max_integration import views as max_views
 from editor.companion_views import companion_search
 from django.conf import settings
@@ -291,6 +292,7 @@ urlpatterns = [
         comun_post_category_update,
         name="comun-post-category-update",
     ),
+    path("api/mentions/suggest/", mention_suggestions, name="mention-suggestions"),
     path("api/search/", search_content, name="search-content"),
     path("api/search/suggest/", search_suggestions, name="search-suggestions"),
     path("api/wherefilmed/import/", wherefilmed_import, name="wherefilmed-import"),

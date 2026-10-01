@@ -1,0 +1,9 @@
+.mention-suggestions { box-sizing:border-box; position:fixed; z-index:10000; overflow-y:auto; overscroll-behavior:contain; border:1px solid #cbd5e1; border-radius:12px; background:#fff; color:#0f172a; box-shadow:0 8px 30px #0002; padding:4px; font:14px/1.4 system-ui,sans-serif; }
+.mention-suggestions[hidden] { display:none; }
+.mention-suggestions__option { display:flex; flex-direction:column; gap:2px; padding:9px 12px; border-radius:8px; cursor:pointer; overflow-wrap:anywhere; }
+.mention-suggestions__option span, .mention-suggestions__message { color:#475569; font-size:12px; }
+.mention-suggestions__message { padding:12px; }
+.mention-suggestions__option[aria-selected="true"], .mention-suggestions__option:hover { background:#eff6ff; }
+.dark .mention-suggestions { color:#f1f5f9; background:#18181b; border-color:#52525b; }
+.dark .mention-suggestions__option span, .dark .mention-suggestions__message { color:#cbd5e1; }
+.dark .mention-suggestions__option[aria-selected="true"], .dark .mention-suggestions__option:hover { background:#334155; }

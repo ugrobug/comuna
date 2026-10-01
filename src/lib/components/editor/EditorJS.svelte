@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { mentionSuggestions } from '$lib/mentions/action'
   import { createEventDispatcher, onMount, onDestroy } from 'svelte'
   import { profile } from '$lib/auth'
   import { createImageTool } from './createImageTool'
@@ -5435,6 +5436,7 @@
   <div
     class="min-h-[400px] p-3 rounded-lg focus-within:ring-2 focus-within:ring-blue-500 transition-all duration-200 editor-content bg-white dark:bg-slate-800 border dark:border-slate-700"
     bind:this={element}
+    use:mentionSuggestions={{ enabled: true, token: $siteToken, mode: 'html' }}
   ></div>
 
   {#if showPostSettings}

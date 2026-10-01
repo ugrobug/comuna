@@ -441,7 +441,11 @@ class Post(models.Model):
                 kwargs["update_fields"] = list(
                     set(kwargs["update_fields"]) | {"translation_text_length"}
                 )
-        super().save(*args, **kwargs)
+        from feeds.mentions import MentionService
+        MentionService().save_source(
+            self, lambda: super(Post, self).save(*args, **kwargs),
+            process=update_fields is None or bool({"content", "is_pending", "is_blocked", "publish_at"} & set(update_fields)),
+        )
 
 
 class PostDailyView(models.Model):
@@ -626,7 +630,11 @@ class PostComment(models.Model):
                 kwargs["update_fields"] = list(
                     set(update_fields) | {"seo_text_length"}
                 )
-        super().save(*args, **kwargs)
+        from feeds.mentions import MentionService
+        MentionService().save_source(
+            self, lambda: super(PostComment, self).save(*args, **kwargs), comment=True,
+            process=update_fields is None or "body" in set(update_fields),
+        )
 
 
 class ContentReport(models.Model):
@@ -1090,3 +1098,20 @@ from users.models import (
     SocialAccount,
     VkAccount,
 )
+
+
+class MentionDelivery(models.Model):
+    """Persistent receipt: deleting an alert or removing/readding a tag must not resend it."""
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    post = models.ForeignKey(Post, null=True, on_delete=models.CASCADE)
+    comment = models.ForeignKey(PostComment, null=True, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(condition=(models.Q(post__isnull=False, comment__isnull=True)
+                                             | models.Q(post__isnull=True, comment__isnull=False)),
+                                   name="mention_one_source"),
+            models.UniqueConstraint(fields=("post", "user"), name="mention_post_user_unique"),
+            models.UniqueConstraint(fields=("comment", "user"), name="mention_comment_user_unique"),
+        ]

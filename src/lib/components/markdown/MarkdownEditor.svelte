@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { mentionSuggestions } from '$lib/mentions/action'
+  import { siteToken } from '$lib/siteAuth'
+  export let mentionsEnabled = false
   import { profile } from '$lib/auth.js'
   import MultiSelect from '$lib/components/input/Switch.svelte'
   import Markdown from '$lib/components/markdown/Markdown.svelte'
@@ -402,7 +405,7 @@
   />
 {/if}
 
-<div>
+<div use:mentionSuggestions={{ enabled: mentionsEnabled, token: $siteToken, mode: 'markdown' }}>
   {#if label || $$slots.label}
     <Label>
       {#if label}

@@ -218,6 +218,7 @@
     {autoFocus}
     tools={true}
     toolbarPreset="comment"
+    mentionsEnabled={true}
     previewButton={false}
     images={true}
     imageUploadHandler={uploadCommentImage}

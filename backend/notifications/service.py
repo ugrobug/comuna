@@ -29,6 +29,15 @@ SPECIAL_PROJECT_NOTIFICATION_EVENT_KEYS = {
 
 
 NOTIFICATION_EVENT_DEFINITIONS: list[dict[str, Any]] = [
+    *[{
+        "key": key,
+        "title": title,
+        "description": "Упоминания вас или сообщества, которым вы управляете.",
+        "default_site_enabled": True,
+        "default_telegram_enabled": False,
+        "default_push_enabled": False,
+    } for key, title in (("post_mention", "Упоминание в посте"),
+                         ("comment_mention", "Упоминание в комментарии"))],
     {
         "key": "explore_new_community",
         "title": "Новое сообщество в ваших увлечениях",
@@ -665,6 +674,11 @@ def send_due_grouped_notifications(*, limit: int = 500, now=None) -> int:
             )
             if not notification:
                 continue
+            if notification.event_key in ("post_mention", "comment_mention"):
+                from feeds.mentions import MentionService
+                if not MentionService.notification_is_visible(notification):
+                    notification.delete()
+                    continue
             deliver_grouped_notification(notification, now=now)
             sent += 1
     return sent
