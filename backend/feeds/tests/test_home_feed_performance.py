@@ -314,3 +314,49 @@ class HomeFeedPerformanceTests(TestCase):
             self.assertEqual(guest["user_vote"], 0)
             self.assertFalse(guest["is_favorite"])
             cache.clear()
+
+    def test_gallery_previews_keep_order_visibility_and_query_budget(self):
+        galleries = []
+        for index in range(10):
+            author = Author.objects.create(username=f"gallery-author-{index}")
+            comun = Comun.objects.create(name=f"Gallery {index}", slug=f"gallery-{index}")
+            galleries.append(self.post(
+                author=author,
+                raw_data={"source": "manual_comun", "comun_slug": comun.slug},
+                content='<div class="post-gallery">'
+                        f'<img src="/media/gallery-{index}-a-1920.webp">'
+                        f'<img src="/media/gallery-{index}-b-1920.webp"></div><p>Gallery</p>',
+            ))
+        self.snapshot(galleries)
+        for auth in (False, True):
+            with CaptureQueriesContext(connection) as queries:
+                payload = self.get(auth=auth)
+            self.assertLessEqual(len(queries), 30)
+            self.assertEqual([p["id"] for p in payload["posts"]], [p.pk for p in galleries])
+            for index, card in enumerate(payload["posts"]):
+                self.assertEqual(len(card["preview_gallery"]), 2)
+                self.assertTrue(card["preview_gallery"][0]["url"].endswith(f"gallery-{index}-a-1920.webp"))
+                self.assertNotIn("post-gallery", card["content"])
+        first = galleries[0]
+        first.content = '<p>Image removed</p>'
+        first.save(update_fields=["content"])
+        first.refresh_from_db()
+        self.assertEqual(first.preview_gallery, [])
+
+    def test_gallery_backfill_populates_existing_posts_without_changing_content(self):
+        from importlib import import_module
+        from django.apps import apps
+        gallery = self.post(content='<div class="post-gallery"><img src="/media/a.webp"><img src="/media/b.webp"></div>')
+        single = self.post(content='<img src="/media/a.webp">')
+        Post.objects.filter(pk=gallery.pk).update(preview_gallery=[])
+        migration = import_module("feeds.migrations.0178_post_preview_gallery")
+        from types import SimpleNamespace
+        migration.prepare_galleries(apps, SimpleNamespace(connection=connection))
+        gallery.refresh_from_db()
+        single.refresh_from_db()
+        self.assertEqual([i["url"] for i in gallery.preview_gallery], ["/media/a.webp", "/media/b.webp"])
+        self.assertIn('class="post-gallery"', gallery.content)
+        self.assertEqual(single.preview_gallery, [])
+        migration.prepare_galleries(apps, SimpleNamespace(connection=connection))
+        gallery.refresh_from_db()
+        self.assertEqual(len(gallery.preview_gallery), 2)

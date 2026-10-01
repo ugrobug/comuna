@@ -17,6 +17,8 @@
   import { onMount } from 'svelte'
   import { ArrowDownTray, Icon } from 'svelte-hero-icons'
   import PostImage from './PostImage.svelte'
+  import PostGalleryPreview from './PostGalleryPreview.svelte'
+  import type { GalleryPreviewImage } from '$lib/gallery/types'
 
   export let view: 'card' | 'cozy' | 'list' | 'compact' = 'cozy'
   export let post: Post
@@ -24,6 +26,7 @@
   export let opened: boolean | undefined = undefined
   export let blur: boolean = post.nsfw && $userSettings.nsfwBlur
   export let linkOverride: string | undefined = undefined
+  $: gallery = (post as Post & { preview_gallery?: GalleryPreviewImage[] }).preview_gallery || []
 </script>
 
 <!-- 
@@ -32,7 +35,9 @@
   - A media item (pictures, videos) (large form factor posts only)
   - Embed link/card.
 -->
-{#if type == 'image' && (view == 'cozy' || view == 'card')}
+{#if gallery.length > 1 && (view == 'cozy' || view == 'card')}
+  <PostGalleryPreview images={gallery} {blur} />
+{:else if type == 'image' && (view == 'cozy' || view == 'card')}
   <PostImage {post} {blur} {linkOverride} />
 {:else if (type == 'iframe' || type == 'video') && (view == 'cozy' || view == 'card') && post.url}
   <PostIframe

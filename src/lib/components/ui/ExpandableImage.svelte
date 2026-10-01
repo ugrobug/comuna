@@ -46,6 +46,7 @@
 </script>
 
 <script lang="ts">
+  import { GallerySwipe } from '$lib/gallery/GallerySwipe'
   import { replaceState } from '$app/navigation'
   import { page } from '$app/stores'
   import { Button, Material, toast } from 'mono-svelte'
@@ -69,6 +70,8 @@
    */
   export let alt: string = ''
 
+  const swipe = new GallerySwipe()
+  let suppressBackdropClickUntil = 0
   let zoomed = false
   let sharing = false
   let lastOpenImageUrl = ''
@@ -85,6 +88,7 @@
   $: if (openImageUrl !== lastOpenImageUrl) {
     lastOpenImageUrl = openImageUrl
     zoomed = false
+    swipe.cancel()
   }
 
   function closeImage() {
@@ -104,7 +108,21 @@
     })
   }
 
+  function handleTouchEnd(e: TouchEvent) {
+    const direction = swipe.finish(e.changedTouches, hasGalleryNavigation && !zoomed)
+    if (!direction) return
+    suppressBackdropClickUntil = Date.now() + 500
+    showGalleryImage(currentIndex + direction)
+  }
+
+  function handleBackdropClick(e: MouseEvent) {
+    if (Date.now() < suppressBackdropClickUntil || e.target !== e.currentTarget) return
+    closeImage()
+  }
+
   function handleKeydown(e: KeyboardEvent) {
+    if (!openImageUrl) return
+
     if (e.key == 'Escape') {
       closeImage()
       return
@@ -132,6 +150,8 @@
   }
 </script>
 
+<svelte:window on:keydown={handleKeydown} />
+
 {#if openImageUrl}
   <!-- svelte-ignore a11y-no-noninteractive-tabindex -->
   <!-- svelte-ignore a11y-no-static-element-interactions -->
@@ -139,10 +159,12 @@
   <!-- svelte-ignore a11y-positive-tabindex -->
   <div
     class="fixed top-0 left-0 w-screen h-[100svh] overflow-auto bg-white/50 dark:bg-black/50
-    flex flex-col z-[100] backdrop-blur-sm"
+    flex flex-col z-[1100] backdrop-blur-sm"
     transition:fade={{ duration: 150 }}
-    on:click={closeImage}
-    on:keydown={handleKeydown}
+    role="dialog"
+    aria-modal="true"
+    aria-label="Просмотр изображений"
+    on:click={handleBackdropClick}
     use:focusTrap
   >
     {#if hasGalleryNavigation}
@@ -172,6 +194,13 @@
       </button>
     {/if}
     <img
+      on:touchstart={(e) => swipe.begin(e.touches, hasGalleryNavigation && !zoomed)}
+      on:touchmove={(e) => swipe.move(e.touches)}
+      on:touchend={handleTouchEnd}
+      on:touchcancel={() => swipe.cancel()}
+      style:touch-action={zoomed ? 'auto' : 'pan-y pinch-zoom'}
+      style:max-height={!zoomed ? 'calc(100svh - 6rem)' : undefined}
+      draggable="false"
       width={400}
       height={400}
       src={openImageUrl}
@@ -187,7 +216,8 @@
       alt={currentImage.alt || openImageAlt || ''}
     />
     <div
-      class="sticky z-10 bottom-4 left-1/2 -translate-x-1/2 w-max"
+      class="fixed z-10 left-1/2 -translate-x-1/2 w-max"
+      style="bottom: max(1rem, env(safe-area-inset-bottom));"
       transition:fly={{ duration: 350, y: 14, easing: backOut }}
     >
       <Material

@@ -557,6 +557,7 @@
         "communities": "Сообщества"
     },
     "post": {
+        "image": {"zoomIn": "Увеличить", "zoomOut": "Уменьшить", "close": "Закрыть"},
         "actions": {
             "comments": "Комментарии",
             "save": "Сохранить",

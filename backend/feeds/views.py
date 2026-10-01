@@ -1479,7 +1479,7 @@ def _serialize_post_preview_image_fields(
     request: HttpRequest | None,
     post: Post,
     template_payload: dict | None = None,
-) -> dict[str, str | None]:
+) -> dict[str, object]:
     preview_image_url, thumbnail_url = _extract_post_preview_image_urls(
         request,
         post,
@@ -1491,10 +1491,19 @@ def _serialize_post_preview_image_fields(
             f"/api/posts/{post.pk}/social-image.jpg",
             request=request,
         )
+    gallery = []
+    for item in post.preview_gallery or []:
+        image_url = _normalize_public_image_url(request, item.get("url"))
+        if image_url:
+            image = {"url": image_url, "alt": item.get("alt", "")}
+            if len(gallery) < 4:
+                image["preview_url"] = _local_webp_variant_url(request, image_url, target_width=640)
+            gallery.append(image)
     return {
         "preview_image_url": preview_image_url,
         "thumbnail_url": thumbnail_url,
         "social_image_url": social_image_url,
+        "preview_gallery": gallery if len(gallery) > 1 and preview_image_url else [],
     }
 
 

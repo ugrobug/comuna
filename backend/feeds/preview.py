@@ -9,6 +9,7 @@ from typing import Any
 from django.utils.html import strip_tags
 
 from editor import service as editor_service
+from feeds.preview_gallery import PostPreviewGallery
 
 
 EDITOR_MODEL_BASE64_RE = re.compile(r"^[A-Za-z0-9+/_-]*={0,2}$")
@@ -305,7 +306,7 @@ def build_post_preview(
     raw_data: dict[str, Any] | None = None,
     *,
     max_length: int = 250,
-) -> dict[str, str]:
+) -> dict[str, Any]:
     raw_data = raw_data if isinstance(raw_data, dict) else {}
     template_payload, _template_error = editor_service._normalize_post_template_payload(
         raw_data.get("template") if isinstance(raw_data.get("template"), dict) else None
@@ -337,4 +338,7 @@ def build_post_preview(
     return {
         "preview_content": preview_content,
         "preview_image_url": preview_image_url,
+        "preview_gallery": [] if _template_image_candidates(template_payload) else PostPreviewGallery().extract(
+            content, editor_payload, preview_image_url
+        ),
     }

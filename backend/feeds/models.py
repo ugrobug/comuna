@@ -342,6 +342,7 @@ class Post(models.Model):
     translation_text_length = models.PositiveIntegerField(default=0, db_index=True)
     preview_content = models.TextField(blank=True)
     preview_image_url = models.TextField(blank=True)
+    preview_gallery = models.JSONField(default=list, db_default=[], blank=True)
     original_language = models.CharField(
         max_length=8,
         choices=(
@@ -419,9 +420,10 @@ class Post(models.Model):
             preview = build_post_preview(self.content or "", self.raw_data)
             self.preview_content = preview["preview_content"]
             self.preview_image_url = preview["preview_image_url"]
+            self.preview_gallery = preview["preview_gallery"]
             if update_fields is not None:
                 kwargs["update_fields"] = list(
-                    set(update_fields) | {"preview_content", "preview_image_url"}
+                    set(update_fields) | {"preview_content", "preview_image_url", "preview_gallery"}
                 )
         if should_refresh_seo_text:
             from feeds.seo_indexing import plain_text_length

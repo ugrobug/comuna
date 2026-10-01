@@ -217,3 +217,57 @@ class PostPreviewImageTests(SimpleTestCase):
             preview["preview_content"],
             "<p>Платформы: Windows, Android<br>Браузеры: Chrome, Яндекс Браузер</p>",
         )
+
+
+class PostPreviewGalleryTests(SimpleTestCase):
+    def preview(self, blocks, additional=None):
+        return build_post_preview(json.dumps({"blocks": blocks, "additional": additional or {}}))
+
+    def gallery(self, prefix="gallery"):
+        return {"type": "gallery", "data": {"images": [
+            {"url": f"/media/{prefix}-{i}.webp", "alt": f"Photo {i}"} for i in range(3)
+        ]}}
+
+    def test_leading_gallery_survives_preview_without_full_body(self):
+        preview = self.preview([{"type": "paragraph", "data": {"text": "Hello"}}, self.gallery(), self.gallery("second")])
+        self.assertEqual(preview["preview_content"], "<p>Hello</p>")
+        self.assertEqual(preview["preview_gallery"], self.gallery()["data"]["images"])
+
+    def test_image_before_gallery_and_explicit_cover_remain_single_images(self):
+        self.assertEqual(self.preview([
+            {"type": "image", "data": {"file": {"url": "/media/first.webp"}}}, self.gallery()
+        ])["preview_gallery"], [])
+        self.assertEqual(self.preview([self.gallery()], {"previewImage": "/media/cover.webp"})["preview_gallery"], [])
+
+    def test_html_gallery_only_uses_first_group_and_preserves_entities(self):
+        html = '<p>Hello</p><div class="post-gallery"><div><img src="/media/a.webp" alt="A &amp; B"></div><img src="/media/b.webp" /></div><div class="post-gallery"><img src="/media/c.webp"></div>'
+        preview = build_post_preview(html)
+        self.assertEqual(preview["preview_gallery"], [
+            {"url": "/media/a.webp", "alt": "A & B"}, {"url": "/media/b.webp", "alt": ""}
+        ])
+        self.assertEqual(build_post_preview('<img src="/media/first.webp">' + html)["preview_gallery"], [])
+
+    def test_single_image_duplicate_and_empty_galleries_do_not_create_navigation(self):
+        gallery = {"type": "gallery", "data": {"images": [{"url": "/media/a.webp"}] * 3}}
+        self.assertEqual(self.preview([gallery])["preview_gallery"], [])
+        self.assertEqual(self.preview([{"type": "gallery", "data": {"images": []}}])["preview_gallery"], [])
+
+    @override_settings(SITE_BASE_URL="https://tambur.pub", MEDIA_URL="/media/", MEDIA_PUBLIC_URL_MODE="legacy")
+    @patch("django.core.files.storage.default_storage.exists")
+    def test_serialization_uses_stored_gallery_and_does_not_probe_storage(self, exists):
+        post = Post(preview_image_url="/media/a-1920.webp", preview_gallery=[
+            {"url": "/media/a-1920.webp", "alt": "A"},
+            {"url": "https://api.telegram.org/file/botSECRET/b.webp"},
+            {"url": "/media/b-1920.webp", "alt": "B"},
+        ])
+        result = _serialize_post_preview_image_fields(None, post)
+        self.assertEqual([item["url"] for item in result["preview_gallery"]], [
+            "https://tambur.pub/media/a-1920.webp", "https://tambur.pub/media/b-1920.webp"
+        ])
+        self.assertEqual(result["preview_gallery"][0]["preview_url"], "https://tambur.pub/media/a-640.webp")
+        exists.assert_not_called()
+
+    def test_html_gallery_preserves_images_with_escaped_query_parameters(self):
+        preview = build_post_preview('<div class="post-gallery"><img src="/media/a.webp?v=1&amp;x=2"><img src="/media/b.webp"></div>')
+        self.assertEqual(len(preview["preview_gallery"]), 2)
+        self.assertEqual(preview["preview_gallery"][0]["url"], "/media/a.webp?v=1&x=2")

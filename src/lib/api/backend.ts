@@ -1,3 +1,4 @@
+import type { GalleryPreviewImage } from '$lib/gallery/types'
 import { browser } from '$app/environment'
 import { env as publicEnv } from '$env/dynamic/public'
 import type { SitePostTemplate } from '$lib/postTemplates'
@@ -1374,6 +1375,7 @@ export type BackendPost = {
   post_ratings?: Record<string, BackendPostRating>
   post_rating?: BackendPostRating | null
   preview_image_url?: string | null
+  preview_gallery?: GalleryPreviewImage[]
   thumbnail_url?: string | null
   has_full_content?: boolean
   created_at: string
@@ -1463,6 +1465,7 @@ export const backendPostToPostView = (
       post_rating: post.post_rating ?? null,
       url: options.includePreviewMedia === false ? '' : previewImageUrl,
       has_full_content: Boolean(post.has_full_content),
+      preview_gallery: options.includePreviewMedia === false ? [] : (post.preview_gallery || []),
       tags: post.tags ?? [],
       published: post.created_at,
       updated: post.created_at,

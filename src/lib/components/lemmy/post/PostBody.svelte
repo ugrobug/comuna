@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { PostGallery } from '$lib/gallery/PostGallery'
   import { page } from '$app/stores'
   import Markdown from '$lib/components/markdown/Markdown.svelte'
   import type { View } from '$lib/settings'
@@ -742,125 +743,9 @@
   }
 
   const setupGalleries = () => {
-    if (!browser || !element) return;
-    const galleries = element.querySelectorAll('.post-gallery');
-
-    const fullMode = showFullBody || (collapsible && expanded)
-    const mode = fullMode ? 'full' : 'preview';
-    galleries.forEach((gallery) => {
-      if (gallery.getAttribute('data-gallery-ready') === mode) {
-        return;
-      }
-      gallery.setAttribute('data-gallery-ready', mode);
-
-      const images = Array.from(gallery.querySelectorAll('img'));
-      if (!images.length) return;
-
-      if (!fullMode) {
-        // Keep all images in DOM so we can re-build the gallery when user expands,
-        // but visually show only the first one in preview mode.
-        images.forEach((img, index) => {
-          if (!(img instanceof HTMLElement)) return;
-          if (index === 0) {
-            img.style.display = '';
-            img.removeAttribute('data-preview-hidden');
-          } else {
-            img.style.display = 'none';
-            img.setAttribute('data-preview-hidden', '1');
-          }
-        });
-        return;
-      }
-
-      const getImgAttr = (img: Element, name: string) => {
-        return img.getAttribute(name) || '';
-      };
-
-      const mainWrapper = document.createElement('div');
-      mainWrapper.className = 'featured-gallery-main';
-
-      const mainImage = document.createElement('img');
-      const first = images[0];
-      mainImage.src = getImgAttr(first, 'src');
-      const firstExpandedSrc = getImgAttr(first, 'data-expandable-src');
-      const firstSrcset = getImgAttr(first, 'srcset');
-      if (firstSrcset) {
-        mainImage.setAttribute('srcset', firstSrcset);
-      }
-      const firstSizes = getImgAttr(first, 'sizes');
-      if (firstSizes) {
-        mainImage.setAttribute('sizes', firstSizes);
-      }
-      mainImage.alt = getImgAttr(first, 'alt');
-      mainImage.setAttribute('data-expandable-image', '1');
-      if (firstExpandedSrc) {
-        mainImage.setAttribute('data-expandable-src', firstExpandedSrc);
-      }
-      mainWrapper.appendChild(mainImage);
-
-      const thumbs = document.createElement('div');
-      thumbs.className = 'featured-gallery-thumbs';
-
-      const updateMain = (img: Element, btn: HTMLButtonElement) => {
-        mainImage.src = getImgAttr(img, 'src');
-        const srcset = getImgAttr(img, 'srcset');
-        if (srcset) {
-          mainImage.setAttribute('srcset', srcset);
-        } else {
-          mainImage.removeAttribute('srcset');
-        }
-        const sizes = getImgAttr(img, 'sizes');
-        if (sizes) {
-          mainImage.setAttribute('sizes', sizes);
-        } else {
-          mainImage.removeAttribute('sizes');
-        }
-        mainImage.alt = getImgAttr(img, 'alt');
-        const expandedSrc = getImgAttr(img, 'data-expandable-src');
-        if (expandedSrc) {
-          mainImage.setAttribute('data-expandable-src', expandedSrc);
-        } else {
-          mainImage.removeAttribute('data-expandable-src');
-        }
-        thumbs.querySelectorAll('.featured-gallery-thumb').forEach((item) => {
-          item.classList.remove('active');
-        });
-        btn.classList.add('active');
-      };
-
-      images.forEach((img, index) => {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'featured-gallery-thumb';
-
-        const thumb = document.createElement('img');
-        thumb.src = getImgAttr(img, 'src');
-        const srcset = getImgAttr(img, 'srcset');
-        if (srcset) {
-          thumb.setAttribute('srcset', srcset);
-        }
-        const sizes = getImgAttr(img, 'sizes');
-        if (sizes) {
-          thumb.setAttribute('sizes', sizes);
-        }
-        thumb.alt = getImgAttr(img, 'alt');
-        thumb.loading = 'lazy';
-
-        btn.appendChild(thumb);
-        btn.addEventListener('click', () => updateMain(img, btn));
-
-        if (index === 0) {
-          btn.classList.add('active');
-        }
-        thumbs.appendChild(btn);
-      });
-
-      gallery.innerHTML = '';
-      gallery.classList.add('featured-gallery');
-      gallery.appendChild(mainWrapper);
-      gallery.appendChild(thumbs);
-    });
-  };
+    if (!browser || !element) return
+    element.querySelectorAll('.post-gallery').forEach((gallery) => new PostGallery(gallery).enhance())
+  }
 
   const setupImageComparisons = () => {
     if (!browser || !element) return
