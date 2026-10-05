@@ -1178,6 +1178,7 @@ export type BackendComunMapPoint = {
 }
 
 export type BackendPublicSiteUser = {
+  bio?: string | null
   id: number
   username: string
   display_name?: string | null

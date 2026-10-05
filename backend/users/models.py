@@ -101,6 +101,7 @@ class SocialAccount(models.Model):
 class SiteUserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="site_profile")
     display_name = models.CharField(max_length=120, blank=True)
+    bio = models.TextField(blank=True, default="", max_length=2000)
     phone = models.CharField(max_length=32, blank=True)
     avatar_url = models.URLField(max_length=500, blank=True)
     email_verified_at = models.DateTimeField(null=True, blank=True)

@@ -964,7 +964,11 @@
         "account": {
             "title": "Account"
         },
+        "tabs": {"about": "About me", "notifications": "Notifications", "interface": "Interface", "feed": "Feed"},
         "siteProfile": {
+            "bioLabel": "About me",
+            "bioPlaceholder": "Tell readers about yourself, your interests and what you publish.",
+            "bioHint": "This text will appear on your author page.",
             "avatarUploaded": "Avatar uploaded. Click Save",
             "authRequired": "Sign in required",
             "updatedVerifyEmail": "Profile updated. Check your email and confirm it.",

@@ -875,7 +875,11 @@
             },
             "title": "Otro"
         },
+        "tabs": {"about": "Sobre mí", "notifications": "Notificaciones", "interface": "Interfaz", "feed": "Feed"},
         "siteProfile": {
+            "bioLabel": "Sobre mí",
+            "bioPlaceholder": "Cuéntanos sobre ti, tus intereses y lo que publicas.",
+            "bioHint": "Este texto aparecerá en tu página de autor.",
             "avatarUploaded": "Avatar subido. Haz clic en Guardar",
             "authRequired": "Debes iniciar sesión",
             "updatedVerifyEmail": "Perfil actualizado. Revisa tu email y confírmalo.",

@@ -8,6 +8,8 @@
 
   export let tabs: ComunSettingsTab[] = []
   export let value = ''
+  export let ariaLabel = 'Разделы настроек сообщества'
+  export let panelPrefix = ''
 
   const dispatch = createEventDispatcher<{ change: string }>()
 
@@ -15,18 +17,31 @@
     if (!nextValue || nextValue === value) return
     dispatch('change', nextValue)
   }
+  const onKeydown = (event: KeyboardEvent, index: number) => {
+    const offsets: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1, Home: -index, End: tabs.length - 1 - index }
+    if (!(event.key in offsets) || !tabs.length) return
+    event.preventDefault()
+    const nextIndex = (index + offsets[event.key] + tabs.length) % tabs.length
+    const button = event.currentTarget as HTMLButtonElement
+    const buttons = button.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')
+    buttons?.[nextIndex]?.focus()
+    selectTab(tabs[nextIndex].value)
+  }
 </script>
 
-<div class="comun-settings-tabs" role="tablist" aria-label="Разделы настроек сообщества">
-  {#each tabs as tab}
+<div class="comun-settings-tabs" role="tablist" aria-label={ariaLabel}>
+  {#each tabs as tab, index}
     <button
       type="button"
       role="tab"
+      id={panelPrefix ? `${panelPrefix}-tab-${tab.value}` : undefined}
+      aria-controls={panelPrefix ? `${panelPrefix}-panel-${tab.value}` : undefined}
       class="comun-settings-tab"
       class:is-active={value === tab.value}
       aria-selected={value === tab.value}
       tabindex={value === tab.value ? 0 : -1}
       on:click={() => selectTab(tab.value)}
+      on:keydown={(event) => onKeydown(event, index)}
     >
       {tab.label}
     </button>

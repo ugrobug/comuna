@@ -44,6 +44,7 @@ export type SiteAuthorLink = {
 }
 
 export type SiteUser = {
+  bio?: string | null
   id: number
   username: string
   display_name?: string | null
@@ -385,6 +386,7 @@ export const scheduleRefreshSiteUser = () => {
 }
 
 export const updateSiteProfile = async (payload: {
+  bio?: string
   display_name?: string
   avatar_url?: string | null
   email?: string | null

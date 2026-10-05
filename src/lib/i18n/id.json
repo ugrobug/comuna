@@ -964,7 +964,11 @@
         "account": {
             "title": "Account"
         },
+        "tabs": {"about": "Tentang saya", "notifications": "Notifikasi", "interface": "Antarmuka", "feed": "Feed"},
         "siteProfile": {
+            "bioLabel": "Tentang saya",
+            "bioPlaceholder": "Ceritakan tentang diri Anda, minat dan tulisan Anda.",
+            "bioHint": "Teks ini akan tampil di halaman penulis Anda.",
             "avatarUploaded": "Avatar diunggah. Klik Simpan",
             "authRequired": "Perlu masuk",
             "updatedVerifyEmail": "Profil diperbarui. Periksa email Anda dan konfirmasi.",

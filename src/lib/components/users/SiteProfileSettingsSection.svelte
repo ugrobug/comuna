@@ -8,6 +8,7 @@
 
   export let siteUser: SiteUser | null = null
   export let displayName = ''
+  export let bio = ''
   export let avatarUrl = ''
   export let email = ''
   export let saving = false
@@ -82,6 +83,26 @@
             {$t('settings.siteProfile.emailVerified')}
           </div>
         {/if}
+      </div>
+
+      <div class="flex flex-col gap-2">
+        <label for="site-profile-bio" class="text-sm font-medium text-slate-900 dark:text-zinc-100">
+          {$t('settings.siteProfile.bioLabel')}
+        </label>
+        <textarea
+          id="site-profile-bio"
+          bind:value={bio}
+          rows={5}
+          maxlength={2000}
+          disabled={saving}
+          aria-describedby="site-profile-bio-hint"
+          placeholder={$t('settings.siteProfile.bioPlaceholder')}
+          class="w-full min-w-0 resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+        ></textarea>
+        <div id="site-profile-bio-hint" class="flex justify-between gap-3 text-xs text-slate-500 dark:text-zinc-400">
+          <span>{$t('settings.siteProfile.bioHint')}</span>
+          <span class="shrink-0">{bio.length}/2000</span>
+        </div>
       </div>
 
       <div class="flex flex-wrap items-center gap-2">

@@ -737,7 +737,11 @@
                 "syntax": "Syntax"
             }
         },
+        "tabs": {"about": "Über mich", "notifications": "Benachrichtigungen", "interface": "Oberfläche", "feed": "Feed"},
         "siteProfile": {
+            "bioLabel": "Über mich",
+            "bioPlaceholder": "Erzähle von dir, deinen Interessen und deinen Beiträgen.",
+            "bioHint": "Dieser Text erscheint auf deiner Autorenseite.",
             "avatarUploaded": "Avatar hochgeladen. Klicken Sie auf Speichern",
             "authRequired": "Anmeldung erforderlich",
             "updatedVerifyEmail": "Profil aktualisiert. Prüfen und bestätigen Sie Ihre E-Mail.",

@@ -329,6 +329,13 @@
     </div>
   </section>
 
+  {#if profile?.bio?.trim() && !profile.is_deleted}
+    <section aria-labelledby="author-bio-title" class="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900/50">
+      <h2 id="author-bio-title" class="text-lg font-semibold text-slate-900 dark:text-zinc-100">{$t('settings.siteProfile.bioLabel')}</h2>
+      <p class="mt-3 whitespace-pre-wrap [overflow-wrap:anywhere] text-sm leading-relaxed text-slate-700 dark:text-zinc-200">{profile.bio}</p>
+    </section>
+  {/if}
+
   <section class="flex flex-col gap-3">
     <div class="text-lg font-semibold text-slate-900 dark:text-zinc-100">{$t('site.publicUser.communities')}</div>
     {#if comuns.length}

@@ -870,7 +870,11 @@
         "reset": "Redefinir",
         "desktop": "Computador",
         "mobile": "Telemóvel",
+        "tabs": {"about": "Sobre mim", "notifications": "Notificações", "interface": "Interface", "feed": "Feed"},
         "siteProfile": {
+            "bioLabel": "Sobre mim",
+            "bioPlaceholder": "Conte sobre você, seus interesses e o que publica.",
+            "bioHint": "Este texto aparecerá na sua página de autor.",
             "avatarUploaded": "Avatar enviado. Clique em Salvar",
             "authRequired": "É necessário entrar",
             "updatedVerifyEmail": "Perfil atualizado. Verifique seu email e confirme-o.",

@@ -944,7 +944,11 @@
         "account": {
             "title": "Hesap"
         },
+        "tabs": {"about": "Hakkımda", "notifications": "Bildirimler", "interface": "Arayüz", "feed": "Akış"},
         "siteProfile": {
+            "bioLabel": "Hakkımda",
+            "bioPlaceholder": "Kendinizi, ilgi alanlarınızı ve paylaşımlarınızı anlatın.",
+            "bioHint": "Bu metin yazar sayfanızda görünecek.",
             "avatarUploaded": "Avatar yüklendi. Kaydet’e tıklayın",
             "authRequired": "Giriş yapmanız gerekiyor",
             "updatedVerifyEmail": "Profil güncellendi. E-postanızı kontrol edip doğrulayın.",

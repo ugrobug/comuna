@@ -727,7 +727,11 @@
                 "description": "La virtualisation ne charge que les publications visibles, ce qui augmente considérablement la performance du site. Désactivez la virtualisation si vous avez des problèmes de bégaiement (ex : le fil qui remonde en descendant). Cela désactivera le défilement infini."
             }
         },
+        "tabs": {"about": "À propos de moi", "notifications": "Notifications", "interface": "Interface", "feed": "Fil"},
         "siteProfile": {
+            "bioLabel": "À propos de moi",
+            "bioPlaceholder": "Présentez-vous, vos centres d’intérêt et vos publications.",
+            "bioHint": "Ce texte sera visible sur votre page auteur.",
             "avatarUploaded": "Avatar téléversé. Cliquez sur Enregistrer",
             "authRequired": "Connexion requise",
             "updatedVerifyEmail": "Profil mis à jour. Vérifiez votre email et confirmez-le.",

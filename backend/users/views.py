@@ -5,6 +5,7 @@ import json
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_exempt
 
 from rabotaem_backend.rate_limit import is_rate_limited
@@ -232,6 +233,7 @@ def auth_me(request: HttpRequest) -> HttpResponse:
         user, email_verification_sent = user_service._update_site_profile(
             user,
             display_name=display_name,
+            bio=payload.get("bio"),
             avatar_url=avatar_url,
             email=email,
         )
@@ -282,6 +284,7 @@ def logout_user(request: HttpRequest) -> HttpResponse:
     return response
 
 
+@never_cache
 def public_user_profile(request: HttpRequest, user_id: int) -> HttpResponse:
     if request.method != "GET":
         return JsonResponse({"ok": False, "error": "method not allowed"}, status=405)

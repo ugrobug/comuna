@@ -75,6 +75,7 @@ def _serialize_user(user: User) -> dict:
             else None
         ),
         "display_name": (site_profile.display_name if site_profile else "") or None,
+        "bio": (site_profile.bio if site_profile else "") or None,
         "avatar_url": public_cached_avatar_url(site_profile.avatar_url if site_profile else "") or avatar_url,
         "is_staff": user.is_staff,
         "is_author": bool(authors),
@@ -110,6 +111,7 @@ def _serialize_public_site_user_profile(
             "first_name": None,
             "last_name": None,
             "is_deleted": True,
+            "bio": None,
         }
 
     author_links = author_links or []
@@ -132,6 +134,7 @@ def _serialize_public_site_user_profile(
         "comuns_count": int(comuns_count or 0),
         "authors_count": len(author_links),
         "is_staff": bool(user.is_staff),
+        "bio": (getattr(getattr(user, "site_profile", None), "bio", "") or "").strip() or None,
         "first_name": (getattr(user, "first_name", "") or "").strip() or None,
         "last_name": (getattr(user, "last_name", "") or "").strip() or None,
     }

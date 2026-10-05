@@ -301,6 +301,7 @@ def _delete_site_user_account(user: User) -> None:
         profile, _ = SiteUserProfile.objects.select_for_update().get_or_create(user=user)
         now = timezone.now()
         profile.display_name = ""
+        profile.bio = ""
         profile.phone = ""
         profile.avatar_url = ""
         profile.email_verified_at = None
@@ -310,6 +311,7 @@ def _delete_site_user_account(user: User) -> None:
         profile.save(
             update_fields=[
                 "display_name",
+                "bio",
                 "phone",
                 "avatar_url",
                 "email_verified_at",
@@ -579,6 +581,9 @@ def _merge_site_profiles(target: User, source: User) -> None:
     if source_profile.display_name and not target_profile.display_name:
         target_profile.display_name = source_profile.display_name
         update_fields.append("display_name")
+    if source_profile.bio and not target_profile.bio:
+        target_profile.bio = source_profile.bio
+        update_fields.append("bio")
     if source_profile.avatar_url and not target_profile.avatar_url:
         target_profile.avatar_url = source_profile.avatar_url
         update_fields.append("avatar_url")
@@ -944,66 +949,95 @@ def _authenticate_password_user(username_or_email: str, password: str) -> User:
     return user
 
 
-def _update_site_profile(
-    user: User,
-    *,
-    display_name: object = None,
-    avatar_url: object = None,
-    email: object = None,
-) -> tuple[User, bool]:
-    if display_name is None and avatar_url is None and email is None:
-        raise ValueError("nothing to update")
+class SiteProfileUpdateService:
+    """Validate and persist the current user's editable profile fields."""
 
-    profile, _ = SiteUserProfile.objects.get_or_create(user=user)
-    email_verification_sent = False
+    def __init__(self, user: User):
+        self.user = user
 
-    if display_name is not None:
-        next_display_name = str(display_name or "").strip()
-        if len(next_display_name) > 120:
-            raise ValueError("display_name too long")
-        profile.display_name = next_display_name
+    @staticmethod
+    def normalize_bio(value: object) -> str | None:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError("Поле «О себе» должно содержать текст.")
+        value = value.replace("\r\n", "\n").replace("\r", "\n").strip()
+        if len(value) > 2000:
+            raise ValueError("Поле «О себе» — не более 2000 символов.")
+        if "\x00" in value:
+            raise ValueError("Поле «О себе» содержит недопустимый символ.")
+        return value
 
-    if avatar_url is not None:
-        next_avatar_url = str(avatar_url or "").strip()
-        if next_avatar_url and not re.match(r"^https?://", next_avatar_url):
-            raise ValueError("invalid avatar_url")
-        if is_private_telegram_file_url(next_avatar_url):
-            raise ValueError("invalid avatar_url")
-        if len(next_avatar_url) > 500:
-            raise ValueError("avatar_url too long")
-        if next_avatar_url:
-            from users.avatar_media import cache_external_avatar_for_user, public_cached_avatar_url
+    def update(
+        self, *, display_name: object = None, avatar_url: object = None,
+        email: object = None, bio: object = None,
+    ) -> tuple[User, bool]:
+        bio = self.normalize_bio(bio)
+        user = self.user
+        if display_name is None and avatar_url is None and email is None and bio is None:
+            raise ValueError("nothing to update")
 
-            cached_avatar_url = public_cached_avatar_url(next_avatar_url)
-            if not cached_avatar_url:
-                cached_avatar_url = cache_external_avatar_for_user(
-                    user,
-                    next_avatar_url,
-                    source="profile",
-                    force=True,
-                )
-            if not cached_avatar_url:
+        profile, _ = SiteUserProfile.objects.get_or_create(user=user)
+        email_verification_sent = False
+        if bio is not None:
+            profile.bio = bio
+
+        if display_name is not None:
+            next_display_name = str(display_name or "").strip()
+            if len(next_display_name) > 120:
+                raise ValueError("display_name too long")
+            profile.display_name = next_display_name
+
+        if avatar_url is not None:
+            next_avatar_url = str(avatar_url or "").strip()
+            if next_avatar_url and not re.match(r"^https?://", next_avatar_url):
                 raise ValueError("invalid avatar_url")
-            next_avatar_url = cached_avatar_url
-        profile.avatar_url = next_avatar_url
+            if is_private_telegram_file_url(next_avatar_url):
+                raise ValueError("invalid avatar_url")
+            if len(next_avatar_url) > 500:
+                raise ValueError("avatar_url too long")
+            if next_avatar_url:
+                from users.avatar_media import cache_external_avatar_for_user, public_cached_avatar_url
 
-    if email is not None:
-        next_email = _normalize_email(email)
-        if next_email:
-            try:
-                validate_email(next_email)
-            except ValidationError as exc:
-                raise ValueError("Введите корректный email.") from exc
-        current_email = _normalize_email(getattr(user, "email", ""))
-        if next_email != current_email:
-            user.email = next_email
-            user.save(update_fields=["email"])
-            profile.email_verified_at = None
-        if next_email and profile.email_verified_at is None:
-            email_verification_sent = _send_registration_email(user)
+                cached_avatar_url = public_cached_avatar_url(next_avatar_url)
+                if not cached_avatar_url:
+                    cached_avatar_url = cache_external_avatar_for_user(
+                        user,
+                        next_avatar_url,
+                        source="profile",
+                        force=True,
+                    )
+                if not cached_avatar_url:
+                    raise ValueError("invalid avatar_url")
+                next_avatar_url = cached_avatar_url
+            profile.avatar_url = next_avatar_url
 
-    profile.save()
-    return user, email_verification_sent
+        if email is not None:
+            next_email = _normalize_email(email)
+            if next_email:
+                try:
+                    validate_email(next_email)
+                except ValidationError as exc:
+                    raise ValueError("Введите корректный email.") from exc
+            current_email = _normalize_email(getattr(user, "email", ""))
+            if next_email != current_email:
+                user.email = next_email
+                user.save(update_fields=["email"])
+                profile.email_verified_at = None
+            if next_email and profile.email_verified_at is None:
+                email_verification_sent = _send_registration_email(user)
+
+        profile.save()
+        return user, email_verification_sent
+
+
+def _update_site_profile(
+    user: User, *, display_name: object = None, avatar_url: object = None,
+    email: object = None, bio: object = None,
+) -> tuple[User, bool]:
+    return SiteProfileUpdateService(user).update(
+        display_name=display_name, avatar_url=avatar_url, email=email, bio=bio,
+    )
 
 
 def _generate_unique_username(base: str, suffix: str) -> str:
