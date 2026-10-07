@@ -1,5 +1,4 @@
 <script lang="ts">
-  import MaxConnectionPanel from "$lib/components/users/MaxConnectionPanel.svelte"
   import { goto, pushState } from '$app/navigation'
   import { page } from '$app/stores'
   import ComunSettingsTabs from '$lib/components/comuns/ComunSettingsTabs.svelte'
@@ -10,7 +9,6 @@
   import Setting from './Setting.svelte'
   import { toast, Modal, TextArea, TextInput } from 'mono-svelte'
   import SiteProfileSettingsSection from '$lib/components/users/SiteProfileSettingsSection.svelte'
-  import TelegramChannelsSection from '$lib/components/users/TelegramChannelsSection.svelte'
   import {
     ArrowDownTray,
     ArrowPath,
@@ -28,7 +26,6 @@
   import { normalizeTag } from '$lib/tags'
   import {
     deleteSiteAccount,
-    fetchVerificationCode,
     refreshSiteUser,
     siteToken,
     siteUser,
@@ -71,9 +68,6 @@
   let deleteProfileConfirmed = false
   let deleteProfileDeleting = false
   let lastSiteUserSnapshot: string | null = null
-  let channelVerificationCode = ''
-  let channelVerificationCodeLoading = false
-  let channelVerificationCodeError = ''
   let selectedInterfaceLanguage =
     ($userSettings.languageManuallySelected ? $userSettings.language : normalizeInterfaceLanguage($locale)) ?? 'ru'
   let syncedInterfaceLanguage = selectedInterfaceLanguage
@@ -296,19 +290,6 @@
     }
   }
 
-  const loadChannelVerificationCode = async () => {
-    channelVerificationCodeLoading = true
-    channelVerificationCodeError = ''
-    try {
-      channelVerificationCode = await fetchVerificationCode()
-    } catch (error) {
-      channelVerificationCodeError =
-        (error as Error)?.message ?? $t('settings.telegramChannels.codeFailed')
-    } finally {
-      channelVerificationCodeLoading = false
-    }
-  }
-
   onMount(() => {
     mounted = true
     if ($siteToken) {
@@ -486,22 +467,6 @@
               on:externalLinked={() => refreshSiteUser().catch(() => {})}
               on:save={saveSiteProfileSettings}
             />
-          </Section>
-        {/if}
-        {#if $siteUser}
-          <Section open={false} id="linked-channels" title={$t('settings.telegramChannels.title')}>
-            <TelegramChannelsSection
-              siteUser={$siteUser}
-              verificationCode={channelVerificationCode}
-              verificationCodeLoading={channelVerificationCodeLoading}
-              verificationCodeError={channelVerificationCodeError}
-              on:loadCode={loadChannelVerificationCode}
-            />
-          </Section>
-        {/if}
-        {#if $siteUser}
-          <Section open={false} id="max" title="MAX">
-            <MaxConnectionPanel />
           </Section>
         {/if}
         {#if !$siteUser && !$profile?.jwt}
