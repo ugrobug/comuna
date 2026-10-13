@@ -167,6 +167,7 @@ from users.views import (
 )
 
 urlpatterns = [
+    path("s/unitgame/", include("unitgame_app.urls", namespace="unitgame_app")),
     path("api/max/webhook/", max_views.webhook, name="max-webhook"),
     path("api/max/account/", max_views.account, name="max-account"),
     path("api/comuns/<slug:slug>/max/", max_views.community, name="comun-max"),

@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Reigns-for-Business</title>
+
+  <link rel="stylesheet" href="/static/unitgame_app/style.css">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+    <!-- Yandex.Metrika counter -->
+<script type="text/javascript">
+    (function(m,e,t,r,i,k,a){
+        m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+        m[i].l=1*new Date();
+        for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
+        k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+    })(window, document,'script','https://mc.yandex.ru/metrika/tag.js?id=105319875', 'ym');
+
+    ym(105319875, 'init', {ssr:true, webvisor:true, clickmap:true, ecommerce:"dataLayer", accurateTrackBounce:true, trackLinks:true});
+</script>
+<noscript><div><img src="https://mc.yandex.ru/watch/105319875" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+<!-- /Yandex.Metrika counter -->
+
+</head>
+<body>
+  <!-- HUD -->
+  <div class="hud" aria-live="polite">
+    <div class="panel">
+      <h4>Баланс</h4>
+      <div class="v" id="balance" data-tour="balance">—</div>
+    </div>
+
+    <div class="panel">
+      <h4>Продажи</h4>
+      <div class="v" id="sales" data-tour="sales">—</div>
+      <div class="sub" id="visits">Посещаемость —</div>
+    </div>
+
+    <div class="panel">
+      <h4>Постоянные затраты</h4>
+      <div class="v" id="fixedCost" data-tour="fixed">—</div>
+    </div>
+
+    <div class="panel formulaBig" data-tour="formula" style="grid-column: span 3;">
+      <h4 style="margin:0">Юнит-экономика</h4>
+      <div class="v" id="unitFormula">P−C−CAC = —</div>
+      <div class="bar" id="unitBar"><span style="width:0%"></span></div>
+    </div>
+
+    <div class="panel formulaBig" data-tour="round">
+      <h4 style="margin:0">Расходы за раунд</h4>
+      <div id="lastTurn" style="margin-top:4px;color:var(--muted);font-size:12px;min-height:1.2em"></div>
+    </div>
+  </div>
+
+  <!-- Игровое поле -->
+  <div class="wrap" >
+    <div class="playfield" >
+      <div class="stack" id="stack" data-tour="card"></div>
+    </div>
+  </div>
+
+    <!-- Окно цели игры -->
+  <div class="overlay" id="gameIntro">
+    <div class="modal">
+      <h3>Цель игры</h3>
+      <p>
+        У вас отрицательная юнит-экономика и большие расходы.
+        У вас есть 50 месяцев, чтобы вывести компанию в прибыль и не обанкротиться.
+        Каждое решение влияет на цифры в бизнесе.
+      </p>
+      <div style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end">
+        <button class="btn btn-primary" id="introStart">Начать игру</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Оверлей окончания игры -->
+    <!-- Оверлей окончания игры -->
+  <div class="overlay" id="gameOver">
+    <div class="modal">
+      <h3 id="overTitle">Игра окончена</h3>
+      <p id="overBody"></p>
+      <div style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end">
+        <button class="btn btn-secondary" id="share">Поделиться</button>
+        <button class="btn btn-primary" id="restart">Начать заново</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- Вынесенная логика -->
+  <script type="module" src="../../static/unitgame_app/main.js"></script>
+
+{% if ONBOARDING %}
+<style>
+  /* Палитра берется из стилей игры. Фолбэки на случай отсутствия переменных */
+  :root{
+    --tour-fg: var(--fg, #e9e6df);
+    --tour-muted: var(--muted, #b9b2a6);
+    --tour-border: var(--border, #33271d);
+    --tour-panel: var(--panel, #2a2119);
+    --tour-accent: var(--accent, #2bb673);
+    --tour-glow: color-mix(in oklab, var(--tour-accent) 25%, transparent);
+    --tour-radius: var(--radius, 16px);
+  }
+
+  /* Затемнение фона */
+  .tour-mask{
+    position:fixed; inset:0; z-index:9998;
+    background:rgba(12,10,8,.65);
+    backdrop-filter:saturate(90%) blur(1px);
+    pointer-events:none;
+  }
+
+  /* Подсветка целевого блока */
+  .tour-highlight{
+    position:fixed; z-index:9999;
+    border:2px solid var(--tour-accent);
+    border-radius:var(--tour-radius);
+    background:color-mix(in oklab, var(--tour-accent) 10%, transparent);
+    box-shadow:
+      0 0 0 6px var(--tour-glow) inset,
+      0 10px 28px rgba(0,0,0,.35);
+    transition: left .12s ease, top .12s ease, width .12s ease, height .12s ease;
+  }
+
+  /* Карточка-подсказка в стиле панелей игры */
+  .tour-callout{
+    position:fixed; z-index:10000; max-width:min(520px, 88vw);
+    color:var(--tour-fg);
+    background:linear-gradient(180deg,
+      color-mix(in oklab, var(--tour-panel) 96%, #000 4%) 0%,
+      var(--tour-panel) 100%);
+    border:2px solid var(--tour-border);
+    border-radius:var(--tour-radius);
+    padding:14px 16px;
+    box-shadow:0 18px 60px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.03);
+    font:14px/1.5 system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif;
+    transform:translateZ(0);
+  }
+  .tour-callout .txt{font-size:14px}
+  .tour-callout b{color:var(--tour-accent); font-weight:800}
+
+  /* Кнопки управления в общем стиле */
+  .tour-ctrl{margin-top:12px; display:flex; gap:8px; justify-content:flex-end}
+  .tour-btn{
+    appearance:none; cursor:pointer; user-select:none;
+    padding:9px 12px; border-radius:12px; font-weight:800; letter-spacing:.2px;
+    color:var(--tour-fg);
+    background:linear-gradient(180deg, #3a2e23 0%, #2d241c 100%);
+    border:2px solid var(--tour-border);
+    box-shadow:0 8px 20px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.04);
+    transition:transform .06s ease, filter .15s ease, background .2s ease;
+  }
+  .tour-btn:active{transform:translateY(1px)}
+  .tour-btn.primary{
+    color:#0e160f;
+    background:linear-gradient(180deg,
+      color-mix(in oklab, var(--tour-accent) 85%, #fff 0%) 0%,
+      var(--tour-accent) 100%);
+    border-color:color-mix(in oklab, var(--tour-accent) 60%, #000 40%);
+  }
+
+  /* Мобильная подгонка */
+  @media (max-width:480px){
+    .tour-callout{max-width:94vw; padding:12px}
+    .tour-btn{padding:8px 10px; border-radius:10px}
+  }
+</style>
+<script>
+(function(){
+  const q = s => document.querySelector(s);
+
+  const steps = [
+    { sel: '[data-tour="card"]',
+      text: 'Листай <b>вправо</b> или <b>влево</b> — принимая или отказываясь от предложенного решения.',
+      pos: 'right' },
+    { sel: '[data-tour="balance"]',
+      text: 'Это <b>деньги твоей компании</b>. Следи, чтобы баланс не опускался ниже нуля.',
+      pos: 'bottom' },
+    { sel: '[data-tour="formula"]',
+      text: 'Это <b>юнит-экономика продукта</b>. P - цена продукта, C - Себестоимость, CAC - Стоимость привлечения клиента',
+      pos: 'bottom' },
+    { sel: '[data-tour="sales"]',
+      text: 'Это <b>продажи и посещаемость</b> твоего сайта. Следи за динамикой после решений.',
+      pos: 'bottom' },
+    { sel: '[data-tour="fixed"]',
+      text: 'Это <b>постоянные затраты</b>: офис, команда и прочие регулярные расходы.',
+      pos: 'bottom' },
+    { sel: '[data-tour="round"]',
+      text: 'Это <b>расходы за раунд</b> в текущем месяце с учётом всех действий.',
+      pos: 'top' },
+  ];
+
+  const mask = document.createElement('div'); mask.className = 'tour-mask';
+  const hi = document.createElement('div'); hi.className = 'tour-highlight';
+  const call = document.createElement('div'); call.className = 'tour-callout';
+  call.innerHTML = '<div class="txt"></div><div class="tour-ctrl"></div>';
+  const txt = call.querySelector('.txt');
+  const ctrl = call.querySelector('.tour-ctrl');
+
+  const btnPrev = Object.assign(document.createElement('button'), {className:'tour-btn', textContent:'Назад'});
+  const btnNext = Object.assign(document.createElement('button'), {className:'tour-btn primary', textContent:'Далее'});
+  const btnSkip = Object.assign(document.createElement('button'), {className:'tour-btn', textContent:'Закрыть'});
+  ctrl.append(btnPrev, btnNext, btnSkip);
+
+  document.body.append(mask, hi, call);
+
+  let i = 0;
+
+  function place(el, pos){
+    const r = el.getBoundingClientRect(), pad = 10;
+    // highlight
+    hi.style.left = (r.left - 4) + 'px';
+    hi.style.top = (r.top - 4) + 'px';
+    hi.style.width = (r.width + 8) + 'px';
+    hi.style.height = (r.height + 8) + 'px';
+
+    // callout
+    call.style.left = r.left + 'px';
+    call.style.top = (r.bottom + pad) + 'px';
+    if(pos==='top') call.style.top = (r.top - call.offsetHeight - pad) + 'px';
+    if(pos==='right'){ call.style.left = (r.right + pad) + 'px'; call.style.top = r.top + 'px'; }
+    if(pos==='left'){ call.style.left = (r.left - call.offsetWidth - pad) + 'px'; call.style.top = r.top + 'px'; }
+
+    // keep on screen
+    const cr = call.getBoundingClientRect();
+    if (cr.right > innerWidth - 8) call.style.left = (innerWidth - cr.width - 8) + 'px';
+    if (cr.left < 8) call.style.left = '8px';
+    if (cr.bottom > innerHeight - 8) call.style.top = (innerHeight - cr.height - 8) + 'px';
+    if (cr.top < 8) call.style.top = '8px';
+  }
+
+  function draw(){
+    while(i < steps.length && !q(steps[i].sel)) i++;   // пропускаем шаги, если блок отсутствует
+    if(i >= steps.length){ end(); return; }
+    const s = steps[i], el = q(s.sel);
+    txt.innerHTML = s.text;
+    requestAnimationFrame(()=> place(el, s.pos || 'bottom'));
+    btnPrev.disabled = i===0;
+    btnNext.textContent = i===steps.length-1 ? 'Готово' : 'Далее';
+  }
+
+  function end(){ [mask, hi, call].forEach(n=>n.remove()); window.removeEventListener('resize', draw); }
+
+  btnPrev.onclick = ()=>{ if(i>0){ i--; draw(); } };
+  btnNext.onclick = ()=>{ if(i<steps.length-1){ i++; draw(); } else { end(); } };
+  btnSkip.onclick = end;
+  window.addEventListener('resize', draw);
+  requestAnimationFrame(draw);
+})();
+</script>
+{% endif %}
+
+
+</body>
+</html>

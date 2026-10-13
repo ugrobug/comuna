@@ -1,0 +1,60 @@
+{% load static %}
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Меню</title>
+  <link rel="stylesheet" href="{% static 'unitgame_app/style.css' %}">
+  <style>
+    .menu-screen{min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px}
+    .menu-card{
+      width:min(520px,92vw); background:var(--brown2); border:2px solid #1a140f; border-radius:18px;
+      box-shadow:0 24px 80px rgba(0,0,0,.55); padding:20px;
+    }
+    .menu-title{margin:0 0 6px; font-weight:900; font-size:26px; color:var(--fg)}
+    .menu-sub{margin:0 0 18px; color:var(--muted)}
+    .menu-btn{
+      display:block; width:100%; text-align:center; padding:14px 16px; margin:10px 0;
+      border-radius:14px; border:2px solid #33271d; background:#bfa57b; color:#1f150d; font-weight:900;
+      text-decoration:none; transition:.15s transform,.15s background;
+    }
+    .menu-btn:active{transform:scale(.98)}
+    .menu-btn.primary{background:#9fc38f}   /* зелёная */
+    .menu-btn.info{background:#ffd26a}      /* жёлтая */
+    .menu-ext{font-size:13px; color:var(--muted); text-align:center; margin-top:6px}
+    .menu-credit{
+      margin-top:14px;
+      padding-top:12px;
+      border-top:1px solid rgba(255,255,255,.08);
+      font-size:13px;
+      color:var(--muted);
+      text-align:center;
+      line-height:1.35;
+    }
+    .menu-credit a{
+      color:var(--accent);
+      text-decoration:none;
+      border-bottom:1px dotted var(--accent);
+    }
+  </style>
+</head>
+<body>
+  <main class="menu-screen">
+    <section class="menu-card">
+      <h1 class="menu-title">Юнит-экономика: игра</h1>
+      <p class="menu-sub">Прими решения. Проверь модель.</p>
+
+      <a class="menu-btn primary" href="{% url 'unitgame_app:play' %}">Начать игру</a>
+      <a class="menu-btn info" href="{% url 'unitgame_app:onboarding' %}">Как играть</a>
+      <a class="menu-btn" href="https://startupplanner.ru/?p=82" target="_blank" rel="noopener">Что такое юнит-экономика</a>
+      <div class="menu-ext">Откроется во внешнем окне</div>
+      <div class="menu-credit">
+        Игра разработана Евгением Кирьяновым - экспертом в технологическом предпринимательстве.<br>
+        Telegram-канал:
+        <a href="https://t.me/+G4LkscaSlHg5ZGYy" target="_blank" rel="noopener">Женя, у меня стартап!</a>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

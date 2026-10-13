@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     "telegram_integration.apps.TelegramIntegrationConfig",
     "max_integration.apps.MaxIntegrationConfig",
     "special_projects.apps.SpecialProjectsConfig",
+    "unitgame_app.apps.UnitgameAppConfig",
     "landing_pages.apps.LandingPagesConfig",
     "legacy_migration.apps.LegacyMigrationConfig",
 ]

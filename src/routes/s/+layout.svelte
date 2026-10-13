@@ -1,10 +1,16 @@
 <script lang="ts">
   import { page } from '$app/stores'
-  import { Bars3, BookOpen, Film, Home, Icon, ListBullet, MapPin, XMark } from 'svelte-hero-icons'
+  import { Bars3, BookOpen, Film, Home, Icon, ListBullet, MapPin, PuzzlePiece, XMark } from 'svelte-hero-icons'
 
   let mobileMenuOpen = false
 
   const projects = [
+    {
+      title: 'Unit Game',
+      description: 'Игра про юнит-экономику',
+      href: '/s/unitgame',
+      icon: PuzzlePiece,
+    },
     {
       title: 'Книга интернет сообщества',
       description: 'Общая книга по одному слову',
@@ -101,6 +107,7 @@
               class:active={isActiveProject(project.href)}
               class="project-link"
               href={project.href}
+              data-sveltekit-reload={project.href === '/s/unitgame'}
               aria-current={isActiveProject(project.href) ? 'page' : undefined}
               on:click={closeMobileMenu}
             >

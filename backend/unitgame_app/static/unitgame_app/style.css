@@ -1,0 +1,250 @@
+:root{
+  --bg:#0d0b08; --fg:#f3e7c1; --muted:#c9bfa5; --good:#3dd27a; --bad:#ff6a6a; --accent:#ffd26a;
+  --brown:#3a2c21; --brown2:#2a211a; --card:#d2b88c; --frame:#bda277; --ink:#2a2017;
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  font:16px/1.35 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Noto Sans",Arial;
+  color:var(--fg);
+  background:radial-gradient(1600px 900px at 50% -10%, #17130e, #0d0b08);
+  display:block;
+}
+
+/* ===== HUD / верхнее меню: STICKY ===== */
+.hud{
+  position:sticky; top:0; z-index:2000;
+  display:grid; grid-template-columns:repeat(6,1fr); gap:8px;
+  padding:4px;
+  background:rgba(13,11,8,.9);
+  backdrop-filter:saturate(1.1) blur(2px);
+  border-bottom:1px solid #1a140f;
+}
+.panel{
+  background:var(--brown2); border:1px solid #1a140f; border-radius:12px; padding:6px 6px;
+}
+.panel h4{margin:0 0 2px; font-size:12px; color:var(--muted); font-weight:700; letter-spacing:.02em}
+.panel .v{font-variant-numeric:tabular-nums; font-weight:800}
+.formulaBig{grid-column: span 4; display:flex; align-items:center; gap:10px}
+.formulaBig .v{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:22px; line-height:1}
+.formulaBig .bar{flex:1; height:10px; background:#201911; border-radius:999px; overflow:hidden; border:1px solid #403224}
+.bar>span{display:block; height:100%}
+.bar.pos>span{background:linear-gradient(90deg,#2fe58c,#ffd26a)}
+.bar.neg>span{background:linear-gradient(90deg,#ff7a7a,#ffb26a)}
+
+/* ===== Поле игры ===== */
+.wrap{
+  width:min(720px,92vw); height:min(760px,92vh);
+  margin:12px auto;
+  display:flex; flex-direction:column; align-items:center; gap:14px;
+}
+.playfield{position:relative; width:100%; height:72%}
+.stack{position:relative; width:100%; height:100%; display:flex; justify-content:center; z-index:1}
+
+/* ===== Карточка ===== */
+.card{
+  position:absolute; inset:0; margin:auto; margin-top: 5px;
+  width:min(460px,90vw); height:min(620px,76vh);
+  background:var(--card); border:2px solid #372a20; border-radius:24px; box-shadow:0 24px 80px rgba(0,0,0,.55);
+  padding:0 18px 18px;
+  display:flex; flex-direction:column; color:var(--ink);
+  user-select:none; touch-action:none; z-index:2;
+}
+.card .top{display:flex; justify-content:space-between; padding:5px 6px; color:#5a4a34; font-weight:800}
+
+.portrait{
+  background:linear-gradient(180deg,#c5aa7a,#b39363);
+  border:2px solid var(--frame); border-radius:16px; box-shadow:inset 0 0 0 3px #d7c29a;
+  padding:6px; margin:0 0 5px;
+  display:flex; align-items:center; justify-content:center; min-height:240px;
+}
+.portrait img{width:100%; height:auto; border-radius:6px; display:block; object-fit:contain}
+
+.title{font-weight:900; font-size:22px; margin:2px 0 6px; color:#2a2118}
+.text{color:#604d37; margin:0 0 12px}
+
+/* Подсказки свайпов */
+.hints{
+  position:absolute; top:10px; left:10px; right:10px;
+  display:flex; justify-content:space-between; font-weight:900; opacity:0; transition:opacity .12s;
+}
+.hint{padding:4px 10px; border-radius:12px; border:2px solid #372a20; background:#bfa57b}
+.hint.left{background:#ba8d87}
+.hint.right{background:#9fc38f}
+.card.dragging .hints{opacity:.95}
+
+/* Кнопки решения ВНУТРИ карточки */
+.action-row{
+  margin-top:auto; display:flex; gap:10px;
+}
+.action-btn{
+  display:flex; align-items:center; justify-content:center;
+  border-radius:16px; border:2px solid #33271d; background:#bfa57b; color:#1f150d;
+  padding:14px 16px; font-weight:900; cursor:pointer; transition:.18s transform,.18s background,.18s border-color;
+  height:56px; flex:1 1 0;
+}
+.action-btn:hover{transform:translateY(-1px)}
+.action-btn.left{ background:#ba8d87 }   /* красный «Нет» */
+.action-btn.right{ background:#9fc38f }  /* зелёный «Да» */
+
+/* ===== Оверлей конца игры ===== */
+.overlay{position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(12,10,6,.65); backdrop-filter:blur(2px); z-index:3000}
+.modal{width:min(520px,92vw); background:var(--brown2); border:2px solid #1a140f; border-radius:14px; padding:16px; color:var(--fg)}
+.modal h3{margin:0 0 8px}
+.kbd{background:#1b140e; border:1px solid #32261c; border-radius:6px; padding:2px 6px; font-family:ui-monospace,monospace; font-size:12px}
+.icons{display:flex; gap:16px}
+.dot{width:10px; height:10px; border-radius:50%; background:#e7ca8f; border:2px solid #3a2c21}
+
+/* ===== Карточки событий ===== */
+.event-card{
+  margin:0 auto; width:min(520px, 88vw); height:248px;
+  background:#2a241c; color:var(--fg); border:2px solid #3a2c21; border-radius:16px;
+  box-shadow:0 18px 60px rgba(0,0,0,.45); padding:16px 16px 14px;
+}
+.event-card .event-header{display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; color:var(--muted); font-size:13px}
+.event-card .event-title{font-weight:900; font-size:20px; margin:4px 0 6px}
+.event-card .event-text{color:#d9ceb3; margin:0 0 12px; line-height:1.3}
+.event-card .event-actions{display:flex; justify-content:flex-end}
+.event-card.event-positive{background:#203125; border-color:#2f4a38}
+.event-card.event-negative{background:#3a2323; border-color:#5b2c2c}
+.event-card.event-neutral{background:#2a241c; border-color:#3a2c21}
+
+/* ===== Mobile (<=600px): меню в два ряда, карточка по содержимому ===== */
+@media (max-width:600px){
+  .hud{
+    padding:8px;
+    grid-template-columns:repeat(3,1fr); /* 3×2 = 6 панелей */
+    gap:6px;
+  }
+  .formulaBig{grid-column:1/-1}
+  .formulaBig .v{font-size:18px}
+
+  .wrap{
+    width:100vw; gap:8px; margin:0 auto; padding:8px; box-sizing:border-box;
+    height:var(--wrap-h, 100vh);
+    height:var(--wrap-h, calc(100svh - var(--hud-h, 0px)));
+    height:var(--wrap-h, calc(100dvh - var(--hud-h, 0px)));
+  }
+
+  .playfield{width:100%; height:auto; padding:0 8px}
+  .stack{height:auto; display:block}
+
+  /* КЛЮЧ: карточка по содержимому, но не выше экрана */
+  .card{
+    position:relative; inset:auto;
+    width:100%;
+    height:auto;                               /* по контенту */
+    max-height:calc(var(--wrap-h, 100dvh));    /* не выше экрана контейнера */
+    overflow:hidden;                           /* внешний скролл отключаем */
+    display:flex; flex-direction:column;       /* для внутреннего сжатия */
+    border-radius:18px; margin-top:0;
+    padding:0 12px 12px;
+  }
+
+  /* Контент, который ужимается первым */
+  .portrait{
+    flex:0 1 38dvh;            /* можно ужать до 0 при нехватке места */
+    max-height:38dvh;          /* верхняя граница */
+    min-height:0;              /* разрешает сжатие во флексе */
+    padding:12px; margin:0 0 5px;
+  }
+
+  .title{font-size:20px; margin:2px 0 4px}
+
+  /* Текст заполняет остаток и получает локальный скролл */
+  .text{
+    flex:1 1 auto;
+    min-height:0;              /* важно для правильного сжатия */
+    overflow:auto;             /* скроллится только текст */
+    margin:0 0 10px;
+  }
+
+  .action-row{
+    flex:0 0 auto;
+    margin-top:8px;
+  }
+
+  .action-btn{height:44px; padding:10px 12px; font-size:14px}
+}
+
+/* Extra small heights: tighten content further */
+@media (max-width:600px) and (max-height:700px){
+  .title{font-size:18px}
+  .text{font-size:14px}
+  .portrait{max-height:30dvh}
+  .action-btn{height:40px; padding:8px 10px; font-size:13px}
+}
+
+/* Very small phones (e.g., iPhone SE width) */
+@media (max-width:360px){
+  .hud{ padding:6px; gap:4px }
+  .panel h4{ font-size:11px }
+  .formulaBig .v{ font-size:16px }
+  .wrap{ padding:4px }
+  .card{ border-radius:4px; padding:0 10px 10px }
+  .portrait{ padding:5px; margin-bottom:4px; max-height:26dvh }
+  .title{ font-size:17px }
+  .text{ font-size:13px }
+  .action-row{ gap:8px }
+  .action-btn{ height:36px; padding:8px 10px; font-size:12.5px }
+}
+
+/* ===== Унифицированные кнопки в стиле игры ===== */
+.btn {
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+  user-select:none;
+
+  padding:12px 18px;
+  font-weight:800;
+  font-size:15px;
+  letter-spacing:.2px;
+
+  border-radius:14px;
+  border:2px solid #33271d;
+  background:#bfa57b;
+  color:#1f150d;
+
+  box-shadow:
+    0 8px 20px rgba(0,0,0,.25),
+    inset 0 1px 0 rgba(255,255,255,.04);
+
+  transition:transform .12s ease, background .15s ease, border-color .15s ease;
+}
+
+.btn:hover {
+  transform:translateY(-1px);
+}
+
+/* Вторичная кнопка — нейтральная (например: Поделиться) */
+.btn-secondary {
+  background:#c7b491;
+  border-color:#3a2c21;
+  color:#1f150d;
+}
+
+/* Основная кнопка — жёлтый акцент как в игре */
+.btn-primary {
+  background:linear-gradient(180deg,#ffd26a 0%, #e7b956 100%);
+  border-color:#8a6a2b;
+  color:#2a1c0f;
+}
+
+.btn-primary:hover {
+  filter:brightness(1.05);
+}
+
+.btn:active {
+  transform:translateY(1px);
+}
+
+/* Кнопка OK в событиях */
+.event-card .event-actions .btn {
+  height:46px;
+  padding:10px 16px;
+}
+
