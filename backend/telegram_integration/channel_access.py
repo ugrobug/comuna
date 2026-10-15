@@ -20,7 +20,10 @@ class TelegramChannelAccessVerifier:
         self.opener = opener
 
     def is_admin(self, chat_id: int) -> bool:
-        bot_id = self.bot_id_provider()
+        try:
+            bot_id = self.bot_id_provider()
+        except (OSError, ValueError):
+            raise TelegramAccessCheckUnavailable("Bot identity check unavailable") from None
         if not bot_id:
             raise TelegramAccessCheckUnavailable("Bot identity check unavailable")
         try:

@@ -27,7 +27,7 @@ from feeds.models import Author, Post
 from telegram_integration.models import BotSession, TelegramAccount
 from telegram_integration.media import is_private_telegram_file_url
 from telegram_integration.channel_posts import TelegramChannelPostWriter, TelegramMediaDownloadError
-from telegram_integration.channel_access import TelegramChannelAccessVerifier
+from telegram_integration.channel_access import TelegramAccessCheckUnavailable, TelegramChannelAccessVerifier
 from users.models import AuthorAdmin, AuthorVerificationCode
 
 _BOT_ID: int | None = None
@@ -80,19 +80,8 @@ def _get_bot_id(token: str) -> int | None:
     return None
 
 
-def _is_bot_admin(chat_id: int, token: str, *, require_verified: bool = False) -> bool:
-    if require_verified:
-        return TelegramChannelAccessVerifier(token, lambda: _get_bot_id(token)).is_admin(chat_id)
-    bot_id = _get_bot_id(token)
-    if not bot_id:
-        return False
-    response = _fetch_telegram_json(
-        "getChatMember", token, {"chat_id": chat_id, "user_id": bot_id}
-    )
-    if not response or not response.get("ok") or not response.get("result"):
-        return False
-    status = response["result"].get("status")
-    return status in {"administrator", "creator"}
+def _is_bot_admin(chat_id: int, token: str) -> bool:
+    return TelegramChannelAccessVerifier(token, lambda: _get_bot_id(token)).is_admin(chat_id)
 
 
 def _send_bot_message(chat_id: int, text: str) -> None:
@@ -1028,7 +1017,7 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
     token = settings.TELEGRAM_BOT_TOKEN
     chat_id = chat.get("id")
     if token and chat_id:
-        if not _is_bot_admin(chat_id, token, require_verified=True):
+        if not _is_bot_admin(chat_id, token):
             return
         _refresh_author_from_telegram(author, chat_id, token)
     comun = community_service._ensure_telegram_channel_comun_for_author(author)
@@ -1579,13 +1568,25 @@ def _handle_private_message(message: dict) -> None:
 
         token = settings.TELEGRAM_BOT_TOKEN
         channel_id = forward_chat.get("id")
-        if token and channel_id and not _is_bot_admin(channel_id, token):
-            _send_bot_message(
-                chat_id,
-                "Бот не является админом этого канала. Добавьте бота в админы и "
-                "дайте права на чтение/публикацию, затем повторите пересылку.",
-            )
-            return
+        if token and channel_id:
+            try:
+                is_admin = _is_bot_admin(channel_id, token)
+            except TelegramAccessCheckUnavailable:
+                _send_bot_message(
+                    chat_id,
+                    "Не удалось связаться с Telegram и проверить права бота в канале. "
+                    "Это не означает, что бот удалён из администраторов. "
+                    "Повторите пересылку позже.",
+                )
+                return
+            if not is_admin:
+                _send_bot_message(
+                    chat_id,
+                    "Telegram не подтвердил права администратора у бота в этом канале. "
+                    "Проверьте, что @comuna_tg_bot добавлен в администраторы канала, "
+                    "затем повторите пересылку.",
+                )
+                return
 
         forwarded = {
             "chat": forward_chat,
