@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { TelegramChannelSelection } from '$lib/settings/TelegramChannelSelection'
   import MaxConnectionPanel from "$lib/components/users/MaxConnectionPanel.svelte"
   import { browser } from '$app/environment'
   import { goto } from '$app/navigation'
@@ -143,7 +144,8 @@
   let telegramVerificationCodeError = ''
   let telegramChannelsRefreshing = false
   let settingsLogoInput: HTMLInputElement | null = null
-  let settingsTab: ComunSettingsTabKey = $page.url.searchParams.get('tab') === 'max' ? 'max' : 'description'
+  let settingsTab: ComunSettingsTabKey = $page.url.searchParams.get('tab') === 'max'
+    ? 'max' : $page.url.searchParams.get('tab') === 'telegram' ? 'telegram' : 'description'
   const settingsOptionSearchTimers: Partial<Record<SettingsOptionType, ReturnType<typeof setTimeout>>> = {}
   const settingsOptionSearchTokens: Record<SettingsOptionType, number> = {
     users: 0,
@@ -553,6 +555,11 @@
         throw new Error(payload?.error || 'Не удалось обновить список каналов')
       }
       settingsTelegramChannelOptions = payload.comun?.options?.telegram_channels ?? []
+      if (payload.comun) {
+        const refreshed = new TelegramChannelSelection(comun, settingsDraft).refresh(payload.comun)
+        comun = refreshed.saved
+        settingsDraft = refreshed.draft
+      }
       const currentUsername = String(settingsDraft?.telegram_channel_username ?? '')
         .trim()
         .replace(/^https?:\/\/t\.me\//i, '')
@@ -566,9 +573,11 @@
         setDraftTelegramChannel(confirmedChannel.username, confirmedChannel)
       }
       toast({
-        content: confirmedChannel
-          ? `Канал @${confirmedChannel.username} подтвержден и выбран`
-          : 'Список подтвержденных каналов обновлен',
+        content: new TelegramChannelSelection(comun, settingsDraft).connected
+          ? 'Привязка канала к сообществу сохранена'
+          : confirmedChannel
+            ? `Канал @${confirmedChannel.username} подтверждён. Нажмите «Сохранить привязку»`
+            : 'Список подтвержденных каналов обновлен',
         type: 'success',
       })
     } catch (error) {
@@ -890,6 +899,7 @@
       avatar_url: fromDraft?.avatar_url ?? null,
     }
   })
+  $: telegramSelection = new TelegramChannelSelection(comun, settingsDraft)
   $: selectedTelegramSourceAuthor =
     settingsDraft?.telegram_source_author ??
     (settingsTelegramChannelOptions.find(
@@ -1034,11 +1044,7 @@
           moderator_ids: canManageComunModerators() ? comunModeratorIds(settingsDraft) : undefined,
           excluded_author_ids: comunExcludedAuthorIds(settingsDraft),
           blocked_tag_ids: comunBlockedTagIds(settingsDraft),
-          telegram_source_author_id:
-            Number(
-              settingsDraft.telegram_source_author_id ?? settingsDraft.telegram_source_author?.id ?? 0
-            ) || undefined,
-          telegram_channel_username: settingsDraft.telegram_channel_username ?? '',
+          ...new TelegramChannelSelection(comun, settingsDraft).patch(),
           category_ids:
             settingsDraft.category_ids ??
             (settingsDraft.categories ?? []).map((category) => category.id),
@@ -1688,14 +1694,24 @@
                 </div>
               {/if}
 
-              {#if selectedTelegramSourceAuthor}
+              {#if telegramSelection.connected && selectedTelegramSourceAuthor}
                 <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/20 dark:text-emerald-200">
-                  Выбран подтвержденный канал: @{selectedTelegramSourceAuthor.username}
+                  Канал @{selectedTelegramSourceAuthor.username} привязан к этому сообществу. Настройка сохранена.
+                </div>
+              {:else if selectedTelegramSourceAuthor}
+                <div class="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200">
+                  Канал @{selectedTelegramSourceAuthor.username} подтверждён, но выбор ещё не сохранён. Нажмите «Сохранить привязку».
                 </div>
               {:else if pendingTelegramChannelUsername}
                 <div class="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200">
                   @{pendingTelegramChannelUsername.replace(/^@/, '')} ещё не подтвержден для вашего аккаунта. Подключите его по инструкции ниже, затем выберите в списке.
                 </div>
+              {/if}
+
+              {#if telegramSelection.changed}
+                <Button color="primary" on:click={saveSettings} disabled={settingsSaving || settingsLogoUploading || deleteComunSaving}>
+                  {settingsSaving ? 'Сохраняем...' : 'Сохранить привязку'}
+                </Button>
               {/if}
 
               {#if telegramChannelSetupOpen || !settingsTelegramChannelOptions.length || pendingTelegramChannelUsername}

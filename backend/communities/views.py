@@ -1,3 +1,4 @@
+from communities.settings_writer import CommunitySettingsWriter
 from editor.companions import companion_publish_error, sync_companion_search
 import io
 import json
@@ -2524,7 +2525,7 @@ def comun_detail_manage(request: HttpRequest, slug: str) -> HttpResponse:
         else:
             comun.welcome_post = None
 
-    comun.save()
+    CommunitySettingsWriter().save(comun, body)
     if (
         "community_map_enabled" in body
         and bool(getattr(comun, "community_map_enabled", False)) != previous_community_map_enabled

@@ -24,6 +24,7 @@ from django.db.models import Q
 from django.utils import timezone
 from feeds.models import Author, Post
 from telegram_integration.models import BotSession, TelegramAccount
+from telegram_integration.channel_guidance import TelegramChannelLinkGuidance
 from telegram_integration.moderation import TelegramPostModeration, TelegramModerationReceipt
 from telegram_integration.media import is_private_telegram_file_url
 from telegram_integration.channel_posts import TelegramChannelPostWriter, TelegramMediaDownloadError
@@ -1657,10 +1658,7 @@ def _handle_private_message(message: dict) -> None:
         if not linked_comun or not linked_comun.is_active:
             _send_bot_message(
                 chat_id,
-                "Канал ещё не привязан к сообществу. Сначала создайте сообщество "
-                "на сайте: https://tambur.pub/comuns?create=1\n"
-                "Затем привяжите канал в настройках сообщества → Telegram "
-                "и повторите пересылку поста.",
+                TelegramChannelLinkGuidance().message(author),
             )
             return
 
@@ -1809,13 +1807,7 @@ def _handle_my_chat_member(update: dict) -> None:
             f"https://tambur.pub/comuns/{linked_comun.slug}"
         )
     else:
-        text = (
-            f"Канал @{author.username} подключён к боту. Чтобы публиковать его посты, "
-            "сначала создайте сообщество на сайте: https://tambur.pub/comuns?create=1\n"
-            "В настройках сообщества → Telegram укажите канал и сохраните. "
-            "Получите код подтверждения там же и отправьте его в бот, "
-            "затем проверьте привязку. Бот не создаёт сообщества."
-        )
+        text = TelegramChannelLinkGuidance().message(author)
     _send_bot_message(admin_chat_id, text)
 
 

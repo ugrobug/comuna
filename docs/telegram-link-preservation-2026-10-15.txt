@@ -1,0 +1,66 @@
+Telegram community link preservation — 2026-10-15
+
+Incident
+The channel born_again_blog had a verified owner, but its community link was
+empty. The owner's existing community was rozhdennyy-zanovo. There is no
+historical link audit, so the exact action that removed the link is unproven.
+
+Reproduced failure mechanisms
+1. Saving unrelated settings sent stale empty Telegram fields from the browser.
+2. Even a PATCH omitting Telegram fields saved the entire loaded model. A bot
+   link created between reading and saving that model could be overwritten.
+3. A confirmed channel selected locally looked successfully linked before Save.
+
+Implementation
+TelegramChannelSelection owns saved-versus-draft comparison and refresh merging.
+Unchanged Telegram fields are omitted from settings PATCH requests. Explicit
+selection and disconnection retain the existing API contract. The panel now
+distinguishes confirmation from persisted connection and offers Save beside it.
+
+CommunitySettingsWriter excludes Telegram columns from unrelated model writes.
+This adds no SQL or infrastructure; the existing endpoint still checks rights
+and reloads the model for its response. Explicit simultaneous link edits retain
+existing last-write semantics. Old browser bundles sending explicit empty fields
+are not protected by omission; users should refresh after release.
+
+TelegramChannelLinkGuidance offers settings links to existing active communities
+owned/moderated by verified channel owners. It runs only on the missing-link
+error path: one query with owner subqueries and at most three returned slugs.
+There are no external calls. The successful import path is unchanged. At 10x
+data, normal settings writes still touch one community; error guidance requires
+the existing FK/M2M indexes and returns a bounded result. No new cache or worker.
+
+Production repair (already applied independently of code deployment)
+In one transaction, locked author 3423 and community 254, checked the verified
+owner, active state and absence of conflicting links, then set only the source,
+channel username and updated_at. Publication mode was preserved. No messages
+were sent and no historical imports were manually triggered.
+A subsequent read confirmed the link and a newly imported, non-pending post.
+The historical missing posts have not been audited or replayed.
+
+Validation
+- 91 backend tests passed: communities.tests.test_telegram_link_settings and
+  telegram_integration.tests (2.667 seconds).
+- Five TelegramChannelSelection tests passed.
+- npm run build, Django check and git diff --check passed.
+- Local Django test database, same single-community fixture, 20 saves for each
+  variant, response cache not involved: median 2.88 ms before / 2.67 ms after;
+  10 SQL calls for both, including existing model signals. CaptureQueriesContext
+  rounded individual SQL durations to zero on this fixture, so SQL elapsed time
+  is not a meaningful measurement here. This is not an API or production p95.
+  Regression tests independently reproduce the stale-object race and verify
+  preservation through the real authenticated PATCH endpoint.
+- Bounded read-only production diagnostic: initial 32.9 ms, 7 SQL / 10 ms SQL;
+  follow-up 56.9 ms, 10 SQL / 19 ms SQL. The latter also inspected a newly present
+  post and linked community, so these are not equivalent before/after workloads.
+- No production load test, cache clearing or staging concurrency test performed.
+  Browser visual verification was not completed: local UI server was not running.
+  Frontend state transitions are covered by tests, not a full browser flow.
+
+Release / rollback
+Code is local and not deployed. It follows the also-pending moderation commit
+29ad769; production was still at 409480d during diagnosis. No migrations needed.
+Use the repository deploy playbook and safely recheck a saved connection after
+release. Code rollback is a scoped revert; keep the repaired verified channel
+link intact. Do not roll back restored data or publication settings as part of
+code rollback.
