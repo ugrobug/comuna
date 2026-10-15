@@ -29,8 +29,26 @@ class TelegramUpdateProcessor:
 
     def __init__(self):
         self.offset: int | None = None
+        self._completed_decisions: set[int] = set()
 
     def process(self, updates):
+        # Consent must not wait behind a channel's failing photo download.
+        # Acknowledgement still advances only through the original ordered batch.
+        decision_errors = {}
+        for update in updates:
+            update_id = update.get("update_id")
+            callback = update.get("callback_query") or {}
+            if (not isinstance(update_id, int)
+                    or (self.offset is not None and update_id < self.offset)
+                    or update_id in self._completed_decisions
+                    or not str(callback.get("data", "")).startswith(("approve:", "reject:"))):
+                continue
+            try:
+                _handle_callback_query(callback)
+            except Exception as error:
+                decision_errors[update_id] = error
+            else:
+                self._completed_decisions.add(update_id)
         handlers = {
             "channel_post": _handle_channel_post,
             "edited_channel_post": _handle_channel_post,
@@ -43,12 +61,16 @@ class TelegramUpdateProcessor:
             update_id = update.get("update_id")
             if isinstance(update_id, int) and self.offset is not None and update_id < self.offset:
                 continue
-            for kind, handler in handlers.items():
-                if kind in update:
-                    handler(update[kind])
-                    break
+            if update_id in decision_errors:
+                raise decision_errors[update_id]
+            if update_id not in self._completed_decisions:
+                for kind, handler in handlers.items():
+                    if kind in update:
+                        handler(update[kind])
+                        break
             if isinstance(update_id, int):
                 self.offset = update_id + 1
+                self._completed_decisions = {key for key in self._completed_decisions if key >= self.offset}
 
 
 def _acquire_polling_lock() -> bool:
@@ -75,6 +97,7 @@ def _polling_loop(token: str) -> None:
         try:
             payload: dict[str, Any] = {
                 "timeout": 25,
+                "limit": 100,
                 "allowed_updates": (
                     '["channel_post","edited_channel_post","message",'
                     '"callback_query","my_chat_member","inline_query"]'

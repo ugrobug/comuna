@@ -22,9 +22,9 @@ from django.db import IntegrityError
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
-from feeds.language_detection import detect_post_language
 from feeds.models import Author, Post
 from telegram_integration.models import BotSession, TelegramAccount
+from telegram_integration.moderation import TelegramPostModeration, TelegramModerationReceipt
 from telegram_integration.media import is_private_telegram_file_url
 from telegram_integration.channel_posts import TelegramChannelPostWriter, TelegramMediaDownloadError
 from telegram_integration.channel_access import TelegramAccessCheckUnavailable, TelegramChannelAccessVerifier
@@ -990,7 +990,7 @@ def _maybe_send_setup_instructions(chat_id: int) -> None:
         session.save(update_fields=["instructions_sent", "updated_at"])
 
 
-def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
+def _handle_channel_post(message: dict, force_publish: bool = False) -> Post | None:
     chat = message.get("chat", {})
     username = chat.get("username")
     if not username:
@@ -1040,8 +1040,8 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
         poll_label=poll_label, force_publish=force_publish,
     )
     if not created:
-        return
-    if post.is_pending:
+        return post
+    if post.is_pending and author.admin_chat_id:
         _send_bot_message_with_keyboard(
             author.admin_chat_id,
             f"Новый пост из канала @{author.username}:\n{post.title}\n\nОпубликуем?",
@@ -1056,6 +1056,7 @@ def _handle_channel_post(message: dict, force_publish: bool = False) -> None:
         )
     else:
         _fv()._maybe_notify_new_author(author, post)
+    return post
 
 
 def _attach_verified_user_to_author(chat_id: int, author: Author) -> None:
@@ -1619,9 +1620,11 @@ def _handle_private_message(message: dict) -> None:
             )
 
         if session and author:
-            apply_session = session.selected_author is None or session.selected_author_id == author.id
+            apply_session = author.admin_chat_id is None and (
+                session.selected_author is None or session.selected_author_id == author.id
+            )
             if apply_session:
-                author.auto_publish = session.auto_publish
+                author.auto_publish = author.auto_publish and session.auto_publish
                 author.admin_chat_id = chat_id
                 if session.invite_url:
                     author.invite_url = session.invite_url
@@ -1675,7 +1678,8 @@ def _handle_private_message(message: dict) -> None:
             )
             _send_bot_message_with_keyboard(
                 chat_id,
-                "Этот пост уже был опубликован, вы хотите его обновить?",
+                ("Этот пост ожидает согласования. Обновить его содержимое?" if existing_post.is_pending
+                 else "Этот пост уже был опубликован, вы хотите его обновить?"),
                 {
                     "inline_keyboard": [
                         [
@@ -1687,8 +1691,13 @@ def _handle_private_message(message: dict) -> None:
             )
             return
 
-        _handle_channel_post(forwarded)
-        _send_bot_message(chat_id, "Пост добавлен на сайт.")
+        post = _handle_channel_post(forwarded)
+        if post is None:
+            _send_bot_message(chat_id, "Пост не добавлен. Проверьте привязку канала и содержимое поста.")
+        elif post.is_pending:
+            _send_bot_message(chat_id, "Пост сохранён и ждёт вашего согласования. На сайте он пока не опубликован.")
+        else:
+            _send_bot_message(chat_id, "Пост добавлен на сайт.")
         return
 
     if _handle_forwarded_community_message(message):
@@ -1765,6 +1774,7 @@ def _handle_my_chat_member(update: dict) -> None:
         )
 
     session = BotSession.objects.filter(telegram_user_id=admin_chat_id).first()
+    initial_link = author.admin_chat_id is None
     author.admin_chat_id = admin_chat_id
     author.channel_id = chat.get("id") or author.channel_id
     if chat.get("title"):
@@ -1774,8 +1784,8 @@ def _handle_my_chat_member(update: dict) -> None:
     if chat.get("title"):
         update_fields.append("title")
 
-    if session and session.selected_author is None:
-        author.auto_publish = session.auto_publish
+    if initial_link and session and session.selected_author is None:
+        author.auto_publish = author.auto_publish and session.auto_publish
         update_fields.append("auto_publish")
         if session.invite_url:
             author.invite_url = session.invite_url
@@ -1816,6 +1826,25 @@ def _handle_callback_query(callback_query: dict) -> None:
     chat = message.get("chat", {})
     chat_id = chat.get("id")
     message_id = message.get("message_id")
+    if data.startswith(("approve:", "reject:")):
+        try:
+            post_id = int(data.split(":", 1)[1])
+        except (ValueError, IndexError):
+            _answer_callback_query(callback_id, "Некорректный пост")
+            return
+        result = TelegramPostModeration().decide(
+            post_id, actor_id=(callback_query.get("from") or {}).get("id"),
+            chat_id=chat_id, approve=data.startswith("approve:"),
+        )
+        _answer_callback_query(callback_id, result.text)
+        # No Telegram network calls hold the post lock. A failed receipt is retried
+        # by polling; the persisted decision makes that retry idempotent.
+        TelegramModerationReceipt(settings.TELEGRAM_BOT_TOKEN, settings.SITE_BASE_URL).deliver(
+            result, chat_id=chat_id, message_id=message_id,
+        )
+        if result.changed and not result.post.is_blocked:
+            _fv()._maybe_notify_new_author(result.post.author, result.post)
+        return
     session = None
     if chat_id:
         session = (
@@ -2038,56 +2067,6 @@ def _handle_callback_query(callback_query: dict) -> None:
             session.invite_waiting = True
             session.save(update_fields=["invite_waiting", "updated_at"])
             return
-
-    if data.startswith("approve:") and chat_id:
-        try:
-            post_id = int(data.split(":", 1)[1])
-        except ValueError:
-            _answer_callback_query(callback_id, "Некорректный пост")
-            return
-        post = Post.objects.filter(id=post_id).first()
-        if not post:
-            _answer_callback_query(callback_id, "Пост не найден")
-            return
-        if post.is_pending:
-            post.is_pending = False
-            post.original_language = detect_post_language(
-                post.title,
-                post.content,
-                fallback=post.original_language,
-            )
-            post.translations.filter(language=post.original_language).delete()
-            post.save(update_fields=["is_pending", "original_language", "updated_at"])
-            _fv()._maybe_notify_new_author(post.author, post)
-            _answer_callback_query(callback_id, "Опубликовано")
-            return
-        if post.is_blocked:
-            _answer_callback_query(callback_id, "Пост уже отклонён")
-        else:
-            _answer_callback_query(callback_id, "Пост уже опубликован")
-        return
-
-    if data.startswith("reject:") and chat_id:
-        try:
-            post_id = int(data.split(":", 1)[1])
-        except ValueError:
-            _answer_callback_query(callback_id, "Некорректный пост")
-            return
-        post = Post.objects.filter(id=post_id).first()
-        if not post:
-            _answer_callback_query(callback_id, "Пост не найден")
-            return
-        if post.is_pending:
-            post.is_pending = False
-            post.is_blocked = True
-            post.save(update_fields=["is_pending", "is_blocked", "updated_at"])
-            _answer_callback_query(callback_id, "Пропущено")
-            return
-        if post.is_blocked:
-            _answer_callback_query(callback_id, "Пост уже отклонён")
-        else:
-            _answer_callback_query(callback_id, "Пост уже опубликован")
-        return
 
     if data.startswith("update:") and chat_id:
         try:

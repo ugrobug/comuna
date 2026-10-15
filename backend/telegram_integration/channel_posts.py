@@ -117,7 +117,8 @@ class TelegramChannelPostWriter:
         delay_days = max(int(author.publish_delay_days or 0), 0)
         publish_at = timezone.now() + timedelta(days=delay_days) if delay_days else None
 
-        requires_approval = (not author.auto_publish and author.admin_chat_id) and not force_publish
+        # Missing delivery details must never turn consent into auto-publication.
+        requires_approval = not author.auto_publish and not force_publish
 
         raw_data = dict(message)
         if photo_file_id:
@@ -151,6 +152,9 @@ class TelegramChannelPostWriter:
         )
 
         if not created:
+            post = Post.objects.select_for_update().get(pk=post.pk)
+            if "telegram_moderation" in (post.raw_data or {}):
+                raw_data["telegram_moderation"] = post.raw_data["telegram_moderation"]
             post.title = title
             post.content = content
             post.source_url = source_url

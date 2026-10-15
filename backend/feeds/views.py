@@ -4607,7 +4607,10 @@ def _materialized_home_feed_response(
     language: str = ORIGINAL_POST_LANGUAGE,
     current_user: User | None = None,
 ) -> HttpResponse | None:
-    items_query = PublicFeedItem.objects.filter(feed=PublicFeedItem.FEED_HOME, post__companion_matched_at__isnull=True)
+    items_query = PublicFeedItem.objects.filter(
+        feed=PublicFeedItem.FEED_HOME, post__companion_matched_at__isnull=True,
+        post__is_pending=False, post__is_blocked=False, post__author__is_blocked=False,
+    ).filter(Q(post__publish_at__isnull=True) | Q(post__publish_at__lte=now or timezone.now()))
     reader = HomeFeedReader(language=language)
     items_query = reader.for_language(items_query, prefix="post__")
     items_query = _apply_user_hidden_content(items_query, current_user, prefix="post__")
