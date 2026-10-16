@@ -1,5 +1,7 @@
 """Consent transitions and retryable delivery of their result are separate operations."""
 from dataclasses import dataclass
+from datetime import timedelta
+import secrets
 import json
 import logging
 import urllib.error
@@ -10,6 +12,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from feeds.models import Post
+from telegram_integration.models import TelegramApprovalDelivery
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +60,71 @@ class TelegramPostModeration:
 
 class TelegramModerationReceiptUnavailable(RuntimeError):
     pass
+
+
+class TelegramApprovalPrompt:
+    """One durable delivery per pending post; bounded retries never block import."""
+    max_attempts = 8
+    lease_seconds = 30
+
+    def __init__(self, send):
+        self.send = send
+
+    def deliver(self, post, author):
+        if not post.is_pending or post.is_blocked or not author.admin_chat_id:
+            return
+        delivery, _ = TelegramApprovalDelivery.objects.get_or_create(
+            post=post, defaults={'chat_id': author.admin_chat_id})
+        self._attempt(delivery.pk)
+
+    def drain(self, limit=2):
+        ids = list(TelegramApprovalDelivery.objects.filter(
+            sent_at__isnull=True, failed_at__isnull=True, next_attempt_at__lte=timezone.now(),
+        ).order_by('next_attempt_at', 'pk').values_list('pk', flat=True)[:max(1, min(limit, 20))])
+        for delivery_id in ids:
+            self._attempt(delivery_id)
+        return len(ids)
+
+    def _attempt(self, delivery_id):
+        now = timezone.now()
+        with transaction.atomic():
+            delivery = (TelegramApprovalDelivery.objects.select_for_update(of=('self',))
+                        .select_related('post__author').get(pk=delivery_id))
+            if delivery.sent_at or delivery.failed_at or delivery.next_attempt_at > now:
+                return
+            post, author = delivery.post, delivery.post.author
+            if not post.is_pending or post.is_blocked or author.is_blocked or not author.admin_chat_id:
+                delivery.failed_at = now
+                delivery.save(update_fields=['failed_at'])
+                return
+            lease = secrets.token_hex(16)
+            delivery.chat_id = author.admin_chat_id
+            delivery.attempts += 1
+            delivery.lease_token = lease
+            delivery.next_attempt_at = now + timedelta(seconds=self.lease_seconds)
+            delivery.save(update_fields=['chat_id', 'attempts', 'lease_token', 'next_attempt_at'])
+        # No database lock survives into a Telegram request.
+        try:
+            response = self.send(delivery.chat_id,
+                f'Новый пост из канала @{author.username}:\n{post.title}\n\nОпубликуем?',
+                {'inline_keyboard': [[
+                    {'text': 'Публикуем', 'callback_data': f'approve:{post.pk}'},
+                    {'text': 'Этот пропустим', 'callback_data': f'reject:{post.pk}'},
+                ]]})
+        except (OSError, ValueError):
+            response = None
+        result = response.get('result') if isinstance(response, dict) and response.get('ok') else None
+        sent = isinstance(result, dict) and isinstance(result.get('message_id'), int)
+        update = {'lease_token': ''}
+        if sent:
+            update.update(sent_at=timezone.now(), message_id=result['message_id'])
+        elif delivery.attempts >= self.max_attempts:
+            update['failed_at'] = timezone.now()
+            logger.error('Telegram approval delivery exhausted retries (delivery_id=%s)', delivery.pk)
+        else:
+            update['next_attempt_at'] = timezone.now() + timedelta(seconds=min(3600, 30 * 2 ** (delivery.attempts - 1)))
+            logger.warning('Telegram approval delivery scheduled for retry (delivery_id=%s)', delivery.pk)
+        TelegramApprovalDelivery.objects.filter(pk=delivery.pk, lease_token=lease).update(**update)
 
 
 class TelegramModerationReceipt:

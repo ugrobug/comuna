@@ -46,11 +46,12 @@ class WebsiteFirstChannelTests(TestCase):
 
     @patch("telegram_integration.bot._send_bot_message")
     def test_forwarded_post_does_not_create_community_or_claim_success(self, send_message):
-        bot._handle_private_message({
-            "chat": {"id": 123456, "type": "private"},
-            "forward_origin": {"type": "channel", "chat": self.channel, "message_id": 1},
-            "text": "Пересланный пост",
-        })
+        with patch('telegram_integration.channel_permissions.TelegramChannelPermissions.can_forward', return_value=True):
+            bot._handle_private_message({
+                "chat": {"id": 123456, "type": "private"},
+                "forward_origin": {"type": "channel", "chat": self.channel, "message_id": 1},
+                "text": "Пересланный пост",
+            })
         self.assertFalse(Comun.objects.exists())
         self.assertFalse(Post.objects.exists())
         self.assertIn("ещё не привязан", send_message.call_args.args[1])
@@ -60,8 +61,8 @@ class WebsiteFirstChannelTests(TestCase):
     def test_stale_create_button_redirects_to_website(self, answer, edit_message):
         session = BotSession.objects.create(telegram_user_id=123456, channel_flow="create_comun")
         bot._handle_callback_query({
-            "id": "callback", "data": "channel_flow:create",
-            "message": {"chat": {"id": 123456}, "message_id": 9},
+            "id": "callback", "from": {"id": 123456}, "data": "channel_flow:create",
+            "message": {"chat": {"id": 123456, "type": "private"}, "message_id": 9},
         })
         session.refresh_from_db()
         self.assertEqual(session.channel_flow, bot.CHANNEL_FLOW_EXISTING)

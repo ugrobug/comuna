@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from django.contrib.auth import get_user_model
 from django.db import models
+from django.utils import timezone
 
 User = get_user_model()
 
@@ -67,4 +68,20 @@ class BotSession(models.Model):
         return str(self.telegram_user_id)
 
 
-__all__ = ["BotSession", "TelegramAccount"]
+class TelegramApprovalDelivery(models.Model):
+    post = models.OneToOneField('feeds.Post', on_delete=models.CASCADE, related_name='telegram_approval_delivery')
+    chat_id = models.BigIntegerField()
+    message_id = models.BigIntegerField(null=True, blank=True)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    next_attempt_at = models.DateTimeField(default=timezone.now)
+    lease_token = models.CharField(max_length=32, blank=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+    failed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        app_label = 'feeds'
+        indexes = [models.Index(fields=['next_attempt_at', 'id'],
+            condition=models.Q(sent_at__isnull=True, failed_at__isnull=True), name='tg_approval_due_idx')]
+
+
+__all__ = ["BotSession", "TelegramAccount", "TelegramApprovalDelivery"]

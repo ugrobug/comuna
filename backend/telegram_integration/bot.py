@@ -24,12 +24,17 @@ from django.db.models import Q
 from django.utils import timezone
 from feeds.models import Author, Post
 from telegram_integration.models import BotSession, TelegramAccount
+from telegram_integration.channel_identity import TelegramChannelIdentity
+from telegram_integration.channel_settings import TelegramChannelSettings, ChannelSettingUnavailable
+from telegram_integration.channel_import import TelegramChannelImport
+from telegram_integration.channel_permissions import TelegramChannelPermissions
+from telegram_integration.verification import TelegramChannelVerification
 from telegram_integration.channel_guidance import TelegramChannelLinkGuidance
 from telegram_integration.moderation import TelegramPostModeration, TelegramModerationReceipt
 from telegram_integration.media import is_private_telegram_file_url
-from telegram_integration.channel_posts import TelegramChannelPostWriter, TelegramMediaDownloadError
+from telegram_integration.channel_posts import TelegramChannelPostWriter
 from telegram_integration.channel_access import TelegramAccessCheckUnavailable, TelegramChannelAccessVerifier
-from users.models import AuthorAdmin, AuthorVerificationCode
+from users.models import AuthorAdmin
 
 _BOT_ID: int | None = None
 CHANNEL_FLOW_EXISTING = "link_existing"
@@ -800,10 +805,10 @@ def _send_channel_settings_menu(chat_id: int, author: Author) -> None:
         f"Оповещения о комментариях: {comments_notify_label}",
         {
             "inline_keyboard": [
-                [{"text": "Режим публикации", "callback_data": "settings:mode"}],
-                [{"text": "Задержка публикации", "callback_data": "settings:delay"}],
-                [{"text": "Оповещать о комментариях", "callback_data": "settings:comments_notify"}],
-                [{"text": "Ссылка для подписки", "callback_data": "settings:invite"}],
+                [{"text": "Режим публикации", "callback_data": f"settings:mode:{author.id}"}],
+                [{"text": "Задержка публикации", "callback_data": f"settings:delay:{author.id}"}],
+                [{"text": "Оповещать о комментариях", "callback_data": f"settings:comments_notify:{author.id}"}],
+                [{"text": "Ссылка для подписки", "callback_data": f"settings:invite:{author.id}"}],
             ]
         },
     )
@@ -992,72 +997,12 @@ def _maybe_send_setup_instructions(chat_id: int) -> None:
 
 
 def _handle_channel_post(message: dict, force_publish: bool = False) -> Post | None:
-    chat = message.get("chat", {})
-    username = chat.get("username")
-    if not username:
-        return
-
-    message_id = message.get("message_id")
-    if message_id is None:
-        return
-    if _fv()._is_telegram_service_message(message):
-        return
-
-    author, _ = Author.objects.get_or_create(
-        username=username,
-        defaults={
-            "title": chat.get("title", ""),
-            "channel_url": f"https://t.me/{username}",
-            "channel_id": chat.get("id"),
-        },
-    )
-
-    if author.is_blocked:
-        return
-
-    token = settings.TELEGRAM_BOT_TOKEN
-    chat_id = chat.get("id")
-    if token and chat_id:
-        if not _is_bot_admin(chat_id, token):
-            return
-        _refresh_author_from_telegram(author, chat_id, token)
-    comun = community_service._ensure_telegram_channel_comun_for_author(author)
-    if not comun or not comun.is_active:
-        return
-
-    raw_text = _fv()._extract_plain_text(message)
-    explicit_tags = _fv()._extract_hashtags(raw_text)
-    formatted_text = _fv()._format_telegram_text(raw_text, _fv()._extract_entities(message))
-    photo_file_id = _fv()._extract_photo_file_id(message)
-    image_url = _fv()._extract_photo_url(message, token) if token else None
-    embed_html, embed_label = _fv()._extract_telegram_embed(message, username, token)
-    poll_html, poll_label = _fv()._extract_telegram_poll(message)
-    if photo_file_id and not image_url:
-        raise TelegramMediaDownloadError("Telegram photo download failed; update must be retried")
-    post, created = TelegramChannelPostWriter(_fv()).save(
-        author=author, message=message, raw_text=raw_text, formatted_text=formatted_text,
-        explicit_tags=explicit_tags, photo_file_id=photo_file_id, image_url=image_url,
-        embed_html=embed_html, embed_label=embed_label, poll_html=poll_html,
-        poll_label=poll_label, force_publish=force_publish,
-    )
-    if not created:
-        return post
-    if post.is_pending and author.admin_chat_id:
-        _send_bot_message_with_keyboard(
-            author.admin_chat_id,
-            f"Новый пост из канала @{author.username}:\n{post.title}\n\nОпубликуем?",
-            {
-                "inline_keyboard": [
-                    [
-                        {"text": "Публикуем", "callback_data": f"approve:{post.id}"},
-                        {"text": "Этот пропустим", "callback_data": f"reject:{post.id}"},
-                    ]
-                ]
-            },
-        )
-    else:
-        _fv()._maybe_notify_new_author(author, post)
-    return post
+    return TelegramChannelImport(
+        token=settings.TELEGRAM_BOT_TOKEN, content=_fv(), check_access=_is_bot_admin,
+        refresh_metadata=_refresh_author_from_telegram,
+        resolve_community=community_service._ensure_telegram_channel_comun_for_author,
+        send_prompt=_send_bot_message_with_keyboard,
+    ).receive(message, force_publish=force_publish)
 
 
 def _attach_verified_user_to_author(chat_id: int, author: Author) -> None:
@@ -1081,32 +1026,18 @@ def _attach_verified_user_to_author(chat_id: int, author: Author) -> None:
 
 
 def _handle_verification_code(chat_id: int, code: str) -> None:
-    record = (
-        AuthorVerificationCode.objects.select_related("user")
-        .filter(code__iexact=code, used_at__isnull=True)
-        .first()
-    )
-    if not record:
-        _send_bot_message(chat_id, "Код не найден или уже использован.")
+    try:
+        authors = TelegramChannelVerification().consume(chat_id, code)
+    except ValueError:
+        _send_bot_message(chat_id, "Слишком много каналов для одного подтверждения. Обратитесь в поддержку.")
         return
-
-    now = timezone.now()
-    session, _ = BotSession.objects.get_or_create(telegram_user_id=chat_id)
-    session.verified_user_id = record.user_id
-    session.save(update_fields=["verified_user_id", "updated_at"])
-
-    authors = Author.objects.filter(admin_chat_id=chat_id, is_blocked=False).order_by("-updated_at")
+    if authors is None:
+        _send_bot_message(chat_id, "Код не найден, уже использован или истёк. Получите новый код на сайте.")
+        return
     linked = []
     for author in authors:
-        link, _ = AuthorAdmin.objects.get_or_create(user=record.user, author=author)
-        link.telegram_user_id = chat_id
-        link.verified_at = now
-        link.save(update_fields=["telegram_user_id", "verified_at"])
         community_service._attach_pending_comuns_for_author(author)
         linked.append(f"@{author.username}")
-
-    record.used_at = now
-    record.save(update_fields=["used_at"])
 
     if linked:
         linked_message = "Канал подтверждён: " + ", ".join(linked)
@@ -1545,14 +1476,17 @@ def _handle_private_message(message: dict) -> None:
         session = BotSession.objects.filter(telegram_user_id=chat_id).first()
         if session and session.invite_waiting:
             author = session.selected_author
-            if not author:
-                _send_bot_message(chat_id, "Сначала выберите канал для настройки.")
+            if not TelegramChannelPermissions.owns_selected(session, chat_id):
+                _send_bot_message(chat_id, "Нет доступа. Выберите доступный канал для настройки.")
                 return
             invite_url = text.strip()
             session.invite_waiting = False
             session.save(update_fields=["invite_waiting", "updated_at"])
-            author.invite_url = invite_url
-            author.save(update_fields=["invite_url", "updated_at"])
+            try:
+                TelegramChannelSettings().change(author.pk, chat_id, 'invite_url', invite_url)
+            except ChannelSettingUnavailable as error:
+                _send_bot_message(chat_id, str(error))
+                return
             _send_bot_message(
                 chat_id,
                 "Ссылка сохранена. Мы будем использовать её для кнопок подписки.",
@@ -1590,6 +1524,15 @@ def _handle_private_message(message: dict) -> None:
                 )
                 return
 
+        try:
+            allowed = TelegramChannelPermissions(token, verifier_factory=TelegramChannelAccessVerifier).can_forward(channel_id, chat_id)
+        except TelegramAccessCheckUnavailable:
+            _send_bot_message(chat_id, "Не удалось проверить ваши права в Telegram. Повторите пересылку позже.")
+            return
+        if not allowed:
+            _send_bot_message(chat_id, "Пересылать посты для импорта может только администратор этого Telegram-канала.")
+            return
+
         forwarded = {
             "chat": forward_chat,
             "message_id": forward_message_id,
@@ -1608,17 +1551,10 @@ def _handle_private_message(message: dict) -> None:
         }
 
         session = BotSession.objects.filter(telegram_user_id=chat_id).first()
-        author = Author.objects.filter(username__iexact=forward_chat.get("username")).first()
-
-        if not author:
-            author, _ = Author.objects.get_or_create(
-                username=forward_chat.get("username"),
-                defaults={
-                    "title": forward_chat.get("title", ""),
-                    "channel_url": f"https://t.me/{forward_chat.get('username')}",
-                    "channel_id": forward_chat.get("id"),
-                },
-            )
+        author = TelegramChannelIdentity().resolve(forward_chat)
+        if author is None or author.is_blocked:
+            _send_bot_message(chat_id, "Не удалось определить канал или импорт запрещён. Обратитесь в поддержку.")
+            return
 
         if session and author:
             apply_session = author.admin_chat_id is None and (
@@ -1663,7 +1599,7 @@ def _handle_private_message(message: dict) -> None:
             return
 
         existing_post = Post.objects.filter(
-            author__username__iexact=forward_chat.get("username"),
+            author=author,
             message_id=forward_message_id,
         ).first()
         if existing_post:
@@ -1762,18 +1698,14 @@ def _handle_my_chat_member(update: dict) -> None:
         )
         return
 
-    author = Author.objects.filter(username__iexact=username).first()
-    if not author:
-        author = Author.objects.create(
-            username=username,
-            title=chat.get("title", ""),
-            channel_id=chat.get("id"),
-            channel_url=f"https://t.me/{username}",
-        )
+    author = TelegramChannelIdentity().resolve(chat)
+    if author is None or author.is_blocked:
+        return
 
     session = BotSession.objects.filter(telegram_user_id=admin_chat_id).first()
     initial_link = author.admin_chat_id is None
-    author.admin_chat_id = admin_chat_id
+    if initial_link:
+        author.admin_chat_id = admin_chat_id
     author.channel_id = chat.get("id") or author.channel_id
     if chat.get("title"):
         author.title = chat["title"]
@@ -1836,6 +1768,9 @@ def _handle_callback_query(callback_query: dict) -> None:
         )
         if result.changed and not result.post.is_blocked:
             _fv()._maybe_notify_new_author(result.post.author, result.post)
+        return
+    if not TelegramChannelPermissions.private_actor(callback_query):
+        _answer_callback_query(callback_id, "Откройте управление в личном чате с ботом")
         return
     session = None
     if chat_id:
@@ -1912,13 +1847,31 @@ def _handle_callback_query(callback_query: dict) -> None:
         )
         return
 
+    try:
+        setting = TelegramChannelSettings().resolve(data, chat_id=chat_id, session=session)
+    except ChannelSettingUnavailable as error:
+        _answer_callback_query(callback_id, str(error))
+        return
+    if setting:
+        data = setting.command
+        if setting.author:
+            if session is None:
+                session, _ = BotSession.objects.get_or_create(telegram_user_id=chat_id)
+            session.selected_author = setting.author
+
     if data.startswith("mode:") and chat_id:
         mode = data.split(":", 1)[1]
+        if mode not in {'auto', 'approval'}:
+            _answer_callback_query(callback_id, 'Некорректный режим')
+            return
         auto_publish = mode == "auto"
         if session and session.selected_author:
             author = session.selected_author
-            author.auto_publish = auto_publish
-            author.save(update_fields=["auto_publish", "updated_at"])
+            try:
+                TelegramChannelSettings().change(author.pk, chat_id, 'auto_publish', auto_publish)
+            except ChannelSettingUnavailable as error:
+                _answer_callback_query(callback_id, str(error))
+                return
             _answer_callback_query(callback_id, "Настройка сохранена")
             _send_bot_message(chat_id, f"Режим обновлён для @{author.username}.")
             return
@@ -1941,8 +1894,11 @@ def _handle_callback_query(callback_query: dict) -> None:
             return
         if session and session.selected_author:
             author = session.selected_author
-            author.publish_delay_days = delay_days
-            author.save(update_fields=["publish_delay_days", "updated_at"])
+            try:
+                TelegramChannelSettings().change(author.pk, chat_id, 'publish_delay_days', delay_days)
+            except ChannelSettingUnavailable as error:
+                _answer_callback_query(callback_id, str(error))
+                return
             _answer_callback_query(callback_id, "Задержка сохранена")
             _send_bot_message(
                 chat_id,
@@ -1967,8 +1923,11 @@ def _handle_callback_query(callback_query: dict) -> None:
             _send_channel_picker(chat_id, "Выберите канал для настройки")
             return
         author = session.selected_author
-        author.notify_comments = notify_comments
-        author.save(update_fields=["notify_comments", "updated_at"])
+        try:
+            TelegramChannelSettings().change(author.pk, chat_id, 'notify_comments', notify_comments)
+        except ChannelSettingUnavailable as error:
+            _answer_callback_query(callback_id, str(error))
+            return
         _answer_callback_query(callback_id, "Настройка сохранена")
         _send_bot_message(
             chat_id,
@@ -2015,8 +1974,8 @@ def _handle_callback_query(callback_query: dict) -> None:
                 "Выберите режим публикации:",
                 {
                     "inline_keyboard": [
-                        [{"text": "Автопубликация", "callback_data": "mode:auto"}],
-                        [{"text": "Согласование", "callback_data": "mode:approval"}],
+                        [{"text": "Автопубликация", "callback_data": f"mode:auto:{session.selected_author_id}"}],
+                        [{"text": "Согласование", "callback_data": f"mode:approval:{session.selected_author_id}"}],
                     ]
                 },
             )
@@ -2028,10 +1987,10 @@ def _handle_callback_query(callback_query: dict) -> None:
                 "Выберите задержку публикации:",
                 {
                     "inline_keyboard": [
-                        [{"text": "Без задержки", "callback_data": "delay:0"}],
-                        [{"text": "1 день", "callback_data": "delay:1"}],
-                        [{"text": "3 дня", "callback_data": "delay:3"}],
-                        [{"text": "7 дней", "callback_data": "delay:7"}],
+                        [{"text": "Без задержки", "callback_data": f"delay:0:{session.selected_author_id}"}],
+                        [{"text": "1 день", "callback_data": f"delay:1:{session.selected_author_id}"}],
+                        [{"text": "3 дня", "callback_data": f"delay:3:{session.selected_author_id}"}],
+                        [{"text": "7 дней", "callback_data": f"delay:7:{session.selected_author_id}"}],
                     ]
                 },
             )
@@ -2044,8 +2003,8 @@ def _handle_callback_query(callback_query: dict) -> None:
                 "хотите бот будет писать вам о новых?",
                 {
                     "inline_keyboard": [
-                        [{"text": "Оповещать", "callback_data": "comments_notify:on"}],
-                        [{"text": "Не оповещать", "callback_data": "comments_notify:off"}],
+                        [{"text": "Оповещать", "callback_data": f"comments_notify:on:{session.selected_author_id}"}],
+                        [{"text": "Не оповещать", "callback_data": f"comments_notify:off:{session.selected_author_id}"}],
                     ]
                 },
             )
@@ -2057,7 +2016,7 @@ def _handle_callback_query(callback_query: dict) -> None:
                 "Пришлите ссылку приглашения на канал (например, https://t.me/+xxxx).",
             )
             session.invite_waiting = True
-            session.save(update_fields=["invite_waiting", "updated_at"])
+            session.save(update_fields=["selected_author", "invite_waiting", "updated_at"])
             return
 
     if data.startswith("update:") and chat_id:
@@ -2070,7 +2029,24 @@ def _handle_callback_query(callback_query: dict) -> None:
         if not session or session.pending_update_post_id != post_id or not session.pending_update_message:
             _answer_callback_query(callback_id, "Обновление не найдено")
             return
-        _handle_channel_post(session.pending_update_message, force_publish=True)
+        post = Post.objects.filter(pk=post_id, author__admin_chat_id=chat_id, author__is_blocked=False).select_related('author').first()
+        source_chat = (session.pending_update_message or {}).get('chat') or {}
+        if (not post or post.message_id != session.pending_update_message.get('message_id')
+                or (post.author.channel_id and post.author.channel_id != source_chat.get('id'))):
+            _answer_callback_query(callback_id, "Пост не найден или нет доступа")
+            return
+        try:
+            allowed = TelegramChannelPermissions(settings.TELEGRAM_BOT_TOKEN, verifier_factory=TelegramChannelAccessVerifier).can_forward(source_chat.get('id'), chat_id)
+        except TelegramAccessCheckUnavailable:
+            _answer_callback_query(callback_id, "Не удалось проверить права. Повторите позже")
+            return
+        if not allowed:
+            _answer_callback_query(callback_id, "Нет прав администратора канала")
+            return
+        updated = _handle_channel_post(session.pending_update_message)
+        if updated is None:
+            _answer_callback_query(callback_id, "Пост не обновлён. Проверьте привязку канала")
+            return
         session.pending_update_post_id = None
         session.pending_update_message = None
         session.save(update_fields=["pending_update_post_id", "pending_update_message", "updated_at"])

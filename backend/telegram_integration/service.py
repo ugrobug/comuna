@@ -17,19 +17,13 @@ from jwt import PyJWTError
 
 from notifications.models import SiteNotification
 from telegram_integration.models import TelegramAccount
+from telegram_integration.login_payload import TelegramLoginPayload, TelegramLoginRedirect
 
 User = get_user_model()
 _oidc_jwks_client: PyJWKClient | None = None
 GROUPED_POST_NOTIFICATION_TELEGRAM_LIMIT = 10
 
-_TELEGRAM_LOGIN_FIELDS = {
-    "id",
-    "first_name",
-    "last_name",
-    "username",
-    "photo_url",
-    "auth_date",
-}
+_TELEGRAM_LOGIN_FIELDS = TelegramLoginPayload.identity_fields
 
 
 def verify_telegram_login(payload: dict) -> tuple[bool, str | None]:
@@ -50,7 +44,7 @@ def verify_telegram_login(payload: dict) -> tuple[bool, str | None]:
     except (TypeError, ValueError):
         return False, "invalid auth date"
     now_ts = int(timezone.now().timestamp())
-    if now_ts - auth_date > 60 * 60 * 24:
+    if now_ts - auth_date > 60 * 60 * 24 or auth_date > now_ts + 60:
         return False, "auth expired"
     for key, value in list(data.items()):
         data[key] = str(value)
@@ -59,7 +53,8 @@ def verify_telegram_login(payload: dict) -> tuple[bool, str | None]:
     computed_hash = hmac.new(
         secret_key, data_check_string.encode("utf-8"), hashlib.sha256
     ).hexdigest()
-    if computed_hash != provided_hash:
+    if (not isinstance(provided_hash, str) or not re.fullmatch(r'[0-9a-f]{64}', provided_hash)
+            or not hmac.compare_digest(computed_hash, provided_hash)):
         return False, "invalid hash"
     return True, None
 
@@ -348,15 +343,7 @@ def telegram_login_will_create_new_user(payload: dict) -> bool:
 
 
 def build_telegram_login_redirect_html(token: str, next_url: str) -> str:
-    next_literal = json.dumps(next_url or "/")
-    return (
-        "<!doctype html><html><head><meta charset=\"utf-8\">"
-        "<title>Telegram login</title></head><body>"
-        "<script>"
-        f"window.location.replace({next_literal});"
-        "</script>"
-        "</body></html>"
-    )
+    return TelegramLoginRedirect(next_url).html()
 
 
 def notification_link_absolute(link_url: str) -> str:

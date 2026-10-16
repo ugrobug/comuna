@@ -194,9 +194,9 @@ class ForwardedChannelImportTests(TestCase):
                 patch("feeds.views._maybe_notify_new_author"), \
                 patch("feeds.views._extract_photo_url", return_value=None):
             bot._handle_private_message(message)
-            self.assertEqual(opener.call_count, 2)  # Forward check and existing import check.
+            self.assertEqual(opener.call_count, 3)  # Bot, human administrator, and import checks.
             self.assertEqual(send.call_args.args[1], "Пост добавлен на сайт.")
             bot._handle_private_message(message)
-        self.assertEqual(opener.call_count, 3)
+        self.assertEqual(opener.call_count, 5)
         confirm_update.assert_called_once()
         self.assertEqual(Post.objects.filter(author=author, message_id=7).count(), 1)

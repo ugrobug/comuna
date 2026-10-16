@@ -35,7 +35,7 @@ class AlbumImportTests(AlbumFixture, TestCase):
         for target, kwargs in [
             ("telegram_integration.bot._is_bot_admin", {"return_value": True}),
             ("telegram_integration.bot._refresh_author_from_telegram", {}),
-            ("telegram_integration.bot._send_bot_message_with_keyboard", {}),
+            ("telegram_integration.bot._send_bot_message_with_keyboard", {"return_value": {"ok": True, "result": {"message_id": 99}}}),
             ("feeds.views._maybe_notify_new_author", {}),
             ("communities.service._ensure_telegram_channel_comun_for_author", {"return_value": self.comun}),
         ]:
@@ -75,6 +75,7 @@ class AlbumImportTests(AlbumFixture, TestCase):
 
     def test_album_updates_preserve_approval_and_delay(self):
         self.author.publish_delay_days = 3
+        self.author.save(update_fields=['publish_delay_days'])
         post, _ = self.write(242, caption="Caption")
         publish_at = post.publish_at
         post.is_pending = False
@@ -115,6 +116,31 @@ class AlbumImportTests(AlbumFixture, TestCase):
         post.refresh_from_db()
         self.assertEqual(post.content.count("<img "), 4)
         self.assertEqual(post.raw_data["gallery_file_ids"], [])
+
+    def test_edited_album_caption_and_replaced_photo_are_updated_without_truncation(self):
+        self.write(1, caption='Original caption')
+        self.write(2)
+        message = self.make_message(1, caption='Edited caption')
+        message['edit_date'] = 200
+        message['photo'][0]['file_id'] = 'replacement'
+        with patch('feeds.views._extract_photo_url', return_value='https://media.test/replaced.webp'):
+            bot._handle_channel_post(message)
+        post = Post.objects.get(author=self.author)
+        self.assertIn('Edited caption', post.content)
+        self.assertNotIn('Original caption', post.content)
+        self.assertEqual(post.raw_data['gallery_urls'], ['https://media.test/replaced.webp', 'https://media.test/2.webp'])
+        self.assertEqual(post.raw_data['gallery_file_ids'], ['replacement', 'photo-2'])
+
+    def test_removing_album_caption_does_not_restore_old_text(self):
+        self.write(1, caption='Original caption')
+        self.write(2)
+        message = self.make_message(1, caption='')
+        message['edit_date'] = 200
+        with patch('feeds.views._extract_photo_url', return_value='https://media.test/1.webp'):
+            bot._handle_channel_post(message)
+        post = Post.objects.get(author=self.author)
+        self.assertNotIn('Original caption', post.content)
+        self.assertEqual(post.content.count('<img '), 2)
 
 
 @override_settings(TELEGRAM_BOT_TOKEN="", TELEGRAM_USE_POLLING=False)

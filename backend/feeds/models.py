@@ -149,6 +149,7 @@ class Author(models.Model):
 
     class Meta:
         indexes = [
+            models.Index(fields=["channel_id"], name="author_telegram_chat_idx"),
             models.Index(fields=["is_blocked", "shadow_banned", "force_home"], name="author_home_flags_idx"),
             models.Index(fields=["-rating_total"], name="author_rating_idx"),
         ]

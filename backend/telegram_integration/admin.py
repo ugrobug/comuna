@@ -1,6 +1,20 @@
 from django.contrib import admin
 
-from telegram_integration.models import BotSession, TelegramAccount
+from telegram_integration.models import BotSession, TelegramAccount, TelegramApprovalDelivery
+
+
+@admin.register(TelegramApprovalDelivery)
+class TelegramApprovalDeliveryAdmin(admin.ModelAdmin):
+    list_display = ('id', 'post_id', 'attempts', 'next_attempt_at', 'sent_at', 'failed_at')
+    list_filter = ('sent_at', 'failed_at')
+    readonly_fields = ('post', 'chat_id', 'message_id', 'attempts', 'next_attempt_at', 'sent_at', 'failed_at')
+    exclude = ('lease_token',)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(TelegramAccount)

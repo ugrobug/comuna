@@ -20,9 +20,11 @@ class TelegramChannelPostWriter:
 
     def save(self, *, author, message, **prepared):
         with transaction.atomic():
-            if message.get("media_group_id"):
-                # Evaluate the query, and hold this lock through first-row creation too.
-                Author.objects.select_for_update().only("pk").get(pk=author.pk)
+            # Settings can change while media is being downloaded. Read current
+            # consent/delay/block state at the write boundary, also serializing albums.
+            author = Author.objects.select_for_update().get(pk=author.pk)
+            if author.is_blocked:
+                return None, False
             return self._save(author=author, message=message, **prepared)
 
     def _save(self, *, author, message, formatted_text, raw_text, explicit_tags,
@@ -60,13 +62,19 @@ class TelegramChannelPostWriter:
                     message_id=message_id,
                 )
                 existing_urls = list(raw_data.get("gallery_urls") or [])
-                if not raw_data.get("formatted_text") and formatted_text:
+                caption_owner = raw_data.get('gallery_caption_message_id')
+                if caption_owner is None and raw_data.get('formatted_text'):
+                    caption_owner = existing_group_post.message_id
+                edited_caption = bool(message.get('edit_date') and 'caption' in message and
+                                      (formatted_text or caption_owner == message_id))
+                if edited_caption or (not raw_data.get("formatted_text") and formatted_text):
                     raw_data["formatted_text"] = formatted_text
+                    raw_data['gallery_caption_message_id'] = message_id
                 if embed_html and not raw_data.get("embed_html"):
                     raw_data["embed_html"] = embed_html
                 if poll_html and not raw_data.get("poll_html"):
                     raw_data["poll_html"] = poll_html
-                base_text = raw_data.get("formatted_text") or formatted_text
+                base_text = raw_data.get("formatted_text", formatted_text)
                 content = self.views._build_content_with_images(
                     base_text,
                     existing_urls,
@@ -129,6 +137,8 @@ class TelegramChannelPostWriter:
             raw_data["gallery_urls"] = gallery_urls
             raw_data["gallery_message_ids"] = [message_id]
             raw_data["formatted_text"] = formatted_text
+            if formatted_text:
+                raw_data['gallery_caption_message_id'] = message_id
         if media_group_id and photo_file_id:
             raw_data["gallery_file_ids"] = [photo_file_id]
         if embed_html:
@@ -210,6 +220,12 @@ class TelegramChannelPostWriter:
         photo_file_seen = bool(photo_file_id and photo_file_id in existing_file_ids)
         message_ids = list(next_raw_data.get("gallery_message_ids") or [])
         message_seen = message_id is not None and message_id in message_ids
+
+        if message_seen and image_url and photo_file_id and not photo_file_seen:
+            index = message_ids.index(message_id)
+            if len(message_ids) == len(existing_urls) == len(existing_file_ids):
+                existing_urls[index] = image_url
+                existing_file_ids[index] = photo_file_id
 
         if image_url and not photo_file_seen and not message_seen and image_url not in existing_urls:
             existing_urls.append(image_url)

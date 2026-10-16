@@ -104,8 +104,9 @@ class TelegramUpdateProcessorTests(SimpleTestCase):
     @patch("telegram_integration.polling.time.sleep", side_effect=KeyboardInterrupt)
     @patch("telegram_integration.polling._fetch_telegram_json", return_value=None)
     def test_startup_preserves_pending_updates(self, fetch, sleep):
-        with self.assertRaises(KeyboardInterrupt):
-            polling._polling_loop("test-token")
+        with patch('telegram_integration.polling.TelegramApprovalPrompt.drain'):
+            with self.assertRaises(KeyboardInterrupt):
+                polling._polling_loop("test-token")
         self.assertEqual(fetch.call_args_list[0].args, (
             "deleteWebhook", "test-token", {"drop_pending_updates": False}))
         self.assertFalse(polling._polling_started)

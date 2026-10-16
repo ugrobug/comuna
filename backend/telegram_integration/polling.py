@@ -11,12 +11,15 @@ from django.conf import settings
 
 from telegram_integration.bot import (
     _fetch_telegram_json,
+    _send_bot_message_with_keyboard,
     _handle_callback_query,
     _handle_channel_post,
     _handle_inline_query,
     _handle_message,
     _handle_my_chat_member,
 )
+
+from telegram_integration.moderation import TelegramApprovalPrompt
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +98,7 @@ def _polling_loop(token: str) -> None:
     _fetch_telegram_json("deleteWebhook", token, {"drop_pending_updates": False})
     while True:
         try:
+            TelegramApprovalPrompt(_send_bot_message_with_keyboard).drain(limit=2)
             payload: dict[str, Any] = {
                 "timeout": 25,
                 "limit": 100,

@@ -34,6 +34,7 @@ class ComunPostingApiTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="comun-owner", password="secret")
         self.client.force_login(self.user)
+        self.client.defaults['HTTP_AUTHORIZATION'] = f'Bearer {user_service._issue_token(self.user)}'
         self.comun = Comun.objects.create(
             name="Unit Game",
             slug="unit-game",
@@ -568,10 +569,9 @@ class ComunPostingApiTests(TestCase):
         self.assertEqual(first_comun["tags"][0]["name"], sidebar_tag.name)
         self.assertTrue(first_comun["can_moderate"])
 
-        self.assertNotIn("activity", comun)
-        self.assertNotIn("welcome_post", comun)
-        self.assertNotIn("tags", comun)
-        self.assertNotIn("categories", comun)
+        self.assertNotIn("activity", first_comun)
+        self.assertNotIn("welcome_post", first_comun)
+        self.assertNotIn("categories", first_comun)
 
     def test_comuns_sidebar_returns_requested_translation(self):
         ComunTranslation.objects.create(
@@ -872,7 +872,8 @@ class ComunPostingApiTests(TestCase):
         self.assertFalse(can_post)
 
     def test_comun_access_uses_personal_site_author_rating(self):
-        personal_author_id = editor_personal_author_id(self.user)
+        contributor = User.objects.create_user(username='rating-contributor')
+        personal_author_id = editor_personal_author_id(contributor)
         personal_author = Author.objects.get(id=personal_author_id)
         personal_author.rating_total = 0
         personal_author.save(update_fields=["rating_total"])
@@ -885,7 +886,7 @@ class ComunPostingApiTests(TestCase):
             rating_total=10_000,
         )
         AuthorAdmin.objects.create(
-            user=self.user,
+            user=contributor,
             author=telegram_author,
             verified_at=timezone.now(),
         )
@@ -894,7 +895,7 @@ class ComunPostingApiTests(TestCase):
         self.comun.save(update_fields=["minimum_author_rating_to_post"])
 
         can_post, minimum_rating, author_rating = community_service._comun_post_access_state(
-            self.user,
+            contributor,
             self.comun,
         )
 
@@ -905,6 +906,7 @@ class ComunPostingApiTests(TestCase):
     def test_comuns_list_marks_subscribed_and_writable_targets_for_composer(self):
         viewer = User.objects.create_user(username="subscriber", password="secret")
         self.client.force_login(viewer)
+        self.client.defaults['HTTP_AUTHORIZATION'] = f'Bearer {user_service._issue_token(viewer)}'
 
         subscribed_comun = Comun.objects.create(
             name="Subscribed Open",

@@ -306,7 +306,7 @@ class TelegramGroupSubmissionTests(TestCase):
         self.assertEqual(len(session.pending_forward_messages), 2)
 
         callback = {
-            "id": "callback-1",
+            "id": "callback-1", "from": {"id": 222},
             "data": "tgforward:kb:30",
             "message": {"message_id": 90, "chat": {"id": 222, "type": "private"}},
         }
@@ -380,7 +380,7 @@ class TelegramGroupSubmissionTests(TestCase):
             pending_forward_started_at=telegram_bot.timezone.now(),
         )
         callback = {
-            "id": "callback-ai",
+            "id": "callback-ai", "from": {"id": 222},
             "data": "tgforward:sum:40",
             "message": {"message_id": 91, "chat": {"id": 222, "type": "private"}},
         }

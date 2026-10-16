@@ -9,6 +9,7 @@ from django.views.decorators.csrf import csrf_exempt
 
 from rabotaem_backend.rate_limit import is_rate_limited
 from telegram_integration import serializers as telegram_serializers
+from telegram_integration.login_payload import TelegramLoginPayload
 from telegram_integration.bot import (
     _handle_callback_query,
     _handle_channel_post,
@@ -86,6 +87,7 @@ def telegram_auth(request: HttpRequest) -> HttpResponse:
             }
         else:
             validate_telegram_login(payload)
+            payload = TelegramLoginPayload.signed_widget(payload)
         user_service = _user_service()
         current_user = user_service._get_user_from_request(request)
         creates_new_user = (

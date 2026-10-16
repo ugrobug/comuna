@@ -56,6 +56,7 @@ class ModerationTests(TestCase):
         self.author.save(update_fields=['admin_chat_id'])
         self.assertTrue(self.write(2).is_pending)
         self.author.auto_publish = True
+        self.author.save(update_fields=['auto_publish'])
         self.assertFalse(self.write(3).is_pending)
 
     def test_forward_does_not_overwrite_channel_consent_with_old_session_default(self):
@@ -63,10 +64,11 @@ class ModerationTests(TestCase):
         message = {'chat': {'id':123,'type':'private'}, 'text':'Короткая запись',
                    'forward_origin': {'type':'channel', 'message_id':1,
                                       'chat': {'id':-100123,'type':'channel','username':self.author.username}}}
-        with patch.object(bot, '_is_bot_admin', return_value=True), \
+        with patch('telegram_integration.channel_permissions.TelegramChannelPermissions.can_forward', return_value=True), \
+             patch.object(bot, '_is_bot_admin', return_value=True), \
              patch.object(bot, '_refresh_author_from_telegram'), \
              patch.object(bot, '_send_bot_message') as send, \
-             patch.object(bot, '_send_bot_message_with_keyboard') as prompt, \
+             patch.object(bot, '_send_bot_message_with_keyboard', return_value={'ok':True,'result':{'message_id':99}}) as prompt, \
              patch('feeds.views._extract_photo_url', return_value=None), \
              patch('communities.service._ensure_telegram_channel_comun_for_author', return_value=self.comun):
             bot._handle_private_message(message)
@@ -127,6 +129,7 @@ class ModerationTests(TestCase):
 
     def test_approval_preserves_delay(self):
         self.author.publish_delay_days = 3
+        self.author.save(update_fields=['publish_delay_days'])
         post = self.write()
         result = self.service.decide(post.pk, actor_id=123, chat_id=123, approve=True)
         self.assertEqual(result.post.publish_at, post.publish_at)
