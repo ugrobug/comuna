@@ -8,6 +8,7 @@ if (tg) {
 import { deck }    from './cards.js?v=20261018';
 import { events }  from './events.js?v=20261018-events';
 import { INITIAL, UNIT_BAR_NORM } from './constants.js';
+import { DecisionDeck } from './decision-deck.js?v=20261018-fixed';
 
 // База для изображений
 const IMG_BASE = "/static/unitgame_app/img/";
@@ -134,7 +135,7 @@ const shuffle= (a)=>{ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.ran
 
 // Состояние
 const state = clone(INITIAL);
-let cards = shuffle(deck.slice());
+const cards = new DecisionDeck(deck, shuffle, resolveEffects);
 let eventPool = shuffle(events.slice());
 let lastEventMonth = 0;
 let gameEnded = false;              // флаг окончания игры
@@ -184,10 +185,10 @@ function applyDelta(d){
   if(d.fixed)      state.fixed    = Math.max(0, state.fixed + d.fixed);
 }
 
-function resolveEffects(sideChoice){
+function resolveEffects(sideChoice, currentState = state){
   const resolved = { instant:{...(sideChoice?.instant||{})}, after:{...(sideChoice?.after||{})} };
-  if (typeof sideChoice?.instantFn === 'function') Object.assign(resolved.instant, sideChoice.instantFn(state));
-  if (typeof sideChoice?.afterFn   === 'function') Object.assign(resolved.after,   sideChoice.afterFn(state));
+  if (typeof sideChoice?.instantFn === 'function') Object.assign(resolved.instant, sideChoice.instantFn(currentState));
+  if (typeof sideChoice?.afterFn   === 'function') Object.assign(resolved.after,   sideChoice.afterFn(currentState));
   return resolved;
 }
 
@@ -439,8 +440,7 @@ function nextTurn(){
     const ev = eventPool.shift();
     renderEvent(ev);
   } else {
-    if (cards.length === 0) cards = shuffle(deck.slice());
-    const c = cards.shift();
+    const c = cards.draw(state);
     renderCard(c);
   }
 }
@@ -456,7 +456,7 @@ document.getElementById('restart').addEventListener('click', ()=>{
   gameEnded = false;
   const lt = document.getElementById('lastTurn'); if(lt) lt.textContent='';
   updateHUD();
-  cards = shuffle(deck.slice());
+  cards.reset();
   eventPool = shuffle(events.slice());
   document.getElementById('gameOver').style.display='none';
 

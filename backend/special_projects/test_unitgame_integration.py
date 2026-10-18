@@ -45,7 +45,7 @@ class UnitGameIntegrationTests(SimpleTestCase):
             self.assertEqual(module_url, "/s/static/unitgame_app/main.js")
         self.assertIn("location ^~ /s/static/unitgame_app/", nginx)
         self.assertIn("alias /var/www/static/unitgame_app/;", nginx)
-        for asset in ("style.css", "main.js", "cards.js", "events.js", "constants.js"):
+        for asset in ("style.css", "main.js", "cards.js", "events.js", "constants.js", "decision-deck.js"):
             self.assertIsNotNone(finders.find(f"unitgame_app/{asset}"))
 
     def test_unknown_game_page_does_not_fall_back_to_another_page(self):
