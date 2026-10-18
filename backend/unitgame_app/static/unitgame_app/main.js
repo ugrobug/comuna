@@ -6,7 +6,7 @@ if (tg) {
 
 // Импорты из соседних файлов. Сохраняю ваши имена: card.js и event.js.
 import { deck }    from './cards.js?v=20261018';
-import { events }  from './events.js?v=20261018';
+import { events }  from './events.js?v=20261018-events';
 import { INITIAL, UNIT_BAR_NORM } from './constants.js';
 
 // База для изображений
