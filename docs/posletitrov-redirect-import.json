@@ -1,0 +1,220 @@
+{
+  "source_sha256": {
+    "specific-url-redirections--posletitrov.ru.json": "a4351a1901c3101a7ce1fe1588dc5a5a232658a949164bee4add09d992b9f60c",
+    "redirection-rules--posletitrov.ru.json": "4539c3904a7a78b204d68d68098e4ab6f8c12bdb7c7095673050446d22d37d37"
+  },
+  "exported_rows": 7071,
+  "unique_paths": 7028,
+  "same_target_duplicates": 2,
+  "pagination_rules": 7,
+  "repaired_rule_ids": [
+    "16046"
+  ],
+  "resolved_tag_conflicts": [
+    {
+      "path": "/tag/ajta",
+      "selected": "https://tambur.pub/tags/%D0%B0%D0%B9%D1%82%D0%B0",
+      "discarded": "https://tambur.pub/b/post/18016-ayta-yakutskiy-art-blokbaster-o-tonkoy-grani-mezhdu-samosudom-i-bezrassudstvom"
+    },
+    {
+      "path": "/tag/anora",
+      "selected": "https://tambur.pub/tags/%D0%B0%D0%BD%D0%BE%D1%80%D0%B0",
+      "discarded": "https://tambur.pub/b/post/17592-ukrala-serdechko-kak-anora-shona-beykera-pereosmyslyaet-istoriyu-zolushki"
+    },
+    {
+      "path": "/tag/avatar-plamja-i-pepel",
+      "selected": "https://tambur.pub/tags/%D0%B0%D0%B2%D0%B0%D1%82%D0%B0%D1%80%3A%20%D0%BF%D0%BB%D0%B0%D0%BC%D1%8F%20%D0%B8%20%D0%BF%D0%B5%D0%BF%D0%B5%D0%BB",
+      "discarded": "https://tambur.pub/b/post/17240-takov-put-retsenziya-na-film-avatar-plamya-i-pepel"
+    },
+    {
+      "path": "/tag/bezumnoe-svidanie",
+      "selected": "https://tambur.pub/tags/%D0%B1%D0%B5%D0%B7%D1%83%D0%BC%D0%BD%D0%BE%D0%B5%20%D1%81%D0%B2%D0%B8%D0%B4%D0%B0%D0%BD%D0%B8%D0%B5",
+      "discarded": "https://tambur.pub/b/post/17264-ot-lyubvi-glupeyut-retsenziya-na-film-bezumnoe-svidanie"
+    },
+    {
+      "path": "/tag/buhta-vdov",
+      "selected": "https://tambur.pub/tags/%D0%B1%D1%83%D1%85%D1%82%D0%B0%20%D0%B2%D0%B4%D0%BE%D0%B2",
+      "discarded": "https://tambur.pub/b/post/11261-buhta-vdov-7-teoriy-o-seriale-kotorye-ne-dayut-spat"
+    },
+    {
+      "path": "/tag/bystraja-zhizn",
+      "selected": "https://tambur.pub/tags/%D0%B1%D1%8B%D1%81%D1%82%D1%80%D0%B0%D1%8F%20%D0%B6%D0%B8%D0%B7%D0%BD%D1%8C",
+      "discarded": "https://tambur.pub/b/post/17770-zhan-v-strane-subektivnogo-vremeni-retsenziya-na-film-bystraya-zhizn"
+    },
+    {
+      "path": "/tag/chto-znaet-marijel",
+      "selected": "https://tambur.pub/tags/%D1%87%D1%82%D0%BE%20%D0%B7%D0%BD%D0%B0%D0%B5%D1%82%20%D0%BC%D0%B0%D1%80%D0%B8%D1%8D%D0%BB%D1%8C",
+      "discarded": "https://tambur.pub/b/post/17370-chto-znaet-mariel-kogda-semeynye-tayny-stanovyatsya-dostoyaniem-nesovershennoletnih"
+    },
+    {
+      "path": "/tag/chudo-chelovek",
+      "selected": "https://tambur.pub/tags/%D1%87%D1%83%D0%B4%D0%BE-%D1%87%D0%B5%D0%BB%D0%BE%D0%B2%D0%B5%D0%BA",
+      "discarded": "https://tambur.pub/b/post/17235-dnevnik-nesushchestvuyushchego-reportera-tri-dnya-s-chudo-chelovekom-v-gollivude-kotoryy-perezhevyvaet-lyudey"
+    },
+    {
+      "path": "/tag/djadja-lesha",
+      "selected": "https://tambur.pub/tags/%D0%B4%D1%8F%D0%B4%D1%8F%20%D0%BB%D0%B5%D1%88%D0%B0",
+      "discarded": "https://tambur.pub/b/post/17726-pervye-vpechatleniya-ot-seriala-dyadya-lesha"
+    },
+    {
+      "path": "/tag/fljesh",
+      "selected": "https://tambur.pub/tags/%D1%84%D0%BB%D1%8D%D1%88",
+      "discarded": "https://tambur.pub/b/post/17932-beg-na-meste-retsenziya-na-film-flesh"
+    },
+    {
+      "path": "/tag/gornichnaja",
+      "selected": "https://tambur.pub/tags/%D0%B3%D0%BE%D1%80%D0%BD%D0%B8%D1%87%D0%BD%D0%B0%D1%8F",
+      "discarded": "https://tambur.pub/b/post/17256-v-posteli-s-vragom-retsenziya-na-film-gornichnaya"
+    },
+    {
+      "path": "/tag/hishhnik",
+      "selected": "https://tambur.pub/tags/%D1%85%D0%B8%D1%89%D0%BD%D0%B8%D0%BA",
+      "discarded": "https://tambur.pub/b/post/17299-gid-po-kinovselennoy-hishchnik-ot-get-to-the-chopper-iz-80-h-do-planety-smerti-s-el-fanning"
+    },
+    {
+      "path": "/tag/kokainovyj-medved",
+      "selected": "https://tambur.pub/tags/%D0%BA%D0%BE%D0%BA%D0%B0%D0%B8%D0%BD%D0%BE%D0%B2%D1%8B%D0%B9%20%D0%BC%D0%B5%D0%B4%D0%B2%D0%B5%D0%B4%D1%8C",
+      "discarded": "https://tambur.pub/b/post/18025-chto-ne-tak-s-etim-medvedem-retsenziya-na-film-kokainovyy-medved"
+    },
+    {
+      "path": "/tag/korol-i-shut-navsegda",
+      "selected": "https://tambur.pub/tags/%D0%BA%D0%BE%D1%80%D0%BE%D0%BB%D1%8C%20%D0%B8%20%D1%88%D1%83%D1%82.%20%D0%BD%D0%B0%D0%B2%D1%81%D0%B5%D0%B3%D0%B4%D0%B0",
+      "discarded": "https://tambur.pub/b/post/17229-korol-i-shut-navsegda-strannaya-skazka-so-schastlivym-kontsom"
+    },
+    {
+      "path": "/tag/krasota",
+      "selected": "https://tambur.pub/tags/%D0%BA%D1%80%D0%B0%D1%81%D0%BE%D1%82%D0%B0",
+      "discarded": "https://tambur.pub/b/post/6055-eto-zarazno-dnevnik-retsenzenta-kotorogo-ne-stalo-posle-11-epizodov-seriala-krasota"
+    },
+    {
+      "path": "/tag/maksin-hhh",
+      "selected": "https://tambur.pub/tags/%D0%BC%D0%B0%D0%BA%D1%81%D0%B8%D0%BD%20%D1%85%D1%85%D1%85",
+      "discarded": "https://tambur.pub/b/post/17667-maksin-hhh-tay-uest-snova-priznaetsya-v-lyubvi-k-nishevym-zhanram"
+    },
+    {
+      "path": "/tag/master",
+      "selected": "https://tambur.pub/tags/%D0%BC%D0%B0%D1%81%D1%82%D0%B5%D1%80",
+      "discarded": "https://tambur.pub/b/post/17454-rabota-ne-volk-a-work-retsenziya-na-film-master"
+    },
+    {
+      "path": "/tag/pretendenty",
+      "selected": "https://tambur.pub/tags/%D0%BF%D1%80%D0%B5%D1%82%D0%B5%D0%BD%D0%B4%D0%B5%D0%BD%D1%82%D1%8B",
+      "discarded": "https://tambur.pub/b/post/17712-uravnenie-s-tremya-peremennymi-kakim-poluchilsya-film-pretendenty"
+    },
+    {
+      "path": "/tag/proekt-konec-sveta",
+      "selected": "https://tambur.pub/tags/%D0%BF%D1%80%D0%BE%D0%B5%D0%BA%D1%82%20%D0%BA%D0%BE%D0%BD%D0%B5%D1%86%20%D1%81%D0%B2%D0%B5%D1%82%D0%B0",
+      "discarded": "https://tambur.pub/b/post/7925-proekt-konets-sveta-rayan-gosling-spasaet-zemlyu-i-druzhit-s-inoplanetyanami"
+    },
+    {
+      "path": "/tag/recept-schastja",
+      "selected": "https://tambur.pub/tags/%D1%80%D0%B5%D1%86%D0%B5%D0%BF%D1%82%20%D1%81%D1%87%D0%B0%D1%81%D1%82%D1%8C%D1%8F",
+      "discarded": "https://tambur.pub/b/post/17340-ingredienty-dlya-dushevnogo-ravnovesiya-retsenziya-na-film-retsept-schastya"
+    },
+    {
+      "path": "/tag/rycar-semi-korolevstv",
+      "selected": "https://tambur.pub/tags/%D1%80%D1%8B%D1%86%D0%B0%D1%80%D1%8C%20%D1%81%D0%B5%D0%BC%D0%B8%20%D0%BA%D0%BE%D1%80%D0%BE%D0%BB%D0%B5%D0%B2%D1%81%D1%82%D0%B2",
+      "discarded": "https://tambur.pub/b/post/17245-rytsar-semi-korolevstv-kogda-vesteros-perestal-byt-mrachnym-i-pechalnym"
+    },
+    {
+      "path": "/tag/sanni",
+      "selected": "https://tambur.pub/tags/%D1%81%D0%B0%D0%BD%D0%BD%D0%B8",
+      "discarded": "https://tambur.pub/b/post/17643-sanni-kak-rashida-dzhons-s-robotom-druzhila"
+    },
+    {
+      "path": "/tag/shugar",
+      "selected": "https://tambur.pub/tags/%D1%88%D1%83%D0%B3%D0%B0%D1%80",
+      "discarded": "https://tambur.pub/b/post/17723-shugar-vse-klassicheskie-gollivudskie-filmy-melkayushchie-v-seriale"
+    },
+    {
+      "path": "/tag/star-wars",
+      "selected": "https://tambur.pub/tags/star%20wars",
+      "discarded": "https://tambur.pub/b/post/17424-kakov-put-polnyy-putevoditel-po-kinovselennoy-zvezdnye-voyny"
+    },
+    {
+      "path": "/tag/strazhi-galaktiki",
+      "selected": "https://tambur.pub/tags/%D1%81%D1%82%D1%80%D0%B0%D0%B6%D0%B8%20%D0%B3%D0%B0%D0%BB%D0%B0%D0%BA%D1%82%D0%B8%D0%BA%D0%B8",
+      "discarded": "https://tambur.pub/b/post/17980-strazhi-galaktiki-chem-zapomnilis-i-kak-povliyali-na-zhanr"
+    },
+    {
+      "path": "/tag/svodish-s-uma",
+      "selected": "https://tambur.pub/tags/%D1%81%D0%B2%D0%BE%D0%B4%D0%B8%D1%88%D1%8C%20%D1%81%20%D1%83%D0%BC%D0%B0",
+      "discarded": "https://tambur.pub/b/post/17295-svodish-s-uma-russkiy-romkom-kotoryy-smog"
+    },
+    {
+      "path": "/tag/telma",
+      "selected": "https://tambur.pub/tags/%D1%82%D0%B5%D0%BB%D1%8C%D0%BC%D0%B0",
+      "discarded": "https://tambur.pub/b/post/17659-moya-babushka-ne-beret-trubku-retsenziya-na-film-telma"
+    },
+    {
+      "path": "/tag/terminator-zero",
+      "selected": "https://tambur.pub/tags/%D1%82%D0%B5%D1%80%D0%BC%D0%B8%D0%BD%D0%B0%D1%82%D0%BE%D1%80%20%D0%B7%D0%B5%D1%80%D0%BE",
+      "discarded": "https://tambur.pub/b/post/17627-astalavista-sempay-retsenziya-na-anime-terminator-zero-1-sezon"
+    },
+    {
+      "path": "/tag/thebadbatch",
+      "selected": "https://tambur.pub/tags/thebadbatch",
+      "discarded": "https://tambur.pub/b/post/18485-zvezdnye-voyny-brakovannaya-partiya-chto-nado-znat-pered-prosmotrom"
+    },
+    {
+      "path": "/tag/to-rozhdestvo",
+      "selected": "https://tambur.pub/tags/%D1%82%D0%BE%20%D1%80%D0%BE%D0%B6%D0%B4%D0%B5%D1%81%D1%82%D0%B2%D0%BE",
+      "discarded": "https://tambur.pub/b/post/17541-to-rozhdestvo-ne-samyy-volshebnyy-no-vesma-zanimatelnyy-multfilm-ot-stsenarista-realnoy-lyubvi"
+    },
+    {
+      "path": "/tag/tochka-nol",
+      "selected": "https://tambur.pub/tags/%D1%82%D0%BE%D1%87%D0%BA%D0%B0%20%D0%BD%D0%BE%D0%BB%D1%8C",
+      "discarded": "https://tambur.pub/b/post/17722-tochka-nol-drama-o-silnoy-zhenshchine-kotoraya-v-odinochku-spravlyaetsya-s-novoy-chumoy-i-lichnoy-tragediey"
+    },
+    {
+      "path": "/tag/tuman",
+      "selected": "https://tambur.pub/tags/%D1%82%D1%83%D0%BC%D0%B0%D0%BD",
+      "discarded": "https://tambur.pub/b/post/17735-detektiv-oslozhnennyy-otsutstviem-dvoretskogo-retsenziya-na-film-tuman"
+    },
+    {
+      "path": "/tag/ulica-straha-koroleva-vypusknogo",
+      "selected": "https://tambur.pub/tags/%D1%83%D0%BB%D0%B8%D1%86%D0%B0%20%D1%81%D1%82%D1%80%D0%B0%D1%85%D0%B0%3A%20%D0%BA%D0%BE%D1%80%D0%BE%D0%BB%D0%B5%D0%B2%D0%B0%20%D0%B2%D1%8B%D0%BF%D1%83%D1%81%D0%BA%D0%BD%D0%BE%D0%B3%D0%BE",
+      "discarded": "https://tambur.pub/b/post/17404-ulitsa-straha-koroleva-vypusknogo-novaya-i-neudachnaya-chast-horror-franshizy-ot-netflix"
+    },
+    {
+      "path": "/tag/ushhele",
+      "selected": "https://tambur.pub/tags/%D1%83%D1%89%D0%B5%D0%BB%D1%8C%D0%B5",
+      "discarded": "https://tambur.pub/b/post/17499-obitel-zla-retsenziya-na-film-ushchele"
+    },
+    {
+      "path": "/tag/v-spiskah-ne-znachilsja",
+      "selected": "https://tambur.pub/tags/%D0%B2%20%D1%81%D0%BF%D0%B8%D1%81%D0%BA%D0%B0%D1%85%20%D0%BD%D0%B5%20%D0%B7%D0%BD%D0%B0%D1%87%D0%B8%D0%BB%D1%81%D1%8F",
+      "discarded": "https://tambur.pub/b/post/17415-v-spiskah-ne-znachilsya-krepost-ne-pala-ona-istekla-krovyu"
+    },
+    {
+      "path": "/tag/vechnaja-zima",
+      "selected": "https://tambur.pub/tags/%D0%B2%D0%B5%D1%87%D0%BD%D0%B0%D1%8F%20%D0%B7%D0%B8%D0%BC%D0%B0",
+      "discarded": "https://tambur.pub/b/post/17599-holod-bez-kontsa-retsenziya-na-film-vechnaya-zima"
+    },
+    {
+      "path": "/tag/vershina",
+      "selected": "https://tambur.pub/tags/%D0%B2%D0%B5%D1%80%D1%88%D0%B8%D0%BD%D0%B0",
+      "discarded": "https://tambur.pub/b/post/9959-vershina-sharliz-teron-vyzhivaet-v-avstralii"
+    },
+    {
+      "path": "/tag/vyhod-8",
+      "selected": "https://tambur.pub/tags/%D0%B2%D1%8B%D1%85%D0%BE%D0%B4%208",
+      "discarded": "https://tambur.pub/b/post/17336-vyhod-8-udachnaya-ekranizatsiya-art-hausnoy-videoigry-pro-personalnyy-ad"
+    },
+    {
+      "path": "/tag/vyzhivshie-betonnaja-utopija",
+      "selected": "https://tambur.pub/tags/%D0%B2%D1%8B%D0%B6%D0%B8%D0%B2%D1%88%D0%B8%D0%B5.%20%D0%B1%D0%B5%D1%82%D0%BE%D0%BD%D0%BD%D0%B0%D1%8F%20%D1%83%D1%82%D0%BE%D0%BF%D0%B8%D1%8F",
+      "discarded": "https://tambur.pub/b/post/17766-vyzhivshie-betonnaya-utopiya-kak-koreytsev-kvartirnyy-vopros-isportil"
+    },
+    {
+      "path": "/tag/zachinshhiki",
+      "selected": "https://tambur.pub/tags/%D0%B7%D0%B0%D1%87%D0%B8%D0%BD%D1%89%D0%B8%D0%BA%D0%B8",
+      "discarded": "https://tambur.pub/b/post/17645-zachinshchiki-veselaya-komediya-o-grustnyh-muzhchinah-srednego-vozrasta"
+    },
+    {
+      "path": "/tag/zakoldovannaja-jella",
+      "selected": "https://tambur.pub/tags/%D0%B7%D0%B0%D0%BA%D0%BE%D0%BB%D0%B4%D0%BE%D0%B2%D0%B0%D0%BD%D0%BD%D0%B0%D1%8F%20%D1%8D%D0%BB%D0%BB%D0%B0",
+      "discarded": "https://tambur.pub/b/post/17567-20-let-spustya-zakoldovannaya-ella-glupyy-film-kotoryy-nevozmozhno-ne-lyubit"
+    }
+  ]
+}
