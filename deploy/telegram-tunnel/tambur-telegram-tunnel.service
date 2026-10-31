@@ -1,0 +1,22 @@
+[Unit]
+Description=Tambur Telegram API encrypted route
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/ssh -NT -i /etc/tambur-telegram-tunnel/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/etc/tambur-telegram-tunnel/known_hosts -o ExitOnForwardFailure=yes -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -L 172.18.0.1:443:127.0.0.1:1443 tambur-telegram@45.139.76.165
+Restart=always
+RestartSec=5
+TimeoutStopSec=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+MemoryMax=64M
+TasksMax=16
+
+[Install]
+WantedBy=multi-user.target

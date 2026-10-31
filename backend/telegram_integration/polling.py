@@ -5,9 +5,9 @@ import logging
 import os
 import threading
 import time
-from typing import Any
 
 from django.conf import settings
+from django.db import close_old_connections
 
 from telegram_integration.bot import (
     _fetch_telegram_json,
@@ -20,6 +20,8 @@ from telegram_integration.bot import (
 )
 
 from telegram_integration.moderation import TelegramApprovalPrompt
+from telegram_integration.health import JsonStatusFile, PollingStatus
+from telegram_integration.runtime import TelegramPollingRuntime
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +32,8 @@ _polling_lock_handle = None
 class TelegramUpdateProcessor:
     """Advance the polling cursor only after the current update succeeds."""
 
-    def __init__(self):
+    def __init__(self, on_progress=None):
+        self.on_progress = on_progress
         self.offset: int | None = None
         self._completed_decisions: set[int] = set()
 
@@ -52,6 +55,8 @@ class TelegramUpdateProcessor:
                 decision_errors[update_id] = error
             else:
                 self._completed_decisions.add(update_id)
+                if self.on_progress:
+                    self.on_progress()
         handlers = {
             "channel_post": _handle_channel_post,
             "edited_channel_post": _handle_channel_post,
@@ -73,6 +78,8 @@ class TelegramUpdateProcessor:
                         break
             if isinstance(update_id, int):
                 self.offset = update_id + 1
+                if self.on_progress:
+                    self.on_progress()
                 self._completed_decisions = {key for key in self._completed_decisions if key >= self.offset}
 
 
@@ -92,35 +99,21 @@ def _acquire_polling_lock() -> bool:
     return True
 
 
-def _polling_loop(token: str) -> None:
-    processor = TelegramUpdateProcessor()
-    print("Telegram polling started")
-    _fetch_telegram_json("deleteWebhook", token, {"drop_pending_updates": False})
-    while True:
-        try:
-            TelegramApprovalPrompt(_send_bot_message_with_keyboard).drain(limit=2)
-            payload: dict[str, Any] = {
-                "timeout": 25,
-                "limit": 100,
-                "allowed_updates": (
-                    '["channel_post","edited_channel_post","message",'
-                    '"callback_query","my_chat_member","inline_query"]'
-                ),
-            }
-            if processor.offset is not None:
-                payload["offset"] = processor.offset
-            response = _fetch_telegram_json("getUpdates", token, payload)
-            if not response or not response.get("ok"):
-                time.sleep(2)
-                continue
-
-            updates = response.get("result") or []
-            if updates:
-                print(f"Telegram polling received {len(updates)} updates")
-            processor.process(updates)
-        except Exception as exc:
-            logger.warning("Telegram update failed; cursor retained (error=%s)", type(exc).__name__)
-            time.sleep(2)
+def _polling_loop(token: str, stop=None) -> None:
+    status = PollingStatus(JsonStatusFile(os.environ.get(
+        "TELEGRAM_STATUS_FILE", "/tmp/telegram-health/polling.json")))
+    runtime = TelegramPollingRuntime(
+        token, _fetch_telegram_json, TelegramUpdateProcessor(status.progress),
+        TelegramApprovalPrompt(_send_bot_message_with_keyboard), status)
+    logger.info("Telegram polling started")
+    while stop is None or not stop.is_set():
+        close_old_connections()
+        delay = runtime.step()
+        if delay:
+            if stop is None:
+                time.sleep(delay)
+            else:
+                stop.wait(delay)
 
 
 def start_polling_thread() -> None:

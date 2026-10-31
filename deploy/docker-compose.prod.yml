@@ -42,8 +42,9 @@ services:
       - .env.backend
     environment:
       SITEMAP_OUTPUT_DIR: /app/sitemaps
+      TELEGRAM_USE_POLLING: "0"
     extra_hosts:
-      - "api.telegram.org:149.154.167.220"
+      - "api.telegram.org:${TELEGRAM_API_RELAY_IP:-149.154.167.220}"
       - "oauth.telegram.org:149.154.167.220"
     depends_on:
       - db
@@ -51,6 +52,53 @@ services:
       - media_data:/app/media
       - static_data:/app/staticfiles
       - sitemap_data:/app/sitemaps
+      - ./secrets:/app/secrets:ro
+
+  telegram-bot:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+    restart: unless-stopped
+    logging: *default-logging
+    command: python -u manage.py run_telegram_bot
+    stop_grace_period: 45s
+    env_file:
+      - .env.backend
+    environment:
+      TELEGRAM_USE_POLLING: "0"
+      TELEGRAM_STATUS_FILE: /app/telegram-health/polling.json
+    extra_hosts:
+      - "api.telegram.org:${TELEGRAM_API_RELAY_IP:-149.154.167.220}"
+    depends_on:
+      - db
+      - backend
+    volumes:
+      - media_data:/app/media
+      - ./secrets:/app/secrets:ro
+      - telegram_health:/app/telegram-health
+    healthcheck:
+      test: ["CMD", "python", "-m", "telegram_integration.health"]
+      interval: 30s
+      timeout: 3s
+      retries: 1
+      start_period: 120s
+
+  telegram-watchdog:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+    profiles: ["telegram-watchdog"]
+    restart: unless-stopped
+    logging: *default-logging
+    command: python -u manage.py watch_telegram_bot
+    env_file:
+      - .env.backend
+    environment:
+      TELEGRAM_USE_POLLING: "0"
+      TELEGRAM_STATUS_FILE: /app/telegram-health/polling.json
+      TELEGRAM_ALERT_STATE_FILE: /app/telegram-health/alerts.json
+    volumes:
+      - telegram_health:/app/telegram-health
       - ./secrets:/app/secrets:ro
 
   public-feed-materializer:
@@ -71,7 +119,7 @@ services:
     environment:
       TELEGRAM_USE_POLLING: "0"
     extra_hosts:
-      - "api.telegram.org:149.154.167.220"
+      - "api.telegram.org:${TELEGRAM_API_RELAY_IP:-149.154.167.220}"
       - "oauth.telegram.org:149.154.167.220"
     depends_on:
       - db
@@ -120,7 +168,7 @@ services:
     environment:
       TELEGRAM_USE_POLLING: "0"
     extra_hosts:
-      - "api.telegram.org:149.154.167.220"
+      - "api.telegram.org:${TELEGRAM_API_RELAY_IP:-149.154.167.220}"
       - "oauth.telegram.org:149.154.167.220"
     depends_on:
       - db
@@ -139,7 +187,7 @@ services:
     environment:
       TELEGRAM_USE_POLLING: "0"
     extra_hosts:
-      - "api.telegram.org:149.154.167.220"
+      - "api.telegram.org:${TELEGRAM_API_RELAY_IP:-149.154.167.220}"
       - "oauth.telegram.org:149.154.167.220"
     depends_on:
       - db
@@ -158,7 +206,7 @@ services:
     environment:
       TELEGRAM_USE_POLLING: "0"
     extra_hosts:
-      - "api.telegram.org:149.154.167.220"
+      - "api.telegram.org:${TELEGRAM_API_RELAY_IP:-149.154.167.220}"
       - "oauth.telegram.org:149.154.167.220"
     depends_on:
       - db
@@ -193,7 +241,7 @@ services:
     environment:
       TELEGRAM_USE_POLLING: "0"
     extra_hosts:
-      - "api.telegram.org:149.154.167.220"
+      - "api.telegram.org:${TELEGRAM_API_RELAY_IP:-149.154.167.220}"
     depends_on:
       - db
     volumes:
@@ -212,7 +260,7 @@ services:
     environment:
       TELEGRAM_USE_POLLING: "0"
     extra_hosts:
-      - "api.telegram.org:149.154.167.220"
+      - "api.telegram.org:${TELEGRAM_API_RELAY_IP:-149.154.167.220}"
       - "oauth.telegram.org:149.154.167.220"
     depends_on:
       - db
@@ -272,6 +320,7 @@ services:
         condition: service_healthy
 
 volumes:
+  telegram_health:
   db_data:
   mysql57_data:
   media_data:
