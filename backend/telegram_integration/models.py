@@ -84,4 +84,33 @@ class TelegramApprovalDelivery(models.Model):
             condition=models.Q(sent_at__isnull=True, failed_at__isnull=True), name='tg_approval_due_idx')]
 
 
-__all__ = ["BotSession", "TelegramAccount", "TelegramApprovalDelivery"]
+class TelegramMediaJob(models.Model):
+    """Durable receipt of one photo message, independent of the polling cursor."""
+    author = models.ForeignKey('feeds.Author', on_delete=models.CASCADE)
+    message_id = models.BigIntegerField()
+    media_group_id = models.CharField(max_length=255, blank=True)
+    post = models.ForeignKey('feeds.Post', null=True, blank=True, on_delete=models.CASCADE,
+                             related_name='telegram_media_jobs')
+    payload = models.JSONField(default=dict)
+    revision = models.CharField(max_length=64)
+    state = models.CharField(max_length=16, default='pending')
+    attempts = models.PositiveIntegerField(default=0)
+    next_attempt_at = models.DateTimeField(default=timezone.now)
+    lease_token = models.CharField(max_length=32, blank=True)
+    last_error = models.CharField(max_length=100, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = 'feeds'
+        constraints = [models.UniqueConstraint(fields=['author', 'message_id'], name='tg_media_message_unique')]
+        indexes = [
+            models.Index(fields=['next_attempt_at', 'id'], condition=models.Q(state='pending'), name='tg_media_due_idx'),
+            models.Index(fields=['author', 'media_group_id'], name='tg_media_album_idx'),
+            models.Index(fields=['author'], condition=models.Q(state='pending'), name='tg_media_author_pending_idx'),
+            models.Index(fields=['created_at'], condition=models.Q(state='pending'), name='tg_media_age_idx'),
+            models.Index(fields=['id'], condition=models.Q(state='failed'), name='tg_media_failed_idx'),
+        ]
+
+
+__all__ = ["BotSession", "TelegramAccount", "TelegramApprovalDelivery", "TelegramMediaJob"]

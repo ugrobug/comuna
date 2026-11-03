@@ -6,7 +6,8 @@ from html import escape
 from typing import Iterable
 
 from django.core.management.base import BaseCommand
-from django.db.models import Q
+from django.db.models import Q, Exists, OuterRef
+from telegram_integration.models import TelegramMediaJob
 from django.utils import timezone
 
 from feeds.models import Post
@@ -53,6 +54,7 @@ class Command(BaseCommand):
                 | Q(raw_data__has_key="gallery_file_ids")
                 | Q(raw_data__has_key="photo_file_id")
             )
+            .filter(~Exists(TelegramMediaJob.objects.filter(post_id=OuterRef("pk"))))
             .order_by("-id")
         )
         if post_id:

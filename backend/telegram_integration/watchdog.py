@@ -8,8 +8,10 @@ logger = logging.getLogger(__name__)
 
 
 class TelegramWatchdog:
-    def __init__(self, status, state, senders, clock=time.time):
+    def __init__(self, status, state, senders, clock=time.time, media_status=None, storage_status=None):
         self.status, self.store, self.senders, self.clock = status, state, senders, clock
+        self.media_status = media_status
+        self.storage_status = storage_status
         self.state = state.read()
         self.state.setdefault('started_at', clock())
         self.state.setdefault('channels', {})
@@ -18,6 +20,12 @@ class TelegramWatchdog:
         now = self.clock()
         snapshot = self.status.read()
         problem = PollingHealth().problem(snapshot, now)
+        if problem is None and self.media_status is not None:
+            from telegram_integration.media_status import TelegramMediaStatus
+            problem = TelegramMediaStatus.problem(self.media_status.read(), now)
+        if problem is None and self.storage_status is not None:
+            from media_storage.status import MediaReserveStatus
+            problem = MediaReserveStatus.problem(self.storage_status.read(), now)
         if not snapshot and now - self.state['started_at'] < 120:
             self.store.write(self.state)
             return
@@ -37,10 +45,10 @@ class TelegramWatchdog:
                 continue
             if problem == previous and now - delivery.get('sent_at', 0) < 3600:
                 continue
-            text = (f'Тамбур: сбой Telegram-бота. {problem}. '
+            text = (f'Тамбур: требуется внимание. {problem}. '
                     'Автоматические повторы продолжаются. Требуется проверить связь и очередь.'
                     if problem else
-                    'Тамбур: Telegram-бот снова получает и обрабатывает обновления. '
+                    'Тамбур: приём сообщений и загрузка изображений снова работают; очереди медиа восстановлены. '
                     'Проверьте публикации за время сбоя: Telegram хранит ожидающие обновления ограниченное время.')
             try:
                 send(text)

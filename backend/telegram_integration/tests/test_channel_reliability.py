@@ -62,8 +62,8 @@ class ChannelReliabilityTests(TestCase):
     def test_consent_enabled_during_media_preparation_is_applied_to_new_post(self):
         def prepare(*args):
             Author.objects.filter(pk=self.author.pk).update(auto_publish=False, publish_delay_days=3)
-            return None
-        with patch('feeds.views._extract_photo_url', side_effect=prepare), \
+            return '', ''
+        with patch('feeds.views._extract_telegram_poll', side_effect=prepare), \
                 patch.object(bot, '_send_bot_message_with_keyboard', return_value={'ok': True, 'result': {'message_id': 99}}):
             post = bot._handle_channel_post({'chat': self.chat, 'message_id': 1, 'text': 'Example'})
         self.assertTrue(post.is_pending)
@@ -72,8 +72,8 @@ class ChannelReliabilityTests(TestCase):
     def test_blocking_channel_during_preparation_prevents_post_creation(self):
         def prepare(*args):
             Author.objects.filter(pk=self.author.pk).update(is_blocked=True)
-            return None
-        with patch('feeds.views._extract_photo_url', side_effect=prepare):
+            return '', ''
+        with patch('feeds.views._extract_telegram_poll', side_effect=prepare):
             post = bot._handle_channel_post({'chat': self.chat, 'message_id': 1, 'text': 'Example'})
         self.assertIsNone(post)
         self.assertFalse(Post.objects.exists())

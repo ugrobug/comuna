@@ -85,6 +85,48 @@ services:
       retries: 1
       start_period: 120s
 
+  telegram-media:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+    restart: unless-stopped
+    logging: *default-logging
+    command: python -u manage.py process_telegram_media --loop --limit 10
+    stop_grace_period: 45s
+    env_file:
+      - .env.backend
+    environment:
+      TELEGRAM_USE_POLLING: "0"
+      TELEGRAM_MEDIA_STATUS_FILE: /app/telegram-health/media.json
+    extra_hosts:
+      - "api.telegram.org:${TELEGRAM_API_RELAY_IP:-149.154.167.220}"
+    depends_on:
+      - db
+    volumes:
+      - media_data:/app/media
+      - telegram_health:/app/telegram-health
+      - ./secrets:/app/secrets:ro
+
+  media-transfer:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+    restart: unless-stopped
+    logging: *default-logging
+    command: python -u manage.py transfer_media_to_s3 --loop --limit 10
+    stop_grace_period: 45s
+    env_file:
+      - .env.backend
+    environment:
+      TELEGRAM_USE_POLLING: "0"
+      MEDIA_RESERVE_STATUS_FILE: /app/telegram-health/storage.json
+    depends_on:
+      - db
+    volumes:
+      - media_data:/app/media
+      - telegram_health:/app/telegram-health
+      - ./secrets:/app/secrets:ro
+
   telegram-watchdog:
     build:
       context: ..
@@ -99,6 +141,8 @@ services:
       TELEGRAM_USE_POLLING: "0"
       TELEGRAM_STATUS_FILE: /app/telegram-health/polling.json
       TELEGRAM_ALERT_STATE_FILE: /app/telegram-health/alerts.json
+      MEDIA_RESERVE_STATUS_FILE: /app/telegram-health/storage.json
+      TELEGRAM_MEDIA_STATUS_FILE: /app/telegram-health/media.json
     volumes:
       - telegram_health:/app/telegram-health
       - ./secrets:/app/secrets:ro

@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "corsheaders",
     "feeds.apps.FeedsConfig",
+    "media_storage.apps.MediaStorageConfig",
     "my_feed.apps.MyFeedConfig",
     "communities.apps.CommunitiesConfig",
     "explore.apps.ExploreConfig",
@@ -65,6 +66,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "rabotaem_backend.performance.ApiTimingMiddleware",
+    "media_storage.middleware.MediaReserveErrorsMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "rabotaem_backend.cache.DynamicPostPrivacyMiddleware",
@@ -198,6 +200,10 @@ MEDIA_PUBLIC_URL_MODE = os.environ.get("MEDIA_PUBLIC_URL_MODE", "legacy").strip(
 MEDIA_PUBLIC_BASE_URL = os.environ.get("MEDIA_PUBLIC_BASE_URL", "").strip()
 MEDIA_S3_PUBLIC_BASE_URL = os.environ.get("MEDIA_S3_PUBLIC_BASE_URL", "").strip()
 
+MEDIA_SPOOL_ENABLED = os.environ.get("MEDIA_SPOOL_ENABLED", "1") == "1"
+MEDIA_SPOOL_RESERVE_BYTES = int(os.environ.get("MEDIA_SPOOL_RESERVE_BYTES", str(2 * 1024**3)))
+MEDIA_SPOOL_MAX_FILE_BYTES = int(os.environ.get("MEDIA_SPOOL_MAX_FILE_BYTES", str(20 * 1024**2)))
+
 MEDIA_STORAGE_BACKEND = os.environ.get("MEDIA_STORAGE_BACKEND", "local").strip().lower()
 if MEDIA_STORAGE_BACKEND in {"s3", "beget_s3"}:
     from botocore.config import Config
@@ -223,6 +229,7 @@ if MEDIA_STORAGE_BACKEND in {"s3", "beget_s3"}:
         )
     }
     AWS_S3_CLIENT_CONFIG = Config(
+        connect_timeout=3, read_timeout=10, retries={"max_attempts": 0},
         signature_version=AWS_S3_SIGNATURE_VERSION,
         request_checksum_calculation=os.environ.get(
             "AWS_REQUEST_CHECKSUM_CALCULATION",

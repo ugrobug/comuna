@@ -19,7 +19,11 @@ class Command(BaseCommand):
         watchdog = TelegramWatchdog(
             JsonStatusFile(os.environ.get('TELEGRAM_STATUS_FILE', '/tmp/telegram-health/polling.json')),
             JsonStatusFile(os.environ.get('TELEGRAM_ALERT_STATE_FILE', '/tmp/telegram-health/alerts.json')),
-            {'email': EmailAlertSender(email), 'max': MaxAlertSender(MaxClient(), int(chat))})
+            {'email': EmailAlertSender(email), 'max': MaxAlertSender(MaxClient(), int(chat))},
+            media_status=JsonStatusFile(os.environ['TELEGRAM_MEDIA_STATUS_FILE'])
+                if os.environ.get('TELEGRAM_MEDIA_STATUS_FILE') else None,
+            storage_status=JsonStatusFile(os.environ['MEDIA_RESERVE_STATUS_FILE'])
+                if os.environ.get('MEDIA_RESERVE_STATUS_FILE') else None)
         stop = threading.Event()
         for signum in (signal.SIGTERM, signal.SIGINT):
             signal.signal(signum, lambda *_: stop.set())

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from django.conf import settings
 from django.core.files.storage import FileSystemStorage, Storage
+from django.core.files.base import File
+from django.core.files.utils import validate_file_name
 from django.utils.functional import cached_property
 from django.utils.module_loading import import_string
 
@@ -10,6 +12,47 @@ from rabotaem_backend.media_urls import public_media_urls_prefer_s3
 
 class S3MediaStorage(Storage):
     """Store new media in S3 while still serving legacy local files."""
+
+    @cached_property
+    def spool(self):
+        from media_storage.spool import LocalMediaSpool
+        return LocalMediaSpool()
+
+    @cached_property
+    def availability(self):
+        from media_storage.spool import S3Availability
+        return S3Availability(self.spool)
+
+    def save(self, name, content, max_length=None):
+        name = name or content.name
+        validate_file_name(name, allow_relative_path=True)
+        if not hasattr(content, 'chunks'):
+            content = File(content, name)
+        if self.spool.is_key(name):
+            return self.spool.save(name, content, max_length)
+        if not getattr(settings, 'MEDIA_SPOOL_ENABLED', True):
+            return super().save(name, content, max_length=max_length)
+        try:
+            available = self.availability.allow_request()
+        except OSError:
+            available = True  # Circuit metadata must not disable a healthy primary.
+        if not available:
+            return self.spool.save(name, content, max_length)
+        try:
+            saved = super().save(name, content, max_length=max_length)
+        except Exception as error:
+            if not self.availability.is_unavailable(error):
+                raise
+            try:
+                self.availability.failed(error)
+            except OSError:
+                pass
+            return self.spool.save(name, content, max_length)
+        try:
+            self.availability.recovered()
+        except OSError:
+            pass
+        return saved
 
     @cached_property
     def s3_storage(self) -> Storage:
@@ -35,6 +78,9 @@ class S3MediaStorage(Storage):
         return self.s3_storage.save(name, content)
 
     def delete(self, name: str) -> None:
+        if self.spool.is_key(name):
+            self.spool.delete(name)
+            return
         try:
             self.s3_storage.delete(name)
         finally:
@@ -52,6 +98,9 @@ class S3MediaStorage(Storage):
         return self.s3_storage.size(name)
 
     def url(self, name: str) -> str:
+        if self.spool.is_key(name):
+            from rabotaem_backend.media_urls import site_absolute_url
+            return site_absolute_url(self.spool.local.url(name))
         if public_media_urls_prefer_s3():
             return self.s3_storage.url(name)
         if self.local_storage.exists(name):

@@ -143,3 +143,27 @@ class WatchdogTests(SimpleTestCase):
             self.assertEqual(store.read(), {'phase': 'idle'})
             store.path.write_text('broken')
             self.assertEqual(store.read(), {})
+
+
+class MediaWatchdogTests(SimpleTestCase):
+    def test_working_polling_does_not_hide_photo_outage(self):
+        from telegram_integration.media_status import TelegramMediaStatus
+        state = {'heartbeat_at': 1000, 'pending_since': 800, 'error': 'EndpointConnectionError'}
+        self.assertIn('текстовые', TelegramMediaStatus.problem(state, 1000))
+        state.update(pending_since=None, error=None)
+        self.assertIsNone(TelegramMediaStatus.problem(state, 1000))
+        state['failed'] = True
+        self.assertIn('исчерпали', TelegramMediaStatus.problem(state, 1000))
+
+    def test_watchdog_notifies_outage_then_recovery_for_media(self):
+        status, store, media = MemoryStore(), MemoryStore(), MemoryStore()
+        status.write({'heartbeat_at': 1000, 'api_ok_at': 1000, 'cycle_ok_at': 1000})
+        media.write({'heartbeat_at': 1000, 'pending_since': 800, 'error': 'EndpointConnectionError'})
+        send = Mock()
+        watchdog = TelegramWatchdog(status, store, {'max': send}, clock=lambda: 1000, media_status=media)
+        watchdog.check()
+        self.assertIn('Фотографии', send.call_args.args[0])
+        media.write({'heartbeat_at': 1000, 'pending_since': None, 'error': None})
+        watchdog.check()
+        self.assertEqual(send.call_count, 2)
+        self.assertIn('снова', send.call_args.args[0])

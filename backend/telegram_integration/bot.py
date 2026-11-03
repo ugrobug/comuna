@@ -1627,7 +1627,11 @@ def _handle_private_message(message: dict) -> None:
 
         post = _handle_channel_post(forwarded)
         if post is None:
-            _send_bot_message(chat_id, "Пост не добавлен. Проверьте привязку канала и содержимое поста.")
+            from telegram_integration.models import TelegramMediaJob
+            waiting = TelegramMediaJob.objects.filter(author=author,
+                message_id=forwarded.get('message_id'), state='pending').exists()
+            _send_bot_message(chat_id, 'Фотографии сохранены в очереди. Пост появится после их загрузки с учётом настроек согласования.'
+                if waiting else 'Пост не добавлен. Проверьте привязку канала и содержимое поста.')
         elif post.is_pending:
             _send_bot_message(chat_id, "Пост сохранён и ждёт вашего согласования. На сайте он пока не опубликован.")
         else:

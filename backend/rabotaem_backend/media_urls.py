@@ -214,6 +214,11 @@ def public_media_url(value: object, *, request: HttpRequest | None = None) -> st
     if not public_media_urls_prefer_s3() and (parsed.scheme or parsed.netloc) and _s3_storage_path(parsed):
         return raw_value
 
+    # Reserve URLs remain stable after transfer; nginx serves local files first,
+    # then the application redirects only verified transfers to S3.
+    if storage_path.startswith('_spool/'):
+        return site_absolute_url('/media/' + _quote_storage_path(storage_path), request=request)
+
     if public_media_urls_prefer_s3():
         base_url = _s3_public_base_url()
         if base_url:

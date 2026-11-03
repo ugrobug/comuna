@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+import hashlib
 
 from django.db import transaction
 from django.utils import timezone
@@ -87,6 +88,7 @@ class TelegramChannelPostWriter:
                     content,
                     fallback=existing_group_post.original_language,
                 )
+                raw_data["telegram_managed_content_sha256"] = hashlib.sha256(content.encode()).hexdigest()
                 existing_group_post.raw_data = raw_data
                 existing_group_post.channel_url = f"https://t.me/{username}"
                 existing_group_post.source_url = (
@@ -133,13 +135,17 @@ class TelegramChannelPostWriter:
             raw_data["photo_file_id"] = photo_file_id
         if media_group_id:
             raw_data["media_group_id"] = media_group_id
-        if media_group_id and gallery_urls:
+        raw_data["formatted_text"] = formatted_text
+        raw_data["telegram_managed_content_sha256"] = hashlib.sha256(content.encode()).hexdigest()
+        if gallery_urls:
             raw_data["gallery_urls"] = gallery_urls
             raw_data["gallery_message_ids"] = [message_id]
             raw_data["formatted_text"] = formatted_text
             if formatted_text:
                 raw_data['gallery_caption_message_id'] = message_id
-        if media_group_id and photo_file_id:
+        if media_group_id and formatted_text:
+            raw_data["gallery_caption_message_id"] = message_id
+        if photo_file_id and image_url:
             raw_data["gallery_file_ids"] = [photo_file_id]
         if embed_html:
             raw_data["embed_html"] = embed_html
@@ -165,6 +171,13 @@ class TelegramChannelPostWriter:
             post = Post.objects.select_for_update().get(pk=post.pk)
             if "telegram_moderation" in (post.raw_data or {}):
                 raw_data["telegram_moderation"] = post.raw_data["telegram_moderation"]
+            if image_url is None and message.get('photo'):
+                for key in ('gallery_urls', 'gallery_file_ids', 'gallery_message_ids'):
+                    if key in (post.raw_data or {}):
+                        raw_data[key] = post.raw_data[key]
+                content = self.views._build_content_with_images(formatted_text,
+                    raw_data.get('gallery_urls', []), embed_html, poll_html)
+                raw_data['telegram_managed_content_sha256'] = hashlib.sha256(content.encode()).hexdigest()
             post.title = title
             post.content = content
             post.source_url = source_url

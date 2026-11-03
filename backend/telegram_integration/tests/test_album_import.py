@@ -43,35 +43,40 @@ class AlbumImportTests(AlbumFixture, TestCase):
             self.addCleanup(patcher.stop)
             patcher.start()
 
+    def receive(self, message):
+        from telegram_integration.media_queue import TelegramMediaWorker
+        from telegram_integration.moderation import TelegramApprovalPrompt
+        post = bot._handle_channel_post(message)
+        TelegramMediaWorker(download=lambda msg: views._extract_photo_url(msg, 'test-token'),
+            content=views, prompt=TelegramApprovalPrompt(bot._send_bot_message_with_keyboard)).drain()
+        return post
+
     def test_four_photos_and_replayed_update_make_one_complete_post(self):
         with patch("feeds.views._extract_photo_url", side_effect=lambda message, token: f"https://media.test/{message['message_id']}.webp"):
             for number in (242, 243, 244, 245, 243):
-                bot._handle_channel_post(self.make_message(number, caption="Caption" if number == 242 else ""))
+                self.receive(self.make_message(number, caption="Caption" if number == 242 else ""))
         post = Post.objects.get(author=self.author)
         self.assertEqual(post.content.count("<img "), 4)
         self.assertEqual(len(post.raw_data["gallery_file_ids"]), 4)
         self.assertIn("Caption", post.content)
         self.assertTrue(post.is_pending)
 
-    def test_download_failure_does_not_acknowledge_or_publish_partial_message(self):
+    def test_download_failure_is_durable_and_does_not_block_polling(self):
+        from telegram_integration.models import TelegramMediaJob
         processor = polling.TelegramUpdateProcessor()
-        processor.offset = 100
         updates = [{"update_id": 100 + n, "channel_post": self.make_message(242 + n)} for n in range(4)]
-        with patch("feeds.views._extract_photo_url", return_value=None):
-            with self.assertRaises(TelegramMediaDownloadError):
-                processor.process(updates)
-        self.assertEqual(processor.offset, 100)
-        self.assertFalse(Post.objects.filter(author=self.author).exists())
-        with patch("feeds.views._extract_photo_url", side_effect=lambda message, token: f"https://media.test/{message['message_id']}.webp"):
+        with patch("feeds.views._extract_photo_url", side_effect=AssertionError('Polling must not download')):
             processor.process(updates)
         self.assertEqual(processor.offset, 104)
-        self.assertEqual(Post.objects.get(author=self.author).content.count("<img "), 4)
+        self.assertFalse(Post.objects.filter(author=self.author).exists())
+        self.assertEqual(TelegramMediaJob.objects.filter(state='pending').count(), 4)
 
-    def test_caption_does_not_hide_failed_photo_download(self):
-        with patch("feeds.views._extract_photo_url", return_value=None):
-            with self.assertRaises(TelegramMediaDownloadError):
-                bot._handle_channel_post(self.make_message(242, caption="Caption"))
-        self.assertFalse(Post.objects.exists())
+    def test_caption_is_saved_without_waiting_for_photo(self):
+        with patch("feeds.views._extract_photo_url", side_effect=AssertionError('Polling must not download')):
+            post = bot._handle_channel_post(self.make_message(242, caption="Caption"))
+        self.assertIn('Caption', post.content)
+        self.assertNotIn('<img', post.content)
+        self.assertTrue(post.is_pending)
 
     def test_album_updates_preserve_approval_and_delay(self):
         self.author.publish_delay_days = 3
@@ -124,7 +129,7 @@ class AlbumImportTests(AlbumFixture, TestCase):
         message['edit_date'] = 200
         message['photo'][0]['file_id'] = 'replacement'
         with patch('feeds.views._extract_photo_url', return_value='https://media.test/replaced.webp'):
-            bot._handle_channel_post(message)
+            self.receive(message)
         post = Post.objects.get(author=self.author)
         self.assertIn('Edited caption', post.content)
         self.assertNotIn('Original caption', post.content)
@@ -137,7 +142,7 @@ class AlbumImportTests(AlbumFixture, TestCase):
         message = self.make_message(1, caption='')
         message['edit_date'] = 200
         with patch('feeds.views._extract_photo_url', return_value='https://media.test/1.webp'):
-            bot._handle_channel_post(message)
+            self.receive(message)
         post = Post.objects.get(author=self.author)
         self.assertNotIn('Original caption', post.content)
         self.assertEqual(post.content.count('<img '), 2)
