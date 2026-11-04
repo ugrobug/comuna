@@ -1943,7 +1943,9 @@ def _apply_post_tags(post: Post, explicit_tags: list[str] | None = None) -> None
         key = lemma.lower()
         tag = existing_tags.get(key)
         if not tag:
-            tag = Tag.objects.create(name=normalized, lemma=lemma)
+            # Stored lemmas may differ from today's morphology. Identity is the
+            # unique name; get_or_create also recovers a concurrent insert.
+            tag, _ = Tag.objects.get_or_create(name=normalized, defaults={"lemma": lemma})
             existing_tags[key] = tag
         if tag.id not in seen_ids:
             selected_tags.append(tag)

@@ -16,6 +16,20 @@ from telegram_integration.tests.test_album_import import AlbumFixture, AlbumImpo
 class MediaQueueTests(AlbumFixture, TestCase):
     setUp = AlbumImportTests.setUp
 
+    def test_existing_tag_with_changed_lemma_does_not_block_photo_receipt(self):
+        from feeds.models import Tag
+        tag = Tag.objects.create(name='фильмы', lemma='фильм')
+        with patch('feeds.views._lemmatize_tag', return_value=''):
+            post = bot._handle_channel_post(self.make_message(1, caption='Text #фильмы'))
+            next_post = bot._handle_channel_post(self.make_message(2, group='next', caption='Next text'))
+        self.assertIsNotNone(post)
+        self.assertIsNotNone(next_post)
+        self.assertEqual(list(post.tags.values_list('pk', flat=True)), [tag.pk])
+        self.assertEqual(self.worker().drain()['processed'], 2)
+        post.refresh_from_db()
+        self.assertIn('<img', post.content)
+        self.assertTrue(post.preview_image_url)
+
     def worker(self, download=None):
         return TelegramMediaWorker(download=download or (lambda msg: f"https://media.test/{msg['message_id']}.webp"),
             content=views, prompt=Mock())
