@@ -11,15 +11,27 @@ from telegram_integration.watchdog import EmailAlertSender, MaxAlertSender, Tele
 class Command(BaseCommand):
     help = 'Watch Telegram status and notify configured MAX/email recipients independently.'
 
+    def build_senders(self, environment):
+        email = environment.get('TELEGRAM_ALERT_EMAIL', '').strip()
+        chat = environment.get('TELEGRAM_ALERT_MAX_CHAT_ID', '').strip()
+        senders = {}
+        if email:
+            senders['email'] = EmailAlertSender(email)
+        if chat:
+            try:
+                chat_id = int(chat)
+            except ValueError as error:
+                raise CommandError('TELEGRAM_ALERT_MAX_CHAT_ID must be an integer') from error
+            senders['max'] = MaxAlertSender(MaxClient(), chat_id)
+        if not senders:
+            raise CommandError('Configure TELEGRAM_ALERT_EMAIL or TELEGRAM_ALERT_MAX_CHAT_ID')
+        return senders
+
     def handle(self, *args, **options):
-        email = os.environ.get('TELEGRAM_ALERT_EMAIL', '')
-        chat = os.environ.get('TELEGRAM_ALERT_MAX_CHAT_ID', '')
-        if not email or not chat:
-            raise CommandError('Configure TELEGRAM_ALERT_EMAIL and TELEGRAM_ALERT_MAX_CHAT_ID')
         watchdog = TelegramWatchdog(
             JsonStatusFile(os.environ.get('TELEGRAM_STATUS_FILE', '/tmp/telegram-health/polling.json')),
             JsonStatusFile(os.environ.get('TELEGRAM_ALERT_STATE_FILE', '/tmp/telegram-health/alerts.json')),
-            {'email': EmailAlertSender(email), 'max': MaxAlertSender(MaxClient(), int(chat))},
+            self.build_senders(os.environ),
             media_status=JsonStatusFile(os.environ['TELEGRAM_MEDIA_STATUS_FILE'])
                 if os.environ.get('TELEGRAM_MEDIA_STATUS_FILE') else None,
             storage_status=JsonStatusFile(os.environ['MEDIA_RESERVE_STATUS_FILE'])
