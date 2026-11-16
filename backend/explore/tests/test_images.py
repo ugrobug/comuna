@@ -120,8 +120,14 @@ class NodeImageTests(TestCase):
         with self.assertNumQueries(1):
             response = self.client.get(url)
         self.assertEqual(response['Content-Type'], 'image/webp')
-        with Image.open(io.BytesIO(b''.join(response.streaming_content))) as image:
+        with Image.open(io.BytesIO(response.content)) as image:
             self.assertEqual(image.format, 'WEBP')
+        from botocore.exceptions import ClientError
+        failure = ClientError({"Error": {"Code": "InvalidAccessKeyId"}}, "GetObject")
+        with patch("django.db.models.fields.files.FieldFile.open", side_effect=failure):
+            unavailable = self.client.get(url)
+        self.assertEqual(unavailable.status_code, 503)
+        self.assertIn("no-store", unavailable["Cache-Control"])
         Node.objects.filter(pk=self.node.pk).update(is_active=False)
         self.assertEqual(self.client.get(url).status_code, 404)
 

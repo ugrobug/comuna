@@ -1,7 +1,9 @@
 import json
 
+from botocore.exceptions import BotoCoreError, ClientError
+
 from django.core.exceptions import ValidationError
-from django.http import FileResponse, Http404, JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils.decorators import method_decorator
 from django.views import View
@@ -86,10 +88,14 @@ class HobbyCoverView(View):
         if not node.image:
             raise Http404
         try:
-            cover = node.image.open("rb")
+            # Stored covers are bounded to 640×360. Complete the read before
+            # sending headers so a failed S3 download has a usable response.
+            with node.image.open("rb") as cover:
+                response = HttpResponse(cover.read(), content_type="image/webp")
         except FileNotFoundError:
             raise Http404 from None
-        response = FileResponse(cover, content_type="image/webp")
+        except (BotoCoreError, ClientError):
+            response = JsonResponse({"error": "Обложка временно недоступна."}, status=503)
         response["Cache-Control"] = "private, no-store"
         return response
 
