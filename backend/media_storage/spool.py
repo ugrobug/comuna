@@ -25,6 +25,8 @@ class MediaReserveFull(OSError):
 
 class LocalMediaSpool:
     prefix = '_spool/'
+    # Slim Linux images may lack system MIME registrations for modern formats.
+    image_types = {'.webp': 'image/webp', '.avif': 'image/avif', '.heic': 'image/heic', '.heif': 'image/heif'}
     key_pattern = re.compile(r'^_spool/[a-f0-9]{32}/[^/]+$')
 
     def __init__(self, root=None, *, free_bytes=None, reserve_bytes=None, max_file_bytes=None):
@@ -62,8 +64,9 @@ class LocalMediaSpool:
             key = f'{directory}/{Path(filename).stem[:available]}{suffix}'
         content.seek(0)
         size = content.size
-        content_type = getattr(content, 'content_type', None) or mimetypes.guess_type(key)[0] or 'application/octet-stream'
-        is_image = (mimetypes.guess_type(key)[0] or content_type).startswith('image/')
+        inferred_type = self.image_types.get(Path(key).suffix.lower()) or mimetypes.guess_type(key)[0]
+        content_type = getattr(content, 'content_type', None) or inferred_type or 'application/octet-stream'
+        is_image = (inferred_type or content_type).startswith('image/')
         if not is_image and size > self.max_file_bytes:
             raise MediaReserveFull('Файл слишком большой для временного хранилища. Повторите загрузку позже.')
         with self.locked():

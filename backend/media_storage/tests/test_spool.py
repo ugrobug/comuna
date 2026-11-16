@@ -103,8 +103,10 @@ class MediaSpoolTests(TestCase):
 
     def test_images_can_use_all_available_space_during_an_outage(self):
         spool = LocalMediaSpool(max_file_bytes=1, reserve_bytes=100, free_bytes=lambda: 3)
-        key = spool.save('photo.webp', ContentFile(b'abc'))
-        self.assertEqual(MediaTransfer.objects.get(key=key).size, 3)
+        with patch('mimetypes.guess_type', return_value=(None, None)):
+            key = spool.save('photo.WEBP', ContentFile(b'abc'))
+        job = MediaTransfer.objects.get(key=key)
+        self.assertEqual((job.size, job.content_type), (3, 'image/webp'))
         with self.assertRaises(MediaReserveFull):
             spool.save('other.png', ContentFile(b'abcd'))
 
