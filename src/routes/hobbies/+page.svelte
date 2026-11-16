@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
+  import { page } from '$app/stores'
   import { goto } from '$app/navigation'
   import { siteToken, siteUser } from '$lib/siteAuth'
   import LoginModal from '$lib/components/auth/LoginModal.svelte'
@@ -11,6 +12,8 @@
   const api = new ExploreApi()
   let data: ExploreData | undefined
   let error = '', loginOpen = false, pendingTitle = '', busy: number | null = null
+
+  $: selectedView = $page.url.searchParams.get('view') === 'selected'
 
   async function load() {
     error = ''
@@ -44,9 +47,9 @@
   onMount(() => { void load() })
 </script>
 
-<svelte:head><title>Подобрать хобби | Тамбур</title></svelte:head>
+<svelte:head><title>{selectedView ? 'Выбранные хобби и сообщества' : 'Подобрать хобби'} | Тамбур</title></svelte:head>
 {#if data}
-  <HobbyPicker {data} account={$siteUser?.id ?? null} suspended={loginOpen} {busy} {error}
+  <HobbyPicker {data} {selectedView} account={$siteUser?.id ?? null} suspended={loginOpen} {busy} {error}
     onClose={() => goto('/explore')} {subscribe} {createCommunity} />
 {:else}
   <main class="p-5"><h1 class="text-xl font-bold">Подобрать хобби</h1>
