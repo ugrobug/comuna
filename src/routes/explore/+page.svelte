@@ -12,6 +12,18 @@
   import { connectedNodes } from '$lib/explore/GraphSelection'
   import { emptyGraph, filterNodes, type ExploreNode } from '$lib/explore/types'
 
+  let Picker: typeof import('$lib/components/explore/HobbyPicker.svelte').default
+  let pickerOpen = false, openingPicker = false
+  async function openPicker() {
+    if (openingPicker || editingGraph) return
+    openingPicker = true
+    try {
+      Picker ??= (await import('$lib/components/explore/HobbyPicker.svelte')).default
+      error = ''; pickerOpen = true
+    } catch { error = 'Не удалось открыть подбор хобби. Попробуйте ещё раз.' }
+    finally { openingPicker = false }
+  }
+
   const api = new ExploreApi()
   let data = emptyGraph()
   let editingGraph = false, switchingEditor = false
@@ -126,12 +138,17 @@
   <div class="explore-workspace">
     <header class="toolbar">
       <h1>Explore<span>Карта увлечений</span></h1>
+      {#if !editingGraph}<button class="picker-button" disabled={loading || switchingEditor || openingPicker || (!!error && !data.nodes.length)} aria-haspopup="dialog" on:click={openPicker}>Подобрать хобби</button>{/if}
       {#if !editingGraph && pinnedNodes.length}<button class="pinned-button" class:chosen={pinnedOpen} aria-expanded={pinnedOpen} on:click={togglePinned}>Зафиксированные · {pinnedNodes.length}</button>{/if}
       <input class="search" aria-label="Поиск увлечения или сообщества" placeholder="Увлечение или сообщество" bind:value={query} on:focus={() => { if (pinnedOpen) dismiss() }} />
       <button disabled={editingGraph} class="filter-button" class:chosen={filtersOpen} aria-expanded={filtersOpen} aria-controls="explore-filters" on:click={() => { if (!filtersOpen) dismiss(); filtersOpen = !filtersOpen }}>Фильтры{filters.length ? ` · ${filters.length}` : ''} ▾</button>
 
       {#if $siteUser?.is_staff}<button class="manage" class:chosen={editingGraph} disabled={switchingEditor || loading} aria-pressed={editingGraph} on:click={() => editingGraph ? exitEditor() : enterEditor()}>{editingGraph ? 'Готово' : 'Редактировать граф'}</button>{/if}
     </header>
+    {#if pickerOpen && Picker}
+      <svelte:component this={Picker} {data} account={$siteUser?.id ?? null} suspended={loginOpen} {busy} {error}
+        onClose={() => {pickerOpen = false; error = ''}} {subscribe} {createCommunity} />
+    {/if}
     {#if editingGraph && $siteUser?.is_staff}<GraphEditor bind:this={editor} bind:data initialNode={selected} on:select={(event) => { if (event.detail === null) selected = null; else revealNode(event.detail) }} on:close={exitEditor} />{/if}
     {#if filtersOpen}
       <section id="explore-filters" class="filters" aria-label="Фильтры графа">
@@ -198,6 +215,7 @@
   h1{display:flex;align-items:center;gap:12px;font-size:23px;letter-spacing:-.6px;font-weight:650;white-space:nowrap;margin-right:auto}
   h1 span{font-size:12px;letter-spacing:0;font-weight:400;color:#8b91a2}
   .search{box-sizing:border-box;width:240px;max-width:100%;border:1px solid #b2b8ca50;border-radius:10px;padding:10px 12px;font-size:12px;background:transparent}
+  .picker-button{order:0;background:#6250a5;color:white;font-weight:600;font-size:12px;border-radius:10px;padding:10px 12px}
   .filter-button{padding:10px 12px;border:1px solid #b2b8ca50;border-radius:10px;font-size:12px;white-space:nowrap}
   .pinned-button{padding:8px 10px;border:1px solid #8174ce50;border-radius:10px;font-size:12px;white-space:nowrap;color:#8174ce}
   .chosen{background:#8174ce18;color:#8174ce}
