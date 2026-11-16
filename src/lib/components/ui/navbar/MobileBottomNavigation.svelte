@@ -22,6 +22,7 @@
     PencilSquare,
     Plus,
     Squares2x2,
+    Sparkles,
     UserCircle,
     UserGroup,
     XMark,
@@ -202,6 +203,9 @@
       {/if}
 
       <div class="menu-divider"></div>
+      <a href="/hobbies" class="profile-menu-item">
+        <Icon src={Sparkles} size="19" />Подобрать хобби
+      </a>
       <p class="menu-section-label">{$t('site.sidebar.resources')}</p>
       <a href={projectAboutPath} class="profile-menu-item">
         <Icon src={InformationCircle} size="19" />
