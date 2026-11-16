@@ -6,6 +6,7 @@
     UserGroup,
     Cog6Tooth,
     Fire,
+    Sparkles,
     Megaphone,
     DocumentText,
     InformationCircle,
@@ -132,6 +133,9 @@
     </SidebarButton>
     <SidebarButton icon={graphIcon} href="/explore" on:click={handleNavigation}>
       <span slot="label">Исследовать</span>
+    </SidebarButton>
+    <SidebarButton icon={Sparkles} href="/hobbies" on:click={handleNavigation}>
+      <span slot="label">Подобрать хобби</span>
     </SidebarButton>
     <SidebarButton
       icon={Bookmark}

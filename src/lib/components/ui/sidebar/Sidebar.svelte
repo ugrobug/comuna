@@ -4,6 +4,7 @@
     Inbox,
     UserGroup,
     Fire,
+    Sparkles,
     Megaphone,
     DocumentText,
     InformationCircle,
@@ -139,6 +140,9 @@
     </SidebarButton>
     <SidebarButton icon={graphIcon} href="/explore">
       <span slot="label">Исследовать</span>
+    </SidebarButton>
+    <SidebarButton icon={Sparkles} href="/hobbies">
+      <span slot="label">Подобрать хобби</span>
     </SidebarButton>
     <SidebarButton icon={Bookmark} href="/?feed=favorites" active={currentFeed === 'favorites'}>
       <span slot="label">{$t('site.sidebar.favorites')}</span>

@@ -80,11 +80,18 @@ class MediaSpoolTests(TestCase):
             self.storage.save('photo.jpg', ContentFile(b'abc'))
         self.assertFalse(MediaTransfer.objects.exists())
 
-    def test_disk_reserve_and_file_limit_stop_writes(self):
+    def test_images_can_use_all_available_space_during_an_outage(self):
+        spool = LocalMediaSpool(max_file_bytes=1, reserve_bytes=100, free_bytes=lambda: 3)
+        key = spool.save('photo.webp', ContentFile(b'abc'))
+        self.assertEqual(MediaTransfer.objects.get(key=key).size, 3)
+        with self.assertRaises(MediaReserveFull):
+            spool.save('other.png', ContentFile(b'abcd'))
+
+    def test_non_image_disk_reserve_and_file_limit_stop_writes(self):
         for spool in (LocalMediaSpool(reserve_bytes=100, free_bytes=lambda: 102),
                       LocalMediaSpool(max_file_bytes=2)):
             with self.assertRaises(MediaReserveFull):
-                spool.save('photo.jpg', ContentFile(b'abc'))
+                spool.save('attachment.pdf', ContentFile(b'abc'))
         self.assertFalse(MediaTransfer.objects.exists())
         response = MediaReserveErrorsMiddleware(lambda r: None).process_exception(RequestFactory().post('/'), MediaReserveFull('Повторите загрузку позже'))
         self.assertEqual(response.status_code, 503)

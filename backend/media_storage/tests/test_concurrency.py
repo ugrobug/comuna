@@ -15,7 +15,7 @@ class ReserveConcurrencyTests(TransactionTestCase):
         with TemporaryDirectory() as directory:
             def available():
                 used = sum(p.stat().st_size for p in Path(directory).glob('_spool/*/*.jpg'))
-                return 105 - used
+                return 5 - used
 
             def save(number):
                 try:

@@ -83,6 +83,18 @@ class ExploreTests(TestCase):
         self.assertEqual(self.request("delete", f"nodes/{node_id}/", token=self.staff_token).status_code, 200)
         self.assertFalse(Node.objects.filter(pk=node_id).exists())
 
+    def test_first_step_roundtrip_and_clearing(self):
+        path = f"nodes/{self.root.pk}/"
+        fields = {"try_description": "Найдите маршрут", "try_step": "Проехать километр"}
+        self.assertEqual(self.request("patch", path, fields, self.member_token).status_code, 403)
+        for values in [fields, {"title": "Другое название"}, {"try_step": "", "try_description": ""}]:
+            self.assertEqual(self.request("patch", path, values, self.staff_token).status_code, 200)
+            with self.assertNumQueries(5):
+                nodes = GraphQuery().serialize()["nodes"]
+            card = next(n for n in nodes if n["id"] == self.root.pk)
+            for key in fields:
+                self.assertEqual(card.get(key, ""), values.get(key, fields[key]))
+
     def test_invalid_properties_do_not_partially_save(self):
         response = self.request("patch", f"nodes/{self.root.pk}/", {"title": "Не сохранять", "property_ids": [999999]}, self.staff_token)
         self.assertEqual(response.status_code, 400)

@@ -113,6 +113,18 @@ class NodeImageTests(TestCase):
         self.assertEqual(Path(self.node.image.path), previous)
         self.assertEqual(self.files(), [previous])
 
+    def test_pdf_cover_only_serves_active_hobbies(self):
+        url = f'/api/explore/nodes/{self.node.pk}/cover/'
+        self.assertEqual(self.client.get(url).status_code, 404)
+        self.assertEqual(self.post().status_code, 200)
+        with self.assertNumQueries(1):
+            response = self.client.get(url)
+        self.assertEqual(response['Content-Type'], 'image/webp')
+        with Image.open(io.BytesIO(b''.join(response.streaming_content))) as image:
+            self.assertEqual(image.format, 'WEBP')
+        Node.objects.filter(pk=self.node.pk).update(is_active=False)
+        self.assertEqual(self.client.get(url).status_code, 404)
+
     def test_image_delete_removes_file_without_deleting_node(self):
         self.post()
         with self.captureOnCommitCallbacks(execute=True):

@@ -1,7 +1,7 @@
 import json
 
 from django.core.exceptions import ValidationError
-from django.http import JsonResponse
+from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils.decorators import method_decorator
 from django.views import View
@@ -76,6 +76,22 @@ class NodeDetailView(ExploreView):
     def delete(self, request, node_id):
         GraphEditor.apply(lambda: get_object_or_404(Node, pk=node_id).delete())
         return JsonResponse({"ok": True})
+
+
+class HobbyCoverView(View):
+    """Same-origin access to the public, size-limited WebP for PDF export."""
+
+    def get(self, request, node_id):
+        node = get_object_or_404(Node.objects.only("image"), pk=node_id, kind=Node.Kind.ELEMENT, is_active=True)
+        if not node.image:
+            raise Http404
+        try:
+            cover = node.image.open("rb")
+        except FileNotFoundError:
+            raise Http404 from None
+        response = FileResponse(cover, content_type="image/webp")
+        response["Cache-Control"] = "private, no-store"
+        return response
 
 
 class NodeImageView(ExploreView):

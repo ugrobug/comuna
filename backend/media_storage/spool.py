@@ -1,5 +1,6 @@
-"""Shared-volume fallback. Reads never need S3, writes retain a disk reserve."""
+"""Shared-volume fallback. Reads never need S3, images use the available disk space."""
 from contextlib import contextmanager
+import errno
 import fcntl
 import hashlib
 import json
@@ -61,12 +62,21 @@ class LocalMediaSpool:
             key = f'{directory}/{Path(filename).stem[:available]}{suffix}'
         content.seek(0)
         size = content.size
-        if size > self.max_file_bytes:
+        content_type = getattr(content, 'content_type', None) or mimetypes.guess_type(key)[0] or 'application/octet-stream'
+        is_image = (mimetypes.guess_type(key)[0] or content_type).startswith('image/')
+        if not is_image and size > self.max_file_bytes:
             raise MediaReserveFull('Файл слишком большой для временного хранилища. Повторите загрузку позже.')
         with self.locked():
-            if self.free_bytes() - size < self.reserve_bytes:
+            if self.free_bytes() - size < (0 if is_image else self.reserve_bytes):
                 raise MediaReserveFull('Временное хранилище заполнено. Повторите загрузку позже.')
-            saved = self.local.save(key, content, max_length=max_length)
+            target = self.local.get_available_name(key, max_length=max_length)
+            try:
+                saved = self.local.save(target, content, max_length=max_length)
+            except OSError as error:
+                if error.errno not in (errno.ENOSPC, errno.EDQUOT):
+                    raise
+                self.local.delete(target)
+                raise MediaReserveFull('На сервере закончилось место. Повторите загрузку позже.') from error
             try:
                 digest = hashlib.sha256()
                 with self.local.open(saved, 'rb') as source:
@@ -75,7 +85,7 @@ class LocalMediaSpool:
                 # The queue transaction follows the caller's transaction; rollback
                 # cannot publish a post that references an unrecorded transfer.
                 MediaTransfer.objects.create(key=saved, size=size, sha256=digest.hexdigest(),
-                    content_type=getattr(content, 'content_type', None) or mimetypes.guess_type(saved)[0] or 'application/octet-stream')
+                    content_type=content_type)
             except Exception:
                 self.local.delete(saved)
                 raise

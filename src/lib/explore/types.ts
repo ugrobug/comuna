@@ -3,6 +3,8 @@ export type ExploreNode = {
   kind: 'element' | 'community'
   title: string
   description: string
+  try_description?: string
+  try_step?: string
   image_url?: string | null
   community_description?: string
   subscribers_count?: number | null

@@ -16,6 +16,7 @@
   let editing: number | undefined
   let kind: 'element' | 'community' = 'element'
   let title = '', description = '', communityId: number | null = null, communitySearch = ''
+  let tryDescription = '', tryStep = ''
   let propertyIds: number[] = [], showProperties = false, active = true
   let mode: 'welcome' | 'node' | 'link' = 'welcome'
   let source: number | null = null, target: number | null = null
@@ -31,10 +32,10 @@
   $: linkedCommunityIds = new Set(data.nodes.filter(node => node.id !== editing).map(node => node.community_id))
   $: communityOptions = (data.communities ?? []).filter(item => !linkedCommunityIds.has(item.id) && item.name.toLocaleLowerCase('ru').includes(communitySearch.toLocaleLowerCase('ru')))
   $: attachedEdges = data.edges.filter(edge => edge.source === editing || edge.target === editing)
-  $: dirty = mode === 'node' ? draftKey(kind, title, description, communityId, propertyIds, showProperties, active) !== savedDraft : mode === 'link' && linkKey(source, target) !== savedLink
+  $: dirty = mode === 'node' ? draftKey(kind, title, description, tryDescription, tryStep, communityId, propertyIds, showProperties, active) !== savedDraft : mode === 'link' && linkKey(source, target) !== savedLink
 
   function draftData() {
-    return { kind, title, description, community_id: kind === 'community' ? communityId : null,
+    return { kind, title, description, ...(kind === 'element' ? { try_description: tryDescription, try_step: tryStep } : {}), community_id: kind === 'community' ? communityId : null,
       property_ids: [...propertyIds].sort((a, b) => a - b), show_properties: showProperties, is_active: active }
   }
   // Arguments make Svelte track all fields used by the draft comparison.
@@ -54,11 +55,13 @@
   }
   function reset(nextKind: 'element' | 'community' = 'element') {
     mode = 'node'; editing = undefined; kind = nextKind; title = ''; description = ''; communityId = null
+    tryDescription = ''; tryStep = ''
     propertyIds = []; showProperties = false; active = true; communitySearch = ''
     savedDraft = draftKey(); dispatch('select', null)
   }
   function edit(node: ExploreNode) {
     mode = 'node'; editing = node.id; kind = node.kind; title = node.title; description = node.description
+    tryDescription = node.try_description ?? ''; tryStep = node.try_step ?? ''
     communityId = node.community_id; propertyIds = [...node.property_ids]
     showProperties = node.show_properties; active = node.is_active; communitySearch = ''
     savedDraft = draftKey()
@@ -183,6 +186,12 @@
         {:else if editing}<label>Сообщество<input value={title} disabled /></label>
         {:else}<label>Поиск сообщества<input placeholder="Начните вводить название" bind:value={communitySearch} disabled={busy} /></label><label>Существующее сообщество<select required bind:value={communityId} disabled={busy}><option value={null}>Выберите сообщество</option>{#each communityOptions as item}<option value={item.id}>{item.name}</option>{/each}</select></label><p class="hint">Каждое сообщество добавляется один раз; к нему можно провести несколько связей.</p>{/if}
         <label>Описание<textarea rows="3" maxlength="4000" bind:value={description} disabled={busy}></textarea></label>
+        {#if kind === 'element'}
+          <fieldset><legend>Как попробовать</legend>
+            <label>С чего начать<textarea rows="3" maxlength="800" bind:value={tryDescription} disabled={busy}></textarea></label>
+            <label>Первый шаг (текст у чекбокса)<input maxlength="180" bind:value={tryStep} disabled={busy} /></label>
+          </fieldset>
+        {/if}
         <h3>Изображение карточки</h3>
         <p class="hint">JPEG, PNG, WebP или GIF, до 10 МБ. Автоматическая обрезка по центру до 640×360, WebP с качеством 75%. Для GIF сохраняется первый кадр. Загрузка сразу сохраняет узел и изображение.</p>
         {#if imageUrl}<img class="image-preview" src={api.imageUrl(imageUrl)} alt="Изображение карточки" width="640" height="360" decoding="async" />{/if}

@@ -51,6 +51,8 @@ class GraphQuery:
         communities = _subscribed_comun_slugs_for_user(user)
         return {
             "nodes": [{"id": node.pk, "kind": node.kind, "title": node.label,
+                       **({"try_description": node.try_description} if node.try_description else {}),
+                       **({"try_step": node.try_step} if node.try_step else {}),
                        "description": node.description, "is_active": node.is_active,
                        "image_url": node.image.url if node.image else None,
                        "community_description": node.community.product_description if node.community_id else "",
@@ -115,7 +117,7 @@ class GraphEditor:
     def save_node(data, node_id=None):
         node = get_object_or_404(Node, pk=node_id) if node_id else Node()
         original_kind, original_community = node.kind, node.community_id
-        for field in ("title", "description", "kind"):
+        for field in ("title", "description", "kind", "try_description", "try_step"):
             if field in data:
                 if not isinstance(data[field], str):
                     raise ValidationError(f"Поле {field} должно быть строкой.")

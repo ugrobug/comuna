@@ -13,6 +13,7 @@
     "@types/leaflet": "^1.9.21",
     "@types/node": "^22.13.1",
     "@types/nprogress": "^0.2.0",
+    "@types/pdfmake": "0.2.13",
     "@types/ua-parser-js": "^0.7.39",
     "autoprefixer": "^10.4.16",
     "jsdom": "^26.1.0",
@@ -69,7 +70,8 @@
     "install": "^0.13.0",
     "leaflet": "^1.9.4",
     "linkifyjs": "^4.3.2",
-    "markdown-it": "^14.1.1"
+    "markdown-it": "^14.1.1",
+    "pdfmake": "0.2.23"
   },
   "overrides": {
     "cookie": "^0.7.2"
