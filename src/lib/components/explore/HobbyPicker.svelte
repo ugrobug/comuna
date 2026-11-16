@@ -25,6 +25,7 @@
   let remaining = 0
   let picks: ExploreNode[] = [], saved = false, confirming = false
   let pointer: { id: number; x: number; y: number } | null = null, offset = 0
+  let suppressClick = false
   onMount(() => { mounted = true; return () => { dialog?.close() } })
   function initialize(user: number | null) {
     scope = 'tambur:hobby-picks:v1:' + (user ?? 'guest')
@@ -65,9 +66,19 @@
   function advance() { match = null; confirming = false; void top() }
   function reset() { deck.reset(); picks = []; card = deck.next(); remaining = deck.remaining; saved = false; advance() }
   function start(e: PointerEvent) {
-    if ((e.target as Element).closest('label, input, button, a') || pointer || !e.isPrimary || e.button !== 0) return
+    if (!e.isPrimary || e.button !== 0) return
+    suppressClick = false
+    if (intro || suspended || (!match && (saved || !card))) return
     pointer = { id: e.pointerId, x: e.clientX, y: e.clientY }
-    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+  }
+  function clearGesture() { pointer = null; offset = 0 }
+  function cancel(e: PointerEvent) {
+    if (pointer?.id === e.pointerId) clearGesture()
+  }
+  function afterSwipe(e: MouseEvent) {
+    if (suppressClick && e.detail > 0) {
+      e.preventDefault(); e.stopPropagation(); suppressClick = false
+    }
   }
   function move(e: PointerEvent) {
     if (pointer?.id !== e.pointerId) return
@@ -77,8 +88,11 @@
   function end(e: PointerEvent) {
     if (pointer?.id !== e.pointerId) return
     const dx = e.clientX - pointer.x, dy = e.clientY - pointer.y
-    pointer = null; offset = 0
-    if (Math.abs(dx) >= 50 && Math.abs(dx) > Math.abs(dy) * 1.3) choose(dx > 0)
+    clearGesture()
+    if (Math.abs(dx) < 36 || Math.abs(dx) <= Math.abs(dy) * 1.15) return
+    suppressClick = true
+    if (match) advance()
+    else choose(dx > 0)
   }
   function key(e: KeyboardEvent) {
     if (intro || !dialog?.open || e.repeat || e.altKey || e.ctrlKey || e.metaKey || suspended || match || saved || !card) return
@@ -86,12 +100,12 @@
   }
 </script>
 
-<svelte:window on:keydown={key} />
+<svelte:window on:keydown={key} on:pointermove={move} on:pointerup={end} on:pointercancel={cancel} on:blur={clearGesture} />
 
 <dialog bind:this={dialog} aria-labelledby="hobby-picker-title" on:cancel={(e) => {e.preventDefault(); onClose()}}>
   <div class="heading"><div><span class="eyebrow">Исследовать</span><h2 id="hobby-picker-title">Подбор хобби</h2></div>
     <button class="close" aria-label="Закрыть подбор" on:click={onClose}>×</button></div>
-  <div class="pane" bind:this={pane}>
+  <div class="pane" bind:this={pane} on:pointerdown={start} on:click|capture={afterSwipe} role="presentation">
     {#if intro}
       <article class="card"><div class="card-copy">
         <h3>Как подобрать хобби</h3>
@@ -116,6 +130,7 @@
       {/if}
       <HobbyFirstStep node={match} {steps} />
       {#if error}<p role="alert">{error}</p>{/if}
+      <p class="hint">Смахните в любую сторону, чтобы продолжить</p>
       <button class="next" on:click={advance}>{saved ? 'К выбранным' : card ? 'Следующее хобби →' : 'К результатам'}</button>
     {:else if saved}
       <h3>Выбранные хобби</h3><p>Откройте хобби, чтобы посмотреть его сообщества.</p>
@@ -123,7 +138,7 @@
       <button class="next" on:click={() => {saved = false; void top()}}>Назад к подбору</button>
     {:else if card}
       <p class="kicker">Ещё в подборке: {remaining}</p>
-      <article class="card" style:transform={'translateX('+offset*.45+'px) rotate('+offset*.035+'deg)'} on:pointerdown={start} on:pointermove={move} on:pointerup={end} on:pointercancel={() => {pointer=null;offset=0}} on:lostpointercapture={() => {pointer=null;offset=0}}>
+      <article class="card" style:transform={'translateX('+offset*.45+'px) rotate('+offset*.035+'deg)'}>
         {#if card.image_url}<img src={api.imageUrl(card.image_url)} alt="" width="640" height="360" draggable="false" />{/if}
         <div class="card-copy"><span class="eyebrow">Увлечение</span><h3>{card.title}</h3>
           {#if card.description}<p>{card.description}</p>{/if}
@@ -161,7 +176,7 @@
   :global(.dark) dialog{--explore-surface:#242633;--explore-ink:#ecedf5}
   dialog[open]{display:flex;flex-direction:column}dialog::backdrop{background:#11172db3}
   .heading,.row,.actions,.saved-row{display:flex;align-items:center;justify-content:space-between;gap:12px}.heading{padding:16px 20px;border-bottom:1px solid #8174ce33;flex:none}
-  .eyebrow,.kicker,.hint{font-size:12px}.eyebrow{letter-spacing:.06em}.kicker{margin:0 0 12px}.hint{text-align:center;margin:12px 0}.pane{padding:18px;overflow:auto;overscroll-behavior:contain;overflow-x:hidden}
+  .eyebrow,.kicker,.hint{font-size:12px}.eyebrow{letter-spacing:.06em}.kicker{margin:0 0 12px}.hint{text-align:center;margin:12px 0}.pane{touch-action:pan-y pinch-zoom;padding:18px;overflow:auto;overscroll-behavior:contain;overflow-x:hidden}
   h2,h3{font-weight:700;line-height:1.2}h2{font-size:21px}h3{font-size:25px;overflow-wrap:anywhere}p{margin:10px 0;line-height:1.5}
   button,.row a{cursor:pointer}button{border-radius:12px;padding:10px 14px;min-height:44px;border:1px solid #8174ce55}button:disabled{opacity:.65;cursor:default}.close{font-size:24px;line-height:1}
   .card{touch-action:pan-y pinch-zoom;user-select:none;border-radius:17px;overflow:hidden;background:linear-gradient(145deg,#8174ce26,#8174ce0a);border:1px solid #8174ce44}.card img{display:block;width:100%;aspect-ratio:16/9;height:auto;object-fit:cover}
@@ -172,5 +187,8 @@
   .characteristics dl>div{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:12px;line-height:1.4;overflow-wrap:anywhere}
   .characteristics dd{margin:0;font-weight:600}
   .next,.saved-row{width:100%;margin-top:12px}.row{border-bottom:1px solid #8174ce33;padding:10px 0}.row a,.saved-row{overflow-wrap:anywhere}.row a{text-decoration:underline}.row button{flex:none}
-  @media(max-width:600px){dialog{width:100%;height:100dvh;max-width:100%;max-height:100dvh;border:0;border-radius:0}.heading{padding-top:max(16px,env(safe-area-inset-top))}.pane{padding-bottom:max(24px,env(safe-area-inset-bottom))}}
+  @media(max-width:600px){
+    .card img{float:right;width:88px;height:60px;margin:16px 16px 8px 12px;border-radius:8px}
+    .card-copy{padding:16px}.card-copy>p,.characteristics{clear:both}.pane{flex:1}
+    dialog{width:100%;height:100dvh;max-width:100%;max-height:100dvh;border:0;border-radius:0}.heading{padding-top:max(16px,env(safe-area-inset-top))}.pane{padding-bottom:max(24px,env(safe-area-inset-bottom))}}
 </style>

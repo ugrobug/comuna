@@ -153,7 +153,7 @@ class S3Availability:
     @staticmethod
     def is_unavailable(error):
         if isinstance(error, ClientError):
-            return error.response.get('ResponseMetadata', {}).get('HTTPStatusCode', 0) >= 500 or error.response.get('Error', {}).get('Code') in {'SlowDown', 'RequestTimeout', 'ServiceUnavailable'}
-        # Credentials/configuration/permission errors must not be disguised as an outage.
+            return error.response.get('ResponseMetadata', {}).get('HTTPStatusCode', 0) >= 500 or error.response.get('Error', {}).get('Code') in {'SlowDown', 'RequestTimeout', 'ServiceUnavailable', 'InvalidAccessKeyId'}
+        # Object-specific permission errors still propagate to the caller.
         from botocore.exceptions import EndpointConnectionError, ConnectionClosedError, ConnectTimeoutError, ReadTimeoutError, HTTPClientError
         return isinstance(error, (EndpointConnectionError, ConnectionClosedError, ConnectTimeoutError, ReadTimeoutError, HTTPClientError))

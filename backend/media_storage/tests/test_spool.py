@@ -74,6 +74,27 @@ class MediaSpoolTests(TestCase):
         another.s3_storage.save.assert_not_called()
         self.assertEqual(self.remote.save.call_count, 1)
 
+    def test_rejected_s3_key_preserves_image_and_skips_following_network_calls(self):
+        head = ClientError({'Error': {'Code': '403'}}, 'HeadObject')
+        self.remote.exists.side_effect = head
+        self.remote.location = ''
+        probe = self.remote.connection.meta.client.get_object
+        probe.side_effect = ClientError({'Error': {'Code': 'InvalidAccessKeyId'}}, 'GetObject')
+        for name in ('photo.jpg', 'other.jpg'):
+            key = self.storage.save(name, ContentFile(b'abc'))
+            self.assertTrue(self.spool.local.exists(key))
+            self.assertTrue(MediaTransfer.objects.filter(key=key, state='pending').exists())
+        self.assertEqual(probe.call_count, 1)
+
+    def test_head_with_object_specific_denial_keeps_original_error(self):
+        head = ClientError({'Error': {'Code': '403'}}, 'HeadObject')
+        self.remote.exists.side_effect = head
+        self.remote.location = ''
+        self.remote.connection.meta.client.get_object.side_effect = ClientError({'Error': {'Code': 'AccessDenied'}}, 'GetObject')
+        with self.assertRaises(ClientError):
+            self.storage.save('photo.jpg', ContentFile(b'abc'))
+        self.assertFalse(MediaTransfer.objects.exists())
+
     def test_permission_error_is_not_silently_hidden(self):
         self.remote.save.side_effect = ClientError({'Error': {'Code': 'AccessDenied'}, 'ResponseMetadata': {'HTTPStatusCode': 403}}, 'PutObject')
         with self.assertRaises(ClientError):

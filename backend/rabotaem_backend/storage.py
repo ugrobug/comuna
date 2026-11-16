@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from botocore.exceptions import ClientError
 from django.conf import settings
 from django.core.files.storage import FileSystemStorage, Storage
 from django.core.files.base import File
@@ -41,7 +42,7 @@ class S3MediaStorage(Storage):
         try:
             saved = super().save(name, content, max_length=max_length)
         except Exception as error:
-            if not self.availability.is_unavailable(error):
+            if not self._primary_write_unavailable(name, error):
                 raise
             try:
                 self.availability.failed(error)
@@ -53,6 +54,29 @@ class S3MediaStorage(Storage):
         except OSError:
             pass
         return saved
+
+    def _primary_write_unavailable(self, name, error):
+        if self.availability.is_unavailable(error):
+            return True
+        if not isinstance(error, ClientError) or error.operation_name != 'HeadObject':
+            return False
+        if error.response.get('Error', {}).get('Code') != '403':
+            return False
+        # S3 HEAD omits the error body. A one-byte read distinguishes a
+        # bucket-wide rejected key from an ACL that denies this particular object.
+        from media_storage.transfer import S3TransferDestination
+        destination = S3TransferDestination(self.s3_storage)
+        try:
+            result = destination.client.get_object(Bucket=self.s3_storage.bucket_name,
+                Key=destination.key(name), Range='bytes=0-0')
+        except ClientError as detail:
+            return self.availability.is_unavailable(detail)
+        except Exception as detail:
+            if self.availability.is_unavailable(detail):
+                return True
+            raise
+        result['Body'].close()
+        return False
 
     @cached_property
     def s3_storage(self) -> Storage:
