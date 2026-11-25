@@ -222,6 +222,15 @@ class MediaSpoolTests(TestCase):
                 adapter.put_and_verify(row, source)
         self.assertIn('ContentMD5', adapter.client.put_object.call_args.kwargs)
 
+    def test_beget_metadata_casing_does_not_prevent_transfer(self):
+        key = self.spool.save('photo.jpg', ContentFile(b'abc'))
+        row = MediaTransfer.objects.get()
+        storage = Mock(location='', bucket_name='bucket', object_parameters={}, default_acl='public-read')
+        adapter = S3TransferDestination(storage)
+        adapter.client.head_object.return_value = {'ContentLength': row.size, 'Metadata': {'Sha256': row.sha256}}
+        with self.spool.local.open(key) as source:
+            adapter.put_and_verify(row, source)
+
     def test_rollback_orphan_is_reclaimed_after_grace_but_pending_file_is_kept(self):
         import os
         from django.db import transaction

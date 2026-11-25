@@ -37,7 +37,9 @@ class S3TransferDestination:
             parameters['ACL'] = self.storage.default_acl
         self.client.put_object(Bucket=self.storage.bucket_name, Key=self.key(job.key), Body=source, **parameters)
         head = self.client.head_object(Bucket=self.storage.bucket_name, Key=self.key(job.key))
-        if head['ContentLength'] != job.size or head.get('Metadata', {}).get('sha256') != job.sha256:
+        # S3 metadata travels in HTTP headers; Beget can return title-cased names.
+        metadata = {key.lower(): value for key, value in head.get('Metadata', {}).items()}
+        if head['ContentLength'] != job.size or metadata.get('sha256') != job.sha256:
             raise ValueError('Remote media verification failed')
 
     def delete(self, key):
