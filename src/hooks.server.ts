@@ -12,11 +12,6 @@ import {
 } from '$lib/postLanguages'
 import { runWithRequestTranslations } from '$lib/server/requestTranslations'
 
-const PRIORITY_HEAD_TAG_PATTERN =
-  /<(?:meta|link)\b[^>]*(?:name="description"|name="robots"|rel="canonical"|property="og:[^"]+"|name="twitter:[^"]+")[^>]*>/gi
-
-const STYLESHEET_LINK_PATTERN = /<link\b[^>]*rel="stylesheet"[^>]*>/i
-
 const securityHeaders = {
   'Content-Security-Policy': [
     "default-src 'self'",
@@ -37,40 +32,6 @@ const securityHeaders = {
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'SAMEORIGIN',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=()',
-}
-
-export const prioritizePreviewHeadTags = (html: string) => {
-  const headOpenIndex = html.indexOf('<head>')
-  const headCloseIndex = html.indexOf('</head>')
-  if (headOpenIndex === -1 || headCloseIndex === -1 || headCloseIndex <= headOpenIndex) {
-    return html
-  }
-
-  const headContentStart = html.indexOf('>', headOpenIndex)
-  if (headContentStart === -1) return html
-
-  const headContent = html.slice(headContentStart + 1, headCloseIndex)
-  const priorityTags: string[] = []
-  const strippedHeadContent = headContent.replace(PRIORITY_HEAD_TAG_PATTERN, (match) => {
-    priorityTags.push(match)
-    return ''
-  })
-
-  if (!priorityTags.length) return html
-
-  const insertionIndex = strippedHeadContent.search(STYLESHEET_LINK_PATTERN)
-  if (insertionIndex === -1) return html
-
-  const reorderedHeadContent =
-    strippedHeadContent.slice(0, insertionIndex) +
-    priorityTags.join('') +
-    strippedHeadContent.slice(insertionIndex)
-
-  return (
-    html.slice(0, headContentStart + 1) +
-    reorderedHeadContent +
-    html.slice(headCloseIndex)
-  )
 }
 
 const escapeHtmlAttribute = (value: string) =>
@@ -142,12 +103,10 @@ const appendVary = (headers: Headers, value: string) => {
   headers.set('Vary', Array.from(values).join(', '))
 }
 
-export const resolveRequestLanguage = (
-  pathname: string,
+export const resolvePreferredLanguage = (
   acceptLanguage: string | null,
   authBootstrap: AuthBootstrap | null
 ): PostLanguageCode =>
-  languageFromPathname(pathname) ||
   (authBootstrap?.settings.interface_language_manual
     ? normalizeInterfaceLanguage(authBootstrap.settings.interface_language)
     : null) ||
@@ -166,21 +125,18 @@ export const handleFetch: HandleFetch = async ({ event, request, fetch }) => {
 export const handle: Handle = async ({ event, resolve }) => {
   const authBootstrap = await loadAuthBootstrap(event)
   event.locals.authBootstrap = authBootstrap
-  const language = resolveRequestLanguage(
-    event.url.pathname,
+  const preferredLanguage = resolvePreferredLanguage(
     event.request.headers.get('Accept-Language'),
     authBootstrap
   )
-  event.locals.language = language
-  const shouldPrioritizePreviewHead = /^\/(?:[a-z]{2}\/)?b\/post\//.test(event.url.pathname)
+  event.locals.preferredLanguage = preferredLanguage
+  const language = languageFromPathname(event.url.pathname) || preferredLanguage
+  const isPostDetail = /^\/(?:[a-z]{2}\/)?b\/post\//.test(event.url.pathname)
   const response = await runWithRequestTranslations(language, () =>
     resolve(event, {
-      transformPageChunk: ({ html }) => {
-        const localizedHtml = localizeAppShellHead(html, language)
-        return shouldPrioritizePreviewHead
-          ? prioritizePreviewHeadTags(localizedHtml)
-          : localizedHtml
-      },
+      // Svelte owns the SSR head nodes between its hydration markers.
+      // Moving individual tags leaves them behind when the route changes.
+      transformPageChunk: ({ html }) => localizeAppShellHead(html, language),
     })
   )
   const headers = new Headers(response.headers)
@@ -188,7 +144,7 @@ export const handle: Handle = async ({ event, resolve }) => {
     headers.set(name, value)
   }
   if (
-    shouldPrioritizePreviewHead &&
+    isPostDetail &&
     response.headers.get('content-type')?.includes('text/html')
   ) {
     headers.delete('link')

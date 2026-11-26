@@ -25,7 +25,7 @@ export const load = async ({ url, data }) => {
     : null
   const normalizedLocale =
     routeLocale ??
-    normalizeInterfaceLanguage(data?.language) ??
+    normalizeInterfaceLanguage(data?.preferredLanguage) ??
     savedLocale ??
     browserLocale ??
     originalPostLanguage
@@ -36,5 +36,5 @@ export const load = async ({ url, data }) => {
     hydrateSiteAuthBootstrap(data.authBootstrap)
   }
 
-  return
+  return { ...data, language: normalizedLocale }
 }

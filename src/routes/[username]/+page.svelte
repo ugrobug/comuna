@@ -55,7 +55,7 @@
   $: title = authorName ? `${authorName} — ${siteTitle}` : siteTitle
   $: description =
     data.author?.description ||
-    (authorName ? `${$t('site.authorProfile.descriptionPrefix')} ${authorName}.` : '')
+    (authorName ? `${$t('site.authorProfile.descriptionPrefix')} ${authorName}.` : $t('site.meta.defaultDescription'))
   $: canonicalUrl = new URL(
     $page.url.pathname,
     (env.PUBLIC_SITE_URL || $page.url.origin).replace(/\/+$/, '') + '/'

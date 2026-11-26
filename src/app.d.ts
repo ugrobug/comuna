@@ -14,7 +14,7 @@ declare global {
       noStore?: boolean
       instance?: string
       authBootstrap?: AuthBootstrap | null
-      language?: PostLanguageCode
+      preferredLanguage?: PostLanguageCode
     }
     interface PageData {
       authBootstrap?: AuthBootstrap | null

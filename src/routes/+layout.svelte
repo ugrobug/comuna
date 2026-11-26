@@ -125,6 +125,11 @@
   )
   $: hasRouteManagedSeo =
     isBackendPostRoute || isLocalizedStaticPageRoute || isCommunityDetailRoute || isEmbedRoute
+  $: isHomeOrProfile =
+    $page.route.id === '/' ||
+    $page.route.id === '/id[siteUserId=integer]' ||
+    $page.route.id === '/[username]'
+  $: pageProvidesDescription = isHomeOrProfile || isBackendPostRoute || isCommunityDetailRoute || isLocalizedStaticPageRoute
   const buildJsonLdTag = (json: string) =>
     json ? `<script type="application/ld+json">${json}</` + `script>` : ''
 
@@ -190,13 +195,14 @@
           : getDefaultColors().slate[25]
       )}
     />
-    <!-- Telegram uses a short HTML prefix for link previews; avoid generic description on post pages. -->
-    {#if !isBackendPostRoute}
+    {#if !pageProvidesDescription}
       <meta name="description" content={siteDescription} />
+    {/if}
+    {#if !isBackendPostRoute}
       <meta property="og:site_name" content={siteTitle} />
       <meta property="og:locale" content={postLanguageOgLocales[currentLanguage]} />
     {/if}
-  {#if !hasRouteManagedSeo}
+  {#if !hasRouteManagedSeo && !isHomeOrProfile}
     <link rel="canonical" href={canonicalUrl} />
   {/if}
   

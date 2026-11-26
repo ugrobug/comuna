@@ -20,9 +20,9 @@
   import {
     stringifyJsonLd,
     toWellFormedUnicode,
-    truncateUnicodeText,
   } from '$lib/seoJsonLd'
-  import { parseSerializedEditorModel, looksLikeSerializedEditorModel } from '$lib/util'
+  import { parseSerializedEditorModel } from '$lib/serializedEditorModel'
+  import { PostMetaDescription } from '$lib/PostMetaDescription'
   import { mergePostDetailPersonalization } from '$lib/postDetailRefresh'
   import { locale, t } from '$lib/translations'
   import { userSettings } from '$lib/settings'
@@ -42,9 +42,6 @@
   let showOriginalPost = false
   let showHiddenContentOnce = false
   let postCommentsComponent: { openAnswerSelector: () => void } | null = null
-
-  const stripHtml = (value: string) =>
-    value.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
 
   const extractFirstImage = (value: string) => {
     const raw = (value || '').trim()
@@ -88,52 +85,6 @@
       if (isPreviewImageCandidate(absolute)) return absolute
     }
     return ''
-  }
-
-  const buildDescription = (value: string, max = 200) => {
-    const raw = (value || '').trim()
-    if (!raw) return ''
-
-    const parseEditorPayload = (candidate: string): any | null => {
-      return parseSerializedEditorModel(candidate)
-    }
-
-    const editorPayload = parseEditorPayload(raw)
-    if (editorPayload) {
-      const extraDescription = stripHtml(
-        String(
-          editorPayload?.additional?.metaDescription ||
-            editorPayload?.additional?.previewDescription ||
-            ''
-        )
-      )
-      if (extraDescription) {
-        return truncateUnicodeText(extraDescription, max)
-      }
-
-      const blocks = Array.isArray(editorPayload.blocks) ? editorPayload.blocks : []
-      for (const block of blocks) {
-        const type = String(block?.type || '').toLowerCase()
-        const data = block?.data || {}
-        if (type === 'paragraph' && typeof data.text === 'string') {
-          const clean = stripHtml(data.text)
-          if (clean) {
-            return truncateUnicodeText(clean, max)
-          }
-        }
-        if (type === 'header' && typeof data.text === 'string') {
-          const clean = stripHtml(data.text)
-          if (clean) {
-            return truncateUnicodeText(clean, max)
-          }
-        }
-      }
-    }
-
-    if (looksLikeSerializedEditorModel(raw)) return ''
-    const text = stripHtml(raw)
-    if (!text) return ''
-    return truncateUnicodeText(text, max)
   }
 
   const ensureAbsoluteUrl = (value: string | null | undefined, baseUrl: string) => {
@@ -269,7 +220,7 @@
     siteBaseUrl
   )
   $: ogImageType = imageMimeByExtension(ogImage)
-  $: postDescription = buildDescription(postData?.content || '')
+  $: postDescription = PostMetaDescription.fromContent(postData?.content || '')
   $: metaDescription = toWellFormedUnicode(
     translationUnavailable
       ? translationUnavailableBody

@@ -2,7 +2,7 @@ import { originalPostLanguage } from '$lib/postLanguages.js'
 
 export const load = async ({ locals }) => {
   return {
-    language: locals.language || originalPostLanguage,
+    preferredLanguage: locals.preferredLanguage || originalPostLanguage,
     authBootstrap: locals.authBootstrap || null,
   }
 }

@@ -22,6 +22,7 @@
         "@types/jsdom": "^21.1.7",
         "dompurify": "^3.2.6",
         "editorjs-text-alignment-blocktune": "^1.0.3",
+        "entities": "4.5.0",
         "install": "^0.13.0",
         "turndown": "^7.2.0",
       },
